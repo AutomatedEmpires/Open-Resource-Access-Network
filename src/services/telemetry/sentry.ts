@@ -25,6 +25,69 @@ export interface BreadcrumbEntry {
   data?: Record<string, unknown>;
 }
 
+function getErrorName(error: unknown): string {
+  if (error instanceof Error && typeof error.name === 'string' && error.name.trim()) {
+    return error.name.trim().slice(0, 120);
+  }
+  if (typeof error === 'string' && error.trim()) {
+    return 'StringError';
+  }
+  if (error && typeof error === 'object') {
+    return (error as { name?: unknown }).name && typeof (error as { name?: unknown }).name === 'string'
+      ? ((error as { name: string }).name.trim().slice(0, 120) || 'UnknownError')
+      : 'UnknownError';
+  }
+  return 'UnknownError';
+}
+
+function redactIfSensitiveString(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  // Very small heuristic redaction to prevent obvious PII from landing in telemetry.
+  // Prefer dropping/redacting over fidelity.
+  const looksLikeEmail = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(trimmed);
+  const looksLikePhone = /\+?\d[\d\s().-]{7,}\d/.test(trimmed);
+  if (looksLikeEmail || looksLikePhone) return '[redacted]';
+  return trimmed.length > 200 ? `${trimmed.slice(0, 200)}…` : trimmed;
+}
+
+function sanitizeExtra(extra: Record<string, unknown>): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(extra)) {
+    const lowerKey = key.toLowerCase();
+    if (
+      lowerKey.includes('message') ||
+      lowerKey.includes('comment') ||
+      lowerKey.includes('body') ||
+      lowerKey.includes('authorization') ||
+      lowerKey.includes('cookie') ||
+      lowerKey.includes('token')
+    ) {
+      continue;
+    }
+
+    if (value === null) {
+      sanitized[key] = null;
+      continue;
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      sanitized[key] = value;
+      continue;
+    }
+    if (typeof value === 'string') {
+      const redacted = redactIfSensitiveString(value);
+      if (redacted) sanitized[key] = redacted;
+      continue;
+    }
+
+    // Drop objects/arrays/functions to avoid accidentally serializing user input.
+  }
+
+  return sanitized;
+}
+
 // ============================================================
 // SENTRY WRAPPER
 // ============================================================
@@ -57,11 +120,12 @@ export async function captureException(
 ): Promise<void> {
   // Always log to console in development
   if (process.env.NODE_ENV === 'development') {
-    console.error('[Sentry] captureException:', error, {
+    console.error('[Sentry] captureException', {
+      errorName: getErrorName(error),
       sessionId: context?.sessionId,
       userId: context?.userId,
       feature: context?.feature,
-      // Do not log context.extra in development; it can accidentally contain PII.
+      // Do not log the raw error or context.extra; they may contain PII.
     });
   }
 
@@ -80,11 +144,17 @@ export async function captureException(
       scope.setTag('feature', context.feature);
     }
     if (context?.extra) {
-      for (const [key, value] of Object.entries(context.extra)) {
+      const safeExtra = sanitizeExtra(context.extra);
+      for (const [key, value] of Object.entries(safeExtra)) {
         scope.setExtra(key, value);
       }
     }
-    sentry.captureException(error);
+
+    // Privacy-first: avoid sending raw error messages/stacks that could include user-provided content.
+    // Capture a sanitized error with a safe name only.
+    const sanitizedError = new Error(getErrorName(error));
+    sanitizedError.name = getErrorName(error);
+    sentry.captureException(sanitizedError);
   });
 }
 
@@ -96,8 +166,9 @@ export async function captureMessage(
   level: SeverityLevel = 'info',
   context?: ErrorContext
 ): Promise<void> {
+  const safeMessage = redactIfSensitiveString(message);
   if (process.env.NODE_ENV === 'development') {
-    console.log(`[Sentry] captureMessage [${level}]:`, message, {
+    console.log(`[Sentry] captureMessage [${level}]:`, safeMessage, {
       sessionId: context?.sessionId,
       feature: context?.feature,
       // Do not log context.extra in development; it can accidentally contain PII.
@@ -115,7 +186,7 @@ export async function captureMessage(
     if (context?.feature) {
       scope.setTag('feature', context.feature);
     }
-    sentry.captureMessage(message, level);
+    sentry.captureMessage(safeMessage, level);
   });
 }
 

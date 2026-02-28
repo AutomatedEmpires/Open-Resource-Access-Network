@@ -14,6 +14,7 @@ import {
 } from '@/services/chat/orchestrator';
 import { flagService } from '@/services/flags/flags';
 import type { EnrichedService } from '@/domain/types';
+import { captureException } from '@/services/telemetry/sentry';
 
 // ============================================================
 // REQUEST VALIDATION
@@ -73,7 +74,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('[/api/chat] Orchestrator error:', error);
+    await captureException(error, {
+      feature: 'api_chat',
+      sessionId,
+      userId,
+    });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

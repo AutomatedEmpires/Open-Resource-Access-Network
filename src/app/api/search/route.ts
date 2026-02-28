@@ -16,6 +16,7 @@ import {
   SEARCH_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
 import { checkRateLimit } from '@/services/security/rateLimit';
+import { captureException } from '@/services/telemetry/sentry';
 
 // ============================================================
 // QUERY PARAM SCHEMA
@@ -147,7 +148,9 @@ export async function GET(req: NextRequest) {
     const results = await mockEngine.search(query);
     return NextResponse.json(results);
   } catch (error) {
-    console.error('[/api/search] Search error:', error);
+    await captureException(error, {
+      feature: 'api_search',
+    });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security policy
+    url: https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/SECURITY.md
+    about: Read reporting guidance before filing security issues.
+  - name: SSOT and operating model
+    url: https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/docs/SSOT.md
+    about: Understand what is authoritative when docs and code disagree.
+  - name: Audit baseline
+    url: https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/docs/AUDIT_REPORT.md
+    about: Current repo-forensic truth map and known gaps.

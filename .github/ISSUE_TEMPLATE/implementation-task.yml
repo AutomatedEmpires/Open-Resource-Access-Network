@@ -1,9 +1,14 @@
 name: Implementation task
-about: Define a bounded implementation slice with tests, docs, and safety checks.
+description: Define a bounded implementation slice with tests, docs, and safety checks.
 title: "[Task]: "
 labels:
   - type:scaffold
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep tasks small and testable. Do not include PII. If this changes safety-critical behavior, add/update an ADR and SSOT docs.
+
   - type: textarea
     id: what_building
     attributes:
@@ -22,7 +27,9 @@ body:
     id: tests_required
     attributes:
       label: Tests required (unit/integration)
-      placeholder: unit: ...\nintegration: ...
+      placeholder: |
+        unit: ...
+        integration: ...
     validations:
       required: true
 
@@ -50,6 +57,7 @@ body:
         - label: Sentry
         - label: logging
         - label: analytics
+        - label: None
     validations:
       required: true
 
@@ -61,6 +69,7 @@ body:
         - label: keyboard
         - label: ARIA
         - label: reduced motion
+        - label: None
     validations:
       required: true
 
@@ -91,5 +100,6 @@ body:
       options:
         - label: Tests added/updated and passing.
         - label: Documentation updated if behavior changed.
+        - label: docs/ENGINEERING_LOG.md updated if contract-level.
     validations:
       required: true

@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      nextjs:
+        patterns:
+          - "next"
+          - "eslint-config-next"
+      drizzle:
+        patterns:
+          - "drizzle-*"
+          - "drizzle-orm"
+      test:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+      types:
+        patterns:
+          - "@types/*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

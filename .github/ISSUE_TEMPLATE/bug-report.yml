@@ -1,9 +1,14 @@
 name: Bug report
-about: Report a defect with reproducible details and potential safety impact.
+description: Report a defect with reproducible details and potential safety impact.
 title: "[Bug]: "
 labels:
   - type:bug
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include personal data (PII) in this issue. If logs contain secrets or private tokens, redact them.
+
   - type: textarea
     id: repro_steps
     attributes:
@@ -23,12 +28,20 @@ body:
       required: true
 
   - type: textarea
-    id: screenshots_logs
+    id: observed_impact
     attributes:
-      label: Screenshots/logs
-      description: Add screenshots, terminal output, traces, or relevant logs.
+      label: Observed impact
+      description: What user-facing harm could occur? Mention if it could affect crisis routing, accuracy/no-hallucination, accessibility, or privacy.
     validations:
       required: true
+
+  - type: textarea
+    id: screenshots_logs
+    attributes:
+      label: Screenshots/logs (optional)
+      description: Add screenshots, terminal output, traces, or relevant logs (redact secrets/PII).
+    validations:
+      required: false
 
   - type: dropdown
     id: affected_surface
@@ -51,6 +64,7 @@ body:
     id: severity
     attributes:
       label: Severity
+      description: P0 = safety/security/privacy impact or blocks core flows. P1 = major functional impact. P2 = minor/edge-case.
       options:
         - P0
         - P1
@@ -66,5 +80,24 @@ body:
         - label: Could affect crisis routing.
         - label: Could affect accuracy/no-hallucination.
         - label: Could affect accessibility.
+        - label: Could affect privacy (location/profile/telemetry).
+        - label: No known safety impact.
     validations:
       required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS + Node version + how you ran it.
+      placeholder: Ubuntu 24.04, Node 20.x, `npm run dev`
+    validations:
+      required: true
+
+  - type: textarea
+    id: docs_mismatch
+    attributes:
+      label: Docs mismatch (optional)
+      description: If docs/specs claim behavior that differs from what you observed, link the doc section.
+    validations:
+      required: false

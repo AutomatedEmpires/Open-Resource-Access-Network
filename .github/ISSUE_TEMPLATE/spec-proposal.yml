@@ -1,9 +1,15 @@
 name: Spec proposal
-about: Propose and align on a safety-aware specification before implementation starts.
+description: Propose and align on a safety-aware specification before implementation starts.
 title: "[Spec]: "
 labels:
   - type:spec
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Specs are SSOT candidates. If this touches safety-critical behavior, plan for an ADR under docs/DECISIONS/.
+        Do not include PII.
+
   - type: textarea
     id: goal
     attributes:
@@ -21,6 +27,21 @@ body:
         - label: no-hallucination
         - label: crisis routing
         - label: accessibility
+        - label: privacy (approximate location, consent)
+        - label: retrieval-first (stored-records-only)
+        - label: no LLM in retrieval/ranking
+    validations:
+      required: true
+
+  - type: textarea
+    id: ssot_updates
+    attributes:
+      label: SSOT/docs updates required
+      description: List the docs that must be updated if this spec is implemented.
+      placeholder: |
+        - docs/CHAT_ARCHITECTURE.md
+        - docs/SECURITY_PRIVACY.md
+        - docs/DATA_MODEL.md
     validations:
       required: true
 
@@ -77,3 +98,4 @@ body:
         - label: This spec does not require inventing real-world service data.
     validations:
       required: true
+

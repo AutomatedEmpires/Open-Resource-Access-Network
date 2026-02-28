@@ -282,15 +282,17 @@ export function computeScore(serviceId: string, input: ScoreInput): ConfidenceSc
   const rawScore = weighted + penalties;
   const score = Math.min(1.0, Math.max(0.0, rawScore));
 
+  const r3 = (n: number) => Math.round(n * 1000) / 1000;
+
   return {
     id: '',
     serviceId,
-    score: Math.round(score * 1000) / 1000,
-    dataCompleteness: Math.round(dataCompleteness * 1000) / 1000,
-    verificationRecency: Math.round(verificationRecency * 1000) / 1000,
-    communityFeedback: Math.round(communityFeedback * 1000) / 1000,
-    hostResponsiveness: Math.round(hostResponsiveness * 1000) / 1000,
-    sourceAuthority: Math.round(sourceAuthority * 1000) / 1000,
+    score: r3(score),
+    dataCompleteness: r3(dataCompleteness),
+    verificationRecency: r3(verificationRecency),
+    communityFeedback: r3(communityFeedback),
+    hostResponsiveness: r3(hostResponsiveness),
+    sourceAuthority: r3(sourceAuthority),
     computedAt: new Date(),
   };
 }

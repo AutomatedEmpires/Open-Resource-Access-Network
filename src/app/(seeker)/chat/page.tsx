@@ -1,16 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 
 function generateSessionId(): string {
-  // Use sessionStorage for persistence across refreshes within the same tab
   const key = 'oran_chat_session_id';
   const existing = typeof sessionStorage !== 'undefined'
     ? sessionStorage.getItem(key)
     : null;
   if (existing) return existing;
-  // Fallback UUID generation without crypto.randomUUID (works in all browsers)
   const id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = Math.random() * 16 | 0;
     const v = c === 'x' ? r : (r & 0x3 | 0x8);
@@ -23,11 +21,11 @@ function generateSessionId(): string {
 }
 
 export default function ChatPage() {
-  const [sessionId, setSessionId] = useState<string>('');
-
-  useEffect(() => {
-    setSessionId(generateSessionId());
-  }, []);
+  // Lazy initializer runs only in browser; returns '' during SSR (no sessionStorage)
+  const [sessionId] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return generateSessionId();
+  });
 
   if (!sessionId) {
     return (

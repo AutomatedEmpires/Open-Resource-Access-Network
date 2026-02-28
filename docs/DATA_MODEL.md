@@ -157,12 +157,10 @@ Computed confidence score for each service record.
 |----------------------|-------------|-------------|
 | id                   | UUID PK     | Unique identifier |
 | service_id           | UUID FK     | Associated service |
-| score                | NUMERIC(4,3)| Overall score 0.000–1.000 |
-| data_completeness    | NUMERIC(4,3)| Sub-score: required fields filled |
-| verification_recency | NUMERIC(4,3)| Sub-score: how recently verified |
-| community_feedback   | NUMERIC(4,3)| Sub-score: aggregated user feedback |
-| host_responsiveness  | NUMERIC(4,3)| Sub-score: host update frequency |
-| source_authority     | NUMERIC(4,3)| Sub-score: source reliability |
+| score                | NUMERIC(5,2)| Final confidence score 0–100 |
+| verification_confidence | NUMERIC(5,2)| ORAN sub-score: verification confidence (0–100) |
+| eligibility_match    | NUMERIC(5,2)| ORAN sub-score: eligibility match (0–100) |
+| constraint_fit       | NUMERIC(5,2)| ORAN sub-score: constraint fit (0–100) |
 | computed_at          | TIMESTAMPTZ | When score was last computed |
 
 ### `verification_queue`

@@ -19,11 +19,10 @@ import { CONFIDENCE_BANDS } from '@/domain/constants';
 // ============================================================
 
 function getConfidenceBand(score?: number | null): ConfidenceBand {
-  if (score == null) return 'UNVERIFIED';
+  if (score == null) return 'POSSIBLE';
   if (score >= CONFIDENCE_BANDS.HIGH.min)   return 'HIGH';
-  if (score >= CONFIDENCE_BANDS.MEDIUM.min) return 'MEDIUM';
-  if (score >= CONFIDENCE_BANDS.LOW.min)    return 'LOW';
-  return 'UNVERIFIED';
+  if (score >= CONFIDENCE_BANDS.LIKELY.min) return 'LIKELY';
+  return 'POSSIBLE';
 }
 
 function formatAddress(address: EnrichedService['address']): string | null {
@@ -130,7 +129,7 @@ export function ServiceCard({ enriched, compact = false }: ServiceCardProps) {
       {/* Confidence score detail */}
       {confidenceScore && (
         <div className="mt-2 text-xs text-gray-400 text-right">
-          {CONFIDENCE_BANDS[band].label} · Score: {(confidenceScore.score * 100).toFixed(0)}%
+          {CONFIDENCE_BANDS[band].label} · Score: {confidenceScore.score.toFixed(0)}%
         </div>
       )}
     </article>

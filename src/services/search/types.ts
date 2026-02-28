@@ -20,9 +20,9 @@ export type PaginationParams = z.infer<typeof PaginationParamsSchema>;
 export const SearchFiltersSchema = z.object({
   status: z.enum(['active', 'inactive', 'defunct']).default('active'),
   taxonomyTermIds: z.array(z.string().uuid()).optional(),
-  minConfidenceScore: z.coerce.number().min(0).max(1).optional(),
+  minConfidenceScore: z.coerce.number().min(0).max(100).optional(),
   /** Only return records with a confidence band at or above this level */
-  minConfidenceBand: z.enum(['HIGH', 'MEDIUM', 'LOW', 'UNVERIFIED']).optional(),
+  minConfidenceBand: z.enum(['HIGH', 'LIKELY', 'POSSIBLE']).optional(),
   organizationId: z.string().uuid().optional(),
 });
 

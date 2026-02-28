@@ -201,15 +201,13 @@ INSERT INTO service_taxonomy (service_id, taxonomy_term_id) VALUES
 -- ============================================================
 -- Seed initial confidence scores for demo services
 -- ============================================================
-INSERT INTO confidence_scores (service_id, score, data_completeness, verification_recency, community_feedback, host_responsiveness, source_authority)
+INSERT INTO confidence_scores (service_id, score, verification_confidence, eligibility_match, constraint_fit)
 SELECT
   id,
-  0.400 AS score,
-  0.600 AS data_completeness,
-  0.000 AS verification_recency,
-  0.500 AS community_feedback,
-  0.100 AS host_responsiveness,
-  0.300 AS source_authority
+  40.0 AS score,
+  35.0 AS verification_confidence,
+  45.0 AS eligibility_match,
+  40.0 AS constraint_fit
 FROM services
 WHERE name LIKE '%[DEMO]%'
 ON CONFLICT (service_id) DO NOTHING;

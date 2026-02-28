@@ -199,12 +199,10 @@ CREATE INDEX idx_service_taxonomy_term ON service_taxonomy(taxonomy_term_id);
 CREATE TABLE IF NOT EXISTS confidence_scores (
   id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   service_id            UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
-  score                 NUMERIC(4, 3) NOT NULL DEFAULT 0,
-  data_completeness     NUMERIC(4, 3) NOT NULL DEFAULT 0,
-  verification_recency  NUMERIC(4, 3) NOT NULL DEFAULT 0,
-  community_feedback    NUMERIC(4, 3) NOT NULL DEFAULT 0.5,
-  host_responsiveness   NUMERIC(4, 3) NOT NULL DEFAULT 0,
-  source_authority      NUMERIC(4, 3) NOT NULL DEFAULT 0,
+  score                 NUMERIC(5, 2) NOT NULL DEFAULT 0 CHECK (score >= 0 AND score <= 100),
+  verification_confidence NUMERIC(5, 2) NOT NULL DEFAULT 0 CHECK (verification_confidence >= 0 AND verification_confidence <= 100),
+  eligibility_match     NUMERIC(5, 2) NOT NULL DEFAULT 0 CHECK (eligibility_match >= 0 AND eligibility_match <= 100),
+  constraint_fit        NUMERIC(5, 2) NOT NULL DEFAULT 0 CHECK (constraint_fit >= 0 AND constraint_fit <= 100),
   computed_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(service_id)
 );

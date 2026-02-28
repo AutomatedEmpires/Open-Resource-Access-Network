@@ -64,12 +64,10 @@ function makeMockService(id: string): EnrichedService {
     confidenceScore: {
       id: 'cs-1',
       serviceId: id,
-      score: 0.80,
-      dataCompleteness: 0.90,
-      verificationRecency: 0.80,
-      communityFeedback: 0.70,
-      hostResponsiveness: 0.75,
-      sourceAuthority: 0.90,
+      score: 80,
+      verificationConfidence: 85,
+      eligibilityMatch: 75,
+      constraintFit: 70,
       computedAt: new Date(),
     },
   };

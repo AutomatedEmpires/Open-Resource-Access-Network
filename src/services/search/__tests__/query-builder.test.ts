@@ -106,10 +106,10 @@ describe('buildFiltersWhereClause', () => {
   it('includes confidence score filter when minConfidenceScore provided', () => {
     const clause = buildFiltersWhereClause({
       status: 'active',
-      minConfidenceScore: 0.5,
+      minConfidenceScore: 50,
     });
     expect(clause.sql).toContain('cs.score');
-    expect(clause.params).toContain(0.5);
+    expect(clause.params).toContain(50);
   });
 
   it('includes organization filter when organizationId provided', () => {

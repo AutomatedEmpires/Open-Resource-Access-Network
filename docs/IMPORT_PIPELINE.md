@@ -2,6 +2,8 @@
 
 The import pipeline ingests HSDS-formatted CSV data into ORAN's staging tables for review before publishing to the live database.
 
+ORAN supports an empty directory state by design. Production data flow is import → stage → verify → publish. Demo seed data is optional and never required for normal operation.
+
 ---
 
 ## Pipeline Stages

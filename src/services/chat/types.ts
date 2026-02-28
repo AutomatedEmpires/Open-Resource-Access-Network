@@ -97,7 +97,7 @@ export interface ServiceCard {
   address?: string;
   phone?: string;
   scheduleDescription?: string;
-  confidenceBand: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNVERIFIED';
+  confidenceBand: 'HIGH' | 'LIKELY' | 'POSSIBLE';
   confidenceScore: number;
   /** Always use qualifying language — never guarantee eligibility */
   eligibilityHint: string;
@@ -154,14 +154,12 @@ export function enrichedServiceToCard(enriched: EnrichedService): ServiceCard {
   const schedule = schedules[0]?.description;
 
   const band = confidenceScore
-    ? confidenceScore.score >= 0.75
+    ? confidenceScore.score >= 80
       ? 'HIGH'
-      : confidenceScore.score >= 0.50
-        ? 'MEDIUM'
-        : confidenceScore.score >= 0.25
-          ? 'LOW'
-          : 'UNVERIFIED'
-    : 'UNVERIFIED';
+      : confidenceScore.score >= 60
+        ? 'LIKELY'
+        : 'POSSIBLE'
+    : 'POSSIBLE';
 
   return {
     serviceId: service.id,

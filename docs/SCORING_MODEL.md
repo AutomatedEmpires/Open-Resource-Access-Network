@@ -1,134 +1,87 @@
 # ORAN Confidence Scoring Model
 
-The confidence score quantifies how trustworthy a service record is. It drives display prominence, warning banners, and verification prioritization. **It does not determine eligibility** — only data quality.
+ORAN confidence is a trust score, not generic relevance. It is deterministic and retrieval-first.
 
----
+## Public score contract (required)
 
-## Score Formula
+ORAN exposes exactly three public sub-scores, each on **0–100**:
 
+1. **Verification Confidence**
+2. **Eligibility Match**
+3. **Constraint Fit**
+
+Final score:
+
+```text
+final = 0.45 * verification
+      + 0.40 * eligibility
+      + 0.15 * constraint
 ```
-confidence_score = (
-  data_completeness    × 0.25 +
-  verification_recency × 0.30 +
-  community_feedback   × 0.20 +
-  host_responsiveness  × 0.15 +
-  source_authority     × 0.10
-) + penalties
-```
 
-Final score is clamped to **[0.000, 1.000]**.
+No other public values may drive confidence messaging across chat/map/directory.
 
 ---
 
-## Factor Definitions
+## 1) Verification Confidence (0–100)
 
-### `data_completeness` (weight: 0.25)
-Measures the percentage of important fields that are populated.
+Deterministic signals:
 
-Required fields (must all be present for full score):
-- `name`, `description`, `status`
-- At least one `phone`
-- At least one `address`
-- At least one `schedule`
-- `organization.name`
+- org verified: +35
+- community phone confirmation: +25
+- community in-person confirmation: +35
+- document proof uploaded: +20
+- website health check passed: +10
+- multiple confirmations in 90 days: +10
 
-Scoring:
-- All required fields present → 1.0
-- Each missing required field → subtract (1.0 / count_required_fields)
-- Optional but valuable fields (url, email, fees, eligibility) → +0.05 each, capped at 1.0
+Penalties:
 
-### `verification_recency` (weight: 0.30)
-How recently a human verifier confirmed the record's accuracy.
+- stale over 180 days: -25
+- repeated user reports trend: -15
+- invalid/disconnected contact: -30
 
-| Time Since Last Verification | Score |
-|------------------------------|-------|
-| < 30 days                    | 1.00  |
-| 30–90 days                   | 0.90  |
-| 90–180 days                  | 0.75  |
-| 180–365 days                 | 0.50  |
-| 365–730 days                 | 0.25  |
-| > 730 days or never verified | 0.00  |
-
-### `community_feedback` (weight: 0.20)
-Aggregated seeker feedback signal.
-
-- Computed from `seeker_feedback.rating` (1–5 scale) and `contact_success` (boolean)
-- Formula: `(avg_rating / 5.0 × 0.7) + (contact_success_rate × 0.3)`
-- Minimum 3 feedback entries required; below threshold defaults to 0.50 (neutral)
-
-### `host_responsiveness` (weight: 0.15)
-How actively the host organization maintains their records.
-
-| Behavior                              | Score |
-|---------------------------------------|-------|
-| Updated within 30 days               | 1.00  |
-| Updated within 90 days               | 0.80  |
-| Updated within 180 days              | 0.60  |
-| Updated within 365 days              | 0.40  |
-| Not updated in > 365 days            | 0.20  |
-| No host claimed (unowned record)     | 0.10  |
-
-### `source_authority` (weight: 0.10)
-Reliability of the original data source.
-
-| Source Type                    | Score |
-|--------------------------------|-------|
-| Government database import     | 1.00  |
-| 211/AIRS taxonomy-linked       | 0.90  |
-| Verified nonprofit filing      | 0.80  |
-| Host-submitted + admin verified| 0.70  |
-| Host-submitted (unverified)    | 0.40  |
-| Community-contributed          | 0.30  |
-| Unknown origin                 | 0.10  |
+The score is clamped to 0–100.
 
 ---
 
-## Penalties
+## 2) Eligibility Match (0–100)
 
-Penalties are subtracted from the weighted sum **after** factor computation.
+Structured rule-based matching only. ORAN never infers sensitive attributes.
 
-| Penalty Condition                         | Deduction |
-|-------------------------------------------|-----------|
-| Staleness: >30 days past due for review   | -0.05 per 30-day period (max -0.30) |
-| Unresolved flag in verification_queue     | -0.10 per open flag (max -0.30) |
-| Bounced contact (phone/email unreachable) | -0.20     |
-| Duplicate record detected                 | -0.15     |
+Examples of deterministic boosts:
 
----
+- kids in household → child/TANF/childcare-oriented services
+- SNAP enrolled → food/SNAP office services
+- no transportation → walkable/transit-compatible services
 
-## Confidence Bands
-
-| Band        | Score Range | Display Color | Behavior |
-|-------------|-------------|---------------|----------|
-| HIGH        | 0.75 – 1.00 | Green         | Show prominently, no warning |
-| MEDIUM      | 0.50 – 0.74 | Yellow        | Show with "information may have changed" note |
-| LOW         | 0.25 – 0.49 | Orange        | Show with "please verify before visiting" warning |
-| UNVERIFIED  | 0.00 – 0.24 | Gray          | Show with "this record has not been verified" banner; deprioritized in results |
+Unknown remains unknown. If a missing field materially changes ranking, ask exactly one clarifying question.
 
 ---
 
-## Update Triggers
+## 3) Constraint Fit (0–100)
 
-The confidence score is recalculated whenever:
+Actionability now, using structured fields only:
 
-1. Any field on the associated `service` record is updated
-2. A `verification_queue` entry status changes (verified/rejected/escalated)
-3. New `seeker_feedback` is submitted for the service
-4. The host updates their organization record
-5. The `computed_at` timestamp is > 24 hours old (background job recalculation)
-6. A contact bounce is reported via the feedback API
+- open now / next open time
+- intake compatibility
+- language match
+- distance/time fit for transportation mode
+- accessibility needs
 
----
-
-## Recalculation Rules
-
-- **Synchronous**: Score updated immediately on field changes (lightweight delta)
-- **Asynchronous**: Full recalculation runs nightly via background job
-- **Score history**: Previous scores are retained in `confidence_scores` with `computed_at` timestamps for audit purposes
-- **Display**: UI always shows the most recent score with its `computed_at` timestamp
+Unknown constraint inputs remain unknown until clarified.
 
 ---
 
-## Eligibility Disclaimer
+## Confidence bands and messaging
 
-> **IMPORTANT**: Confidence scores measure data quality only. A HIGH confidence score does NOT mean a person qualifies for a service. Eligibility is determined solely by the service provider. ORAN uses "may qualify," "likely qualifies," or "confirm with provider" language — never guarantees.
+- **80–100**: High confidence
+- **60–79**: Likely — confirm hours/eligibility
+- **<60**: Possible — here's what to verify
+
+All surfaces must display the band and the three sub-scores.
+
+---
+
+## Safety constraint
+
+A high confidence score does **not** guarantee eligibility. ORAN must always use
+"may qualify / likely qualifies / confirm with provider" language.

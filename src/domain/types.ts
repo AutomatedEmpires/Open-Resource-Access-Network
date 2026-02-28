@@ -129,16 +129,18 @@ export interface TaxonomyTerm {
 export interface ConfidenceScore {
   id: string;
   serviceId: string;
+  /** Final public confidence score on a 0–100 scale */
   score: number;
-  dataCompleteness: number;
-  verificationRecency: number;
-  communityFeedback: number;
-  hostResponsiveness: number;
-  sourceAuthority: number;
+  /** ORAN public sub-score: verification confidence (0–100) */
+  verificationConfidence: number;
+  /** ORAN public sub-score: eligibility match (0–100) */
+  eligibilityMatch: number;
+  /** ORAN public sub-score: actionability/constraint fit (0–100) */
+  constraintFit: number;
   computedAt: Date;
 }
 
-export type ConfidenceBand = 'HIGH' | 'MEDIUM' | 'LOW' | 'UNVERIFIED';
+export type ConfidenceBand = 'HIGH' | 'LIKELY' | 'POSSIBLE';
 
 export type VerificationStatus =
   | 'pending'

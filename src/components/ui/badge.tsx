@@ -16,15 +16,12 @@ const badgeVariants = cva(
         /** HIGH confidence — green */
         HIGH:
           'bg-green-100 text-green-800 ring-1 ring-inset ring-green-600/20',
-        /** MEDIUM confidence — yellow */
-        MEDIUM:
+        /** LIKELY confidence — yellow */
+        LIKELY:
           'bg-yellow-100 text-yellow-800 ring-1 ring-inset ring-yellow-600/20',
-        /** LOW confidence — orange */
-        LOW:
+        /** POSSIBLE confidence — orange */
+        POSSIBLE:
           'bg-orange-100 text-orange-800 ring-1 ring-inset ring-orange-600/20',
-        /** UNVERIFIED — gray */
-        UNVERIFIED:
-          'bg-gray-100 text-gray-600 ring-1 ring-inset ring-gray-500/20',
         default:
           'bg-gray-100 text-gray-800 ring-1 ring-inset ring-gray-500/20',
       },
@@ -42,10 +39,9 @@ export interface BadgeProps
 }
 
 const BAND_LABELS: Record<ConfidenceBand, string> = {
-  HIGH:       'High confidence',
-  MEDIUM:     'Medium confidence',
-  LOW:        'Low confidence',
-  UNVERIFIED: 'Unverified',
+  HIGH: 'High confidence',
+  LIKELY: 'Likely — confirm hours/eligibility',
+  POSSIBLE: "Possible — here's what to verify",
 };
 
 function Badge({ className, variant, band, children, ...props }: BadgeProps) {

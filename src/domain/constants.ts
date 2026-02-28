@@ -98,32 +98,32 @@ export const CRISIS_KEYWORDS: readonly string[] = [
 // CONFIDENCE SCORING
 // ============================================================
 
-export const CONFIDENCE_WEIGHTS = {
-  dataCompleteness: 0.25,
-  verificationRecency: 0.30,
-  communityFeedback: 0.20,
-  hostResponsiveness: 0.15,
-  sourceAuthority: 0.10,
+export const ORAN_CONFIDENCE_WEIGHTS = {
+  verification: 0.45,
+  eligibility: 0.40,
+  constraint: 0.15,
 } as const;
 
-export const CONFIDENCE_PENALTIES = {
-  /** Per 30-day period past review due date (max 6 periods = -0.30) */
-  stalenessPer30Days: -0.05,
-  stalenessMaxPenalty: -0.30,
-  /** Per unresolved flag in verification queue (max 3 = -0.30) */
-  unresolvedFlagPer: -0.10,
-  unresolvedFlagMax: -0.30,
-  /** Contact info confirmed as non-working */
-  bouncedContact: -0.20,
-  /** Duplicate record detected */
-  duplicateRecord: -0.15,
+export const VERIFICATION_SIGNAL_WEIGHTS = {
+  orgVerified: 35,
+  communityPhone: 25,
+  communityInPerson: 35,
+  documentProof: 20,
+  websiteHealth: 10,
+  multipleConfirmations90d: 10,
+} as const;
+
+export const VERIFICATION_PENALTIES = {
+  staleOver180Days: -25,
+  repeatedUserReportsTrend: -15,
+  invalidContact: -30,
+  moderationFlag: -10,
 } as const;
 
 export const CONFIDENCE_BANDS: Record<ConfidenceBand, { min: number; max: number; label: string }> = {
-  HIGH:       { min: 0.75, max: 1.00, label: 'High confidence' },
-  MEDIUM:     { min: 0.50, max: 0.74, label: 'Medium confidence — information may have changed' },
-  LOW:        { min: 0.25, max: 0.49, label: 'Low confidence — please verify before visiting' },
-  UNVERIFIED: { min: 0.00, max: 0.24, label: 'Unverified record' },
+  HIGH:     { min: 80, max: 100, label: 'High confidence' },
+  LIKELY:   { min: 60, max: 79, label: 'Likely — confirm hours/eligibility' },
+  POSSIBLE: { min: 0, max: 59, label: "Possible — here's what to verify" },
 } as const;
 
 // ============================================================

@@ -1,0 +1,67 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev: next",
+      "type": "shell",
+      "command": "npm run dev",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "lint: eslint",
+      "type": "shell",
+      "command": "npm run lint",
+      "problemMatcher": []
+    },
+    {
+      "label": "typecheck: tsc",
+      "type": "shell",
+      "command": "npx tsc --noEmit",
+      "problemMatcher": []
+    },
+    {
+      "label": "test: vitest",
+      "type": "shell",
+      "command": "npm run test",
+      "problemMatcher": []
+    },
+    {
+      "label": "test: coverage",
+      "type": "shell",
+      "command": "npm run test:coverage",
+      "problemMatcher": []
+    },
+    {
+      "label": "db: up (docker compose)",
+      "type": "shell",
+      "command": "docker compose -f db/docker-compose.yml up -d",
+      "problemMatcher": []
+    },
+    {
+      "label": "db: down (docker compose)",
+      "type": "shell",
+      "command": "docker compose -f db/docker-compose.yml down",
+      "problemMatcher": []
+    },
+    {
+      "label": "db: logs (docker compose)",
+      "type": "shell",
+      "command": "docker compose -f db/docker-compose.yml logs -f --tail=200",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "drizzle: migrate",
+      "type": "shell",
+      "command": "npx drizzle-kit migrate",
+      "problemMatcher": []
+    },
+    {
+      "label": "drizzle: generate",
+      "type": "shell",
+      "command": "npx drizzle-kit generate",
+      "problemMatcher": []
+    }
+  ]
+}

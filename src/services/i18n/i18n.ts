@@ -1,6 +1,8 @@
 /**
  * ORAN i18n Service
- * Simple file-based translation with t() function.
+ * Simple in-code translation dictionary with t() helper.
+ *
+ * Note: file-based JSON locales are planned but not implemented yet.
  */
 
 // ============================================================
@@ -130,7 +132,7 @@ export function t(
 
   if (value === undefined) {
     if (process.env.NODE_ENV === 'development') {
-      console.warn(`[i18n] Missing translation key: ${key}`);
+      throw new Error(`[i18n] Missing translation key: ${key}`);
     }
     return key; // Return key as fallback so UI doesn't break
   }

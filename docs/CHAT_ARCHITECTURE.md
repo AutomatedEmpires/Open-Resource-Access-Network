@@ -81,7 +81,7 @@ Return ChatResponse (with eligibility disclaimer always included)
 
 - Each chat session has a message quota (`MAX_CHAT_QUOTA = 50` messages)
 - Session identified by `sessionId` from request
-- Count stored in-memory per session (future: Redis)
+- Count stored in-memory per session with TTL + bounded eviction (future: Redis)
 - On quota exceeded: friendly message explaining the limit with option to start new session
 
 ### Stage 3: Rate Limiting
@@ -158,6 +158,8 @@ Only activated when feature flag `llm_summarize` is enabled:
 | Parameter              | Value    | Notes |
 |------------------------|----------|-------|
 | MAX_CHAT_QUOTA         | 50       | Messages per session |
+| SESSION_QUOTA_TTL_MS   | 21600000 | 6-hour TTL for in-memory quota state |
+| MAX_SESSION_QUOTA_ENTRIES | 2000  | Max sessions tracked in-memory (evicts oldest) |
 | RATE_LIMIT_WINDOW_MS   | 60000    | 1-minute sliding window |
 | RATE_LIMIT_MAX_REQUESTS| 20       | Requests per window per identity |
 

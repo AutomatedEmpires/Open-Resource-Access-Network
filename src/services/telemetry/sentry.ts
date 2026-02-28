@@ -57,7 +57,12 @@ export async function captureException(
 ): Promise<void> {
   // Always log to console in development
   if (process.env.NODE_ENV === 'development') {
-    console.error('[Sentry] captureException:', error, context);
+    console.error('[Sentry] captureException:', error, {
+      sessionId: context?.sessionId,
+      userId: context?.userId,
+      feature: context?.feature,
+      // Do not log context.extra in development; it can accidentally contain PII.
+    });
   }
 
   const sentry = await getSentry();
@@ -92,7 +97,11 @@ export async function captureMessage(
   context?: ErrorContext
 ): Promise<void> {
   if (process.env.NODE_ENV === 'development') {
-    console.log(`[Sentry] captureMessage [${level}]:`, message, context);
+    console.log(`[Sentry] captureMessage [${level}]:`, message, {
+      sessionId: context?.sessionId,
+      feature: context?.feature,
+      // Do not log context.extra in development; it can accidentally contain PII.
+    });
   }
 
   const sentry = await getSentry();

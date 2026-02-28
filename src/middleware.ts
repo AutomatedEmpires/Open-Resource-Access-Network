@@ -21,14 +21,18 @@ const CLERK_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // If Clerk is not configured, skip auth (development/test mode)
-  if (!CLERK_PUBLISHABLE_KEY) {
-    return NextResponse.next();
-  }
-
   // Check if route requires authentication
   const protectedRoute = PROTECTED_ROUTES.find((r) => r.pattern.test(pathname));
   if (!protectedRoute) {
+    return NextResponse.next();
+  }
+
+  // If Clerk is not configured, skip auth (development/test mode)
+  if (!CLERK_PUBLISHABLE_KEY) {
+    // In production, protected routes must not be reachable without auth configured.
+    if (process.env.NODE_ENV === 'production') {
+      return new NextResponse('Authentication is not configured', { status: 503 });
+    }
     return NextResponse.next();
   }
 
@@ -46,7 +50,10 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(signInUrl);
     }
   } catch {
-    // Clerk not available — allow access (graceful degradation)
+    // In production, protected routes must fail closed.
+    if (process.env.NODE_ENV === 'production') {
+      return new NextResponse('Authentication is temporarily unavailable', { status: 503 });
+    }
     return NextResponse.next();
   }
 

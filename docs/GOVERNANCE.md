@@ -16,6 +16,7 @@ Use labels to classify work clearly:
 - Behavior changes require tests (unit and/or integration).
 - Data model, migrations, and API contract changes require targeted validation.
 - Safety-critical changes require explicit test coverage.
+- Template-only PRs: CI may not execute meaningful checks; review file contents manually.
 
 ## What requires an ADR/spec
 Create a spec or ADR before implementation when changing:

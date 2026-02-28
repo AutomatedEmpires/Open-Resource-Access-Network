@@ -5,6 +5,9 @@
 - [ ] Crisis routing unaffected OR updated with a spec and tested
 - [ ] Confidence messaging unchanged OR updated per spec
 
+## Scoring Contract
+- [ ] If scoring is touched: preserve the 3-score model and final weight formula (0.45/0.40/0.15), unless approved in a spec + ADR
+
 ## Testing
 - [ ] Unit tests added/updated
 - [ ] DB/migration tested (if applicable)

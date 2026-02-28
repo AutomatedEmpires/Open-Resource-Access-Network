@@ -76,6 +76,15 @@ body:
       required: true
 
   - type: checkboxes
+    id: scoring_contract
+    attributes:
+      label: Scoring Contract
+      options:
+        - label: If scoring is touched, preserve the 3-score model and final weight formula (0.45/0.40/0.15), unless approved in a spec + ADR.
+    validations:
+      required: true
+
+  - type: checkboxes
     id: done_checklist
     attributes:
       label: Done checklist

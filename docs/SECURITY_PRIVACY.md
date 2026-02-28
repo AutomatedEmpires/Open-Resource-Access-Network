@@ -120,8 +120,11 @@ Design intent (not yet implemented end-to-end):
 
 Status: Partially implemented.
 
-- Implemented: POST /api/chat is rate limited in the chat pipeline.
-- Planned: consistent per-endpoint limits for search/feedback/claim and other APIs.
+- Implemented: basic in-memory rate limiting on:
+	- POST /api/chat
+	- GET /api/search
+	- POST /api/feedback
+- Planned: consistent per-endpoint limits across all APIs, plus a shared backing store (Redis) for multi-instance deployments.
 
 ---
 

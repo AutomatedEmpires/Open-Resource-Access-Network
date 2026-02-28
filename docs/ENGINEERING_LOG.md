@@ -12,3 +12,4 @@ Rules:
 
 - 2026-02-28T00:00:00Z — Added SSOT + operating model docs; established ADR structure; created forensic audit baseline. (docs/SSOT.md, docs/OPERATING_MODEL.md, docs/DECISIONS/*, docs/AUDIT_REPORT.md)
 - 2026-02-28T00:10:00Z — Added Azure bootstrap + GitHub OIDC helper scripts for Azure-first deployment; documented scripted quickstart. (scripts/azure/*, docs/DEPLOYMENT_AZURE.md)
+- 2026-02-28T03:33:20Z — Hardened API abuse controls: shared in-memory rate limiting added to search/feedback, and search confidence filtering normalized to 0–100 via `minConfidenceScore` (legacy `minConfidence` still supported). (src/services/security/rateLimit.ts, src/app/api/search/route.ts, src/app/api/feedback/route.ts)

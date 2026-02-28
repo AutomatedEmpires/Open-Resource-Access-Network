@@ -54,12 +54,12 @@ Method: Repo-truth mapping across:
 ### Biggest risks/weaknesses (top 10)
 1. **Docs overstate implementation** in multiple areas (Clerk integration, role enforcement, security headers, rate limiting coverage, i18n file-based JSON). This creates a high risk of “false confidence.”
 2. **Retrieval is not wired**: both `/api/chat` and `/api/search` use mocks. This means the “retrieval-first” principle is honored by *absence of retrieval*, not by a verified DB-backed implementation.
-3. **Rate limiting is only implemented for chat**; `/api/search` and `/api/feedback` have no rate limits despite docs claiming otherwise.
+3. **Rate limiting is in-memory only**: it now covers chat/search/feedback, but will not hold under multi-instance/serverless deployments without a shared store (e.g., Redis).
 4. **LLM guardrails are underspecified in code**: there is an LLM summarization hook, but no runtime verifier that the summary contains only retrieved facts.
 5. **Role-based access control is not implemented** (middleware is auth-only; no role checks in API handlers shown).
 6. **Import pipeline is largely aspirational**: no staging tables, no diff detection, no provenance fields, and only partial file validation.
 7. **Privacy controls are not enforced**: docs claim approximate location and rounding in API responses, but there is no implemented rounding layer.
-8. **Search API parameter mismatch**: `minConfidence` is parsed as 0–1 in `src/app/api/search/route.ts`, but `minConfidenceScore` is defined as 0–100 in `src/services/search/types.ts` and DB scores are 0–100.
+8. **Search confidence filtering needs deprecation cleanup**: `/api/search` now supports `minConfidenceScore` (0–100) and accepts legacy `minConfidence` (0–1) for compatibility.
 9. **Accessibility tooling gap**: no automated a11y linting or checks (no `eslint-plugin-jsx-a11y`, no axe/Playwright).
 10. **Production hardening gaps**: memory-based quota/rate-limit will not work in serverless/multi-instance deployments; and there’s no Redis/caching layer.
 
@@ -87,8 +87,8 @@ Maturity legend:
 | `/db/import/hsds-csv-importer.ts` | HSDS CSV validation/import scaffolding | Scaffold | `@AutomatedEmpires` | Validates `organizations.csv` and `services.csv`; does not write to DB or diff/publish. |
 | `/src/app` | Next.js routes/pages and API endpoints | Partial | `@AutomatedEmpires` | Many pages are placeholders; APIs are mocked for retrieval. |
 | `/src/app/api/chat/route.ts` | Chat API entrypoint | Partial | `@AutomatedEmpires` | Zod validation + rate limit + orchestrator; retrieval currently mocked (`retrieveServices()` returns `[]`). |
-| `/src/app/api/search/route.ts` | Search API entrypoint | Scaffold | `@AutomatedEmpires` | Builds structured query but uses mock engine; also has `minConfidence` scale mismatch (0–1 vs 0–100). |
-| `/src/app/api/feedback/route.ts` | Feedback API entrypoint | Partial | `@AutomatedEmpires` | Zod validation + logs; does not persist to DB. No rate limit. |
+| `/src/app/api/search/route.ts` | Search API entrypoint | Scaffold | `@AutomatedEmpires` | Builds structured query but uses mock engine; supports `minConfidenceScore` (0–100) + legacy `minConfidence` (0–1); basic rate limit (in-memory). |
+| `/src/app/api/feedback/route.ts` | Feedback API entrypoint | Partial | `@AutomatedEmpires` | Zod validation + logs; does not persist to DB. Basic rate limit (in-memory). |
 | `/src/services` | Deterministic business logic: chat/search/scoring/flags/i18n/telemetry | Partial→Strong | `@AutomatedEmpires` | Scoring + search query builder are strong; i18n and flags are in-memory; no DB integration layer. |
 | `/src/services/chat/orchestrator.ts` | Chat pipeline implementation | Strong (logic) | `@AutomatedEmpires` | Crisis/quota/intent/LLM gate are deterministic; retrieval injected via deps. |
 | `/src/services/search/engine.ts` | SQL query builder + search engine abstraction | Strong (logic) | `@AutomatedEmpires` | Generates parameterized SQL; execution depends on injected DB executor. |
@@ -274,7 +274,7 @@ Checklist matrix (PASS / PARTIAL / FAIL). “Where enforced” references the *a
 | Accessibility-first (keyboard/screen reader/mobile/low bandwidth) | Chat UI has basic ARIA roles/labels in `src/components/chat/ChatWindow.tsx`; other surfaces are placeholders. No automated tooling. | `docs/VISION.md#non-negotiables`; PR template checklist | None | PARTIAL | Add `eslint-plugin-jsx-a11y` + a minimal axe test for `ChatWindow`; remove/replace emoji glyphs with accessible icons where needed. |
 | Consent-to-save profile updates | Not implemented (no profile persistence API/routes; `/profile` is placeholder `src/app/(seeker)/profile/page.tsx`) | `docs/VISION.md`; `docs/SECURITY_PRIVACY.md`; `docs/UI_SURFACE_MAP.md` | None | PARTIAL (safe-by-absence) | Before adding profile persistence: implement explicit consent state + server-side enforcement; add tests around “no writes without consent.” |
 | Approximate location by default | Not implemented end-to-end. Types mention it (`src/services/chat/types.ts` `ChatContext.approximateLocation` and `src/domain/types.ts` comments), but there is no implemented rounding in API responses and no location persistence. | `docs/VISION.md`; `docs/SECURITY_PRIVACY.md` | None | PARTIAL | Add a single “location precision policy” module (serialize/round at API boundary) and unit-test it; document exact rounding rule. |
-| Rate limiting / quota gates | Chat: `src/app/api/chat/route.ts` rate limit via `checkRateLimit()`; quota via `src/services/chat/orchestrator.ts` `checkQuota()/incrementQuota()`; Search/Feedback: no rate limit. | `docs/CHAT_ARCHITECTURE.md`; `docs/SECURITY_PRIVACY.md` | Quota tested in `src/services/chat/__tests__/intent-schema.test.ts`; rate limit not directly tested | PARTIAL | Add rate limiting to `/api/search` and `/api/feedback` with shared utility; add tests for `checkRateLimit()` edge cases. |
+| Rate limiting / quota gates | Chat/Search/Feedback: basic in-memory rate limiting at API boundary (`src/services/security/rateLimit.ts`); quota via `src/services/chat/orchestrator.ts` `checkQuota()/incrementQuota()`. | `docs/CHAT_ARCHITECTURE.md`; `docs/SECURITY_PRIVACY.md` | Quota tested in `src/services/chat/__tests__/intent-schema.test.ts`; rate limit is unit tested | PARTIAL | Move to shared backing store (Redis) for multi-instance deployments; keep per-endpoint limits documented and tested. |
 | Input validation with Zod | `src/app/api/chat/route.ts` uses `ChatRequestSchema`; `src/app/api/search/route.ts` uses `SearchParamsSchema`; `src/app/api/feedback/route.ts` uses `FeedbackRequestSchema`; importer uses Zod schemas in `db/import/hsds-csv-importer.ts` | `docs/IMPORT_PIPELINE.md`; `docs/SECURITY_PRIVACY.md` | Implicitly tested via unit tests on chat/search/scoring modules; importer not tested | PASS | Add tests for API param schemas and importer row schemas if importer moves toward production usage. |
 | “LLM summarization must not add facts” guardrails | Only gating exists: `src/services/chat/orchestrator.ts` `OrchestratorDeps.summarizeWithLLM?` + feature flag `FEATURE_FLAGS.LLM_SUMMARIZE`; no output verifier exists | `docs/VISION.md`; `docs/CHAT_ARCHITECTURE.md`; `docs/INTEGRATIONS.md` | `src/services/chat/__tests__/intent-schema.test.ts` tests gate behavior, not factual containment | PARTIAL | Add a post-summary verifier (e.g., allowlist-only tokens/fields or structured summary format) + tests that reject out-of-record facts before enabling any LLM integration. |
 
@@ -532,8 +532,8 @@ Labels format: `area:*` + `risk:*` + `priority:*` + `type:*`.
 3. **Fix `minConfidence` scale mismatch (0–1 vs 0–100)**
    - Labels: `area:api` `risk:correctness` `priority:P0` `type:bug`
    - Acceptance criteria:
-     - API accepts and documents a single scale (recommend 0–100 to match DB + docs).
-     - Unit test for query param parsing.
+     - API accepts and documents a single scale (0–100) to match DB + docs.
+     - Backward compatibility: legacy `minConfidence` (0–1) remains supported temporarily with clear deprecation.
    - Likely files: `src/app/api/search/route.ts`, `src/services/search/types.ts`, docs
 
 4. **Implement rate limiting consistently across APIs claimed in docs**
@@ -542,6 +542,7 @@ Labels format: `area:*` + `risk:*` + `priority:*` + `type:*`.
      - `/api/search` and `/api/feedback` enforce rate limits.
      - Shared utility with unit tests for window reset and exceeded logic.
    - Likely files: `src/app/api/search/route.ts`, `src/app/api/feedback/route.ts`, `src/services/chat/orchestrator.ts` (extract rate limit)
+
 
 5. **Add LLM fact-containment guardrails BEFORE any LLM integration**
    - Labels: `area:chat` `risk:safety` `priority:P0` `type:spec`

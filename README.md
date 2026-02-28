@@ -40,6 +40,13 @@ npm run dev
 
 Open http://localhost:3000
 
+## Deployment (Azure-first)
+
+ORAN is **Azure-first** for hosting and production operations.
+
+- Azure deployment guide: `docs/DEPLOYMENT_AZURE.md`
+- Environment variable reference: `.env.example` (never commit real secrets)
+
 ## Database local setup
 
 ```bash

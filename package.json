@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:chat": "vitest run src/services/chat/__tests__/intent-schema.test.ts",
+    "test:search": "vitest run src/services/search/__tests__/query-builder.test.ts",
+    "test:scoring": "vitest run src/services/scoring/__tests__/scoring.test.ts",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {

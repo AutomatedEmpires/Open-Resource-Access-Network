@@ -1,0 +1,79 @@
+name: Spec proposal
+about: Propose and align on a safety-aware specification before implementation starts.
+title: "[Spec]: "
+labels:
+  - type:spec
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: State the desired outcome in one sentence.
+      placeholder: One-sentence goal...
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: non_negotiables
+    attributes:
+      label: Non-negotiables impacted
+      options:
+        - label: no-hallucination
+        - label: crisis routing
+        - label: accessibility
+    validations:
+      required: true
+
+  - type: textarea
+    id: data_model_touchpoints
+    attributes:
+      label: Data model touchpoints
+      description: List affected HSDS tables and ORAN extension tables.
+      placeholder: organization, service, location, service_at_location, ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: api_contract_changes
+    attributes:
+      label: API contract changes
+      description: Describe endpoint/DTO changes and any ServiceSearchEngine contract updates.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: scoring_contract
+    attributes:
+      label: Scoring Contract
+      options:
+        - label: If scoring is touched, preserve the 3-score model and final weight formula (0.45/0.40/0.15), unless approved in a spec + ADR.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: Provide bulleted, testable criteria.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks_mitigations
+    attributes:
+      label: Risks & mitigations
+      description: Include at least one safety-critical risk and mitigation.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: no_fabricated_data
+    attributes:
+      label: Final confirmation
+      options:
+        - label: This spec does not require inventing real-world service data.
+    validations:
+      required: true

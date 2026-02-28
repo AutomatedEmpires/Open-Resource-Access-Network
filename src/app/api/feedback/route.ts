@@ -8,6 +8,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { checkRateLimit } from '@/services/security/rateLimit';
+import { FEEDBACK_RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 
 // ============================================================
 // REQUEST SCHEMA
@@ -28,6 +30,18 @@ type FeedbackRequest = z.infer<typeof FeedbackRequestSchema>;
 // ============================================================
 
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const rateLimit = checkRateLimit(`feedback:ip:${ip}`, {
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    maxRequests: FEEDBACK_RATE_LIMIT_MAX_REQUESTS,
+  });
+  if (rateLimit.exceeded) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded. Please wait before submitting more feedback.' },
+      { status: 429 }
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();

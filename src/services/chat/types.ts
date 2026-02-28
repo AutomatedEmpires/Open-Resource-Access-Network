@@ -127,17 +127,6 @@ export interface QuotaState {
 }
 
 // ============================================================
-// RATE LIMIT STATE
-// ============================================================
-
-export interface RateLimitState {
-  key: string;
-  count: number;
-  windowStart: number;
-  exceeded: boolean;
-}
-
-// ============================================================
 // ENRICHED SERVICE → SERVICE CARD CONVERSION
 // ============================================================
 

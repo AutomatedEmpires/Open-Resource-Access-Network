@@ -9,7 +9,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { ServiceSearchEngine } from '@/services/search/engine';
 import type { SearchQuery } from '@/services/search/types';
-import { DEFAULT_SEARCH_RADIUS_METERS, DEFAULT_PAGE_SIZE } from '@/domain/constants';
+import {
+  DEFAULT_SEARCH_RADIUS_METERS,
+  DEFAULT_PAGE_SIZE,
+  RATE_LIMIT_WINDOW_MS,
+  SEARCH_RATE_LIMIT_MAX_REQUESTS,
+} from '@/domain/constants';
+import { checkRateLimit } from '@/services/security/rateLimit';
 
 // ============================================================
 // QUERY PARAM SCHEMA
@@ -25,6 +31,9 @@ const SearchParamsSchema = z.object({
   maxLat:         z.coerce.number().min(-90).max(90).optional(),
   maxLng:         z.coerce.number().min(-180).max(180).optional(),
   status:         z.enum(['active', 'inactive', 'defunct']).default('active'),
+  /** Preferred (0-100) */
+  minConfidenceScore: z.coerce.number().min(0).max(100).optional(),
+  /** Legacy (0-1) */
   minConfidence:  z.coerce.number().min(0).max(1).optional(),
   taxonomyIds:    z.string().optional(),
   organizationId: z.string().uuid().optional(),
@@ -46,6 +55,18 @@ const mockEngine = new ServiceSearchEngine({
 // ============================================================
 
 export async function GET(req: NextRequest) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const rateLimit = checkRateLimit(`search:ip:${ip}`, {
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    maxRequests: SEARCH_RATE_LIMIT_MAX_REQUESTS,
+  });
+  if (rateLimit.exceeded) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded. Please wait before searching again.' },
+      { status: 429 }
+    );
+  }
+
   const { searchParams } = req.nextUrl;
 
   const rawParams: Record<string, string> = {};
@@ -63,15 +84,31 @@ export async function GET(req: NextRequest) {
 
   const params = parsed.data;
 
+  const minConfidenceScore =
+    params.minConfidenceScore ??
+    (params.minConfidence !== undefined ? params.minConfidence * 100 : undefined);
+
+  const taxonomyTermIds = params.taxonomyIds
+    ? params.taxonomyIds.split(',').filter(Boolean)
+    : undefined;
+
+  if (taxonomyTermIds) {
+    const invalid = taxonomyTermIds.find((id) => !z.string().uuid().safeParse(id).success);
+    if (invalid) {
+      return NextResponse.json(
+        { error: 'Invalid query parameters', details: [{ message: 'taxonomyIds must be UUIDs' }] },
+        { status: 400 }
+      );
+    }
+  }
+
   // Build structured query
   const query: SearchQuery = {
     filters: {
       status: params.status,
-      minConfidenceScore: params.minConfidence,
+      minConfidenceScore,
       organizationId: params.organizationId,
-      taxonomyTermIds: params.taxonomyIds
-        ? params.taxonomyIds.split(',').filter(Boolean)
-        : undefined,
+      taxonomyTermIds: taxonomyTermIds as undefined | string[],
     },
     pagination: {
       page: params.page,

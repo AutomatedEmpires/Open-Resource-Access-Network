@@ -21,6 +21,10 @@ import {
   RATE_LIMIT_MAX_REQUESTS,
   FEATURE_FLAGS,
 } from '@/domain/constants';
+import {
+  checkRateLimit as checkRateLimitBase,
+  type RateLimitState,
+} from '@/services/security/rateLimit';
 import type { EnrichedService } from '@/domain/types';
 import type {
   Intent,
@@ -28,7 +32,6 @@ import type {
   ChatResponse,
   ServiceCard,
   QuotaState,
-  RateLimitState,
 } from './types';
 import {
   INTENT_CATEGORIES,
@@ -40,7 +43,6 @@ import {
 // ============================================================
 
 const sessionQuotas = new Map<string, number>();
-const rateLimitWindows = new Map<string, { count: number; windowStart: number }>();
 
 // ============================================================
 // CRISIS DETECTION
@@ -81,23 +83,10 @@ export function incrementQuota(sessionId: string): void {
 // ============================================================
 
 export function checkRateLimit(key: string): RateLimitState {
-  const now = Date.now();
-  const window = rateLimitWindows.get(key);
-
-  if (!window || now - window.windowStart > RATE_LIMIT_WINDOW_MS) {
-    rateLimitWindows.set(key, { count: 1, windowStart: now });
-    return { key, count: 1, windowStart: now, exceeded: false };
-  }
-
-  const newCount = window.count + 1;
-  rateLimitWindows.set(key, { count: newCount, windowStart: window.windowStart });
-
-  return {
-    key,
-    count: newCount,
-    windowStart: window.windowStart,
-    exceeded: newCount > RATE_LIMIT_MAX_REQUESTS,
-  };
+  return checkRateLimitBase(key, {
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    maxRequests: RATE_LIMIT_MAX_REQUESTS,
+  });
 }
 
 // ============================================================

@@ -202,6 +202,12 @@ export const RATE_LIMIT_WINDOW_MS = 60_000;
 /** Maximum chat API requests per RATE_LIMIT_WINDOW_MS */
 export const RATE_LIMIT_MAX_REQUESTS = 20;
 
+/** Maximum search API requests per RATE_LIMIT_WINDOW_MS */
+export const SEARCH_RATE_LIMIT_MAX_REQUESTS = 60;
+
+/** Maximum feedback API requests per RATE_LIMIT_WINDOW_MS */
+export const FEEDBACK_RATE_LIMIT_MAX_REQUESTS = 10;
+
 /** Maximum services returned per chat response */
 export const MAX_SERVICES_PER_RESPONSE = 5;
 

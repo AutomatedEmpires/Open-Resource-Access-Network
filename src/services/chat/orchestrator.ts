@@ -15,10 +15,12 @@ import {
   CRISIS_KEYWORDS,
   CRISIS_RESOURCES,
   ELIGIBILITY_DISCLAIMER,
+  MAX_SESSION_QUOTA_ENTRIES,
   MAX_CHAT_QUOTA,
   MAX_SERVICES_PER_RESPONSE,
   RATE_LIMIT_WINDOW_MS,
   RATE_LIMIT_MAX_REQUESTS,
+  SESSION_QUOTA_TTL_MS,
   FEATURE_FLAGS,
 } from '@/domain/constants';
 import {
@@ -42,7 +44,25 @@ import {
 // IN-MEMORY STATE (replace with Redis in production)
 // ============================================================
 
-const sessionQuotas = new Map<string, number>();
+type SessionQuotaEntry = { count: number; lastSeen: number };
+const sessionQuotas = new Map<string, SessionQuotaEntry>();
+
+function pruneSessionQuotas(now: number): void {
+  for (const [sessionId, entry] of sessionQuotas.entries()) {
+    if (now - entry.lastSeen > SESSION_QUOTA_TTL_MS) {
+      sessionQuotas.delete(sessionId);
+    }
+  }
+
+  if (sessionQuotas.size <= MAX_SESSION_QUOTA_ENTRIES) return;
+
+  const entries = Array.from(sessionQuotas.entries());
+  entries.sort((a, b) => a[1].lastSeen - b[1].lastSeen);
+  const excess = entries.length - MAX_SESSION_QUOTA_ENTRIES;
+  for (let i = 0; i < excess; i++) {
+    sessionQuotas.delete(entries[i][0]);
+  }
+}
 
 // ============================================================
 // CRISIS DETECTION
@@ -63,7 +83,14 @@ export function detectCrisis(message: string): boolean {
 // ============================================================
 
 export function checkQuota(sessionId: string): QuotaState {
-  const count = sessionQuotas.get(sessionId) ?? 0;
+  const now = Date.now();
+  pruneSessionQuotas(now);
+
+  const entry = sessionQuotas.get(sessionId);
+  const count = entry?.count ?? 0;
+  if (entry) {
+    entry.lastSeen = now;
+  }
   const remaining = Math.max(0, MAX_CHAT_QUOTA - count);
   return {
     sessionId,
@@ -74,8 +101,16 @@ export function checkQuota(sessionId: string): QuotaState {
 }
 
 export function incrementQuota(sessionId: string): void {
-  const count = sessionQuotas.get(sessionId) ?? 0;
-  sessionQuotas.set(sessionId, count + 1);
+  const now = Date.now();
+  pruneSessionQuotas(now);
+
+  const entry = sessionQuotas.get(sessionId);
+  const count = entry?.count ?? 0;
+  sessionQuotas.set(sessionId, { count: count + 1, lastSeen: now });
+}
+
+export function resetSessionQuotasForTests(): void {
+  sessionQuotas.clear();
 }
 
 // ============================================================

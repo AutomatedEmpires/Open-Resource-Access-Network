@@ -36,7 +36,8 @@ Method: Repo-truth mapping across:
 - Not a functioning retrieval-backed chat recommender yet:
   - `/api/chat` uses a **mock retrieval function** that returns `[]`.
 - Not an authenticated / role-enforced application yet:
-  - `src/middleware.ts` only checks “authenticated vs anonymous” when Clerk is configured; it does **not** enforce role hierarchy.
+  - `src/middleware.ts` checks “authenticated vs anonymous” when Clerk is configured; it does **not** enforce role hierarchy.
+  - In production, protected routes fail closed (503) if auth is misconfigured or temporarily unavailable.
   - App layout does not currently wire Clerk providers.
 - Not an implemented import pipeline:
   - `db/import/hsds-csv-importer.ts` validates some CSVs but does not stage, diff, or publish data to the DB.
@@ -96,7 +97,7 @@ Maturity legend:
 | `/src/services/flags/flags.ts` | Feature flags | Partial | `@AutomatedEmpires` | In-memory store only; docs claim DB-backed. |
 | `/src/services/i18n/i18n.ts` | i18n utility | Partial | `@AutomatedEmpires` | Inline English dict only; docs claim JSON locales + missing-key behavior differs. |
 | `/src/components` | UI components (chat/service cards/map placeholder/ui primitives) | Partial | `@AutomatedEmpires` | ChatWindow is functional and a11y-aware; map/directory are placeholders. |
-| `/src/middleware.ts` | Route-level auth / authorization | Partial | `@AutomatedEmpires` | Auth-only when Clerk env present; no role enforcement despite docs claiming role-based gating. |
+| `/src/middleware.ts` | Route-level auth / authorization | Partial | `@AutomatedEmpires` | Auth-only when Clerk env present; fails closed (503) in production if auth is unavailable/misconfigured; no role enforcement. |
 | `/.github` | CI workflows + PR template + issue forms | Strong | `@AutomatedEmpires` | CI covers lint/typecheck/test/build on `main` PRs/pushes. Coverage upload is best-effort. |
 | `/app` | (Required by audit spec) | N/A | `@AutomatedEmpires` | No root-level `/app` directory; Next.js uses `src/app`. |
 

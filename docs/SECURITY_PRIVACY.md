@@ -9,12 +9,13 @@ This document includes both **Implemented** and **Planned** controls. When this 
 Implemented today:
 - Zod validation exists at API boundaries for current endpoints.
 - Chat pipeline includes quota/rate limiting logic.
+- Protected route authentication gating exists in middleware when Clerk is configured (roles are still planned).
 - DB schema exists in db/migrations/** (including feature_flags and verification_queue).
 
 Planned / not yet enforced end-to-end:
 - RBAC beyond “authenticated vs unauthenticated”.
 - Comprehensive audit logging with before/after snapshots.
-- Uniform per-endpoint rate limiting across all APIs.
+- Uniform per-endpoint rate limiting across all APIs (currently implemented for `/api/chat`, `/api/search`, `/api/feedback`).
 - A restrictive Content-Security-Policy (CSP) rolled out safely.
 
 ## Authentication Model
@@ -22,13 +23,16 @@ Planned / not yet enforced end-to-end:
 ORAN can use **Clerk** for identity management when configured. Some environments may run without Clerk enabled.
 
 ### Session Validation
-- Planned: all protected API routes call `auth()` from `@clerk/nextjs/server`.
+- Implemented: protected UI routes are gated by middleware when Clerk is configured.
+- Implemented: in production, protected routes fail closed if auth is misconfigured or temporarily unavailable.
+- Planned: protected API routes call `auth()` from `@clerk/nextjs/server`.
 - Planned: unauthenticated requests return HTTP 401.
 - Planned: role checks return HTTP 403 for insufficient permissions.
 
 ### Role Enforcement
 - Planned: roles stored in Clerk `publicMetadata.role`.
-- Planned: middleware enforces route-level access.
+- Implemented: middleware enforces authentication for protected routes.
+- Planned: middleware enforces role-based route-level access.
 - Planned: API handlers enforce resource-level permissions.
 
 ---

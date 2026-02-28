@@ -94,7 +94,7 @@ Maturity legend:
 | `/src/services/chat/orchestrator.ts` | Chat pipeline implementation | Strong (logic) | `@AutomatedEmpires` | Crisis/quota/intent/LLM gate are deterministic; retrieval injected via deps. |
 | `/src/services/search/engine.ts` | SQL query builder + search engine abstraction | Strong (logic) | `@AutomatedEmpires` | Generates parameterized SQL; execution depends on injected DB executor. |
 | `/src/services/scoring/scorer.ts` | Confidence scoring contract | Strong | `@AutomatedEmpires` | Aligns with docs; unit tests verify weights/invariants. |
-| `/src/services/flags/flags.ts` | Feature flags | Partial | `@AutomatedEmpires` | In-memory store only; docs claim DB-backed. |
+| `/src/services/flags/flags.ts` | Feature flags | Partial | `@AutomatedEmpires` | In-memory store only; DB wiring is planned (table exists). |
 | `/src/services/i18n/i18n.ts` | i18n utility | Partial | `@AutomatedEmpires` | Inline English dict only; docs claim JSON locales + missing-key behavior differs. |
 | `/src/components` | UI components (chat/service cards/map placeholder/ui primitives) | Partial | `@AutomatedEmpires` | ChatWindow is functional and a11y-aware; map/directory are placeholders. |
 | `/src/middleware.ts` | Route-level auth / authorization | Partial | `@AutomatedEmpires` | Auth-only when Clerk env present; fails closed (503) in production if auth is unavailable/misconfigured; no role enforcement. |

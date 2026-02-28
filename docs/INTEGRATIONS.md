@@ -18,7 +18,7 @@ Platform direction:
 
 Planned / partially implemented:
 - Full RBAC enforcement.
-- DB-backed feature flag reads/writes in runtime.
+- In-memory feature flags (DB-backed reads/writes planned).
 - Any external 211 API integration.
 
 ## Authentication: Clerk

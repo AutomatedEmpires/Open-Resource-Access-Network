@@ -1,0 +1,86 @@
+name: Implementation task
+about: Define a bounded implementation slice with tests, docs, and safety checks.
+title: "[Task]: "
+labels:
+  - type:scaffold
+body:
+  - type: textarea
+    id: what_building
+    attributes:
+      label: What you're building
+    validations:
+      required: true
+
+  - type: textarea
+    id: files_modules
+    attributes:
+      label: Files/modules likely touched
+    validations:
+      required: true
+
+  - type: textarea
+    id: tests_required
+    attributes:
+      label: Tests required (unit/integration)
+      placeholder: unit: ...\nintegration: ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: migration_required
+    attributes:
+      label: Migration required?
+      options:
+        - "No"
+        - "Yes"
+    validations:
+      required: true
+
+  - type: textarea
+    id: migration_details
+    attributes:
+      label: Migration details (if yes)
+      description: Include rollout/backfill/rollback considerations.
+
+  - type: checkboxes
+    id: telemetry_required
+    attributes:
+      label: Telemetry required?
+      options:
+        - label: Sentry
+        - label: logging
+        - label: analytics
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: accessibility_checks
+    attributes:
+      label: Accessibility checks required?
+      options:
+        - label: keyboard
+        - label: ARIA
+        - label: reduced motion
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety_guardrails
+    attributes:
+      label: Safety-critical guardrails checked?
+      options:
+        - label: No hallucinated services or data introduced.
+        - label: No guaranteed eligibility claims introduced.
+        - label: Crisis routing expectations (911 / 988 / 211) preserved.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: done_checklist
+    attributes:
+      label: Done checklist
+      options:
+        - label: Tests added/updated and passing.
+        - label: Documentation updated if behavior changed.
+    validations:
+      required: true

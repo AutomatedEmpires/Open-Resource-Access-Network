@@ -1,0 +1,70 @@
+name: Bug report
+about: Report a defect with reproducible details and potential safety impact.
+title: "[Bug]: "
+labels:
+  - type:bug
+body:
+  - type: textarea
+    id: repro_steps
+    attributes:
+      label: Repro steps
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots_logs
+    attributes:
+      label: Screenshots/logs
+      description: Add screenshots, terminal output, traces, or relevant logs.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected_surface
+    attributes:
+      label: Affected surface
+      options:
+        - seeker/chat
+        - seeker/map
+        - seeker/directory
+        - host
+        - community-admin
+        - oran-admin
+        - api
+        - db
+        - other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - P0
+        - P1
+        - P2
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety_risk
+    attributes:
+      label: Safety risk
+      options:
+        - label: Could affect crisis routing.
+        - label: Could affect accuracy/no-hallucination.
+        - label: Could affect accessibility.
+    validations:
+      required: true

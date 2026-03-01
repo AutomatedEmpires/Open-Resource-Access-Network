@@ -1,0 +1,59 @@
+{
+  "name": "ORAN (Next.js + Azure)",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22",
+      "nodeGypDependencies": true
+    },
+    "ghcr.io/devcontainers/features/azure-cli:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Next.js dev server",
+      "onAutoForward": "notify"
+    }
+  },
+  "remoteEnv": {
+    "NEXT_TELEMETRY_DISABLED": "1",
+    "AZURE_CORE_COLLECT_TELEMETRY": "0",
+    "AZURE_HTTP_USER_AGENT": "oran-codespace"
+  },
+  "postCreateCommand": "bash .devcontainer/postCreate.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "github.copilot",
+        "github.copilot-chat",
+        "github.vscode-pull-request-github",
+        "eamodio.gitlens",
+
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "yoavbls.pretty-ts-errors",
+
+        "vitest.explorer",
+        "hbenl.vscode-test-explorer",
+
+        "ms-azuretools.vscode-docker",
+        "ms-vscode.azure-account",
+        "ms-azuretools.vscode-azureappservice",
+
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg",
+
+        "redhat.vscode-yaml",
+        "davidanson.vscode-markdownlint",
+        "streetsidesoftware.code-spell-checker",
+        "mikestead.dotenv",
+        "editorconfig.editorconfig",
+        "lokalise.i18n-ally",
+        "github.vscode-github-actions"
+      ]
+    }
+  }
+}

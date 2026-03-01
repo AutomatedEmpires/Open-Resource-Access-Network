@@ -31,8 +31,12 @@ Required:
   --environments   Comma-separated list: dev,staging,prod
 
 Optional:
+  --appservice-sku App Service plan SKU (default: B1). Useful when certain tiers have 0 quota.
+  --pg-location    PostgreSQL region override (default: same as --location)
   --pg-admin-user  PostgreSQL admin username (default: oranadmin)
   --prod-hostname  Custom hostname for prod webapp (e.g., app.example.com)
+  --skip-web       Skip App Service plan + Web App provisioning
+  --skip-db        Skip PostgreSQL provisioning (and related Key Vault secrets)
 
 Notes:
 - This script creates Azure resources but does NOT configure GitHub OIDC.
@@ -45,8 +49,12 @@ EOF
 PREFIX=""
 LOCATION=""
 ENVS_CSV=""
+APPSERVICE_SKU="B1"
+PG_LOCATION=""
 PG_ADMIN_USER="oranadmin"
 PROD_HOSTNAME=""
+SKIP_WEB="false"
+SKIP_DB="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -56,10 +64,18 @@ while [[ $# -gt 0 ]]; do
       LOCATION="$2"; shift 2 ;;
     --environments)
       ENVS_CSV="$2"; shift 2 ;;
+    --appservice-sku)
+      APPSERVICE_SKU="$2"; shift 2 ;;
+    --pg-location)
+      PG_LOCATION="$2"; shift 2 ;;
     --pg-admin-user)
       PG_ADMIN_USER="$2"; shift 2 ;;
     --prod-hostname)
       PROD_HOSTNAME="$2"; shift 2 ;;
+    --skip-web)
+      SKIP_WEB="true"; shift 1 ;;
+    --skip-db)
+      SKIP_DB="true"; shift 1 ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -69,6 +85,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ -z "$PG_LOCATION" ]]; then
+  PG_LOCATION="$LOCATION"
+fi
 
 if [[ -z "$PREFIX" || -z "$LOCATION" || -z "$ENVS_CSV" ]]; then
   usage
@@ -103,6 +123,78 @@ ensure_logged_in() {
 
 ensure_logged_in
 
+ensure_provider_registered() {
+  local provider="$1"
+
+  local state
+  state="$(az provider show -n "$provider" --query registrationState -o tsv 2>/dev/null || echo "NotRegistered")"
+  if [[ "$state" == "Registered" ]]; then
+    return 0
+  fi
+
+  echo "==> Registering Azure provider: ${provider} (state=${state})"
+  az provider register -n "$provider" >/dev/null || true
+
+  for _ in {1..120}; do
+    state="$(az provider show -n "$provider" --query registrationState -o tsv 2>/dev/null || echo "NotRegistered")"
+    if [[ "$state" == "Registered" ]]; then
+      return 0
+    fi
+    sleep 5
+  done
+
+  echo "Provider did not become Registered in time: ${provider} (state=${state})" >&2
+  return 1
+}
+
+if [[ "$SKIP_WEB" != "true" ]]; then
+  ensure_provider_registered "Microsoft.Web"
+fi
+ensure_provider_registered "Microsoft.Resources"
+ensure_provider_registered "Microsoft.KeyVault"
+if [[ "$SKIP_DB" != "true" ]]; then
+  ensure_provider_registered "Microsoft.DBforPostgreSQL"
+fi
+
+ensure_current_user_can_manage_kv_secrets_rbac() {
+  local vault_id="$1"
+  local vault_name="$2"
+
+  # Best-effort: when Key Vault uses RBAC, the creator may not automatically have
+  # data-plane permissions to set/list secrets. The bootstrap needs to set secrets.
+  local user_object_id
+  if ! user_object_id="$(az ad signed-in-user show --query id -o tsv 2>/dev/null)"; then
+    cat <<EOF >&2
+Key Vault is RBAC-enabled, and this script needs permission to set secrets, but Azure CLI
+could not resolve the signed-in user object id.
+
+Fix: grant yourself a Key Vault secrets role on the vault scope, then rerun.
+Example:
+  az role assignment create --assignee-object-id <your-object-id> \
+    --assignee-principal-type User --role "Key Vault Secrets Officer" --scope "${vault_id}"
+EOF
+    return 1
+  fi
+
+  # If the assignment already exists, Azure returns an error; ignore it.
+  az role assignment create \
+    --assignee-object-id "$user_object_id" \
+    --assignee-principal-type User \
+    --role "Key Vault Secrets Officer" \
+    --scope "$vault_id" >/dev/null 2>&1 || true
+
+  # RBAC can take time to propagate.
+  for _ in {1..30}; do
+    if az keyvault secret list --vault-name "$vault_name" --query "[].name" -o tsv >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 5
+  done
+
+  echo "Timed out waiting for Key Vault RBAC permissions to propagate." >&2
+  return 1
+}
+
 create_env() {
   local env="$1"
 
@@ -116,106 +208,175 @@ create_env() {
   echo "==> [${env}] Creating resource group: ${rg}"
   az group create --name "$rg" --location "$LOCATION" >/dev/null
 
-  echo "==> [${env}] Creating App Service plan: ${plan}"
-  az appservice plan create \
-    --name "$plan" \
-    --resource-group "$rg" \
-    --location "$LOCATION" \
-    --is-linux \
-    --sku B1 >/dev/null
+  local webappPrincipalId=""
+  if [[ "$SKIP_WEB" != "true" ]]; then
+    if az appservice plan show --name "$plan" --resource-group "$rg" >/dev/null 2>&1; then
+      echo "==> [${env}] App Service plan exists; skipping create: ${plan}"
+    else
+      echo "==> [${env}] Creating App Service plan: ${plan}"
+      if ! az appservice plan create \
+        --name "$plan" \
+        --resource-group "$rg" \
+        --location "$LOCATION" \
+        --is-linux \
+        --sku "$APPSERVICE_SKU" >/dev/null; then
+        cat <<'EOF' >&2
+App Service plan creation failed.
 
-  echo "==> [${env}] Creating Web App: ${webapp}"
-  # Runtime strings can vary by CLI version. If this fails, run:
-  #   az webapp list-runtimes --os linux
-  az webapp create \
-    --name "$webapp" \
-    --resource-group "$rg" \
-    --plan "$plan" \
-    --runtime "NODE|20-lts" >/dev/null
+Common cause: subscription quota for Basic/Standard App Service plan workers is 0.
+Fix options:
+- Request an App Service quota increase in Azure Portal (Subscriptions -> Usage + quotas / Quotas).
+- Choose a different region.
+- Re-run with --skip-web to provision DB/KeyVault while waiting.
+EOF
+        exit 1
+      fi
+    fi
 
-  az webapp update --name "$webapp" --resource-group "$rg" --https-only true >/dev/null
+    if az webapp show --name "$webapp" --resource-group "$rg" >/dev/null 2>&1; then
+      echo "==> [${env}] Web App exists; skipping create: ${webapp}"
+    else
+      echo "==> [${env}] Creating Web App: ${webapp}"
+      # Runtime strings can vary by CLI version. If this fails, run:
+      #   az webapp list-runtimes --os linux
+      az webapp create \
+        --name "$webapp" \
+        --resource-group "$rg" \
+        --plan "$plan" \
+        --runtime "NODE|20-lts" >/dev/null
+    fi
 
-  echo "==> [${env}] Enabling system-assigned managed identity for Web App"
-  local webappPrincipalId
-  webappPrincipalId="$(az webapp identity assign --name "$webapp" --resource-group "$rg" --query principalId -o tsv)"
+    az webapp update --name "$webapp" --resource-group "$rg" --https-only true >/dev/null
+
+    echo "==> [${env}] Enabling system-assigned managed identity for Web App"
+    webappPrincipalId="$(az webapp identity assign --name "$webapp" --resource-group "$rg" --query principalId -o tsv)"
+  fi
 
   echo "==> [${env}] Creating Key Vault: ${kv}"
   # Key Vault name constraints:
   # - 3-24 chars
   # - letters, digits, and hyphens
   # - globally unique
-  az keyvault create \
-    --name "$kv" \
-    --resource-group "$rg" \
-    --location "$LOCATION" >/dev/null
+  if az keyvault show --name "$kv" --resource-group "$rg" >/dev/null 2>&1; then
+    echo "==> [${env}] Key Vault already exists; skipping create"
+  else
+    az keyvault create \
+      --name "$kv" \
+      --resource-group "$rg" \
+      --location "$LOCATION" >/dev/null
+  fi
 
-  echo "==> [${env}] Granting Web App identity permission to read secrets"
-  # Uses Key Vault access policies (not RBAC). If your org enforces RBAC-only vaults,
-  # you'll need to assign the appropriate RBAC role instead.
-  az keyvault set-policy \
-    --name "$kv" \
-    --object-id "$webappPrincipalId" \
-    --secret-permissions get list >/dev/null
+  # Key Vault can be configured either with access policies OR RBAC authorization.
+  # If RBAC is enabled, access policies cannot be set.
+  local kvRbacEnabled
+  kvRbacEnabled="$(az keyvault show --name "$kv" --resource-group "$rg" --query properties.enableRbacAuthorization -o tsv)"
+  local kvId
+  kvId="$(az keyvault show --name "$kv" --resource-group "$rg" --query id -o tsv)"
 
-  echo "==> [${env}] Creating PostgreSQL Flexible Server: ${pgServer}"
-  local pgAdminPassword
-  pgAdminPassword="$(gen_password)"
+  if [[ "$kvRbacEnabled" == "true" ]]; then
+    echo "==> [${env}] Ensuring current user can manage Key Vault secrets (RBAC mode)"
+    ensure_current_user_can_manage_kv_secrets_rbac "$kvId" "$kv"
+  fi
 
-  # This is a minimal, best-effort create. For production, prefer private networking.
-  az postgres flexible-server create \
-    --name "$pgServer" \
-    --resource-group "$rg" \
-    --location "$LOCATION" \
-    --tier Burstable \
-    --sku-name Standard_B1ms \
-    --storage-size 32 \
-    --version 16 \
-    --admin-user "$PG_ADMIN_USER" \
-    --admin-password "$pgAdminPassword" \
-    --database-name "$dbName" \
-    --yes >/dev/null
+  if [[ "$SKIP_WEB" != "true" ]]; then
+    echo "==> [${env}] Granting Web App identity permission to read secrets"
 
-  echo "==> [${env}] Storing DB credentials in Key Vault"
-  local tmp
-  tmp="$(mktemp)"
-  chmod 600 "$tmp"
+    if [[ "$kvRbacEnabled" == "true" ]]; then
+      az role assignment create \
+        --assignee-object-id "$webappPrincipalId" \
+        --assignee-principal-type ServicePrincipal \
+        --role "Key Vault Secrets User" \
+        --scope "$kvId" >/dev/null
+    else
+      az keyvault set-policy \
+        --name "$kv" \
+        --object-id "$webappPrincipalId" \
+        --secret-permissions get list >/dev/null
+    fi
+  fi
+  local databaseUrlSecretUri=""
+  if [[ "$SKIP_DB" != "true" ]]; then
+    if az postgres flexible-server show --resource-group "$rg" --name "$pgServer" >/dev/null 2>&1; then
+      echo "==> [${env}] PostgreSQL server exists; skipping create: ${pgServer}"
+      echo "==> [${env}] NOTE: Skipping Key Vault DB secret creation to avoid overwriting unknown credentials"
+    else
+      echo "==> [${env}] Creating PostgreSQL Flexible Server: ${pgServer}"
+      local pgAdminPassword
+      pgAdminPassword="$(gen_password)"
 
-  printf %s "$PG_ADMIN_USER" >"$tmp"
-  az keyvault secret set --vault-name "$kv" --name "pg-admin-user" --file "$tmp" >/dev/null
+      # This is a minimal, best-effort create. For production, prefer private networking.
+      az postgres flexible-server create \
+        --name "$pgServer" \
+        --resource-group "$rg" \
+        --location "$PG_LOCATION" \
+        --tier Burstable \
+        --sku-name Standard_B1ms \
+        --storage-size 32 \
+        --version 16 \
+        --admin-user "$PG_ADMIN_USER" \
+        --admin-password "$pgAdminPassword" \
+        --yes >/dev/null
 
-  printf %s "$pgAdminPassword" >"$tmp"
-  az keyvault secret set --vault-name "$kv" --name "pg-admin-password" --file "$tmp" >/dev/null
+      echo "==> [${env}] Creating database: ${dbName}"
+      az postgres flexible-server db create \
+        --resource-group "$rg" \
+        --server-name "$pgServer" \
+        --database-name "$dbName" >/dev/null
 
-  # NOTE: Azure Postgres connection strings may require SSL in non-local environments.
-  # Keep sslmode=require for staging/prod. For local dev, use sslmode=disable.
-  local dbHost="${pgServer}.postgres.database.azure.com"
-  local dbUser="${PG_ADMIN_USER}@${pgServer}"
-  local databaseUrl="postgresql://${dbUser}:${pgAdminPassword}@${dbHost}:5432/${dbName}?sslmode=require"
+      echo "==> [${env}] Storing DB credentials in Key Vault"
+      local tmp
+      tmp="$(mktemp)"
+      chmod 600 "$tmp"
 
-  printf %s "$databaseUrl" >"$tmp"
-  az keyvault secret set --vault-name "$kv" --name "database-url" --file "$tmp" >/dev/null
+      printf %s "$PG_ADMIN_USER" >"$tmp"
+      az keyvault secret set --vault-name "$kv" --name "pg-admin-user" --file "$tmp" >/dev/null
 
-  rm -f "$tmp"
+      printf %s "$pgAdminPassword" >"$tmp"
+      az keyvault secret set --vault-name "$kv" --name "pg-admin-password" --file "$tmp" >/dev/null
 
-  local databaseUrlSecretUri
-  databaseUrlSecretUri="$(az keyvault secret show --vault-name "$kv" --name "database-url" --query id -o tsv)"
+      # NOTE: Azure Postgres connection strings may require SSL in non-local environments.
+      # Keep sslmode=require for staging/prod. For local dev, use sslmode=disable.
+      local dbHost="${pgServer}.postgres.database.azure.com"
+      local dbUser="${PG_ADMIN_USER}@${pgServer}"
+      local databaseUrl="postgresql://${dbUser}:${pgAdminPassword}@${dbHost}:5432/${dbName}?sslmode=require"
 
-  echo "==> [${env}] Configuring Web App settings"
-  # Use Key Vault reference so secrets do not appear in App Service settings.
-  # NOTE: This requires the Web App managed identity policy above.
-  az webapp config appsettings set \
-    --name "$webapp" \
-    --resource-group "$rg" \
-    --settings \
-      "NODE_ENV=production" \
-      "NEXT_TELEMETRY_DISABLED=1" \
-      "SCM_DO_BUILD_DURING_DEPLOYMENT=true" \
-      "DATABASE_URL=@Microsoft.KeyVault(SecretUri=${databaseUrlSecretUri})" >/dev/null
+      printf %s "$databaseUrl" >"$tmp"
+      az keyvault secret set --vault-name "$kv" --name "database-url" --file "$tmp" >/dev/null
+
+      rm -f "$tmp"
+
+      databaseUrlSecretUri="$(az keyvault secret show --vault-name "$kv" --name "database-url" --query id -o tsv)"
+    fi
+  fi
+
+  if [[ "$SKIP_WEB" != "true" ]]; then
+    echo "==> [${env}] Configuring Web App settings"
+    # Use Key Vault reference so secrets do not appear in App Service settings.
+    # NOTE: This requires the Web App managed identity policy above.
+    local settings=(
+      "NODE_ENV=production"
+      "NEXT_TELEMETRY_DISABLED=1"
+      "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
+    )
+
+    if [[ -n "$databaseUrlSecretUri" ]]; then
+      settings+=("DATABASE_URL=@Microsoft.KeyVault(SecretUri=${databaseUrlSecretUri})")
+    fi
+
+    az webapp config appsettings set \
+      --name "$webapp" \
+      --resource-group "$rg" \
+      --settings "${settings[@]}" >/dev/null
+  fi
 
   echo "==> [${env}] Done"
-  echo "    Web App URL: https://${webapp}.azurewebsites.net"
+  if [[ "$SKIP_WEB" != "true" ]]; then
+    echo "    Web App URL: https://${webapp}.azurewebsites.net"
+  fi
   echo "    Key Vault:   ${kv}"
-  echo "    Postgres:    ${pgServer}"
+  if [[ "$SKIP_DB" != "true" ]]; then
+    echo "    Postgres:    ${pgServer}"
+  fi
 }
 
 IFS=',' read -r -a envs <<<"$ENVS_CSV"

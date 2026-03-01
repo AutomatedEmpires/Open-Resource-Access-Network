@@ -63,26 +63,22 @@ Then add a server with:
 
 ## Running Migrations
 
-ORAN uses plain SQL migrations managed by Drizzle Kit.
+ORAN uses plain SQL migrations under db/migrations/**.
 
-### Run all pending migrations
+Status:
+- Implemented: apply migrations directly (e.g., via `psql`).
+- Planned: Drizzle Kit managed migrations (requires a Drizzle config, not currently present in the repo).
 
-```bash
-# From the project root
-npx drizzle-kit migrate
-```
-
-Or run migrations directly via psql:
+### Run migrations via psql
 
 ```bash
 psql $DATABASE_URL -f db/migrations/0000_initial_schema.sql
+psql $DATABASE_URL -f db/migrations/0001_updated_at_triggers.sql
 ```
 
-### Generate a new migration (after schema changes)
+### Drizzle Kit (planned)
 
-```bash
-npx drizzle-kit generate
-```
+If/when Drizzle config is added, migration orchestration can move to Drizzle Kit.
 
 ---
 

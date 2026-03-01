@@ -8,6 +8,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { checkRateLimit } from '@/services/security/rateLimit';
+import { FEEDBACK_RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
+import { captureException } from '@/services/telemetry/sentry';
 
 // ============================================================
 // REQUEST SCHEMA
@@ -28,6 +31,18 @@ type FeedbackRequest = z.infer<typeof FeedbackRequestSchema>;
 // ============================================================
 
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const rateLimit = checkRateLimit(`feedback:ip:${ip}`, {
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    maxRequests: FEEDBACK_RATE_LIMIT_MAX_REQUESTS,
+  });
+  if (rateLimit.exceeded) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded. Please wait before submitting more feedback.' },
+      { status: 429 }
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -48,18 +63,14 @@ export async function POST(req: NextRequest) {
   try {
     // In production: INSERT INTO seeker_feedback (service_id, session_id, rating, comment, contact_success)
     // Then trigger confidence score recalculation for the service
-    // For now, log and return success
-    console.log('[/api/feedback] Feedback received:', {
-      serviceId: feedback.serviceId,
-      sessionId: feedback.sessionId,
-      rating: feedback.rating,
-      contactSuccess: feedback.contactSuccess,
-      // Note: comment is not logged to avoid any PII risk
-    });
+    // For now: return success without logging request details (avoid PII/sensitive data in logs)
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('[/api/feedback] Error storing feedback:', error);
+    await captureException(error, {
+      feature: 'api_feedback',
+      sessionId: feedback.sessionId,
+    });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

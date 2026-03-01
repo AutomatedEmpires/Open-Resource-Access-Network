@@ -1,9 +1,13 @@
 /**
  * ORAN Feature Flags Service
- * Lightweight in-memory implementation backed by the feature_flags table.
+ * Lightweight in-memory implementation.
+ *
+ * Note: the `feature_flags` table exists in the DB schema, but runtime wiring is not
+ * implemented yet.
  */
 
 import type { FeatureFlag } from '@/domain/types';
+import { FEATURE_FLAGS } from '@/domain/constants';
 
 // ============================================================
 // INTERFACE
@@ -22,13 +26,27 @@ export interface FlagService {
 
 type FlagStore = Map<string, FeatureFlag>;
 
+function normalizeRolloutPct(rolloutPct: number | undefined): number {
+  if (typeof rolloutPct !== 'number' || Number.isNaN(rolloutPct)) return 0;
+  const clamped = Math.max(0, Math.min(100, rolloutPct));
+  return Math.trunc(clamped);
+}
+
+function cloneFlag(flag: FeatureFlag): FeatureFlag {
+  return {
+    ...flag,
+    createdAt: new Date(flag.createdAt),
+    updatedAt: new Date(flag.updatedAt),
+  };
+}
+
 function makeFlag(name: string, enabled: boolean, rolloutPct = 0): FeatureFlag {
   const now = new Date();
   return {
     id: `flag-${name}`,
     name,
     enabled,
-    rolloutPct,
+    rolloutPct: normalizeRolloutPct(rolloutPct),
     createdAt: now,
     updatedAt: now,
   };
@@ -36,13 +54,13 @@ function makeFlag(name: string, enabled: boolean, rolloutPct = 0): FeatureFlag {
 
 /**
  * Default flags for local/test environments.
- * In production these come from the database.
+ * Runtime DB-backed flags are planned, but not yet wired.
  */
 const DEFAULT_FLAGS: FeatureFlag[] = [
-  makeFlag('llm_summarize',  false, 0),
-  makeFlag('map_enabled',    true,  100),
-  makeFlag('feedback_form',  true,  100),
-  makeFlag('host_claims',    true,  100),
+  makeFlag(FEATURE_FLAGS.LLM_SUMMARIZE, false, 0),
+  makeFlag(FEATURE_FLAGS.MAP_ENABLED, true, 100),
+  makeFlag(FEATURE_FLAGS.FEEDBACK_FORM, true, 100),
+  makeFlag(FEATURE_FLAGS.HOST_CLAIMS, true, 100),
 ];
 
 export class InMemoryFlagService implements FlagService {
@@ -52,7 +70,7 @@ export class InMemoryFlagService implements FlagService {
     this.store = new Map();
     const flags = initialFlags ?? DEFAULT_FLAGS;
     for (const flag of flags) {
-      this.store.set(flag.name, flag);
+      this.store.set(flag.name, cloneFlag(flag));
     }
   }
 
@@ -60,15 +78,14 @@ export class InMemoryFlagService implements FlagService {
     const flag = this.store.get(flagName);
     if (!flag) return false;
     if (!flag.enabled) return false;
-    // Rollout percentage: for 100% just return true, otherwise false until
-    // a proper user-hash-based rollout is implemented.
-    // NOTE: Full percentage rollout requires a deterministic user identifier hash.
-    // Using simple threshold check here; integrate user ID hashing for production.
-    return flag.rolloutPct >= 100;
+    // Rollout percentage is only supported as 0% or 100% until a deterministic
+    // subject-hash rollout mechanism is implemented.
+    return normalizeRolloutPct(flag.rolloutPct) >= 100;
   }
 
   async getFlag(flagName: string): Promise<FeatureFlag | null> {
-    return this.store.get(flagName) ?? null;
+    const flag = this.store.get(flagName);
+    return flag ? cloneFlag(flag) : null;
   }
 
   async setFlag(flagName: string, enabled: boolean, rolloutPct = 100): Promise<void> {
@@ -78,14 +95,14 @@ export class InMemoryFlagService implements FlagService {
       id: existing?.id ?? `flag-${flagName}`,
       name: flagName,
       enabled,
-      rolloutPct,
+      rolloutPct: normalizeRolloutPct(rolloutPct),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     });
   }
 
   async getAllFlags(): Promise<FeatureFlag[]> {
-    return Array.from(this.store.values());
+    return Array.from(this.store.values(), cloneFlag);
   }
 }
 

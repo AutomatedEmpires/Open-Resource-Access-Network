@@ -2,6 +2,25 @@
 
 ---
 
+## Implementation Status (Truth Contract)
+
+This doc describes both **Implemented** and **Planned** integrations. When it conflicts with executable behavior, follow docs/SSOT.md.
+
+Implemented today:
+- Local Postgres/PostGIS via db/docker-compose.yml.
+- SQL migrations in db/migrations/**.
+- Optional Clerk wiring (middleware gating when env vars exist).
+- Sentry wrapper exists; DSN-dependent activation.
+
+Platform direction:
+- **Azure-first** for hosting, production DB, and secrets.
+- See `docs/DEPLOYMENT_AZURE.md` and `docs/PLATFORM_AZURE.md`.
+
+Planned / partially implemented:
+- Full RBAC enforcement.
+- In-memory feature flags (DB-backed reads/writes planned).
+- Any external 211 API integration.
+
 ## Authentication: Clerk
 
 ORAN uses [Clerk](https://clerk.com) for authentication and session management.
@@ -17,9 +36,9 @@ ORAN uses [Clerk](https://clerk.com) for authentication and session management.
 
 ### Implementation
 - `src/middleware.ts`: Clerk middleware protecting authenticated routes
-- `src/app/layout.tsx`: `ClerkProvider` wraps the entire app (conditional on env var presence)
-- Role claims stored in Clerk user's `publicMetadata.role` field
-- ORAN admin provisions roles via Clerk dashboard or Clerk Backend API
+- Planned: `src/app/layout.tsx` wraps the app with `ClerkProvider` (not implemented yet)
+- Planned: role claims stored in Clerk user's `publicMetadata.role` field
+- Planned: ORAN admin provisions roles via Clerk dashboard or Clerk Backend API
 
 ### Protected Routes
 | Route Pattern         | Minimum Role     |
@@ -29,20 +48,40 @@ ORAN uses [Clerk](https://clerk.com) for authentication and session management.
 | `/queue`, `/verify`   | community_admin  |
 | `/approvals/**`       | oran_admin       |
 
+Status: Planned (role-based protection is not yet enforced end-to-end).
+
 ---
 
-## Database: Neon (PostgreSQL + PostGIS)
+## Hosting: Azure App Service (Azure-first)
 
-ORAN uses [Neon](https://neon.tech) serverless PostgreSQL with the PostGIS extension.
+ORAN is deployed to **Azure App Service (Linux)** with Node.js 20.
+
+- Deployment guide: `docs/DEPLOYMENT_AZURE.md`
+- Deploy workflow: `.github/workflows/deploy-azure-appservice.yml`
+- Secrets: App Service Application Settings and/or Azure Key Vault references
+
+---
+
+## Database: PostgreSQL + PostGIS (Azure in production)
+
+ORAN runs on PostgreSQL with the PostGIS extension.
+
+Production target (Azure-first):
+- **Azure Database for PostgreSQL Flexible Server** with PostGIS enabled.
+
+Optional alternative:
+- Neon can be used for non-Azure environments, as long as the `DATABASE_URL` contract is maintained.
 
 ### Configuration
-- Environment variable: `DATABASE_URL` (Neon connection string with `?sslmode=require`)
+
+- Environment variable: `DATABASE_URL` (PostgreSQL connection string; SSL required in production)
 
 ### ORM: Drizzle ORM
-- Schema defined in `db/schema/` (future: migrate from raw SQL to Drizzle schema files)
-- Migrations in `db/migrations/` (plain SQL files)
-- Run migrations: `npx drizzle-kit migrate`
-- Generate migrations: `npx drizzle-kit generate`
+
+Status: Raw SQL migrations are the source of truth today.
+
+- Implemented: migrations in db/migrations/** (plain SQL files).
+- Planned: Drizzle ORM adoption (no db/schema/** folder in the repo today).
 
 ### PostGIS
 - Enable extension: `CREATE EXTENSION IF NOT EXISTS postgis;`
@@ -53,7 +92,7 @@ ORAN uses [Neon](https://neon.tech) serverless PostgreSQL with the PostGIS exten
 
 ## Feature Flags
 
-ORAN uses a lightweight in-house feature flag system backed by the `feature_flags` table.
+ORAN uses a lightweight in-house feature flag interface. The database table `feature_flags` exists, but runtime usage is currently in-memory unless wired up.
 
 ### Interface (`src/services/flags/flags.ts`)
 ```typescript
@@ -93,13 +132,17 @@ Provides typed wrappers:
 - SessionId (UUID) is allowed as a correlation identifier
 - Location data: city-level only, no coordinates in Sentry
 
+### Azure-first note
+- For production observability, prefer **Azure Monitor / Application Insights** where possible to minimize external integrations.
+- If Sentry is used, it must remain strictly PII-free per `docs/SECURITY_PRIVACY.md`.
+
 ---
 
 ## 211 API (Interface Only)
 
 ORAN defines an interface for potential 211 API integration. **No live 211 API is wired up without explicit configuration.**
 
-### Interface (`src/services/external/211.ts`) (future)
+### Interface (future)
 ```typescript
 interface TwoOneOneService {
   search(params: { zip: string; category: string }): Promise<ExternalService[]>;
@@ -118,9 +161,30 @@ interface TwoOneOneService {
 
 | Integration | Purpose | Status |
 |-------------|---------|--------|
-| Redis | Rate limiting, session quota, cache | Planned |
-| AWS S3 / Cloudflare R2 | Evidence file storage for verification | Planned |
-| Mapbox / Leaflet | Interactive map tiles | Planned |
-| OpenAI / Anthropic | LLM summarization (gated by flag) | Planned |
-| Resend / SendGrid | Email notifications to hosts | Planned |
+| Redis (Azure Cache for Redis) | Rate limiting, session quota, cache | Planned |
+| Azure Blob Storage | Evidence file storage for verification | Planned |
+| Azure Maps | Interactive map tiles (Azure-first) | Planned |
+| Azure OpenAI | LLM summarization (gated by flag; summarize retrieved records only) | Planned |
+| Azure Communication Services (Email) | Email notifications to hosts (Azure-first) | Planned |
 | Codecov | Test coverage reporting in CI | Configured |
+
+---
+
+## GitHub-Native Integrations
+
+ORAN uses GitHub-native automation for quality and security.
+
+### CI: GitHub Actions
+
+- Workflow: `.github/workflows/ci.yml`
+- Runs lint, typecheck, tests (with coverage), and build on PRs and main.
+
+### Dependency Updates: Dependabot
+
+- Config: `.github/dependabot.yml`
+- Weekly update PRs for npm dependencies and GitHub Actions.
+
+### Security Scanning: CodeQL
+
+- Workflow: `.github/workflows/codeql.yml`
+- Runs on PRs, pushes to main, and a weekly schedule.

@@ -1,5 +1,5 @@
 name: Security & privacy report
-about: Report a potential security or privacy issue responsibly.
+description: Report a potential security or privacy issue responsibly.
 title: "[Security]: "
 labels:
   - type:security
@@ -10,6 +10,33 @@ body:
       value: |
         Please practice responsible disclosure. Do not post secrets, private keys, credentials, or exploit code publicly.
         If this includes secrets, do NOT paste them—rotate immediately and describe impact.
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: If unsure, choose P1.
+      options:
+        - P0
+        - P1
+        - P2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected_surface
+    attributes:
+      label: Affected surface
+      options:
+        - api
+        - auth
+        - db
+        - telemetry
+        - ui
+        - build/ci
+        - other
+    validations:
+      required: true
 
   - type: checkboxes
     id: data_at_risk
@@ -27,6 +54,14 @@ body:
       required: true
 
   - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: What could an attacker/user do? What is the worst-case outcome?
+    validations:
+      required: true
+
+  - type: textarea
     id: suggested_mitigation
     attributes:
       label: Suggested mitigation
@@ -40,3 +75,4 @@ body:
       description: Provide safe, non-sensitive reproduction details only.
     validations:
       required: false
+

@@ -1,12 +1,24 @@
 # ORAN Import Pipeline
 
-The import pipeline ingests HSDS-formatted CSV data into ORAN's staging tables for review before publishing to the live database.
+This document describes the intended import workflow. Parts of it are **Planned** and not yet implemented end-to-end.
+
+## Implementation Status (Truth Contract)
+
+Implemented today:
+- A CSV importer script exists that validates HSDS-ish rows with Zod and produces an error report: db/import/hsds-csv-importer.ts
+
+Planned / not yet implemented:
+- Staging tables and batch metadata.
+- Diff detection.
+- Admin review UI.
+- Publish/copy from staging to live tables.
+- Automated score recalculation pipeline.
 
 ORAN supports an empty directory state by design. Production data flow is import → stage → verify → publish. Demo seed data is optional and never required for normal operation.
 
 ---
 
-## Pipeline Stages
+## Pipeline Stages (Planned)
 
 ```
 CSV Upload
@@ -91,7 +103,7 @@ ORAN accepts HSDS-compliant CSV exports. The minimum required files for a comple
 
 ---
 
-## Staging Tables
+## Staging Tables (Planned)
 
 Staging tables mirror live tables with additional columns:
 - `import_batch_id` — UUID linking rows to an import batch
@@ -102,7 +114,7 @@ Staging tables mirror live tables with additional columns:
 
 ---
 
-## Diff Detection
+## Diff Detection (Planned)
 
 For each staged record:
 1. Attempt to match to existing record by `id` (if present) or by name+address fuzzy match

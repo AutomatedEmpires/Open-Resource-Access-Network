@@ -1,0 +1,75 @@
+name: Safety stop-the-line
+description: Report a potential violation of a non-negotiable safety constraint.
+title: "[Safety]: "
+labels:
+  - risk:safety
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when a change/behavior could violate a non-negotiable:
+        - retrieval-first (stored-records-only)
+        - no hallucinated service facts
+        - crisis hard gate (911/988/211)
+        - eligibility caution
+        - privacy-first (approximate location; consent)
+
+        Do not include PII.
+
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: Urgency
+      options:
+        - Immediate (block merge / rollback)
+        - High (next business day)
+        - Normal
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: non_negotiable
+    attributes:
+      label: Which non-negotiable is at risk?
+      options:
+        - label: retrieval-first
+        - label: no hallucinated facts
+        - label: crisis hard gate
+        - label: eligibility caution
+        - label: privacy-first
+        - label: no LLM in retrieval/ranking
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened / what could happen
+      description: Describe the observed or suspected failure mode.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Which pages/APIs/modules are involved? Link PR/commit if applicable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: immediate_mitigation
+    attributes:
+      label: Immediate mitigation
+      description: What should we do right now (revert, disable flag, block deploy, etc.)?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I did not include PII, secrets, or private tokens in this issue.
+    validations:
+      required: true

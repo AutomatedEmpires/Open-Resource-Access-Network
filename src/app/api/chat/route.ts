@@ -14,6 +14,7 @@ import {
 } from '@/services/chat/orchestrator';
 import { flagService } from '@/services/flags/flags';
 import type { EnrichedService } from '@/domain/types';
+import { captureException } from '@/services/telemetry/sentry';
 
 // ============================================================
 // REQUEST VALIDATION
@@ -55,8 +56,8 @@ export async function POST(req: NextRequest) {
   const { message, sessionId, userId } = parsed.data;
 
   // Rate limit check (per IP + userId)
-  const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
-  const rateLimitKey = userId ? `user:${userId}` : `ip:${ip}`;
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const rateLimitKey = userId ? `chat:user:${userId}` : `chat:ip:${ip}`;
   const rateLimit = checkRateLimit(rateLimitKey);
   if (rateLimit.exceeded) {
     return NextResponse.json(
@@ -73,7 +74,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('[/api/chat] Orchestrator error:', error);
+    await captureException(error, {
+      feature: 'api_chat',
+      sessionId,
+      userId,
+    });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

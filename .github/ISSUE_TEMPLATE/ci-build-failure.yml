@@ -1,0 +1,63 @@
+name: CI / build failure
+description: Report failing builds, typecheck, lint, or tests with actionable logs.
+title: "[CI]: "
+labels:
+  - type:build
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Paste only non-sensitive logs. Do not include secrets or access tokens.
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where is it failing?
+      options:
+        - GitHub Actions (CI)
+        - Local (dev container)
+        - Local (host machine)
+        - Azure App Service build/deploy
+    validations:
+      required: true
+
+  - type: input
+    id: run_link
+    attributes:
+      label: Link to failing run (if CI)
+      placeholder: https://github.com/.../actions/runs/...
+    validations:
+      required: false
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command(s) run
+      placeholder: |
+        npm ci
+        npm run build
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output
+      description: Include the smallest log snippet that shows the root failure.
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: Ubuntu 24.04, Node 20.x, npm 10.x
+    validations:
+      required: true
+
+  - type: textarea
+    id: suspected_root_cause
+    attributes:
+      label: Suspected root cause (optional)
+    validations:
+      required: false

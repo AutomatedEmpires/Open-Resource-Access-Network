@@ -196,11 +196,23 @@ export const PERMISSIONS = {
 /** Maximum messages per chat session */
 export const MAX_CHAT_QUOTA = 50;
 
+/** Session quota TTL for in-memory quota tracking (6 hours) */
+export const SESSION_QUOTA_TTL_MS = 6 * 60 * 60 * 1000;
+
+/** Maximum number of sessions tracked in-memory for quota (evicts oldest by lastSeen) */
+export const MAX_SESSION_QUOTA_ENTRIES = 2000;
+
 /** Rate limit sliding window in milliseconds (1 minute) */
 export const RATE_LIMIT_WINDOW_MS = 60_000;
 
 /** Maximum chat API requests per RATE_LIMIT_WINDOW_MS */
 export const RATE_LIMIT_MAX_REQUESTS = 20;
+
+/** Maximum search API requests per RATE_LIMIT_WINDOW_MS */
+export const SEARCH_RATE_LIMIT_MAX_REQUESTS = 60;
+
+/** Maximum feedback API requests per RATE_LIMIT_WINDOW_MS */
+export const FEEDBACK_RATE_LIMIT_MAX_REQUESTS = 10;
 
 /** Maximum services returned per chat response */
 export const MAX_SERVICES_PER_RESPONSE = 5;

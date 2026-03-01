@@ -2,21 +2,38 @@
 
 ---
 
+## Implementation Status (Truth Contract)
+
+This document includes both **Implemented** and **Planned** controls. When this file conflicts with executable behavior, follow docs/SSOT.md.
+
+Implemented today:
+- Zod validation exists at API boundaries for current endpoints.
+- Chat pipeline includes quota/rate limiting logic.
+- Protected route authentication gating exists in middleware when Clerk is configured (roles are still planned).
+- DB schema exists in db/migrations/** (including feature_flags and verification_queue).
+
+Planned / not yet enforced end-to-end:
+- RBAC beyond “authenticated vs unauthenticated”.
+- Comprehensive audit logging with before/after snapshots.
+- Uniform per-endpoint rate limiting across all APIs (currently implemented for `/api/chat`, `/api/search`, `/api/feedback`).
+- A restrictive Content-Security-Policy (CSP) rolled out safely.
+
 ## Authentication Model
 
-ORAN uses **Clerk** for identity management. All API routes that write data require a valid Clerk session token.
+ORAN can use **Clerk** for identity management when configured. Some environments may run without Clerk enabled.
 
 ### Session Validation
-- All protected API routes call `auth()` from `@clerk/nextjs/server`
-- Unauthenticated requests to protected routes return HTTP 401
-- Role checks return HTTP 403 for insufficient permissions
-- JWT tokens are short-lived (1 hour) with automatic refresh
+- Implemented: protected UI routes are gated by middleware when Clerk is configured.
+- Implemented: in production, protected routes fail closed if auth is misconfigured or temporarily unavailable.
+- Planned: protected API routes call `auth()` from `@clerk/nextjs/server`.
+- Planned: unauthenticated requests return HTTP 401.
+- Planned: role checks return HTTP 403 for insufficient permissions.
 
 ### Role Enforcement
-- Roles stored in Clerk `publicMetadata.role`
-- Middleware (`src/middleware.ts`) enforces route-level access
-- API handlers enforce resource-level permissions
-- Defense in depth: both middleware AND API handler check roles
+- Planned: roles stored in Clerk `publicMetadata.role`.
+- Implemented: middleware enforces authentication for protected routes.
+- Planned: middleware enforces role-based route-level access.
+- Planned: API handlers enforce resource-level permissions.
 
 ---
 
@@ -89,52 +106,41 @@ ORAN explicitly prohibits:
 
 API responses round coordinates to ~0.01 degree precision (~1km) even when internal storage is precise.
 
+Status: Planned (not yet enforced uniformly in API responses).
+
 ---
 
 ## Audit Logging
 
-All write operations are logged with:
-- `user_id` (Clerk ID)
-- `action` (create/update/delete/verify/reject)
-- `resource_type` (organization/service/location/etc.)
-- `resource_id`
-- `before_state` (JSON snapshot)
-- `after_state` (JSON snapshot)
-- `ip_address` (hashed)
-- `timestamp`
+Status: Planned.
 
-Audit logs are:
-- Write-once (append only)
-- Retained for 2 years
-- Accessible to oran_admin only
+Design intent (not yet implemented end-to-end):
+- Log write operations with user identifier, action, resource identifiers, and timestamps.
+- Avoid storing raw IP addresses; if needed, store a privacy-preserving digest.
 
 ---
 
 ## Rate Limiting
 
-| Endpoint          | Limit              | Window |
-|-------------------|--------------------|--------|
-| POST /api/chat    | 20 requests        | 1 min  |
-| GET /api/search   | 60 requests        | 1 min  |
-| POST /api/feedback| 10 requests        | 1 min  |
-| POST /api/claim   | 3 requests         | 1 hour |
-| All other APIs    | 100 requests       | 1 min  |
+Status: Partially implemented.
 
-Rate limiting is implemented per IP + per authenticated user ID (whichever is more restrictive).
+- Implemented: basic in-memory rate limiting on:
+	- POST /api/chat
+	- GET /api/search
+	- POST /api/feedback
+- Planned: consistent per-endpoint limits across all APIs, plus a shared backing store (Redis) for multi-instance deployments.
 
 ---
 
 ## OWASP Notes
 
 ### Injection Prevention
-- All DB queries use parameterized queries via Drizzle ORM or `pg` parameterized statements
-- No string concatenation in SQL queries
-- Input sanitized via Zod validation before processing
+- Implemented: input validation via Zod before processing.
+- Planned: end-to-end DB execution wiring with consistent parameterization guarantees.
 
 ### Authentication & Authorization
-- All write endpoints require valid Clerk JWT
-- CSRF protection via Clerk's built-in mechanisms
-- No session tokens in URLs
+- Planned: write endpoints require valid Clerk JWT.
+- Planned: CSRF protection considerations per endpoint.
 
 ### Sensitive Data Exposure
 - All API responses exclude internal scoring detail from seeker-facing endpoints
@@ -146,12 +152,14 @@ Configured in `next.config.ts`:
 - `X-Frame-Options: DENY`
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`
-- `Content-Security-Policy`: restrictive policy (configured per environment)
+- `Permissions-Policy`: disables camera/mic/geolocation and other sensitive capabilities by default
+
+Planned:
+- `Content-Security-Policy` rollout (careful to avoid breaking Next.js assets).
 
 ### Dependency Management
-- Automated security scanning via `npm audit` in CI
-- Dependabot alerts enabled on repository
-- No direct use of `eval()` or `Function()` constructor
+- Planned: automated security scanning (`npm audit`) in CI.
+- Planned: Dependabot alerts (repository setting).
 
 ---
 

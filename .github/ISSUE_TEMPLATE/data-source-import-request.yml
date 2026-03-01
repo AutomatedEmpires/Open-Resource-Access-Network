@@ -1,10 +1,16 @@
 name: Data source import request
-about: Request ingestion of a new source with licensing, mapping, and quality notes.
+description: Request ingestion of a new source with licensing, mapping, and quality notes.
 title: "[Data Import]: "
 labels:
   - type:data
   - area:import
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include personal data (PII) or private access tokens.
+        External sources must not bypass import → stage → verify → publish.
+
   - type: input
     id: source_name_url
     attributes:
@@ -13,10 +19,34 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: data_format
+    attributes:
+      label: Data format
+      options:
+        - HSDS CSV
+        - HSDS JSON
+        - API (REST/GraphQL)
+        - Spreadsheet/other
+    validations:
+      required: true
+
   - type: textarea
     id: license_terms_notes
     attributes:
       label: License/terms notes
+    validations:
+      required: true
+
+  - type: dropdown
+    id: pii_present
+    attributes:
+      label: Does the source contain PII?
+      description: If yes/unsure, describe fields and minimization approach.
+      options:
+        - No
+        - Yes
+        - Unsure
     validations:
       required: true
 
@@ -39,6 +69,14 @@ body:
     id: known_quality_issues
     attributes:
       label: Known quality issues
+    validations:
+      required: true
+
+  - type: input
+    id: geographic_scope
+    attributes:
+      label: Geographic scope
+      placeholder: city/county/state/country
     validations:
       required: true
 
@@ -65,5 +103,7 @@ body:
       options:
         - label: Source allows reuse/republishing.
         - label: We will not fabricate missing fields; unknown stays unknown.
+        - label: We will not serve external-source results directly to seekers.
     validations:
       required: true
+

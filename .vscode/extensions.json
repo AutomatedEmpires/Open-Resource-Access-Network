@@ -5,6 +5,8 @@
     "github.vscode-pull-request-github",
     "eamodio.gitlens",
 
+    "github.vscode-github-actions",
+
     "dbaeumer.vscode-eslint",
     "esbenp.prettier-vscode",
     "bradlc.vscode-tailwindcss",
@@ -14,9 +16,8 @@
     "hbenl.vscode-test-explorer",
 
     "ms-azuretools.vscode-docker",
-    "ms-azuretools.vscode-azureresourcegroups",
+    "ms-vscode.azure-account",
     "ms-azuretools.vscode-azureappservice",
-    "ms-azuretools.vscode-azurestorage",
     "mtxr.sqltools",
     "mtxr.sqltools-driver-pg",
 

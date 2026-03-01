@@ -12,13 +12,13 @@
       "label": "lint: eslint",
       "type": "shell",
       "command": "npm run lint",
-      "problemMatcher": []
+      "problemMatcher": ["$eslint-stylish"]
     },
     {
       "label": "typecheck: tsc",
       "type": "shell",
       "command": "npx tsc --noEmit",
-      "problemMatcher": []
+      "problemMatcher": ["$tsc"]
     },
     {
       "label": "test: vitest",

@@ -132,6 +132,10 @@ Provides typed wrappers:
 - SessionId (UUID) is allowed as a correlation identifier
 - Location data: city-level only, no coordinates in Sentry
 
+### Azure-first note
+- For production observability, prefer **Azure Monitor / Application Insights** where possible to minimize external integrations.
+- If Sentry is used, it must remain strictly PII-free per `docs/SECURITY_PRIVACY.md`.
+
 ---
 
 ## 211 API (Interface Only)
@@ -159,9 +163,9 @@ interface TwoOneOneService {
 |-------------|---------|--------|
 | Redis (Azure Cache for Redis) | Rate limiting, session quota, cache | Planned |
 | Azure Blob Storage | Evidence file storage for verification | Planned |
-| Mapbox / Leaflet | Interactive map tiles | Planned |
-| OpenAI / Anthropic | LLM summarization (gated by flag) | Planned |
-| Resend / SendGrid | Email notifications to hosts | Planned |
+| Azure Maps | Interactive map tiles (Azure-first) | Planned |
+| Azure OpenAI | LLM summarization (gated by flag; summarize retrieved records only) | Planned |
+| Azure Communication Services (Email) | Email notifications to hosts (Azure-first) | Planned |
 | Codecov | Test coverage reporting in CI | Configured |
 
 ---

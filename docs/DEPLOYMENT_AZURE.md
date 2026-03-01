@@ -101,6 +101,10 @@ Until this variable is set, the deploy workflow will skip automatically.
 
 Note: the included deploy workflow targets the `production` GitHub Environment by default.
 
+Codespaces note:
+- If you try to set secrets/vars via `gh` inside a Codespace and see `HTTP 403: Resource not accessible by integration`, you are likely using the Codespaces-provided `GITHUB_TOKEN`.
+- Fix by authenticating `gh` as a GitHub user (device/web flow) or setting secrets/vars in the GitHub UI.
+
 ## 4) Run the deployment
 
 - Push to `main`, or run the workflow manually (Actions → Deploy).

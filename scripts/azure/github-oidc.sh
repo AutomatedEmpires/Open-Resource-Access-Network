@@ -58,6 +58,16 @@ GITHUB_ENVIRONMENT=""
 ROLE="Contributor"
 SUBJECT_FORMAT="environment"
 
+truncate() {
+  local s="$1"
+  local max="$2"
+  if (( ${#s} <= max )); then
+    printf '%s' "$s"
+  else
+    printf '%s' "${s:0:max}"
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --app-name)
@@ -103,11 +113,17 @@ TENANT_ID="$(az account show --query tenantId -o tsv)"
 
 RG_ID="$(az group show --name "$RESOURCE_GROUP" --query id -o tsv)"
 
-echo "==> Creating app registration: $APP_NAME"
-APP_ID="$(az ad app create --display-name "$APP_NAME" --query appId -o tsv)"
+echo "==> Ensuring app registration exists: $APP_NAME"
+APP_ID="$(az ad app list --display-name "$APP_NAME" --query '[0].appId' -o tsv 2>/dev/null || true)"
+if [[ -z "$APP_ID" || "$APP_ID" == "None" ]]; then
+  APP_ID="$(az ad app create --display-name "$APP_NAME" --query appId -o tsv)"
+fi
 
-echo "==> Creating service principal"
-SP_ID="$(az ad sp create --id "$APP_ID" --query id -o tsv)"
+echo "==> Ensuring service principal exists"
+SP_ID="$(az ad sp show --id "$APP_ID" --query id -o tsv 2>/dev/null || true)"
+if [[ -z "$SP_ID" || "$SP_ID" == "None" ]]; then
+  SP_ID="$(az ad sp create --id "$APP_ID" --query id -o tsv)"
+fi
 
 echo "==> Assigning role '$ROLE' on resource group"
 az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-type ServicePrincipal --role "$ROLE" --scope "$RG_ID" >/dev/null
@@ -126,20 +142,31 @@ case "$SUBJECT_FORMAT" in
     ;;
 esac
 
-CRED_NAME="github-${GITHUB_OWNER}-${GITHUB_REPO}-${GITHUB_ENVIRONMENT}"
+CRED_NAME_RAW="github-${GITHUB_OWNER}-${GITHUB_REPO}-${GITHUB_ENVIRONMENT}"
+# Federated credential name has a length limit; keep it deterministic.
+CRED_NAME="$(truncate "$CRED_NAME_RAW" 120)"
 
 echo "==> Creating federated credential: $CRED_NAME"
 # Uses GitHub's OIDC issuer and audience for Azure.
-az ad app federated-credential create --id "$APP_ID" --parameters "$(cat <<JSON
+EXISTING_CRED="$(az ad app federated-credential list --id "$APP_ID" --query "[?name=='${CRED_NAME}'].name | [0]" -o tsv 2>/dev/null || true)"
+if [[ -n "$EXISTING_CRED" && "$EXISTING_CRED" != "None" ]]; then
+  echo "==> Federated credential already exists; skipping create"
+else
+  tmp_json="$(mktemp)"
+  trap 'rm -f "$tmp_json"' EXIT
+
+  cat >"$tmp_json" <<JSON
 {
-  \"name\": \"${CRED_NAME}\",
-  \"issuer\": \"https://token.actions.githubusercontent.com\",
-  \"subject\": \"${SUBJECT}\",
-  \"description\": \"GitHub Actions OIDC for ${GITHUB_OWNER}/${GITHUB_REPO} (${GITHUB_ENVIRONMENT})\",
-  \"audiences\": [\"api://AzureADTokenExchange\"]
+  "name": "${CRED_NAME}",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "${SUBJECT}",
+  "description": "GitHub Actions OIDC for ${GITHUB_OWNER}/${GITHUB_REPO} (${GITHUB_ENVIRONMENT})",
+  "audiences": ["api://AzureADTokenExchange"]
 }
 JSON
-)" >/dev/null
+
+  az ad app federated-credential create --id "$APP_ID" --parameters "$tmp_json" >/dev/null
+fi
 
 cat <<EOF
 

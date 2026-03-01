@@ -50,12 +50,9 @@ jobs:
             -x "coverage/**"
 
       - name: Deploy to Azure Web App (zip)
-        uses: azure/CLI@v2
-        with:
-          azcliversion: 2.65.0
-          inlineScript: |
-            az webapp deploy \
-              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-              --name "${{ vars.AZURE_WEBAPP_NAME }}" \
-              --src-path app.zip \
-              --type zip
+        run: |
+          az webapp deploy \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+            --src-path app.zip \
+            --type zip

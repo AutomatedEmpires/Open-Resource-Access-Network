@@ -108,7 +108,7 @@ describe('buildFiltersWhereClause', () => {
       status: 'active',
       minConfidenceScore: 50,
     });
-    expect(clause.sql).toContain('cs.score');
+    expect(clause.sql).toContain('cs.verification_confidence');
     expect(clause.params).toContain(50);
   });
 

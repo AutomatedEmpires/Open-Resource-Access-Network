@@ -28,6 +28,15 @@ export const SearchFiltersSchema = z.object({
 
 export type SearchFilters = z.infer<typeof SearchFiltersSchema>;
 
+// ============================================================
+// SORT OPTIONS
+// ============================================================
+
+export const SORT_OPTIONS = ['relevance', 'trust', 'name_asc', 'name_desc'] as const;
+export type SortBy = (typeof SORT_OPTIONS)[number];
+
+export const SortBySchema = z.enum(SORT_OPTIONS).default('relevance');
+
 export const RadiusQuerySchema = z.object({
   type: z.literal('radius'),
   lat: z.coerce.number().min(-90).max(90),
@@ -68,6 +77,21 @@ export type SearchQuery = {
   text?: string;
   filters: SearchFilters;
   pagination: PaginationParams;
+  /**
+   * Optional city name for soft sorting bias.
+   * If the city matches a known location in the DB, results will be sorted
+   * with services in/near that city appearing higher.
+   * Does NOT exclude results — only affects sort order.
+   */
+  cityBias?: string;
+  /**
+   * Sort order for results. Defaults to 'relevance'.
+   * - relevance: trust DESC, score DESC, distance ASC (default)
+   * - trust: verification_confidence DESC
+   * - name_asc: service name A-Z
+   * - name_desc: service name Z-A
+   */
+  sortBy?: SortBy;
 };
 
 // ============================================================

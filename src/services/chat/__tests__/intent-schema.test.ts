@@ -37,11 +37,13 @@ const baseIntent: Intent = {
 const mockContext = {
   sessionId: '00000000-0000-0000-0000-000000000001',
   userId: undefined,
+  locale: 'en',
   messageCount: 0,
 };
 
 // Mock EnrichedService
 function makeMockService(id: string): EnrichedService {
+  const now = new Date();
   return {
     service: {
       id,
@@ -49,16 +51,16 @@ function makeMockService(id: string): EnrichedService {
       name: 'Test Food Bank',
       description: 'Provides emergency food assistance.',
       status: 'active',
-      updatedAt: new Date(),
-      createdAt: new Date(),
+      updatedAt: now,
+      createdAt: now,
     },
     organization: {
       id: 'org-1',
       name: 'Test Organization',
-      updatedAt: new Date(),
-      createdAt: new Date(),
+      updatedAt: now,
+      createdAt: now,
     },
-    phones: [{ id: 'ph-1', number: '555-000-0001', type: 'voice' }],
+    phones: [{ id: 'ph-1', number: '555-000-0001', type: 'voice', createdAt: now, updatedAt: now }],
     schedules: [],
     taxonomyTerms: [],
     confidenceScore: {
@@ -68,7 +70,9 @@ function makeMockService(id: string): EnrichedService {
       verificationConfidence: 85,
       eligibilityMatch: 75,
       constraintFit: 70,
-      computedAt: new Date(),
+      computedAt: now,
+      createdAt: now,
+      updatedAt: now,
     },
   };
 }
@@ -255,7 +259,7 @@ describe('LLM gate in orchestrateChat', () => {
   it('does NOT call LLM when flag is disabled', async () => {
     const llmSpy = vi.fn().mockResolvedValue('LLM summary');
 
-    const response = await orchestrateChat('I need food', freshSessionId, undefined, {
+      const response = await orchestrateChat('I need food', freshSessionId, undefined, 'en', {
       retrieveServices: async () => [makeMockService('svc-1')],
       isFlagEnabled: async () => false, // Flag disabled
       summarizeWithLLM: llmSpy,
@@ -269,7 +273,7 @@ describe('LLM gate in orchestrateChat', () => {
     const llmSpy = vi.fn().mockResolvedValue('Here are services that may help.');
     const sessionId = '00000000-0000-0000-0000-000000000098';
 
-    const response = await orchestrateChat('I need food', sessionId, undefined, {
+      const response = await orchestrateChat('I need food', sessionId, undefined, 'en', {
       retrieveServices: async () => [makeMockService('svc-2')],
       isFlagEnabled: async () => true, // Flag enabled
       summarizeWithLLM: llmSpy,
@@ -284,7 +288,7 @@ describe('LLM gate in orchestrateChat', () => {
     const llmSpy = vi.fn().mockResolvedValue('LLM summary');
     const sessionId = '00000000-0000-0000-0000-000000000097';
 
-    const response = await orchestrateChat('I need food', sessionId, undefined, {
+      const response = await orchestrateChat('I need food', sessionId, undefined, 'en', {
       retrieveServices: async () => [], // No services
       isFlagEnabled: async () => true,
       summarizeWithLLM: llmSpy,
@@ -298,7 +302,7 @@ describe('LLM gate in orchestrateChat', () => {
     const llmSpy = vi.fn().mockRejectedValue(new Error('LLM unavailable'));
     const sessionId = '00000000-0000-0000-0000-000000000096';
 
-    const response = await orchestrateChat('I need food', sessionId, undefined, {
+      const response = await orchestrateChat('I need food', sessionId, undefined, 'en', {
       retrieveServices: async () => [makeMockService('svc-3')],
       isFlagEnabled: async () => true,
       summarizeWithLLM: llmSpy,
@@ -313,11 +317,12 @@ describe('LLM gate in orchestrateChat', () => {
     const llmSpy = vi.fn();
     const sessionId = '00000000-0000-0000-0000-000000000095';
 
-    const response = await orchestrateChat(
-      'I want to kill myself',
-      sessionId,
-      undefined,
-      {
+      const response = await orchestrateChat(
+        'I want to kill myself',
+        sessionId,
+        undefined,
+        'en',
+        {
         retrieveServices: async () => [],
         isFlagEnabled: async () => true, // Flag on but shouldn't matter
         summarizeWithLLM: llmSpy,

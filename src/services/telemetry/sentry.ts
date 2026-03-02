@@ -13,7 +13,7 @@ export type SeverityLevel = 'fatal' | 'error' | 'warning' | 'info' | 'debug';
 
 export interface ErrorContext {
   sessionId?: string;
-  userId?: string; // Clerk user ID (pseudonymous — not PII)
+  userId?: string; // Entra object ID (pseudonymous — not PII)
   feature?: string;
   extra?: Record<string, unknown>;
 }
@@ -198,9 +198,9 @@ export async function addBreadcrumb(entry: BreadcrumbEntry): Promise<void> {
   if (!sentry) return;
 
   sentry.addBreadcrumb({
-    message: entry.message,
+    message: redactIfSensitiveString(entry.message),
     category: entry.category,
     level: entry.level,
-    data: entry.data,
+    data: entry.data ? sanitizeExtra(entry.data) : undefined,
   });
 }

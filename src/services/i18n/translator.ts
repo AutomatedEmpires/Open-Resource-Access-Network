@@ -147,7 +147,8 @@ export async function translate(request: TranslationRequest): Promise<Translatio
 
     return result;
   } catch (err) {
-    console.error('[translator] Azure Translator error:', err);
+    const errName = err instanceof Error ? err.name : 'UnknownError';
+    console.error(`[translator] Azure Translator error: ${errName}`);
     return { originalText: text, translatedText: text, to };
   }
 }
@@ -238,7 +239,8 @@ export async function translateBatch(
     // Fill any remaining nulls with pass-through.
     return results.map((r, i) => r ?? { originalText: texts[i], translatedText: texts[i], to });
   } catch (err) {
-    console.error('[translator] batch error:', err);
+    const errName = err instanceof Error ? err.name : 'UnknownError';
+    console.error(`[translator] batch error: ${errName}`);
     return texts.map((t) => ({ originalText: t, translatedText: t, to }));
   }
 }

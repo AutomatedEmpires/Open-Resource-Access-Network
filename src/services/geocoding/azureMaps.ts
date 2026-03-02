@@ -132,7 +132,8 @@ export async function geocode(
       };
     });
   } catch (err) {
-    console.error('[geocoding] Azure Maps geocode error:', err);
+    const errName = err instanceof Error ? err.name : 'UnknownError';
+    console.error(`[geocoding] Azure Maps geocode error: ${errName}`);
     return [];
   }
 }
@@ -182,7 +183,8 @@ export async function reverseGeocode(
       country: addr?.countryRegion as string | undefined,
     };
   } catch (err) {
-    console.error('[geocoding] Azure Maps reverse error:', err);
+    const errName = err instanceof Error ? err.name : 'UnknownError';
+    console.error(`[geocoding] Azure Maps reverse error: ${errName}`);
     return null;
   }
 }

@@ -2,7 +2,8 @@
  * ORAN Service Search Engine
  *
  * IMPORTANT: Pure SQL/retrieval only. No LLM. No vector similarity. No ML ranking.
- * Results are ordered by confidence_score DESC, distance ASC (for geo queries).
+ * Results are ordered by trust (verification confidence) DESC, then overall score,
+ * then distance ASC (for geo queries).
  */
 
 import type {
@@ -12,6 +13,7 @@ import type {
   BboxQuery,
   RadiusQuery,
   SearchResponse,
+  SortBy,
 } from './types';
 import type { SearchFilters } from './types';
 import { CONFIDENCE_BANDS } from '@/domain/constants';
@@ -73,16 +75,16 @@ export function buildFiltersWhereClause(
     params.push(...filters.taxonomyTermIds);
   }
 
-  // Confidence score filter
+  // Trust (verification confidence) filter
   if (filters.minConfidenceScore !== undefined) {
-    conditions.push(`cs.score >= $${idx++}`);
+    conditions.push(`cs.verification_confidence >= $${idx++}`);
     params.push(filters.minConfidenceScore);
   }
 
-  // Confidence band filter
+  // Trust band filter
   if (filters.minConfidenceBand) {
     const band = CONFIDENCE_BANDS[filters.minConfidenceBand];
-    conditions.push(`cs.score >= $${idx++}`);
+    conditions.push(`cs.verification_confidence >= $${idx++}`);
     params.push(band.min);
   }
 
@@ -122,7 +124,33 @@ export interface BuiltQuery {
   countParams: unknown[];
 }
 
-export function buildSearchQuery(query: SearchQuery): BuiltQuery {
+/**
+ * City coordinates for distance-based sorting.
+ */
+export interface CityCoords {
+  lat: number;
+  lng: number;
+}
+
+/**
+ * Builds the ORDER BY clause based on the requested sort option.
+ * Defaults to the trust-first relevance sort.
+ */
+export function buildOrderByClause(sortBy: SortBy | undefined, sortDistanceExpr: string): string {
+  switch (sortBy) {
+    case 'trust':
+      return 'cs.verification_confidence DESC NULLS LAST, cs.score DESC NULLS LAST';
+    case 'name_asc':
+      return 's.name ASC';
+    case 'name_desc':
+      return 's.name DESC';
+    case 'relevance':
+    default:
+      return `cs.verification_confidence DESC NULLS LAST, cs.score DESC NULLS LAST, ${sortDistanceExpr} ASC NULLS LAST`;
+  }
+}
+
+export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): BuiltQuery {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -138,6 +166,8 @@ export function buildSearchQuery(query: SearchQuery): BuiltQuery {
 
   // Geo filter
   let distanceExpr = 'NULL::float';
+  let cityBiasDistanceExpr = 'NULL::float';
+
   if (query.geo) {
     if (query.geo.type === 'radius') {
       const geoClause = buildRadiusWhereClause(query.geo, paramIdx);
@@ -156,6 +186,20 @@ export function buildSearchQuery(query: SearchQuery): BuiltQuery {
     }
   }
 
+  // City bias for sorting (does NOT filter, only affects sort order)
+  if (cityCoords && !query.geo) {
+    // If there's no explicit geo query, use cityCoords for distance-based sorting
+    cityBiasDistanceExpr = `ST_Distance(
+      l.geom::geography,
+      ST_SetSRID(ST_MakePoint($${paramIdx + 1}, $${paramIdx}), 4326)::geography
+    )`;
+    params.push(cityCoords.lat, cityCoords.lng);
+    paramIdx += 2;
+  }
+
+  // Use cityBias distance for sorting if available, otherwise use geo distance
+  const sortDistanceExpr = cityCoords && !query.geo ? cityBiasDistanceExpr : distanceExpr;
+
   // Text search
   if (query.text && query.text.trim()) {
     const textClause = buildTextSearchWhereClause(query.text, paramIdx);
@@ -173,10 +217,27 @@ export function buildSearchQuery(query: SearchQuery): BuiltQuery {
       s.*,
       o.name AS organization_name,
       o.description AS organization_description,
+      o.created_at AS organization_created_at,
+      o.updated_at AS organization_updated_at,
+      l.id AS location_id,
+      l.organization_id AS location_organization_id,
+      l.name AS location_name,
       l.latitude, l.longitude,
-      a.address_1, a.city, a.state_province, a.postal_code,
+      l.created_at AS location_created_at,
+      l.updated_at AS location_updated_at,
+      a.id AS address_id,
+      a.location_id AS address_location_id,
+      a.address_1, a.address_2, a.city, a.region, a.state_province, a.postal_code, a.country,
+      a.created_at AS address_created_at,
+      a.updated_at AS address_updated_at,
+      cs.id AS confidence_id,
       cs.score AS confidence_score,
-      ${distanceExpr} AS distance_meters
+      cs.verification_confidence,
+      cs.eligibility_match,
+      cs.constraint_fit,
+      cs.computed_at AS confidence_computed_at,
+      ${distanceExpr} AS distance_meters,
+      ${sortDistanceExpr} AS sort_distance
     FROM services s
     JOIN organizations o ON o.id = s.organization_id
     LEFT JOIN service_at_location sal ON sal.service_id = s.id
@@ -184,7 +245,7 @@ export function buildSearchQuery(query: SearchQuery): BuiltQuery {
     LEFT JOIN addresses a ON a.location_id = l.id
     LEFT JOIN confidence_scores cs ON cs.service_id = s.id
     ${whereStr}
-    ORDER BY cs.score DESC NULLS LAST, distance_meters ASC NULLS LAST
+    ORDER BY ${buildOrderByClause(query.sortBy, sortDistanceExpr)}
     LIMIT $${paramIdx} OFFSET $${paramIdx + 1}
   `;
 
@@ -226,48 +287,53 @@ export interface SearchEngineDeps {
 export class ServiceSearchEngine {
   constructor(private readonly deps: SearchEngineDeps) {}
 
+  /**
+   * Look up approximate coordinates for a city by querying the addresses table.
+   * Returns null if city is not found.
+   */
+  async lookupCityCoords(cityName: string): Promise<CityCoords | null> {
+    try {
+      const result = await this.deps.executeQuery<{ lat: number; lng: number }>(
+        `SELECT
+           AVG(l.latitude) AS lat,
+           AVG(l.longitude) AS lng
+         FROM addresses a
+         JOIN locations l ON l.id = a.location_id
+         WHERE LOWER(a.city) = LOWER($1)
+           AND l.latitude IS NOT NULL
+           AND l.longitude IS NOT NULL
+         GROUP BY LOWER(a.city)
+         LIMIT 1`,
+        [cityName]
+      );
+      if (result.length === 0 || result[0].lat == null || result[0].lng == null) {
+        return null;
+      }
+      return { lat: result[0].lat, lng: result[0].lng };
+    } catch {
+      // Silently ignore lookup failures
+      return null;
+    }
+  }
+
   async search(query: SearchQuery): Promise<SearchResponse> {
-    const built = buildSearchQuery(query);
+    // If cityBias is provided, look up coordinates for distance-based sorting
+    let cityCoords: CityCoords | undefined;
+    if (query.cityBias && !query.geo) {
+      const coords = await this.lookupCityCoords(query.cityBias);
+      if (coords) {
+        cityCoords = coords;
+      }
+    }
+
+    const built = buildSearchQuery(query, cityCoords);
 
     const [rows, total] = await Promise.all([
       this.deps.executeQuery<Record<string, unknown>>(built.sql, built.params),
       this.deps.executeCount(built.countSql, built.countParams),
     ]);
 
-    const results: SearchResult[] = rows.map((row) => ({
-      service: {
-        service: {
-          id: row.id as string,
-          organizationId: row.organization_id as string,
-          name: row.name as string,
-          description: row.description as string | null,
-          status: (row.status ?? 'active') as 'active' | 'inactive' | 'defunct',
-          updatedAt: row.updated_at as Date,
-          createdAt: row.created_at as Date,
-        },
-        organization: {
-          id: row.organization_id as string,
-          name: (row.organization_name ?? '') as string,
-          updatedAt: row.updated_at as Date,
-          createdAt: row.created_at as Date,
-        },
-        phones: [],
-        schedules: [],
-        taxonomyTerms: [],
-        confidenceScore: row.confidence_score != null
-          ? {
-              id: '',
-              serviceId: row.id as string,
-              score: row.confidence_score as number,
-              verificationConfidence: 0,
-              eligibilityMatch: 0,
-              constraintFit: 0,
-              computedAt: new Date(),
-            }
-          : null,
-      },
-      distanceMeters: row.distance_meters != null ? (row.distance_meters as number) : undefined,
-    }));
+    const results: SearchResult[] = rows.map((row) => this.mapRowToResult(row));
 
     return {
       results,
@@ -275,6 +341,138 @@ export class ServiceSearchEngine {
       page: query.pagination.page,
       limit: query.pagination.limit,
       hasMore: total > query.pagination.page * query.pagination.limit,
+    };
+  }
+
+  /**
+   * Search for services by a list of UUIDs.
+   * Max 50 IDs per request. Returns services in the order they appear in the DB
+   * (not the order of input IDs).
+   */
+  async searchByIds(ids: string[]): Promise<SearchResult[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    if (ids.length > 50) {
+      throw new Error('Maximum 50 IDs allowed per request');
+    }
+
+    const sql = `
+      SELECT
+        s.*,
+        o.name AS organization_name,
+        o.description AS organization_description,
+        o.created_at AS organization_created_at,
+        o.updated_at AS organization_updated_at,
+        l.id AS location_id,
+        l.organization_id AS location_organization_id,
+        l.name AS location_name,
+        l.latitude, l.longitude,
+        l.created_at AS location_created_at,
+        l.updated_at AS location_updated_at,
+        a.id AS address_id,
+        a.location_id AS address_location_id,
+        a.address_1, a.address_2, a.city, a.region, a.state_province, a.postal_code, a.country,
+        a.created_at AS address_created_at,
+        a.updated_at AS address_updated_at,
+        cs.id AS confidence_id,
+        cs.score AS confidence_score,
+        cs.verification_confidence,
+        cs.eligibility_match,
+        cs.constraint_fit,
+        cs.computed_at AS confidence_computed_at,
+        NULL::float AS distance_meters
+      FROM services s
+      JOIN organizations o ON o.id = s.organization_id
+      LEFT JOIN service_at_location sal ON sal.service_id = s.id
+      LEFT JOIN locations l ON l.id = sal.location_id
+      LEFT JOIN addresses a ON a.location_id = l.id
+      LEFT JOIN confidence_scores cs ON cs.service_id = s.id
+      WHERE s.id = ANY($1::uuid[])
+      AND s.status = 'active'
+      ORDER BY cs.verification_confidence DESC NULLS LAST
+    `;
+
+    const rows = await this.deps.executeQuery<Record<string, unknown>>(sql, [ids]);
+    return rows.map((row) => this.mapRowToResult(row));
+  }
+
+  /**
+   * Maps a database row to a SearchResult.
+   * Shared between search() and searchByIds().
+   */
+  private mapRowToResult(row: Record<string, unknown>): SearchResult {
+    return {
+      service: {
+        service: {
+          id: row.id as string,
+          organizationId: row.organization_id as string,
+          programId: (row.program_id as string | null) ?? null,
+          name: row.name as string,
+          description: row.description as string | null,
+          url: (row.url as string | null) ?? null,
+          email: (row.email as string | null) ?? null,
+          status: (row.status ?? 'active') as 'active' | 'inactive' | 'defunct',
+          interpretationServices: (row.interpretation_services as string | null) ?? null,
+          applicationProcess: (row.application_process as string | null) ?? null,
+          waitTime: (row.wait_time as string | null) ?? null,
+          fees: (row.fees as string | null) ?? null,
+          accreditations: (row.accreditations as string | null) ?? null,
+          licenses: (row.licenses as string | null) ?? null,
+          updatedAt: row.updated_at as Date,
+          createdAt: row.created_at as Date,
+        },
+        organization: {
+          id: row.organization_id as string,
+          name: (row.organization_name ?? '') as string,
+          description: (row.organization_description as string | null) ?? null,
+          updatedAt: row.organization_updated_at as Date,
+          createdAt: row.organization_created_at as Date,
+        },
+        location: row.location_id
+          ? {
+              id: row.location_id as string,
+              organizationId: row.location_organization_id as string,
+              name: (row.location_name as string | null) ?? null,
+              latitude: (row.latitude as number | null) ?? null,
+              longitude: (row.longitude as number | null) ?? null,
+              createdAt: row.location_created_at as Date,
+              updatedAt: row.location_updated_at as Date,
+            }
+          : null,
+        address: row.address_id
+          ? {
+              id: row.address_id as string,
+              locationId: row.address_location_id as string,
+              address1: (row.address_1 as string | null) ?? null,
+              address2: (row.address_2 as string | null) ?? null,
+              city: (row.city as string | null) ?? null,
+              region: (row.region as string | null) ?? null,
+              stateProvince: (row.state_province as string | null) ?? null,
+              postalCode: (row.postal_code as string | null) ?? null,
+              country: (row.country as string | null) ?? null,
+              createdAt: row.address_created_at as Date,
+              updatedAt: row.address_updated_at as Date,
+            }
+          : null,
+        phones: [],
+        schedules: [],
+        taxonomyTerms: [],
+        confidenceScore: row.confidence_score != null
+          ? {
+              id: (row.confidence_id as string) ?? '',
+              serviceId: row.id as string,
+              score: row.confidence_score as number,
+              verificationConfidence: (row.verification_confidence as number) ?? 0,
+              eligibilityMatch: (row.eligibility_match as number) ?? 0,
+              constraintFit: (row.constraint_fit as number) ?? 0,
+              computedAt: (row.confidence_computed_at as Date) ?? new Date(),
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }
+          : null,
+      },
+      distanceMeters: row.distance_meters != null ? (row.distance_meters as number) : undefined,
     };
   }
 }

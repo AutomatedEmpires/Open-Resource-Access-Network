@@ -15,12 +15,10 @@ import {
   CRISIS_KEYWORDS,
   CRISIS_RESOURCES,
   ELIGIBILITY_DISCLAIMER,
-  MAX_SESSION_QUOTA_ENTRIES,
   MAX_CHAT_QUOTA,
   MAX_SERVICES_PER_RESPONSE,
   RATE_LIMIT_WINDOW_MS,
   RATE_LIMIT_MAX_REQUESTS,
-  SESSION_QUOTA_TTL_MS,
   FEATURE_FLAGS,
 } from '@/domain/constants';
 import {
@@ -39,30 +37,12 @@ import {
   INTENT_CATEGORIES,
   enrichedServiceToCard,
 } from './types';
-
-// ============================================================
-// IN-MEMORY STATE (replace with Redis in production)
-// ============================================================
-
-type SessionQuotaEntry = { count: number; lastSeen: number };
-const sessionQuotas = new Map<string, SessionQuotaEntry>();
-
-function pruneSessionQuotas(now: number): void {
-  for (const [sessionId, entry] of sessionQuotas.entries()) {
-    if (now - entry.lastSeen > SESSION_QUOTA_TTL_MS) {
-      sessionQuotas.delete(sessionId);
-    }
-  }
-
-  if (sessionQuotas.size <= MAX_SESSION_QUOTA_ENTRIES) return;
-
-  const entries = Array.from(sessionQuotas.entries());
-  entries.sort((a, b) => a[1].lastSeen - b[1].lastSeen);
-  const excess = entries.length - MAX_SESSION_QUOTA_ENTRIES;
-  for (let i = 0; i < excess; i++) {
-    sessionQuotas.delete(entries[i][0]);
-  }
-}
+import {
+  checkQuota as checkQuotaPersistent,
+  incrementQuota as incrementQuotaPersistent,
+  checkQuotaSync,
+  resetSessionQuotasForTests as resetQuotasInternal,
+} from './quota';
 
 // ============================================================
 // CRISIS DETECTION
@@ -79,38 +59,33 @@ export function detectCrisis(message: string): boolean {
 }
 
 // ============================================================
-// QUOTA MANAGEMENT
+// QUOTA MANAGEMENT (delegated to quota.ts — persistent when DB available)
 // ============================================================
 
-export function checkQuota(sessionId: string): QuotaState {
-  const now = Date.now();
-  pruneSessionQuotas(now);
+/**
+ * Check quota (async, DB-backed when configured).
+ * Re-exported for consumers that can await.
+ */
+export { checkQuotaPersistent as checkQuotaAsync };
 
-  const entry = sessionQuotas.get(sessionId);
-  const count = entry?.count ?? 0;
-  if (entry) {
-    entry.lastSeen = now;
-  }
-  const remaining = Math.max(0, MAX_CHAT_QUOTA - count);
-  return {
-    sessionId,
-    messageCount: count,
-    remaining,
-    exceeded: count >= MAX_CHAT_QUOTA,
-  };
+/**
+ * Synchronous in-memory-only quota check.
+ * Kept for assembleContext() and other sync call sites.
+ */
+export function checkQuota(sessionId: string): QuotaState {
+  return checkQuotaSync(sessionId);
 }
 
-export function incrementQuota(sessionId: string): void {
-  const now = Date.now();
-  pruneSessionQuotas(now);
-
-  const entry = sessionQuotas.get(sessionId);
-  const count = entry?.count ?? 0;
-  sessionQuotas.set(sessionId, { count: count + 1, lastSeen: now });
+/**
+ * Increment quota — delegates to persistent store.
+ * Made async for DB persistence.
+ */
+export async function incrementQuota(sessionId: string, userId?: string): Promise<void> {
+  await incrementQuotaPersistent(sessionId, userId);
 }
 
 export function resetSessionQuotasForTests(): void {
-  sessionQuotas.clear();
+  resetQuotasInternal();
 }
 
 // ============================================================
@@ -163,9 +138,42 @@ export function detectIntent(message: string): Intent {
   const urgencyWords = ['urgent', 'emergency', 'immediate', 'today', 'now', 'asap', 'right now'];
   const isUrgent = urgencyWords.some((w) => normalized.includes(w));
 
+  // Detect action qualifier (used for contextual link selection)
+  const actionRules: Array<{ action: Intent['actionQualifier']; keywords: string[] }> = [
+    {
+      action: 'apply',
+      keywords: ['apply', 'application', 'enroll', 'enrollment', 'sign up', 'register', 'intake form', 'intake'],
+    },
+    {
+      action: 'eligibility',
+      keywords: ['eligible', 'eligibility', 'qualify', 'qualification', 'requirements', 'who can', 'criteria'],
+    },
+    {
+      action: 'contact',
+      keywords: ['contact', 'call', 'phone', 'email', 'reach', 'talk to', 'speak to'],
+    },
+    {
+      action: 'hours',
+      keywords: ['hours', 'open', 'close', 'when are you open', 'when is it open', 'schedule'],
+    },
+    {
+      action: 'website',
+      keywords: ['website', 'link', 'url', 'webpage', 'site'],
+    },
+  ];
+
+  let actionQualifier: Intent['actionQualifier'] | undefined;
+  for (const rule of actionRules) {
+    if (rule.keywords.some((kw) => normalized.includes(kw))) {
+      actionQualifier = rule.action;
+      break;
+    }
+  }
+
   return {
     category: bestCategory as (typeof INTENT_CATEGORIES)[number],
     rawQuery: message,
+    actionQualifier,
     urgencyQualifier: isUrgent ? 'urgent' : 'standard',
   };
 }
@@ -184,6 +192,7 @@ export function assembleContext(sessionId: string, userId?: string): ChatContext
   return {
     sessionId,
     userId,
+    locale: 'en',
     messageCount: quota.messageCount,
     // Profile hydration would load from DB for authenticated users
     // For now, return minimal context
@@ -211,7 +220,7 @@ export function assembleResponse(
   const quota = checkQuota(context.sessionId);
   const cards: ServiceCard[] = services
     .slice(0, MAX_SERVICES_PER_RESPONSE)
-    .map(enrichedServiceToCard);
+    .map((s) => enrichedServiceToCard(s, { intent, context }));
 
   const message =
     services.length === 0
@@ -272,6 +281,7 @@ export async function orchestrateChat(
   message: string,
   sessionId: string,
   userId: string | undefined,
+  locale: string,
   deps: OrchestratorDeps
 ): Promise<ChatResponse> {
   // Stage 1: Crisis detection — always first, always takes priority
@@ -280,8 +290,8 @@ export async function orchestrateChat(
     return assembleCrisisResponse(intent, sessionId);
   }
 
-  // Stage 2: Quota check
-  const quota = checkQuota(sessionId);
+  // Stage 2: Quota check (DB-backed when configured, in-memory fallback)
+  const quota = await checkQuotaPersistent(sessionId);
   if (quota.exceeded) {
     const intent = detectIntent(message);
     return {
@@ -302,7 +312,7 @@ export async function orchestrateChat(
   const intent = detectIntent(message);
 
   // Stage 5: Context assembly (profile hydration)
-  const context = assembleContext(sessionId, userId);
+  const context = { ...assembleContext(sessionId, userId), locale };
 
   // Stage 6: Retrieval — pure SQL, no LLM
   const services = await deps.retrieveServices(intent, context);
@@ -322,8 +332,8 @@ export async function orchestrateChat(
     }
   }
 
-  // Increment quota after successful response
-  incrementQuota(sessionId);
+  // Increment quota after successful response (DB-backed when configured)
+  await incrementQuota(sessionId, userId);
 
   return response;
 }

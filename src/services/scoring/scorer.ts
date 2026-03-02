@@ -1,8 +1,14 @@
 /**
  * ORAN Confidence Scorer
  *
- * Public score contract (0–100):
- * final = 0.45 * verification + 0.40 * eligibility + 0.15 * constraint
+ * Public scoring contract (0–100):
+ * - Trust score = verification confidence (0–100)
+ * - Match score = normalized blend of eligibility + constraint (0–100)
+ * - Overall score (stored/used for ordering/admin) keeps the historical weights
+ *
+ * IMPORTANT:
+ * Seeker-facing confidence messaging should be driven by Trust (verification)
+ * rather than a blended score that can be sensitive to missing match signals.
  */
 
 import type { ConfidenceBand, ConfidenceScore } from '@/domain/types';
@@ -35,8 +41,18 @@ export interface ScoreInput {
   evidence: ServiceEvidence;
 }
 
-const clampToPercent = (value: number): number => Math.max(0, Math.min(100, value));
+const clampToPercent = (value: number): number =>
+  Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
 const r1 = (value: number): number => Math.round(value * 10) / 10;
+
+const MATCH_WEIGHT_SUM = ORAN_CONFIDENCE_WEIGHTS.eligibility + ORAN_CONFIDENCE_WEIGHTS.constraint;
+
+/**
+ * Neutral default for match-related subscores when the system does not yet have
+ * enough structured inputs to compute them. Using 50 avoids unfairly depressing
+ * overall scores to 0 when match signals are absent.
+ */
+const DEFAULT_UNKNOWN_MATCH_SCORE = 50;
 
 /**
  * Verification Confidence (0–100) based on deterministic signals and penalties.
@@ -71,18 +87,46 @@ export function computeVerificationConfidence(evidence: ServiceEvidence): number
 
 /**
  * Eligibility Match (0–100) is a structured upstream input.
- * Unknown remains unknown and defaults to 0 until clarified.
+ * If unknown, defaults to a neutral 50 (rather than 0) to avoid penalizing
+ * services before match signals are computed.
  */
 export function computeEligibilityMatch(evidence: ServiceEvidence): number {
-  return clampToPercent(evidence.eligibilityMatchScore ?? 0);
+  return clampToPercent(evidence.eligibilityMatchScore ?? DEFAULT_UNKNOWN_MATCH_SCORE);
 }
 
 /**
  * Constraint Fit (0–100) is a structured upstream input.
- * Unknown remains unknown and defaults to 0 until clarified.
+ * If unknown, defaults to a neutral 50 (rather than 0) to avoid penalizing
+ * services before fit signals are computed.
  */
 export function computeConstraintFit(evidence: ServiceEvidence): number {
-  return clampToPercent(evidence.constraintFitScore ?? 0);
+  return clampToPercent(evidence.constraintFitScore ?? DEFAULT_UNKNOWN_MATCH_SCORE);
+}
+
+/**
+ * Trust score used for seeker-facing messaging.
+ * Equivalent to verification confidence.
+ */
+export function computeTrustScore(evidence: ServiceEvidence): number {
+  return computeVerificationConfidence(evidence);
+}
+
+/**
+ * Match score used for seeker-facing "fit" messaging.
+ * Normalized blend of eligibility + constraint.
+ */
+export function computeMatchScore(evidence: ServiceEvidence): number {
+  const eligibilityMatch = computeEligibilityMatch(evidence);
+  const constraintFit = computeConstraintFit(evidence);
+
+  // Normalize to 0–100 by dividing by the match weight sum.
+  // (eligibility+constraint weights sum to 0.55 in the current contract)
+  const match =
+    (ORAN_CONFIDENCE_WEIGHTS.eligibility * eligibilityMatch +
+      ORAN_CONFIDENCE_WEIGHTS.constraint * constraintFit) /
+    MATCH_WEIGHT_SUM;
+
+  return r1(clampToPercent(match));
 }
 
 export function computeScore(serviceId: string, input: ScoreInput): ConfidenceScore {
@@ -95,6 +139,8 @@ export function computeScore(serviceId: string, input: ScoreInput): ConfidenceSc
     ORAN_CONFIDENCE_WEIGHTS.eligibility * eligibilityMatch +
     ORAN_CONFIDENCE_WEIGHTS.constraint * constraintFit;
 
+  const now = new Date();
+
   return {
     id: '',
     serviceId,
@@ -102,7 +148,9 @@ export function computeScore(serviceId: string, input: ScoreInput): ConfidenceSc
     verificationConfidence: r1(verificationConfidence),
     eligibilityMatch: r1(eligibilityMatch),
     constraintFit: r1(constraintFit),
-    computedAt: new Date(),
+    computedAt: now,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 

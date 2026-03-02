@@ -53,8 +53,8 @@ describe('computeEligibilityMatch', () => {
     expect(computeEligibilityMatch({ eligibilityMatchScore: 72 })).toBe(72);
   });
 
-  it('defaults unknown eligibility to 0', () => {
-    expect(computeEligibilityMatch({})).toBe(0);
+  it('defaults unknown eligibility to 50 (neutral)', () => {
+    expect(computeEligibilityMatch({})).toBe(50);
   });
 });
 
@@ -63,8 +63,8 @@ describe('computeConstraintFit', () => {
     expect(computeConstraintFit({ constraintFitScore: 64 })).toBe(64);
   });
 
-  it('defaults unknown constraint fit to 0', () => {
-    expect(computeConstraintFit({})).toBe(0);
+  it('defaults unknown constraint fit to 50 (neutral)', () => {
+    expect(computeConstraintFit({})).toBe(50);
   });
 });
 

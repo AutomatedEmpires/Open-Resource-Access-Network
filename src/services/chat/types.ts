@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import type { EnrichedService } from '@/domain/types';
 import { CRISIS_RESOURCES, ELIGIBILITY_DISCLAIMER } from '@/domain/constants';
+import { selectServiceLinks, type ServiceLink } from '@/services/chat/links';
 
 // ============================================================
 // INTENT
@@ -25,11 +26,16 @@ export const INTENT_CATEGORIES = [
 
 export type IntentCategory = (typeof INTENT_CATEGORIES)[number];
 
+export const INTENT_ACTIONS = ['apply', 'contact', 'eligibility', 'hours', 'website', 'general'] as const;
+export type IntentAction = (typeof INTENT_ACTIONS)[number];
+
 export const IntentSchema = z.object({
   category: z.enum(INTENT_CATEGORIES),
   rawQuery: z.string(),
   geoQualifier: z.string().optional(),
   populationQualifier: z.string().optional(),
+  /** Optional action intent used for link selection (e.g., apply vs contact). */
+  actionQualifier: z.enum(INTENT_ACTIONS).optional(),
   urgencyQualifier: z.enum(['urgent', 'standard']).default('standard'),
 });
 
@@ -70,11 +76,14 @@ export interface UserProfile {
   locationPostalCode?: string;
   categoryPreferences?: string[];
   accessibilityNeeds?: string[];
+  /** Self-identified tags (e.g., "veteran"). Do not persist without explicit consent. */
+  audienceTags?: string[];
 }
 
 export interface ChatContext {
   sessionId: string;
   userId?: string;
+  locale: string;
   messageCount: number;
   userProfile?: UserProfile;
   /** Approximate location — city or postal code only */
@@ -97,7 +106,11 @@ export interface ServiceCard {
   address?: string;
   phone?: string;
   scheduleDescription?: string;
+  /** Optional links derived from stored records only (never invented). */
+  links?: ServiceLink[];
+  /** Seeker-facing trust band (derived from verification confidence). */
   confidenceBand: 'HIGH' | 'LIKELY' | 'POSSIBLE';
+  /** Seeker-facing trust score (0–100, derived from verification confidence). */
   confidenceScore: number;
   /** Always use qualifying language — never guarantee eligibility */
   eligibilityHint: string;
@@ -130,7 +143,10 @@ export interface QuotaState {
 // ENRICHED SERVICE → SERVICE CARD CONVERSION
 // ============================================================
 
-export function enrichedServiceToCard(enriched: EnrichedService): ServiceCard {
+export function enrichedServiceToCard(
+  enriched: EnrichedService,
+  options?: { intent?: Intent; context?: ChatContext }
+): ServiceCard {
   const { service, organization, address, phones, schedules, confidenceScore } = enriched;
 
   const addressStr = address
@@ -142,13 +158,15 @@ export function enrichedServiceToCard(enriched: EnrichedService): ServiceCard {
   const phone = phones[0]?.number;
   const schedule = schedules[0]?.description;
 
-  const band = confidenceScore
-    ? confidenceScore.score >= 80
-      ? 'HIGH'
-      : confidenceScore.score >= 60
-        ? 'LIKELY'
-        : 'POSSIBLE'
-    : 'POSSIBLE';
+  const links = selectServiceLinks(enriched, {
+    intentCategory: options?.intent?.category ?? 'general',
+    intentAction: options?.intent?.actionQualifier,
+    locale: options?.context?.locale ?? 'en',
+    audienceTags: options?.context?.userProfile?.audienceTags,
+  });
+
+  const trustScore = confidenceScore?.verificationConfidence ?? 0;
+  const band = trustScore >= 80 ? 'HIGH' : trustScore >= 60 ? 'LIKELY' : 'POSSIBLE';
 
   return {
     serviceId: service.id,
@@ -158,8 +176,9 @@ export function enrichedServiceToCard(enriched: EnrichedService): ServiceCard {
     address: addressStr,
     phone,
     scheduleDescription: schedule ?? undefined,
+    links: links.length > 0 ? links : undefined,
     confidenceBand: band,
-    confidenceScore: confidenceScore?.score ?? 0,
+    confidenceScore: trustScore,
     eligibilityHint: 'You may qualify for this service. Please confirm eligibility with the provider.',
   };
 }

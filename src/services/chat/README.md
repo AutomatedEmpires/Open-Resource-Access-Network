@@ -6,11 +6,13 @@
 - Retrieval is injected and must be **DB-only** (no external sources, no LLM).
 - Eligibility disclaimer must be present on all service recommendations.
 - LLM is allowed only as **post-retrieval summarization**, gated behind `llm_summarize`, and must not add facts.
+- Optional contextual links may be included, but must be selected deterministically from stored URLs only (no invented links).
 
 Primary entry points:
 
 - src/services/chat/orchestrator.ts
 - src/app/api/chat/route.ts
+- src/services/chat/links.ts
 
 ## Tests
 
@@ -18,7 +20,7 @@ Primary entry points:
 
 ## Update-on-touch
 
-If you change crisis detection, quota/rate limiting, response templates, or any LLM gate behavior:
+If you change crisis detection, quota/rate limiting, response templates, link selection behavior, or any LLM gate behavior:
 
 - Update docs/CHAT_ARCHITECTURE.md
 - Update docs/SECURITY_PRIVACY.md if rate limit/quota behavior changes

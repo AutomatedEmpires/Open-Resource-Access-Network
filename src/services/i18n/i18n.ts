@@ -86,11 +86,10 @@ localeCache.set('en', en);
 
 function getNestedValue(dict: TranslationDict, keyPath: string): string | undefined {
   const parts = keyPath.split('.');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let current: any = dict;
+  let current: unknown = dict;
   for (const part of parts) {
     if (current == null || typeof current !== 'object') return undefined;
-    current = current[part];
+    current = (current as Record<string, unknown>)[part];
   }
   return typeof current === 'string' ? current : undefined;
 }

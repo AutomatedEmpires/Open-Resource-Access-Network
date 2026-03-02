@@ -1,11 +1,499 @@
+/**
+ * /locations — Location Management
+ *
+ * CRUD for locations under the host's organizations.
+ * Create / edit includes address fields; coordinates optional.
+ * Wired to /api/host/locations and /api/host/organizations.
+ */
+
+'use client';
+
+import React, { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import {
+  MapPin, Plus, Pencil, Trash2, AlertTriangle,
+  ArrowLeft, ArrowRight, X, Check,
+} from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { SkeletonCard } from '@/components/ui/skeleton';
+import type { Organization } from '@/domain/types';
+
+// ============================================================
+// TYPES
+// ============================================================
+
+interface LocationRow {
+  id: string;
+  organization_id: string;
+  name: string | null;
+  alternate_name?: string | null;
+  description?: string | null;
+  transportation?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address_1?: string | null;
+  city?: string | null;
+  state_province?: string | null;
+  postal_code?: string | null;
+  organization_name?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ListResponse {
+  results: LocationRow[];
+  total: number;
+  page: number;
+  hasMore: boolean;
+}
+
+interface OrgOption { id: string; name: string }
+
+interface LocationForm {
+  id?: string;
+  organizationId: string;
+  name: string;
+  description: string;
+  transportation: string;
+  latitude: string;
+  longitude: string;
+  address1: string;
+  address2: string;
+  city: string;
+  stateProvince: string;
+  postalCode: string;
+  country: string;
+}
+
+const EMPTY_FORM: LocationForm = {
+  organizationId: '',
+  name: '',
+  description: '',
+  transportation: '',
+  latitude: '',
+  longitude: '',
+  address1: '',
+  address2: '',
+  city: '',
+  stateProvince: '',
+  postalCode: '',
+  country: 'US',
+};
+
+const LIMIT = 12;
+
+// ============================================================
+// COMPONENT
+// ============================================================
+
 export default function LocationsPage() {
+  const [data, setData] = useState<ListResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [orgFilter, setOrgFilter] = useState('');
+
+  const [orgs, setOrgs] = useState<OrgOption[]>([]);
+
+  // Modal
+  const [form, setForm] = useState<LocationForm | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const isCreating = form !== null && !form.id;
+
+  // Delete
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // ── Load orgs ──
+  useEffect(() => {
+    const loadOrgs = async () => {
+      try {
+        const res = await fetch('/api/host/organizations?limit=100');
+        if (res.ok) {
+          const json = (await res.json()) as { results: Organization[] };
+          setOrgs(json.results.map((o) => ({ id: o.id, name: o.name })));
+        }
+      } catch {
+        // Non-fatal
+      }
+    };
+    void loadOrgs();
+  }, []);
+
+  // ── Fetch locations ──
+  const fetchLocations = useCallback(async (p: number, orgId: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const url = new URL('/api/host/locations', window.location.origin);
+      url.searchParams.set('page', String(p));
+      url.searchParams.set('limit', String(LIMIT));
+      if (orgId) url.searchParams.set('organizationId', orgId);
+
+      const res = await fetch(url.toString());
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Failed to load locations');
+      }
+      const json = (await res.json()) as ListResponse;
+      setData(json);
+      setPage(p);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load locations');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchLocations(1, '');
+  }, [fetchLocations]);
+
+  // ── Save ──
+  const handleSave = useCallback(async () => {
+    if (!form || !form.name.trim()) return;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const isUpdate = Boolean(form.id);
+      const endpoint = isUpdate
+        ? `/api/host/locations/${form.id}`
+        : '/api/host/locations';
+
+      const payload: Record<string, unknown> = { name: form.name };
+      if (!isUpdate) payload.organizationId = form.organizationId;
+      if (form.description) payload.description = form.description;
+      if (form.transportation) payload.transportation = form.transportation;
+      if (form.latitude) payload.latitude = parseFloat(form.latitude);
+      if (form.longitude) payload.longitude = parseFloat(form.longitude);
+      if (form.address1) payload.address1 = form.address1;
+      if (form.address2) payload.address2 = form.address2;
+      if (form.city) payload.city = form.city;
+      if (form.stateProvince) payload.stateProvince = form.stateProvince;
+      if (form.postalCode) payload.postalCode = form.postalCode;
+      if (form.country) payload.country = form.country;
+
+      const res = await fetch(endpoint, {
+        method: isUpdate ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Save failed');
+      }
+
+      setForm(null);
+      void fetchLocations(page, orgFilter);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [form, page, orgFilter, fetchLocations]);
+
+  // ── Delete ──
+  const handleDelete = useCallback(async (id: string) => {
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/host/locations/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Delete failed');
+      }
+      setDeletingId(null);
+      void fetchLocations(page, orgFilter);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed');
+      setDeletingId(null);
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [page, orgFilter, fetchLocations]);
+
+  // ── Format address helper ──
+  const formatAddress = (loc: LocationRow): string | null => {
+    const parts = [loc.address_1, loc.city, loc.state_province, loc.postal_code].filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : null;
+  };
+
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Manage Locations</h1>
-      <p className="text-gray-500 mb-6">Add and update physical or virtual service locations for your organization.</p>
-      <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-400">
-        <p>Location management — sign in with host credentials to access.</p>
+    <main className="container mx-auto max-w-6xl px-4 py-8">
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <MapPin className="h-6 w-6 text-blue-600" aria-hidden="true" />
+            Locations
+          </h1>
+          <p className="mt-1 text-sm text-gray-600">
+            Manage physical and virtual locations for your organizations.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          className="gap-1"
+          onClick={() => setForm({ ...EMPTY_FORM, organizationId: orgs[0]?.id ?? '' })}
+          disabled={orgs.length === 0}
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Add Location
+        </Button>
       </div>
+
+      <ErrorBoundary>
+        {/* Org filter */}
+        <div className="flex gap-2 items-center mb-4">
+          <select
+            value={orgFilter}
+            onChange={(e) => {
+              setOrgFilter(e.target.value);
+              void fetchLocations(1, e.target.value);
+            }}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-h-[44px]"
+            aria-label="Filter by organization"
+          >
+            <option value="">All organizations</option>
+            {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+            <p>{error}</p>
+          </div>
+        )}
+
+        {/* Loading */}
+        {isLoading && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" role="status" aria-busy="true">
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={`sk-${i}`} />)}
+          </div>
+        )}
+
+        {/* Empty */}
+        {!isLoading && data && data.results.length === 0 && (
+          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
+            <p className="text-gray-700 font-medium">No locations found</p>
+            <p className="mt-1 text-sm text-gray-500">
+              Add a location to one of your{' '}
+              <Link href="/org" className="text-blue-600 hover:underline">organizations</Link>.
+            </p>
+          </div>
+        )}
+
+        {/* Results */}
+        {!isLoading && data && data.results.length > 0 && (
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {data.results.map((loc) => {
+                const addr = formatAddress(loc);
+                return (
+                  <div key={loc.id} className="rounded-lg border border-gray-200 bg-white p-4 flex flex-col justify-between">
+                    <div>
+                      <h2 className="font-semibold text-gray-900 text-sm">{loc.name ?? 'Unnamed Location'}</h2>
+                      {loc.organization_name && (
+                        <p className="mt-0.5 text-xs text-gray-500">{loc.organization_name}</p>
+                      )}
+                      {addr && (
+                        <p className="mt-1 text-xs text-gray-600">{addr}</p>
+                      )}
+                      {loc.latitude != null && loc.longitude != null && (
+                        <p className="mt-1 text-xs text-gray-400">
+                          {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)}
+                        </p>
+                      )}
+                      {loc.description && (
+                        <p className="mt-1 text-xs text-gray-600 line-clamp-2">{loc.description}</p>
+                      )}
+                    </div>
+                    <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                        onClick={() => setForm({
+                          id: loc.id,
+                          organizationId: loc.organization_id,
+                          name: loc.name ?? '',
+                          description: loc.description ?? '',
+                          transportation: loc.transportation ?? '',
+                          latitude: loc.latitude != null ? String(loc.latitude) : '',
+                          longitude: loc.longitude != null ? String(loc.longitude) : '',
+                          address1: loc.address_1 ?? '',
+                          address2: '',
+                          city: loc.city ?? '',
+                          stateProvince: loc.state_province ?? '',
+                          postalCode: loc.postal_code ?? '',
+                          country: 'US',
+                        })}
+                      >
+                        <Pencil className="h-3 w-3" aria-hidden="true" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1 text-red-600 hover:text-red-700 hover:border-red-300"
+                        onClick={() => setDeletingId(loc.id)}
+                      >
+                        <Trash2 className="h-3 w-3" aria-hidden="true" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Pagination */}
+            <div className="mt-4 flex items-center justify-between">
+              <p className="text-sm text-gray-600" role="status">
+                Page {data.page} · {data.total} total
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => void fetchLocations(page - 1, orgFilter)} disabled={page <= 1 || isLoading} className="gap-1">
+                  <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Prev
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => void fetchLocations(page + 1, orgFilter)} disabled={!data.hasMore || isLoading} className="gap-1">
+                  Next <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </ErrorBoundary>
+
+      {/* ── Create / Edit Modal ── */}
+      {form && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto"
+          onKeyDown={(e) => { if (e.key === 'Escape') { setForm(null); setSaveError(null); } }}
+          onClick={(e) => { if (e.target === e.currentTarget) { setForm(null); setSaveError(null); } }}
+          role="presentation"
+        >
+          <div className="w-full max-w-lg rounded-lg border border-gray-200 bg-white p-6 shadow-lg my-8" role="dialog" aria-label={isCreating ? 'Add location' : 'Edit location'} aria-modal="true">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">{isCreating ? 'Add Location' : 'Edit Location'}</h2>
+              <button onClick={() => { setForm(null); setSaveError(null); }} className="rounded p-1 hover:bg-gray-100" aria-label="Close">
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            {saveError && (
+              <div role="alert" className="mb-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{saveError}</div>
+            )}
+
+            <div className="space-y-4">
+              {isCreating && (
+                <div>
+                  <label htmlFor="loc-org" className="block text-sm font-medium text-gray-700 mb-1">Organization <span className="text-red-500">*</span></label>
+                  <select id="loc-org" value={form.organizationId} onChange={(e) => setForm({ ...form, organizationId: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[44px]" required>
+                    <option value="">Select organization…</option>
+                    {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="loc-name" className="block text-sm font-medium text-gray-700 mb-1">Location Name <span className="text-red-500">*</span></label>
+                <input id="loc-name" type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]" required maxLength={500} />
+              </div>
+
+              <div>
+                <label htmlFor="loc-desc" className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea id="loc-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" maxLength={5000} />
+              </div>
+
+              {/* Address */}
+              <fieldset className="border border-gray-200 rounded-lg p-3 space-y-3">
+                <legend className="text-sm font-medium text-gray-700 px-1">Address</legend>
+                <div>
+                  <label htmlFor="loc-addr1" className="block text-xs text-gray-600 mb-0.5">Street Address</label>
+                  <input id="loc-addr1" type="text" value={form.address1} onChange={(e) => setForm({ ...form, address1: e.target.value })} className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" maxLength={500} />
+                </div>
+                <div>
+                  <label htmlFor="loc-addr2" className="block text-xs text-gray-600 mb-0.5">Address Line 2</label>
+                  <input id="loc-addr2" type="text" value={form.address2} onChange={(e) => setForm({ ...form, address2: e.target.value })} className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" maxLength={500} />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label htmlFor="loc-city" className="block text-xs text-gray-600 mb-0.5">City</label>
+                    <input id="loc-city" type="text" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" maxLength={200} />
+                  </div>
+                  <div>
+                    <label htmlFor="loc-state" className="block text-xs text-gray-600 mb-0.5">State</label>
+                    <input id="loc-state" type="text" value={form.stateProvince} onChange={(e) => setForm({ ...form, stateProvince: e.target.value })} className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" maxLength={200} />
+                  </div>
+                  <div>
+                    <label htmlFor="loc-zip" className="block text-xs text-gray-600 mb-0.5">Postal Code</label>
+                    <input id="loc-zip" type="text" value={form.postalCode} onChange={(e) => setForm({ ...form, postalCode: e.target.value })} className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" maxLength={20} />
+                  </div>
+                </div>
+              </fieldset>
+
+              {/* Coordinates */}
+              <fieldset className="border border-gray-200 rounded-lg p-3 space-y-3">
+                <legend className="text-sm font-medium text-gray-700 px-1">Coordinates (optional)</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label htmlFor="loc-lat" className="block text-xs text-gray-600 mb-0.5">Latitude</label>
+                    <input id="loc-lat" type="number" step="any" min="-90" max="90" value={form.latitude} onChange={(e) => setForm({ ...form, latitude: e.target.value })} className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label htmlFor="loc-lng" className="block text-xs text-gray-600 mb-0.5">Longitude</label>
+                    <input id="loc-lng" type="number" step="any" min="-180" max="180" value={form.longitude} onChange={(e) => setForm({ ...form, longitude: e.target.value })} className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">Approximate coordinates for map display. Rounded for privacy.</p>
+              </fieldset>
+
+              <div>
+                <label htmlFor="loc-transport" className="block text-sm font-medium text-gray-700 mb-1">Transportation Notes</label>
+                <input id="loc-transport" type="text" value={form.transportation} onChange={(e) => setForm({ ...form, transportation: e.target.value })} placeholder="e.g., Bus route 12, accessible parking available" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]" maxLength={1000} />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => { setForm(null); setSaveError(null); }} disabled={isSaving}>Cancel</Button>
+              <Button
+                onClick={handleSave}
+                disabled={isSaving || !form.name.trim() || (isCreating && !form.organizationId)}
+                className="gap-1"
+              >
+                <Check className="h-4 w-4" aria-hidden="true" />
+                {isSaving ? 'Saving…' : isCreating ? 'Create' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete confirmation ── */}
+      {deletingId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onKeyDown={(e) => { if (e.key === 'Escape') setDeletingId(null); }}
+          onClick={(e) => { if (e.target === e.currentTarget) setDeletingId(null); }}
+          role="presentation"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-lg" role="alertdialog" aria-label="Confirm delete" aria-modal="true">
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete Location?</h2>
+            <p className="text-sm text-gray-600 mb-4">This will permanently delete this location and its address. This action cannot be undone.</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeletingId(null)} disabled={isDeleting}>Cancel</Button>
+              <Button onClick={() => void handleDelete(deletingId)} disabled={isDeleting} className="bg-red-600 hover:bg-red-700 text-white">
+                {isDeleting ? 'Deleting…' : 'Delete'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

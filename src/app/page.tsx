@@ -14,23 +14,16 @@ import { Button } from '@/components/ui/button';
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
-      {/* ── Minimal top bar ──────────────────────────────── */}
-      <header className="border-b border-gray-200 bg-white">
-        <div className="container mx-auto max-w-5xl flex items-center justify-between px-4 h-14">
-          <span className="font-bold text-lg tracking-tight text-gray-900">
-            ORAN
-          </span>
-          <Link
-            href="/profile"
-            className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
-          >
-            Sign in
-          </Link>
-        </div>
-      </header>
+      {/* Skip to main content — keyboard / screen-reader affordance */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-md focus:text-sm focus:font-medium"
+      >
+        Skip to main content
+      </a>
 
       {/* ── Hero ─────────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-16 text-center">
+      <main id="main-content" className="flex-1 flex flex-col items-center justify-center px-4 py-16 text-center">
         <div className="max-w-xl space-y-6">
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
             Find verified services near you
@@ -55,7 +48,7 @@ export default function Home() {
           <div className="flex items-center justify-center gap-4 pt-2">
             <Link
               href="/directory"
-              className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors"
+              className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors min-h-[44px] px-2 py-2 rounded-md hover:bg-gray-50"
             >
               <List className="h-4 w-4" aria-hidden="true" />
               Browse directory
@@ -63,7 +56,7 @@ export default function Home() {
             <span className="text-gray-300" aria-hidden="true">|</span>
             <Link
               href="/map"
-              className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors"
+              className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors min-h-[44px] px-2 py-2 rounded-md hover:bg-gray-50"
             >
               <MapPin className="h-4 w-4" aria-hidden="true" />
               View map
@@ -92,7 +85,7 @@ export default function Home() {
       </main>
 
       {/* ── Footer ───────────────────────────────────────── */}
-      <footer className="border-t border-gray-200 bg-white py-6 text-center text-xs text-gray-400">
+      <footer className="border-t border-gray-200 bg-white py-6 text-center text-xs text-gray-500">
         <p>
           Open Resource Access Network · Services may have eligibility
           requirements — confirm with provider

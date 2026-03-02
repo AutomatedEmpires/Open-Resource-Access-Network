@@ -30,6 +30,7 @@ export function Skeleton({ className, circle, ...props }: SkeletonProps) {
 export function SkeletonCard({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      aria-hidden="true"
       className={cn('border border-gray-200 rounded-lg p-4 space-y-3', className)}
       {...props}
     >

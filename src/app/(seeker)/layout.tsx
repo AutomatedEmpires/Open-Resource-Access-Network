@@ -45,6 +45,14 @@ export default function SeekerLayout({
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
+      {/* Skip to main content — keyboard / screen-reader affordance */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-md focus:text-sm focus:font-medium"
+      >
+        Skip to main content
+      </a>
+
       {/* ── Top bar ─────────────────────────────────────── */}
       <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
         <div className="container mx-auto max-w-6xl flex items-center justify-between px-4 h-14">
@@ -59,7 +67,7 @@ export default function SeekerLayout({
           {/* Desktop nav (hidden on mobile — bottom nav used instead) */}
           <nav
             className="hidden md:flex items-center gap-1"
-            aria-label="Primary navigation"
+            aria-label="Primary"
           >
             {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
               <Link
@@ -80,11 +88,10 @@ export default function SeekerLayout({
 
           {/* Account area */}
           <div className="flex items-center gap-2">
-            {/* Placeholder — Clerk sign-in button will go here */}
             <Link
-              href="/profile"
-              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 py-1.5 rounded-md hover:bg-gray-50"
-              aria-label="Profile and sign in"
+              href="/auth/signin"
+              className="flex items-center justify-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors min-w-[44px] min-h-[44px] px-2 py-2 rounded-md hover:bg-gray-50"
+              aria-label="Sign in with Microsoft"
             >
               <User className="h-4 w-4" aria-hidden="true" />
               <span className="hidden sm:inline">Sign in</span>
@@ -95,14 +102,14 @@ export default function SeekerLayout({
 
       {/* ── Main content ────────────────────────────────── */}
       {/* pb-16 on mobile to clear the fixed bottom nav */}
-      <div className="flex-1 pb-16 md:pb-0">
+      <div id="main-content" className="flex-1 pb-16 md:pb-0">
         {children}
       </div>
 
       {/* ── Bottom nav (mobile only) ────────────────────── */}
       <nav
         className="fixed bottom-0 inset-x-0 z-40 border-t border-gray-200 bg-white md:hidden"
-        aria-label="Primary navigation"
+        aria-label="Mobile navigation"
       >
         <div className="flex items-center justify-around h-14 max-w-md mx-auto">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => (

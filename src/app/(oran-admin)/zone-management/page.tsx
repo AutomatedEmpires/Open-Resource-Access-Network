@@ -1,11 +1,663 @@
+/**
+ * /zone-management — Coverage Zone Administration
+ *
+ * ORAN admin CRUD for coverage zones and community admin assignments.
+ * Wired to GET/POST /api/admin/zones and PUT/DELETE /api/admin/zones/[id].
+ */
+
+'use client';
+
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  MapPin, RefreshCw, AlertTriangle, Plus,
+  ChevronLeft, ChevronRight, CheckCircle2,
+  Pencil, Trash2, Filter, Users,
+} from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { SkeletonCard } from '@/components/ui/skeleton';
+import {
+  Dialog, DialogContent, DialogHeader,
+  DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
+
+// ============================================================
+// TYPES
+// ============================================================
+
+type ZoneStatus = 'active' | 'inactive';
+
+interface ZoneRow {
+  id: string;
+  name: string;
+  description: string | null;
+  assigned_user_id: string | null;
+  status: ZoneStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ZoneResponse {
+  results: ZoneRow[];
+  total: number;
+  page: number;
+  hasMore: boolean;
+}
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+
+const LIMIT = 20;
+
+const STATUS_TABS: { value: '' | ZoneStatus; label: string }[] = [
+  { value: '',         label: 'All' },
+  { value: 'active',   label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+];
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
+}
+
+// ============================================================
+// PAGE
+// ============================================================
+
+function ZoneManagementInner() {
+  const [data, setData] = useState<ZoneResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState<'' | ZoneStatus>('');
+  const [actionResult, setActionResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Create dialog
+  const [showCreate, setShowCreate] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createDesc, setCreateDesc] = useState('');
+  const [createAssigned, setCreateAssigned] = useState('');
+  const [createStatus, setCreateStatus] = useState<ZoneStatus>('active');
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editAssigned, setEditAssigned] = useState('');
+  const [editStatus, setEditStatus] = useState<ZoneStatus>('active');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Delete confirmation
+  const [deletingZone, setDeletingZone] = useState<ZoneRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // ── Fetch zones ──
+  const fetchZones = useCallback(async (p: number, status: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const url = new URL('/api/admin/zones', window.location.origin);
+      url.searchParams.set('page', String(p));
+      url.searchParams.set('limit', String(LIMIT));
+      if (status) url.searchParams.set('status', status);
+
+      const res = await fetch(url.toString());
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Failed to load zones');
+      }
+      const json = (await res.json()) as ZoneResponse;
+      setData(json);
+      setPage(p);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load zones');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchZones(1, statusFilter);
+  }, [fetchZones, statusFilter]);
+
+  // ── Create zone ──
+  const handleCreate = useCallback(async () => {
+    setIsCreating(true);
+    setActionResult(null);
+    try {
+      const res = await fetch('/api/admin/zones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: createName.trim(),
+          description: createDesc.trim() || undefined,
+          assignedUserId: createAssigned.trim() || undefined,
+          status: createStatus,
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Create failed');
+      }
+      const json = (await res.json()) as { message: string };
+      setActionResult({ success: true, message: json.message });
+      setShowCreate(false);
+      setCreateName(''); setCreateDesc(''); setCreateAssigned(''); setCreateStatus('active');
+      void fetchZones(page, statusFilter);
+    } catch (e) {
+      setActionResult({ success: false, message: e instanceof Error ? e.message : 'Create failed' });
+    } finally {
+      setIsCreating(false);
+    }
+  }, [createName, createDesc, createAssigned, createStatus, page, statusFilter, fetchZones]);
+
+  // ── Start editing ──
+  const startEditing = useCallback((zone: ZoneRow) => {
+    setEditingId(zone.id);
+    setEditName(zone.name);
+    setEditDesc(zone.description ?? '');
+    setEditAssigned(zone.assigned_user_id ?? '');
+    setEditStatus(zone.status);
+    setActionResult(null);
+  }, []);
+
+  // ── Save zone ──
+  const handleSave = useCallback(async () => {
+    if (!editingId) return;
+    setIsSaving(true);
+    setActionResult(null);
+    try {
+      const res = await fetch(`/api/admin/zones/${editingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editName.trim(),
+          description: editDesc.trim() || undefined,
+          assignedUserId: editAssigned.trim() || null,
+          status: editStatus,
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Update failed');
+      }
+      const json = (await res.json()) as { message: string };
+      setActionResult({ success: true, message: json.message });
+      setEditingId(null);
+      void fetchZones(page, statusFilter);
+    } catch (e) {
+      setActionResult({ success: false, message: e instanceof Error ? e.message : 'Update failed' });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [editingId, editName, editDesc, editAssigned, editStatus, page, statusFilter, fetchZones]);
+
+  // ── Delete zone ──
+  const handleDelete = useCallback(async () => {
+    if (!deletingZone) return;
+    setIsDeleting(true);
+    setActionResult(null);
+    try {
+      const res = await fetch(`/api/admin/zones/${deletingZone.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Delete failed');
+      }
+      const json = (await res.json()) as { message: string };
+      setActionResult({ success: true, message: json.message });
+      setDeletingZone(null);
+      void fetchZones(page, statusFilter);
+    } catch (e) {
+      setActionResult({ success: false, message: e instanceof Error ? e.message : 'Delete failed' });
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [deletingZone, page, statusFilter, fetchZones]);
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / LIMIT)) : 1;
+
+  return (
+    <>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <MapPin className="h-6 w-6 text-blue-600" aria-hidden="true" />
+            Coverage Zone Administration
+          </h1>
+          <p className="mt-1 text-sm text-gray-600">
+            Manage all coverage zones and community admin assignments.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => void fetchZones(page, statusFilter)}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            Refresh
+          </Button>
+          <Button
+            size="sm"
+            className="gap-1"
+            onClick={() => setShowCreate(true)}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            New Zone
+          </Button>
+        </div>
+      </div>
+
+      {/* Action result */}
+      {actionResult && (
+        <div
+          role="alert"
+          className={`mb-4 flex items-center gap-2 rounded-lg border p-3 text-sm ${
+            actionResult.success
+              ? 'bg-green-50 border-green-200 text-green-800'
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}
+        >
+          {actionResult.success
+            ? <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+            : <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />}
+          {actionResult.message}
+        </div>
+      )}
+
+      {/* Status filter tabs */}
+      <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-1" role="tablist" aria-label="Filter by zone status">
+        <Filter className="h-4 w-4 text-gray-400 mr-1 shrink-0" aria-hidden="true" />
+        {STATUS_TABS.map(({ value, label }) => (
+          <button
+            key={value}
+            role="tab"
+            aria-selected={statusFilter === value}
+            onClick={() => { setStatusFilter(value); setPage(1); }}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+              statusFilter === value
+                ? 'bg-blue-100 text-blue-800'
+                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Error state */}
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 mb-4 text-sm text-red-700" role="alert">
+          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {error}
+        </div>
+      )}
+
+      {/* Loading state */}
+      {isLoading && !data && (
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!isLoading && data && data.results.length === 0 && (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-gray-200 bg-white p-12 text-center">
+          <MapPin className="h-10 w-10 text-gray-300 mb-3" aria-hidden="true" />
+          <p className="text-gray-500 font-medium">No coverage zones found</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {statusFilter
+              ? `No zones with status "${statusFilter}".`
+              : 'Create a zone to get started.'}
+          </p>
+        </div>
+      )}
+
+      {/* Zones table */}
+      {data && data.results.length > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Zone</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Assigned Admin</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Created</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {data.results.map((zone) => {
+                  const isEditing = editingId === zone.id;
+                  return (
+                    <React.Fragment key={zone.id}>
+                      <tr className={`hover:bg-gray-50 ${isEditing ? 'bg-blue-50/50' : ''}`}>
+                        <td className="px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="font-medium text-gray-900 truncate">{zone.name}</p>
+                            {zone.description && (
+                              <p className="text-xs text-gray-500 truncate max-w-xs">{zone.description}</p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${
+                            zone.status === 'active'
+                              ? 'bg-green-100 text-green-800 ring-green-600/20'
+                              : 'bg-gray-100 text-gray-700 ring-gray-300'
+                          }`}>
+                            {zone.status === 'active' ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {zone.assigned_user_id ? (
+                            <span className="inline-flex items-center gap-1 text-xs">
+                              <Users className="h-3 w-3 text-gray-400" aria-hidden="true" />
+                              <span className="font-mono truncate max-w-[120px]">{zone.assigned_user_id}</span>
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">Unassigned</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-gray-600 text-xs">
+                          {formatDate(zone.created_at)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {!isEditing && (
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => startEditing(zone)}
+                                aria-label={`Edit ${zone.name}`}
+                              >
+                                <Pencil className="h-4 w-4" aria-hidden="true" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDeletingZone(zone)}
+                                aria-label={`Delete ${zone.name}`}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                              </Button>
+                            </div>
+                          )}
+                          {isEditing && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingId(null)}
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Edit panel */}
+                      {isEditing && (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-4 bg-blue-50/30 border-t border-blue-100">
+                            <div className="max-w-lg space-y-3">
+                              <div>
+                                <label htmlFor={`edit-name-${zone.id}`} className="block text-sm font-medium text-gray-700 mb-1">
+                                  Zone name
+                                </label>
+                                <input
+                                  id={`edit-name-${zone.id}`}
+                                  type="text"
+                                  value={editName}
+                                  onChange={(e) => setEditName(e.target.value)}
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  maxLength={500}
+                                />
+                              </div>
+                              <div>
+                                <label htmlFor={`edit-desc-${zone.id}`} className="block text-sm font-medium text-gray-700 mb-1">
+                                  Description
+                                </label>
+                                <textarea
+                                  id={`edit-desc-${zone.id}`}
+                                  value={editDesc}
+                                  onChange={(e) => setEditDesc(e.target.value)}
+                                  rows={2}
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  maxLength={5000}
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label htmlFor={`edit-assigned-${zone.id}`} className="block text-sm font-medium text-gray-700 mb-1">
+                                    Assigned admin ID
+                                  </label>
+                                  <input
+                                    id={`edit-assigned-${zone.id}`}
+                                    type="text"
+                                    value={editAssigned}
+                                    onChange={(e) => setEditAssigned(e.target.value)}
+                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Leave empty to unassign"
+                                    maxLength={500}
+                                  />
+                                </div>
+                                <div>
+                                  <label htmlFor={`edit-status-${zone.id}`} className="block text-sm font-medium text-gray-700 mb-1">
+                                    Status
+                                  </label>
+                                  <select
+                                    id={`edit-status-${zone.id}`}
+                                    value={editStatus}
+                                    onChange={(e) => setEditStatus(e.target.value as ZoneStatus)}
+                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  >
+                                    <option value="active">Active</option>
+                                    <option value="inactive">Inactive</option>
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => void handleSave()}
+                                  disabled={isSaving || !editName.trim()}
+                                  className="gap-1"
+                                >
+                                  {isSaving ? 'Saving...' : 'Save'}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setEditingId(null)}
+                                  disabled={isSaving}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {data && data.total > LIMIT && (
+        <div className="flex items-center justify-between mt-4 text-sm">
+          <p className="text-gray-500">
+            Page {page} of {totalPages} &middot; {data.total} total
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void fetchZones(page - 1, statusFilter)}
+              disabled={page <= 1 || isLoading}
+              className="gap-1"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              Prev
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void fetchZones(page + 1, statusFilter)}
+              disabled={!data.hasMore || isLoading}
+              className="gap-1"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create Zone Dialog ── */}
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Coverage Zone</DialogTitle>
+            <DialogDescription>
+              Add a new coverage zone and optionally assign a community admin.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label htmlFor="create-name" className="block text-sm font-medium text-gray-700 mb-1">
+                Zone name *
+              </label>
+              <input
+                id="create-name"
+                type="text"
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. Downtown Portland"
+                maxLength={500}
+              />
+            </div>
+            <div>
+              <label htmlFor="create-desc" className="block text-sm font-medium text-gray-700 mb-1">
+                Description
+              </label>
+              <textarea
+                id="create-desc"
+                value={createDesc}
+                onChange={(e) => setCreateDesc(e.target.value)}
+                rows={2}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                maxLength={5000}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="create-assigned" className="block text-sm font-medium text-gray-700 mb-1">
+                  Assigned admin ID
+                </label>
+                <input
+                  id="create-assigned"
+                  type="text"
+                  value={createAssigned}
+                  onChange={(e) => setCreateAssigned(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Optional"
+                  maxLength={500}
+                />
+              </div>
+              <div>
+                <label htmlFor="create-status" className="block text-sm font-medium text-gray-700 mb-1">
+                  Status
+                </label>
+                <select
+                  id="create-status"
+                  value={createStatus}
+                  onChange={(e) => setCreateStatus(e.target.value as ZoneStatus)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCreate(false)}
+              disabled={isCreating}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void handleCreate()}
+              disabled={isCreating || !createName.trim()}
+            >
+              {isCreating ? 'Creating...' : 'Create Zone'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete Confirmation Dialog ── */}
+      <Dialog open={!!deletingZone} onOpenChange={(open) => { if (!open) setDeletingZone(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Coverage Zone</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete &ldquo;{deletingZone?.name}&rdquo;? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeletingZone(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => void handleDelete()}
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export default function OranAdminCoveragePage() {
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Coverage Zone Administration</h1>
-      <p className="text-gray-500 mb-6">Manage all coverage zones and community admin assignments. (Route: /zone-management)</p>
-      <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-400">
-        <p>Coverage administration — ORAN admin access required.</p>
-      </div>
-    </main>
+    <ErrorBoundary>
+      <ZoneManagementInner />
+    </ErrorBoundary>
   );
 }

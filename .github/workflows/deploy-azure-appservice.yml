@@ -34,6 +34,14 @@ jobs:
       - name: Run tests
         run: npm run test
 
+      - name: Build Next.js app
+        run: npm run build
+
+      - name: Prepare standalone artifact
+        run: |
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public 2>/dev/null || true
+
       - name: Login to Azure (OIDC)
         uses: azure/login@v2
         with:
@@ -41,26 +49,36 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Zip source for deployment
+      - name: Disable Oryx server-side build
         run: |
-          zip -r app.zip . \
-            -x "node_modules/**" \
-            -x ".git/**" \
-            -x ".next/**" \
-            -x "coverage/**"
-
-      - name: Deploy to Azure Web App (zip)
-        run: |
-          az webapp deploy \
+          az webapp config appsettings set \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "${{ vars.AZURE_WEBAPP_NAME }}" \
-            --src-path app.zip \
-            --type zip
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false \
+            --output none
 
-      - name: Show deployment logs (if deploy failed)
-        if: ${{ failure() }}
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: .next/standalone
+
+      - name: Set startup command
         run: |
-          az webapp log deployment show \
+          az webapp config set \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+            --startup-file "node server.js" \
+            --output none
+
+      - name: Verify deployment
+        run: |
+          sleep 15
+          url="https://${{ vars.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+          status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$url")
+          echo "Site returned HTTP $status"
+          if [ "$status" -ge 500 ]; then
+            echo "::error::Site returned HTTP $status"
+            exit 1
+          fi \
             -o jsonc

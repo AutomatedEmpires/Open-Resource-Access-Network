@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { VerificationChecklistSchema } from './checklist';
+
 export const SourceKindSchema = z.enum(['allowlisted_scrape', 'partner_feed', 'manual', 'curated_list']);
 export type SourceKind = z.infer<typeof SourceKindSchema>;
 
@@ -82,6 +84,8 @@ export const ExtractedCandidateSchema = z.object({
       timers: ReviewTimersSchema.default({}),
       assignedToRole: z.enum(['community_admin', 'oran_admin']).optional(),
       assignedToKey: z.string().min(1).optional(),
+      tags: z.array(z.string().min(1)).default([]),
+      checklist: VerificationChecklistSchema.default([]),
     })
     .default({ status: 'pending', timers: {} }),
   fields: z.object({

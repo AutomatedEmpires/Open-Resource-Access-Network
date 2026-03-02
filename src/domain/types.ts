@@ -20,6 +20,8 @@ export interface Organization {
   legalStatus?: string | null;
   logoUrl?: string | null;
   uri?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
   updatedAt: Date;
   createdAt: Date;
 }
@@ -35,9 +37,17 @@ export interface Location {
   latitude?: number | null;
   /** Approximate longitude (WGS84) — rounded for privacy in API responses */
   longitude?: number | null;
+  /** Structured transit access tags: 'bus_stop_nearby', 'subway_nearby', etc. */
+  transitAccess?: string[] | null;
+  /** Parking availability: 'yes', 'no', 'street_only', 'paid', 'unknown' */
+  parkingAvailable?: LocationParkingType | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type LocationParkingType = 'yes' | 'no' | 'street_only' | 'paid' | 'unknown';
 
 export interface Service {
   id: string;
@@ -55,18 +65,28 @@ export interface Service {
   fees?: string | null;
   accreditations?: string | null;
   licenses?: string | null;
+  /** Estimated wait time in days (NULL = unknown) */
+  estimatedWaitDays?: number | null;
+  /** Current capacity status: 'available', 'limited', 'waitlist', 'closed' */
+  capacityStatus?: ServiceCapacityStatus | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
   updatedAt: Date;
   createdAt: Date;
 }
 
 export type ServiceStatus = 'active' | 'inactive' | 'defunct';
+export type ServiceCapacityStatus = 'available' | 'limited' | 'waitlist' | 'closed';
 
 export interface ServiceAtLocation {
   id: string;
   serviceId: string;
   locationId: string;
   description?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Phone {
@@ -79,6 +99,10 @@ export interface Phone {
   type?: PhoneType | null;
   language?: string | null;
   description?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export type PhoneType = 'voice' | 'fax' | 'tty' | 'hotline' | 'sms';
@@ -94,6 +118,10 @@ export interface Address {
   stateProvince?: string | null;
   postalCode?: string | null;
   country?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Schedule {
@@ -109,6 +137,10 @@ export interface Schedule {
   opensAt?: string | null;
   closesAt?: string | null;
   description?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export type Weekday = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU';
@@ -119,7 +151,10 @@ export interface TaxonomyTerm {
   description?: string | null;
   parentId?: string | null;
   taxonomy?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 // ============================================================
@@ -138,6 +173,8 @@ export interface ConfidenceScore {
   /** ORAN public sub-score: actionability/constraint fit (0–100) */
   constraintFit: number;
   computedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export type ConfidenceBand = 'HIGH' | 'LIKELY' | 'POSSIBLE';
@@ -153,9 +190,11 @@ export interface VerificationQueueEntry {
   id: string;
   serviceId: string;
   status: VerificationStatus;
-  submittedBy: string;
-  assignedTo?: string | null;
+  submittedByUserId: string;
+  assignedToUserId?: string | null;
   notes?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -168,7 +207,10 @@ export interface SeekerFeedback {
   rating: number;
   comment?: string | null;
   contactSuccess?: boolean | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface ChatSession {
@@ -185,6 +227,278 @@ export interface FeatureFlag {
   name: string;
   enabled: boolean;
   rolloutPct: number;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================================
+// HSDS COMPLETENESS ENTITIES (migrations 0009–0011)
+// ============================================================
+
+export interface Program {
+  id: string;
+  organizationId: string;
+  name: string;
+  alternateName?: string | null;
+  description?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Eligibility {
+  id: string;
+  serviceId: string;
+  /** Human-readable criterion: "Must be 18 or older" */
+  description: string;
+  /** Structured minimum age (NULL = no minimum) */
+  minimumAge?: number | null;
+  /** Structured maximum age (NULL = no maximum) */
+  maximumAge?: number | null;
+  /** Structured tags: e.g. ['veteran', 'senior', 'family'] */
+  eligibleValues?: string[] | null;
+  /** Minimum household size (NULL = no minimum) */
+  householdSizeMin?: number | null;
+  /** Maximum household size (NULL = no maximum) */
+  householdSizeMax?: number | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface RequiredDocument {
+  id: string;
+  serviceId: string;
+  /** Document name: "Photo ID", "Proof of income" */
+  document: string;
+  /** Category: 'identification', 'income', 'residency', 'medical', 'other' */
+  type?: string | null;
+  /** Link to downloadable form or instructions */
+  uri?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type ServiceAreaExtentType = 'city' | 'county' | 'state' | 'zip' | 'nationwide' | 'custom' | 'other';
+
+export interface ServiceArea {
+  id: string;
+  serviceId: string;
+  name?: string | null;
+  description?: string | null;
+  extentType?: ServiceAreaExtentType | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Language {
+  id: string;
+  serviceId?: string | null;
+  locationId?: string | null;
+  /** ISO 639-1 code: 'en', 'es', 'zh', etc. */
+  language: string;
+  note?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AccessibilityForDisabilities {
+  id: string;
+  locationId: string;
+  /** Feature tag: 'wheelchair', 'hearing_loop', 'braille', 'elevator', etc. */
+  accessibility: string;
+  details?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Contact {
+  id: string;
+  organizationId?: string | null;
+  serviceId?: string | null;
+  locationId?: string | null;
+  name?: string | null;
+  title?: string | null;
+  department?: string | null;
+  email?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SavedService {
+  id: string;
+  userId: string;
+  serviceId: string;
+  notes?: string | null;
+  savedAt: Date;
+}
+
+export type VerificationEvidenceType =
+  | 'website_screenshot'
+  | 'phone_confirmation'
+  | 'in_person_visit'
+  | 'official_document'
+  | 'photo'
+  | 'correspondence'
+  | 'other';
+
+export interface VerificationEvidence {
+  id: string;
+  queueEntryId: string;
+  evidenceType: VerificationEvidenceType;
+  description?: string | null;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  fileSizeBytes?: number | null;
+  submittedByUserId: string;
+  createdAt: Date;
+}
+
+export interface CoverageZone {
+  id: string;
+  name: string;
+  description?: string | null;
+  assignedUserId?: string | null;
+  status: 'active' | 'inactive';
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface OrganizationMember {
+  id: string;
+  organizationId: string;
+  userId: string;
+  role: 'host_member' | 'host_admin';
+  status: 'invited' | 'active' | 'deactivated';
+  invitedByUserId?: string | null;
+  invitedAt: Date;
+  activatedAt?: Date | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface UserProfile {
+  id: string;
+  userId: string;
+  displayName?: string | null;
+  preferredLocale?: string | null;
+  approximateCity?: string | null;
+  role: OranRole;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================================
+// SERVICE ATTRIBUTES (migration 0012)
+// ============================================================
+
+/** Canonical taxonomy namespaces for service_attributes */
+export type ServiceAttributeTaxonomy =
+  | 'delivery'
+  | 'cost'
+  | 'access'
+  | 'culture'
+  | 'population'
+  | 'situation';
+
+/**
+ * Universal service attribute tag.
+ * Each row is one (taxonomy, tag) pair on a service.
+ * Examples:
+ *   { taxonomy: 'delivery', tag: 'virtual' }
+ *   { taxonomy: 'cost', tag: 'free' }
+ *   { taxonomy: 'access', tag: 'no_id_required' }
+ *   { taxonomy: 'population', tag: 'refugee' }
+ */
+export interface ServiceAttribute {
+  id: string;
+  serviceId: string;
+  /** Namespace: 'delivery', 'cost', 'access', 'culture', 'population', 'situation' */
+  taxonomy: ServiceAttributeTaxonomy;
+  /** Value within the taxonomy namespace */
+  tag: string;
+  /** Optional human-readable elaboration */
+  details?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================================
+// SERVICE ADAPTATIONS & DIETARY OPTIONS (migration 0013)
+// ============================================================
+
+/** Canonical adaptation type namespaces for service_adaptations */
+export type ServiceAdaptationType =
+  | 'disability'
+  | 'health_condition'
+  | 'age_group'
+  | 'learning';
+
+/**
+ * Service-level disability/health adaptations.
+ * Distinct from location accessibility (physical access to building).
+ * Examples:
+ *   { adaptationType: 'disability', adaptationTag: 'autism' }
+ *   { adaptationType: 'health_condition', adaptationTag: 'hiv_aids' }
+ *   { adaptationType: 'age_group', adaptationTag: 'infant' }
+ */
+export interface ServiceAdaptation {
+  id: string;
+  serviceId: string;
+  /** Namespace: 'disability', 'health_condition', 'age_group', 'learning' */
+  adaptationType: ServiceAdaptationType;
+  /** Tag within namespace */
+  adaptationTag: string;
+  /** Human-readable description of the adaptation */
+  details?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Dietary availability status */
+export type DietaryAvailability = 'always' | 'by_request' | 'limited' | 'seasonal';
+
+/**
+ * Dietary options for food assistance services.
+ * Examples:
+ *   { dietaryType: 'halal', availability: 'always' }
+ *   { dietaryType: 'vegan', availability: 'by_request' }
+ */
+export interface DietaryOption {
+  id: string;
+  serviceId: string;
+  /** Dietary type: 'halal', 'kosher', 'vegan', 'gluten_free', etc. */
+  dietaryType: string;
+  /** Availability: 'always', 'by_request', 'limited', 'seasonal' */
+  availability?: DietaryAvailability | null;
+  /** Additional details */
+  details?: string | null;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -204,6 +518,19 @@ export interface EnrichedService {
   taxonomyTerms: TaxonomyTerm[];
   confidenceScore?: ConfidenceScore | null;
   distanceMeters?: number | null;
+  eligibility?: Eligibility[] | null;
+  requiredDocuments?: RequiredDocument[] | null;
+  languages?: Language[] | null;
+  serviceAreas?: ServiceArea[] | null;
+  contacts?: Contact[] | null;
+  accessibility?: AccessibilityForDisabilities[] | null;
+  program?: Program | null;
+  /** Structured attributes: delivery mode, cost, access requirements, cultural competency, population, situation */
+  attributes?: ServiceAttribute[] | null;
+  /** Service-level disability/health adaptations (distinct from location accessibility) */
+  adaptations?: ServiceAdaptation[] | null;
+  /** Dietary options for food services (halal, kosher, vegan, etc.) */
+  dietaryOptions?: DietaryOption[] | null;
 }
 
 export type OranRole =

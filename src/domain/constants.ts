@@ -214,6 +214,24 @@ export const SEARCH_RATE_LIMIT_MAX_REQUESTS = 60;
 /** Maximum feedback API requests per RATE_LIMIT_WINDOW_MS */
 export const FEEDBACK_RATE_LIMIT_MAX_REQUESTS = 10;
 
+/** Maximum host write (create/update/delete) API requests per RATE_LIMIT_WINDOW_MS */
+export const HOST_WRITE_RATE_LIMIT_MAX_REQUESTS = 30;
+
+/** Maximum host read API requests per RATE_LIMIT_WINDOW_MS */
+export const HOST_READ_RATE_LIMIT_MAX_REQUESTS = 60;
+
+/** Maximum community-admin write API requests per RATE_LIMIT_WINDOW_MS */
+export const COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS = 30;
+
+/** Maximum community-admin read API requests per RATE_LIMIT_WINDOW_MS */
+export const COMMUNITY_READ_RATE_LIMIT_MAX_REQUESTS = 60;
+
+/** Maximum oran-admin write API requests per RATE_LIMIT_WINDOW_MS */
+export const ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS = 30;
+
+/** Maximum oran-admin read API requests per RATE_LIMIT_WINDOW_MS */
+export const ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS = 60;
+
 /** Maximum services returned per chat response */
 export const MAX_SERVICES_PER_RESPONSE = 5;
 

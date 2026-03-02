@@ -79,13 +79,25 @@ jobs:
 
       - name: Deploy to Azure Web App (zip)
         run: |
-          az webapp deploy \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --name "${{ vars.AZURE_WEBAPP_NAME }}" \
-            --src-path app.zip \
-            --type zip \
-            --async true
-        timeout-minutes: 5
+          # az webapp deploy --async hangs on B1 despite the flag.
+          # Use the Kudu zipdeploy REST API directly via curl instead.
+          TOKEN=$(az account get-access-token --resource https://management.azure.com/ --query accessToken -o tsv)
+          KUDU_URL="https://${{ vars.AZURE_WEBAPP_NAME }}.scm.azurewebsites.net/api/publish?type=zip&async=true"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 120 \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/zip" \
+            --data-binary @app.zip \
+            "$KUDU_URL")
+          echo "Kudu returned HTTP $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "::error::Zip deploy failed with HTTP $HTTP_STATUS"
+            exit 1
+          fi
+          echo "Zip uploaded successfully — waiting for extraction..."
+          sleep 10
+        timeout-minutes: 3
 
       - name: Start app and verify
         run: |

@@ -8,7 +8,14 @@ describe('source registry', () => {
     expect(c).toBe('https://example.gov/path');
   });
 
-  test('bootstrap allows .gov and .mil, quarantines others', () => {
+  test('canonicalizeUrl strips common tracking parameters', () => {
+    const c = canonicalizeUrl(
+      'https://example.gov/path?utm_source=newsletter&gclid=abc123&keep=ok#frag'
+    );
+    expect(c).toBe('https://example.gov/path?keep=ok');
+  });
+
+  test('bootstrap allows .gov and .edu, quarantines .mil (seed fetch allowed) and blocks unregistered domains', () => {
     const registry = buildBootstrapRegistry('2026-03-02T00:00:00Z');
 
     expect(matchSourceForUrl('https://example.gov/a', registry)).toEqual({
@@ -17,9 +24,15 @@ describe('source registry', () => {
       sourceId: 'bootstrap-gov',
     });
 
-    expect(matchSourceForUrl('https://example.mil/a', registry)).toEqual({
+    expect(matchSourceForUrl('https://example.edu/a', registry)).toEqual({
       allowed: true,
       trustLevel: 'allowlisted',
+      sourceId: 'bootstrap-edu',
+    });
+
+    expect(matchSourceForUrl('https://example.mil/a', registry)).toEqual({
+      allowed: true,
+      trustLevel: 'quarantine',
       sourceId: 'bootstrap-mil',
     });
 

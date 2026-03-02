@@ -7,7 +7,17 @@ import {
   VerificationCheckResultSchema,
 } from '../contracts';
 import { computeExtractKeySha256 } from '../dedupe';
-import { computeConfidenceScore, hasFailingCriticalChecks } from '../scoring';
+import {
+  computeConfidenceScore,
+  computeReverifyCadenceDays,
+  computeReviewSlaHours,
+  computeScoreBreakdown,
+  CONFIDENCE_TIER_THRESHOLDS,
+  getConfidenceTier,
+  getTierDisplayInfo,
+  hasFailingCriticalChecks,
+  isReadyForPublish,
+} from '../scoring';
 
 describe('ingestion contracts', () => {
   test('EvidenceSnapshotSchema validates hash + status', () => {
@@ -147,3 +157,119 @@ describe('confidence scoring', () => {
     expect(hasCriticalFail).toBe(true);
   });
 });
+
+describe('confidence tiers', () => {
+  test('tier thresholds are correct', () => {
+    expect(CONFIDENCE_TIER_THRESHOLDS.green).toBe(80);
+    expect(CONFIDENCE_TIER_THRESHOLDS.yellow).toBe(60);
+    expect(CONFIDENCE_TIER_THRESHOLDS.orange).toBe(40);
+    expect(CONFIDENCE_TIER_THRESHOLDS.red).toBe(0);
+  });
+
+  test('getConfidenceTier returns correct tier', () => {
+    expect(getConfidenceTier(100)).toBe('green');
+    expect(getConfidenceTier(80)).toBe('green');
+    expect(getConfidenceTier(79)).toBe('yellow');
+    expect(getConfidenceTier(60)).toBe('yellow');
+    expect(getConfidenceTier(59)).toBe('orange');
+    expect(getConfidenceTier(40)).toBe('orange');
+    expect(getConfidenceTier(39)).toBe('red');
+    expect(getConfidenceTier(0)).toBe('red');
+  });
+
+  test('getTierDisplayInfo returns correct info', () => {
+    const green = getTierDisplayInfo('green');
+    expect(green.label).toBe('Ready');
+    expect(green.color).toBe('#22c55e');
+
+    const red = getTierDisplayInfo('red');
+    expect(red.label).toBe('Incomplete');
+    expect(red.color).toBe('#ef4444');
+  });
+
+  test('computeScoreBreakdown provides detailed breakdown', () => {
+    const result = computeScoreBreakdown({
+      sourceAllowlisted: true,
+      requiredFieldsPresent: true,
+      hasEvidenceSnapshot: true,
+      verificationChecks: [],
+    });
+
+    expect(result.score).toBe(60);
+    expect(result.tier).toBe('yellow');
+    expect(result.breakdown.length).toBeGreaterThan(0);
+    expect(result.breakdown.find((b) => b.label === 'Evidence snapshot')?.points).toBe(20);
+  });
+
+  test('isReadyForPublish requires green tier and no critical failures', () => {
+    expect(isReadyForPublish(85, [])).toBe(true);
+    expect(isReadyForPublish(75, [])).toBe(false); // Not green
+    expect(
+      isReadyForPublish(85, [
+        {
+          checkId: '1',
+          extractionId: 'x',
+          checkType: 'domain_allowlist',
+          severity: 'critical',
+          status: 'fail',
+          ranAt: '2026-03-02T00:00:00Z',
+          details: {},
+          evidenceRefs: [],
+        },
+      ])
+    ).toBe(false); // Critical failure
+  });
+
+  test('computeReverifyCadenceDays varies by tier', () => {
+    expect(computeReverifyCadenceDays(85)).toBe(180); // green = 6 months
+    expect(computeReverifyCadenceDays(70)).toBe(90);  // yellow = 3 months
+    expect(computeReverifyCadenceDays(50)).toBe(30);  // orange = 1 month
+    expect(computeReverifyCadenceDays(20)).toBe(14);  // red = 2 weeks
+  });
+
+  test('computeReviewSlaHours varies by tier and critical failures', () => {
+    // Critical failure always gets 24h SLA
+    expect(computeReviewSlaHours(85, true)).toBe(24);
+    expect(computeReviewSlaHours(20, true)).toBe(24);
+
+    // Without critical failure, varies by tier
+    expect(computeReviewSlaHours(85, false)).toBe(168); // green = 7 days (low priority)
+    expect(computeReviewSlaHours(70, false)).toBe(72);  // yellow = 3 days
+    expect(computeReviewSlaHours(50, false)).toBe(48);  // orange = 2 days
+    expect(computeReviewSlaHours(20, false)).toBe(168); // red = 7 days (needs work first)
+  });
+
+  test('checklist completion affects score', () => {
+    const baseInputs = {
+      sourceAllowlisted: true,
+      requiredFieldsPresent: true,
+      hasEvidenceSnapshot: true,
+      verificationChecks: [],
+    };
+
+    // Without checklist
+    const scoreNoChecklist = computeConfidenceScore(baseInputs);
+
+    // With incomplete checklist
+    const scoreIncomplete = computeConfidenceScore({
+      ...baseInputs,
+      checklist: [
+        { key: 'contact_method', required: true, status: 'missing', missingFields: [], evidenceRefs: [] },
+        { key: 'hours', required: true, status: 'satisfied', missingFields: [], evidenceRefs: [] },
+      ],
+    });
+
+    // With complete checklist
+    const scoreComplete = computeConfidenceScore({
+      ...baseInputs,
+      checklist: [
+        { key: 'contact_method', required: true, status: 'satisfied', missingFields: [], evidenceRefs: [] },
+        { key: 'hours', required: true, status: 'satisfied', missingFields: [], evidenceRefs: [] },
+      ],
+    });
+
+    expect(scoreComplete).toBeGreaterThan(scoreIncomplete);
+    expect(scoreComplete).toBe(scoreNoChecklist + 20); // Full checklist bonus
+  });
+});
+

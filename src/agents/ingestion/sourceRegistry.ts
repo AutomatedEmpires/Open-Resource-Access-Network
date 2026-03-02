@@ -53,7 +53,15 @@ export const SourceRegistryEntrySchema = z
     trustLevel: SourceTrustLevelSchema,
     domainRules: z.array(DomainRuleSchema).min(1),
     discovery: z.array(DiscoveryRuleSchema).default([{ type: 'seeded_only' }]),
-    crawl: CrawlPolicySchema.default({}),
+    crawl: CrawlPolicySchema.default(() => ({
+      obeyRobotsTxt: true,
+      userAgent: 'oran-ingestion-agent/1.0',
+      allowedPathPrefixes: ['/'],
+      blockedPathPrefixes: [],
+      maxRequestsPerMinute: 60,
+      maxConcurrentRequests: 3,
+      fetchTtlHours: 24,
+    })),
     coverage: z.array(CoverageHintSchema).default([]),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -87,6 +95,32 @@ function hostMatchesRule(host: string, rule: DomainRule): boolean {
   return false;
 }
 
+const TRACKING_PARAM_KEYS = new Set([
+  'gclid',
+  'dclid',
+  'fbclid',
+  'igshid',
+  'msclkid',
+  'mc_cid',
+  'mc_eid',
+  'yclid',
+  'twclid',
+  'gbraid',
+  'wbraid',
+]);
+
+function stripTrackingParams(u: URL): void {
+  for (const key of Array.from(u.searchParams.keys())) {
+    const lower = key.toLowerCase();
+    if (lower.startsWith('utm_') || TRACKING_PARAM_KEYS.has(lower)) {
+      u.searchParams.delete(key);
+    }
+  }
+
+  // Deterministic ordering for stable canonicalization.
+  u.searchParams.sort();
+}
+
 export function canonicalizeUrl(rawUrl: string): string {
   const u = new URL(rawUrl);
 
@@ -99,6 +133,8 @@ export function canonicalizeUrl(rawUrl: string): string {
   if ((u.protocol === 'https:' && u.port === '443') || (u.protocol === 'http:' && u.port === '80')) {
     u.port = '';
   }
+
+  stripTrackingParams(u);
 
   // Normalize trailing slash (but keep root '/')
   if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
@@ -131,7 +167,9 @@ export function matchSourceForUrl(
     }
 
     if (entry.trustLevel === 'quarantine') {
-      return { allowed: false, trustLevel: 'quarantine', sourceId: entry.id, reason: 'quarantine_source' };
+      // Quarantine means: fetch is allowed for seeded URLs, but the agent must not do
+      // within-host expansion or auto-promotion without admin approval.
+      return { allowed: true, trustLevel: 'quarantine', sourceId: entry.id };
     }
 
     return { allowed: true, trustLevel: 'allowlisted', sourceId: entry.id };
@@ -162,9 +200,18 @@ export function buildBootstrapRegistry(nowIso: string = new Date().toISOString()
     }),
     SourceRegistryEntrySchema.parse({
       ...base,
-      id: 'bootstrap-mil',
-      displayName: 'US Military (.mil)',
+      id: 'bootstrap-edu',
+      displayName: 'US Higher Education (.edu)',
       trustLevel: 'allowlisted',
+      domainRules: [{ type: 'suffix', value: '.edu' }],
+      discovery: [{ type: 'seeded_only' }],
+      coverage: [{ kind: 'national', country: 'US' }],
+    }),
+    SourceRegistryEntrySchema.parse({
+      ...base,
+      id: 'bootstrap-mil',
+      displayName: 'US Military (.mil) (quarantined by default)',
+      trustLevel: 'quarantine',
       domainRules: [{ type: 'suffix', value: '.mil' }],
       discovery: [{ type: 'seeded_only' }],
       coverage: [{ kind: 'national', country: 'US' }],

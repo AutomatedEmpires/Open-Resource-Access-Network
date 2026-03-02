@@ -1,0 +1,759 @@
+-- ============================================================
+-- DEPRECATED: 2026-03-02
+-- ============================================================
+-- This migration is SUPERSEDED and should NOT be applied.
+--
+-- Reasons for deprecation:
+-- 1. References non-existent column: extracted_candidates.extracted_data
+-- 2. References resource_tags.target_id which only exists in Schema A,
+--    but this migration expects Schema B (0014) patterns
+-- 3. Conflicting admin workflow with 0016_admin_review_pipeline.sql
+-- 4. Schema A (0002_ingestion_tables.sql) already has basic admin assignment
+--    fields in extracted_candidates (assigned_to_role, assigned_to_user_id)
+--
+-- Future enhancements (capacity limits, multi-admin routing) can be added
+-- in 0018+ migrations that properly reference Schema A tables.
+--
+-- DO NOT APPLY THIS MIGRATION. Keep for historical reference only.
+-- ============================================================
+--
+-- ORIGINAL HEADER:
+-- ============================================================
+-- MIGRATION: 0015_admin_approval_workflow.sql
+-- ============================================================
+-- Extends the ingestion pipeline with:
+-- 1. Admin profiles with capacity tracking
+-- 2. Admin assignments (candidate → admin routing)
+-- 3. Tag confirmation queue (uncertain tags need human approval)
+-- 4. LLM suggestions for missing fields
+--
+-- Flow: Candidate created → Routed to ~5 closest admins/orgs →
+--       Admin confirms/rejects uncertain tags → Meets publish threshold →
+--       Goes to live database
+-- ============================================================
+
+-- ============================================================
+-- ADMIN PROFILES (capacity tracking)
+-- ============================================================
+-- Each admin/org has a profile that tracks their capacity for pending reviews.
+-- Uses PostGIS for geographic-based routing (finds closest admins).
+
+CREATE TABLE IF NOT EXISTS admin_profiles (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id               TEXT NOT NULL UNIQUE,       -- Links to auth system
+
+  -- Profile type
+  profile_type          TEXT NOT NULL DEFAULT 'admin'
+                        CHECK (profile_type IN ('admin', 'org')),
+
+  -- Display info
+  display_name          TEXT NOT NULL,
+  email                 TEXT,
+
+  -- Capacity settings
+  max_pending_reviews   INT NOT NULL DEFAULT 10,    -- Max pending before skip
+
+  -- Location for geographic routing (PostGIS)
+  -- Stored as POINT(longitude latitude)
+  admin_location        GEOMETRY(POINT, 4326),
+
+  -- Jurisdiction coverage (optional, for filtering)
+  jurisdiction_country  TEXT DEFAULT 'US',
+  jurisdiction_states   TEXT[] DEFAULT '{}',        -- Can cover multiple states
+  jurisdiction_counties TEXT[] DEFAULT '{}',        -- Can cover multiple counties
+
+  -- Service categories this admin specializes in
+  category_expertise    TEXT[] DEFAULT '{}',        -- food, housing, healthcare
+
+  -- Status
+  is_active             BOOLEAN NOT NULL DEFAULT true,
+  is_accepting_reviews  BOOLEAN NOT NULL DEFAULT true,   -- Vacation mode etc.
+
+  -- Stats
+  total_reviews_completed INT NOT NULL DEFAULT 0,
+  avg_review_hours      REAL,                       -- Average time to complete review
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_profiles_user
+  ON admin_profiles(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_admin_profiles_active
+  ON admin_profiles(is_active, is_accepting_reviews)
+  WHERE is_active = true AND is_accepting_reviews = true;
+
+CREATE INDEX IF NOT EXISTS idx_admin_profiles_location
+  ON admin_profiles USING GIST (admin_location)
+  WHERE admin_location IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_admin_profiles_jurisdiction
+  ON admin_profiles USING GIN (jurisdiction_states)
+  WHERE jurisdiction_states != '{}';
+
+CREATE INDEX IF NOT EXISTS idx_admin_profiles_categories
+  ON admin_profiles USING GIN (category_expertise)
+  WHERE category_expertise != '{}';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_admin_profiles'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_admin_profiles
+      BEFORE UPDATE ON admin_profiles
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- ADMIN ASSIGNMENTS (candidate → admin routing)
+-- ============================================================
+-- Each candidate is assigned to ~5 closest admins/orgs for review.
+-- Tracks assignment status, response, and timing.
+
+CREATE TABLE IF NOT EXISTS admin_assignments (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  candidate_id          UUID NOT NULL REFERENCES extracted_candidates(id) ON DELETE CASCADE,
+  admin_profile_id      UUID NOT NULL REFERENCES admin_profiles(id) ON DELETE CASCADE,
+
+  -- Assignment priority (1 = closest/primary, 5 = furthest backup)
+  assignment_rank       INT NOT NULL DEFAULT 1
+                        CHECK (assignment_rank BETWEEN 1 AND 10),
+
+  -- Distance from admin to candidate (meters)
+  distance_meters       REAL,
+
+  -- Status of this assignment
+  assignment_status     TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (assignment_status IN (
+                          'pending',        -- Waiting for admin
+                          'accepted',       -- Admin accepted, reviewing
+                          'completed',      -- Admin finished review
+                          'skipped',        -- Admin skipped/declined
+                          'expired',        -- SLA expired, moved to next
+                          'withdrawn'       -- Candidate published by another admin
+                        )),
+
+  -- Admin's decision (if completed)
+  decision              TEXT
+                        CHECK (decision IS NULL OR decision IN (
+                          'approve',        -- Ready for publish
+                          'reject',         -- Not a valid resource
+                          'needs_more_info', -- Missing critical info
+                          'escalate'        -- Needs ORAN admin review
+                        )),
+  decision_notes        TEXT,
+
+  -- Timestamps
+  assigned_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  accepted_at           TIMESTAMPTZ,
+  completed_at          TIMESTAMPTZ,
+  decision_due_by       TIMESTAMPTZ,                -- SLA deadline
+
+  -- Review metrics
+  review_duration_secs  INT,                        -- Time from accept to complete
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- Each admin can only be assigned once per candidate
+  UNIQUE(candidate_id, admin_profile_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_assignments_candidate
+  ON admin_assignments(candidate_id);
+
+CREATE INDEX IF NOT EXISTS idx_assignments_admin
+  ON admin_assignments(admin_profile_id);
+
+CREATE INDEX IF NOT EXISTS idx_assignments_status
+  ON admin_assignments(assignment_status);
+
+CREATE INDEX IF NOT EXISTS idx_assignments_pending
+  ON admin_assignments(admin_profile_id, assignment_status)
+  WHERE assignment_status = 'pending' OR assignment_status = 'accepted';
+
+CREATE INDEX IF NOT EXISTS idx_assignments_due
+  ON admin_assignments(decision_due_by)
+  WHERE assignment_status IN ('pending', 'accepted');
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_admin_assignments'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_admin_assignments
+      BEFORE UPDATE ON admin_assignments
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- VIEW: Admin pending counts (for capacity checking)
+-- ============================================================
+-- Shows how many pending reviews each admin currently has.
+
+CREATE OR REPLACE VIEW admin_pending_counts AS
+SELECT
+  ap.id AS admin_profile_id,
+  ap.user_id,
+  ap.display_name,
+  ap.max_pending_reviews,
+  COUNT(aa.id) FILTER (
+    WHERE aa.assignment_status IN ('pending', 'accepted')
+  ) AS current_pending_count,
+  ap.max_pending_reviews - COALESCE(
+    COUNT(aa.id) FILTER (
+      WHERE aa.assignment_status IN ('pending', 'accepted')
+    ), 0
+  ) AS available_capacity,
+  ap.is_active,
+  ap.is_accepting_reviews,
+  ap.admin_location
+FROM admin_profiles ap
+LEFT JOIN admin_assignments aa ON aa.admin_profile_id = ap.id
+GROUP BY ap.id;
+
+-- ============================================================
+-- TAG CONFIRMATIONS (uncertain tag approval queue)
+-- ============================================================
+-- When the agent extracts a tag with low confidence, it goes here
+-- for human confirmation. Admins can confirm, reject, or modify.
+
+CREATE TABLE IF NOT EXISTS tag_confirmations (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  candidate_id          UUID NOT NULL REFERENCES extracted_candidates(id) ON DELETE CASCADE,
+
+  -- Reference to the original tag (if persisted)
+  resource_tag_id       UUID REFERENCES resource_tags(id) ON DELETE CASCADE,
+
+  -- Tag details (denormalized for queue display)
+  tag_type              TEXT NOT NULL
+                        CHECK (tag_type IN (
+                          'category', 'geographic', 'audience', 'program',
+                          'source_quality', 'verification_missing'
+                        )),
+  suggested_value       TEXT NOT NULL,              -- What the agent suggested
+  suggested_confidence  INT NOT NULL                -- 0-100
+                        CHECK (suggested_confidence BETWEEN 0 AND 100),
+
+  -- Color tier for visual display
+  confidence_tier       TEXT GENERATED ALWAYS AS (
+    CASE
+      WHEN suggested_confidence >= 80 THEN 'green'
+      WHEN suggested_confidence >= 60 THEN 'yellow'
+      WHEN suggested_confidence >= 40 THEN 'orange'
+      ELSE 'red'
+    END
+  ) STORED,
+
+  -- Agent's reasoning for this suggestion
+  agent_reasoning       TEXT,
+  evidence_refs         TEXT[] NOT NULL DEFAULT '{}'::text[],
+
+  -- Human decision
+  confirmation_status   TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (confirmation_status IN (
+                          'pending',          -- Awaiting human review
+                          'confirmed',        -- Human agreed with suggestion
+                          'modified',         -- Human changed the value
+                          'rejected',         -- Human rejected the suggestion
+                          'auto_approved'     -- High confidence, auto-approved
+                        )),
+
+  -- What the human decided (if modified/confirmed)
+  confirmed_value       TEXT,
+  confirmed_confidence  INT
+                        CHECK (confirmed_confidence IS NULL OR confirmed_confidence BETWEEN 0 AND 100),
+
+  -- Who made the decision
+  reviewed_by_user_id   TEXT,
+  reviewed_at           TIMESTAMPTZ,
+  review_notes          TEXT,
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tag_confirm_candidate
+  ON tag_confirmations(candidate_id);
+
+CREATE INDEX IF NOT EXISTS idx_tag_confirm_status
+  ON tag_confirmations(confirmation_status);
+
+CREATE INDEX IF NOT EXISTS idx_tag_confirm_pending
+  ON tag_confirmations(candidate_id, confirmation_status)
+  WHERE confirmation_status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_tag_confirm_tier
+  ON tag_confirmations(confidence_tier)
+  WHERE confirmation_status = 'pending';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_tag_confirmations'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_tag_confirmations
+      BEFORE UPDATE ON tag_confirmations
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- LLM SUGGESTIONS (for missing fields)
+-- ============================================================
+-- When the agent detects missing fields, it can generate LLM suggestions.
+-- Admins can accept, modify, or reject these suggestions.
+
+CREATE TABLE IF NOT EXISTS llm_suggestions (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  candidate_id          UUID NOT NULL REFERENCES extracted_candidates(id) ON DELETE CASCADE,
+
+  -- What field this suggestion is for
+  field_name            TEXT NOT NULL
+                        CHECK (field_name IN (
+                          'name', 'description', 'eligibility_criteria',
+                          'service_area', 'hours', 'phone', 'email', 'website',
+                          'address', 'fees', 'languages', 'intake_process',
+                          'required_documents', 'wait_time', 'capacity',
+                          'category', 'other'
+                        )),
+
+  -- The LLM's suggestion
+  suggested_value       TEXT NOT NULL,
+
+  -- How confident the LLM is (0-100 standard ORAN scale)
+  llm_confidence        INT NOT NULL DEFAULT 50
+                        CHECK (llm_confidence >= 0 AND llm_confidence <= 100),
+
+  -- What prompted this suggestion
+  prompt_context        TEXT,                      -- Sanitized prompt (no PII)
+  source_evidence_refs  TEXT[] NOT NULL DEFAULT '{}'::text[],
+
+  -- Model info (for audit)
+  llm_model             TEXT NOT NULL DEFAULT 'unknown',
+  llm_provider          TEXT NOT NULL DEFAULT 'azure',
+
+  -- Human decision
+  suggestion_status     TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (suggestion_status IN (
+                          'pending',          -- Awaiting human review
+                          'accepted',         -- Human accepted as-is
+                          'modified',         -- Human modified the value
+                          'rejected'          -- Human rejected
+                        )),
+
+  -- What the human decided (if accepted/modified)
+  accepted_value        TEXT,
+  reviewed_by_user_id   TEXT,
+  reviewed_at           TIMESTAMPTZ,
+  review_notes          TEXT,
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_sugg_candidate
+  ON llm_suggestions(candidate_id);
+
+CREATE INDEX IF NOT EXISTS idx_llm_sugg_field
+  ON llm_suggestions(field_name);
+
+CREATE INDEX IF NOT EXISTS idx_llm_sugg_status
+  ON llm_suggestions(suggestion_status);
+
+CREATE INDEX IF NOT EXISTS idx_llm_sugg_pending
+  ON llm_suggestions(candidate_id, suggestion_status)
+  WHERE suggestion_status = 'pending';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_llm_suggestions'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_llm_suggestions
+      BEFORE UPDATE ON llm_suggestions
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- PUBLISH THRESHOLDS (configurable per category)
+-- ============================================================
+-- Defines what it takes for a candidate to be "green" enough to publish.
+
+CREATE TABLE IF NOT EXISTS publish_thresholds (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+  -- What this threshold applies to (NULL = default)
+  category              TEXT,                       -- food, housing, healthcare, NULL=default
+  jurisdiction_state    TEXT,                       -- TX, CA, NULL=all
+
+  -- Required minimums
+  min_confidence_score  INT NOT NULL DEFAULT 60,    -- Overall score
+  min_confirmed_tags    INT NOT NULL DEFAULT 1,     -- At least 1 confirmed tag
+  max_pending_tags      INT NOT NULL DEFAULT 3,     -- Max unconfirmed tags allowed
+
+  -- Required fields (all must be satisfied)
+  required_checklist_items TEXT[] NOT NULL DEFAULT
+    ARRAY['contact_method', 'service_area'],
+
+  -- Required approvals
+  min_admin_approvals   INT NOT NULL DEFAULT 1,     -- At least 1 admin must approve
+  require_org_approval  BOOLEAN NOT NULL DEFAULT false,   -- Must have org verification
+
+  -- Auto-publish threshold (skip admin if score >= this)
+  auto_publish_threshold INT,                       -- NULL = always require admin
+
+  priority              INT NOT NULL DEFAULT 0,     -- Higher = checked first
+
+  is_active             BOOLEAN NOT NULL DEFAULT true,
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- Only one default (NULL category + NULL state) allowed
+  UNIQUE NULLS NOT DISTINCT (category, jurisdiction_state)
+);
+
+CREATE INDEX IF NOT EXISTS idx_publish_thresh_category
+  ON publish_thresholds(category);
+
+-- Insert default publish threshold
+INSERT INTO publish_thresholds (
+  category, jurisdiction_state, min_confidence_score, min_confirmed_tags,
+  max_pending_tags, required_checklist_items, min_admin_approvals, priority
+)
+VALUES (
+  NULL, NULL, 60, 1, 3, ARRAY['contact_method', 'service_area'], 1, 0
+)
+ON CONFLICT DO NOTHING;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_publish_thresholds'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_publish_thresholds
+      BEFORE UPDATE ON publish_thresholds
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- VIEW: Candidate publish readiness
+-- ============================================================
+-- Aggregates all the data needed to determine if a candidate is ready.
+
+CREATE OR REPLACE VIEW candidate_publish_readiness AS
+SELECT
+  c.id AS candidate_id,
+  c.review_status,
+  c.confidence_score,
+  c.confidence_tier,
+
+  -- Tag status
+  (SELECT COUNT(*) FROM tag_confirmations tc
+   WHERE tc.candidate_id = c.id
+   AND tc.confirmation_status = 'confirmed') AS confirmed_tags_count,
+  (SELECT COUNT(*) FROM tag_confirmations tc
+   WHERE tc.candidate_id = c.id
+   AND tc.confirmation_status = 'pending') AS pending_tags_count,
+
+  -- Admin approval status
+  (SELECT COUNT(*) FROM admin_assignments aa
+   WHERE aa.candidate_id = c.id
+   AND aa.decision = 'approve') AS approval_count,
+  (SELECT COUNT(*) FROM admin_assignments aa
+   WHERE aa.candidate_id = c.id
+   AND aa.decision = 'reject') AS rejection_count,
+  (SELECT bool_or(ap.profile_type = 'org') FROM admin_assignments aa
+   JOIN admin_profiles ap ON ap.id = aa.admin_profile_id
+   WHERE aa.candidate_id = c.id
+   AND aa.decision = 'approve') AS has_org_approval,
+
+  -- Checklist status
+  (SELECT COUNT(*) FROM checklist_items ci
+   WHERE ci.candidate_id = c.id
+   AND ci.is_required = true
+   AND ci.status = 'satisfied') AS satisfied_checklist_count,
+  (SELECT COUNT(*) FROM checklist_items ci
+   WHERE ci.candidate_id = c.id
+   AND ci.is_required = true
+   AND ci.status = 'missing') AS missing_checklist_count,
+
+  -- LLM suggestions status
+  (SELECT COUNT(*) FROM llm_suggestions ls
+   WHERE ls.candidate_id = c.id
+   AND ls.suggestion_status = 'pending') AS pending_llm_suggestions,
+
+  c.created_at,
+  c.updated_at
+
+FROM extracted_candidates c;
+
+-- ============================================================
+-- FUNCTION: Find closest admins with capacity
+-- ============================================================
+-- Given a candidate's location, returns the N closest admins
+-- who have available capacity and match jurisdiction.
+
+CREATE OR REPLACE FUNCTION find_closest_admins_with_capacity(
+  p_candidate_location GEOMETRY,
+  p_jurisdiction_state TEXT,
+  p_jurisdiction_county TEXT,
+  p_category TEXT,
+  p_limit INT DEFAULT 5
+)
+RETURNS TABLE (
+  admin_profile_id UUID,
+  user_id TEXT,
+  display_name TEXT,
+  profile_type TEXT,
+  distance_meters REAL,
+  available_capacity INT
+)
+LANGUAGE plpgsql
+STABLE
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    apc.admin_profile_id,
+    apc.user_id,
+    apc.display_name,
+    ap.profile_type,
+    ST_Distance(
+      ap.admin_location::geography,
+      p_candidate_location::geography
+    )::REAL AS distance_meters,
+    apc.available_capacity::INT
+  FROM admin_pending_counts apc
+  JOIN admin_profiles ap ON ap.id = apc.admin_profile_id
+  WHERE apc.is_active = true
+    AND apc.is_accepting_reviews = true
+    AND apc.available_capacity > 0
+    AND apc.admin_location IS NOT NULL
+    -- Match jurisdiction (if specified)
+    AND (
+      p_jurisdiction_state IS NULL
+      OR ap.jurisdiction_states = '{}'
+      OR p_jurisdiction_state = ANY(ap.jurisdiction_states)
+    )
+    AND (
+      p_jurisdiction_county IS NULL
+      OR ap.jurisdiction_counties = '{}'
+      OR p_jurisdiction_county = ANY(ap.jurisdiction_counties)
+    )
+    -- Match category expertise (if specified)
+    AND (
+      p_category IS NULL
+      OR ap.category_expertise = '{}'
+      OR p_category = ANY(ap.category_expertise)
+    )
+  ORDER BY distance_meters ASC NULLS LAST
+  LIMIT p_limit;
+END;
+$$;
+
+-- ============================================================
+-- FUNCTION: Route candidate to admins
+-- ============================================================
+-- Creates admin assignments for a candidate based on location.
+-- Assigns to ~5 closest admins/orgs with available capacity.
+
+CREATE OR REPLACE FUNCTION route_candidate_to_admins(
+  p_candidate_id UUID,
+  p_target_count INT DEFAULT 5
+)
+RETURNS INT  -- Number of admins assigned
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_candidate RECORD;
+  v_assigned_count INT := 0;
+  v_admin RECORD;
+  v_rank INT := 1;
+  v_sla_hours INT;
+BEGIN
+  -- Get candidate info
+  SELECT
+    c.id,
+    c.extracted_data->>'location' AS location_text,
+    l.point AS location_geom,
+    c.jurisdiction_state,
+    c.jurisdiction_county,
+    (SELECT rt.tag_value FROM resource_tags rt
+     WHERE rt.target_id = c.id AND rt.tag_type = 'category'
+     LIMIT 1) AS primary_category
+  INTO v_candidate
+  FROM extracted_candidates c
+  LEFT JOIN locations l ON l.id = (c.extracted_data->>'location_id')::UUID
+  WHERE c.id = p_candidate_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Candidate not found: %', p_candidate_id;
+  END IF;
+
+  -- Calculate SLA based on confidence tier
+  SELECT
+    CASE
+      WHEN c.confidence_tier = 'green' THEN 72
+      WHEN c.confidence_tier = 'yellow' THEN 48
+      WHEN c.confidence_tier = 'orange' THEN 24
+      ELSE 12
+    END INTO v_sla_hours
+  FROM extracted_candidates c
+  WHERE c.id = p_candidate_id;
+
+  -- Find and assign closest admins
+  FOR v_admin IN
+    SELECT * FROM find_closest_admins_with_capacity(
+      v_candidate.location_geom,
+      v_candidate.jurisdiction_state,
+      v_candidate.jurisdiction_county,
+      v_candidate.primary_category,
+      p_target_count
+    )
+  LOOP
+    INSERT INTO admin_assignments (
+      candidate_id,
+      admin_profile_id,
+      assignment_rank,
+      distance_meters,
+      assignment_status,
+      assigned_at,
+      decision_due_by
+    )
+    VALUES (
+      p_candidate_id,
+      v_admin.admin_profile_id,
+      v_rank,
+      v_admin.distance_meters,
+      'pending',
+      now(),
+      now() + (v_sla_hours || ' hours')::INTERVAL
+    )
+    ON CONFLICT (candidate_id, admin_profile_id) DO NOTHING;
+
+    IF FOUND THEN
+      v_assigned_count := v_assigned_count + 1;
+      v_rank := v_rank + 1;
+    END IF;
+  END LOOP;
+
+  RETURN v_assigned_count;
+END;
+$$;
+
+-- ============================================================
+-- FUNCTION: Check if candidate meets publish threshold
+-- ============================================================
+-- Returns true if candidate is ready to be published.
+
+CREATE OR REPLACE FUNCTION candidate_meets_publish_threshold(
+  p_candidate_id UUID
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  v_readiness RECORD;
+  v_threshold RECORD;
+  v_candidate RECORD;
+BEGIN
+  -- Get candidate info
+  SELECT
+    c.confidence_score,
+    c.jurisdiction_state,
+    (SELECT rt.tag_value FROM resource_tags rt
+     WHERE rt.target_id = c.id AND rt.tag_type = 'category'
+     LIMIT 1) AS primary_category
+  INTO v_candidate
+  FROM extracted_candidates c
+  WHERE c.id = p_candidate_id;
+
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+
+  -- Get readiness status
+  SELECT * INTO v_readiness
+  FROM candidate_publish_readiness
+  WHERE candidate_id = p_candidate_id;
+
+  -- Find best matching threshold
+  SELECT * INTO v_threshold
+  FROM publish_thresholds pt
+  WHERE pt.is_active = true
+    AND (pt.category IS NULL OR pt.category = v_candidate.primary_category)
+    AND (pt.jurisdiction_state IS NULL OR pt.jurisdiction_state = v_candidate.jurisdiction_state)
+  ORDER BY pt.priority DESC, pt.category NULLS LAST, pt.jurisdiction_state NULLS LAST
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    -- No threshold defined, use very conservative defaults
+    RETURN v_readiness.confidence_score >= 80
+       AND v_readiness.pending_tags_count = 0
+       AND v_readiness.approval_count >= 1;
+  END IF;
+
+  -- Check all threshold requirements
+  RETURN v_readiness.confidence_score >= v_threshold.min_confidence_score
+     AND v_readiness.confirmed_tags_count >= v_threshold.min_confirmed_tags
+     AND v_readiness.pending_tags_count <= v_threshold.max_pending_tags
+     AND v_readiness.approval_count >= v_threshold.min_admin_approvals
+     AND (NOT v_threshold.require_org_approval OR v_readiness.has_org_approval = true)
+     AND v_readiness.missing_checklist_count = 0;
+END;
+$$;
+
+-- ============================================================
+-- Add audit event types for new workflow
+-- ============================================================
+-- Extends the existing ingestion_audit_log check constraint
+
+ALTER TABLE ingestion_audit_log
+  DROP CONSTRAINT IF EXISTS ingestion_audit_log_event_type_check;
+
+ALTER TABLE ingestion_audit_log
+  ADD CONSTRAINT ingestion_audit_log_event_type_check
+  CHECK (event_type IN (
+    -- Existing events
+    'job.created', 'job.started', 'job.completed', 'job.failed',
+    'url.discovered', 'url.fetched', 'url.skipped',
+    'candidate.extracted', 'candidate.dedupe_matched',
+    'check.ran', 'check.passed', 'check.failed',
+    'tag.added', 'tag.removed',
+    'score.updated',
+    'review.assigned', 'review.status_changed',
+    'publish.approved', 'publish.rejected', 'publish.completed',
+    'reverify.scheduled', 'reverify.completed',
+    'link.discovered', 'link.verified', 'link.broken',
+    -- New admin workflow events
+    'assignment.created', 'assignment.accepted', 'assignment.completed',
+    'assignment.skipped', 'assignment.expired', 'assignment.withdrawn',
+    'tag_confirmation.created', 'tag_confirmation.confirmed',
+    'tag_confirmation.modified', 'tag_confirmation.rejected',
+    'llm_suggestion.created', 'llm_suggestion.accepted',
+    'llm_suggestion.modified', 'llm_suggestion.rejected',
+    'threshold.checked', 'threshold.met', 'threshold.not_met'
+  ));
+
+-- ============================================================
+-- Extend target_type for new entities
+-- ============================================================
+
+ALTER TABLE ingestion_audit_log
+  DROP CONSTRAINT IF EXISTS ingestion_audit_log_target_type_check;
+
+ALTER TABLE ingestion_audit_log
+  ADD CONSTRAINT ingestion_audit_log_target_type_check
+  CHECK (target_type IN (
+    'job', 'url', 'evidence', 'candidate', 'check', 'tag', 'link', 'service',
+    'assignment', 'tag_confirmation', 'llm_suggestion', 'threshold'
+  ));

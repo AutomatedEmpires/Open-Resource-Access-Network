@@ -1,0 +1,581 @@
+/**
+ * Drizzle ORM Schema for ORAN Ingestion Tables
+ *
+ * This defines the TypeScript schema for tables used by the ingestion agent.
+ * Corresponds to db/migrations/0002_ingestion_tables.sql
+ */
+import {
+  pgTable,
+  uuid,
+  text,
+  timestamp,
+  integer,
+  boolean,
+  jsonb,
+  uniqueIndex,
+  index,
+} from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+
+// ============================================================
+// INGESTION SOURCES (Source Registry)
+// ============================================================
+export const ingestionSources = pgTable(
+  'ingestion_sources',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    pattern: text('pattern').notNull(),
+    patternType: text('pattern_type').notNull().default('domain'),
+    trustLevel: text('trust_level').notNull().default('quarantine'),
+    maxDepth: integer('max_depth').notNull().default(2),
+    crawlFrequency: integer('crawl_frequency').notNull().default(7),
+    ownerOrgId: uuid('owner_org_id'),
+    isActive: boolean('is_active').notNull().default(true),
+    flags: jsonb('flags').notNull().default({}),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_ingestion_sources_pattern').on(table.pattern),
+    index('idx_ingestion_sources_trust').on(table.trustLevel),
+  ]
+);
+
+export type IngestionSource = typeof ingestionSources.$inferSelect;
+export type NewIngestionSource = typeof ingestionSources.$inferInsert;
+
+// ============================================================
+// INGESTION JOBS
+// ============================================================
+export const ingestionJobs = pgTable(
+  'ingestion_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    correlationId: text('correlation_id').notNull().unique(),
+    jobType: text('job_type').notNull(),
+    sourceId: uuid('source_id').references(() => ingestionSources.id),
+    seedUrl: text('seed_url'),
+    status: text('status').notNull().default('queued'),
+    priority: integer('priority').notNull().default(0),
+    maxUrls: integer('max_urls').default(100),
+    currentDepth: integer('current_depth').default(0),
+    statsUrlsDiscovered: integer('stats_urls_discovered').notNull().default(0),
+    statsUrlsFetched: integer('stats_urls_fetched').notNull().default(0),
+    statsCandidatesExtracted: integer('stats_candidates_extracted').notNull().default(0),
+    statsCandidatesVerified: integer('stats_candidates_verified').notNull().default(0),
+    statsErrorsCount: integer('stats_errors_count').notNull().default(0),
+    errorMessage: text('error_message'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_ingestion_jobs_status').on(table.status),
+    index('idx_ingestion_jobs_source').on(table.sourceId),
+  ]
+);
+
+export type IngestionJobRow = typeof ingestionJobs.$inferSelect;
+export type NewIngestionJobRow = typeof ingestionJobs.$inferInsert;
+
+// ============================================================
+// EVIDENCE SNAPSHOTS
+// ============================================================
+export const evidenceSnapshots = pgTable(
+  'evidence_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    evidenceId: text('evidence_id').notNull().unique(),
+    canonicalUrl: text('canonical_url').notNull(),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
+    httpStatus: integer('http_status').notNull(),
+    contentHashSha256: text('content_hash_sha256').notNull(),
+    contentLength: integer('content_length').notNull().default(0),
+    contentType: text('content_type'),
+    blobStorageKey: text('blob_storage_key'),
+    htmlRaw: text('html_raw'),
+    textExtracted: text('text_extracted'),
+    title: text('title'),
+    metaDescription: text('meta_description'),
+    language: text('language'),
+    jobId: uuid('job_id').references(() => ingestionJobs.id),
+    correlationId: text('correlation_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_evidence_canonical_url').on(table.canonicalUrl),
+    index('idx_evidence_content_hash').on(table.contentHashSha256),
+    index('idx_evidence_job').on(table.jobId),
+  ]
+);
+
+export type EvidenceSnapshotRow = typeof evidenceSnapshots.$inferSelect;
+export type NewEvidenceSnapshotRow = typeof evidenceSnapshots.$inferInsert;
+
+// ============================================================
+// EXTRACTED CANDIDATES
+// ============================================================
+export const extractedCandidates = pgTable(
+  'extracted_candidates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    candidateId: text('candidate_id').notNull().unique(),
+    extractionId: text('extraction_id').notNull().unique(),
+    extractKeySha256: text('extract_key_sha256').notNull(),
+    extractedAt: timestamp('extracted_at', { withTimezone: true }).notNull(),
+
+    // Extracted fields
+    organizationName: text('organization_name').notNull(),
+    serviceName: text('service_name').notNull(),
+    description: text('description'),
+    websiteUrl: text('website_url'),
+    phone: text('phone'),
+    phones: jsonb('phones').default([]),
+    addressLine1: text('address_line1'),
+    addressLine2: text('address_line2'),
+    addressCity: text('address_city'),
+    addressRegion: text('address_region'),
+    addressPostalCode: text('address_postal_code'),
+    addressCountry: text('address_country').default('US'),
+    isRemoteService: boolean('is_remote_service').default(false),
+
+    // Review workflow
+    reviewStatus: text('review_status').notNull().default('pending'),
+    assignedToRole: text('assigned_to_role'),
+    assignedToUserId: text('assigned_to_user_id'),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }),
+
+    // Jurisdiction
+    jurisdictionState: text('jurisdiction_state'),
+    jurisdictionCounty: text('jurisdiction_county'),
+    jurisdictionCity: text('jurisdiction_city'),
+    jurisdictionKind: text('jurisdiction_kind').default('municipal'),
+
+    // Scoring
+    confidenceScore: integer('confidence_score').notNull().default(0),
+    confidenceTier: text('confidence_tier').notNull().default('red'),
+    scoreVerification: integer('score_verification').default(0),
+    scoreCompleteness: integer('score_completeness').default(0),
+    scoreFreshness: integer('score_freshness').default(0),
+
+    // Timers
+    reviewBy: timestamp('review_by', { withTimezone: true }),
+    lastVerifiedAt: timestamp('last_verified_at', { withTimezone: true }),
+    reverifyAt: timestamp('reverify_at', { withTimezone: true }),
+
+    // Verification checklist
+    verificationChecklist: jsonb('verification_checklist').notNull().default({}),
+
+    // Investigation pack
+    investigationPack: jsonb('investigation_pack').notNull().default({}),
+
+    // Provenance
+    primaryEvidenceId: text('primary_evidence_id'),
+    provenanceRecords: jsonb('provenance_records').notNull().default([]),
+
+    // Published
+    publishedServiceId: uuid('published_service_id'),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    publishedByUserId: text('published_by_user_id'),
+
+    // Job link
+    jobId: uuid('job_id').references(() => ingestionJobs.id),
+    correlationId: text('correlation_id').notNull(),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_candidates_extract_key').on(table.extractKeySha256),
+    index('idx_candidates_status').on(table.reviewStatus),
+    index('idx_candidates_tier').on(table.confidenceTier),
+    index('idx_candidates_jurisdiction').on(table.jurisdictionState, table.jurisdictionCounty),
+    index('idx_candidates_job').on(table.jobId),
+  ]
+);
+
+export type ExtractedCandidateRow = typeof extractedCandidates.$inferSelect;
+export type NewExtractedCandidateRow = typeof extractedCandidates.$inferInsert;
+
+// ============================================================
+// RESOURCE TAGS
+// ============================================================
+export const resourceTags = pgTable(
+  'resource_tags',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    targetId: text('target_id').notNull(),
+    targetType: text('target_type').notNull(),
+    tagType: text('tag_type').notNull(),
+    tagValue: text('tag_value').notNull(),
+    confidence: integer('confidence'),
+    source: text('source').notNull().default('llm'),
+    addedBy: text('added_by'),
+    addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_tags_unique').on(table.targetId, table.targetType, table.tagType, table.tagValue),
+    index('idx_tags_target').on(table.targetId, table.targetType),
+    index('idx_tags_type').on(table.tagType),
+  ]
+);
+
+export type ResourceTagRow = typeof resourceTags.$inferSelect;
+export type NewResourceTagRow = typeof resourceTags.$inferInsert;
+
+// ============================================================
+// DISCOVERED LINKS
+// ============================================================
+export const discoveredLinks = pgTable(
+  'discovered_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    evidenceId: text('evidence_id').notNull(),
+    url: text('url').notNull(),
+    linkType: text('link_type').notNull(),
+    label: text('label'),
+    confidence: integer('confidence').default(50),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_discovered_links_evidence').on(table.evidenceId),
+    index('idx_discovered_links_type').on(table.linkType),
+  ]
+);
+
+export type DiscoveredLinkRow = typeof discoveredLinks.$inferSelect;
+export type NewDiscoveredLinkRow = typeof discoveredLinks.$inferInsert;
+
+// ============================================================
+// AUDIT EVENTS
+// ============================================================
+export const ingestionAuditEvents = pgTable(
+  'ingestion_audit_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    candidateId: text('candidate_id').notNull(),
+    eventType: text('event_type').notNull(),
+    actorType: text('actor_type').notNull(),
+    actorId: text('actor_id'),
+    details: jsonb('details').notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_audit_candidate').on(table.candidateId),
+    index('idx_audit_type').on(table.eventType),
+  ]
+);
+
+export type IngestionAuditEventRow = typeof ingestionAuditEvents.$inferSelect;
+export type NewIngestionAuditEventRow = typeof ingestionAuditEvents.$inferInsert;
+
+// ============================================================
+// LLM SUGGESTIONS
+// ============================================================
+export const llmSuggestions = pgTable(
+  'llm_suggestions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    candidateId: text('candidate_id').notNull(),
+    suggestionId: text('suggestion_id').notNull().unique(),
+    field: text('field').notNull(),
+    suggestedValue: text('suggested_value').notNull(),
+    originalValue: text('original_value'),
+    confidence: integer('confidence').notNull(),
+    reasoning: text('reasoning'),
+    status: text('status').notNull().default('pending'),
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    evidenceId: text('evidence_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_suggestions_candidate').on(table.candidateId),
+    index('idx_suggestions_status').on(table.status),
+    index('idx_suggestions_field').on(table.field),
+  ]
+);
+
+export type LlmSuggestionRow = typeof llmSuggestions.$inferSelect;
+export type NewLlmSuggestionRow = typeof llmSuggestions.$inferInsert;
+
+// ============================================================
+// RELATIONS
+// ============================================================
+export const ingestionJobsRelations = relations(ingestionJobs, ({ one, many }) => ({
+  source: one(ingestionSources, {
+    fields: [ingestionJobs.sourceId],
+    references: [ingestionSources.id],
+  }),
+  evidenceSnapshots: many(evidenceSnapshots),
+  candidates: many(extractedCandidates),
+}));
+
+export const evidenceSnapshotsRelations = relations(evidenceSnapshots, ({ one, many }) => ({
+  job: one(ingestionJobs, {
+    fields: [evidenceSnapshots.jobId],
+    references: [ingestionJobs.id],
+  }),
+  links: many(discoveredLinks),
+}));
+
+export const extractedCandidatesRelations = relations(extractedCandidates, ({ one, many }) => ({
+  job: one(ingestionJobs, {
+    fields: [extractedCandidates.jobId],
+    references: [ingestionJobs.id],
+  }),
+  auditEvents: many(ingestionAuditEvents),
+  suggestions: many(llmSuggestions),
+}));
+
+export const discoveredLinksRelations = relations(discoveredLinks, ({ one }) => ({
+  evidence: one(evidenceSnapshots, {
+    fields: [discoveredLinks.evidenceId],
+    references: [evidenceSnapshots.evidenceId],
+  }),
+}));
+
+export const ingestionAuditEventsRelations = relations(ingestionAuditEvents, ({ one }) => ({
+  candidate: one(extractedCandidates, {
+    fields: [ingestionAuditEvents.candidateId],
+    references: [extractedCandidates.candidateId],
+  }),
+}));
+
+export const llmSuggestionsRelations = relations(llmSuggestions, ({ one }) => ({
+  candidate: one(extractedCandidates, {
+    fields: [llmSuggestions.candidateId],
+    references: [extractedCandidates.candidateId],
+  }),
+}));
+
+// ============================================================
+// ADMIN REVIEW PROFILES (0018_admin_capacity_routing.sql)
+// ============================================================
+export const adminReviewProfiles = pgTable(
+  'admin_review_profiles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id').notNull().unique(),
+
+    // Capacity limits
+    maxPending: integer('max_pending').notNull().default(10),
+    maxInReview: integer('max_in_review').notNull().default(5),
+
+    // Current counts (maintained by triggers)
+    pendingCount: integer('pending_count').notNull().default(0),
+    inReviewCount: integer('in_review_count').notNull().default(0),
+
+    // Geographic location - stored as WKT text, converted to GEOMETRY by PostGIS
+    // Note: Drizzle doesn't have native PostGIS support, use raw SQL for geo queries
+    // location: kept in SQL only for PostGIS GEOMETRY type
+
+    // Coverage filters
+    coverageZoneId: uuid('coverage_zone_id'),
+    coverageStates: jsonb('coverage_states').default([]),
+    coverageCounties: jsonb('coverage_counties').default([]),
+
+    // Expertise
+    categoryExpertise: jsonb('category_expertise').default([]),
+
+    // Performance metrics
+    totalVerified: integer('total_verified').notNull().default(0),
+    totalRejected: integer('total_rejected').notNull().default(0),
+    avgReviewHours: text('avg_review_hours'), // Stored as text, parsed as decimal
+    lastReviewAt: timestamp('last_review_at', { withTimezone: true }),
+
+    // Status
+    isActive: boolean('is_active').notNull().default(true),
+    isAcceptingNew: boolean('is_accepting_new').notNull().default(true),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_admin_review_profiles_user').on(table.userId),
+    index('idx_admin_review_profiles_available').on(table.isActive, table.isAcceptingNew, table.pendingCount),
+  ]
+);
+
+export type AdminReviewProfileRow = typeof adminReviewProfiles.$inferSelect;
+export type NewAdminReviewProfileRow = typeof adminReviewProfiles.$inferInsert;
+
+// ============================================================
+// CANDIDATE ADMIN ASSIGNMENTS (0018_admin_capacity_routing.sql)
+// ============================================================
+export const candidateAdminAssignments = pgTable(
+  'candidate_admin_assignments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    candidateId: text('candidate_id').notNull(),
+    adminProfileId: uuid('admin_profile_id').notNull().references(() => adminReviewProfiles.id),
+
+    assignmentType: text('assignment_type').notNull().default('geographic'),
+    priorityRank: integer('priority_rank').notNull().default(1),
+    distanceMeters: text('distance_meters'), // Stored as text for decimal precision
+
+    status: text('status').notNull().default('pending'),
+
+    assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+
+    outcome: text('outcome'),
+    outcomeNotes: text('outcome_notes'),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_candidate_assignments_unique').on(table.candidateId, table.adminProfileId),
+    index('idx_candidate_assignments_candidate').on(table.candidateId),
+    index('idx_candidate_assignments_admin').on(table.adminProfileId),
+    index('idx_candidate_assignments_status').on(table.status),
+  ]
+);
+
+export type CandidateAdminAssignmentRow = typeof candidateAdminAssignments.$inferSelect;
+export type NewCandidateAdminAssignmentRow = typeof candidateAdminAssignments.$inferInsert;
+
+// ============================================================
+// TAG CONFIRMATION QUEUE (0019_tag_confirmation_queue.sql)
+// ============================================================
+export const tagConfirmationQueue = pgTable(
+  'tag_confirmation_queue',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    resourceTagId: uuid('resource_tag_id').notNull(),
+    candidateId: text('candidate_id').notNull(),
+    tagType: text('tag_type').notNull(),
+    tagValue: text('tag_value').notNull(),
+    originalConfidence: integer('original_confidence').notNull(),
+
+    status: text('status').notNull().default('pending'),
+
+    assignedToUserId: text('assigned_to_user_id'),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }),
+
+    reviewedByUserId: text('reviewed_by_user_id'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+
+    modifiedTagValue: text('modified_tag_value'),
+    reviewNotes: text('review_notes'),
+
+    evidenceSnippet: text('evidence_snippet'),
+    evidenceId: text('evidence_id'),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_tag_queue_candidate').on(table.candidateId),
+    index('idx_tag_queue_status').on(table.status),
+    index('idx_tag_queue_resource_tag').on(table.resourceTagId),
+  ]
+);
+
+export type TagConfirmationQueueRow = typeof tagConfirmationQueue.$inferSelect;
+export type NewTagConfirmationQueueRow = typeof tagConfirmationQueue.$inferInsert;
+
+// ============================================================
+// PUBLISH CRITERIA (0019_tag_confirmation_queue.sql)
+// ============================================================
+export const publishCriteria = pgTable(
+  'publish_criteria',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jurisdictionState: text('jurisdiction_state'),
+    jurisdictionCounty: text('jurisdiction_county'),
+    primaryCategory: text('primary_category'),
+
+    minOverallScore: integer('min_overall_score').notNull().default(60),
+    minTagConfidence: integer('min_tag_confidence').notNull().default(70),
+    minAdminApprovals: integer('min_admin_approvals').notNull().default(1),
+    requireOrgApproval: boolean('require_org_approval').notNull().default(false),
+
+    requiredFields: jsonb('required_fields').notNull().default(['organization_name', 'service_name']),
+    minServiceTypeTags: integer('min_service_type_tags').notNull().default(1),
+    requireDemographicTag: boolean('require_demographic_tag').notNull().default(false),
+
+    maxReviewHours: integer('max_review_hours').notNull().default(48),
+    isActive: boolean('is_active').notNull().default(true),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_publish_criteria_state').on(table.jurisdictionState),
+    index('idx_publish_criteria_category').on(table.primaryCategory),
+  ]
+);
+
+export type PublishCriteriaRow = typeof publishCriteria.$inferSelect;
+export type NewPublishCriteriaRow = typeof publishCriteria.$inferInsert;
+
+// ============================================================
+// CANDIDATE READINESS (0019_tag_confirmation_queue.sql)
+// ============================================================
+export const candidateReadiness = pgTable(
+  'candidate_readiness',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    candidateId: text('candidate_id').notNull().unique(),
+
+    isReady: boolean('is_ready').notNull().default(false),
+
+    hasRequiredFields: boolean('has_required_fields').notNull().default(false),
+    hasRequiredTags: boolean('has_required_tags').notNull().default(false),
+    tagsConfirmed: boolean('tags_confirmed').notNull().default(false),
+    meetsScoreThreshold: boolean('meets_score_threshold').notNull().default(false),
+    hasAdminApproval: boolean('has_admin_approval').notNull().default(false),
+
+    pendingTagCount: integer('pending_tag_count').notNull().default(0),
+    adminApprovalCount: integer('admin_approval_count').notNull().default(0),
+
+    blockers: jsonb('blockers').notNull().default([]),
+
+    lastEvaluatedAt: timestamp('last_evaluated_at', { withTimezone: true }).notNull().defaultNow(),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_candidate_readiness_ready').on(table.isReady),
+    index('idx_candidate_readiness_pending').on(table.pendingTagCount),
+  ]
+);
+
+export type CandidateReadinessRow = typeof candidateReadiness.$inferSelect;
+export type NewCandidateReadinessRow = typeof candidateReadiness.$inferInsert;
+
+// ============================================================
+// ADDITIONAL RELATIONS (0018/0019)
+// ============================================================
+export const adminReviewProfilesRelations = relations(adminReviewProfiles, ({ many }) => ({
+  assignments: many(candidateAdminAssignments),
+}));
+
+export const candidateAdminAssignmentsRelations = relations(candidateAdminAssignments, ({ one }) => ({
+  adminProfile: one(adminReviewProfiles, {
+    fields: [candidateAdminAssignments.adminProfileId],
+    references: [adminReviewProfiles.id],
+  }),
+}));
+
+export const tagConfirmationQueueRelations = relations(tagConfirmationQueue, ({ one }) => ({
+  resourceTag: one(resourceTags, {
+    fields: [tagConfirmationQueue.resourceTagId],
+    references: [resourceTags.id],
+  }),
+}));
+
+export const candidateReadinessRelations = relations(candidateReadiness, ({ one }) => ({
+  candidate: one(extractedCandidates, {
+    fields: [candidateReadiness.candidateId],
+    references: [extractedCandidates.candidateId],
+  }),
+}));

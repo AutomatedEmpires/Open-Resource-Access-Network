@@ -1,0 +1,761 @@
+-- ============================================================
+-- DEPRECATED: 2026-03-02
+-- ============================================================
+-- This migration is SUPERSEDED by 0002_ingestion_tables.sql.
+--
+-- Reasons for deprecation:
+-- 1. Schema conflicts with code-backed 0002_ingestion_tables.sql
+-- 2. Different trust levels ('allowlisted' vs 'vetted/community')
+-- 3. Different evidence storage model (blob URIs vs in-DB content)
+-- 4. Different tag model (FK-based vs polymorphic target_id/target_type)
+-- 5. No Drizzle ORM or TypeScript backing
+-- 6. No test coverage
+--
+-- The 0002 schema is wired to:
+-- - src/db/schema.ts (Drizzle ORM)
+-- - src/agents/ingestion/persistence/*.ts (EvidenceStore, CandidateStore)
+-- - 713+ passing tests
+--
+-- DO NOT APPLY THIS MIGRATION. Keep for historical reference only.
+-- ============================================================
+--
+-- ORIGINAL HEADER:
+-- 0014_ingestion_pipeline.sql
+-- Complete ingestion agent pipeline schema.
+--
+-- This migration creates the tables needed for the autonomous ingestion agent
+-- that scours .gov/.edu/.mil/city-county sources, extracts service records,
+-- tags them, scores confidence, and routes to geographic admins for verification.
+--
+-- Architecture: Ingestion writes → DB → Chat reads (separate systems)
+-- Idempotent: safe to run multiple times.
+
+-- ============================================================
+-- SOURCE REGISTRY (persisted)
+-- ============================================================
+-- The Source Registry defines what domains can be crawled and how.
+-- This is the persisted version of the bootstrap registry in code.
+CREATE TABLE IF NOT EXISTS source_registry (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  display_name          TEXT NOT NULL,
+  trust_level           TEXT NOT NULL DEFAULT 'quarantine'
+                        CHECK (trust_level IN ('allowlisted', 'quarantine', 'blocked')),
+  -- Domain rules stored as JSONB array: [{type: 'suffix', value: '.gov'}, ...]
+  domain_rules          JSONB NOT NULL DEFAULT '[]'::jsonb,
+  -- Crawl policy: obey_robots, rate limits, path rules
+  crawl_policy          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  -- Discovery rules: sitemap, rss, seeded_only, etc.
+  discovery_rules       JSONB NOT NULL DEFAULT '[]'::jsonb,
+  -- Coverage hint: national, state, county, virtual
+  coverage_hints        JSONB NOT NULL DEFAULT '[]'::jsonb,
+  is_active             BOOLEAN NOT NULL DEFAULT true,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_by_user_id    TEXT,
+  updated_by_user_id    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_registry_trust
+  ON source_registry(trust_level);
+
+CREATE INDEX IF NOT EXISTS idx_source_registry_active
+  ON source_registry(is_active);
+
+-- GIN index for domain rule queries
+CREATE INDEX IF NOT EXISTS idx_source_registry_domains
+  ON source_registry USING gin(domain_rules);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_source_registry'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_source_registry
+      BEFORE UPDATE ON source_registry
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- INGESTION JOBS
+-- ============================================================
+-- Tracks every crawl/extraction job the agent runs.
+-- Provides audit trail and prevents duplicate work.
+CREATE TABLE IF NOT EXISTS ingestion_jobs (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  correlation_id        TEXT NOT NULL UNIQUE,       -- Links all audit events for this job
+  source_registry_id    UUID REFERENCES source_registry(id) ON DELETE SET NULL,
+
+  -- Job type: seed_crawl, scheduled_reverify, manual_submission, rss_feed, sitemap_discovery
+  job_type              TEXT NOT NULL DEFAULT 'seed_crawl'
+                        CHECK (job_type IN (
+                          'seed_crawl', 'scheduled_reverify', 'manual_submission',
+                          'rss_feed', 'sitemap_discovery', 'registry_change'
+                        )),
+
+  -- Job status lifecycle
+  status                TEXT NOT NULL DEFAULT 'queued'
+                        CHECK (status IN (
+                          'queued', 'running', 'completed', 'failed', 'cancelled'
+                        )),
+
+  -- Seed URLs or feed URLs that initiated this job
+  seed_urls             TEXT[] NOT NULL DEFAULT '{}',
+
+  -- Stats filled as job progresses
+  urls_discovered       INT NOT NULL DEFAULT 0,
+  urls_fetched          INT NOT NULL DEFAULT 0,
+  candidates_extracted  INT NOT NULL DEFAULT 0,
+  candidates_verified   INT NOT NULL DEFAULT 0,
+  errors_count          INT NOT NULL DEFAULT 0,
+
+  -- Timestamps
+  queued_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  started_at            TIMESTAMPTZ,
+  completed_at          TIMESTAMPTZ,
+
+  -- Error details if failed
+  error_message         TEXT,
+  error_details         JSONB,
+
+  -- Agent that ran this job (for multi-agent scenarios)
+  agent_id              TEXT NOT NULL DEFAULT 'oran-ingestion-agent/1.0',
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_status
+  ON ingestion_jobs(status);
+
+CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_type
+  ON ingestion_jobs(job_type);
+
+CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_source
+  ON ingestion_jobs(source_registry_id);
+
+CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_queued
+  ON ingestion_jobs(queued_at DESC);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_ingestion_jobs'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_ingestion_jobs
+      BEFORE UPDATE ON ingestion_jobs
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- EVIDENCE SNAPSHOTS
+-- ============================================================
+-- Immutable record of every page/document the agent fetched.
+-- Stores content hash, blob URI, HTTP metadata for full provenance.
+CREATE TABLE IF NOT EXISTS evidence_snapshots (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  job_id                UUID REFERENCES ingestion_jobs(id) ON DELETE SET NULL,
+  correlation_id        TEXT NOT NULL,              -- Links to job correlation
+
+  -- URL info
+  source_url            TEXT NOT NULL,              -- Original URL requested
+  canonical_url         TEXT NOT NULL,              -- After redirects, normalized
+
+  -- Fetch metadata
+  fetched_at            TIMESTAMPTZ NOT NULL,
+  http_status           INT NOT NULL,
+  content_type          TEXT,
+  content_length_bytes  INT,
+
+  -- Content fingerprint (SHA-256)
+  content_hash_sha256   TEXT NOT NULL,
+
+  -- Where raw content is stored (Azure Blob, etc.)
+  blob_uri              TEXT,
+  blob_container        TEXT,
+
+  -- Did content change from previous snapshot?
+  is_content_changed    BOOLEAN,
+  previous_snapshot_id  UUID REFERENCES evidence_snapshots(id) ON DELETE SET NULL,
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_canonical_url
+  ON evidence_snapshots(canonical_url);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_hash
+  ON evidence_snapshots(content_hash_sha256);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_job
+  ON evidence_snapshots(job_id);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_fetched
+  ON evidence_snapshots(fetched_at DESC);
+
+-- ============================================================
+-- EXTRACTED CANDIDATES (STAGING)
+-- ============================================================
+-- Raw extracted service records before verification/publish.
+-- The agent's LLM brain fills this; humans review and approve.
+CREATE TABLE IF NOT EXISTS extracted_candidates (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  job_id                UUID REFERENCES ingestion_jobs(id) ON DELETE SET NULL,
+  correlation_id        TEXT NOT NULL,
+
+  -- Deduplication key (hash of canonical URL + content hash)
+  extract_key_sha256    TEXT NOT NULL UNIQUE,
+
+  -- Primary evidence this was extracted from
+  primary_evidence_id   UUID REFERENCES evidence_snapshots(id) ON DELETE SET NULL,
+
+  -- Review status (same as verification_queue but for staging)
+  review_status         TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (review_status IN (
+                          'pending', 'in_review', 'verified', 'rejected',
+                          'escalated', 'published', 'archived'
+                        )),
+
+  -- SLA timers
+  review_by             TIMESTAMPTZ,
+  last_verified_at      TIMESTAMPTZ,
+  reverify_at           TIMESTAMPTZ,
+
+  -- Routing
+  assigned_to_role      TEXT CHECK (assigned_to_role IN ('community_admin', 'oran_admin')),
+  assigned_to_user_id   TEXT,
+
+  -- Jurisdiction hint for geographic routing
+  jurisdiction_country  TEXT DEFAULT 'US',
+  jurisdiction_state    TEXT,
+  jurisdiction_county   TEXT,
+  jurisdiction_city     TEXT,
+  jurisdiction_kind     TEXT DEFAULT 'local'
+                        CHECK (jurisdiction_kind IN (
+                          'local', 'regional', 'statewide', 'national', 'virtual'
+                        )),
+
+  -- Extracted fields (semi-structured)
+  organization_name     TEXT NOT NULL,
+  service_name          TEXT NOT NULL,
+  description           TEXT NOT NULL,
+  website_url           TEXT,
+
+  -- Contact info
+  phones                JSONB DEFAULT '[]'::jsonb,  -- [{number, type, context}]
+  emails                JSONB DEFAULT '[]'::jsonb,  -- [{email, type, context}]
+
+  -- Address
+  address               JSONB,                       -- {line1, line2, city, region, postalCode, country}
+
+  -- Is this a remote/virtual service?
+  is_remote_service     BOOLEAN NOT NULL DEFAULT false,
+
+  -- Confidence score (0-100, live updated)
+  confidence_score      INT NOT NULL DEFAULT 0
+                        CHECK (confidence_score >= 0 AND confidence_score <= 100),
+
+  -- Color-coded status derived from confidence
+  confidence_tier       TEXT GENERATED ALWAYS AS (
+    CASE
+      WHEN confidence_score >= 80 THEN 'green'      -- Ready to publish
+      WHEN confidence_score >= 60 THEN 'yellow'    -- Likely good, needs review
+      WHEN confidence_score >= 40 THEN 'orange'    -- Possible, needs attention
+      ELSE 'red'                                    -- Insufficient, needs work
+    END
+  ) STORED,
+
+  -- Field-level provenance (which evidence + selector for each field)
+  provenance            JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+  -- Investigation pack: discovered links, artifacts
+  discovered_links      JSONB NOT NULL DEFAULT '[]'::jsonb,
+  important_artifacts   TEXT[] NOT NULL DEFAULT '{}',
+
+  -- If published, link to the service record
+  published_service_id  UUID REFERENCES services(id) ON DELETE SET NULL,
+  published_at          TIMESTAMPTZ,
+  published_by_user_id  TEXT,
+
+  -- Version for optimistic locking
+  version               INT NOT NULL DEFAULT 1,
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_candidates_status
+  ON extracted_candidates(review_status);
+
+CREATE INDEX IF NOT EXISTS idx_candidates_confidence
+  ON extracted_candidates(confidence_score DESC);
+
+CREATE INDEX IF NOT EXISTS idx_candidates_tier
+  ON extracted_candidates(confidence_tier);
+
+CREATE INDEX IF NOT EXISTS idx_candidates_jurisdiction
+  ON extracted_candidates(jurisdiction_state, jurisdiction_county);
+
+CREATE INDEX IF NOT EXISTS idx_candidates_assigned
+  ON extracted_candidates(assigned_to_user_id)
+  WHERE assigned_to_user_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_candidates_review_by
+  ON extracted_candidates(review_by)
+  WHERE review_by IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_candidates_reverify
+  ON extracted_candidates(reverify_at)
+  WHERE reverify_at IS NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_extracted_candidates'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_extracted_candidates
+      BEFORE UPDATE ON extracted_candidates
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- RESOURCE TAGS
+-- ============================================================
+-- Unified tagging system for candidates and services.
+-- Tags represent: category, geography, audience, verification status, custom.
+CREATE TABLE IF NOT EXISTS resource_tags (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+  -- What this tag is attached to
+  candidate_id          UUID REFERENCES extracted_candidates(id) ON DELETE CASCADE,
+  service_id            UUID REFERENCES services(id) ON DELETE CASCADE,
+
+  -- Tag classification
+  tag_type              TEXT NOT NULL
+                        CHECK (tag_type IN (
+                          'category',                -- food, housing, healthcare, etc.
+                          'geographic',              -- kootenai_county, idaho, 83814, etc.
+                          'audience',                -- veteran, senior, family, youth, etc.
+                          'verification_missing',    -- missing_phone, missing_hours, etc.
+                          'verification_status',     -- verified, pending, escalated
+                          'program',                 -- snap, wic, section8, medicaid, etc.
+                          'source_quality',          -- gov_source, edu_source, quarantine_source
+                          'custom'
+                        )),
+
+  -- Tag value (normalized, lowercase)
+  tag_value             TEXT NOT NULL,
+
+  -- Display label (human-readable)
+  display_label         TEXT,
+
+  -- Confidence in this tag (0-100, for ML-assigned tags)
+  tag_confidence        INT DEFAULT 100
+                        CHECK (tag_confidence >= 0 AND tag_confidence <= 100),
+
+  -- How was this tag assigned?
+  assigned_by           TEXT NOT NULL DEFAULT 'system'
+                        CHECK (assigned_by IN ('system', 'agent', 'human')),
+  assigned_by_user_id   TEXT,
+
+  -- Evidence supporting this tag
+  evidence_refs         TEXT[] NOT NULL DEFAULT '{}',
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- At least one parent must be set
+  CONSTRAINT resource_tags_parent_check CHECK (
+    candidate_id IS NOT NULL OR service_id IS NOT NULL
+  ),
+
+  -- Unique per parent + type + value
+  CONSTRAINT resource_tags_unique_candidate UNIQUE (candidate_id, tag_type, tag_value),
+  CONSTRAINT resource_tags_unique_service UNIQUE (service_id, tag_type, tag_value)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tags_candidate
+  ON resource_tags(candidate_id)
+  WHERE candidate_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_tags_service
+  ON resource_tags(service_id)
+  WHERE service_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_tags_type_value
+  ON resource_tags(tag_type, tag_value);
+
+CREATE INDEX IF NOT EXISTS idx_tags_value
+  ON resource_tags(tag_value);
+
+-- ============================================================
+-- VERIFICATION CHECKS (per candidate)
+-- ============================================================
+-- Individual verification check results.
+-- These feed into the confidence score calculation.
+CREATE TABLE IF NOT EXISTS verification_checks (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  candidate_id          UUID NOT NULL REFERENCES extracted_candidates(id) ON DELETE CASCADE,
+
+  -- Check type
+  check_type            TEXT NOT NULL
+                        CHECK (check_type IN (
+                          'domain_allowlist', 'contact_validity', 'cross_source_agreement',
+                          'hours_stability', 'location_plausibility', 'policy_constraints',
+                          'phone_reachable', 'website_live', 'address_geocodes'
+                        )),
+
+  -- Severity affects confidence score impact
+  severity              TEXT NOT NULL DEFAULT 'warning'
+                        CHECK (severity IN ('critical', 'warning', 'info')),
+
+  -- Result
+  status                TEXT NOT NULL DEFAULT 'unknown'
+                        CHECK (status IN ('pass', 'fail', 'unknown', 'skipped')),
+
+  -- When this check ran
+  ran_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- Details (check-specific)
+  details               JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+  -- Evidence that supports this check result
+  evidence_refs         TEXT[] NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_verification_candidate
+  ON verification_checks(candidate_id);
+
+CREATE INDEX IF NOT EXISTS idx_verification_type_status
+  ON verification_checks(check_type, status);
+
+-- ============================================================
+-- CHECKLIST ITEMS (per candidate)
+-- ============================================================
+-- Tracks required items and their status for each candidate.
+-- Linked to verification_missing tags.
+CREATE TABLE IF NOT EXISTS checklist_items (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  candidate_id          UUID NOT NULL REFERENCES extracted_candidates(id) ON DELETE CASCADE,
+
+  -- Checklist item key
+  item_key              TEXT NOT NULL
+                        CHECK (item_key IN (
+                          'contact_method', 'physical_address_or_virtual', 'service_area',
+                          'eligibility_criteria', 'hours', 'source_provenance',
+                          'duplication_review', 'policy_pass'
+                        )),
+
+  -- Is this item required for publish?
+  is_required           BOOLEAN NOT NULL DEFAULT true,
+
+  -- Status
+  status                TEXT NOT NULL DEFAULT 'missing'
+                        CHECK (status IN ('missing', 'satisfied', 'not_applicable')),
+
+  -- Which fields are missing (if status = missing)
+  missing_fields        TEXT[] NOT NULL DEFAULT '{}',
+
+  -- Evidence refs that satisfy this item
+  evidence_refs         TEXT[] NOT NULL DEFAULT '{}',
+
+  -- Reviewer notes
+  notes                 TEXT,
+
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  UNIQUE(candidate_id, item_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_checklist_candidate
+  ON checklist_items(candidate_id);
+
+CREATE INDEX IF NOT EXISTS idx_checklist_status
+  ON checklist_items(status)
+  WHERE status = 'missing';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_checklist_items'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_checklist_items
+      BEFORE UPDATE ON checklist_items
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- VERIFIED SERVICE LINKS
+-- ============================================================
+-- Deep links discovered during ingestion and verified.
+-- Used by the chat interface to provide contextual links.
+CREATE TABLE IF NOT EXISTS verified_service_links (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+  -- Can be attached to a candidate (staging) or a published service
+  candidate_id          UUID REFERENCES extracted_candidates(id) ON DELETE CASCADE,
+  service_id            UUID REFERENCES services(id) ON DELETE CASCADE,
+
+  -- Link details
+  url                   TEXT NOT NULL,
+  label                 TEXT NOT NULL,
+
+  -- Link type for contextual selection
+  link_type             TEXT NOT NULL
+                        CHECK (link_type IN (
+                          'home', 'contact', 'apply', 'eligibility', 'intake_form',
+                          'hours', 'pdf', 'privacy', 'service_page', 'organization_home', 'other'
+                        )),
+
+  -- Constraints for contextual matching (optional)
+  intent_actions        TEXT[] DEFAULT '{}',        -- apply, contact, eligibility, hours
+  intent_categories     TEXT[] DEFAULT '{}',        -- food, housing, healthcare
+  audience_tags         TEXT[] DEFAULT '{}',        -- veteran, senior
+  locales               TEXT[] DEFAULT '{}',        -- en, es
+
+  -- Verification status
+  is_verified           BOOLEAN NOT NULL DEFAULT false,
+  verified_at           TIMESTAMPTZ,
+  verified_by_user_id   TEXT,
+
+  -- Link health
+  last_checked_at       TIMESTAMPTZ,
+  last_http_status      INT,
+  is_link_alive         BOOLEAN DEFAULT true,
+
+  -- Evidence trail
+  evidence_id           UUID REFERENCES evidence_snapshots(id) ON DELETE SET NULL,
+  discovered_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- At least one parent must be set
+  CONSTRAINT verified_links_parent_check CHECK (
+    candidate_id IS NOT NULL OR service_id IS NOT NULL
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_verified_links_candidate
+  ON verified_service_links(candidate_id)
+  WHERE candidate_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_verified_links_service
+  ON verified_service_links(service_id)
+  WHERE service_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_verified_links_type
+  ON verified_service_links(link_type);
+
+CREATE INDEX IF NOT EXISTS idx_verified_links_verified
+  ON verified_service_links(is_verified)
+  WHERE is_verified = true;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_verified_service_links'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_verified_service_links
+      BEFORE UPDATE ON verified_service_links
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- INGESTION AUDIT LOG
+-- ============================================================
+-- Complete audit trail for every action the ingestion agent takes.
+-- Immutable append-only log.
+CREATE TABLE IF NOT EXISTS ingestion_audit_log (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  correlation_id        TEXT NOT NULL,              -- Links to job
+
+  -- Event classification
+  event_type            TEXT NOT NULL
+                        CHECK (event_type IN (
+                          'job.created', 'job.started', 'job.completed', 'job.failed',
+                          'url.discovered', 'url.fetched', 'url.skipped',
+                          'candidate.extracted', 'candidate.dedupe_matched',
+                          'check.ran', 'check.passed', 'check.failed',
+                          'tag.added', 'tag.removed',
+                          'score.updated',
+                          'review.assigned', 'review.status_changed',
+                          'publish.approved', 'publish.rejected', 'publish.completed',
+                          'reverify.scheduled', 'reverify.completed',
+                          'link.discovered', 'link.verified', 'link.broken'
+                        )),
+
+  -- Who/what triggered this
+  actor_type            TEXT NOT NULL DEFAULT 'system'
+                        CHECK (actor_type IN ('system', 'agent', 'human', 'scheduler')),
+  actor_id              TEXT NOT NULL,
+
+  -- What was acted upon
+  target_type           TEXT NOT NULL
+                        CHECK (target_type IN (
+                          'job', 'url', 'evidence', 'candidate', 'check', 'tag', 'link', 'service'
+                        )),
+  target_id             TEXT NOT NULL,
+
+  -- Event timestamp
+  timestamp             TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- Event-specific data
+  inputs                JSONB NOT NULL DEFAULT '{}'::jsonb,
+  outputs               JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+  -- Evidence supporting this event
+  evidence_refs         TEXT[] NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_correlation
+  ON ingestion_audit_log(correlation_id);
+
+CREATE INDEX IF NOT EXISTS idx_audit_type
+  ON ingestion_audit_log(event_type);
+
+CREATE INDEX IF NOT EXISTS idx_audit_target
+  ON ingestion_audit_log(target_type, target_id);
+
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp
+  ON ingestion_audit_log(timestamp DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_actor
+  ON ingestion_audit_log(actor_type, actor_id);
+
+-- ============================================================
+-- RSS/FEED SUBSCRIPTIONS
+-- ============================================================
+-- Track RSS feeds and other data sources the agent monitors.
+CREATE TABLE IF NOT EXISTS feed_subscriptions (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  source_registry_id    UUID REFERENCES source_registry(id) ON DELETE SET NULL,
+
+  -- Feed details
+  feed_url              TEXT NOT NULL UNIQUE,
+  feed_type             TEXT NOT NULL DEFAULT 'rss'
+                        CHECK (feed_type IN ('rss', 'atom', 'sitemap', 'api', 'other')),
+  display_name          TEXT,
+
+  -- Polling config
+  poll_interval_hours   INT NOT NULL DEFAULT 24,
+  last_polled_at        TIMESTAMPTZ,
+  last_etag             TEXT,                       -- For conditional requests
+  last_modified         TEXT,                       -- For conditional requests
+
+  -- Status
+  is_active             BOOLEAN NOT NULL DEFAULT true,
+  error_count           INT NOT NULL DEFAULT 0,
+  last_error            TEXT,
+
+  -- Coverage hint
+  jurisdiction_state    TEXT,
+  jurisdiction_county   TEXT,
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_feeds_active
+  ON feed_subscriptions(is_active)
+  WHERE is_active = true;
+
+CREATE INDEX IF NOT EXISTS idx_feeds_next_poll
+  ON feed_subscriptions(last_polled_at)
+  WHERE is_active = true;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_feed_subscriptions'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_feed_subscriptions
+      BEFORE UPDATE ON feed_subscriptions
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- ADMIN ROUTING RULES
+-- ============================================================
+-- Maps geographic jurisdictions to admin users for review routing.
+CREATE TABLE IF NOT EXISTS admin_routing_rules (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+  -- Geographic scope (more specific = higher priority)
+  jurisdiction_country  TEXT NOT NULL DEFAULT 'US',
+  jurisdiction_state    TEXT,                       -- NULL = all states
+  jurisdiction_county   TEXT,                       -- NULL = all counties
+
+  -- Who handles this area
+  assigned_role         TEXT NOT NULL DEFAULT 'community_admin'
+                        CHECK (assigned_role IN ('community_admin', 'oran_admin')),
+  assigned_user_id      TEXT,                       -- Specific user, or NULL for role-based
+
+  -- Priority (higher = checked first)
+  priority              INT NOT NULL DEFAULT 0,
+
+  -- Is this rule active?
+  is_active             BOOLEAN NOT NULL DEFAULT true,
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  UNIQUE(jurisdiction_country, jurisdiction_state, jurisdiction_county)
+);
+
+CREATE INDEX IF NOT EXISTS idx_routing_jurisdiction
+  ON admin_routing_rules(jurisdiction_country, jurisdiction_state, jurisdiction_county);
+
+CREATE INDEX IF NOT EXISTS idx_routing_user
+  ON admin_routing_rules(assigned_user_id)
+  WHERE assigned_user_id IS NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_admin_routing_rules'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_admin_routing_rules
+      BEFORE UPDATE ON admin_routing_rules
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- BOOTSTRAP DATA
+-- ============================================================
+-- Insert default source registry entries (nationwide bootstrap)
+INSERT INTO source_registry (id, display_name, trust_level, domain_rules, coverage_hints)
+VALUES
+  (
+    'a0000000-0000-0000-0000-000000000001',
+    'US Government (.gov)',
+    'allowlisted',
+    '[{"type": "suffix", "value": ".gov"}]'::jsonb,
+    '[{"kind": "national", "country": "US"}]'::jsonb
+  ),
+  (
+    'a0000000-0000-0000-0000-000000000002',
+    'US Higher Education (.edu)',
+    'allowlisted',
+    '[{"type": "suffix", "value": ".edu"}]'::jsonb,
+    '[{"kind": "national", "country": "US"}]'::jsonb
+  ),
+  (
+    'a0000000-0000-0000-0000-000000000003',
+    'US Military (.mil) - Quarantine',
+    'quarantine',
+    '[{"type": "suffix", "value": ".mil"}]'::jsonb,
+    '[{"kind": "national", "country": "US"}]'::jsonb
+  )
+ON CONFLICT DO NOTHING;
+
+-- Insert default admin routing (ORAN admin catches all unassigned)
+INSERT INTO admin_routing_rules (jurisdiction_country, jurisdiction_state, assigned_role, priority)
+VALUES ('US', NULL, 'oran_admin', 0)
+ON CONFLICT DO NOTHING;
+

@@ -13,7 +13,7 @@ services:
       - "5432:5432"
     volumes:
       - oran_pgdata:/var/lib/postgresql/data
-      - ../migrations:/docker-entrypoint-initdb.d
+      - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U oran -d oran_db"]
       interval: 10s

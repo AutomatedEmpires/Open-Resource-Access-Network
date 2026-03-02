@@ -171,6 +171,42 @@ export const ServiceRowSchema = z.object({
   licenses: z.string().optional(),
 });
 
+// ============================================================
+// SERVICE ATTRIBUTES CSV SCHEMA (ORAN extension)
+// ============================================================
+// Allows bulk import of service tags. CSV columns:
+// service_id, taxonomy, tag, details (optional)
+
+const VALID_TAXONOMIES = ['delivery', 'cost', 'access', 'culture', 'population', 'situation'] as const;
+
+export const ServiceAttributeRowSchema = z.object({
+  id: z.string().uuid().optional(),
+  service_id: z.string().min(1, 'service_id is required'),
+  taxonomy: z.enum(VALID_TAXONOMIES, {
+    message: `taxonomy must be one of: ${VALID_TAXONOMIES.join(', ')}`,
+  }),
+  tag: z.string().min(1, 'tag is required').max(64, 'tag max 64 chars'),
+  details: z.string().optional(),
+});
+
+export const ServiceAdaptationRowSchema = z.object({
+  id: z.string().uuid().optional(),
+  service_id: z.string().min(1, 'service_id is required'),
+  adaptation_type: z.enum(['disability', 'health_condition', 'age_group', 'learning'], {
+    message: 'adaptation_type must be: disability, health_condition, age_group, or learning',
+  }),
+  adaptation_tag: z.string().min(1, 'adaptation_tag is required').max(64),
+  details: z.string().optional(),
+});
+
+export const DietaryOptionRowSchema = z.object({
+  id: z.string().uuid().optional(),
+  service_id: z.string().min(1, 'service_id is required'),
+  dietary_type: z.string().min(1, 'dietary_type is required').max(64),
+  availability: z.enum(['always', 'by_request', 'limited', 'seasonal']).default('always'),
+  details: z.string().optional(),
+});
+
 export const AddressRowSchema = z.object({
   id: z.string().uuid().optional(),
   location_id: z.string().min(1, 'location_id is required'),
@@ -336,6 +372,97 @@ export function validateServiceRows(
 }
 
 // ============================================================
+// SERVICE ATTRIBUTES VALIDATION
+// ============================================================
+
+export function validateServiceAttributeRows(
+  rows: Record<string, string>[],
+  fileName: string
+): { valid: z.infer<typeof ServiceAttributeRowSchema>[]; errors: ImportError[]; warnings: ImportWarning[] } {
+  const valid: z.infer<typeof ServiceAttributeRowSchema>[] = [];
+  const errors: ImportError[] = [];
+  const warnings: ImportWarning[] = [];
+
+  rows.forEach((row, index) => {
+    const rowNum = index + 2;
+    const result = ServiceAttributeRowSchema.safeParse(row);
+    if (result.success) {
+      valid.push(result.data);
+    } else {
+      result.error.issues.forEach((issue) => {
+        errors.push({
+          row: rowNum,
+          file: fileName,
+          field: issue.path.join('.'),
+          value: String(row[String(issue.path[0])] ?? ''),
+          error: issue.message,
+        });
+      });
+    }
+  });
+
+  return { valid, errors, warnings };
+}
+
+export function validateServiceAdaptationRows(
+  rows: Record<string, string>[],
+  fileName: string
+): { valid: z.infer<typeof ServiceAdaptationRowSchema>[]; errors: ImportError[]; warnings: ImportWarning[] } {
+  const valid: z.infer<typeof ServiceAdaptationRowSchema>[] = [];
+  const errors: ImportError[] = [];
+  const warnings: ImportWarning[] = [];
+
+  rows.forEach((row, index) => {
+    const rowNum = index + 2;
+    const result = ServiceAdaptationRowSchema.safeParse(row);
+    if (result.success) {
+      valid.push(result.data);
+    } else {
+      result.error.issues.forEach((issue) => {
+        errors.push({
+          row: rowNum,
+          file: fileName,
+          field: issue.path.join('.'),
+          value: String(row[String(issue.path[0])] ?? ''),
+          error: issue.message,
+        });
+      });
+    }
+  });
+
+  return { valid, errors, warnings };
+}
+
+export function validateDietaryOptionRows(
+  rows: Record<string, string>[],
+  fileName: string
+): { valid: z.infer<typeof DietaryOptionRowSchema>[]; errors: ImportError[]; warnings: ImportWarning[] } {
+  const valid: z.infer<typeof DietaryOptionRowSchema>[] = [];
+  const errors: ImportError[] = [];
+  const warnings: ImportWarning[] = [];
+
+  rows.forEach((row, index) => {
+    const rowNum = index + 2;
+    const result = DietaryOptionRowSchema.safeParse(row);
+    if (result.success) {
+      valid.push(result.data);
+    } else {
+      result.error.issues.forEach((issue) => {
+        errors.push({
+          row: rowNum,
+          file: fileName,
+          field: issue.path.join('.'),
+          value: String(row[String(issue.path[0])] ?? ''),
+          error: issue.message,
+        });
+      });
+    }
+  });
+
+  return { valid, errors, warnings };
+}
+
+// ============================================================
 
 export interface DiffResult {
   type: 'NEW' | 'UPDATED' | 'UNCHANGED';
@@ -411,6 +538,51 @@ export async function runImport(options: ImporterOptions): Promise<ImportReport>
 
     if (!dryRun) {
       console.log(`[IMPORT] Would stage ${valid.length} services`);
+    }
+  }
+
+  // Process service_attributes.csv (ORAN extension)
+  const attrFile = path.join(dir, 'service_attributes.csv');
+  if (fs.existsSync(attrFile)) {
+    const rows = await parseCSV(attrFile);
+    report.totalRows += rows.length;
+    const { valid, errors, warnings } = validateServiceAttributeRows(rows, 'service_attributes.csv');
+    report.validRows += valid.length;
+    report.errors.push(...errors);
+    report.warnings.push(...warnings);
+
+    if (!dryRun) {
+      console.log(`[IMPORT] Would stage ${valid.length} service attributes`);
+    }
+  }
+
+  // Process service_adaptations.csv (ORAN extension)
+  const adaptFile = path.join(dir, 'service_adaptations.csv');
+  if (fs.existsSync(adaptFile)) {
+    const rows = await parseCSV(adaptFile);
+    report.totalRows += rows.length;
+    const { valid, errors, warnings } = validateServiceAdaptationRows(rows, 'service_adaptations.csv');
+    report.validRows += valid.length;
+    report.errors.push(...errors);
+    report.warnings.push(...warnings);
+
+    if (!dryRun) {
+      console.log(`[IMPORT] Would stage ${valid.length} service adaptations`);
+    }
+  }
+
+  // Process dietary_options.csv (ORAN extension)
+  const dietFile = path.join(dir, 'dietary_options.csv');
+  if (fs.existsSync(dietFile)) {
+    const rows = await parseCSV(dietFile);
+    report.totalRows += rows.length;
+    const { valid, errors, warnings } = validateDietaryOptionRows(rows, 'dietary_options.csv');
+    report.validRows += valid.length;
+    report.errors.push(...errors);
+    report.warnings.push(...warnings);
+
+    if (!dryRun) {
+      console.log(`[IMPORT] Would stage ${valid.length} dietary options`);
     }
   }
 

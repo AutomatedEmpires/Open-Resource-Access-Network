@@ -1,0 +1,727 @@
+-- ============================================================
+-- DEPRECATED: 2026-03-02
+-- ============================================================
+-- This migration is SUPERSEDED and should NOT be applied.
+--
+-- Reasons for deprecation:
+-- 1. Conflicts with 0015_admin_approval_workflow.sql (competing designs)
+-- 2. References Schema B tables from 0014 (source_registry vs ingestion_sources)
+-- 3. candidate_assignments conflicts with admin_assignments in 0015
+--
+-- Features preserved in 0018_admin_capacity_routing.sql:
+-- - Admin capacity tracking
+-- - Geographic routing (PostGIS)
+-- - Multi-admin assignment
+--
+-- DO NOT APPLY THIS MIGRATION. Keep for historical reference only.
+-- ============================================================
+--
+-- ORIGINAL HEADER:
+-- 0016_admin_review_pipeline.sql
+-- Admin review pipeline: capacity-limited routing, tag confirmation, LLM suggestions, publish criteria.
+--
+-- Flow: Agent extracts → Staging → Route to admins (5 nearest, capacity-limited) →
+--       Admin confirms tags + fills gaps → Meets threshold → Publish to live
+--
+-- Idempotent: safe to run multiple times.
+
+-- ============================================================
+-- ADMIN REVIEW CAPACITY
+-- ============================================================
+-- Tracks how many pending items each admin has.
+-- Used to enforce capacity limits (e.g., max 10 pending per admin).
+CREATE TABLE IF NOT EXISTS admin_review_capacity (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id               TEXT NOT NULL UNIQUE,       -- Admin user ID
+
+  -- Current queue counts
+  pending_count         INT NOT NULL DEFAULT 0
+                        CHECK (pending_count >= 0),
+  in_review_count       INT NOT NULL DEFAULT 0
+                        CHECK (in_review_count >= 0),
+
+  -- Capacity limits (can be adjusted per-admin)
+  max_pending           INT NOT NULL DEFAULT 10,
+  max_in_review         INT NOT NULL DEFAULT 5,
+
+  -- Performance metrics (for load balancing)
+  total_verified        INT NOT NULL DEFAULT 0,
+  total_rejected        INT NOT NULL DEFAULT 0,
+  avg_review_hours      DECIMAL(10,2),              -- Average time to complete review
+  last_review_at        TIMESTAMPTZ,
+
+  -- Geographic coverage (for routing)
+  coverage_zone_id      UUID REFERENCES coverage_zones(id) ON DELETE SET NULL,
+  coverage_states       TEXT[] DEFAULT '{}',        -- US states this admin covers
+  coverage_counties     TEXT[] DEFAULT '{}',        -- Counties (format: "STATE_COUNTY")
+
+  -- Status
+  is_active             BOOLEAN NOT NULL DEFAULT true,
+  is_accepting_new      BOOLEAN NOT NULL DEFAULT true,
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_capacity_user
+  ON admin_review_capacity(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_admin_capacity_zone
+  ON admin_review_capacity(coverage_zone_id);
+
+CREATE INDEX IF NOT EXISTS idx_admin_capacity_available
+  ON admin_review_capacity(is_active, is_accepting_new, pending_count)
+  WHERE is_active = true AND is_accepting_new = true;
+
+-- GIN indexes for geographic arrays
+CREATE INDEX IF NOT EXISTS idx_admin_capacity_states
+  ON admin_review_capacity USING gin(coverage_states);
+
+CREATE INDEX IF NOT EXISTS idx_admin_capacity_counties
+  ON admin_review_capacity USING gin(coverage_counties);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_admin_review_capacity'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_admin_review_capacity
+      BEFORE UPDATE ON admin_review_capacity
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- CANDIDATE ASSIGNMENTS
+-- ============================================================
+-- Tracks which admins/orgs are assigned to review each candidate.
+-- Routes to 5 nearest admins + 1 org (configurable).
+CREATE TABLE IF NOT EXISTS candidate_assignments (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  candidate_id          UUID NOT NULL REFERENCES extracted_candidates(id) ON DELETE CASCADE,
+
+  -- Who is assigned
+  assigned_user_id      TEXT,                       -- Admin user
+  assigned_org_id       UUID REFERENCES organizations(id) ON DELETE SET NULL,  -- Or org
+
+  -- Assignment type
+  assignment_type       TEXT NOT NULL DEFAULT 'admin'
+                        CHECK (assignment_type IN ('admin', 'org', 'escalated')),
+
+  -- Status of this specific assignment
+  status                TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'claimed', 'completed', 'declined', 'expired')),
+
+  -- Priority / routing info
+  priority_rank         INT NOT NULL DEFAULT 1,     -- 1 = highest priority
+  distance_meters       DECIMAL(12,2),              -- Geographic distance to candidate
+
+  -- Response
+  claimed_at            TIMESTAMPTZ,
+  completed_at          TIMESTAMPTZ,
+  declined_at           TIMESTAMPTZ,
+  decline_reason        TEXT,
+
+  -- Expiration (if not claimed within X hours, reassign)
+  expires_at            TIMESTAMPTZ,
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- Each candidate can have multiple assignments, but unique per assignee
+  UNIQUE(candidate_id, assigned_user_id),
+  UNIQUE(candidate_id, assigned_org_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_assignments_candidate
+  ON candidate_assignments(candidate_id);
+
+CREATE INDEX IF NOT EXISTS idx_assignments_user
+  ON candidate_assignments(assigned_user_id)
+  WHERE assigned_user_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_assignments_org
+  ON candidate_assignments(assigned_org_id)
+  WHERE assigned_org_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_assignments_pending
+  ON candidate_assignments(status, expires_at)
+  WHERE status = 'pending';
+
+-- ============================================================
+-- TAG CONFIRMATION QUEUE
+-- ============================================================
+-- Agent-suggested tags that need admin confirmation.
+-- Color-coded by confidence: red <40, orange 40-59, yellow 60-79, green ≥80
+CREATE TABLE IF NOT EXISTS tag_confirmations (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  candidate_id          UUID NOT NULL REFERENCES extracted_candidates(id) ON DELETE CASCADE,
+
+  -- What the agent suggests
+  tag_type              TEXT NOT NULL
+                        CHECK (tag_type IN (
+                          'category', 'geographic', 'audience', 'program',
+                          'eligibility', 'service_area', 'language', 'custom'
+                        )),
+  suggested_value       TEXT NOT NULL,
+  suggested_label       TEXT,                       -- Human-readable label
+
+  -- Agent's confidence in this suggestion (0-100)
+  agent_confidence      INT NOT NULL DEFAULT 50
+                        CHECK (agent_confidence >= 0 AND agent_confidence <= 100),
+
+  -- Derived color tier (for UI)
+  confidence_color      TEXT GENERATED ALWAYS AS (
+    CASE
+      WHEN agent_confidence >= 80 THEN 'green'
+      WHEN agent_confidence >= 60 THEN 'yellow'
+      WHEN agent_confidence >= 40 THEN 'orange'
+      ELSE 'red'
+    END
+  ) STORED,
+
+  -- What evidence supports this suggestion
+  evidence_text         TEXT,                       -- Extracted text that led to this tag
+  evidence_selector     TEXT,                       -- CSS selector or XPath
+  evidence_url          TEXT,                       -- Source URL
+
+  -- Confirmation status
+  status                TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'confirmed', 'rejected', 'modified')),
+
+  -- Admin's response
+  confirmed_value       TEXT,                       -- What admin confirmed (may differ)
+  confirmed_by_user_id  TEXT,
+  confirmed_at          TIMESTAMPTZ,
+  rejection_reason      TEXT,
+
+  -- If this was auto-confirmed (high confidence + rules)
+  is_auto_confirmed     BOOLEAN NOT NULL DEFAULT false,
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tag_confirm_candidate
+  ON tag_confirmations(candidate_id);
+
+CREATE INDEX IF NOT EXISTS idx_tag_confirm_status
+  ON tag_confirmations(status)
+  WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_tag_confirm_color
+  ON tag_confirmations(confidence_color, status);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_tag_confirmations'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_tag_confirmations
+      BEFORE UPDATE ON tag_confirmations
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- FIELD SUGGESTIONS (LLM-assisted gap filling)
+-- ============================================================
+-- When agent extracts incomplete data, LLM can suggest values.
+-- Admin sees suggestion + accepts/edits with one click.
+CREATE TABLE IF NOT EXISTS field_suggestions (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  candidate_id          UUID NOT NULL REFERENCES extracted_candidates(id) ON DELETE CASCADE,
+
+  -- Which field needs filling
+  field_name            TEXT NOT NULL
+                        CHECK (field_name IN (
+                          'organization_name', 'service_name', 'description',
+                          'phone', 'email', 'website_url',
+                          'address_line1', 'address_city', 'address_state', 'address_postal',
+                          'hours_text', 'eligibility_text', 'service_area_text',
+                          'intake_process', 'fees', 'languages'
+                        )),
+
+  -- Current value (may be NULL or incomplete)
+  current_value         TEXT,
+
+  -- LLM's suggestion
+  suggested_value       TEXT NOT NULL,
+  suggestion_source     TEXT NOT NULL DEFAULT 'llm'
+                        CHECK (suggestion_source IN ('llm', 'cross_reference', 'pattern_match', 'manual')),
+
+  -- Confidence in suggestion
+  suggestion_confidence INT NOT NULL DEFAULT 50
+                        CHECK (suggestion_confidence >= 0 AND suggestion_confidence <= 100),
+
+  -- Derived color
+  confidence_color      TEXT GENERATED ALWAYS AS (
+    CASE
+      WHEN suggestion_confidence >= 80 THEN 'green'
+      WHEN suggestion_confidence >= 60 THEN 'yellow'
+      WHEN suggestion_confidence >= 40 THEN 'orange'
+      ELSE 'red'
+    END
+  ) STORED,
+
+  -- Evidence / reasoning
+  reasoning             TEXT,                       -- Why LLM suggested this
+  evidence_refs         TEXT[] DEFAULT '{}',        -- URLs or evidence IDs
+
+  -- Resolution
+  status                TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'accepted', 'rejected', 'modified')),
+  final_value           TEXT,                       -- What was actually used
+  resolved_by_user_id   TEXT,
+  resolved_at           TIMESTAMPTZ,
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_field_suggest_candidate
+  ON field_suggestions(candidate_id);
+
+CREATE INDEX IF NOT EXISTS idx_field_suggest_pending
+  ON field_suggestions(status, field_name)
+  WHERE status = 'pending';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_field_suggestions'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_field_suggestions
+      BEFORE UPDATE ON field_suggestions
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- FIELD-LEVEL PROVENANCE (lightweight evidence)
+-- ============================================================
+-- Instead of storing full snapshots, store lightweight provenance per field.
+-- Hash + selector + URL = reproducible verification without storage cost.
+CREATE TABLE IF NOT EXISTS field_provenance (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  candidate_id          UUID NOT NULL REFERENCES extracted_candidates(id) ON DELETE CASCADE,
+
+  -- Which field this provenance is for
+  field_name            TEXT NOT NULL,
+
+  -- Source info
+  source_url            TEXT NOT NULL,
+  source_content_hash   TEXT,                       -- SHA-256 of the page at fetch time
+  fetched_at            TIMESTAMPTZ NOT NULL,
+
+  -- Extraction location (how to find this value again)
+  css_selector          TEXT,                       -- CSS selector to the element
+  xpath                 TEXT,                       -- Alternative: XPath
+  text_pattern          TEXT,                       -- Regex or literal that matched
+
+  -- What was extracted
+  extracted_text        TEXT,                       -- The raw text extracted
+
+  -- Confidence in extraction accuracy
+  extraction_confidence INT DEFAULT 80
+                        CHECK (extraction_confidence >= 0 AND extraction_confidence <= 100),
+
+  -- Verification
+  last_verified_at      TIMESTAMPTZ,
+  verification_status   TEXT DEFAULT 'unverified'
+                        CHECK (verification_status IN ('unverified', 'verified', 'stale', 'broken')),
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_provenance_candidate
+  ON field_provenance(candidate_id);
+
+CREATE INDEX IF NOT EXISTS idx_provenance_field
+  ON field_provenance(field_name);
+
+CREATE INDEX IF NOT EXISTS idx_provenance_url
+  ON field_provenance(source_url);
+
+-- ============================================================
+-- PUBLISH CRITERIA TRACKING
+-- ============================================================
+-- Tracks whether a candidate meets publish threshold.
+-- Aggregates all requirements into a single "ready" signal.
+CREATE TABLE IF NOT EXISTS publish_readiness (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  candidate_id          UUID NOT NULL UNIQUE REFERENCES extracted_candidates(id) ON DELETE CASCADE,
+
+  -- Required fields status (must all be true to publish)
+  has_org_name          BOOLEAN NOT NULL DEFAULT false,
+  has_service_name      BOOLEAN NOT NULL DEFAULT false,
+  has_description       BOOLEAN NOT NULL DEFAULT false,
+  has_contact_method    BOOLEAN NOT NULL DEFAULT false,  -- phone OR email OR website
+  has_location_or_virtual BOOLEAN NOT NULL DEFAULT false,
+
+  -- Tag requirements
+  has_category_tag      BOOLEAN NOT NULL DEFAULT false,
+  has_geographic_tag    BOOLEAN NOT NULL DEFAULT false,
+
+  -- Confirmation status
+  critical_tags_confirmed BOOLEAN NOT NULL DEFAULT false,
+  no_red_tags_pending   BOOLEAN NOT NULL DEFAULT false,   -- No unconfirmed red tags
+
+  -- Verification
+  passed_domain_check   BOOLEAN NOT NULL DEFAULT false,
+  no_critical_failures  BOOLEAN NOT NULL DEFAULT false,
+
+  -- Overall
+  confidence_score      INT NOT NULL DEFAULT 0,
+  confidence_tier       TEXT GENERATED ALWAYS AS (
+    CASE
+      WHEN confidence_score >= 80 THEN 'green'
+      WHEN confidence_score >= 60 THEN 'yellow'
+      WHEN confidence_score >= 40 THEN 'orange'
+      ELSE 'red'
+    END
+  ) STORED,
+
+  -- Computed readiness
+  is_ready_for_publish  BOOLEAN GENERATED ALWAYS AS (
+    has_org_name AND
+    has_service_name AND
+    has_description AND
+    has_contact_method AND
+    has_location_or_virtual AND
+    has_category_tag AND
+    has_geographic_tag AND
+    critical_tags_confirmed AND
+    no_red_tags_pending AND
+    passed_domain_check AND
+    no_critical_failures AND
+    confidence_score >= 60
+  ) STORED,
+
+  -- When this was last computed
+  computed_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- Who approved (if manual override)
+  approved_by_user_id   TEXT,
+  approved_at           TIMESTAMPTZ,
+
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_readiness_candidate
+  ON publish_readiness(candidate_id);
+
+CREATE INDEX IF NOT EXISTS idx_readiness_ready
+  ON publish_readiness(is_ready_for_publish)
+  WHERE is_ready_for_publish = true;
+
+CREATE INDEX IF NOT EXISTS idx_readiness_tier
+  ON publish_readiness(confidence_tier);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_set_updated_at_publish_readiness'
+  ) THEN
+    CREATE TRIGGER trg_set_updated_at_publish_readiness
+      BEFORE UPDATE ON publish_readiness
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
+
+-- ============================================================
+-- REVIEW ACTIONS LOG
+-- ============================================================
+-- Audit log specific to admin review actions.
+-- Tracks every confirm/reject/edit for accountability.
+CREATE TABLE IF NOT EXISTS review_actions (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  candidate_id          UUID NOT NULL REFERENCES extracted_candidates(id) ON DELETE CASCADE,
+
+  -- Who acted
+  actor_user_id         TEXT NOT NULL,
+  actor_role            TEXT NOT NULL,
+
+  -- What action
+  action_type           TEXT NOT NULL
+                        CHECK (action_type IN (
+                          'tag_confirmed', 'tag_rejected', 'tag_modified',
+                          'field_accepted', 'field_rejected', 'field_edited',
+                          'assignment_claimed', 'assignment_declined',
+                          'review_completed', 'review_escalated',
+                          'publish_approved', 'publish_rejected',
+                          'manual_override'
+                        )),
+
+  -- What was acted on
+  target_type           TEXT NOT NULL
+                        CHECK (target_type IN ('tag', 'field', 'assignment', 'candidate')),
+  target_id             TEXT,                       -- ID of tag/field/assignment
+
+  -- Before/after for auditing
+  old_value             JSONB,
+  new_value             JSONB,
+
+  -- Notes
+  notes                 TEXT,
+
+  -- Timestamp
+  acted_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_actions_candidate
+  ON review_actions(candidate_id);
+
+CREATE INDEX IF NOT EXISTS idx_review_actions_actor
+  ON review_actions(actor_user_id);
+
+CREATE INDEX IF NOT EXISTS idx_review_actions_type
+  ON review_actions(action_type);
+
+CREATE INDEX IF NOT EXISTS idx_review_actions_time
+  ON review_actions(acted_at DESC);
+
+-- ============================================================
+-- VIEWS FOR COMMON QUERIES
+-- ============================================================
+
+-- View: Admins with available capacity
+CREATE OR REPLACE VIEW v_available_admins AS
+SELECT
+  arc.*,
+  (arc.max_pending - arc.pending_count) AS available_slots,
+  COALESCE(u.display_name, arc.user_id) AS admin_name
+FROM admin_review_capacity arc
+LEFT JOIN user_profiles u ON u.user_id = arc.user_id
+WHERE arc.is_active = true
+  AND arc.is_accepting_new = true
+  AND arc.pending_count < arc.max_pending;
+
+-- View: Candidates ready for publish
+CREATE OR REPLACE VIEW v_candidates_ready AS
+SELECT
+  ec.*,
+  pr.confidence_tier,
+  pr.is_ready_for_publish
+FROM extracted_candidates ec
+JOIN publish_readiness pr ON pr.candidate_id = ec.id
+WHERE pr.is_ready_for_publish = true
+  AND ec.review_status != 'published';
+
+-- View: Pending tag confirmations with color breakdown
+CREATE OR REPLACE VIEW v_pending_tags_by_color AS
+SELECT
+  candidate_id,
+  COUNT(*) FILTER (WHERE confidence_color = 'red') AS red_count,
+  COUNT(*) FILTER (WHERE confidence_color = 'orange') AS orange_count,
+  COUNT(*) FILTER (WHERE confidence_color = 'yellow') AS yellow_count,
+  COUNT(*) FILTER (WHERE confidence_color = 'green') AS green_count,
+  COUNT(*) AS total_pending
+FROM tag_confirmations
+WHERE status = 'pending'
+GROUP BY candidate_id;
+
+-- View: Candidate review dashboard
+CREATE OR REPLACE VIEW v_candidate_dashboard AS
+SELECT
+  ec.id AS candidate_id,
+  ec.organization_name,
+  ec.service_name,
+  ec.review_status,
+  ec.confidence_score,
+  ec.confidence_tier,
+  ec.jurisdiction_state,
+  ec.jurisdiction_county,
+  pr.is_ready_for_publish,
+  COALESCE(pt.red_count, 0) AS pending_red_tags,
+  COALESCE(pt.total_pending, 0) AS pending_tags_total,
+  (SELECT COUNT(*) FROM field_suggestions fs WHERE fs.candidate_id = ec.id AND fs.status = 'pending') AS pending_suggestions,
+  (SELECT COUNT(*) FROM candidate_assignments ca WHERE ca.candidate_id = ec.id AND ca.status = 'pending') AS pending_assignments
+FROM extracted_candidates ec
+LEFT JOIN publish_readiness pr ON pr.candidate_id = ec.id
+LEFT JOIN v_pending_tags_by_color pt ON pt.candidate_id = ec.id
+WHERE ec.review_status NOT IN ('published', 'archived');
+
+-- ============================================================
+-- FUNCTIONS FOR ROUTING
+-- ============================================================
+
+-- Function: Find nearest admins for a candidate
+CREATE OR REPLACE FUNCTION find_nearest_admins(
+  p_candidate_id UUID,
+  p_state TEXT,
+  p_county TEXT,
+  p_limit INT DEFAULT 5
+)
+RETURNS TABLE (
+  user_id TEXT,
+  admin_name TEXT,
+  available_slots INT,
+  priority_score INT
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    arc.user_id,
+    COALESCE(u.display_name, arc.user_id) AS admin_name,
+    (arc.max_pending - arc.pending_count)::INT AS available_slots,
+    -- Priority: exact county match > state match > zone match
+    CASE
+      WHEN p_county IS NOT NULL AND (p_state || '_' || p_county) = ANY(arc.coverage_counties) THEN 100
+      WHEN p_state = ANY(arc.coverage_states) THEN 50
+      ELSE 10
+    END AS priority_score
+  FROM admin_review_capacity arc
+  LEFT JOIN user_profiles u ON u.user_id = arc.user_id
+  WHERE arc.is_active = true
+    AND arc.is_accepting_new = true
+    AND arc.pending_count < arc.max_pending
+    AND (
+      p_state = ANY(arc.coverage_states)
+      OR (p_county IS NOT NULL AND (p_state || '_' || p_county) = ANY(arc.coverage_counties))
+      OR array_length(arc.coverage_states, 1) IS NULL  -- Covers all states
+    )
+  ORDER BY priority_score DESC, arc.pending_count ASC, arc.avg_review_hours ASC NULLS LAST
+  LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function: Assign candidate to admins
+CREATE OR REPLACE FUNCTION assign_candidate_to_admins(
+  p_candidate_id UUID,
+  p_admin_limit INT DEFAULT 5,
+  p_org_limit INT DEFAULT 1,
+  p_expires_hours INT DEFAULT 48
+)
+RETURNS INT AS $$
+DECLARE
+  v_state TEXT;
+  v_county TEXT;
+  v_admin RECORD;
+  v_assigned INT := 0;
+  v_priority INT := 1;
+BEGIN
+  -- Get candidate jurisdiction
+  SELECT jurisdiction_state, jurisdiction_county
+  INTO v_state, v_county
+  FROM extracted_candidates
+  WHERE id = p_candidate_id;
+
+  -- Assign to admins
+  FOR v_admin IN
+    SELECT * FROM find_nearest_admins(p_candidate_id, v_state, v_county, p_admin_limit)
+  LOOP
+    INSERT INTO candidate_assignments (
+      candidate_id, assigned_user_id, assignment_type, priority_rank, expires_at
+    )
+    VALUES (
+      p_candidate_id, v_admin.user_id, 'admin', v_priority,
+      now() + (p_expires_hours || ' hours')::INTERVAL
+    )
+    ON CONFLICT (candidate_id, assigned_user_id) DO NOTHING;
+
+    -- Increment admin's pending count
+    UPDATE admin_review_capacity
+    SET pending_count = pending_count + 1
+    WHERE user_id = v_admin.user_id;
+
+    v_assigned := v_assigned + 1;
+    v_priority := v_priority + 1;
+  END LOOP;
+
+  RETURN v_assigned;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function: Compute publish readiness
+CREATE OR REPLACE FUNCTION compute_publish_readiness(p_candidate_id UUID)
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_ec extracted_candidates%ROWTYPE;
+  v_ready BOOLEAN;
+BEGIN
+  SELECT * INTO v_ec FROM extracted_candidates WHERE id = p_candidate_id;
+
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+
+  -- Upsert readiness record
+  INSERT INTO publish_readiness (
+    candidate_id,
+    has_org_name,
+    has_service_name,
+    has_description,
+    has_contact_method,
+    has_location_or_virtual,
+    has_category_tag,
+    has_geographic_tag,
+    critical_tags_confirmed,
+    no_red_tags_pending,
+    passed_domain_check,
+    no_critical_failures,
+    confidence_score,
+    computed_at
+  )
+  VALUES (
+    p_candidate_id,
+    v_ec.organization_name IS NOT NULL AND v_ec.organization_name != '',
+    v_ec.service_name IS NOT NULL AND v_ec.service_name != '',
+    v_ec.description IS NOT NULL AND v_ec.description != '',
+    v_ec.phones IS NOT NULL AND jsonb_array_length(v_ec.phones) > 0
+      OR v_ec.emails IS NOT NULL AND jsonb_array_length(v_ec.emails) > 0
+      OR v_ec.website_url IS NOT NULL,
+    v_ec.is_remote_service OR v_ec.address IS NOT NULL,
+    EXISTS (SELECT 1 FROM resource_tags WHERE candidate_id = p_candidate_id AND tag_type = 'category'),
+    EXISTS (SELECT 1 FROM resource_tags WHERE candidate_id = p_candidate_id AND tag_type = 'geographic'),
+    NOT EXISTS (
+      SELECT 1 FROM tag_confirmations
+      WHERE candidate_id = p_candidate_id
+        AND status = 'pending'
+        AND tag_type IN ('category', 'geographic', 'audience')
+        AND agent_confidence >= 80
+    ),
+    NOT EXISTS (
+      SELECT 1 FROM tag_confirmations
+      WHERE candidate_id = p_candidate_id
+        AND status = 'pending'
+        AND agent_confidence < 40
+    ),
+    EXISTS (
+      SELECT 1 FROM verification_checks
+      WHERE candidate_id = p_candidate_id
+        AND check_type = 'domain_allowlist'
+        AND status = 'pass'
+    ),
+    NOT EXISTS (
+      SELECT 1 FROM verification_checks
+      WHERE candidate_id = p_candidate_id
+        AND severity = 'critical'
+        AND status = 'fail'
+    ),
+    v_ec.confidence_score,
+    now()
+  )
+  ON CONFLICT (candidate_id) DO UPDATE SET
+    has_org_name = EXCLUDED.has_org_name,
+    has_service_name = EXCLUDED.has_service_name,
+    has_description = EXCLUDED.has_description,
+    has_contact_method = EXCLUDED.has_contact_method,
+    has_location_or_virtual = EXCLUDED.has_location_or_virtual,
+    has_category_tag = EXCLUDED.has_category_tag,
+    has_geographic_tag = EXCLUDED.has_geographic_tag,
+    critical_tags_confirmed = EXCLUDED.critical_tags_confirmed,
+    no_red_tags_pending = EXCLUDED.no_red_tags_pending,
+    passed_domain_check = EXCLUDED.passed_domain_check,
+    no_critical_failures = EXCLUDED.no_critical_failures,
+    confidence_score = EXCLUDED.confidence_score,
+    computed_at = now();
+
+  -- Check if ready
+  SELECT is_ready_for_publish INTO v_ready
+  FROM publish_readiness
+  WHERE candidate_id = p_candidate_id;
+
+  RETURN COALESCE(v_ready, false);
+END;
+$$ LANGUAGE plpgsql;
+

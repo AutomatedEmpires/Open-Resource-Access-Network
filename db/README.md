@@ -2,7 +2,7 @@
 
 ## Prerequisites
 - Docker and Docker Compose (for local development)
-- OR a Neon account (for serverless PostgreSQL)
+- OR an Azure Database for PostgreSQL Flexible Server instance (production / staging)
 
 ---
 
@@ -46,34 +46,61 @@ Then add a server with:
 
 ---
 
-## Neon (Production / Staging)
+## Azure Database for PostgreSQL (Production / Staging)
 
-1. Create a Neon project at https://neon.tech
-2. Enable the PostGIS extension in your Neon project SQL editor:
+ORAN uses **Azure Database for PostgreSQL Flexible Server** in production. See `docs/PLATFORM_AZURE.md` for provisioning details.
+
+1. Provision a Flexible Server instance with PostGIS enabled:
    ```sql
    CREATE EXTENSION IF NOT EXISTS postgis;
+   CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
    ```
-3. Copy the connection string from the Neon dashboard
-4. Add to your environment:
+2. Copy the connection string from the Azure Portal
+3. Add to your environment:
    ```
-   DATABASE_URL=postgresql://user:password@ep-xxx.us-east-2.aws.neon.tech/neondb?sslmode=require
+   DATABASE_URL=postgresql://user:password@your-server.postgres.database.azure.com/oran_db?sslmode=require
    ```
 
 ---
 
-## Running Migrations
+## Migrations
 
-ORAN uses plain SQL migrations under db/migrations/**.
+ORAN uses plain SQL migrations under `db/migrations/`. Apply them sequentially.
 
-Status:
-- Implemented: apply migrations directly (e.g., via `psql`).
-- Planned: Drizzle Kit managed migrations (requires a Drizzle config, not currently present in the repo).
+| File | Description |
+| ---- | ----------- |
+| `0000_initial_schema.sql` | Core HSDS tables (organizations, locations, services, service_at_location, phones, addresses, schedules, taxonomy_terms, service_taxonomy, confidence_scores, verification_queue, seeker_feedback, chat_sessions, feature_flags) + PostGIS + UUID extensions |
+| `0001_updated_at_triggers.sql` | `set_updated_at()` function + triggers for organizations, locations, services, verification_queue, feature_flags |
+| `0002_audit_fields.sql` | Normalizes `created_at`/`updated_at` on all tables, adds `created_by_user_id`/`updated_by_user_id` (Entra Object IDs), renames `submitted_by` → `submitted_by_user_id` |
+| `0003_import_staging.sql` | Import pipeline: `import_batches`, `staging_organizations`, `staging_locations`, `staging_services` |
+| `0004_audit_logs.sql` | Append-only `audit_logs` table (actor, action, resource, before/after JSONB, ip_digest) |
+| `0005_coverage_zones.sql` | `coverage_zones` table with PostGIS polygon geometry, GiST index, assigned_user_id |
+| `0006_org_members_and_profiles.sql` | `organization_members` (user↔org mapping with role/status) + `user_profiles` (pseudonymous preferences) |
+| `0007_schema_optimizations.sql` | Soft-delete columns on organizations/locations, composite indexes, text search GIN indexes, feature_flags.description |
+| `0008_rename_assigned_to.sql` | Renames `verification_queue.assigned_to` → `assigned_to_user_id` for Entra naming consistency |
+| `0009_programs_eligibility_documents.sql` | `programs` table (services.program_id FK), `eligibility` (structured criteria with GIN index), `required_documents` |
+| `0010_service_areas_languages_accessibility.sql` | `service_areas` (PostGIS polygon), `languages` (ISO 639-1), `accessibility_for_disabilities` |
+| `0011_contacts_saved_services_evidence.sql` | `contacts` (HSDS named contacts), `saved_services` (server-side bookmarks), `verification_evidence` (proof docs) |
+| `0012_service_attributes.sql` | `service_attributes` — universal tag system across 6 dimensions (delivery, cost, access, culture, population, situation) |
+| `0013_comprehensive_coverage.sql` | Household size on eligibility, wait times + capacity on services, transit + parking on locations, `service_adaptations` + `dietary_options` tables |
 
 ### Run migrations via psql
 
 ```bash
 psql $DATABASE_URL -f db/migrations/0000_initial_schema.sql
 psql $DATABASE_URL -f db/migrations/0001_updated_at_triggers.sql
+psql $DATABASE_URL -f db/migrations/0002_audit_fields.sql
+psql $DATABASE_URL -f db/migrations/0003_import_staging.sql
+psql $DATABASE_URL -f db/migrations/0004_audit_logs.sql
+psql $DATABASE_URL -f db/migrations/0005_coverage_zones.sql
+psql $DATABASE_URL -f db/migrations/0006_org_members_and_profiles.sql
+psql $DATABASE_URL -f db/migrations/0007_schema_optimizations.sql
+psql $DATABASE_URL -f db/migrations/0008_rename_assigned_to.sql
+psql $DATABASE_URL -f db/migrations/0009_programs_eligibility_documents.sql
+psql $DATABASE_URL -f db/migrations/0010_service_areas_languages_accessibility.sql
+psql $DATABASE_URL -f db/migrations/0011_contacts_saved_services_evidence.sql
+psql $DATABASE_URL -f db/migrations/0012_service_attributes.sql
+psql $DATABASE_URL -f db/migrations/0013_comprehensive_coverage.sql
 ```
 
 ### Drizzle Kit (planned)
@@ -90,7 +117,7 @@ If/when Drizzle config is added, migration orchestration can move to Drizzle Kit
 psql $DATABASE_URL -f db/seed/demo.sql
 ```
 
-This inserts fictional organizations and services in "Demoville, DM 00000" for development/testing purposes only.
+This inserts fictional organizations, services, coverage zones, organization members, user profiles, programs, eligibility criteria, required documents, service areas, languages, accessibility features, contacts, saved services, service attributes (delivery modes, cost types, access requirements, cultural competency, population focus, situational context), service adaptations (disability, health condition, age group, learning), and dietary options (halal, kosher, vegan, etc.) in "Demoville, DM 00000" for development/testing purposes only.
 
 ---
 

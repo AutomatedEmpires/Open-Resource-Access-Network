@@ -36,6 +36,19 @@ These resources are expected to exist in `oranhf57ir-prod-rg`:
 - Azure Maps: `oranhf57ir-prod-maps` (G2 Gen2)
 - Azure AI Translator: `oranhf57ir-prod-translator` (F0)
 
+## Why these integrations exist
+
+- Azure App Service: simple, Azure-native hosting for Next.js with predictable ops.
+- Azure Database for PostgreSQL + PostGIS: authoritative data store for verified resources + geospatial queries.
+- Azure Key Vault: single source of truth for runtime secrets (no secrets in repo).
+- Log Analytics + Application Insights: production observability inside Microsoft; supports alerting and auditing without adding PII.
+- Azure Maps: Azure-native geocoding to support map/directory UX without relying on third-party mapping providers.
+- Azure AI Translator: Azure-native translation for service-record text (names/descriptions) with a free tier for early-stage usage.
+
+ORAN safety contract reminder:
+- Anything shown to seekers must come from **stored records only**.
+- AI services may help with **ingestion/extraction/summarization**, but never directly inject new “facts” into seeker responses.
+
 ## Secrets: Key Vault (prod)
 
 Key Vault: `oranhf57ir-prod-kv`
@@ -90,6 +103,14 @@ Preferred pattern:
 Current (prod RG) roles:
 - Resource group scope `oranhf57ir-prod-rg`: two invited guest users have `Owner`.
 
+Ownership mapping policy (repo-safe):
+- Do not list personal emails here.
+- Record roles and scopes here (e.g., “2 Owners at prod RG scope”).
+- Keep the specific human identities in `docs/OWNER_INFO.local.md`.
+
+Recommended next hardening step:
+- Move from per-user RBAC to Entra security groups (`ORAN-Owners`, `ORAN-Contributors`, `ORAN-Readers`).
+
 To inspect RBAC:
 - `az role assignment list --scope /subscriptions/e3d708a7-6264-451c-bd7e-670fecfbf4fa/resourceGroups/oranhf57ir-prod-rg --include-inherited -o table`
 
@@ -102,6 +123,68 @@ To inspect RBAC:
 - Next.js App Insights init hook: `src/instrumentation.ts`
 - Azure Maps service: `src/services/geocoding/azureMaps.ts`
 - Azure Translator service: `src/services/i18n/translator.ts`
+
+## Agent ecosystem: scrape → extract → verify (ORAN-safe)
+
+Scraping is acceptable **only** as an ingestion input that still goes through staging + verification.
+
+Clean pipeline shape:
+
+1) **Locate candidates** (non-user-facing)
+- Inputs: curated lists, partner feeds, permitted scrapes, submissions.
+- Output: candidate URLs/documents stored as evidence.
+
+2) **Extract structured fields** (unverified)
+- Parse source HTML/PDF into a normalized candidate record.
+- Must include traceability: source URL, fetch timestamp, content hash.
+
+3) **Verify repeatedly** (publish gate)
+- Automated checks (domain consistency, contact info stability, cross-source agreement).
+- Human review required for publish (community-admin / ORAN-admin).
+
+4) **Confidence scoring** (internal)
+- Score determines review priority and reverify cadence.
+- Score does not override the publish gate.
+
+5) **Reverification scheduler**
+- Periodically re-check published records; flag drift, downgrade confidence, and/or move back to review.
+
+Azure-native building blocks (recommended):
+- Orchestration: Azure Functions (Durable) or Container Apps Jobs
+- Queues: Azure Service Bus
+- Evidence storage: Azure Blob Storage
+- Telemetry: Application Insights
+
+Implementation note:
+- Keep seeker retrieval/ranking LLM-free. If an LLM is used, it must only summarize already-retrieved stored records.
+
+## Student Azure → production Azure promotion workflow
+
+Goal: build/test the ingestion agent in a low-cost “student” environment, then reproduce it in the main runtime account once it’s stable.
+
+Recommended approach: **Infrastructure as Code + environment separation**
+
+- Maintain a single set of IaC templates (Bicep or Terraform) with parameterized names, SKU tiers, and resource group.
+- Create two Azure environments:
+	- `oran-dev` (student subscription): cheapest SKUs, reduced retention, smaller quotas.
+	- `oran-prod` (main subscription): production SKUs, retention, locks, alerts.
+
+CI/CD pattern:
+- GitHub Environments:
+	- `azure-student` → deploys only to student subscription RG
+	- `azure-prod` → deploys only to prod subscription RG (requires approvals)
+- Separate OIDC federated credentials per subscription/environment.
+- Promote by re-deploying the same IaC + app build to prod (no manual portal clicking).
+
+Data promotion policy (important):
+- Do not “copy unverified candidates” into prod by default.
+- Prefer: run the same ingestion pipeline in prod against approved sources, or export/import only after explicit review.
+
+Checklist to switch from student → prod:
+- IaC parameters updated (RG names, SKUs, alerting, retention)
+- OIDC configured for prod deployment identity
+- Key Vault secrets created in prod KV (by name) and referenced by App Service
+- Verification + scoring thresholds confirmed in docs and tests
 
 ## Local-only owner notes
 

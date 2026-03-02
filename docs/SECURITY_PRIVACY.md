@@ -148,7 +148,7 @@ Status: Partially implemented.
 - Environment variables validated at startup
 
 ### Security Headers
-Configured in `next.config.ts`:
+Configured in `next.config.mjs`:
 - `X-Frame-Options: DENY`
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`

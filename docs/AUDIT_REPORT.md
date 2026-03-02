@@ -1,7 +1,7 @@
 # ORAN Repository Forensic Audit (as of 2026-02-28)
 
 Update note:
-- `next.config.ts` now configures baseline security headers (e.g., `X-Frame-Options`, `Permissions-Policy`). Treat this audit as point-in-time; if you change enforcement, update the audit summary sections accordingly.
+- `next.config.mjs` now configures baseline security headers (e.g., `X-Frame-Options`, `Permissions-Policy`). Treat this audit as point-in-time; if you change enforcement, update the audit summary sections accordingly.
 
 Scope: This report audits the repository *as it exists right now* in the `codespace` branch. It is an alignment and compliance audit only; no product features were implemented as part of this work.
 
@@ -181,7 +181,7 @@ Doc anchors of interest:
 #### docs/SECURITY_PRIVACY.md
 - **Owns**: security/privacy model and constraints.
 - **Must never contradict**: middleware behavior, API routes, Next.js security headers, data persistence.
-- **Code modules that must align**: `src/middleware.ts`, `next.config.ts`, `src/app/api/*`, `src/services/telemetry/sentry.ts`.
+- **Code modules that must align**: `src/middleware.ts`, `next.config.mjs`, `src/app/api/*`, `src/services/telemetry/sentry.ts`.
 - **Status**: **Substantially aspirational vs code**:
   - Role enforcement and “defense in depth” is not implemented (middleware is auth-only).
   - Security headers are not configured in `next.config.ts` (it currently exports an empty config object).

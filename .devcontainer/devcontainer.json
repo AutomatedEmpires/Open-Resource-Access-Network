@@ -42,6 +42,10 @@
         "ms-azuretools.vscode-docker",
         "ms-vscode.azure-account",
         "ms-azuretools.vscode-azureappservice",
+        "ms-azuretools.vscode-azureresourcegroups",
+        "ms-azuretools.vscode-azure-github-copilot",
+        "ms-azuretools.vscode-bicep",
+        "ms-vscode.test-adapter-converter",
 
         "mtxr.sqltools",
         "mtxr.sqltools-driver-pg",
@@ -52,7 +56,8 @@
         "mikestead.dotenv",
         "editorconfig.editorconfig",
         "lokalise.i18n-ally",
-        "github.vscode-github-actions"
+        "github.vscode-github-actions",
+        "christian-kohler.npm-intellisense"
       ]
     }
   }

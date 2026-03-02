@@ -4,6 +4,20 @@ Complete inventory of all UI routes, access control, and component hierarchy.
 
 ---
 
+## Public Entry Routes
+
+### `/` — Landing / Entry
+**Access**: Public
+**Purpose**: Explain ORAN’s trust model (“verified records”), route into seeker discovery
+
+Component hierarchy:
+```
+HomePage
+└── EntryActions
+    ├── PrimaryCTA (Find services → /chat)
+    └── EscapeHatches (Directory → /directory, Map → /map)
+```
+
 ## Seeker Routes (public-facing)
 
 ### `/chat` — Chatbot Interface

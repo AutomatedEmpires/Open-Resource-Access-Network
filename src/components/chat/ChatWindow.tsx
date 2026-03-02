@@ -11,9 +11,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, AlertTriangle, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { ELIGIBILITY_DISCLAIMER } from '@/domain/constants';
 import type { ChatResponse, ServiceCard } from '@/services/chat/types';
+import { ChatServiceCard } from '@/components/chat/ChatServiceCard';
 
 // ============================================================
 // CRISIS BANNER
@@ -56,45 +56,6 @@ function CrisisBanner() {
           Community Resources: Call 211
         </a>
       </div>
-    </div>
-  );
-}
-
-// ============================================================
-// SERVICE RESULT CARD (in chat)
-// ============================================================
-
-function ChatServiceCard({ card }: { card: ServiceCard }) {
-  return (
-    <div className="border border-gray-200 rounded-lg p-3 bg-white shadow-sm">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h4 className="font-semibold text-gray-900 text-sm leading-tight truncate">
-            {card.serviceName}
-          </h4>
-          <p className="text-xs text-gray-500 truncate">{card.organizationName}</p>
-        </div>
-        <Badge band={card.confidenceBand} className="flex-shrink-0 text-xs" />
-      </div>
-      {card.description && (
-        <p className="text-xs text-gray-600 mt-2 line-clamp-2">{card.description}</p>
-      )}
-      {card.address && (
-        <p className="text-xs text-gray-500 mt-1">📍 {card.address}</p>
-      )}
-      {card.phone && (
-        <a
-          href={`tel:${card.phone}`}
-          className="text-xs text-blue-600 hover:underline mt-1 block"
-          aria-label={`Call ${card.serviceName} at ${card.phone}`}
-        >
-          📞 {card.phone}
-        </a>
-      )}
-      {card.scheduleDescription && (
-        <p className="text-xs text-gray-500 mt-1">🕐 {card.scheduleDescription}</p>
-      )}
-      <p className="text-xs text-gray-400 italic mt-2">{card.eligibilityHint}</p>
     </div>
   );
 }

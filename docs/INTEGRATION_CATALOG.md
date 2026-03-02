@@ -27,8 +27,9 @@ This document maps available integrations/credits to ORAN needs and clarifies wh
 
 ### Observability
 
-- **Sentry**: already present and privacy-restricted.
-- **Datadog** (student/startup): optional; if used, enforce no-PII and consider it secondary to Sentry unless you standardize.
+- **Azure Application Insights**: **primary production backend** — connected via `APPLICATIONINSIGHTS_CONNECTION_STRING`. Auto-instruments HTTP + PostgreSQL. Typed wrappers in `src/services/telemetry/appInsights.ts`.
+- **Sentry**: already present and privacy-restricted. Serves as secondary/fallback.
+- **Datadog** (student/startup): optional; if used, enforce no-PII and consider it secondary.
 - **New Relic**: optional; same privacy constraints.
 
 ### CI, code quality, and security
@@ -57,7 +58,8 @@ ORAN already has an in-house flag interface.
 
 ## Geospatial / mapping
 
-- **Azure Maps** (Azure-native) or **Leaflet + OpenStreetMap** (max control/cost).
+- **Azure Maps** (Azure-native): **implemented** — G2 Gen2 SKU provisioned, geocoding service in `src/services/geocoding/azureMaps.ts`. Key stored in Key Vault.
+- **Leaflet + OpenStreetMap**: still viable for client-side tile rendering (no Azure Maps tiles SDK used yet).
 - **CARTO** (Dev Pack): strong for analysis/admin workflows; treat as an internal tool unless you are comfortable operationally.
 - **ArcGIS (edu)**: treat as dev-only unless you have a production license.
 

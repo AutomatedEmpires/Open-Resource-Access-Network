@@ -11,9 +11,12 @@ Implemented today:
 - SQL migrations in db/migrations/**.
 - Optional Clerk wiring (middleware gating when env vars exist).
 - Sentry wrapper exists; DSN-dependent activation.
+- Azure Application Insights (connection-string-dependent; `src/instrumentation.ts` + `src/services/telemetry/appInsights.ts`).
+- Azure Maps geocoding service (`src/services/geocoding/azureMaps.ts`).
+- Azure AI Translator service (`src/services/i18n/translator.ts`).
 
 Platform direction:
-- **Azure-first** for hosting, production DB, and secrets.
+- **Azure-first** for hosting, production DB, secrets, observability, geocoding, and translation.
 - See `docs/DEPLOYMENT_AZURE.md` and `docs/PLATFORM_AZURE.md`.
 
 Planned / partially implemented:
@@ -54,7 +57,7 @@ Status: Planned (role-based protection is not yet enforced end-to-end).
 
 ## Hosting: Azure App Service (Azure-first)
 
-ORAN is deployed to **Azure App Service (Linux)** with Node.js 20.
+ORAN is deployed to **Azure App Service (Linux)** with Node.js 22 LTS.
 
 - Deployment guide: `docs/DEPLOYMENT_AZURE.md`
 - Deploy workflow: `.github/workflows/deploy-azure-appservice.yml`
@@ -133,8 +136,89 @@ Provides typed wrappers:
 - Location data: city-level only, no coordinates in Sentry
 
 ### Azure-first note
-- For production observability, prefer **Azure Monitor / Application Insights** where possible to minimize external integrations.
-- If Sentry is used, it must remain strictly PII-free per `docs/SECURITY_PRIVACY.md`.
+- **Azure Application Insights** is now the primary production observability backend (see below).
+- If Sentry is also used, it must remain strictly PII-free per `docs/SECURITY_PRIVACY.md`.
+
+---
+
+## Observability: Azure Application Insights
+
+ORAn uses **Azure Application Insights** (backed by a Log Analytics workspace) as the primary production telemetry backend.
+
+### Configuration
+- Environment variable: `APPLICATIONINSIGHTS_CONNECTION_STRING`
+- The SDK auto-initializes via the Next.js instrumentation hook (`src/instrumentation.ts`).
+
+### Wrapper (`src/services/telemetry/appInsights.ts`)
+Provides typed wrappers:
+- `trackException(error, context?)` — report errors
+- `trackEvent(name, properties?)` — report custom events
+- `trackMetric(name, value)` — report numeric metrics
+- `trackTrace(message, severityLevel?)` — structured log entries
+- `flush()` — drain pending telemetry
+
+### Auto-instrumentation
+- HTTP incoming/outgoing requests
+- PostgreSQL queries (via `pg` driver)
+- Azure SDK instrumentation is disabled to reduce noise
+
+### Privacy Rules
+- Same PII constraints as Sentry: no user PII in telemetry events.
+- Session correlation uses anonymous IDs only.
+
+---
+
+## Geocoding: Azure Maps
+
+ORAn uses **Azure Maps** (G2 Gen2 SKU) for geocoding queries.
+
+### Configuration
+- Environment variable: `AZURE_MAPS_KEY` (stored as Key Vault reference in App Service)
+- Production resource: `oranhf57ir-prod-maps` in `westus2`
+
+### Service (`src/services/geocoding/azureMaps.ts`)
+```typescript
+interface AzureMapsGeocodingResult {
+  lat: number;
+  lon: number;
+  formattedAddress: string;
+  confidence: 'High' | 'Medium' | 'Low';
+  type: string;
+}
+```
+- `isConfigured()` — checks for API key
+- `geocode(query, options?)` — forward geocoding with optional bbox/country filters
+- `reverseGeocode(lat, lon)` — reverse geocoding
+
+### Privacy
+- Only query text is sent to Azure Maps; no user PII.
+- Approximate location by default (city-level for seekers).
+
+---
+
+## Translation: Azure AI Translator
+
+ORAn uses **Azure AI Translator** (F0 free tier — 2M characters/month) for dynamic content translation.
+
+### Configuration
+- Environment variables:
+  - `AZURE_TRANSLATOR_KEY` (stored as Key Vault reference)
+  - `AZURE_TRANSLATOR_ENDPOINT` (`https://api.cognitive.microsofttranslator.com/`)
+  - `AZURE_TRANSLATOR_REGION` (`westus2`)
+
+### Service (`src/services/i18n/translator.ts`)
+```typescript
+async function translate(request: TranslateRequest): Promise<TranslateResult>
+async function translateBatch(texts: string[], to: string, from?: string): Promise<TranslateResult[]>
+```
+- `isConfigured()` — checks for key + endpoint + region
+- In-memory LRU cache (500 entries) to minimize API calls
+- Batch support (up to 100 items per API call)
+- 10,000 character limit per text; 8-second timeout
+
+### Privacy
+- Only service record text (names, descriptions) is translated; no user PII.
+- Translation cache is server-side only.
 
 ---
 
@@ -161,9 +245,11 @@ interface TwoOneOneService {
 
 | Integration | Purpose | Status |
 |-------------|---------|--------|
+| Azure Application Insights | Production observability + telemetry | **Implemented** |
+| Azure Maps | Geocoding (forward + reverse) | **Implemented** |
+| Azure AI Translator | Dynamic content translation (F0 free tier) | **Implemented** |
 | Redis (Azure Cache for Redis) | Rate limiting, session quota, cache | Planned |
 | Azure Blob Storage | Evidence file storage for verification | Planned |
-| Azure Maps | Interactive map tiles (Azure-first) | Planned |
 | Azure OpenAI | LLM summarization (gated by flag; summarize retrieved records only) | Planned |
 | Azure Communication Services (Email) | Email notifications to hosts (Azure-first) | Planned |
 | Codecov | Test coverage reporting in CI | Configured |

@@ -6,9 +6,12 @@ This document is the SSOT for platform direction. If you introduce a non-Azure p
 
 ## Targets
 
-- **Web app hosting**: Azure App Service (Linux, Node.js 20)
+- **Web app hosting**: Azure App Service (Linux, Node.js 22 LTS)
 - **Database**: Azure Database for PostgreSQL Flexible Server + PostGIS
 - **Secrets**: Azure Key Vault (GitHub Actions uses OIDC; app reads secrets via App Service configuration)
+- **Observability**: Azure Application Insights + Log Analytics Workspace
+- **Geocoding**: Azure Maps (G2 Gen2 SKU)
+- **Translation**: Azure AI Translator (F0 free tier)
 - **Cache / rate limiting (future)**: Azure Cache for Redis
 - **Storage (future)**: Azure Blob Storage
 
@@ -17,6 +20,19 @@ This document is the SSOT for platform direction. If you introduce a non-Azure p
 - No PII in telemetry (Sentry/App Insights).
 - No direct external search results served to seekers (all external sources must go through staging + verification).
 - Prefer Azure-native primitives before adopting third-party infrastructure.
+
+## Production resource inventory
+
+| Resource | Type | SKU |
+|---|---|---|
+| `oranhf57ir-prod-plan` | App Service Plan | B1 Basic |
+| `oranhf57ir-prod-web` | Web App (Linux Node 22) | — |
+| `oranhf57ir-prod-kv` | Key Vault | Standard |
+| `oranhf57ir-prod-pg` | PostgreSQL Flexible Server | — |
+| `oranhf57ir-prod-logs` | Log Analytics Workspace | — |
+| `oranhf57ir-prod-insights` | Application Insights | — |
+| `oranhf57ir-prod-maps` | Azure Maps | G2 Gen2 |
+| `oranhf57ir-prod-translator` | AI Translator | F0 Free |
 
 ## Environments
 

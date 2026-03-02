@@ -30,11 +30,31 @@ describe('ingestion contracts', () => {
       candidateId: 'c1',
       extractKeySha256: extractKey,
       extractedAt: '2026-03-02T00:00:00Z',
+      review: {
+        status: 'pending',
+        timers: { reviewBy: '2026-03-03T00:00:00Z' },
+        jurisdiction: { kind: 'local', stateProvince: 'CA', city: 'Los Angeles' },
+        assignedToRole: 'community_admin',
+        assignedToKey: 'US-CA',
+      },
       fields: {
         organizationName: 'Org',
         serviceName: 'Service',
         description: 'Desc',
         isRemoteService: true,
+        phones: [{ number: '+1-555-555-5555', type: 'voice', context: 'Main line' }],
+      },
+      investigation: {
+        canonicalUrl: 'https://example.org/a',
+        discoveredLinks: [
+          {
+            url: 'https://example.org/apply',
+            type: 'apply',
+            evidenceId: 'ev1',
+            label: 'Apply now',
+          },
+        ],
+        importantArtifacts: ['blob://evidence/ev1.pdf'],
       },
       provenance: {},
     });
@@ -61,7 +81,7 @@ describe('ingestion contracts', () => {
     const parsed = AuditEventSchema.parse({
       eventId: 'ae1',
       correlationId: 'corr1',
-      eventType: 'extract.completed',
+      eventType: 'review.status_changed',
       actorType: 'system',
       actorId: 'agent',
       targetType: 'extraction',
@@ -72,7 +92,7 @@ describe('ingestion contracts', () => {
       evidenceRefs: [],
     });
 
-    expect(parsed.eventType).toBe('extract.completed');
+    expect(parsed.eventType).toBe('review.status_changed');
   });
 });
 

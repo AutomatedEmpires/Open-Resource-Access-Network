@@ -23,17 +23,82 @@ export const EvidenceSnapshotSchema = z.object({
 });
 export type EvidenceSnapshot = z.infer<typeof EvidenceSnapshotSchema>;
 
+/**
+ * Jurisdiction hint derived from explicit evidence.
+ * This is used for routing to the appropriate admin reviewers.
+ */
+export const JurisdictionHintSchema = z
+  .object({
+    country: z.string().min(2).max(2).default('US'),
+    stateProvince: z.string().min(1).optional(),
+    countyOrRegion: z.string().min(1).optional(),
+    city: z.string().min(1).optional(),
+    postalCode: z.string().min(1).optional(),
+    kind: z.enum(['local', 'regional', 'statewide', 'national', 'virtual']).default('local'),
+  })
+  .strict();
+export type JurisdictionHint = z.infer<typeof JurisdictionHintSchema>;
+
+export const ReviewStatusSchema = z.enum(['pending', 'in_review', 'verified', 'rejected', 'escalated']);
+export type ReviewStatus = z.infer<typeof ReviewStatusSchema>;
+
+export const ReviewTimersSchema = z
+  .object({
+    reviewBy: z.string().datetime().optional(),
+    lastVerifiedAt: z.string().datetime().optional(),
+    reverifyAt: z.string().datetime().optional(),
+  })
+  .strict();
+export type ReviewTimers = z.infer<typeof ReviewTimersSchema>;
+
+export const DiscoveredLinkSchema = z
+  .object({
+    url: z.string().url(),
+    type: z.enum(['home', 'contact', 'apply', 'eligibility', 'intake_form', 'hours', 'pdf', 'privacy', 'other']),
+    label: z.string().min(1).optional(),
+    evidenceId: z.string().min(1),
+  })
+  .strict();
+export type DiscoveredLink = z.infer<typeof DiscoveredLinkSchema>;
+
+export const InvestigationPackSchema = z
+  .object({
+    canonicalUrl: z.string().url(),
+    discoveredLinks: z.array(DiscoveredLinkSchema).default([]),
+    importantArtifacts: z.array(z.string().min(1)).default([]),
+  })
+  .strict();
+export type InvestigationPack = z.infer<typeof InvestigationPackSchema>;
+
 export const ExtractedCandidateSchema = z.object({
   extractionId: z.string().min(1),
   candidateId: z.string().min(1),
   extractKeySha256: z.string().regex(/^[a-f0-9]{64}$/i),
   extractedAt: z.string().datetime(),
+  review: z
+    .object({
+      status: ReviewStatusSchema.default('pending'),
+      jurisdiction: JurisdictionHintSchema.optional(),
+      timers: ReviewTimersSchema.default({}),
+      assignedToRole: z.enum(['community_admin', 'oran_admin']).optional(),
+      assignedToKey: z.string().min(1).optional(),
+    })
+    .default({ status: 'pending', timers: {} }),
   fields: z.object({
     organizationName: z.string().min(1),
     serviceName: z.string().min(1),
     description: z.string().min(1),
     websiteUrl: z.string().url().optional(),
     phone: z.string().min(1).optional(),
+    phones: z
+      .array(
+        z.object({
+          number: z.string().min(1),
+          type: z.enum(['voice', 'fax', 'tty', 'hotline', 'sms']).optional(),
+          context: z.string().min(1).optional(),
+        })
+      )
+      .optional(),
     address: z
       .object({
         line1: z.string().min(1),
@@ -46,6 +111,7 @@ export const ExtractedCandidateSchema = z.object({
       .optional(),
     isRemoteService: z.boolean().default(false),
   }),
+  investigation: InvestigationPackSchema.optional(),
   provenance: z
     .record(
       z.string(),
@@ -89,6 +155,8 @@ export const AuditEventSchema = z.object({
     'evidence.fetched',
     'extract.completed',
     'verify.completed',
+    'review.assigned',
+    'review.status_changed',
     'publish.approved',
     'publish.rejected',
     'reverify.completed',

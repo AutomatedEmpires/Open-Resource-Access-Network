@@ -80,6 +80,82 @@ A candidate is eligible to be approved for publish only if:
   - at least one location OR explicitly “remote/virtual”
 - No failing critical verification checks.
 
+## Work item lifecycle (human-manageable, timestamped)
+
+The ingestion system must maintain a **single source of truth status** for each candidate/extraction so admins can filter and act deterministically.
+
+Canonical statuses (align to `verification_queue` in `docs/DATA_MODEL.md`):
+
+- `pending` — newly extracted/verified; needs review
+- `in_review` — assigned and actively reviewed
+- `verified` — approved for publish (publish is a separate action)
+- `rejected` — rejected (with reason)
+- `escalated` — requires ORAN-admin attention
+
+Hard rule: every status transition MUST emit an audit event.
+
+## SLA timers + re-review
+
+Every work item must have deterministic timers so nothing “falls through the cracks”:
+
+- `reviewBy` — when human review should happen by (SLA)
+- `reverifyAt` — next scheduled reverification time
+- `lastVerifiedAt` — when the last successful verification occurred
+
+Default rules (can be parameterized per source):
+
+- If any **critical** check is `fail` → status `escalated`, `reviewBy = now + 24h`
+- If overall intake confidence < 60 → status `pending`, `reviewBy = now + 7d`
+- If overall intake confidence 60–79 → status `pending`, `reviewBy = now + 72h`
+- If overall intake confidence ≥ 80 → status `pending`, `reviewBy = now + 7d` (still requires review; higher score affects priority and reverification cadence)
+
+Reverification cadence (post-publish):
+
+- High band (≥80) → `reverifyAt = now + 180d`
+- Likely band (60–79) → `reverifyAt = now + 90d`
+- Possible (<60) → `reverifyAt = now + 30d` OR keep in review until improved
+
+## Jurisdiction + routing (right admin for the right area)
+
+The agent must compute a **jurisdiction hint** so the system can route items to the correct admin group.
+
+Rules:
+
+- Jurisdiction is derived from explicit evidence (address, stated service area). It is never guessed.
+- If the service is remote/virtual and has no geographic boundary, mark it `virtual`.
+
+Routing intent:
+
+- `pending` items are assigned to a `community_admin` for the derived region/state.
+- `escalated` items route to `oran_admin`.
+
+## Investigation packs (deep capture of forms/links)
+
+To support nationwide accuracy, the agent must capture “supporting navigation” alongside the extracted fields.
+
+Each extraction should produce an **Investigation Pack**:
+
+- `canonicalUrl` (the primary page)
+- `discoveredLinks[]` with types:
+  - `home`, `contact`, `apply`, `eligibility`, `intake_form`, `hours`, `pdf`, `privacy`, `other`
+- `importantArtifacts[]` pointing to evidence snapshots (PDFs, application forms)
+
+Hard rule: discovered links must be tied back to `evidenceId` and a content hash.
+
+## Confidence scoring coherence (internal vs public)
+
+The ingestion pipeline may compute an **internal intake confidence** used for:
+
+- review priority
+- routing/escalation
+- reverification cadence
+
+However, **public ORAN confidence messaging** must follow the SSOT in `docs/SCORING_MODEL.md`:
+
+- 3 sub-scores only (Verification Confidence / Eligibility Match / Constraint Fit)
+- fixed weights
+- no additional hidden “agent score” driving seeker-facing messaging
+
 ## Dedupe rules (“never run the same site 2x for extraction”)
 
 Two levels of dedupe are required:

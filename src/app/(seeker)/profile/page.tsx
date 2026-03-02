@@ -337,13 +337,13 @@ export default function ProfilePage() {
                 <p className="text-sm text-gray-600 mb-3">
                   You are signed in. Your preferences are syncing across devices.
                 </p>
-                <a
+                <Link
                   href="/api/auth/signout"
                   className="inline-flex items-center gap-1.5 text-sm text-red-600 hover:underline"
                 >
                   <LogOut className="h-4 w-4" aria-hidden="true" />
                   Sign out
-                </a>
+                </Link>
               </>
             ) : (
               <>
@@ -351,12 +351,12 @@ export default function ProfilePage() {
                   Sign in to sync bookmarks across devices, provide feedback on services,
                   and access your search history.
                 </p>
-                <a href="/api/auth/signin?callbackUrl=/profile">
-                  <Button type="button" variant="outline" size="sm" className="gap-1.5">
+                <Button asChild variant="outline" size="sm" className="gap-1.5">
+                  <Link href="/api/auth/signin?callbackUrl=/profile">
                     <User className="h-4 w-4" aria-hidden="true" />
                     Sign in with Microsoft
-                  </Button>
-                </a>
+                  </Link>
+                </Button>
               </>
             )}
           </section>

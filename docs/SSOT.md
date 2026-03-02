@@ -43,6 +43,10 @@ When two sources conflict, the higher-precedence source wins:
   - Update: `docs/SECURITY_PRIVACY.md`, `docs/ROLES_PERMISSIONS.md`
   - Tests: add targeted tests for authorization boundaries
 
+- Ingestion/verification agent changes:
+  - Update: `docs/AGENTS_INGESTION_PIPELINE.md`
+  - Tests: add targeted tests under `src/agents/ingestion/__tests__/` for invariants (dedupe, scoring bounds, publish gate)
+
 ## ADRs (decisions)
 
 All safety-critical or contract changes require an ADR:

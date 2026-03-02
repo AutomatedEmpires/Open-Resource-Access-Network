@@ -9,6 +9,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { ServiceSearchEngine } from '@/services/search/engine';
 import type { SearchQuery } from '@/services/search/types';
+import { SORT_OPTIONS } from '@/services/search/types';
+import { executeCount, executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import {
   DEFAULT_SEARCH_RADIUS_METERS,
   DEFAULT_PAGE_SIZE,
@@ -38,17 +40,18 @@ const SearchParamsSchema = z.object({
   minConfidence:  z.coerce.number().min(0).max(1).optional(),
   taxonomyIds:    z.string().optional(),
   organizationId: z.string().uuid().optional(),
+  sortBy:         z.enum(SORT_OPTIONS).default('relevance'),
   page:           z.coerce.number().int().min(1).default(1),
   limit:          z.coerce.number().int().min(1).max(100).default(DEFAULT_PAGE_SIZE),
 });
 
 // ============================================================
-// MOCK DB EXECUTOR (replace with real Neon/pg connection in production)
+// DB EXECUTOR
 // ============================================================
 
-const mockEngine = new ServiceSearchEngine({
-  executeQuery: async () => [],
-  executeCount: async () => 0,
+const engine = new ServiceSearchEngine({
+  executeQuery,
+  executeCount,
 });
 
 // ============================================================
@@ -56,6 +59,12 @@ const mockEngine = new ServiceSearchEngine({
 // ============================================================
 
 export async function GET(req: NextRequest) {
+  if (!isDatabaseConfigured()) {
+    return NextResponse.json(
+      { error: 'Search is temporarily unavailable (database not configured).' },
+      { status: 503 }
+    );
+  }
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   const rateLimit = checkRateLimit(`search:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
@@ -115,6 +124,7 @@ export async function GET(req: NextRequest) {
       page: params.page,
       limit: params.limit,
     },
+    sortBy: params.sortBy,
   };
 
   // Determine geo query type
@@ -145,8 +155,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const results = await mockEngine.search(query);
-    return NextResponse.json(results);
+    const results = await engine.search(query);
+    return NextResponse.json(results, {
+      headers: { 'Cache-Control': 'private, no-store' },
+    });
   } catch (error) {
     await captureException(error, {
       feature: 'api_search',

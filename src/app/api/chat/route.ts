@@ -14,6 +14,11 @@ import {
 } from '@/services/chat/orchestrator';
 import { flagService } from '@/services/flags/flags';
 import type { EnrichedService } from '@/domain/types';
+import type { Intent, ChatContext } from '@/services/chat/types';
+import type { SearchQuery } from '@/services/search/types';
+import { ServiceSearchEngine } from '@/services/search/engine';
+import { executeQuery, executeCount, isDatabaseConfigured } from '@/services/db/postgres';
+import { MAX_SERVICES_PER_RESPONSE } from '@/domain/constants';
 import { captureException } from '@/services/telemetry/sentry';
 
 // ============================================================
@@ -23,13 +28,62 @@ import { captureException } from '@/services/telemetry/sentry';
 const RequestSchema = ChatRequestSchema;
 
 // ============================================================
-// MOCK RETRIEVAL (replace with real DB query in production)
+// DB-BACKED RETRIEVAL
 // ============================================================
 
-async function retrieveServices(): Promise<EnrichedService[]> {
-  // In production: call ServiceSearchEngine with intent-derived filters
-  // Pure SQL — no LLM
-  return [];
+const engine = new ServiceSearchEngine({ executeQuery, executeCount });
+
+/**
+ * Load user profile from database if authenticated.
+ * Returns approximateCity if set, null otherwise.
+ */
+async function loadUserApproximateCity(userId?: string): Promise<string | null> {
+  if (!userId || !isDatabaseConfigured()) {
+    return null;
+  }
+  try {
+    const rows = await executeQuery<{ approximate_city: string | null }>(
+      'SELECT approximate_city FROM user_profiles WHERE user_id = $1',
+      [userId]
+    );
+    return rows[0]?.approximate_city ?? null;
+  } catch {
+    // Silently ignore profile lookup failures
+    return null;
+  }
+}
+
+/**
+ * Maps a chat intent to a SearchQuery and retrieves matching services.
+ * Pure SQL — no LLM, no ML. Text search uses the intent's raw query.
+ * Uses userProfile.approximateCity for city-biased sorting if available.
+ */
+async function retrieveServices(
+  intent: Intent,
+  context: ChatContext,
+): Promise<EnrichedService[]> {
+  if (!isDatabaseConfigured()) {
+    return [];
+  }
+
+  // Load user's approximate city for distance-based sorting bias
+  const cityBias = await loadUserApproximateCity(context.userId);
+
+  const query: SearchQuery = {
+    text: intent.rawQuery,
+    filters: {
+      status: 'active',
+    },
+    pagination: {
+      page: 1,
+      limit: MAX_SERVICES_PER_RESPONSE,
+    },
+    // Add city bias if user has set approximate city in their profile
+    ...(cityBias && { cityBias }),
+  };
+
+  const response = await engine.search(query);
+  return response.results.map((r) => r.service);
 }
 
 // ============================================================
@@ -53,7 +107,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { message, sessionId, userId } = parsed.data;
+  const { message, sessionId, userId, locale } = parsed.data;
 
   // Rate limit check (per IP + userId)
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
@@ -67,12 +121,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const response = await orchestrateChat(message, sessionId, userId, {
+    const response = await orchestrateChat(message, sessionId, userId, locale, {
       retrieveServices,
       isFlagEnabled: (flagName) => flagService.isEnabled(flagName),
     });
 
-    return NextResponse.json(response);
+    return NextResponse.json(response, {
+      headers: { 'Cache-Control': 'private, no-store' },
+    });
   } catch (error) {
     await captureException(error, {
       feature: 'api_chat',

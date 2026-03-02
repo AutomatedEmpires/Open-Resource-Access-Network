@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { FEEDBACK_RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
+import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { captureException } from '@/services/telemetry/sentry';
 
 // ============================================================
@@ -31,6 +32,13 @@ type FeedbackRequest = z.infer<typeof FeedbackRequestSchema>;
 // ============================================================
 
 export async function POST(req: NextRequest) {
+  if (!isDatabaseConfigured()) {
+    return NextResponse.json(
+      { error: 'Feedback is temporarily unavailable (database not configured).' },
+      { status: 503 },
+    );
+  }
+
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   const rateLimit = checkRateLimit(`feedback:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
@@ -61,11 +69,21 @@ export async function POST(req: NextRequest) {
   const feedback: FeedbackRequest = parsed.data;
 
   try {
-    // In production: INSERT INTO seeker_feedback (service_id, session_id, rating, comment, contact_success)
-    // Then trigger confidence score recalculation for the service
-    // For now: return success without logging request details (avoid PII/sensitive data in logs)
+    await executeQuery(
+      `INSERT INTO seeker_feedback (service_id, session_id, rating, comment, contact_success)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        feedback.serviceId,
+        feedback.sessionId,
+        feedback.rating,
+        feedback.comment ?? null,
+        feedback.contactSuccess ?? null,
+      ],
+    );
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, {
+      headers: { 'Cache-Control': 'private, no-store' },
+    });
   } catch (error) {
     await captureException(error, {
       feature: 'api_feedback',

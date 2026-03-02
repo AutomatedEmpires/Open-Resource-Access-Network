@@ -1,22 +1,25 @@
 /**
  * ORAN Middleware
  *
- * Route-level authentication and authorization via Clerk.
- * If Clerk is not configured (no env vars), middleware is a no-op.
+ * Route-level authentication and authorization via Microsoft Entra ID.
+ * If Entra is not configured (no AZURE_AD_CLIENT_ID env var), middleware is a no-op.
  */
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { getToken } from 'next-auth/jwt';
+import type { OranRole } from '@/domain/types';
+import { isRoleAtLeast } from '@/services/auth/guards';
 
 // Protected route patterns by minimum role
-const PROTECTED_ROUTES: { pattern: RegExp; minRole: string }[] = [
+const PROTECTED_ROUTES: { pattern: RegExp; minRole: OranRole }[] = [
   { pattern: /^\/(saved|profile)/, minRole: 'seeker' },
   { pattern: /^\/(claim|org|locations|services|admins)/, minRole: 'host_member' },
-  { pattern: /^\/(queue|verify)/, minRole: 'community_admin' },
-  { pattern: /^\/(approvals|rules|audit)/, minRole: 'oran_admin' },
+  { pattern: /^\/(queue|verify|coverage)/, minRole: 'community_admin' },
+  { pattern: /^\/(approvals|rules|audit|zone-management)/, minRole: 'oran_admin' },
 ];
 
-const CLERK_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const ENTRA_CLIENT_ID = process.env.AZURE_AD_CLIENT_ID;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -27,8 +30,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // If Clerk is not configured, skip auth (development/test mode)
-  if (!CLERK_PUBLISHABLE_KEY) {
+  // If Entra is not configured, skip auth (development/test mode)
+  if (!ENTRA_CLIENT_ID) {
     // In production, protected routes must not be reachable without auth configured.
     if (process.env.NODE_ENV === 'production') {
       return new NextResponse('Authentication is not configured', { status: 503 });
@@ -37,18 +40,30 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    // Dynamic import to avoid build failures when @clerk/nextjs is not configured
-    const { auth } = await import('@clerk/nextjs/server');
-    const { userId } = await auth();
+    // Decode JWT token from session cookie using next-auth/jwt
+    // This works in Edge middleware and extracts claims including role
+    const token = await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+    });
 
-    if (!userId) {
-      const signInUrl = new URL(
-        process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL ?? '/sign-in',
-        request.url
-      );
-      signInUrl.searchParams.set('redirect_url', pathname);
+    if (!token) {
+      // No valid session token — redirect to sign-in
+      const signInUrl = new URL('/api/auth/signin', request.url);
+      signInUrl.searchParams.set('callbackUrl', pathname);
       return NextResponse.redirect(signInUrl);
     }
+
+    // Extract role from token (default to 'seeker' if not present)
+    const userRole = (token.role as OranRole) ?? 'seeker';
+
+    // Check if user's role meets the minimum required for this route
+    if (!isRoleAtLeast(userRole, protectedRoute.minRole)) {
+      return new NextResponse('Forbidden: Insufficient permissions', { status: 403 });
+    }
+
+    // Role check passed — allow request
+    return NextResponse.next();
   } catch {
     // In production, protected routes must fail closed.
     if (process.env.NODE_ENV === 'production') {
@@ -56,8 +71,6 @@ export async function middleware(request: NextRequest) {
     }
     return NextResponse.next();
   }
-
-  return NextResponse.next();
 }
 
 export const config = {

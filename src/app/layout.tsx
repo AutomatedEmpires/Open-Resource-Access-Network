@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AppNav } from "@/components/nav/AppNav";
 
 export const metadata: Metadata = {
   title: "ORAN — Open Resource Access Network",
@@ -14,6 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
+        <AppNav />
         {children}
       </body>
     </html>

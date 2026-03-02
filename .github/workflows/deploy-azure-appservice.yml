@@ -56,3 +56,11 @@ jobs:
             --name "${{ vars.AZURE_WEBAPP_NAME }}" \
             --src-path app.zip \
             --type zip
+
+      - name: Show deployment logs (if deploy failed)
+        if: ${{ failure() }}
+        run: |
+          az webapp log deployment show \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+            -o jsonc

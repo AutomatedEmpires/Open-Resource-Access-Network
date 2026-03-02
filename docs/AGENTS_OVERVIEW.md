@@ -20,6 +20,15 @@ This doc explains where agent code lives, how it is developed independently from
 - Seekers only see **stored verified records**.
 - If an LLM is used, it may only assist with extraction/summarization and must be treated as unverified.
 
+## Copilot Studio (optional)
+
+Microsoft Copilot Studio can be used for **admin-only helper agents** (e.g., summarizing already stored evidence, checklist assistance, drafting reviewer notes).
+
+Hard boundaries:
+- Copilot Studio agents must not bypass the Source Registry for crawling.
+- Copilot Studio agents must not publish records directly.
+- Seeker-facing surfaces must continue to read only from stored verified records.
+
 ## How other workstreams integrate
 
 - SQL agent:

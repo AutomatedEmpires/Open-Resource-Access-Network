@@ -87,7 +87,7 @@ Phone numbers associated with organizations, locations, or services.
 | organization_id| UUID FK     | Associated organization (nullable) |
 | number         | TEXT NOT NULL | Phone number (from DB record only, never invented) |
 | extension      | TEXT        | Phone extension |
-| type           | TEXT        | "voice", "fax", "tty", "hotline" |
+| type           | TEXT        | "voice", "fax", "tty", "hotline", "sms" |
 | language       | TEXT        | Language spoken |
 | description    | TEXT        | Additional context |
 
@@ -196,7 +196,7 @@ Analytics log of chat interactions.
 | Field             | Type        | Description |
 |-------------------|-------------|-------------|
 | id                | UUID PK     | Unique session identifier |
-| user_id           | TEXT        | Clerk user ID (nullable for anonymous) |
+| user_id           | TEXT        | Entra Object ID (nullable for anonymous) |
 | started_at        | TIMESTAMPTZ | Session start |
 | ended_at          | TIMESTAMPTZ | Session end (nullable if active) |
 | intent_summary    | TEXT        | Detected intent category |
@@ -243,3 +243,14 @@ services ──< seeker_feedback
 3. **URLs**: Stored as-is. Validated at import but not rewritten.
 4. **Geolocation**: Stored at full precision internally; API responses return approximate coordinates (rounded to ~0.01 degree ≈ 1km) unless user explicitly requests precise navigation.
 5. **Soft deletes**: Records are marked `status = 'defunct'` rather than hard-deleted to preserve audit history.
+
+---
+
+## Audit Fields (ORAN Convention)
+
+Most mutable tables include:
+
+- `created_at`, `updated_at` (TIMESTAMPTZ)
+- `created_by_user_id`, `updated_by_user_id` (TEXT, nullable; pseudonymous identifiers like Entra Object IDs)
+
+These fields support governance workflows without storing PII (see `docs/SECURITY_PRIVACY.md`).

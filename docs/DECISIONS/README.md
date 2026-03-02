@@ -12,6 +12,15 @@ Create an ADR before implementing changes to:
 - auth/roles/permissions enforcement
 - any LLM usage (even summarization)
 
+## ADR Index
+
+| ID | Title | Status |
+|----|-------|--------|
+| ADR-0001 | [SSOT Hierarchy and Truthful Documentation](ADR-0001-ssot-and-truthfulness.md) | Accepted |
+| ADR-0002 | [UI/UX Contract + Vertical Shells](ADR-0002-ui-ux-contract-and-vertical-shells.md) | Accepted |
+| ADR-0002 | [Azure-Native Integration Maximization Plan](ADR-0002-azure-native-integration-plan.md) | Accepted |
+| ADR-0003 | [Defer Dark Mode](ADR-0003-defer-dark-mode.md) | Accepted |
+
 ## File naming
 
 Use:

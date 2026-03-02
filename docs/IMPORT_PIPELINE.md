@@ -8,7 +8,7 @@ Implemented today:
 - A CSV importer script exists that validates HSDS-ish rows with Zod and produces an error report: db/import/hsds-csv-importer.ts
 
 Planned / not yet implemented:
-- Staging tables and batch metadata.
+- Staging inserts/diff/publish wiring (schema exists; app wiring still pending).
 - Diff detection.
 - Admin review UI.
 - Publish/copy from staging to live tables.
@@ -109,7 +109,7 @@ Staging tables mirror live tables with additional columns:
 - `import_batch_id` — UUID linking rows to an import batch
 - `import_status` — `pending`, `approved`, `rejected`
 - `import_diff` — JSONB diff vs. existing record (if updating)
-- `imported_by` — Clerk user ID of importer
+- `imported_by` — Entra Object ID of importer
 - `imported_at` — Timestamp
 
 ---

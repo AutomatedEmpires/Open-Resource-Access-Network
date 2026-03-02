@@ -36,9 +36,9 @@ Method: Repo-truth mapping across:
 - Not a functioning retrieval-backed chat recommender yet:
   - `/api/chat` uses a **mock retrieval function** that returns `[]`.
 - Not an authenticated / role-enforced application yet:
-  - `src/middleware.ts` checks “authenticated vs anonymous” when Clerk is configured; it does **not** enforce role hierarchy.
+  - `src/middleware.ts` checks "authenticated vs anonymous" when Microsoft Entra ID is configured; it does **not** enforce role hierarchy.
   - In production, protected routes fail closed (503) if auth is misconfigured or temporarily unavailable.
-  - App layout does not currently wire Clerk providers.
+  - App layout does not currently wire an auth session provider.
 - Not an implemented import pipeline:
   - `db/import/hsds-csv-importer.ts` validates some CSVs but does not stage, diff, or publish data to the DB.
 - Not implementing privacy/consent flows in UI/API:
@@ -53,7 +53,7 @@ Method: Repo-truth mapping across:
 5. **Governance scaffolding**: PR template + issue forms explicitly encode the safety checklist.
 
 ### Biggest risks/weaknesses (top 10)
-1. **Docs overstate implementation** in multiple areas (Clerk integration, role enforcement, security headers, rate limiting coverage, i18n file-based JSON). This creates a high risk of “false confidence.”
+1. **Docs overstate implementation** in multiple areas (Entra ID integration, role enforcement, security headers, rate limiting coverage, i18n file-based JSON). This creates a high risk of "false confidence."
 2. **Retrieval is not wired**: both `/api/chat` and `/api/search` use mocks. This means the “retrieval-first” principle is honored by *absence of retrieval*, not by a verified DB-backed implementation.
 3. **Rate limiting is in-memory only**: it now covers chat/search/feedback, but will not hold under multi-instance/serverless deployments without a shared store (e.g., Redis).
 4. **LLM guardrails are underspecified in code**: there is an LLM summarization hook, but no runtime verifier that the summary contains only retrieved facts.
@@ -97,7 +97,7 @@ Maturity legend:
 | `/src/services/flags/flags.ts` | Feature flags | Partial | `@AutomatedEmpires` | In-memory store only; DB wiring is planned (table exists). |
 | `/src/services/i18n/i18n.ts` | i18n utility | Partial | `@AutomatedEmpires` | Inline English dict only; file-based JSON locales and locale detection are planned. |
 | `/src/components` | UI components (chat/service cards/map placeholder/ui primitives) | Partial | `@AutomatedEmpires` | ChatWindow is functional and a11y-aware; map/directory are placeholders. |
-| `/src/middleware.ts` | Route-level auth / authorization | Partial | `@AutomatedEmpires` | Auth-only when Clerk env present; fails closed (503) in production if auth is unavailable/misconfigured; no role enforcement. |
+| `/src/middleware.ts` | Route-level auth / authorization | Partial | `@AutomatedEmpires` | Auth-only when Entra env present; fails closed (503) in production if auth is unavailable/misconfigured; no role enforcement. |
 | `/.github` | CI workflows + PR template + issue forms | Strong | `@AutomatedEmpires` | CI covers lint/typecheck/test/build on `main` PRs/pushes. Coverage upload is best-effort. |
 | `/app` | (Required by audit spec) | N/A | `@AutomatedEmpires` | No root-level `/app` directory; Next.js uses `src/app`. |
 
@@ -124,7 +124,7 @@ Below is a comprehensive list of documents that currently function as SSOT *or a
 - **Must never contradict**: chat/search/scoring implementation and UI messaging.
 - **Code modules that must align**: `src/services/chat/orchestrator.ts`, `src/domain/constants.ts`, `src/services/search/engine.ts`, UI surfaces under `src/app/(seeker)`.
 - **Status**: Mostly aligned as intent; does not claim details that contradict code.
-- **One fix**: Add an “Implementation status” block: “retrieval currently mocked; directory UI placeholder; Clerk not wired.”
+- **One fix**: Add an "Implementation status" block: "retrieval currently mocked; directory UI placeholder; Entra ID auth in middleware only."
 
 Doc anchors of interest:
 - `docs/VISION.md#non-negotiables`
@@ -195,16 +195,16 @@ Doc anchors of interest:
 - `docs/SECURITY_PRIVACY.md#security-headers`
 
 #### docs/INTEGRATIONS.md
-- **Owns**: third-party integration assumptions (Clerk, Neon, Sentry, flags).
+- **Owns**: third-party integration assumptions (Entra ID, Sentry, flags).
 - **Must never contradict**: app layout/middleware and actual integration files.
 - **Code modules that must align**: `src/middleware.ts`, `src/app/layout.tsx`, `src/services/telemetry/sentry.ts`, flags and DB wiring.
-- **Status**: **Not aligned**:
-  - `src/app/layout.tsx` does not wrap with `ClerkProvider`.
+- **Status**: **Partially aligned**:
+  - `src/app/layout.tsx` does not yet wrap with a NextAuth `SessionProvider`.
   - It references non-existent paths (`db/schema/`, `src/services/external/211.ts`).
 - **One fix**: Update to only list integrations that exist *today*, and move “Future integrations” into a separate clearly-labeled section with correct “future” paths.
 
 Doc anchors of interest:
-- `docs/INTEGRATIONS.md#authentication-clerk`
+- `docs/INTEGRATIONS.md#authentication-microsoft-entra-id`
 - `docs/INTEGRATIONS.md#feature-flags`
 
 #### docs/UI_SURFACE_MAP.md
@@ -476,7 +476,7 @@ Gaps:
 
 ### CI blockers / environment assumptions
 - Tests are node-only and self-contained; no DB needed.
-- Build is likely to pass without Clerk/Sentry env due to lazy imports.
+- Build is likely to pass without Entra/Sentry env due to lazy imports.
 - Note: if future code introduces mandatory env var access at module import time, CI may break.
 
 ### Codecov integration evaluation

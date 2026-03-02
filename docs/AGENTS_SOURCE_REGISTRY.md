@@ -30,17 +30,25 @@ This is safe, manageable, and scalable.
 ## Trust levels
 
 - `allowlisted`: agent may fetch + snapshot + extract + verify.
-- `quarantine`: agent may snapshot/extract into staging but **may not** expand discovery without admin approval.
+- `quarantine`: agent may fetch/snapshot/extract into staging for seeded URLs but **may not** expand discovery without admin approval.
 - `blocked`: agent must not fetch.
 
 ## Default allowlist (initial)
 
 For “nationwide immediately”, the safe default is:
 
-- allowlisted: `*.gov`, `*.mil`
+- allowlisted: `*.gov`, `*.edu`
+- quarantined-by-default (seed fetch allowed, no expansion): `*.mil` (primarily veteran-only relevant sources)
 - everything else: quarantine unless explicitly added as allowlisted
 
-Rationale: these domains are generally aligned with official programs and reduce risk of scraping misinformation.
+Rationale:
+- `*.gov` covers most federal/state/county/city official programs.
+- `*.edu` often hosts official student/basic-needs resources and campus/community programs, but still requires verification.
+- `*.mil` can be relevant for veteran resources, but should be treated as restricted: allowed for seeded ingestion, flagged for admin review, and never expanded automatically.
+
+Note on “city sites”:
+- Many large-city sites are already `*.gov` (e.g., `nyc.gov`) and are covered.
+- City/municipal sites that are not `*.gov` should be added explicitly as Source Registry entries (usually as `quarantine` first, then promoted).
 
 ## What a Source Registry entry contains
 
@@ -61,9 +69,13 @@ A Source entry defines:
 ## How it interacts with verification
 
 - `domain_allowlist` is a **critical** verification check.
-- If the candidate URL is not allowlisted:
+- If the candidate URL matches an entry with trustLevel `quarantine`:
+  - ingestion is allowed for the seeded URL (snapshot/extract into staging)
   - mark as `Needs Verification` + tag `source:quarantine`
-  - route to ORAN-admin for allowlist decision
+  - route to ORAN-admin for allowlist decision (promote/demote)
+- If the candidate URL is **unregistered** or `blocked`:
+  - do not fetch
+  - route to ORAN-admin for allowlist decision (register or reject)
 
 ## Promotion (student → prod)
 

@@ -51,13 +51,12 @@ If you used `scripts/azure/bootstrap.sh`, these resources are created automatica
 Set these as App Service Application Settings (or via Key Vault references):
 
 - `DATABASE_URL`
-- Clerk vars:
-  - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-  - `CLERK_SECRET_KEY`
-  - `NEXT_PUBLIC_CLERK_SIGN_IN_URL`
-  - `NEXT_PUBLIC_CLERK_SIGN_UP_URL`
-  - `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL`
-  - `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL`
+- Microsoft Entra ID vars:
+  - `AZURE_AD_CLIENT_ID`
+  - `AZURE_AD_CLIENT_SECRET` (store in Key Vault)
+  - `AZURE_AD_TENANT_ID`
+  - `NEXTAUTH_URL`
+  - `NEXTAUTH_SECRET` (store in Key Vault)
 - Optional Sentry:
   - `NEXT_PUBLIC_SENTRY_DSN`
 - Recommended:

@@ -25,7 +25,7 @@ free-tier or credit-funded usage.
 | Database          | PostgreSQL Flex Server (B1ms, 32GB) | ~$25        |
 | Secrets           | Key Vault (RBAC)                    | ~$0.03      |
 | Telemetry         | Sentry (external, stub)             | Free tier   |
-| Auth              | Clerk (external, stub)              | Free tier   |
+| Auth              | Microsoft Entra ID (NextAuth.js)    | Free tier   |
 | Cache/Rate Limit  | In-memory Map()                     | $0          |
 | Maps              | Not implemented                     | —           |
 | Translation       | Static dictionary (6 locales)       | $0          |
@@ -67,7 +67,6 @@ where available.
 | Service                   | Azure Resource            | Replaces         | Notes                           |
 |---------------------------|---------------------------|------------------|---------------------------------|
 | Azure Cache for Redis     | `Microsoft.Cache`         | In-memory Map()  | $17/mo min — defer until load justifies |
-| Microsoft Entra ID        | `Microsoft.AAD`           | Clerk            | Free tier, but migration is large |
 | Azure AI Search           | `Microsoft.Search`        | PostGIS search   | $0.10/hr min — only if search complexity grows |
 
 ## Budget Allocation
@@ -137,7 +136,7 @@ The `checkRateLimit()` interface is already clean enough to swap backends.
 
 ## Consequences
 
-- External dependency count drops (Sentry optional, Clerk stays for now).
+- External dependency count drops (Sentry optional, Entra replaces Clerk).
 - All core services map to a single Azure subscription for unified billing.
 - Cost is predictable and within free/credit-funded tiers.
 - Student and startup credits extend runway significantly.

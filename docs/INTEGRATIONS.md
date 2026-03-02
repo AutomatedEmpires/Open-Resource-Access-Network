@@ -9,7 +9,7 @@ This doc describes both **Implemented** and **Planned** integrations. When it co
 Implemented today:
 - Local Postgres/PostGIS via db/docker-compose.yml.
 - SQL migrations in db/migrations/**.
-- Optional Clerk wiring (middleware gating when env vars exist).
+- Optional Microsoft Entra ID wiring (middleware gating when env vars exist).
 - Sentry wrapper exists; DSN-dependent activation.
 - Azure Application Insights (connection-string-dependent; `src/instrumentation.ts` + `src/services/telemetry/appInsights.ts`).
 - Azure Maps geocoding service (`src/services/geocoding/azureMaps.ts`).
@@ -24,24 +24,23 @@ Planned / partially implemented:
 - In-memory feature flags (DB-backed reads/writes planned).
 - Any external 211 API integration.
 
-## Authentication: Clerk
+## Authentication: Microsoft Entra ID
 
-ORAN uses [Clerk](https://clerk.com) for authentication and session management.
+ORAN uses [Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity/) for authentication and session management via NextAuth.js with the Azure AD provider.
 
 ### Configuration
 - Environment variables required:
-  - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-  - `CLERK_SECRET_KEY`
-  - `NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in`
-  - `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up`
-  - `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/chat`
-  - `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/chat`
+  - `AZURE_AD_CLIENT_ID`
+  - `AZURE_AD_CLIENT_SECRET`
+  - `AZURE_AD_TENANT_ID`
+  - `NEXTAUTH_URL` (e.g., `https://yourapp.azurewebsites.net`)
+  - `NEXTAUTH_SECRET` (random secret for JWT encryption)
 
 ### Implementation
-- `src/middleware.ts`: Clerk middleware protecting authenticated routes
-- Planned: `src/app/layout.tsx` wraps the app with `ClerkProvider` (not implemented yet)
-- Planned: role claims stored in Clerk user's `publicMetadata.role` field
-- Planned: ORAN admin provisions roles via Clerk dashboard or Clerk Backend API
+- `src/middleware.ts`: NextAuth.js session-cookie check protecting authenticated routes
+- Planned: `src/app/api/auth/[...nextauth]/route.ts` NextAuth.js handler with Azure AD provider
+- Planned: roles stored in Entra ID app roles (mapped to ORAN roles in JWT claims)
+- Planned: ORAN admin provisions roles via Azure Portal → Enterprise Applications → App Roles
 
 ### Protected Routes
 | Route Pattern         | Minimum Role     |

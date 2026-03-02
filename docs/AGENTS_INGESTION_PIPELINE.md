@@ -66,6 +66,65 @@ Verification is a set of independent checks producing evidence and pass/fail/unk
   - flag for review
   - optionally unpublish if critical data becomes invalid
 
+## When the agent operates (triggers)
+
+The ingestion system must be explicit and deterministic about **when it runs**.
+
+Supported trigger classes:
+
+- **Manual seed submission** (primary nationwide bootstrap):
+  - A staff/admin/partner submits a URL or feed.
+  - The agent validates the URL against the Source Registry and either fetches it (allowlisted/quarantine) or refuses (unregistered/blocked).
+
+- **Scheduled reverification** (post-publish + pre-expiry):
+  - A scheduler periodically selects records whose `reverifyAt` is due.
+  - Reverification produces new evidence snapshots + new verification checks and may downgrade confidence.
+
+- **Registry change trigger** (config-driven):
+  - If a domain is promoted/demoted in the Source Registry, the agent may enqueue impacted staged items for re-review.
+
+- **Content drift trigger** (optional, conservative):
+  - If a fetch detects a material change (`contentHash` changes) for an allowlisted source, enqueue a review.
+  - Drift is never auto-publish.
+
+Hard rule: every triggered run must create a `correlationId` and emit audit events.
+
+## Scrubbing, redaction, and privacy rules
+
+The ingestion agent must treat all fetched content as untrusted.
+
+Minimum required scrubbing behaviors:
+
+- **No credentials / no authenticated scraping**:
+  - Do not log in to sites.
+  - Do not store cookies or session tokens.
+
+- **PII minimization**:
+  - Only store what is needed to represent a service listing.
+  - Never store end-user-submitted sensitive details in evidence snapshots.
+
+- **Secret-safe telemetry**:
+  - Audit logs and telemetry must not contain secrets.
+  - Avoid storing raw contact form submissions or any tokens embedded in URLs.
+
+- **URL hygiene**:
+  - Strip URL fragments.
+  - Remove common tracking parameters when persisting canonical URLs (implementation detail; enforced in code/DB layer).
+
+## Copilot Studio / assistant agents (optional, admin-only)
+
+It is acceptable to use Microsoft Copilot Studio (or similar) as an **internal reviewer assistant** to:
+
+- summarize already-stored evidence snapshots
+- help a reviewer complete checklists
+- draft reviewer notes
+
+It must not:
+
+- crawl the public web directly outside the Source Registry
+- write to published ORAN tables
+- generate or inject new “facts” into seeker chat/search
+
 ## Minimal publish criteria (baseline)
 
 A candidate is eligible to be approved for publish only if:
@@ -144,11 +203,23 @@ Hard rule: discovered links must be tied back to `evidenceId` and a content hash
 
 ## Confidence scoring coherence (internal vs public)
 
-The ingestion pipeline may compute an **internal intake confidence** used for:
+The ingestion pipeline computes an **internal intake confidence** (0-100) used for:
 
 - review priority
 - routing/escalation
 - reverification cadence
+- color-coded status tier (green/yellow/orange/red)
+
+### Confidence tiers
+
+| Tier | Score Range | Meaning | UI Color |
+|------|-------------|---------|----------|
+| Green | 80-100 | Ready for publication | #22c55e |
+| Yellow | 60-79 | Likely good, needs review | #eab308 |
+| Orange | 40-59 | Needs additional verification | #f97316 |
+| Red | 0-39 | Insufficient data | #ef4444 |
+
+The tier updates live as the agent completes verification steps and admin fills in missing data.
 
 However, **public ORAN confidence messaging** must follow the SSOT in `docs/SCORING_MODEL.md`:
 
@@ -222,3 +293,200 @@ The SQL agent should implement schema + constraints to enforce:
 - Build/test in student subscription with cheap SKUs.
 - Promote by redeploying the same agent code + IaC to prod subscription.
 - Do not promote unverified candidate data automatically.
+
+---
+
+## Implementation Reference
+
+### Database schema (`db/migrations/0012_ingestion_pipeline.sql`)
+
+| Table | Purpose |
+|-------|---------|
+| `source_registry` | Persisted domain allowlist/quarantine/blocked rules |
+| `ingestion_jobs` | Tracks crawl/extraction jobs with correlation IDs |
+| `evidence_snapshots` | Immutable records of fetched pages/documents |
+| `extracted_candidates` | Staging table for extracted service records |
+| `resource_tags` | Unified tagging (category, geographic, audience, verification, program) |
+| `verification_checks` | Individual check results per candidate |
+| `checklist_items` | Required items and their status per candidate |
+| `verified_service_links` | Deep links discovered and verified during ingestion |
+| `ingestion_audit_log` | Complete audit trail (append-only) |
+| `feed_subscriptions` | RSS/sitemap feeds the agent monitors |
+| `admin_routing_rules` | Maps jurisdictions to admin reviewers |
+
+Key features:
+- `extracted_candidates.confidence_tier` is a **generated column** that auto-updates based on `confidence_score`
+- All tables have appropriate indexes for query performance
+- Audit log is append-only with correlation ID linking
+
+### TypeScript contracts (`src/agents/ingestion/`)
+
+| Module | Exports |
+|--------|---------|
+| `contracts.ts` | Core schemas: `EvidenceSnapshot`, `ExtractedCandidate`, `DiscoveredLink`, `InvestigationPack`, `AuditEvent`, etc. |
+| `jobs.ts` | `IngestionJob` and helpers: `createIngestionJob()`, `transitionJobStatus()` |
+| `tags.ts` | `ResourceTag` and predefined tag values: `CATEGORY_TAGS`, `AUDIENCE_TAGS`, `PROGRAM_TAGS`, etc. |
+| `stores.ts` | Store interfaces: `JobStore`, `CandidateStore`, `TagStore`, `VerifiedLinkStore`, etc. |
+| `scoring.ts` | Confidence scoring: `computeConfidenceScore()`, `getConfidenceTier()`, `isReadyForPublish()` |
+| `sourceRegistry.ts` | Source Registry contracts and `matchSourceForUrl()` |
+| `checklist.ts` | Verification checklist management |
+| `dedupe.ts` | Deduplication key generation |
+| `audit.ts` | Audit writer interface |
+
+### Tagging taxonomy
+
+The agent uses a structured tagging system:
+
+```
+tag_type: category
+  → food, housing, healthcare, legal, employment, ...
+
+tag_type: geographic
+  → us_id_kootenai (country_state_county)
+  → us_wa_king_seattle (country_state_county_city)
+
+tag_type: audience
+  → veteran, senior, family, youth, disabled, ...
+
+tag_type: verification_missing
+  → missing_phone, missing_hours, needs_geocoding, ...
+
+tag_type: program
+  → snap, wic, section8, medicaid, ...
+
+tag_type: source_quality
+  → gov_source, edu_source, mil_source, quarantine_source
+```
+
+### Admin routing
+
+The agent routes candidates to the appropriate admin based on jurisdiction:
+
+1. Extract jurisdiction from evidence (address, stated service area)
+2. Query `admin_routing_rules` for best match (most specific wins)
+3. Assign to `community_admin` for the region, or `oran_admin` for escalation
+
+Default rule: unassigned jurisdictions route to `oran_admin`.
+
+### Admin review pipeline (`db/migrations/0013_admin_review_pipeline.sql`)
+
+The admin review pipeline extends the ingestion pipeline with capacity-limited routing, tag confirmation, and publish threshold logic.
+
+#### Flow overview
+
+```
+[Candidate Created]
+       ↓
+[Route to ~5 closest admins/orgs]  ← capacity-limited
+       ↓
+[Admin claims assignment]
+       ↓
+[Admin reviews: confirm tags, accept/edit field suggestions]
+       ↓
+[System computes publish readiness]
+       ↓
+[If ready] → [Publish to live DB] → [Seekers + LLM can see]
+```
+
+#### Additional tables
+
+| Table | Purpose |
+|-------|---------|
+| `admin_review_capacity` | Admin capacity tracking (pending count, limits, coverage zones) |
+| `candidate_assignments` | Tracks which admins are assigned to which candidates |
+| `tag_confirmations` | Queue for uncertain tags needing human confirmation |
+| `field_suggestions` | LLM-generated suggestions for missing fields |
+| `field_provenance` | Lightweight evidence: hash + CSS selector + URL per field |
+| `publish_readiness` | Aggregated "is ready?" status with all criteria |
+| `review_actions` | Audit log for admin review actions |
+
+#### Key features
+
+**Geographic routing with capacity limits**:
+- Each candidate is routed to ~5 closest admins based on jurisdiction
+- Admins have a max pending reviews limit (default: 10)
+- Priority: exact county match > state match > zone match > fallback
+- SQL functions: `find_nearest_admins()`, `assign_candidate_to_admins()`
+
+**Tag confidence colors**:
+- Tags extracted with low confidence go to a confirmation queue
+- Color-coded by tier: green (≥80), yellow (60-79), orange (40-59), red (<40)
+- `confidence_color` is a generated column (auto-updates)
+- Admins confirm/modify/reject with one click
+- Category + geographic tags always require human confirmation
+
+**Field suggestions (LLM-assisted gap filling)**:
+- When fields are missing, the agent stores LLM suggestions
+- Suggestions include: `suggestedValue`, `reasoning`, `evidenceRefs`
+- Admins accept (one click), modify (edit), or reject
+- Never auto-applied; always requires human action
+
+**Field-level provenance (lightweight proof)**:
+- Instead of full snapshots, store per-field provenance
+- Includes: `source_url`, `content_hash`, `css_selector`, `extracted_text`
+- Reproducible verification without expensive blob storage
+
+**Publish readiness (deterministic threshold)**:
+- `publish_readiness` table tracks all criteria
+- `is_ready_for_publish` is a generated column (auto-computed)
+- Required criteria:
+  - Organization name, service name, description ✓
+  - Contact method (phone OR email OR website) ✓
+  - Location OR marked as virtual/remote ✓
+  - Category tag confirmed ✓
+  - Geographic tag confirmed ✓
+  - No pending red (low-confidence) tags ✓
+  - Domain verification passed ✓
+  - Confidence score ≥60 ✓
+- SQL function: `compute_publish_readiness()`
+
+**Admin decision flow**:
+1. Admin sees candidate in their queue (assignment status: `pending`)
+2. Admin claims assignment (status: `pending` → `claimed`)
+3. Admin reviews: confirms tags, accepts field suggestions
+4. System auto-computes readiness after each action
+5. When ready, admin approves → candidate publishes to live DB
+6. Live DB feeds seekers + LLM recommendations
+
+**Views for common queries**:
+- `v_available_admins` — admins with capacity
+- `v_candidates_ready` — ready for publish
+- `v_pending_tags_by_color` — tag counts by color per candidate
+- `v_candidate_dashboard` — review queue dashboard
+
+#### TypeScript contracts (`src/agents/ingestion/`)
+
+| Module | Exports |
+|--------|---------|
+| `routing.ts` | `AdminCapacity`, `CandidateAssignment`, `sortAdminsByPriority()`, `createAssignment()`, `claimAssignment()` |
+| `confirmations.ts` | `TagConfirmation`, `FieldSuggestion`, `confirmTag()`, `modifyTag()`, `sortTagsByUrgency()` |
+| `publish.ts` | `PublishReadiness`, `isReadyForPublish()`, `getReadinessBreakdown()`, `createPublishDecision()` |
+
+#### Store interfaces
+
+| Interface | Location | Purpose |
+|-----------|----------|---------|
+| `AdminCapacityStore` | `routing.ts` | Capacity queries, increment/decrement pending |
+| `AssignmentStore` | `routing.ts` | Assignment CRUD, expiration |
+| `TagConfirmationStore` | `confirmations.ts` | Tag confirmation queue |
+| `FieldSuggestionStore` | `confirmations.ts` | Field suggestions |
+| `PublishReadinessStore` | `publish.ts` | Readiness status |
+| `ReviewActionStore` | `publish.ts` | Review audit log |
+| `PublishWorkflowStore` | `publish.ts` | Complete publish workflow |
+
+### Chat integration (architecture boundary)
+
+The ingestion agent **writes to DB**. The chat interface **reads from DB**.
+
+```
+[Ingestion Agent] → writes → [DB: verified_service_links, services, etc.]
+                              ↓
+[Chat Interface] → reads  → [DB] → returns stored URLs only
+```
+
+The chat service queries `verified_service_links` filtered by:
+- `service_id` (must be published)
+- `is_verified = true`
+- `is_link_alive = true`
+
+This maintains the "stored URLs only" safety gate without any direct coupling between ingestion and chat code.

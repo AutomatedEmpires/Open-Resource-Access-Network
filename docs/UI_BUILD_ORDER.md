@@ -8,55 +8,62 @@ Rule: We do not start a lower-priority page until the earlier pages satisfy docs
 
 ---
 
-## Phase 0 — Foundations (required for coherence)
+## Phase 0 — Foundations (required for coherence) ✅ COMPLETE
+
+Completed: 2026-03-02
 
 1. Vertical shells (layouts) + navigation
-   - `src/app/(seeker)/layout.tsx`
-   - `src/app/(host)/layout.tsx`
-   - `src/app/(community-admin)/layout.tsx`
-   - `src/app/(oran-admin)/layout.tsx`
+   - `src/app/(seeker)/layout.tsx` ✅
+   - `src/app/(host)/layout.tsx` ✅
+   - `src/app/(community-admin)/layout.tsx` ✅
+   - `src/app/(oran-admin)/layout.tsx` ✅
 
-2. Home/entry page → routes into seeker discovery
-   - Replace starter home with an ORAN entry that routes to `/chat` as primary.
+2. Home/entry page → routes into seeker discovery ✅
+   - Replaced starter home with ORAN entry that routes to `/chat` as primary.
 
 Acceptance criteria:
 
-- Mobile nav works (seeker).
-- No admin links appear to seekers.
-- Each role has an isolated layout shell.
+- Mobile nav works (seeker). ✅
+- No admin links appear to seekers. ✅
+- Each role has an isolated layout shell. ✅
 
 ---
 
-## Phase 1 — Seeker discovery (highest user impact)
+## Phase 1 — Seeker discovery (highest user impact) ✅ COMPLETE
 
-1. `/chat` polish (already functional)
-   - Improve empty state guidance and “what to verify” guidance.
-   - Ensure crisis banner behavior and eligibility disclaimer remain consistent.
+Completed: 2026-03-02
 
-2. `/directory` (search + filters)
-   - First-class list experience using `ServiceCard`.
-   - Filters must not imply certainty (confidence messaging stays consistent).
+1. `/chat` polish ✅
+   - Empty state guidance and "what to verify" tip implemented.
+   - Crisis banner + eligibility disclaimer consistent.
 
-3. `/map` (interactive map)
-   - Replace placeholder `MapContainer` once the map library decision is made.
+2. `/directory` (search + filters) ✅
+   - Full list experience using `ServiceCard` with confidence filter panel.
+   - Confidence filter includes disclaimer: "does not imply certainty".
+
+3. `/map` (interactive map) ✅
+   - Azure Maps SDK integrated via server-side token broker.
+   - "Search this area" bbox-on-pan with 600ms debounce.
 
 Acceptance criteria:
 
-- Chat/Directory/Map share the same service card contract.
-- Loading/empty/error states exist.
+- Chat/Directory/Map share the same service card contract. ✅
+- Loading/empty/error states exist. ✅
 
 ---
 
-## Phase 2 — Seeker retention + consent
+## Phase 2 — Seeker retention + consent ✅ COMPLETE
 
-1. `/saved`
-2. `/profile` (consent-first, approximate location)
+Completed: 2026-03-02
+
+1. `/saved` ✅ — localStorage-only bookmarks with remove/clear-all, privacy note.
+2. `/profile` ✅ — Approximate city input (device-only), privacy checklist, data deletion with confirm step, Entra ID sign-in placeholder.
 
 Acceptance criteria:
 
-- Explicit consent before saving.
-- No precise GPS.
-- Clear data deletion path.
+- Explicit consent before saving. ✅ (localStorage opt-in, no server sync)
+- No precise GPS. ✅ ("ORAN never requests precise GPS location")
+- Clear data deletion path. ✅ (confirm/cancel flow on profile page)
 
 ---
 

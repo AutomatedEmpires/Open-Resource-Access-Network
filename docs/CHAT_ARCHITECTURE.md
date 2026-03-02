@@ -115,7 +115,7 @@ Intent also extracts:
 
 ### Stage 5: Profile Hydration
 
-For authenticated users (Clerk session present):
+For authenticated users (Entra ID / NextAuth.js session present):
 - Load saved location preference
 - Load saved service category preferences
 - Load accessibility requirements
@@ -140,8 +140,30 @@ Pure SQL query against PostgreSQL/PostGIS:
 Build `ChatResponse` from retrieved records:
 - Format each `Service` record into a `ServiceCard`
 - Include: name, organization, address, phone, hours, confidence band
+- Optionally include: contextual `links[]` selected deterministically from stored URLs
 - Always append `ELIGIBILITY_DISCLAIMER`
 - Never generate or infer data not in the record
+
+#### Contextual link selection (deep links vs general links)
+
+Some user questions require different URLs for the **same** service, e.g.:
+- “How do I apply?” → application/intake form deep link
+- “Am I eligible?” → eligibility/requirements page
+- “How do I contact them?” → contact page
+
+Contract:
+- Links must come from **stored records only**:
+     - `service.url` and `organization.url` (HSDS fields)
+     - and/or a future verified-links table populated from ingestion evidence (never generated URLs)
+- Link selection is **deterministic** and based on explicit parameters:
+     - `intent.category` (domain need)
+     - `intent.actionQualifier` (apply/contact/eligibility/hours/website)
+     - `context.locale`
+     - optional `userProfile.audienceTags` (self-identified; must not be persisted without consent)
+- If a link is constrained to an audience tag (e.g., `veteran`) and the tag is missing, it must not be shown.
+
+Safety rule:
+- The chat system must never invent URLs or suggest navigation to pages that were not stored/verified.
 
 ### Stage 8: LLM Summarization Gate
 

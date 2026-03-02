@@ -41,7 +41,7 @@ Update-on-touch rule:
 
 ## Key integration contracts
 
-- Auth: Clerk (`@clerk/nextjs`) with route gating via `src/middleware.ts`.
+- Auth: Microsoft Entra ID via NextAuth.js (`next-auth`) with route gating via `src/middleware.ts`.
 - Platform: **Azure-first**. Deployment and production ops assume Azure.
 - DB: PostgreSQL + PostGIS (Azure Database for PostgreSQL Flexible Server in production) via `pg` / `@neondatabase/serverless` and Drizzle ORM.
 - Telemetry: Sentry is optional and must not receive PII.

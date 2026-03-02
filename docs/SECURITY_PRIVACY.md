@@ -9,7 +9,7 @@ This document includes both **Implemented** and **Planned** controls. When this 
 Implemented today:
 - Zod validation exists at API boundaries for current endpoints.
 - Chat pipeline includes quota/rate limiting logic.
-- Protected route authentication gating exists in middleware when Clerk is configured (roles are still planned).
+- Protected route authentication gating exists in middleware when Microsoft Entra ID is configured (roles are still planned).
 - DB schema exists in db/migrations/** (including feature_flags and verification_queue).
 
 Planned / not yet enforced end-to-end:
@@ -20,17 +20,17 @@ Planned / not yet enforced end-to-end:
 
 ## Authentication Model
 
-ORAN can use **Clerk** for identity management when configured. Some environments may run without Clerk enabled.
+ORAN uses **Microsoft Entra ID** for identity management via NextAuth.js with the Azure AD provider. Some environments may run without Entra configured.
 
 ### Session Validation
-- Implemented: protected UI routes are gated by middleware when Clerk is configured.
+- Implemented: protected UI routes are gated by middleware when Entra is configured (`AZURE_AD_CLIENT_ID`).
 - Implemented: in production, protected routes fail closed if auth is misconfigured or temporarily unavailable.
-- Planned: protected API routes call `auth()` from `@clerk/nextjs/server`.
+- Planned: protected API routes validate NextAuth.js session server-side.
 - Planned: unauthenticated requests return HTTP 401.
 - Planned: role checks return HTTP 403 for insufficient permissions.
 
 ### Role Enforcement
-- Planned: roles stored in Clerk `publicMetadata.role`.
+- Planned: roles stored as Entra ID app roles (mapped to ORAN roles in JWT claims).
 - Implemented: middleware enforces authentication for protected routes.
 - Planned: middleware enforces role-based route-level access.
 - Planned: API handlers enforce resource-level permissions.
@@ -51,14 +51,14 @@ ORAN can use **Clerk** for identity management when configured. Some environment
 ## PII Handling
 
 ### What ORAN Stores
-- Clerk User ID (pseudonymous identifier, not PII by itself)
+- Entra Object ID (pseudonymous identifier, not PII by itself)
 - Approximate location preference (city/county level, not precise coordinates)
 - Service category preferences
 - Feedback ratings (no identifying info required)
 
 ### What ORAN Does NOT Store
-- Full name (managed by Clerk)
-- Email address in ORAN DB (managed by Clerk)
+- Full name (managed by Entra ID)
+- Email address in ORAN DB (managed by Entra ID)
 - Precise GPS coordinates of seekers
 - Chat message content beyond session metadata
 - Sensitive inferences (health conditions, immigration status, etc.)
@@ -139,7 +139,7 @@ Status: Partially implemented.
 - Planned: end-to-end DB execution wiring with consistent parameterization guarantees.
 
 ### Authentication & Authorization
-- Planned: write endpoints require valid Clerk JWT.
+- Planned: write endpoints require valid Entra ID / NextAuth.js session.
 - Planned: CSRF protection considerations per endpoint.
 
 ### Sensitive Data Exposure

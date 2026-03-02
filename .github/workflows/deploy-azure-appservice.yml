@@ -69,6 +69,13 @@ jobs:
         run: |
           cd .next/standalone
           zip -r -q ../../app.zip .
+          echo "Zip size: $(du -h ../../app.zip | cut -f1)"
+
+      - name: Stop app (free resources for Kudu)
+        run: |
+          az webapp stop \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_WEBAPP_NAME }}"
 
       - name: Deploy to Azure Web App (zip)
         run: |
@@ -78,10 +85,11 @@ jobs:
             --src-path app.zip \
             --type zip \
             --async true
+        timeout-minutes: 5
 
-      - name: Restart and verify deployment
+      - name: Start app and verify
         run: |
-          az webapp restart \
+          az webapp start \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "${{ vars.AZURE_WEBAPP_NAME }}"
           echo "Waiting for app to start..."

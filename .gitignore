@@ -35,6 +35,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# local-only owner inventory (intentionally untracked)
+docs/OWNER_INFO.local.md
+
 # vercel
 .vercel
 

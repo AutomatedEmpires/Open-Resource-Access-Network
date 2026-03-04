@@ -861,3 +861,14 @@ UPDATE eligibility SET
   household_size_min = 2,   -- Requires dependent (family)
   household_size_max = 8    -- Max family size for rental assistance
 WHERE id = 'f4000000-0000-0000-0000-000000000004';
+
+-- ============================================================
+-- FEATURE FLAGS (demo defaults)
+-- ============================================================
+
+INSERT INTO feature_flags (name, enabled, rollout_pct) VALUES
+  ('llm_summarize',  false, 0),
+  ('map_enabled',    true,  100),
+  ('feedback_form',  true,  100),
+  ('host_claims',    true,  100)
+ON CONFLICT (name) DO NOTHING;

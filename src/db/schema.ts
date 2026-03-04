@@ -12,9 +12,28 @@ import {
   integer,
   boolean,
   jsonb,
+  numeric,
   uniqueIndex,
   index,
+  customType,
 } from 'drizzle-orm/pg-core';
+
+/**
+ * Custom Drizzle type for PostGIS GEOMETRY columns.
+ * Stored as WKT text in Drizzle, converted to/from GEOMETRY by PostGIS.
+ * Use raw SQL (ST_AsText, ST_GeomFromText) for spatial queries.
+ */
+const geometryPoint = customType<{ data: string | null; driverParam: string | null }>({
+  dataType() {
+    return 'GEOMETRY(POINT, 4326)';
+  },
+  toDriver(value: string | null): string | null {
+    return value;
+  },
+  fromDriver(value: unknown): string | null {
+    return value as string | null;
+  },
+});
 import { relations } from 'drizzle-orm';
 
 // ============================================================
@@ -369,22 +388,21 @@ export const adminReviewProfiles = pgTable(
     pendingCount: integer('pending_count').notNull().default(0),
     inReviewCount: integer('in_review_count').notNull().default(0),
 
-    // Geographic location - stored as WKT text, converted to GEOMETRY by PostGIS
-    // Note: Drizzle doesn't have native PostGIS support, use raw SQL for geo queries
-    // location: kept in SQL only for PostGIS GEOMETRY type
+    // Geographic location for routing (PostGIS GEOMETRY)
+    location: geometryPoint('location'),
 
     // Coverage filters
     coverageZoneId: uuid('coverage_zone_id'),
-    coverageStates: jsonb('coverage_states').default([]),
-    coverageCounties: jsonb('coverage_counties').default([]),
+    coverageStates: text('coverage_states').array().default([]),
+    coverageCounties: text('coverage_counties').array().default([]),
 
     // Expertise
-    categoryExpertise: jsonb('category_expertise').default([]),
+    categoryExpertise: text('category_expertise').array().default([]),
 
     // Performance metrics
     totalVerified: integer('total_verified').notNull().default(0),
     totalRejected: integer('total_rejected').notNull().default(0),
-    avgReviewHours: text('avg_review_hours'), // Stored as text, parsed as decimal
+    avgReviewHours: numeric('avg_review_hours', { precision: 10, scale: 2 }),
     lastReviewAt: timestamp('last_review_at', { withTimezone: true }),
 
     // Status
@@ -415,7 +433,7 @@ export const candidateAdminAssignments = pgTable(
 
     assignmentType: text('assignment_type').notNull().default('geographic'),
     priorityRank: integer('priority_rank').notNull().default(1),
-    distanceMeters: text('distance_meters'), // Stored as text for decimal precision
+    distanceMeters: numeric('distance_meters', { precision: 12, scale: 2 }),
 
     status: text('status').notNull().default('pending'),
 
@@ -553,7 +571,134 @@ export type CandidateReadinessRow = typeof candidateReadiness.$inferSelect;
 export type NewCandidateReadinessRow = typeof candidateReadiness.$inferInsert;
 
 // ============================================================
-// ADDITIONAL RELATIONS (0018/0019)
+// VERIFICATION CHECKS (0021_ingestion_completion.sql)
+// ============================================================
+export const verificationChecks = pgTable(
+  'verification_checks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    candidateId: text('candidate_id').notNull(),
+    checkType: text('check_type').notNull(),
+    severity: text('severity').notNull().default('info'),
+    status: text('status').notNull().default('pending'),
+    message: text('message'),
+    details: jsonb('details').notNull().default({}),
+    evidenceRefs: text('evidence_refs').array().default([]),
+    checkedAt: timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_verification_checks_unique').on(table.candidateId, table.checkType),
+    index('idx_verification_checks_candidate').on(table.candidateId),
+    index('idx_verification_checks_status').on(table.status),
+  ]
+);
+
+export type VerificationCheckRow = typeof verificationChecks.$inferSelect;
+export type NewVerificationCheckRow = typeof verificationChecks.$inferInsert;
+
+// ============================================================
+// VERIFIED SERVICE LINKS (0021_ingestion_completion.sql)
+// ============================================================
+export const verifiedServiceLinks = pgTable(
+  'verified_service_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    candidateId: text('candidate_id'),
+    serviceId: uuid('service_id'),
+    url: text('url').notNull(),
+    label: text('label').notNull().default(''),
+    linkType: text('link_type').notNull().default('other'),
+    intentActions: text('intent_actions').array().default([]),
+    intentCategories: text('intent_categories').array().default([]),
+    audienceTags: text('audience_tags').array().default([]),
+    locales: text('locales').array().default([]),
+    isVerified: boolean('is_verified').notNull().default(false),
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    verifiedByUserId: text('verified_by_user_id'),
+    lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+    lastHttpStatus: integer('last_http_status'),
+    isLinkAlive: boolean('is_link_alive').default(true),
+    evidenceId: text('evidence_id'),
+    discoveredAt: timestamp('discovered_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_verified_links_candidate').on(table.candidateId),
+    index('idx_verified_links_service').on(table.serviceId),
+    index('idx_verified_links_type').on(table.linkType),
+    index('idx_verified_links_verified').on(table.isVerified, table.isLinkAlive),
+  ]
+);
+
+export type VerifiedServiceLinkRow = typeof verifiedServiceLinks.$inferSelect;
+export type NewVerifiedServiceLinkRow = typeof verifiedServiceLinks.$inferInsert;
+
+// ============================================================
+// FEED SUBSCRIPTIONS (0021_ingestion_completion.sql)
+// ============================================================
+export const feedSubscriptions = pgTable(
+  'feed_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sourceRegistryId: uuid('source_registry_id').references(() => ingestionSources.id),
+    feedUrl: text('feed_url').notNull().unique(),
+    feedType: text('feed_type').notNull().default('rss'),
+    displayName: text('display_name'),
+    pollIntervalHours: integer('poll_interval_hours').notNull().default(24),
+    lastPolledAt: timestamp('last_polled_at', { withTimezone: true }),
+    lastEtag: text('last_etag'),
+    lastModified: text('last_modified'),
+    isActive: boolean('is_active').notNull().default(true),
+    errorCount: integer('error_count').notNull().default(0),
+    lastError: text('last_error'),
+    jurisdictionState: text('jurisdiction_state'),
+    jurisdictionCounty: text('jurisdiction_county'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_feed_subs_active').on(table.isActive),
+    index('idx_feed_subs_source').on(table.sourceRegistryId),
+  ]
+);
+
+export type FeedSubscriptionRow = typeof feedSubscriptions.$inferSelect;
+export type NewFeedSubscriptionRow = typeof feedSubscriptions.$inferInsert;
+
+// ============================================================
+// ADMIN ROUTING RULES (0021_ingestion_completion.sql)
+// ============================================================
+export const adminRoutingRules = pgTable(
+  'admin_routing_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jurisdictionCountry: text('jurisdiction_country').notNull().default('US'),
+    jurisdictionState: text('jurisdiction_state'),
+    jurisdictionCounty: text('jurisdiction_county'),
+    assignedRole: text('assigned_role').notNull().default('community_admin'),
+    assignedUserId: text('assigned_user_id'),
+    priority: integer('priority').notNull().default(0),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_admin_routing_jurisdiction').on(
+      table.jurisdictionCountry,
+      table.jurisdictionState,
+      table.jurisdictionCounty
+    ),
+    index('idx_admin_routing_active').on(table.isActive),
+  ]
+);
+
+export type AdminRoutingRuleRow = typeof adminRoutingRules.$inferSelect;
+export type NewAdminRoutingRuleRow = typeof adminRoutingRules.$inferInsert;
+
+// ============================================================
+// ADDITIONAL RELATIONS (0018/0019/0021)
 // ============================================================
 export const adminReviewProfilesRelations = relations(adminReviewProfiles, ({ many }) => ({
   assignments: many(candidateAdminAssignments),

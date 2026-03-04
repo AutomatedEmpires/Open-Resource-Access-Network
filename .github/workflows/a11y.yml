@@ -1,6 +1,9 @@
 name: Accessibility Gate
 
-on: [push, pull_request]
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
 
 jobs:
   a11y:

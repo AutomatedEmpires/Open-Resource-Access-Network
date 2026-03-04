@@ -2,8 +2,7 @@ name: Deploy (Azure App Service)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
+  # Keep deploy manual-only to avoid noisy runs on every push.
 
 permissions:
   contents: read

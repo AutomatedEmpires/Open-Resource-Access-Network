@@ -1,4 +1,4 @@
-name: Project: sync labels -> fields
+name: Project Sync
 
 on:
   issues:
@@ -6,22 +6,6 @@ on:
   pull_request:
     types: [opened, edited, reopened, labeled, unlabeled, closed]
   workflow_dispatch:
-    inputs:
-      mode:
-        description: "sync one item (single) or backfill open items (backfill-open)"
-        required: false
-        default: "backfill-open"
-      number:
-        description: "For mode=single: issue/pr number"
-        required: false
-      kind:
-        description: "For mode=single: issue or pr"
-        required: false
-        default: "issue"
-      limit:
-        description: "For backfill-open: max items to process (rate-limit safety)"
-        required: false
-        default: "50"
 
 permissions:
   contents: read
@@ -211,13 +195,14 @@ jobs:
             const fields = await getProjectFields();
 
             if (context.eventName === 'workflow_dispatch') {
-              const mode = (core.getInput('mode') || 'backfill-open').trim();
-              const limit = Number.parseInt(core.getInput('limit') || '50', 10);
+              const inputs = context?.payload?.inputs ?? {};
+              const mode = String(inputs.mode ?? 'backfill-open').trim();
+              const limit = Number.parseInt(String(inputs.limit ?? '50'), 10);
               const clampedLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 200) : 50;
 
               if (mode === 'single') {
-                const kind = (core.getInput('kind') || 'issue').trim().toLowerCase();
-                const number = Number.parseInt(core.getInput('number') || '', 10);
+                const kind = String(inputs.kind ?? 'issue').trim().toLowerCase();
+                const number = Number.parseInt(String(inputs.number ?? ''), 10);
                 if (!Number.isFinite(number)) {
                   core.setFailed('mode=single requires a numeric "number" input (issue/pr number).');
                   return;

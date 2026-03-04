@@ -11,7 +11,7 @@ function createMockDb(selectResults: unknown[] = []) {
 
   const db = {
     select: vi.fn(() => {
-      let result = selectResults.shift() ?? [];
+      const result = selectResults.shift() ?? [];
       const builder: any = {
         from: vi.fn(() => builder),
         where: vi.fn(() => builder),

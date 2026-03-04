@@ -1,15 +1,20 @@
 /**
  * Dedup integration for the fetcher module.
  * Re-exports and extends the existing dedupe utilities for use within the fetcher pipeline.
+ *
+ * Supports two modes:
+ * 1. In-memory only (default) — fast but scoped to a single process/run.
+ * 2. Store-backed — queries EvidenceStore/CandidateStore for cross-run dedup,
+ *    with an in-memory cache to avoid repeated DB hits within the same run.
  */
 
 // Re-export the core dedup functions
 export { computeExtractKeySha256, computeFetchKeySha256 } from '../dedupe';
 
+import type { EvidenceStore, CandidateStore } from '../stores';
+
 /**
  * Check if a URL has already been fetched by comparing fetch keys.
- * Default implementation is in-memory and scoped to a single process/run.
- * For cross-run dedupe, integrate with the evidence/extraction stores.
  */
 export interface DedupCheckResult {
   isDuplicate: boolean;
@@ -19,19 +24,48 @@ export interface DedupCheckResult {
 }
 
 /**
+ * Optional store backends for cross-run dedup.
+ */
+export interface DedupStores {
+  evidence?: EvidenceStore;
+  candidates?: CandidateStore;
+}
+
+/**
  * DedupChecker provides methods to check for duplicate fetches and extractions.
- * For persistence across runs, implement a store-backed checker and swap it in at the call site.
+ *
+ * When constructed with stores, it queries the DB for cross-run dedup:
+ *   - hasFetchedUrl checks the evidence store by canonical URL
+ *   - hasExtracted checks the candidate store by extract key
+ *
+ * Results are cached in-memory for the duration of the run.
  */
 export class DedupChecker {
   private readonly seenFetchKeys = new Set<string>();
   private readonly seenExtractKeys = new Set<string>();
+  private readonly stores: DedupStores;
+
+  constructor(stores: DedupStores = {}) {
+    this.stores = stores;
+  }
 
   /**
-   * Check if a URL has already been fetched in this session.
-   * Note: For persistence across sessions, this should query the evidence store.
+   * Check if a URL has already been fetched.
+   * If an EvidenceStore is available, also checks the DB.
    */
-  hasFetchedUrl(fetchKey: string): boolean {
-    return this.seenFetchKeys.has(fetchKey);
+  async hasFetchedUrl(fetchKey: string, canonicalUrl?: string): Promise<boolean> {
+    if (this.seenFetchKeys.has(fetchKey)) return true;
+
+    // Cross-run check via EvidenceStore
+    if (this.stores.evidence && canonicalUrl) {
+      const existing = await this.stores.evidence.getByCanonicalUrl(canonicalUrl);
+      if (existing) {
+        this.seenFetchKeys.add(fetchKey);
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
@@ -43,9 +77,21 @@ export class DedupChecker {
 
   /**
    * Check if content has already been extracted.
+   * If a CandidateStore is available, also checks the DB.
    */
-  hasExtracted(extractKey: string): boolean {
-    return this.seenExtractKeys.has(extractKey);
+  async hasExtracted(extractKey: string): Promise<boolean> {
+    if (this.seenExtractKeys.has(extractKey)) return true;
+
+    // Cross-run check via CandidateStore
+    if (this.stores.candidates) {
+      const existing = await this.stores.candidates.getByExtractKey(extractKey);
+      if (existing) {
+        this.seenExtractKeys.add(extractKey);
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
@@ -76,7 +122,8 @@ export class DedupChecker {
 
 /**
  * Factory function to create a DedupChecker instance.
+ * Pass stores for cross-run dedup, or omit for in-memory-only mode.
  */
-export function createDedupChecker(): DedupChecker {
-  return new DedupChecker();
+export function createDedupChecker(stores?: DedupStores): DedupChecker {
+  return new DedupChecker(stores);
 }

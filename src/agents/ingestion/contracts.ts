@@ -41,7 +41,7 @@ export const JurisdictionHintSchema = z
   .strict();
 export type JurisdictionHint = z.infer<typeof JurisdictionHintSchema>;
 
-export const ReviewStatusSchema = z.enum(['pending', 'in_review', 'verified', 'rejected', 'escalated']);
+export const ReviewStatusSchema = z.enum(['pending', 'in_review', 'verified', 'rejected', 'escalated', 'published', 'archived']);
 export type ReviewStatus = z.infer<typeof ReviewStatusSchema>;
 
 export const ReviewTimersSchema = z
@@ -96,7 +96,8 @@ export const ExtractedCandidateSchema = z.object({
   fields: z.object({
     organizationName: z.string().min(1),
     serviceName: z.string().min(1),
-    description: z.string().min(1),
+    /** Nullable in DB; default to empty string on readback to avoid Zod crash. */
+    description: z.string().default(''),
     websiteUrl: z.string().url().optional(),
     phone: z.string().min(1).optional(),
     phones: z

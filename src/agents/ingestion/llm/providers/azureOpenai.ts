@@ -44,6 +44,11 @@ function parseJsonResponse(raw: string | null | undefined): unknown {
   return JSON.parse(jsonStr);
 }
 
+/** Simple sleep for retry backoff. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /** Map SDK/HTTP errors to our LLMError codes. */
 function classifyError(err: unknown): {
   code: 'rate_limited' | 'context_too_long' | 'timeout' | 'auth_error' | 'service_unavailable' | 'content_filtered' | 'unknown';
@@ -105,21 +110,47 @@ export class AzureOpenAIClient implements LLMClient {
     this.model = config.model;
   }
 
+  // ---- retry wrapper ---------------------------------------------------
+
+  /**
+   * Retry a function with exponential backoff on retryable errors.
+   * Uses `classifyError` to decide if the error is retryable and to
+   * determine backoff delay (respecting Retry-After headers).
+   */
+  private async withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        const classified = classifyError(err);
+        if (!classified.retryable || attempt === maxRetries) {
+          throw err;
+        }
+        const delay = classified.retryAfterMs ?? 1000 * Math.pow(2, attempt);
+        await sleep(delay);
+      }
+    }
+    // Unreachable — last attempt either returns or throws above.
+    throw new Error('withRetry: unreachable');
+  }
+
   // ---- extract ---------------------------------------------------------
 
   async extract(input: ExtractionInput): Promise<LLMResult<ExtractionResult>> {
     try {
       const messages = buildExtractionMessages(input);
 
-      const response = await this.client.chat.completions.create({
-        model: this.config.model,
-        messages,
-        max_tokens: this.config.maxExtractionTokens ?? DEFAULT_LLM_CONFIG.maxExtractionTokens,
-        temperature: this.config.temperature ?? DEFAULT_LLM_CONFIG.temperature,
-        response_format: this.config.useStructuredOutput
-          ? { type: 'json_object' as const }
-          : undefined,
-      });
+      const response = await this.withRetry(() =>
+        this.client.chat.completions.create({
+          model: this.config.model,
+          messages,
+          max_tokens: this.config.maxExtractionTokens ?? DEFAULT_LLM_CONFIG.maxExtractionTokens,
+          temperature: this.config.temperature ?? DEFAULT_LLM_CONFIG.temperature,
+          response_format: this.config.useStructuredOutput
+            ? { type: 'json_object' as const }
+            : undefined,
+        })
+      );
 
       const rawContent = response.choices?.[0]?.message?.content;
       const parsed = parseJsonResponse(rawContent);
@@ -141,15 +172,17 @@ export class AzureOpenAIClient implements LLMClient {
     try {
       const messages = buildCategorizationMessages(input);
 
-      const response = await this.client.chat.completions.create({
-        model: this.config.model,
-        messages,
-        max_tokens: this.config.maxCategorizationTokens ?? DEFAULT_LLM_CONFIG.maxCategorizationTokens,
-        temperature: this.config.temperature ?? DEFAULT_LLM_CONFIG.temperature,
-        response_format: this.config.useStructuredOutput
-          ? { type: 'json_object' as const }
-          : undefined,
-      });
+      const response = await this.withRetry(() =>
+        this.client.chat.completions.create({
+          model: this.config.model,
+          messages,
+          max_tokens: this.config.maxCategorizationTokens ?? DEFAULT_LLM_CONFIG.maxCategorizationTokens,
+          temperature: this.config.temperature ?? DEFAULT_LLM_CONFIG.temperature,
+          response_format: this.config.useStructuredOutput
+            ? { type: 'json_object' as const }
+            : undefined,
+        })
+      );
 
       const rawContent = response.choices?.[0]?.message?.content;
       const parsed = parseJsonResponse(rawContent);

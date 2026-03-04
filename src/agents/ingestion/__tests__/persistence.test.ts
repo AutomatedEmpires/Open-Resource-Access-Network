@@ -6,6 +6,13 @@
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 
+import {
+  ReviewStatusSchema,
+  EvidenceSnapshotSchema,
+  AuditEventSchema,
+} from '../contracts';
+import { LinkTypeSchema } from '../fetcher/types';
+
 // Since we can't test with real DB without docker, test the mapping logic
 // by extracting and testing the helper functions
 
@@ -33,11 +40,18 @@ describe('Persistence Layer Types', () => {
         createdAt: new Date(),
       };
 
-      // Verify expected shape
-      expect(row.evidenceId).toBe('ev-123');
-      expect(row.canonicalUrl).toBe('https://example.gov/services');
-      expect(row.httpStatus).toBe(200);
-      expect(row.contentHashSha256).toHaveLength(64);
+      // Verify via Zod parse — catches schema drift automatically
+      const snapshot = EvidenceSnapshotSchema.parse({
+        evidenceId: row.evidenceId,
+        canonicalUrl: row.canonicalUrl,
+        fetchedAt: row.fetchedAt.toISOString(),
+        httpStatus: row.httpStatus,
+        contentHashSha256: row.contentHashSha256,
+      });
+      expect(snapshot.evidenceId).toBe('ev-123');
+      expect(snapshot.canonicalUrl).toBe('https://example.gov/services');
+      expect(snapshot.httpStatus).toBe(200);
+      expect(snapshot.contentHashSha256).toHaveLength(64);
     });
 
     test('should handle optional fields correctly', () => {
@@ -133,8 +147,9 @@ describe('Persistence Layer Types', () => {
         'archived',
       ];
 
+      // Each status must parse through the Zod schema
       validStatuses.forEach((status) => {
-        expect(typeof status).toBe('string');
+        expect(() => ReviewStatusSchema.parse(status)).not.toThrow();
       });
     });
   });
@@ -280,6 +295,10 @@ describe('Discovered Links', () => {
       'other',
     ];
 
+    // Each link type must parse through the Zod schema
+    validLinkTypes.forEach((lt) => {
+      expect(() => LinkTypeSchema.parse(lt)).not.toThrow();
+    });
     expect(validLinkTypes).toHaveLength(9);
   });
 });

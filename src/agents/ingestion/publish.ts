@@ -10,7 +10,8 @@
  */
 
 import { z } from 'zod';
-import { ConfidenceTier, getConfidenceTier } from './scoring';
+import type { ConfidenceTier } from '@/domain/confidence';
+import { getConfidenceTier } from '@/domain/confidence';
 import { TagConfirmation, hasBlockingPendingTags } from './confirmations';
 
 // ============================================================
@@ -68,7 +69,13 @@ export function getReadinessTier(readiness: PublishReadiness): ConfidenceTier {
 /**
  * Check if candidate is ready for publish (all criteria met).
  */
-export function isReadyForPublish(readiness: PublishReadiness): boolean {
+export function isReadyForPublish(
+  readiness: PublishReadiness,
+  options?: { adminApprovalCount?: number; minAdminApprovals?: number }
+): boolean {
+  const minApprovals = options?.minAdminApprovals ?? 0;
+  const approvalCount = options?.adminApprovalCount ?? 0;
+
   return (
     readiness.hasOrgName &&
     readiness.hasServiceName &&
@@ -81,7 +88,8 @@ export function isReadyForPublish(readiness: PublishReadiness): boolean {
     readiness.noRedTagsPending &&
     readiness.passedDomainCheck &&
     readiness.noCriticalFailures &&
-    readiness.confidenceScore >= 60 // At least yellow tier
+    readiness.confidenceScore >= 60 && // At least yellow tier
+    approvalCount >= minApprovals // Require admin review when configured
   );
 }
 

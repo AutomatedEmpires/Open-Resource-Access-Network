@@ -165,6 +165,23 @@ describe('isReadyForPublish', () => {
   it('returns true when confidence score exactly 60', () => {
     expect(isReadyForPublish({ ...baseReadiness, confidenceScore: 60 })).toBe(true);
   });
+
+  it('returns false when admin approvals are required but not met', () => {
+    expect(
+      isReadyForPublish(baseReadiness, { adminApprovalCount: 0, minAdminApprovals: 1 })
+    ).toBe(false);
+  });
+
+  it('returns true when admin approval count meets minimum', () => {
+    expect(
+      isReadyForPublish(baseReadiness, { adminApprovalCount: 1, minAdminApprovals: 1 })
+    ).toBe(true);
+  });
+
+  it('returns true with default options (no approvals required)', () => {
+    // Backward compatibility: callers that don't pass options still work
+    expect(isReadyForPublish(baseReadiness)).toBe(true);
+  });
 });
 
 describe('computeReadiness', () => {

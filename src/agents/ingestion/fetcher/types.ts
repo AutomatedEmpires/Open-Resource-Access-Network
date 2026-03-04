@@ -22,6 +22,14 @@ export const FetcherOptionsSchema = z
 export type FetcherOptions = z.infer<typeof FetcherOptionsSchema>;
 
 /**
+ * Minimal interface for a page fetcher.
+ * Production code uses PageFetcher; tests can supply a mock.
+ */
+export interface Fetcher {
+  fetch(url: string): Promise<FetchResult | FetchError>;
+}
+
+/**
  * Result of a successful page fetch.
  */
 export const FetchResultSchema = z

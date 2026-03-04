@@ -12,6 +12,7 @@
 // Types
 export type {
   DiscoveredLinkResult,
+  Fetcher,
   FetchError,
   FetchErrorCode,
   FetcherOptions,

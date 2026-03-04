@@ -1,14 +1,23 @@
 /**
- * Tag Confirmation Contracts
+ * Tag Confirmation Contracts — Publish pipeline integration.
  *
- * Agent-suggested tags that need admin confirmation.
+ * This module defines the PUBLISH-PIPELINE tag confirmation schema, used by
+ * the publish readiness gate (publish.ts) and batch admin workflows.
+ *
+ * DISAMBIGUATION: tagConfirmations.ts defines a separate, richer TagConfirmation
+ * type used by the persistence layer (TagConfirmationStore) and admin approval UI.
+ * Both exist intentionally:
+ *   - confirmations.ts (this file): publish pipeline, field suggestions, batch ops
+ *   - tagConfirmations.ts: persistence layer, admin UI, store-backed schema
+ *
  * Color-coded by confidence: green (≥80), yellow (60-79), orange (40-59), red (<40).
  *
  * @module agents/ingestion/confirmations
  */
 
 import { z } from 'zod';
-import { ConfidenceTier, getConfidenceTier } from './scoring';
+import type { ConfidenceTier } from '@/domain/confidence';
+import { getConfidenceTier } from '@/domain/confidence';
 
 // ============================================================
 // TAG CONFIRMATION

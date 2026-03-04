@@ -522,37 +522,37 @@ describe('DedupChecker', () => {
   });
 
   describe('fetch tracking', () => {
-    it('should track fetched URLs', () => {
+    it('should track fetched URLs', async () => {
       const fetchKey = computeFetchKeySha256('https://example.com');
-      expect(checker.hasFetchedUrl(fetchKey)).toBe(false);
+      expect(await checker.hasFetchedUrl(fetchKey)).toBe(false);
 
       checker.markFetched(fetchKey);
-      expect(checker.hasFetchedUrl(fetchKey)).toBe(true);
+      expect(await checker.hasFetchedUrl(fetchKey)).toBe(true);
     });
 
-    it('should track multiple URLs independently', () => {
+    it('should track multiple URLs independently', async () => {
       const key1 = computeFetchKeySha256('https://example.com/a');
       const key2 = computeFetchKeySha256('https://example.com/b');
 
       checker.markFetched(key1);
 
-      expect(checker.hasFetchedUrl(key1)).toBe(true);
-      expect(checker.hasFetchedUrl(key2)).toBe(false);
+      expect(await checker.hasFetchedUrl(key1)).toBe(true);
+      expect(await checker.hasFetchedUrl(key2)).toBe(false);
     });
   });
 
   describe('extract tracking', () => {
-    it('should track extracted content', () => {
+    it('should track extracted content', async () => {
       const extractKey = computeExtractKeySha256('https://example.com', 'hash123');
-      expect(checker.hasExtracted(extractKey)).toBe(false);
+      expect(await checker.hasExtracted(extractKey)).toBe(false);
 
       checker.markExtracted(extractKey);
-      expect(checker.hasExtracted(extractKey)).toBe(true);
+      expect(await checker.hasExtracted(extractKey)).toBe(true);
     });
   });
 
   describe('reset', () => {
-    it('should clear all tracked items', () => {
+    it('should clear all tracked items', async () => {
       const fetchKey = computeFetchKeySha256('https://example.com');
       const extractKey = computeExtractKeySha256('https://example.com', 'hash');
 
@@ -561,8 +561,8 @@ describe('DedupChecker', () => {
 
       checker.reset();
 
-      expect(checker.hasFetchedUrl(fetchKey)).toBe(false);
-      expect(checker.hasExtracted(extractKey)).toBe(false);
+      expect(await checker.hasFetchedUrl(fetchKey)).toBe(false);
+      expect(await checker.hasExtracted(extractKey)).toBe(false);
     });
   });
 

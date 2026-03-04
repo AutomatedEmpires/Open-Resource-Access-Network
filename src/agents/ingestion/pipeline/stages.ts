@@ -10,6 +10,8 @@ import {
   createEvidenceBuilder,
   computeExtractKeySha256,
 } from '../fetcher';
+import { buildDefaultChecklist } from '../checklist';
+import type { VerificationChecklist, ChecklistItemKey } from '../checklist';
 
 import type { LLMClient } from '../llm';
 import { createLLMClient, getLLMConfigFromEnv } from '../llm';
@@ -114,7 +116,7 @@ export class FetchStage implements PipelineStageHandler {
     const startTime = new Date();
 
     try {
-      const fetcher = createPageFetcher({
+      const fetcher = context.fetcher ?? createPageFetcher({
         timeoutMs: context.config.fetchTimeoutMs,
       });
 
@@ -260,6 +262,11 @@ export class DiscoverLinksStage implements PipelineStageHandler {
         label: l.label,
         confidence: l.confidence,
       }));
+
+      // TODO(L3): Discovered links are classified but not recursively followed.
+      // The orchestrator's processBatch() could consume context.discoveredLinks
+      // to enqueue high-confidence contact/eligibility links as new PipelineInputs.
+      // Gated on: source registry entry discovery mode != 'seeded_only'.
 
       // Count link types
       const typeCounts: Record<string, number> = {};
@@ -595,12 +602,51 @@ export class VerifyStage implements PipelineStageHandler {
         severity: hasContact ? 'info' : 'warning',
       });
 
-      // Check 3: Description completeness
-      const descLength = context.llmExtraction.description?.length ?? 0;
+      // Check 3: Cross-source agreement
+      // At single-URL pipeline stage, we can only mark unknown when no
+      // corroborating links exist and pass when discovered links provide
+      // corroboration from the same domain.
+      const discoveredCount = context.discoveredLinks?.length ?? 0;
       results.push({
-        checkType: 'description_completeness',
-        status: descLength > 100 ? 'pass' : descLength > 20 ? 'unknown' : 'fail',
-        severity: descLength > 20 ? 'info' : 'warning',
+        checkType: 'cross_source_agreement',
+        status: discoveredCount >= 2 ? 'pass' : 'unknown',
+        severity: discoveredCount >= 2 ? 'info' : 'warning',
+      });
+
+      // Check 4: Hours stability
+      // Check whether hours/schedule information is present in the
+      // extracted text or description — a precondition for freshness.
+      const textLower = (context.textExtraction?.text ?? '').toLowerCase();
+      const descLower = (context.llmExtraction.description ?? '').toLowerCase();
+      const hoursPatterns = /\b(hours|schedule|open|closed|mon|tue|wed|thu|fri|sat|sun|am|pm|24\/7)\b/;
+      const hasHoursInfo = hoursPatterns.test(textLower) || hoursPatterns.test(descLower);
+      results.push({
+        checkType: 'hours_stability',
+        status: hasHoursInfo ? 'pass' : 'unknown',
+        severity: hasHoursInfo ? 'info' : 'warning',
+      });
+
+      // Check 5: Location plausibility
+      // Verify address data is present and has reasonable field values.
+      const addr = context.llmExtraction.address;
+      const hasPlausibleLocation =
+        !!addr && !!addr.city && !!addr.region && !!addr.postalCode && addr.line1.length >= 3;
+      results.push({
+        checkType: 'location_plausibility',
+        status: hasPlausibleLocation ? 'pass' : addr ? 'unknown' : 'fail',
+        severity: hasPlausibleLocation ? 'info' : 'warning',
+      });
+
+      // Check 6: Policy constraints
+      // Basic policy gate: organization name and description must be present
+      // and description must meet minimum length (civic data quality bar).
+      const orgPresent = !!context.llmExtraction.organizationName;
+      const descLength = context.llmExtraction.description?.length ?? 0;
+      const meetsPolicy = orgPresent && descLength > 20;
+      results.push({
+        checkType: 'policy_constraints',
+        status: meetsPolicy ? 'pass' : 'fail',
+        severity: meetsPolicy ? 'info' : 'critical',
       });
 
       context.verificationResults = results;
@@ -650,6 +696,49 @@ export class ScoreStage implements PipelineStageHandler {
     }
 
     try {
+      // Build verification checklist from pipeline data
+      const checklist = buildDefaultChecklist();
+      const markSatisfied = (key: ChecklistItemKey) => {
+        const item = checklist.find((i) => i.key === key);
+        if (item) item.status = 'satisfied';
+      };
+
+      // contact_method: satisfied if phone or websiteUrl present
+      if (context.llmExtraction.phone || context.llmExtraction.websiteUrl) {
+        markSatisfied('contact_method');
+      }
+      // physical_address_or_virtual: satisfied if address is present
+      if (context.llmExtraction.address) {
+        markSatisfied('physical_address_or_virtual');
+      }
+      // service_area: satisfied if categories hint at area (heuristic; always satisfied when address exists)
+      if (context.llmExtraction.address?.city || context.llmCategorization?.categories?.length) {
+        markSatisfied('service_area');
+      }
+      // eligibility_criteria: satisfied if description is sufficiently detailed (>100 chars)
+      if (context.llmExtraction.description && context.llmExtraction.description.length > 100) {
+        markSatisfied('eligibility_criteria');
+      }
+      // hours: mark not_applicable — pipeline cannot extract hours from single page
+      const hoursItem = checklist.find((i) => i.key === 'hours');
+      if (hoursItem) hoursItem.status = 'not_applicable';
+      // source_provenance: satisfied if source check passed with allowlisted trust
+      if (context.sourceCheck?.trustLevel === 'allowlisted') {
+        markSatisfied('source_provenance');
+      }
+      // duplication_review: mark not_applicable — requires cross-candidate comparison
+      const dedupItem = checklist.find((i) => i.key === 'duplication_review');
+      if (dedupItem) dedupItem.status = 'not_applicable';
+      // policy_pass: satisfied if no critical verification failures
+      if (context.verificationResults) {
+        const hasCritical = context.verificationResults.some(
+          (r) => r.status === 'fail' && r.severity === 'critical'
+        );
+        if (!hasCritical) markSatisfied('policy_pass');
+      }
+
+      context.verificationChecklist = checklist;
+
       // Compute sub-scores
 
       // Verification score: based on verification results

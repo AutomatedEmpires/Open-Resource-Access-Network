@@ -216,5 +216,14 @@ export function buildBootstrapRegistry(nowIso: string = new Date().toISOString()
       discovery: [{ type: 'seeded_only' }],
       coverage: [{ kind: 'national', country: 'US' }],
     }),
+    SourceRegistryEntrySchema.parse({
+      ...base,
+      id: 'bootstrap-org',
+      displayName: 'Non-profit Organizations (.org) (quarantined)',
+      trustLevel: 'quarantine',
+      domainRules: [{ type: 'suffix', value: '.org' }],
+      discovery: [{ type: 'seeded_only' }],
+      coverage: [{ kind: 'national', country: 'US' }],
+    }),
   ];
 }

@@ -26,12 +26,23 @@ export const DEFAULT_PIPELINE_CONFIG: PipelineConfig = PipelineConfigSchema.pars
 export type PipelineEventHandler = PipelineEventListener;
 
 /**
+ * Interface for persisting pipeline results.
+ * Implement with a Drizzle/DB store for durable execution records.
+ */
+export interface PipelineResultStore {
+  /** Save a completed pipeline result (insert-or-upsert by correlationId). */
+  saveResult(result: PipelineResult): Promise<void>;
+}
+
+/**
  * Options for pipeline orchestrator.
  */
 export interface PipelineOrchestratorOptions {
   config?: Partial<PipelineConfig>;
   registry?: SourceRegistryEntry[];
   onEvent?: PipelineEventHandler;
+  /** Optional persistent store for pipeline results. */
+  resultStore?: PipelineResultStore;
 }
 
 /**
@@ -57,12 +68,14 @@ export class PipelineOrchestrator {
   private readonly config: PipelineConfig;
   private readonly stages: PipelineStageHandler[];
   private readonly onEvent?: PipelineEventHandler;
+  private readonly resultStore?: PipelineResultStore;
 
   constructor(options: PipelineOrchestratorOptions = {}) {
     this.config = PipelineConfigSchema.parse({ ...DEFAULT_PIPELINE_CONFIG, ...options.config });
     const registry = options.registry ?? buildBootstrapRegistry();
     this.stages = createPipelineStages(registry);
     this.onEvent = options.onEvent;
+    this.resultStore = options.resultStore;
   }
 
   /**
@@ -212,6 +225,22 @@ export class PipelineOrchestrator {
       correlationId: context.correlationId,
       status,
     });
+
+    // Persist result if a store is configured
+    if (this.resultStore) {
+      try {
+        await this.resultStore.saveResult(result);
+      } catch {
+        // Persistence failure is non-fatal — result is still returned to caller.
+        // Emit an event so monitoring can detect the issue.
+        this.emit({
+          type: 'stage_failed',
+          correlationId: context.correlationId,
+          stage: 'score',
+          error: 'Failed to persist pipeline result',
+        });
+      }
+    }
 
     return result;
   }

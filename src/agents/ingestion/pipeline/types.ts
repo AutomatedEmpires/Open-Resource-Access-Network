@@ -158,6 +158,13 @@ export interface PipelineContext {
   /** Results from completed stages */
   stageResults: StageResult[];
 
+  /**
+   * Optional fetcher override.
+   * When provided, FetchStage uses this instead of creating a default PageFetcher.
+   * This allows tests to inject a mock HTTP client.
+   */
+  fetcher?: import('../fetcher').Fetcher;
+
   // Data accumulated by stages
   sourceCheck?: SourceCheckResult;
   fetchResult?: {
@@ -224,6 +231,8 @@ export interface PipelineContext {
       freshness: number;
     };
   };
+  /** Verification checklist populated by ScoreStage from pipeline data */
+  verificationChecklist?: import('../checklist').VerificationChecklist;
   candidateId?: string;
   extractionId?: string;
 }

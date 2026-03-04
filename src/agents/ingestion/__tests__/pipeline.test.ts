@@ -509,12 +509,27 @@ describe('VerifyStage', () => {
         trustLevel: 'allowlisted' as const,
         sourceId: 'gov',
       },
+      textExtraction: {
+        text: 'Office hours: Mon-Fri 9am-5pm',
+        wordCount: 5,
+      },
+      discoveredLinks: [
+        { url: 'https://example.gov/about', type: 'home', confidence: 0.8 },
+        { url: 'https://example.gov/contact', type: 'contact', confidence: 0.7 },
+      ],
       llmExtraction: {
         organizationName: 'Test Org',
         serviceName: 'Test Service',
         description: 'A comprehensive description of the service that provides assistance to community members.',
         websiteUrl: 'https://example.gov',
         phone: '555-1234',
+        address: {
+          line1: '123 Main St',
+          city: 'Portland',
+          region: 'OR',
+          postalCode: '97201',
+          country: 'US',
+        },
         confidence: 70,
         fieldConfidences: {},
       },
@@ -523,11 +538,120 @@ describe('VerifyStage', () => {
     const result = await stage.execute(context);
     expect(result.status).toBe('completed');
     expect(context.verificationResults).toBeDefined();
-    expect(context.verificationResults?.length).toBeGreaterThan(0);
+    expect(context.verificationResults?.length).toBe(6);
 
     // Check domain allowlist passes for .gov
     const domainCheck = context.verificationResults?.find(r => r.checkType === 'domain_allowlist');
     expect(domainCheck?.status).toBe('pass');
+
+    // Check contact validity passes with phone + website
+    const contactCheck = context.verificationResults?.find(r => r.checkType === 'contact_validity');
+    expect(contactCheck?.status).toBe('pass');
+
+    // Check cross-source agreement passes with 2+ discovered links
+    const crossCheck = context.verificationResults?.find(r => r.checkType === 'cross_source_agreement');
+    expect(crossCheck?.status).toBe('pass');
+
+    // Check hours stability passes when hours keywords present
+    const hoursCheck = context.verificationResults?.find(r => r.checkType === 'hours_stability');
+    expect(hoursCheck?.status).toBe('pass');
+
+    // Check location plausibility passes with full address
+    const locationCheck = context.verificationResults?.find(r => r.checkType === 'location_plausibility');
+    expect(locationCheck?.status).toBe('pass');
+
+    // Check policy constraints passes with org name + description > 20 chars
+    const policyCheck = context.verificationResults?.find(r => r.checkType === 'policy_constraints');
+    expect(policyCheck?.status).toBe('pass');
+  });
+
+  it('marks cross_source_agreement unknown with fewer than 2 links', async () => {
+    const context: PipelineContext = {
+      input: createInput('https://example.gov'),
+      config: DEFAULT_PIPELINE_CONFIG,
+      correlationId: 'test-123',
+      stageResults: [],
+      startedAt: new Date(),
+      sourceCheck: { allowed: true, trustLevel: 'allowlisted' as const, sourceId: 'gov' },
+      llmExtraction: {
+        organizationName: 'Test Org',
+        serviceName: 'Test Service',
+        description: 'A service providing community assistance.',
+        confidence: 70,
+        fieldConfidences: {},
+      },
+    };
+
+    await stage.execute(context);
+    const crossCheck = context.verificationResults?.find(r => r.checkType === 'cross_source_agreement');
+    expect(crossCheck?.status).toBe('unknown');
+  });
+
+  it('marks hours_stability unknown when no schedule keywords', async () => {
+    const context: PipelineContext = {
+      input: createInput('https://example.gov'),
+      config: DEFAULT_PIPELINE_CONFIG,
+      correlationId: 'test-123',
+      stageResults: [],
+      startedAt: new Date(),
+      sourceCheck: { allowed: true, trustLevel: 'allowlisted' as const, sourceId: 'gov' },
+      llmExtraction: {
+        organizationName: 'Test Org',
+        serviceName: 'Test Service',
+        description: 'Community service for housing.',
+        confidence: 70,
+        fieldConfidences: {},
+      },
+    };
+
+    await stage.execute(context);
+    const hoursCheck = context.verificationResults?.find(r => r.checkType === 'hours_stability');
+    expect(hoursCheck?.status).toBe('unknown');
+  });
+
+  it('marks location_plausibility fail when no address', async () => {
+    const context: PipelineContext = {
+      input: createInput('https://example.gov'),
+      config: DEFAULT_PIPELINE_CONFIG,
+      correlationId: 'test-123',
+      stageResults: [],
+      startedAt: new Date(),
+      sourceCheck: { allowed: true, trustLevel: 'allowlisted' as const, sourceId: 'gov' },
+      llmExtraction: {
+        organizationName: 'Test Org',
+        serviceName: 'Test Service',
+        description: 'Community service for housing.',
+        confidence: 70,
+        fieldConfidences: {},
+      },
+    };
+
+    await stage.execute(context);
+    const locationCheck = context.verificationResults?.find(r => r.checkType === 'location_plausibility');
+    expect(locationCheck?.status).toBe('fail');
+  });
+
+  it('marks policy_constraints fail when description too short', async () => {
+    const context: PipelineContext = {
+      input: createInput('https://example.gov'),
+      config: DEFAULT_PIPELINE_CONFIG,
+      correlationId: 'test-123',
+      stageResults: [],
+      startedAt: new Date(),
+      sourceCheck: { allowed: true, trustLevel: 'allowlisted' as const, sourceId: 'gov' },
+      llmExtraction: {
+        organizationName: 'Test Org',
+        serviceName: 'Test Service',
+        description: 'Short',
+        confidence: 70,
+        fieldConfidences: {},
+      },
+    };
+
+    await stage.execute(context);
+    const policyCheck = context.verificationResults?.find(r => r.checkType === 'policy_constraints');
+    expect(policyCheck?.status).toBe('fail');
+    expect(policyCheck?.severity).toBe('critical');
   });
 });
 
@@ -632,6 +756,52 @@ describe('ScoreStage', () => {
     const result = await stage.execute(context);
     expect(result.status).toBe('completed');
     expect(context.candidateScore?.tier).toBe('green');
+  });
+
+  it('populates verification checklist from pipeline data', async () => {
+    const context: PipelineContext = {
+      input: createInput('https://example.gov'),
+      config: DEFAULT_PIPELINE_CONFIG,
+      correlationId: 'test-checklist',
+      stageResults: [],
+      startedAt: new Date(),
+      sourceCheck: {
+        allowed: true,
+        trustLevel: 'allowlisted' as const,
+        sourceId: 'gov',
+      },
+      llmExtraction: {
+        organizationName: 'Shelter',
+        serviceName: 'Housing Help',
+        description: 'A sufficiently long and detailed description of the housing help program that exceeds one hundred characters in total.',
+        phone: '555-9999',
+        address: {
+          line1: '1 Oak Ave',
+          city: 'Denver',
+          region: 'CO',
+          postalCode: '80202',
+          country: 'US',
+        },
+        confidence: 85,
+        fieldConfidences: {},
+      },
+      verificationResults: [
+        { checkType: 'domain_allowlist', status: 'pass' as const, severity: 'info' as const },
+      ],
+    };
+
+    await stage.execute(context);
+
+    expect(context.verificationChecklist).toBeDefined();
+    expect(context.verificationChecklist!.length).toBe(8);
+
+    const byKey = Object.fromEntries(context.verificationChecklist!.map((i) => [i.key, i.status]));
+    expect(byKey['contact_method']).toBe('satisfied');
+    expect(byKey['physical_address_or_virtual']).toBe('satisfied');
+    expect(byKey['source_provenance']).toBe('satisfied');
+    expect(byKey['policy_pass']).toBe('satisfied');
+    expect(byKey['hours']).toBe('not_applicable');
+    expect(byKey['duplication_review']).toBe('not_applicable');
   });
 });
 
@@ -860,5 +1030,44 @@ describe('PipelineResult structure', () => {
     const isoRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/;
     expect(result.startedAt).toMatch(isoRegex);
     expect(result.completedAt).toMatch(isoRegex);
+  });
+});
+
+// ============================================================================
+// PipelineResultStore integration
+// ============================================================================
+
+describe('PipelineResultStore', () => {
+  it('persists result when resultStore is provided', async () => {
+    const saved: import('../pipeline/types').PipelineResult[] = [];
+    const store = { saveResult: async (r: import('../pipeline/types').PipelineResult) => { saved.push(r); } };
+    const orchestrator = createPipelineOrchestrator({ resultStore: store });
+    const result = await orchestrator.processUrl(
+      createInput('https://example.gov', { maxStages: 1 })
+    );
+
+    expect(saved).toHaveLength(1);
+    expect(saved[0].correlationId).toBe(result.correlationId);
+  });
+
+  it('returns result even when resultStore throws', async () => {
+    const store = { saveResult: async () => { throw new Error('DB down'); } };
+    const orchestrator = createPipelineOrchestrator({ resultStore: store });
+    const result = await orchestrator.processUrl(
+      createInput('https://example.gov', { maxStages: 1 })
+    );
+
+    // Pipeline still returns valid result despite store failure
+    expect(result.status).toBeDefined();
+    expect(result.correlationId).toBeDefined();
+  });
+
+  it('does not call store when none configured', async () => {
+    // Default orchestrator — no store
+    const orchestrator = createPipelineOrchestrator();
+    const result = await orchestrator.processUrl(
+      createInput('https://example.gov', { maxStages: 1 })
+    );
+    expect(result.status).toBeDefined();
   });
 });

@@ -1,5 +1,13 @@
 /**
- * Tag confirmation workflow.
+ * Tag confirmation workflow — Tag-level admin review queue.
+ *
+ * This module defines the STORE-BACKED tag confirmation schema, used by
+ * TagConfirmationStore (stores.ts) and the admin approval workflow.
+ *
+ * DISAMBIGUATION: confirmations.ts defines a separate, lighter TagConfirmation
+ * type used by the publish readiness gate. Both exist intentionally:
+ *   - tagConfirmations.ts (this file): persistence layer, admin UI, rich schema
+ *   - confirmations.ts: publish pipeline, field suggestions, batch operations
  *
  * When the agent extracts a tag with low confidence, it goes to
  * a confirmation queue for human review. Admins can:
@@ -10,6 +18,11 @@
 import { z } from 'zod';
 import type { ResourceTagType } from './tags';
 import { ResourceTagTypeSchema } from './tags';
+import {
+  type ConfidenceTier,
+  getConfidenceTier,
+  getTierDisplayInfo as getCanonicalTierDisplayInfo,
+} from '@/domain/confidence';
 
 // ============================================================
 // Confirmation Status
@@ -26,11 +39,11 @@ export const TagConfirmationStatusSchema = z.enum([
 export type TagConfirmationStatus = z.infer<typeof TagConfirmationStatusSchema>;
 
 // ============================================================
-// Confidence Tier (visual color)
+// Confidence Tier (visual color) — canonical type from @/domain/confidence
 // ============================================================
 
 export const ConfidenceTierSchema = z.enum(['green', 'yellow', 'orange', 'red']);
-export type ConfidenceTier = z.infer<typeof ConfidenceTierSchema>;
+export type { ConfidenceTier };
 
 // ============================================================
 // Tag Confirmation
@@ -78,47 +91,29 @@ export type TagConfirmation = z.infer<typeof TagConfirmationSchema>;
 /**
  * Calculate confidence tier from score.
  */
+/**
+ * Calculate confidence tier from score.
+ * @deprecated Use getConfidenceTier from @/domain/confidence directly.
+ */
 export function getConfidenceTierFromScore(score: number): ConfidenceTier {
-  if (score >= 80) return 'green';
-  if (score >= 60) return 'yellow';
-  if (score >= 40) return 'orange';
-  return 'red';
+  return getConfidenceTier(score);
 }
 
 /**
  * Get display info for confidence tier.
+ * @deprecated Use getTierDisplayInfo from @/domain/confidence directly.
  */
 export function getTierDisplayInfo(tier: ConfidenceTier): {
   color: string;
   label: string;
   description: string;
 } {
-  switch (tier) {
-    case 'green':
-      return {
-        color: '#22c55e',
-        label: 'High Confidence',
-        description: 'Agent is confident this tag is correct',
-      };
-    case 'yellow':
-      return {
-        color: '#eab308',
-        label: 'Medium Confidence',
-        description: 'Agent suggests reviewing this tag',
-      };
-    case 'orange':
-      return {
-        color: '#f97316',
-        label: 'Low Confidence',
-        description: 'Agent is uncertain about this tag',
-      };
-    case 'red':
-      return {
-        color: '#ef4444',
-        label: 'Very Low Confidence',
-        description: 'Human review required',
-      };
-  }
+  const info = getCanonicalTierDisplayInfo(tier);
+  return {
+    color: info.color,
+    label: info.label,
+    description: info.description,
+  };
 }
 
 // ============================================================

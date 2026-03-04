@@ -39,6 +39,7 @@ export {
   DEFAULT_PIPELINE_CONFIG,
   type PipelineOrchestratorOptions,
   type PipelineEventHandler,
+  type PipelineResultStore,
 } from './orchestrator';
 
 // Individual stages (for testing / custom pipelines)

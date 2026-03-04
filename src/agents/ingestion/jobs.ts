@@ -92,7 +92,21 @@ export function createIngestionJob(
 }
 
 /**
+ * Valid job-status transitions.
+ * queued → running → completed | failed | cancelled
+ * queued → cancelled (direct cancel before start)
+ */
+const VALID_JOB_TRANSITIONS: Record<IngestionJobStatus, IngestionJobStatus[]> = {
+  queued: ['running', 'cancelled'],
+  running: ['completed', 'failed', 'cancelled'],
+  completed: [],
+  failed: [],
+  cancelled: [],
+};
+
+/**
  * Transition a job to the next status.
+ * Throws if the transition is illegal.
  */
 export function transitionJobStatus(
   job: IngestionJob,
@@ -100,6 +114,14 @@ export function transitionJobStatus(
   nowIso: string = new Date().toISOString(),
   error?: { message: string; details?: Record<string, unknown> }
 ): IngestionJob {
+  const allowed = VALID_JOB_TRANSITIONS[job.status];
+  if (!allowed.includes(newStatus)) {
+    throw new Error(
+      `Invalid job status transition: ${job.status} → ${newStatus}. ` +
+      `Allowed transitions from '${job.status}': [${allowed.join(', ')}]`
+    );
+  }
+
   const updates: Partial<IngestionJob> = { status: newStatus };
 
   if (newStatus === 'running' && !job.startedAt) {

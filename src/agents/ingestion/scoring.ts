@@ -2,57 +2,30 @@ import type { VerificationCheckResult } from './contracts';
 import type { VerificationChecklist } from './checklist';
 
 // ============================================================
-// CONFIDENCE TIERS (color-coded status)
+// CONFIDENCE TIERS — canonical definitions live in @/domain/confidence.
+// Re-exported here for backward compatibility.
 // ============================================================
 
-export type ConfidenceTier = 'green' | 'yellow' | 'orange' | 'red';
+import {
+  type ConfidenceTier,
+  CONFIDENCE_THRESHOLDS,
+  getConfidenceTier,
+  getTierDisplayInfo,
+} from '@/domain/confidence';
 
+export type { ConfidenceTier };
+export { getConfidenceTier, getTierDisplayInfo };
+
+/**
+ * @deprecated Use CONFIDENCE_THRESHOLDS from @/domain/confidence directly.
+ * Kept as a re-export alias for existing consumers.
+ */
 export const CONFIDENCE_TIER_THRESHOLDS = {
-  green: 80,   // Ready to publish
-  yellow: 60,  // Likely good, needs review
-  orange: 40,  // Possible, needs attention
-  red: 0,      // Insufficient, needs work
+  green: CONFIDENCE_THRESHOLDS.GREEN,
+  yellow: CONFIDENCE_THRESHOLDS.YELLOW,
+  orange: CONFIDENCE_THRESHOLDS.ORANGE,
+  red: CONFIDENCE_THRESHOLDS.RED,
 } as const;
-
-export function getConfidenceTier(score: number): ConfidenceTier {
-  if (score >= CONFIDENCE_TIER_THRESHOLDS.green) return 'green';
-  if (score >= CONFIDENCE_TIER_THRESHOLDS.yellow) return 'yellow';
-  if (score >= CONFIDENCE_TIER_THRESHOLDS.orange) return 'orange';
-  return 'red';
-}
-
-export function getTierDisplayInfo(tier: ConfidenceTier): {
-  label: string;
-  description: string;
-  color: string;
-} {
-  switch (tier) {
-    case 'green':
-      return {
-        label: 'Ready',
-        description: 'Sufficient verification for publication',
-        color: '#22c55e',
-      };
-    case 'yellow':
-      return {
-        label: 'Review',
-        description: 'Likely good, awaiting review',
-        color: '#eab308',
-      };
-    case 'orange':
-      return {
-        label: 'Attention',
-        description: 'Needs additional verification',
-        color: '#f97316',
-      };
-    case 'red':
-      return {
-        label: 'Incomplete',
-        description: 'Insufficient data for publication',
-        color: '#ef4444',
-      };
-  }
-}
 
 // ============================================================
 // CONFIDENCE SCORE CALCULATION
@@ -180,14 +153,28 @@ export function hasFailingCriticalChecks(checks: VerificationCheckResult[]): boo
 }
 
 /**
- * Check if a candidate is ready for publish (green tier + no critical failures).
+ * Check if a candidate meets the GREEN tier threshold + no critical failures.
+ *
+ * NOTE: This is stricter than the canonical publish gate in publish.ts
+ * (which requires only ≥60 / yellow tier). Use this for auto-approval
+ * decisions; use publish.ts isReadyForPublish() for the actual publish gate.
+ *
+ * @deprecated Prefer publish.ts isReadyForPublish() for publish decisions,
+ *   or canAutoApprove() from @/domain/confidence for auto-approval checks.
  */
-export function isReadyForPublish(
+export function meetsGreenTierForPublish(
   score: number,
   checks: VerificationCheckResult[]
 ): boolean {
   return getConfidenceTier(score) === 'green' && !hasFailingCriticalChecks(checks);
 }
+
+/**
+ * @deprecated Use meetsGreenTierForPublish instead. This alias exists for
+ *   backward compatibility but its name collides with publish.ts isReadyForPublish
+ *   which has a different threshold (≥60 vs ≥80).
+ */
+export const isReadyForPublish = meetsGreenTierForPublish;
 
 /**
  * Compute reverification cadence based on confidence score.

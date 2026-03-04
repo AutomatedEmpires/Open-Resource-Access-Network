@@ -125,6 +125,52 @@ describe('ingestion jobs', () => {
       expect(cancelled.status).toBe('cancelled');
       expect(cancelled.completedAt).toBeDefined();
     });
+
+    test('rejects completed → running (illegal transition)', () => {
+      const job = createIngestionJob({
+        jobType: 'seed_crawl',
+        seedUrls: ['https://example.gov/a'],
+      });
+      const running = transitionJobStatus(job, 'running');
+      const completed = transitionJobStatus(running, 'completed');
+
+      expect(() => transitionJobStatus(completed, 'running')).toThrow(
+        /Invalid job status transition: completed → running/
+      );
+    });
+
+    test('rejects failed → queued (illegal transition)', () => {
+      const job = createIngestionJob({
+        jobType: 'seed_crawl',
+        seedUrls: ['https://example.gov/a'],
+      });
+      const running = transitionJobStatus(job, 'running');
+      const failed = transitionJobStatus(running, 'failed');
+
+      expect(() => transitionJobStatus(failed, 'queued')).toThrow(
+        /Invalid job status transition/
+      );
+    });
+
+    test('rejects queued → completed (must go through running)', () => {
+      const job = createIngestionJob({
+        jobType: 'seed_crawl',
+        seedUrls: ['https://example.gov/a'],
+      });
+
+      expect(() => transitionJobStatus(job, 'completed')).toThrow(
+        /Invalid job status transition: queued → completed/
+      );
+    });
+
+    test('allows queued → cancelled (direct cancel)', () => {
+      const job = createIngestionJob({
+        jobType: 'seed_crawl',
+        seedUrls: ['https://example.gov/a'],
+      });
+      const cancelled = transitionJobStatus(job, 'cancelled');
+      expect(cancelled.status).toBe('cancelled');
+    });
   });
 
   describe('IngestionJobSchema validation', () => {

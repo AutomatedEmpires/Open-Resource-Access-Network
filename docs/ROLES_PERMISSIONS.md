@@ -74,6 +74,7 @@ Can read full audit trails including IP-stamped change history. Only oran_admin 
 
 ## Enforcement Points
 
-- **Middleware** (`src/middleware.ts`): Route-level role enforcement via Microsoft Entra ID / NextAuth.js session
-- **API handlers** (`src/app/api/*/route.ts`): Resource-level permission checks
-- **Drizzle RLS policies** (future): Row-level security in PostgreSQL for defense in depth
+- **Middleware** (`src/middleware.ts`): Route-level role enforcement via Microsoft Entra ID / NextAuth.js JWT. Uses `getToken()` + `isRoleAtLeast()` for role comparison. Returns 403 for insufficient roles, 302 redirect for unauthenticated, 503 in production if auth is misconfigured.
+- **Auth guards** (`src/services/auth/guards.ts`): Pure functions for role comparison (`isRoleAtLeast`, `requireMinRole`, `requireOrgAccess`, `requireOrgRole`).
+- **API handlers** (`src/app/api/*/route.ts`): Server-side session validation via `getAuthContext()` + resource-level permission checks. Returns 401/403 as appropriate. Production fail-closed via `shouldEnforceAuth()`.
+- **Drizzle RLS policies** (future): Row-level security in PostgreSQL for defense in depth.

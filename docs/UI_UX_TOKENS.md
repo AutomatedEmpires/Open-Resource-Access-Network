@@ -94,3 +94,15 @@ Standard copy conventions:
 
 - Keep animations minimal.
 - Any animation MUST remain functional with `prefers-reduced-motion`.
+
+---
+
+## 9) Touch targets
+
+- Interactive controls (buttons, icon buttons, clickable cards) MUST have a minimum tap target of **44×44px**.
+
+### Select exception
+
+- Native `<select>` inputs MAY use a minimum height of **32px** in dense filter panels.
+- Justification: the native control opens a platform picker on tap; this is treated as an input control rather than a small icon button.
+- When used, add a short inline note referencing this section (see directory sort select).

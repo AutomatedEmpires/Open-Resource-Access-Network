@@ -7,16 +7,22 @@
 This document includes both **Implemented** and **Planned** controls. When this file conflicts with executable behavior, follow docs/SSOT.md.
 
 Implemented today:
-- Zod validation exists at API boundaries for current endpoints.
-- Chat pipeline includes quota/rate limiting logic.
-- Protected route authentication gating exists in middleware when Microsoft Entra ID is configured (roles are still planned).
+- Zod validation at API boundaries for all endpoints (all 25 API routes).
+- Chat pipeline includes crisis-first gate (before quota and rate limiting), quota/rate limiting logic.
+- Rate limiting on all API routes, including auth endpoints, with `Retry-After` headers on 429 responses.
+- Protected route authentication gating via middleware (JWT extraction + role enforcement via `isRoleAtLeast()`).
+- All protected API routes enforce auth server-side via `getAuthContext()` + role guards.
+- Host API routes fail-closed in production—return 401 even if Entra ID is not configured.
+- Content Security Policy (CSP) header applied sitewide via `next.config.mjs` (see ADR-0005).
+- No CORS wildcard (`Access-Control-Allow-Origin: *`) on any route—default same-origin policy.
+- Feature flags with typed constants, fail-closed semantics (unknown flag → off).
+- PII redaction in Sentry/telemetry—verified by automated tests.
 - DB schema exists in db/migrations/** (including feature_flags and verification_queue).
 
 Planned / not yet enforced end-to-end:
-- RBAC beyond “authenticated vs unauthenticated”.
 - Comprehensive audit logging with before/after snapshots.
-- Uniform per-endpoint rate limiting across all APIs (currently implemented for `/api/chat`, `/api/search`, `/api/feedback`).
-- A restrictive Content-Security-Policy (CSP) rolled out safely.
+- Nonce-based CSP to replace `script-src 'unsafe-inline'` (see ADR-0005).
+- Redis-backed rate limiting for multi-instance deployments.
 
 ## Authentication Model
 
@@ -24,16 +30,15 @@ ORAN uses **Microsoft Entra ID** for identity management via NextAuth.js with th
 
 ### Session Validation
 - Implemented: protected UI routes are gated by middleware when Entra is configured (`AZURE_AD_CLIENT_ID`).
-- Implemented: in production, protected routes fail closed if auth is misconfigured or temporarily unavailable.
-- Planned: protected API routes validate NextAuth.js session server-side.
-- Planned: unauthenticated requests return HTTP 401.
-- Planned: role checks return HTTP 403 for insufficient permissions.
+- Implemented: in production, protected routes fail closed if auth is misconfigured or temporarily unavailable (middleware returns 503; API routes return 401).
+- Implemented: protected API routes validate NextAuth.js session server-side via `getAuthContext()`.
+- Implemented: unauthenticated requests to protected routes return HTTP 401.
+- Implemented: role checks return HTTP 403 for insufficient permissions.
 
 ### Role Enforcement
-- Planned: roles stored as Entra ID app roles (mapped to ORAN roles in JWT claims).
-- Implemented: middleware enforces authentication for protected routes.
-- Planned: middleware enforces role-based route-level access.
-- Planned: API handlers enforce resource-level permissions.
+- Implemented: middleware extracts JWT via `getToken()` and enforces role-based route-level access via `isRoleAtLeast()`.
+- Implemented: API handlers enforce resource-level permissions via `requireMinRole()`, `requireOrgAccess()`, `requireOrgRole()`.
+- Planned: roles provisioned as Entra ID app roles (currently derived from org memberships).
 
 ---
 
@@ -122,13 +127,22 @@ Design intent (not yet implemented end-to-end):
 
 ## Rate Limiting
 
-Status: Partially implemented.
+Status: Implemented.
 
-- Implemented: basic in-memory rate limiting on:
-	- POST /api/chat
+- Implemented: in-memory sliding-window rate limiting on all API routes, including:
+	- POST /api/chat (via orchestrator, after crisis+quota)
 	- GET /api/search
 	- POST /api/feedback
-- Planned: consistent per-endpoint limits across all APIs, plus a shared backing store (Redis) for multi-instance deployments.
+	- GET /api/services
+	- GET /api/maps/token
+	- GET/PUT /api/profile
+	- GET/POST/DELETE /api/saved
+	- GET/POST /api/auth/[...nextauth]
+	- All /api/admin/** routes
+	- All /api/community/** routes
+	- All /api/host/** routes
+- Implemented: all 429 responses include `Retry-After` header with seconds until window reset.
+- Planned: Redis-backed rate limiting for multi-instance deployments.
 
 ---
 
@@ -139,7 +153,8 @@ Status: Partially implemented.
 - Planned: end-to-end DB execution wiring with consistent parameterization guarantees.
 
 ### Authentication & Authorization
-- Planned: write endpoints require valid Entra ID / NextAuth.js session.
+- Implemented: write endpoints require valid Entra ID / NextAuth.js session via `getAuthContext()`.
+- Implemented: role-based access control via `isRoleAtLeast()`, `requireMinRole()`, `requireOrgRole()`.
 - Planned: CSRF protection considerations per endpoint.
 
 ### Sensitive Data Exposure
@@ -155,7 +170,10 @@ Configured in `next.config.mjs`:
 - `Permissions-Policy`: disables camera/mic/geolocation and other sensitive capabilities by default
 
 Planned:
-- `Content-Security-Policy` rollout (careful to avoid breaking Next.js assets).
+- Nonce-based `Content-Security-Policy` (see ADR-0005 for current baseline CSP).
+
+Implemented:
+- `Content-Security-Policy` with restrictive baseline (see ADR-0005 and `next.config.mjs`).
 
 ### Dependency Management
 - Planned: automated security scanning (`npm audit`) in CI.

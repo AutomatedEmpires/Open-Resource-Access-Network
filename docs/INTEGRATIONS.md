@@ -19,9 +19,13 @@ Platform direction:
 - **Azure-first** for hosting, production DB, secrets, observability, geocoding, and translation.
 - See `docs/DEPLOYMENT_AZURE.md` and `docs/PLATFORM_AZURE.md`.
 
-Planned / partially implemented:
-- Full RBAC enforcement.
-- In-memory feature flags (DB-backed reads/writes planned).
+Implemented (recently):
+- Full RBAC enforcement (middleware + API route guards + `shouldEnforceAuth()` production fail-closed).
+- In-memory feature flags with typed constants and fail-closed semantics (DB-backed reads/writes planned).
+- Content Security Policy (see ADR-0005).
+- Rate limiting on all API routes with Retry-After headers.
+
+Planned:
 - Any external 211 API integration.
 
 ## Authentication: Microsoft Entra ID
@@ -37,10 +41,11 @@ ORAN uses [Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity/
   - `NEXTAUTH_SECRET` (random secret for JWT encryption)
 
 ### Implementation
-- `src/middleware.ts`: NextAuth.js session-cookie check protecting authenticated routes
-- Planned: `src/app/api/auth/[...nextauth]/route.ts` NextAuth.js handler with Azure AD provider
-- Planned: roles stored in Entra ID app roles (mapped to ORAN roles in JWT claims)
-- Planned: ORAN admin provisions roles via Azure Portal → Enterprise Applications → App Roles
+- `src/middleware.ts`: JWT extraction via `getToken()` + role enforcement via `isRoleAtLeast()` for protected page routes.
+- `src/app/api/auth/[...nextauth]/route.ts`: NextAuth.js handler with Azure AD provider. Rate-limited per IP.
+- `src/services/auth/guards.ts`: `isRoleAtLeast()`, `requireMinRole()`, `requireOrgAccess()`, `requireOrgRole()`.
+- `src/services/auth/session.ts`: `getAuthContext()` for server-side session extraction; `shouldEnforceAuth()` for production fail-closed behavior.
+- Roles: currently derived from org memberships via `organization_members` table. Entra ID app roles planned.
 
 ### Protected Routes
 | Route Pattern         | Minimum Role     |
@@ -50,7 +55,7 @@ ORAN uses [Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity/
 | `/queue`, `/verify`   | community_admin  |
 | `/approvals/**`       | oran_admin       |
 
-Status: Planned (role-based protection is not yet enforced end-to-end).
+Status: Implemented — middleware enforces role-based page access; API routes enforce auth+RBAC server-side.
 
 ---
 

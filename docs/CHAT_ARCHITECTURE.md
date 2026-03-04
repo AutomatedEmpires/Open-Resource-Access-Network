@@ -86,10 +86,12 @@ Return ChatResponse (with eligibility disclaimer always included)
 
 ### Stage 3: Rate Limiting
 
-- Sliding window rate limit per IP + userId
+- Sliding window rate limit per IP + (server-derived) userId
 - Default window: `RATE_LIMIT_WINDOW_MS = 60000` (1 minute)
 - Default limit: 20 requests per window
 - Implementation: in-memory map (future: Redis)
+- Contract: `429` responses include `Retry-After` (seconds)
+- Ordering: rate limiting runs **after** crisis detection and quota checks, so crisis routing is never blocked by rate limiting
 
 ### Stage 4: Intent Detection
 

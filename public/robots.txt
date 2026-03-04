@@ -1,0 +1,29 @@
+# Open Resource Access Network — robots.txt
+#
+# Allow all search engine crawlers access to public pages.
+# Disallow private, user-specific, and API routes.
+
+User-agent: *
+
+# Private / user-specific pages — not suitable for indexing
+Disallow: /profile
+Disallow: /saved
+Disallow: /auth/
+
+# API routes — should never be indexed
+Disallow: /api/
+
+# Dynamic parameterized service pages with filter params
+# (canonical version without params is allowed)
+Disallow: /directory?*
+Disallow: /map?*
+
+# Allow all public pages
+Allow: /
+Allow: /chat
+Allow: /directory
+Allow: /map
+Allow: /service/
+
+# Sitemap location
+Sitemap: https://openresourceaccessnetwork.com/sitemap.xml

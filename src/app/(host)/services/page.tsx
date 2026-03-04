@@ -12,13 +12,21 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   Briefcase, Plus, Pencil, Trash2, Search, AlertTriangle,
-  ArrowLeft, ArrowRight, X, Check, ExternalLink,
+  ArrowLeft, ArrowRight, Check, ExternalLink,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { SkeletonCard } from '@/components/ui/skeleton';
-import type { Organization, ServiceStatus, ServiceCapacityStatus } from '@/domain/types';
+import type { Organization, ServiceStatus } from '@/domain/types';
 
 // ============================================================
 // TYPES
@@ -33,11 +41,12 @@ interface ServiceRow {
   url?: string | null;
   email?: string | null;
   status: ServiceStatus;
+  interpretation_services?: string | null;
   application_process?: string | null;
   fees?: string | null;
   wait_time?: string | null;
-  capacity_status?: ServiceCapacityStatus | null;
-  estimated_wait_days?: number | null;
+  accreditations?: string | null;
+  licenses?: string | null;
   organization_name?: string | null;
   created_at: string;
   updated_at: string;
@@ -60,11 +69,12 @@ interface ServiceForm {
   url: string;
   email: string;
   status: ServiceStatus;
+  interpretationServices: string;
   applicationProcess: string;
   fees: string;
   waitTime: string;
-  capacityStatus: ServiceCapacityStatus | '';
-  estimatedWaitDays: string;
+  accreditations: string;
+  licenses: string;
 }
 
 const EMPTY_FORM: ServiceForm = {
@@ -74,11 +84,12 @@ const EMPTY_FORM: ServiceForm = {
   url: '',
   email: '',
   status: 'active',
+  interpretationServices: '',
   applicationProcess: '',
   fees: '',
   waitTime: '',
-  capacityStatus: '',
-  estimatedWaitDays: '',
+  accreditations: '',
+  licenses: '',
 };
 
 const LIMIT = 12;
@@ -114,6 +125,15 @@ export default function ServicesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const closeFormDialog = useCallback(() => {
+    setForm(null);
+    setSaveError(null);
+  }, []);
+
+  const closeDeleteDialog = useCallback(() => {
+    setDeletingId(null);
+  }, []);
+
   // ── Load org options ──
   useEffect(() => {
     const loadOrgs = async () => {
@@ -135,13 +155,11 @@ export default function ServicesPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const url = new URL('/api/host/services', window.location.origin);
-      url.searchParams.set('page', String(p));
-      url.searchParams.set('limit', String(LIMIT));
-      if (q.trim()) url.searchParams.set('q', q.trim());
-      if (orgId) url.searchParams.set('organizationId', orgId);
+      const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+      if (q.trim()) params.set('q', q.trim());
+      if (orgId) params.set('organizationId', orgId);
 
-      const res = await fetch(url.toString());
+      const res = await fetch(`/api/host/services?${params.toString()}`);
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? 'Failed to load services');
@@ -187,8 +205,9 @@ export default function ServicesPage() {
       if (form.applicationProcess) payload.applicationProcess = form.applicationProcess;
       if (form.fees) payload.fees = form.fees;
       if (form.waitTime) payload.waitTime = form.waitTime;
-      if (form.capacityStatus) payload.capacityStatus = form.capacityStatus;
-      if (form.estimatedWaitDays) payload.estimatedWaitDays = parseInt(form.estimatedWaitDays, 10);
+      if (form.interpretationServices) payload.interpretationServices = form.interpretationServices;
+      if (form.accreditations) payload.accreditations = form.accreditations;
+      if (form.licenses) payload.licenses = form.licenses;
 
       const res = await fetch(endpoint, {
         method: isUpdate ? 'PUT' : 'POST',
@@ -230,7 +249,7 @@ export default function ServicesPage() {
   }, [page, query, orgFilter, fetchServices]);
 
   return (
-    <main className="container mx-auto max-w-6xl px-4 py-8">
+    <div>
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -339,19 +358,6 @@ export default function ServicesPage() {
                         )}
                         {svc.fees && <span>Fees: {svc.fees}</span>}
                         {svc.wait_time && <span>Wait: {svc.wait_time}</span>}
-                        {svc.capacity_status && (
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                            svc.capacity_status === 'available' ? 'bg-green-100 text-green-800' :
-                            svc.capacity_status === 'limited' ? 'bg-amber-100 text-amber-800' :
-                            svc.capacity_status === 'waitlist' ? 'bg-orange-100 text-orange-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {svc.capacity_status}
-                          </span>
-                        )}
-                        {svc.estimated_wait_days != null && (
-                          <span className="text-gray-500">~{svc.estimated_wait_days}d wait</span>
-                        )}
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
@@ -367,11 +373,12 @@ export default function ServicesPage() {
                           url: svc.url ?? '',
                           email: svc.email ?? '',
                           status: svc.status,
+                          interpretationServices: svc.interpretation_services ?? '',
                           applicationProcess: svc.application_process ?? '',
                           fees: svc.fees ?? '',
                           waitTime: svc.wait_time ?? '',
-                          capacityStatus: svc.capacity_status ?? '',
-                          estimatedWaitDays: svc.estimated_wait_days != null ? String(svc.estimated_wait_days) : '',
+                          accreditations: svc.accreditations ?? '',
+                          licenses: svc.licenses ?? '',
                         })}
                       >
                         <Pencil className="h-3 w-3" aria-hidden="true" />
@@ -411,23 +418,21 @@ export default function ServicesPage() {
       </ErrorBoundary>
 
       {/* ── Create / Edit Modal ── */}
-      {form && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto"
-          onKeyDown={(e) => { if (e.key === 'Escape') { setForm(null); setSaveError(null); } }}
-          onClick={(e) => { if (e.target === e.currentTarget) { setForm(null); setSaveError(null); } }}
-          role="presentation"
-        >
-          <div className="w-full max-w-lg rounded-lg border border-gray-200 bg-white p-6 shadow-lg my-8" role="dialog" aria-label={isCreating ? 'Add service' : 'Edit service'} aria-modal="true">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">{isCreating ? 'Add Service' : 'Edit Service'}</h2>
-              <button onClick={() => { setForm(null); setSaveError(null); }} className="rounded p-1 hover:bg-gray-100" aria-label="Close">
-                <X className="h-5 w-5 text-gray-500" />
-              </button>
-            </div>
+      <Dialog
+        open={Boolean(form)}
+        onOpenChange={(open) => {
+          if (!open) closeFormDialog();
+        }}
+      >
+        {form && (
+          <DialogContent className="max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{isCreating ? 'Add Service' : 'Edit Service'}</DialogTitle>
+              <DialogDescription>Update service details visible to seekers.</DialogDescription>
+            </DialogHeader>
 
             {saveError && (
-              <div role="alert" className="mb-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{saveError}</div>
+              <div role="alert" className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{saveError}</div>
             )}
 
             <div className="space-y-4">
@@ -478,23 +483,6 @@ export default function ServicesPage() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="svc-capacity" className="block text-sm font-medium text-gray-700 mb-1">Capacity Status</label>
-                  <select id="svc-capacity" value={form.capacityStatus} onChange={(e) => setForm({ ...form, capacityStatus: e.target.value as ServiceCapacityStatus | '' })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[44px]">
-                    <option value="">Not set</option>
-                    <option value="available">Available</option>
-                    <option value="limited">Limited</option>
-                    <option value="waitlist">Waitlist</option>
-                    <option value="closed">Closed</option>
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="svc-wait-days" className="block text-sm font-medium text-gray-700 mb-1">Est. Wait (days)</label>
-                  <input id="svc-wait-days" type="number" min="0" max="365" value={form.estimatedWaitDays} onChange={(e) => setForm({ ...form, estimatedWaitDays: e.target.value })} placeholder="e.g., 14" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]" />
-                </div>
-              </div>
-
               <div>
                 <label htmlFor="svc-fees" className="block text-sm font-medium text-gray-700 mb-1">Fees</label>
                 <input id="svc-fees" type="text" value={form.fees} onChange={(e) => setForm({ ...form, fees: e.target.value })} placeholder="e.g., Free, Sliding scale" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]" maxLength={1000} />
@@ -509,10 +497,25 @@ export default function ServicesPage() {
                 <label htmlFor="svc-wait" className="block text-sm font-medium text-gray-700 mb-1">Wait Time</label>
                 <input id="svc-wait" type="text" value={form.waitTime} onChange={(e) => setForm({ ...form, waitTime: e.target.value })} placeholder="e.g., 1-2 weeks" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]" maxLength={500} />
               </div>
+
+              <div>
+                <label htmlFor="svc-interpretation" className="block text-sm font-medium text-gray-700 mb-1">Interpretation Services</label>
+                <textarea id="svc-interpretation" value={form.interpretationServices} onChange={(e) => setForm({ ...form, interpretationServices: e.target.value })} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" maxLength={1000} />
+              </div>
+
+              <div>
+                <label htmlFor="svc-accreditations" className="block text-sm font-medium text-gray-700 mb-1">Accreditations</label>
+                <input id="svc-accreditations" type="text" value={form.accreditations} onChange={(e) => setForm({ ...form, accreditations: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]" maxLength={1000} />
+              </div>
+
+              <div>
+                <label htmlFor="svc-licenses" className="block text-sm font-medium text-gray-700 mb-1">Licenses</label>
+                <input id="svc-licenses" type="text" value={form.licenses} onChange={(e) => setForm({ ...form, licenses: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]" maxLength={1000} />
+              </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setForm(null); setSaveError(null); }} disabled={isSaving}>Cancel</Button>
+            <DialogFooter className="mt-2">
+              <Button variant="outline" onClick={closeFormDialog} disabled={isSaving}>Cancel</Button>
               <Button
                 onClick={handleSave}
                 disabled={isSaving || !form.name.trim() || (isCreating && !form.organizationId)}
@@ -521,31 +524,35 @@ export default function ServicesPage() {
                 <Check className="h-4 w-4" aria-hidden="true" />
                 {isSaving ? 'Saving…' : isCreating ? 'Create' : 'Save'}
               </Button>
-            </div>
-          </div>
-        </div>
-      )}
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
 
       {/* ── Delete confirmation ── */}
-      {deletingId && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onKeyDown={(e) => { if (e.key === 'Escape') setDeletingId(null); }}
-          onClick={(e) => { if (e.target === e.currentTarget) setDeletingId(null); }}
-          role="presentation"
-        >
-          <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-lg" role="alertdialog" aria-label="Confirm delete" aria-modal="true">
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete Service?</h2>
-            <p className="text-sm text-gray-600 mb-4">This will permanently delete this service and its associated data. This action cannot be undone.</p>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDeletingId(null)} disabled={isDeleting}>Cancel</Button>
+      <Dialog
+        open={Boolean(deletingId)}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDialog();
+        }}
+      >
+        {deletingId && (
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Archive service?</DialogTitle>
+              <DialogDescription>
+                This marks the service as defunct so it no longer appears in host lists.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={closeDeleteDialog} disabled={isDeleting}>Cancel</Button>
               <Button onClick={() => void handleDelete(deletingId)} disabled={isDeleting} className="bg-red-600 hover:bg-red-700 text-white">
-                {isDeleting ? 'Deleting…' : 'Delete'}
+                {isDeleting ? 'Archiving…' : 'Archive'}
               </Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </main>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+    </div>
   );
 }

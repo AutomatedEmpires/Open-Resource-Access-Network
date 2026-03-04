@@ -114,12 +114,10 @@ function ApprovalsPageInner() {
     setIsLoading(true);
     setError(null);
     try {
-      const url = new URL('/api/admin/approvals', window.location.origin);
-      url.searchParams.set('page', String(p));
-      url.searchParams.set('limit', String(LIMIT));
-      if (status) url.searchParams.set('status', status);
+      const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+      if (status) params.set('status', status);
 
-      const res = await fetch(url.toString());
+      const res = await fetch(`/api/admin/approvals?${params.toString()}`);
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? 'Failed to load claims');
@@ -267,13 +265,14 @@ function ApprovalsPageInner() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
+              <caption className="sr-only">Organization claim approvals with submission metadata, status, and review actions.</caption>
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Organization</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Submitted</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Contact</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600">Actions</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Organization</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Submitted</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Contact</th>
+                  <th scope="col" className="px-4 py-3 text-right font-medium text-gray-600">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -359,7 +358,8 @@ function ApprovalsPageInner() {
                               )}
                               <div>
                                 <label htmlFor={`notes-${row.id}`} className="block text-sm font-medium text-gray-700 mb-1">
-                                  Decision notes (optional)
+                                  Decision notes{' '}
+                                  <span className="text-xs text-gray-500">(required for denial, optional for approval)</span>
                                 </label>
                                 <textarea
                                   id={`notes-${row.id}`}
@@ -370,6 +370,9 @@ function ApprovalsPageInner() {
                                   placeholder="Reason for decision..."
                                   maxLength={5000}
                                 />
+                                <p className={`text-xs mt-0.5 text-right ${decisionNotes.length > 4500 ? 'text-amber-600' : 'text-gray-400'}`}>
+                                  {decisionNotes.length}/5000
+                                </p>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Button
@@ -385,8 +388,9 @@ function ApprovalsPageInner() {
                                   size="sm"
                                   variant="outline"
                                   onClick={() => void handleDecision(row.id, 'denied')}
-                                  disabled={isSubmitting}
-                                  className="gap-1 text-red-600 border-red-200 hover:bg-red-50"
+                                  disabled={isSubmitting || !decisionNotes.trim()}
+                                  className="gap-1 text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-50"
+                                  title={!decisionNotes.trim() ? 'Notes are required before denying a claim' : undefined}
                                 >
                                   <XCircle className="h-4 w-4" aria-hidden="true" />
                                   Deny

@@ -1,6 +1,33 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
-import { MessageCircle, List, MapPin, Shield } from 'lucide-react';
+import { MessageCircle, List, MapPin, Shield, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AppNav } from '@/components/nav/AppNav';
+
+const BASE_URL = 'https://openresourceaccessnetwork.com';
+
+export const metadata: Metadata = {
+  title: 'ORAN — Open Resource Access Network',
+  description:
+    'Find verified government, nonprofit, and community services near you. Search real, confirmed service records — no hallucinated information.',
+  alternates: { canonical: '/' },
+  openGraph: {
+    title: 'ORAN — Open Resource Access Network',
+    description: 'Find verified government, nonprofit, and community services near you.',
+    url: BASE_URL,
+    type: 'website',
+  },
+};
+
+/** JSON-LD Organization schema for the landing page */
+const orgSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'Open Resource Access Network',
+  url: BASE_URL,
+  description:
+    'A civic-grade platform for locating verified government, nonprofit, and community services.',
+};
 
 /**
  * ORAN Landing Page
@@ -10,20 +37,55 @@ import { Button } from '@/components/ui/button';
  * - Primary CTA: "Find services" → /chat
  * - Escape hatches: Directory + Map as first-class alternatives
  * - No sign-in required to start
+ * - Crisis callout MUST be above the fold on mobile
  */
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
-      {/* Skip to main content — keyboard / screen-reader affordance */}
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-md focus:text-sm focus:font-medium"
+      {/* JSON-LD */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(orgSchema) }}
+      />
+
+      <AppNav />
+
+      {/* ── Emergency callout — above the fold on mobile ── */}
+      <div
+        role="alert"
+        aria-label="Emergency resources"
+        className="bg-red-700 text-white px-4 py-3 text-sm"
       >
-        Skip to main content
-      </a>
+        <div className="container mx-auto max-w-6xl flex flex-wrap items-center justify-between gap-2">
+          <span className="font-semibold">In immediate danger or crisis?</span>
+          <div className="flex flex-wrap gap-3 text-sm font-bold">
+            <a
+              href="tel:911"
+              className="flex items-center gap-1 underline underline-offset-2 hover:no-underline min-h-[44px] px-1"
+            >
+              <Phone className="h-3.5 w-3.5" aria-hidden="true" />
+              911
+            </a>
+            <a
+              href="tel:988"
+              className="flex items-center gap-1 underline underline-offset-2 hover:no-underline min-h-[44px] px-1"
+            >
+              <Phone className="h-3.5 w-3.5" aria-hidden="true" />
+              988 Crisis
+            </a>
+            <a
+              href="tel:211"
+              className="flex items-center gap-1 underline underline-offset-2 hover:no-underline min-h-[44px] px-1"
+            >
+              <Phone className="h-3.5 w-3.5" aria-hidden="true" />
+              211 Resources
+            </a>
+          </div>
+        </div>
+      </div>
 
       {/* ── Hero ─────────────────────────────────────────── */}
-      <main id="main-content" className="flex-1 flex flex-col items-center justify-center px-4 py-16 text-center">
+      <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col items-center justify-center px-4 py-16 text-center">
         <div className="max-w-xl space-y-6">
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
             Find verified services near you

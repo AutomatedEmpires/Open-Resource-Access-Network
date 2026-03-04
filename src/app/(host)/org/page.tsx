@@ -12,10 +12,18 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   Building2, Pencil, Trash2, Plus, Search, AlertTriangle,
-  ExternalLink, Mail, ArrowLeft, ArrowRight, X, Check,
+  ExternalLink, Mail, ArrowLeft, ArrowRight, Check,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import type { Organization } from '@/domain/types';
@@ -55,17 +63,23 @@ export default function OrgDashboardPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const closeEditDialog = useCallback(() => {
+    setEditing(null);
+    setSaveError(null);
+  }, []);
+
+  const closeDeleteDialog = useCallback(() => {
+    setDeletingId(null);
+  }, []);
+
   // ── Fetch orgs ──
   const fetchOrgs = useCallback(async (p: number, q: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      const url = new URL('/api/host/organizations', window.location.origin);
-      url.searchParams.set('page', String(p));
-      url.searchParams.set('limit', String(LIMIT));
-      if (q.trim()) url.searchParams.set('q', q.trim());
-
-      const res = await fetch(url.toString());
+      const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+      if (q) params.set('q', q);
+      const res = await fetch(`/api/host/organizations?${params.toString()}`);
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? 'Failed to load organizations');
@@ -138,7 +152,7 @@ export default function OrgDashboardPage() {
   }, [page, query, fetchOrgs]);
 
   return (
-    <main className="container mx-auto max-w-6xl px-4 py-8">
+    <div>
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -307,27 +321,21 @@ export default function OrgDashboardPage() {
       </ErrorBoundary>
 
       {/* ── Edit Modal ── */}
-      {editing && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onKeyDown={(e) => { if (e.key === 'Escape') { setEditing(null); setSaveError(null); } }}
-          onClick={(e) => { if (e.target === e.currentTarget) { setEditing(null); setSaveError(null); } }}
-          role="presentation"
-        >
-          <div className="w-full max-w-lg rounded-lg border border-gray-200 bg-white p-6 shadow-lg" role="dialog" aria-label="Edit organization" aria-modal="true">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Edit Organization</h2>
-              <button
-                onClick={() => { setEditing(null); setSaveError(null); }}
-                className="rounded p-1 hover:bg-gray-100"
-                aria-label="Close"
-              >
-                <X className="h-5 w-5 text-gray-500" />
-              </button>
-            </div>
+      <Dialog
+        open={Boolean(editing)}
+        onOpenChange={(open) => {
+          if (!open) closeEditDialog();
+        }}
+      >
+        {editing && (
+          <DialogContent className="max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Organization</DialogTitle>
+              <DialogDescription>Update organization name and contact info.</DialogDescription>
+            </DialogHeader>
 
             {saveError && (
-              <div role="alert" className="mb-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+              <div role="alert" className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
                 {saveError}
               </div>
             )}
@@ -376,34 +384,36 @@ export default function OrgDashboardPage() {
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setEditing(null); setSaveError(null); }} disabled={isSaving}>
+            <DialogFooter className="mt-2">
+              <Button variant="outline" onClick={closeEditDialog} disabled={isSaving}>
                 Cancel
               </Button>
               <Button onClick={handleSave} disabled={isSaving || !editing.name.trim()} className="gap-1">
                 <Check className="h-4 w-4" aria-hidden="true" />
                 {isSaving ? 'Saving…' : 'Save'}
               </Button>
-            </div>
-          </div>
-        </div>
-      )}
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
 
       {/* ── Delete confirmation ── */}
-      {deletingId && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onKeyDown={(e) => { if (e.key === 'Escape') setDeletingId(null); }}
-          onClick={(e) => { if (e.target === e.currentTarget) setDeletingId(null); }}
-          role="presentation"
-        >
-          <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-lg" role="alertdialog" aria-label="Confirm delete" aria-modal="true">
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete Organization?</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              This will permanently delete the organization and all its services and locations. This action cannot be undone.
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDeletingId(null)} disabled={isDeleting}>
+      <Dialog
+        open={Boolean(deletingId)}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDialog();
+        }}
+      >
+        {deletingId && (
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Archive organization?</DialogTitle>
+              <DialogDescription>
+                This marks the organization as defunct so it no longer appears in host lists.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={closeDeleteDialog} disabled={isDeleting}>
                 Cancel
               </Button>
               <Button
@@ -411,12 +421,12 @@ export default function OrgDashboardPage() {
                 disabled={isDeleting}
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
-                {isDeleting ? 'Deleting…' : 'Delete'}
+                {isDeleting ? 'Archiving…' : 'Archive'}
               </Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </main>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+    </div>
   );
 }

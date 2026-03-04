@@ -234,12 +234,13 @@ export default function CommunityAdminCoveragePage() {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
+                    <caption className="sr-only">Recent verification activity by day with verified, rejected, and escalated totals.</caption>
                     <thead>
                       <tr className="border-b border-gray-100">
-                        <th className="text-left py-2 text-xs font-medium text-gray-500">Date</th>
-                        <th className="text-center py-2 text-xs font-medium text-green-600">Verified</th>
-                        <th className="text-center py-2 text-xs font-medium text-red-600">Rejected</th>
-                        <th className="text-center py-2 text-xs font-medium text-purple-600">Escalated</th>
+                        <th scope="col" className="text-left py-2 text-xs font-medium text-gray-500">Date</th>
+                        <th scope="col" className="text-center py-2 text-xs font-medium text-green-600">Verified</th>
+                        <th scope="col" className="text-center py-2 text-xs font-medium text-red-600">Rejected</th>
+                        <th scope="col" className="text-center py-2 text-xs font-medium text-purple-600">Escalated</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">

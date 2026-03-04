@@ -3,7 +3,6 @@
  *
  * Displays team members and roles for the host organization.
  * Fetches from /api/host/admins API (requires auth integration).
- * Falls back to local state if API is not available.
  */
 
 'use client';
@@ -12,10 +11,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Users, Shield, UserPlus, AlertTriangle,
-  CheckCircle, Mail, Loader2, RefreshCw,
+  CheckCircle, Loader2, RefreshCw,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  Dialog, DialogContent, DialogDescription,
+  DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import type { OranRole } from '@/domain/types';
 
@@ -37,15 +40,24 @@ interface ApiMember {
 
 interface TeamMember {
   id: string;
-  email: string;
+  userId: string;
   role: HostRole;
-  status: 'active' | 'invited';
+  status: 'active';
   addedAt: string;
 }
+
+type MemberAction =
+  | { type: 'role'; memberId: string }
+  | { type: 'remove'; memberId: string }
+  | null;
 
 interface Organization {
   id: string;
   name: string;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 // ============================================================
@@ -66,9 +78,15 @@ export default function AdminsPage() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [membersError, setMembersError] = useState<string | null>(null);
+  const [memberAction, setMemberAction] = useState<MemberAction>(null);
+  const [memberActionError, setMemberActionError] = useState<string | null>(null);
 
-  // Invite form state
-  const [inviteEmail, setInviteEmail] = useState('');
+  // Confirmation dialogs for destructive / role-change actions
+  const [pendingRoleChange, setPendingRoleChange] = useState<{ memberId: string; userId: string; newRole: HostRole } | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<{ memberId: string; userId: string } | null>(null);
+
+  // Add-member form state (API requires userId UUID)
+  const [inviteUserId, setInviteUserId] = useState('');
   const [inviteRole, setInviteRole] = useState<HostRole>('host_member');
   const [inviteStatus, setInviteStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -123,7 +141,7 @@ export default function AdminsPage() {
       const apiMembers: ApiMember[] = data.members || [];
       setMembers(apiMembers.map((m) => ({
         id: m.id,
-        email: m.user_id, // TODO: resolve user_id to email via user lookup
+        userId: m.user_id,
         role: m.role as HostRole,
         status: 'active' as const,
         addedAt: m.created_at,
@@ -135,14 +153,65 @@ export default function AdminsPage() {
     }
   }, [organizationId]);
 
+  const handleRoleChange = useCallback(async (memberId: string, role: HostRole) => {
+    setMemberAction({ type: 'role', memberId });
+    setMemberActionError(null);
+
+    try {
+      const res = await fetch(`/api/host/admins/${memberId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      });
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? 'Failed to update member role.');
+      }
+
+      await fetchMembers();
+    } catch (error) {
+      setMemberActionError(error instanceof Error ? error.message : 'Failed to update member role.');
+    } finally {
+      setMemberAction(null);
+    }
+  }, [fetchMembers]);
+
+  const handleRemoveMember = useCallback(async (memberId: string) => {
+    setMemberAction({ type: 'remove', memberId });
+    setMemberActionError(null);
+
+    try {
+      const res = await fetch(`/api/host/admins/${memberId}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? 'Failed to remove member.');
+      }
+
+      await fetchMembers();
+    } catch (error) {
+      setMemberActionError(error instanceof Error ? error.message : 'Failed to remove member.');
+    } finally {
+      setMemberAction(null);
+    }
+  }, [fetchMembers]);
+
   useEffect(() => {
     if (organizationId) {
       fetchMembers();
     }
   }, [organizationId, fetchMembers]);
 
-  const handleInvite = useCallback(async () => {
-    if (!inviteEmail.trim() || !inviteEmail.includes('@')) return;
+  const handleAddMember = useCallback(async () => {
+    const userId = inviteUserId.trim();
+    if (!isUuid(userId)) {
+      setInviteError('User ID must be a UUID.');
+      setInviteStatus('error');
+      return;
+    }
     if (!organizationId) {
       setInviteError('No organization selected.');
       return;
@@ -152,15 +221,12 @@ export default function AdminsPage() {
     setInviteError(null);
 
     try {
-      // NOTE: The API requires userId (UUID). In production, a user-lookup
-      // service will resolve email → UUID. For now fall back to local-state
-      // invite so the UI remains functional without a user-lookup endpoint.
       const res = await fetch('/api/host/admins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           organizationId,
-          userId: inviteEmail.trim().toLowerCase(),
+          userId,
           role: inviteRole,
         }),
       });
@@ -174,26 +240,16 @@ export default function AdminsPage() {
 
       // Refresh member list
       await fetchMembers();
-      setInviteEmail('');
+      setInviteUserId('');
       setInviteStatus('sent');
 
       // Reset status after 3s
       setTimeout(() => setInviteStatus('idle'), 3000);
     } catch {
-      // API not available - fall back to local state
-      const newMember: TeamMember = {
-        id: `local-${Date.now()}`,
-        email: inviteEmail.trim().toLowerCase(),
-        role: inviteRole,
-        status: 'invited',
-        addedAt: new Date().toISOString(),
-      };
-      setMembers((prev) => [...prev, newMember]);
-      setInviteEmail('');
-      setInviteStatus('sent');
-      setTimeout(() => setInviteStatus('idle'), 3000);
+      setInviteError('Failed to connect to the server.');
+      setInviteStatus('error');
     }
-  }, [inviteEmail, inviteRole, organizationId, fetchMembers]);
+  }, [inviteUserId, inviteRole, organizationId, fetchMembers]);
 
   const availableRoles: { key: HostRole; label: string; description: string }[] = [
     { key: 'host_admin', label: 'Host Admin', description: 'Full management access to organization, services, locations, and team.' },
@@ -201,7 +257,7 @@ export default function AdminsPage() {
   ];
 
   return (
-    <main className="container mx-auto max-w-4xl px-4 py-8">
+    <div className="mx-auto max-w-4xl">
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -252,20 +308,25 @@ export default function AdminsPage() {
         <div className="rounded-lg border border-gray-200 bg-white p-6 mb-6">
           <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2 mb-4">
             <UserPlus className="h-5 w-5 text-blue-600" aria-hidden="true" />
-            Invite Team Member
+            Add Team Member
           </h2>
+
+          <p className="mb-4 text-sm text-gray-600">
+            Adding a member currently requires their ORAN user ID (UUID). Email lookup is not available yet.
+          </p>
 
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1">
-              <label htmlFor="invite-email" className="sr-only">Email address</label>
+              <label htmlFor="invite-user-id" className="sr-only">User ID (UUID)</label>
               <input
-                id="invite-email"
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="colleague@example.org"
+                id="invite-user-id"
+                type="text"
+                value={inviteUserId}
+                onChange={(e) => setInviteUserId(e.target.value)}
+                placeholder="00000000-0000-0000-0000-000000000000"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
-                aria-label="Email address to invite"
+                aria-label="User ID to add"
+                inputMode="text"
               />
             </div>
             <div className="w-full sm:w-48">
@@ -283,19 +344,18 @@ export default function AdminsPage() {
               </select>
             </div>
             <Button
-              onClick={handleInvite}
-              disabled={inviteStatus === 'sending' || !inviteEmail.includes('@')}
+              onClick={handleAddMember}
+              disabled={inviteStatus === 'sending' || !isUuid(inviteUserId.trim())}
               className="gap-1 min-h-[44px]"
             >
-              <Mail className="h-4 w-4" aria-hidden="true" />
-              {inviteStatus === 'sending' ? 'Sending…' : 'Send Invite'}
+              {inviteStatus === 'sending' ? 'Adding…' : 'Add Member'}
             </Button>
           </div>
 
           {inviteStatus === 'sent' && (
             <div className="mt-3 flex items-center gap-2 text-sm text-green-700" role="status">
               <CheckCircle className="h-4 w-4" aria-hidden="true" />
-              Invite recorded. It will activate when authentication is configured.
+              Team member added.
             </div>
           )}
           {inviteError && (
@@ -321,6 +381,12 @@ export default function AdminsPage() {
             )}
           </div>
 
+          {memberActionError && (
+            <div className="mx-6 mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+              {memberActionError}
+            </div>
+          )}
+
           {loadingMembers ? (
             <div className="p-8 text-center text-gray-500">
               <Loader2 className="mx-auto h-8 w-8 text-gray-300 mb-2 animate-spin" aria-hidden="true" />
@@ -334,7 +400,7 @@ export default function AdminsPage() {
           ) : members.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
               <Users className="mx-auto h-8 w-8 text-gray-300 mb-2" aria-hidden="true" />
-              <p className="text-sm">No team members yet. Use the form above to invite your first collaborator.</p>
+              <p className="text-sm">No team members yet. Use the form above to add a collaborator.</p>
             </div>
           ) : (
             <ul className="divide-y divide-gray-100">
@@ -342,10 +408,10 @@ export default function AdminsPage() {
                 <li key={m.id} className="flex items-center justify-between px-6 py-3">
                   <div className="flex items-center gap-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
-                      {m.email.charAt(0).toUpperCase()}
+                      {m.userId.charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{m.email}</p>
+                      <p className="text-sm font-medium text-gray-900">{m.userId}</p>
                       <p className="text-xs text-gray-500">
                         Added {new Date(m.addedAt).toLocaleDateString()}
                       </p>
@@ -353,15 +419,30 @@ export default function AdminsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                      m.status === 'active'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-yellow-100 text-yellow-700'
+                      'bg-green-100 text-green-700'
                     }`}>
-                      {m.status === 'active' ? 'Active' : 'Invited'}
+                      Active
                     </span>
-                    <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
-                      {availableRoles.find((r) => r.key === m.role)?.label ?? m.role}
-                    </span>
+                    <select
+                      value={m.role}
+                      onChange={(e) => setPendingRoleChange({ memberId: m.id, userId: m.userId, newRole: e.target.value as HostRole })}
+                      className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs min-h-[32px]"
+                      aria-label={`Change role for ${m.userId}`}
+                      disabled={memberAction?.memberId === m.id}
+                    >
+                      {availableRoles.map((r) => (
+                        <option key={r.key} value={r.key}>{r.label}</option>
+                      ))}
+                    </select>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-700 border-red-200 hover:bg-red-50"
+                      onClick={() => setPendingRemove({ memberId: m.id, userId: m.userId })}
+                      disabled={memberAction?.memberId === m.id}
+                    >
+                      Remove
+                    </Button>
                   </div>
                 </li>
               ))}
@@ -387,6 +468,59 @@ export default function AdminsPage() {
           </div>
         </div>
       </ErrorBoundary>
-    </main>
+
+      {/* —— Role change confirmation —— */}
+      <Dialog open={Boolean(pendingRoleChange)} onOpenChange={(open) => { if (!open) setPendingRoleChange(null); }}>
+        {pendingRoleChange && (
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Change member role?</DialogTitle>
+              <DialogDescription>
+                Change <span className="font-mono text-xs">{pendingRoleChange.userId.slice(0, 8)}…</span> to{' '}
+                <strong>{availableRoles.find((r) => r.key === pendingRoleChange.newRole)?.label}</strong>?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPendingRoleChange(null)}>Cancel</Button>
+              <Button
+                onClick={() => {
+                  void handleRoleChange(pendingRoleChange.memberId, pendingRoleChange.newRole);
+                  setPendingRoleChange(null);
+                }}
+              >
+                Confirm
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      {/* —— Remove confirmation —— */}
+      <Dialog open={Boolean(pendingRemove)} onOpenChange={(open) => { if (!open) setPendingRemove(null); }}>
+        {pendingRemove && (
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Remove team member?</DialogTitle>
+              <DialogDescription>
+                Remove <span className="font-mono text-xs">{pendingRemove.userId.slice(0, 8)}…</span> from
+                this organization? They will immediately lose access.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPendingRemove(null)}>Cancel</Button>
+              <Button
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => {
+                  void handleRemoveMember(pendingRemove.memberId);
+                  setPendingRemove(null);
+                }}
+              >
+                Remove
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+    </div>
   );
 }

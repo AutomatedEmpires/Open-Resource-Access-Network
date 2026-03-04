@@ -81,7 +81,7 @@ export default function ClaimPage() {
   // ── Success state ──
   if (state === 'success' && result) {
     return (
-      <main className="container mx-auto max-w-2xl px-4 py-8">
+      <div className="mx-auto max-w-2xl">
         <div className="rounded-lg border border-green-200 bg-green-50 p-8 text-center">
           <CheckCircle className="mx-auto h-10 w-10 text-green-600" aria-hidden="true" />
           <h1 className="mt-4 text-xl font-bold text-gray-900">Claim Submitted</h1>
@@ -109,13 +109,13 @@ export default function ClaimPage() {
             </Button>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   // ── Form state ──
   return (
-    <main className="container mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto max-w-2xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
           <Building2 className="h-6 w-6 text-blue-600" aria-hidden="true" />
@@ -226,7 +226,7 @@ export default function ClaimPage() {
           {/* Notes for reviewer */}
           <div>
             <label htmlFor="claim-notes" className="block text-sm font-medium text-gray-700 mb-1">
-              Notes for Reviewer
+              Notes for Reviewer <span className="text-gray-400 text-xs font-normal">(optional)</span>
             </label>
             <textarea
               id="claim-notes"
@@ -237,6 +237,9 @@ export default function ClaimPage() {
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               maxLength={2000}
             />
+            <p className={`mt-1 text-xs text-right ${claimNotes.length > 1800 ? 'text-amber-600' : 'text-gray-400'}`}>
+              {claimNotes.length}/2000
+            </p>
           </div>
 
           <div className="pt-2">
@@ -246,6 +249,6 @@ export default function ClaimPage() {
           </div>
         </form>
       </ErrorBoundary>
-    </main>
+    </div>
   );
 }

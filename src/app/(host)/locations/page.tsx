@@ -12,10 +12,18 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   MapPin, Plus, Pencil, Trash2, AlertTriangle,
-  ArrowLeft, ArrowRight, X, Check,
+  ArrowLeft, ArrowRight, Check,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import type { Organization } from '@/domain/types';
@@ -55,6 +63,7 @@ interface LocationForm {
   id?: string;
   organizationId: string;
   name: string;
+  alternateName: string;
   description: string;
   transportation: string;
   latitude: string;
@@ -70,6 +79,7 @@ interface LocationForm {
 const EMPTY_FORM: LocationForm = {
   organizationId: '',
   name: '',
+  alternateName: '',
   description: '',
   transportation: '',
   latitude: '',
@@ -107,6 +117,15 @@ export default function LocationsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const closeFormDialog = useCallback(() => {
+    setForm(null);
+    setSaveError(null);
+  }, []);
+
+  const closeDeleteDialog = useCallback(() => {
+    setDeletingId(null);
+  }, []);
+
   // ── Load orgs ──
   useEffect(() => {
     const loadOrgs = async () => {
@@ -128,12 +147,10 @@ export default function LocationsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const url = new URL('/api/host/locations', window.location.origin);
-      url.searchParams.set('page', String(p));
-      url.searchParams.set('limit', String(LIMIT));
-      if (orgId) url.searchParams.set('organizationId', orgId);
+      const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+      if (orgId) params.set('organizationId', orgId);
 
-      const res = await fetch(url.toString());
+      const res = await fetch(`/api/host/locations?${params.toString()}`);
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? 'Failed to load locations');
@@ -158,6 +175,24 @@ export default function LocationsPage() {
     setIsSaving(true);
     setSaveError(null);
     try {
+      // Client-side coordinate validation before round-trip
+      if (form.latitude.trim() !== '') {
+        const lat = parseFloat(form.latitude);
+        if (isNaN(lat) || lat < -90 || lat > 90) {
+          setSaveError('Latitude must be a number between -90 and 90.');
+          setIsSaving(false);
+          return;
+        }
+      }
+      if (form.longitude.trim() !== '') {
+        const lng = parseFloat(form.longitude);
+        if (isNaN(lng) || lng < -180 || lng > 180) {
+          setSaveError('Longitude must be a number between -180 and 180.');
+          setIsSaving(false);
+          return;
+        }
+      }
+
       const isUpdate = Boolean(form.id);
       const endpoint = isUpdate
         ? `/api/host/locations/${form.id}`
@@ -165,10 +200,11 @@ export default function LocationsPage() {
 
       const payload: Record<string, unknown> = { name: form.name };
       if (!isUpdate) payload.organizationId = form.organizationId;
+      if (form.alternateName) payload.alternateName = form.alternateName;
       if (form.description) payload.description = form.description;
       if (form.transportation) payload.transportation = form.transportation;
-      if (form.latitude) payload.latitude = parseFloat(form.latitude);
-      if (form.longitude) payload.longitude = parseFloat(form.longitude);
+      if (form.latitude.trim()) payload.latitude = parseFloat(form.latitude);
+      if (form.longitude.trim()) payload.longitude = parseFloat(form.longitude);
       if (form.address1) payload.address1 = form.address1;
       if (form.address2) payload.address2 = form.address2;
       if (form.city) payload.city = form.city;
@@ -222,7 +258,7 @@ export default function LocationsPage() {
   };
 
   return (
-    <main className="container mx-auto max-w-6xl px-4 py-8">
+    <div>
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -321,6 +357,7 @@ export default function LocationsPage() {
                           id: loc.id,
                           organizationId: loc.organization_id,
                           name: loc.name ?? '',
+                          alternateName: loc.alternate_name ?? '',
                           description: loc.description ?? '',
                           transportation: loc.transportation ?? '',
                           latitude: loc.latitude != null ? String(loc.latitude) : '',
@@ -370,23 +407,21 @@ export default function LocationsPage() {
       </ErrorBoundary>
 
       {/* ── Create / Edit Modal ── */}
-      {form && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-y-auto"
-          onKeyDown={(e) => { if (e.key === 'Escape') { setForm(null); setSaveError(null); } }}
-          onClick={(e) => { if (e.target === e.currentTarget) { setForm(null); setSaveError(null); } }}
-          role="presentation"
-        >
-          <div className="w-full max-w-lg rounded-lg border border-gray-200 bg-white p-6 shadow-lg my-8" role="dialog" aria-label={isCreating ? 'Add location' : 'Edit location'} aria-modal="true">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">{isCreating ? 'Add Location' : 'Edit Location'}</h2>
-              <button onClick={() => { setForm(null); setSaveError(null); }} className="rounded p-1 hover:bg-gray-100" aria-label="Close">
-                <X className="h-5 w-5 text-gray-500" />
-              </button>
-            </div>
+      <Dialog
+        open={Boolean(form)}
+        onOpenChange={(open) => {
+          if (!open) closeFormDialog();
+        }}
+      >
+        {form && (
+          <DialogContent className="max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{isCreating ? 'Add Location' : 'Edit Location'}</DialogTitle>
+              <DialogDescription>Update location and address information.</DialogDescription>
+            </DialogHeader>
 
             {saveError && (
-              <div role="alert" className="mb-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{saveError}</div>
+              <div role="alert" className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">{saveError}</div>
             )}
 
             <div className="space-y-4">
@@ -403,6 +438,11 @@ export default function LocationsPage() {
               <div>
                 <label htmlFor="loc-name" className="block text-sm font-medium text-gray-700 mb-1">Location Name <span className="text-red-500">*</span></label>
                 <input id="loc-name" type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]" required maxLength={500} />
+              </div>
+
+              <div>
+                <label htmlFor="loc-alt" className="block text-sm font-medium text-gray-700 mb-1">Alternate Name</label>
+                <input id="loc-alt" type="text" value={form.alternateName} onChange={(e) => setForm({ ...form, alternateName: e.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]" maxLength={500} />
               </div>
 
               <div>
@@ -459,8 +499,8 @@ export default function LocationsPage() {
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setForm(null); setSaveError(null); }} disabled={isSaving}>Cancel</Button>
+            <DialogFooter className="mt-2">
+              <Button variant="outline" onClick={closeFormDialog} disabled={isSaving}>Cancel</Button>
               <Button
                 onClick={handleSave}
                 disabled={isSaving || !form.name.trim() || (isCreating && !form.organizationId)}
@@ -469,31 +509,33 @@ export default function LocationsPage() {
                 <Check className="h-4 w-4" aria-hidden="true" />
                 {isSaving ? 'Saving…' : isCreating ? 'Create' : 'Save'}
               </Button>
-            </div>
-          </div>
-        </div>
-      )}
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
 
       {/* ── Delete confirmation ── */}
-      {deletingId && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onKeyDown={(e) => { if (e.key === 'Escape') setDeletingId(null); }}
-          onClick={(e) => { if (e.target === e.currentTarget) setDeletingId(null); }}
-          role="presentation"
-        >
-          <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-lg" role="alertdialog" aria-label="Confirm delete" aria-modal="true">
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete Location?</h2>
-            <p className="text-sm text-gray-600 mb-4">This will permanently delete this location and its address. This action cannot be undone.</p>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDeletingId(null)} disabled={isDeleting}>Cancel</Button>
+      <Dialog
+        open={Boolean(deletingId)}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDialog();
+        }}
+      >
+        {deletingId && (
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Delete location?</DialogTitle>
+              <DialogDescription>This removes the location from host lists.</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={closeDeleteDialog} disabled={isDeleting}>Cancel</Button>
               <Button onClick={() => void handleDelete(deletingId)} disabled={isDeleting} className="bg-red-600 hover:bg-red-700 text-white">
                 {isDeleting ? 'Deleting…' : 'Delete'}
               </Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </main>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+    </div>
   );
 }

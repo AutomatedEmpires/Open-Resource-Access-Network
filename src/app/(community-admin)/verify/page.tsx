@@ -709,7 +709,10 @@ export default function VerifyPage() {
                 {/* Notes */}
                 <div>
                   <label htmlFor="verify-notes" className="block text-xs font-medium text-gray-500 mb-1">
-                    Notes {decision === 'rejected' && <span className="text-red-500">(required for rejection)</span>}
+                    Notes{' '}
+                    {(decision === 'rejected' || decision === 'escalated') && (
+                      <span className="text-red-500">(required for {decision === 'rejected' ? 'rejection' : 'escalation'})</span>
+                    )}
                   </label>
                   <textarea
                     id="verify-notes"
@@ -733,7 +736,7 @@ export default function VerifyPage() {
                   disabled={
                     !decision ||
                     isSubmitting ||
-                    (decision === 'rejected' && !notes.trim())
+                    ((decision === 'rejected' || decision === 'escalated') && !notes.trim())
                   }
                   onClick={() => void handleSubmit()}
                 >

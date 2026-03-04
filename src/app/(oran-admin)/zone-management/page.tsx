@@ -104,12 +104,10 @@ function ZoneManagementInner() {
     setIsLoading(true);
     setError(null);
     try {
-      const url = new URL('/api/admin/zones', window.location.origin);
-      url.searchParams.set('page', String(p));
-      url.searchParams.set('limit', String(LIMIT));
-      if (status) url.searchParams.set('status', status);
+      const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+      if (status) params.set('status', status);
 
-      const res = await fetch(url.toString());
+      const res = await fetch(`/api/admin/zones?${params.toString()}`);
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? 'Failed to load zones');
@@ -331,13 +329,14 @@ function ZoneManagementInner() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
+              <caption className="sr-only">Coverage zones with status, assigned admin, creation date, and management actions.</caption>
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Zone</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Assigned Admin</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Created</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600">Actions</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Zone</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Assigned Admin</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Created</th>
+                  <th scope="col" className="px-4 py-3 text-right font-medium text-gray-600">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">

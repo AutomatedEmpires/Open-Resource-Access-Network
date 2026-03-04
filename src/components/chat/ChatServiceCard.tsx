@@ -73,7 +73,7 @@ export function ChatServiceCard({ card, isSaved, onToggleSave }: ChatServiceCard
             <button
               type="button"
               onClick={() => onToggleSave(card.serviceId)}
-              className="p-1 rounded-md hover:bg-gray-100 transition-colors min-w-[32px] min-h-[32px] flex items-center justify-center"
+              className="p-1 rounded-md hover:bg-gray-100 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
               aria-label={isSaved ? 'Remove from saved' : 'Save this service'}
               title={isSaved ? 'Remove from saved' : 'Save for later'}
             >

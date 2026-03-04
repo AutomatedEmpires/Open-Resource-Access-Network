@@ -119,13 +119,11 @@ function AuditPageInner() {
     setIsLoading(true);
     setError(null);
     try {
-      const url = new URL('/api/admin/audit', window.location.origin);
-      url.searchParams.set('page', String(p));
-      url.searchParams.set('limit', String(LIMIT));
-      if (action) url.searchParams.set('action', action);
-      if (tableName) url.searchParams.set('tableName', tableName);
+      const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+      if (action) params.set('action', action);
+      if (tableName) params.set('tableName', tableName);
 
-      const res = await fetch(url.toString());
+      const res = await fetch(`/api/admin/audit?${params.toString()}`);
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? 'Failed to load audit log');
@@ -249,13 +247,14 @@ function AuditPageInner() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
+              <caption className="sr-only">System audit log entries with action, target table, record identifier, and timestamp.</caption>
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 w-8" />
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Action</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Table</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Record ID</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Timestamp</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600 w-8" />
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Action</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Table</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Record ID</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Timestamp</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">

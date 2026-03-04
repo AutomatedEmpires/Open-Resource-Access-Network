@@ -113,12 +113,10 @@ export default function QueuePage() {
     setIsLoading(true);
     setError(null);
     try {
-      const url = new URL('/api/community/queue', window.location.origin);
-      url.searchParams.set('page', String(p));
-      url.searchParams.set('limit', String(LIMIT));
-      if (status) url.searchParams.set('status', status);
+      const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+      if (status) params.set('status', status);
 
-      const res = await fetch(url.toString());
+      const res = await fetch(`/api/community/queue?${params.toString()}`);
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? 'Failed to load queue');
@@ -146,8 +144,6 @@ export default function QueuePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           queueEntryId: entryId,
-          // Placeholder user ID — will be replaced by auth context
-          assignedTo: 'current-user',
         }),
       });
       if (!res.ok) {
@@ -244,14 +240,15 @@ export default function QueuePage() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
+              <caption className="sr-only">Verification queue entries with status, submission date, assignee, and actions.</caption>
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Service</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Organization</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Submitted</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Assigned</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600">Actions</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Service</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Organization</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Submitted</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Assigned</th>
+                  <th scope="col" className="px-4 py-3 text-right font-medium text-gray-600">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">

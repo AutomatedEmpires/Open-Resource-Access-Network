@@ -34,27 +34,32 @@
     "next-auth": "^4.24.13",
     "openai": "^6.25.0",
     "pg": "^8.19.0",
-    "react": "19.2.4",
-    "react-dom": "19.2.3",
     "tailwind-merge": "^3.5.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@axe-core/react": "^4.11.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/cheerio": "^1.0.0",
+    "@types/jest-axe": "^3.5.9",
     "@types/node": "^25",
     "@types/pg": "^8.16.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.0.18",
-    "eslint": "^10",
+    "axe-core": "^4.11.1",
+    "eslint": "^9.0.0",
     "eslint-config-next": "16.1.6",
+    "jest-axe": "^10.0.0",
     "jsdom": "^28.1.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "vitest-axe": "^0.1.0"
   }
 }

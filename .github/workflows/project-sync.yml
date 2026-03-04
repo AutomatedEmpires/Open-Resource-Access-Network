@@ -14,13 +14,22 @@ jobs:
   sync:
     name: Sync ORAN Roadmap fields
     runs-on: ubuntu-latest
-    if: ${{ secrets.PROJECT_TOKEN != '' }}
+    env:
+      PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
 
     steps:
+      - name: Check PROJECT_TOKEN present
+        shell: bash
+        run: |
+          if [ -z "$PROJECT_TOKEN" ]; then
+            echo "PROJECT_TOKEN secret is missing. Add it as a repo Actions secret to enable Project sync." >&2
+            exit 1
+          fi
+
       - name: Sync fields
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.PROJECT_TOKEN }}
+          github-token: ${{ env.PROJECT_TOKEN }}
           script: |
             const projectId = 'PVT_kwHODJLGp84BQzJl';
 

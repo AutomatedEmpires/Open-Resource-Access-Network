@@ -1,0 +1,303 @@
+name: Project: sync labels -> fields
+
+on:
+  issues:
+    types: [opened, edited, reopened, labeled, unlabeled, closed]
+  pull_request:
+    types: [opened, edited, reopened, labeled, unlabeled, closed]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "sync one item (single) or backfill open items (backfill-open)"
+        required: false
+        default: "backfill-open"
+        type: string
+      number:
+        description: "For mode=single: issue/pr number"
+        required: false
+        type: string
+      kind:
+        description: "For mode=single: issue or pr"
+        required: false
+        default: "issue"
+        type: string
+      limit:
+        description: "For backfill-open: max items to process (rate-limit safety)"
+        required: false
+        default: "50"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync ORAN Roadmap fields
+    runs-on: ubuntu-latest
+    if: ${{ secrets.PROJECT_TOKEN != '' }}
+
+    steps:
+      - name: Sync fields
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PROJECT_TOKEN }}
+          script: |
+            const projectId = 'PVT_kwHODJLGp84BQzJl';
+
+            const statusOptionByLabel = {
+              'needs-info': 'Needs info',
+              'ready': 'Ready',
+              'in-progress': 'In progress',
+              'needs-review': 'Needs review',
+              'blocked': 'Blocked',
+            };
+
+            const getExistingProjectItemId = async ({ contentNodeId }) => {
+              const q = `query($id:ID!){
+                node(id:$id){
+                  __typename
+                  ... on Issue { projectItems(first:50){ nodes { id project { id } } } }
+                  ... on PullRequest { projectItems(first:50){ nodes { id project { id } } } }
+                }
+              }`;
+              const res = await github.graphql(q, { id: contentNodeId });
+              const nodes = res?.node?.projectItems?.nodes ?? [];
+              const match = nodes.find((n) => n?.project?.id === projectId);
+              return match?.id ?? null;
+            };
+
+            const addToProject = async ({ contentNodeId }) => {
+              const m = `mutation($projectId:ID!, $contentId:ID!){
+                addProjectV2ItemById(input:{projectId:$projectId, contentId:$contentId}){
+                  item { id }
+                }
+              }`;
+              const res = await github.graphql(m, { projectId, contentId: contentNodeId });
+              return res.addProjectV2ItemById.item.id;
+            };
+
+            const getProjectFields = async () => {
+              const q = `query($id:ID!){
+                node(id:$id){
+                  ... on ProjectV2{
+                    fields(first:50){
+                      nodes{
+                        __typename
+                        ... on ProjectV2FieldCommon { id name }
+                        ... on ProjectV2SingleSelectField { id name options { id name } }
+                      }
+                    }
+                  }
+                }
+              }`;
+              const res = await github.graphql(q, { id: projectId });
+              return res.node.fields.nodes;
+            };
+
+            const findField = (fields, name) => fields.find((f) => f?.name === name);
+            const findOptionId = (field, predicate) => {
+              const options = field?.options ?? [];
+              const hit = options.find((o) => predicate(o?.name));
+              return hit?.id ?? null;
+            };
+
+            const setSingleSelect = async ({ projectId, itemId, fieldId, optionId }) => {
+              const m = `mutation($projectId:ID!, $itemId:ID!, $fieldId:ID!, $optionId:String!){
+                updateProjectV2ItemFieldValue(input:{
+                  projectId:$projectId,
+                  itemId:$itemId,
+                  fieldId:$fieldId,
+                  value:{ singleSelectOptionId:$optionId }
+                }){ projectV2Item { id } }
+              }`;
+              await github.graphql(m, { projectId, itemId, fieldId, optionId });
+            };
+
+            const clearField = async ({ projectId, itemId, fieldId }) => {
+              const m = `mutation($projectId:ID!, $itemId:ID!, $fieldId:ID!){
+                clearProjectV2ItemFieldValue(input:{ projectId:$projectId, itemId:$itemId, fieldId:$fieldId }){
+                  projectV2Item { id }
+                }
+              }`;
+              await github.graphql(m, { projectId, itemId, fieldId });
+            };
+
+
+            const syncOne = async ({ contentNodeId, labels, isClosed }) => {
+              const findPrefixed = (prefix) => labels.find((l) => l.startsWith(prefix));
+              const suffixOf = (prefix) => {
+                const hit = findPrefixed(prefix);
+                return hit ? hit.slice(prefix.length) : null;
+              };
+
+              const area = suffixOf('area:');
+              const risk = suffixOf('risk:');
+              const size = suffixOf('size:');
+              const priority = suffixOf('priority:');
+              const statusLabel = suffixOf('status:');
+
+              let itemId = await getExistingProjectItemId({ contentNodeId });
+              if (!itemId) {
+                itemId = await addToProject({ contentNodeId });
+              }
+
+              const areaField = findField(fields, 'Area');
+              const riskField = findField(fields, 'Risk');
+              const sizeField = findField(fields, 'Size');
+              const priorityField = findField(fields, 'Priority');
+              const statusField = findField(fields, 'Status');
+
+              const ops = [];
+
+              if (areaField) {
+                if (area) {
+                  const optionId = findOptionId(areaField, (n) => n === area);
+                  if (optionId) ops.push(() => setSingleSelect({ projectId, itemId, fieldId: areaField.id, optionId }));
+                  else core.warning(`No Area option for '${area}'`);
+                } else {
+                  ops.push(() => clearField({ projectId, itemId, fieldId: areaField.id }));
+                }
+              }
+
+              if (riskField) {
+                if (risk) {
+                  const optionId = findOptionId(riskField, (n) => n === risk);
+                  if (optionId) ops.push(() => setSingleSelect({ projectId, itemId, fieldId: riskField.id, optionId }));
+                  else core.warning(`No Risk option for '${risk}'`);
+                } else {
+                  ops.push(() => clearField({ projectId, itemId, fieldId: riskField.id }));
+                }
+              }
+
+              if (sizeField) {
+                if (size) {
+                  const optionId = findOptionId(sizeField, (n) => n === size);
+                  if (optionId) ops.push(() => setSingleSelect({ projectId, itemId, fieldId: sizeField.id, optionId }));
+                  else core.warning(`No Size option for '${size}'`);
+                } else {
+                  ops.push(() => clearField({ projectId, itemId, fieldId: sizeField.id }));
+                }
+              }
+
+              if (priorityField) {
+                if (priority) {
+                  const optionId = findOptionId(priorityField, (n) => typeof n === 'string' && n.startsWith(priority));
+                  if (optionId) ops.push(() => setSingleSelect({ projectId, itemId, fieldId: priorityField.id, optionId }));
+                  else core.warning(`No Priority option starting with '${priority}'`);
+                } else {
+                  ops.push(() => clearField({ projectId, itemId, fieldId: priorityField.id }));
+                }
+              }
+
+              if (statusField) {
+                const desiredStatusName = (() => {
+                  if (isClosed) return 'Done';
+                  if (!statusLabel) return null;
+                  return statusOptionByLabel[statusLabel] ?? null;
+                })();
+
+                if (desiredStatusName) {
+                  const optionId = findOptionId(statusField, (n) => n === desiredStatusName);
+                  if (optionId) ops.push(() => setSingleSelect({ projectId, itemId, fieldId: statusField.id, optionId }));
+                  else core.warning(`No Status option for '${desiredStatusName}'`);
+                } else {
+                  ops.push(() => clearField({ projectId, itemId, fieldId: statusField.id }));
+                }
+              }
+
+              for (const op of ops) {
+                await op();
+              }
+
+              core.info(`Synced project fields for node ${contentNodeId}`);
+            };
+
+            const fields = await getProjectFields();
+
+            if (context.eventName === 'workflow_dispatch') {
+              const mode = (core.getInput('mode') || 'backfill-open').trim();
+              const limit = Number.parseInt(core.getInput('limit') || '50', 10);
+              const clampedLimit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 200) : 50;
+
+              if (mode === 'single') {
+                const kind = (core.getInput('kind') || 'issue').trim().toLowerCase();
+                const number = Number.parseInt(core.getInput('number') || '', 10);
+                if (!Number.isFinite(number)) {
+                  core.setFailed('mode=single requires a numeric "number" input (issue/pr number).');
+                  return;
+                }
+
+                const endpoint = kind === 'pr'
+                  ? 'GET /repos/{owner}/{repo}/pulls/{pull_number}'
+                  : 'GET /repos/{owner}/{repo}/issues/{issue_number}';
+
+                const params = kind === 'pr'
+                  ? { owner: context.repo.owner, repo: context.repo.repo, pull_number: number }
+                  : { owner: context.repo.owner, repo: context.repo.repo, issue_number: number };
+
+                const res = await github.request(endpoint, params);
+                const nodeId = res?.data?.node_id;
+                const rawLabels = res?.data?.labels ?? [];
+                const labels = rawLabels
+                  .map((l) => (typeof l === 'string' ? l : l?.name))
+                  .filter(Boolean);
+                const isClosed = res?.data?.state === 'closed';
+
+                if (!nodeId) {
+                  core.setFailed('Could not resolve node_id for the requested item.');
+                  return;
+                }
+
+                await syncOne({ contentNodeId: nodeId, labels, isClosed });
+                return;
+              }
+
+              if (mode !== 'backfill-open') {
+                core.setFailed(`Unknown mode '${mode}'. Use 'backfill-open' or 'single'.`);
+                return;
+              }
+
+              const items = await github.paginate(
+                'GET /repos/{owner}/{repo}/issues',
+                { owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 100, sort: 'updated', direction: 'desc' }
+              );
+
+              core.info(`Backfill mode: scanning ${items.length} open issues/PRs (processing up to ${clampedLimit})`);
+
+              let processed = 0;
+              for (const item of items) {
+                if (processed >= clampedLimit) break;
+                const nodeId = item?.node_id;
+                if (!nodeId) continue;
+
+                const rawLabels = item?.labels ?? [];
+                const labels = rawLabels
+                  .map((l) => (typeof l === 'string' ? l : l?.name))
+                  .filter(Boolean);
+
+                await syncOne({ contentNodeId: nodeId, labels, isClosed: false });
+                processed += 1;
+              }
+
+              core.info(`Backfill complete: processed ${processed} items`);
+              return;
+            }
+
+            const payload = context.payload;
+            const issue = payload.issue;
+            const pr = payload.pull_request;
+
+            const contentNodeId = issue?.node_id ?? pr?.node_id;
+            if (!contentNodeId) {
+              core.setFailed('No issue.node_id or pull_request.node_id found in event payload.');
+              return;
+            }
+
+            const rawLabels = issue?.labels ?? pr?.labels ?? [];
+            const labels = rawLabels
+              .map((l) => (typeof l === 'string' ? l : l?.name))
+              .filter(Boolean);
+
+            const isClosed = (issue?.state === 'closed') || (pr?.state === 'closed');
+
+            await syncOne({ contentNodeId, labels, isClosed });

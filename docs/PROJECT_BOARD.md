@@ -6,6 +6,20 @@ This runbook is meant to be “do these two things once, then everything just wo
 
 ---
 
+## Fast fix (if the workflow is failing right now)
+
+If the Action log says “PROJECT_TOKEN cannot access the ORAN Roadmap Project”, you only need to do this:
+
+1. Create a token that has **Projects** permission (account-level).
+2. Paste it into the repo secret named `PROJECT_TOKEN`.
+3. Re-run the workflow.
+
+Most common confusion:
+- Setting `export GH_TOKEN=...` in your terminal does **nothing** for GitHub Actions.
+- GitHub Actions only reads the repo secret at: https://github.com/AutomatedEmpires/Open-Resource-Access-Network/settings/secrets/actions
+
+---
+
 ## What you are trying to achieve
 
 ```
@@ -61,6 +75,39 @@ Generate token and copy it.
 
 Important: “max read/write scoped to this repository” is NOT enough for Projects v2.
 This Project is user-owned (`users/AutomatedEmpires`), so the token must include **Account permissions → Projects (read/write)** (or classic scope `project`).
+
+---
+
+## Token self-test (2 minutes, optional but recommended)
+
+This lets you confirm the token can “see” the Project *before* you store it as `PROJECT_TOKEN`.
+
+If CLI feels annoying: skip this section and just use the workflow run logs — they will explicitly tell you if the token can’t access the Project.
+
+1. In a terminal, temporarily export the token (don’t paste it into chat):
+
+- `export GH_TOKEN='<paste token here>'`
+
+2. Run a Projects query (in Codespaces, strip injected tokens so your GH_TOKEN is used):
+
+- `env -u GITHUB_TOKEN -u GH_TOKEN gh api graphql -f query='query($id:ID!){ node(id:$id){ __typename ... on ProjectV2 { title } } }' -F id='PVT_kwHODJLGp84BQzJl'`
+
+Expected success output:
+- `__typename` is `ProjectV2` and you see a `title`.
+
+If you see an error like “Resource not accessible by personal access token”, the token is missing Projects permission (fix Step 1).
+
+3. Clean up:
+
+- `unset GH_TOKEN`
+
+---
+
+## Security note (important)
+
+If you ever paste a token into chat, screenshots, or logs, assume it’s compromised.
+- Revoke it immediately: https://github.com/settings/personal-access-tokens
+- Generate a new one and update `PROJECT_TOKEN` again.
 
 ---
 

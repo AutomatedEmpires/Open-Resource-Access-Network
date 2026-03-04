@@ -11,21 +11,17 @@ on:
         description: "sync one item (single) or backfill open items (backfill-open)"
         required: false
         default: "backfill-open"
-        type: string
       number:
         description: "For mode=single: issue/pr number"
         required: false
-        type: string
       kind:
         description: "For mode=single: issue or pr"
         required: false
         default: "issue"
-        type: string
       limit:
         description: "For backfill-open: max items to process (rate-limit safety)"
         required: false
         default: "50"
-        type: string
 
 permissions:
   contents: read

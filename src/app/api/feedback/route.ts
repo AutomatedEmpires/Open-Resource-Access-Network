@@ -47,7 +47,10 @@ export async function POST(req: NextRequest) {
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before submitting more feedback.' },
-      { status: 429 }
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      }
     );
   }
 

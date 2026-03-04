@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
-import { getAuthContext, isAuthConfigured, isOranAdmin } from '@/services/auth';
+import { getAuthContext, shouldEnforceAuth, isOranAdmin } from '@/services/auth';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
 
   // Auth check
   const authCtx = await getAuthContext();
-  if (!authCtx && isAuthConfigured()) {
+  if (!authCtx && shouldEnforceAuth()) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
@@ -73,7 +73,13 @@ export async function GET(req: NextRequest) {
     maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
+    );
   }
 
   const raw: Record<string, string> = {};
@@ -151,7 +157,7 @@ export async function POST(req: NextRequest) {
 
   // Auth check - creating an org requires authentication
   const authCtx = await getAuthContext();
-  if (!authCtx && isAuthConfigured()) {
+  if (!authCtx && shouldEnforceAuth()) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
@@ -161,7 +167,13 @@ export async function POST(req: NextRequest) {
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
+    );
   }
 
   let body: unknown;

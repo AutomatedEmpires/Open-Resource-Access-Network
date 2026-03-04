@@ -426,6 +426,7 @@ export class ServiceSearchEngine {
           id: row.organization_id as string,
           name: (row.organization_name ?? '') as string,
           description: (row.organization_description as string | null) ?? null,
+          status: (row.organization_status ?? 'active') as 'active' | 'inactive' | 'defunct',
           updatedAt: row.organization_updated_at as Date,
           createdAt: row.organization_created_at as Date,
         },
@@ -436,6 +437,7 @@ export class ServiceSearchEngine {
               name: (row.location_name as string | null) ?? null,
               latitude: (row.latitude as number | null) ?? null,
               longitude: (row.longitude as number | null) ?? null,
+              status: (row.location_status ?? 'active') as 'active' | 'inactive' | 'defunct',
               createdAt: row.location_created_at as Date,
               updatedAt: row.location_updated_at as Date,
             }

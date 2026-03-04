@@ -20,6 +20,8 @@ export interface Organization {
   legalStatus?: string | null;
   logoUrl?: string | null;
   uri?: string | null;
+  /** Organization status: 'active', 'inactive', 'defunct' (migration 0007) */
+  status: 'active' | 'inactive' | 'defunct';
   createdByUserId?: string | null;
   updatedByUserId?: string | null;
   updatedAt: Date;
@@ -41,6 +43,8 @@ export interface Location {
   transitAccess?: string[] | null;
   /** Parking availability: 'yes', 'no', 'street_only', 'paid', 'unknown' */
   parkingAvailable?: LocationParkingType | null;
+  /** Location status: 'active', 'inactive', 'defunct' (migration 0007) */
+  status: 'active' | 'inactive' | 'defunct';
   createdByUserId?: string | null;
   updatedByUserId?: string | null;
   createdAt: Date;
@@ -177,7 +181,12 @@ export interface ConfidenceScore {
   updatedAt: Date;
 }
 
-export type ConfidenceBand = 'HIGH' | 'LIKELY' | 'POSSIBLE';
+/**
+ * Re-export ConfidenceBand from the canonical source in confidence.ts
+ * to avoid duplication. Use `import { ConfidenceBand } from '@/domain/confidence'`
+ * for new code.
+ */
+export type { ConfidenceBand } from './confidence';
 
 export type VerificationStatus =
   | 'pending'
@@ -220,6 +229,8 @@ export interface ChatSession {
   endedAt?: Date | null;
   intentSummary?: string | null;
   serviceIdsShown?: string[] | null;
+  /** Number of messages in this session (migration 0017) */
+  messageCount: number;
 }
 
 export interface FeatureFlag {
@@ -227,6 +238,8 @@ export interface FeatureFlag {
   name: string;
   enabled: boolean;
   rolloutPct: number;
+  /** Human-readable description (migration 0007) */
+  description?: string | null;
   createdByUserId?: string | null;
   updatedByUserId?: string | null;
   createdAt: Date;

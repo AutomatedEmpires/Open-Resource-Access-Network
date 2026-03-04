@@ -99,6 +99,16 @@ export function checkRateLimit(key: string): RateLimitState {
   });
 }
 
+export class ChatRateLimitExceededError extends Error {
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number) {
+    super('Chat rate limit exceeded');
+    this.name = 'ChatRateLimitExceededError';
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 // ============================================================
 // INTENT DETECTION
 // ============================================================
@@ -282,6 +292,7 @@ export async function orchestrateChat(
   sessionId: string,
   userId: string | undefined,
   locale: string,
+  rateLimitKey: string,
   deps: OrchestratorDeps
 ): Promise<ChatResponse> {
   // Stage 1: Crisis detection — always first, always takes priority
@@ -306,7 +317,11 @@ export async function orchestrateChat(
     };
   }
 
-  // Stage 3: Rate limit is checked by the API handler (not here)
+  // Stage 3: Rate limit (after crisis + quota)
+  const rateLimit = checkRateLimit(rateLimitKey);
+  if (rateLimit.exceeded) {
+    throw new ChatRateLimitExceededError(rateLimit.retryAfterSeconds);
+  }
 
   // Stage 4: Intent detection — no LLM
   const intent = detectIntent(message);

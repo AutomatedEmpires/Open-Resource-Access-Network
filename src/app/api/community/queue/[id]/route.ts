@@ -8,6 +8,8 @@ import { z } from 'zod';
 import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
+import { getAuthContext } from '@/services/auth/session';
+import { requireMinRole } from '@/services/auth/guards';
 import {
   RATE_LIMIT_WINDOW_MS,
   COMMUNITY_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -23,8 +25,6 @@ const DecisionSchema = z.object({
     message: 'decision is required',
   }),
   notes: z.string().max(5000).optional(),
-  /** Reviewer user ID — will be replaced by auth context once wired */
-  reviewerUserId: z.string().min(1).max(500),
 });
 
 // ============================================================
@@ -57,7 +57,21 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     maxRequests: COMMUNITY_READ_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
+    );
+  }
+
+  const authCtx = await getAuthContext();
+  if (!authCtx) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+  if (!requireMinRole(authCtx, 'community_admin')) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
   try {
@@ -180,7 +194,21 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
     maxRequests: COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
+    );
+  }
+
+  const authCtx = await getAuthContext();
+  if (!authCtx) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+  if (!requireMinRole(authCtx, 'community_admin')) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
   let body: unknown;
@@ -198,7 +226,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
     );
   }
 
-  const { decision, notes, reviewerUserId } = parsed.data;
+  const { decision, notes } = parsed.data;
 
   try {
     const result = await withTransaction(async (client) => {
@@ -211,7 +239,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
          SET status = $1, notes = $2, assigned_to_user_id = $3, updated_at = now()
          WHERE id = $4 AND status IN ('pending', 'in_review')
          RETURNING id, service_id`,
-        [decision, notes ?? null, reviewerUserId, id],
+        [decision, notes ?? null, authCtx.userId, id],
       );
 
       if (queueResult.rows.length === 0) {

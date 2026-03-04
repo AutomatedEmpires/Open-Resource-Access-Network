@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { OranRole } from '@/domain/types';
-import { getAuthContext, isAuthConfigured, requireOrgRole, isOranAdmin } from '@/services/auth';
+import { getAuthContext, shouldEnforceAuth, requireOrgRole, isOranAdmin } from '@/services/auth';
 import { isDatabaseConfigured, executeQuery, withTransaction } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { getIp } from '@/services/security/ip';
@@ -53,12 +53,18 @@ export async function GET(req: NextRequest) {
     maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+      return NextResponse.json(
+        { error: 'Rate limit exceeded.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+        },
+      );
   }
 
   // Auth check - required for team management
   const auth = await getAuthContext();
-  if (isAuthConfigured() && !auth) {
+  if (shouldEnforceAuth() && !auth) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   if (!auth) {
@@ -128,12 +134,18 @@ export async function POST(req: NextRequest) {
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+      return NextResponse.json(
+        { error: 'Rate limit exceeded.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+        },
+      );
   }
 
   // Auth check - required for team management
   const auth = await getAuthContext();
-  if (isAuthConfigured() && !auth) {
+  if (shouldEnforceAuth() && !auth) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   if (!auth) {

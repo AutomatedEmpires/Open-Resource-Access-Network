@@ -3,6 +3,8 @@ export interface RateLimitState {
   count: number;
   windowStart: number;
   exceeded: boolean;
+  /** Seconds until the current window resets (use for HTTP Retry-After). */
+  retryAfterSeconds: number;
 }
 
 const rateLimitWindows = new Map<string, { count: number; windowStart: number }>();
@@ -48,9 +50,21 @@ export function checkRateLimit(
   const now = Date.now();
   const window = rateLimitWindows.get(key);
 
+   const computeRetryAfterSeconds = (windowStart: number): number => {
+    const resetAt = windowStart + options.windowMs;
+    const msRemaining = resetAt - now;
+    return Math.max(0, Math.ceil(msRemaining / 1000));
+  };
+
   if (!window || now - window.windowStart > options.windowMs) {
     rateLimitWindows.set(key, { count: 1, windowStart: now });
-    return { key, count: 1, windowStart: now, exceeded: false };
+    return {
+      key,
+      count: 1,
+      windowStart: now,
+      exceeded: false,
+      retryAfterSeconds: computeRetryAfterSeconds(now),
+    };
   }
 
   const newCount = window.count + 1;
@@ -61,6 +75,7 @@ export function checkRateLimit(
     count: newCount,
     windowStart: window.windowStart,
     exceeded: newCount > options.maxRequests,
+    retryAfterSeconds: computeRetryAfterSeconds(window.windowStart),
   };
 }
 

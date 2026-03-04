@@ -20,6 +20,7 @@ function makeMockEnrichedService(): EnrichedService {
       id: 'org-1',
       name: 'Example Org',
       url: 'https://example.gov',
+      status: 'active',
       updatedAt: now,
       createdAt: now,
     },

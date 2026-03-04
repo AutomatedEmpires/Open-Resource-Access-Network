@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ChatRequestSchema } from '@/services/chat/types';
 import {
   orchestrateChat,
-  checkRateLimit,
+  ChatRateLimitExceededError,
 } from '@/services/chat/orchestrator';
 import { flagService } from '@/services/flags/flags';
 import type { EnrichedService } from '@/domain/types';
@@ -20,6 +20,7 @@ import { ServiceSearchEngine } from '@/services/search/engine';
 import { executeQuery, executeCount, isDatabaseConfigured } from '@/services/db/postgres';
 import { MAX_SERVICES_PER_RESPONSE } from '@/domain/constants';
 import { captureException } from '@/services/telemetry/sentry';
+import { getAuthContext } from '@/services/auth/session';
 
 // ============================================================
 // REQUEST VALIDATION
@@ -107,21 +108,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { message, sessionId, userId, locale } = parsed.data;
+  const { message, sessionId, locale } = parsed.data;
 
-  // Rate limit check (per IP + userId)
+  const authCtx = await getAuthContext();
+  const effectiveUserId = authCtx?.userId;
+
+  // Rate limit key is derived server-side (per IP + optional user)
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const rateLimitKey = userId ? `chat:user:${userId}` : `chat:ip:${ip}`;
-  const rateLimit = checkRateLimit(rateLimitKey);
-  if (rateLimit.exceeded) {
-    return NextResponse.json(
-      { error: 'Rate limit exceeded. Please wait before sending more messages.' },
-      { status: 429 }
-    );
-  }
+  const rateLimitKey = effectiveUserId ? `chat:user:${effectiveUserId}` : `chat:ip:${ip}`;
 
   try {
-    const response = await orchestrateChat(message, sessionId, userId, locale, {
+    const response = await orchestrateChat(message, sessionId, effectiveUserId, locale, rateLimitKey, {
       retrieveServices,
       isFlagEnabled: (flagName) => flagService.isEnabled(flagName),
     });
@@ -130,10 +127,22 @@ export async function POST(req: NextRequest) {
       headers: { 'Cache-Control': 'private, no-store' },
     });
   } catch (error) {
+    if (error instanceof ChatRateLimitExceededError) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Please wait before sending more messages.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(error.retryAfterSeconds),
+            'Cache-Control': 'private, no-store',
+          },
+        }
+      );
+    }
     await captureException(error, {
       feature: 'api_chat',
       sessionId,
-      userId,
+      userId: effectiveUserId,
     });
     return NextResponse.json(
       { error: 'Internal server error' },

@@ -41,12 +41,12 @@ const ServiceIdSchema = z.object({
 // RATE LIMIT HELPER
 // ============================================================
 
-function checkSavedRateLimit(ip: string): boolean {
+function checkSavedRateLimit(ip: string) {
   const rateLimit = checkRateLimit(`saved:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: SAVED_RATE_LIMIT_MAX,
   });
-  return rateLimit.exceeded;
+  return rateLimit;
 }
 
 // ============================================================
@@ -64,10 +64,14 @@ export async function GET(req: NextRequest) {
 
   // Rate limiting
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  if (checkSavedRateLimit(ip)) {
+  const rateLimit = checkSavedRateLimit(ip);
+  if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
-      { status: 429 }
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      }
     );
   }
 
@@ -118,10 +122,14 @@ export async function POST(req: NextRequest) {
 
   // Rate limiting
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  if (checkSavedRateLimit(ip)) {
+  const rateLimit = checkSavedRateLimit(ip);
+  if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
-      { status: 429 }
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      }
     );
   }
 
@@ -193,10 +201,14 @@ export async function DELETE(req: NextRequest) {
 
   // Rate limiting
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  if (checkSavedRateLimit(ip)) {
+  const rateLimit = checkSavedRateLimit(ip);
+  if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
-      { status: 429 }
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      }
     );
   }
 

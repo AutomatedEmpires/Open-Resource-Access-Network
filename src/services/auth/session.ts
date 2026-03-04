@@ -179,3 +179,13 @@ export async function getAuthContext(): Promise<AuthContext | null> {
 export function isAuthConfigured(): boolean {
   return Boolean(process.env.AZURE_AD_CLIENT_ID);
 }
+
+/**
+ * Whether auth enforcement should be active for the current environment.
+ * Returns true if Entra ID is configured **or** if running in production (fail-closed).
+ * Dev-mode bypass only applies when `AZURE_AD_CLIENT_ID` is absent AND `NODE_ENV !== 'production'`.
+ */
+export function shouldEnforceAuth(): boolean {
+  if (process.env.NODE_ENV === 'production') return true;
+  return isAuthConfigured();
+}

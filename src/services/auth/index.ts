@@ -18,6 +18,7 @@
 export {
   getAuthContext,
   isAuthConfigured,
+  shouldEnforceAuth,
   type AuthContext,
 } from './session';
 

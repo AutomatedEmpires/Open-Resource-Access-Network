@@ -5,8 +5,33 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isRoleAtLeast, ROLE_LEVELS } from '../guards';
+import {
+  canManageTeam,
+  canWriteToOrg,
+  isOranAdmin,
+  isRoleAtLeast,
+  requireMinRole,
+  requireOrgAccess,
+  requireOrgRole,
+  requireRole,
+  ROLE_LEVELS,
+} from '../guards';
 import type { OranRole } from '@/domain/types';
+import type { AuthContext } from '../session';
+
+const hostAdminCtx: AuthContext = {
+  userId: 'user-1',
+  role: 'host_admin',
+  orgIds: ['org-1'],
+  orgRoles: new Map([['org-1', 'host_admin']]),
+};
+
+const oranAdminCtx: AuthContext = {
+  userId: 'user-2',
+  role: 'oran_admin',
+  orgIds: [],
+  orgRoles: new Map(),
+};
 
 describe('isRoleAtLeast', () => {
   describe('seeker role', () => {
@@ -92,5 +117,46 @@ describe('isRoleAtLeast', () => {
       expect(ROLE_LEVELS.host_admin).toBeLessThan(ROLE_LEVELS.community_admin);
       expect(ROLE_LEVELS.community_admin).toBeLessThan(ROLE_LEVELS.oran_admin);
     });
+  });
+});
+
+describe('guard helpers', () => {
+  it('checks explicit role inclusion', () => {
+    expect(requireRole(hostAdminCtx, 'host_member', 'host_admin')).toBe(true);
+    expect(requireRole(hostAdminCtx, 'oran_admin')).toBe(false);
+  });
+
+  it('checks minimum role based on hierarchy', () => {
+    expect(requireMinRole(hostAdminCtx, 'host_member')).toBe(true);
+    expect(requireMinRole(hostAdminCtx, 'community_admin')).toBe(false);
+  });
+
+  it('checks organization access and oran admin bypass', () => {
+    expect(requireOrgAccess(hostAdminCtx, 'org-1')).toBe(true);
+    expect(requireOrgAccess(hostAdminCtx, 'org-2')).toBe(false);
+    expect(requireOrgAccess(oranAdminCtx, 'org-any')).toBe(true);
+  });
+
+  it('checks organization role requirements including inheritance', () => {
+    expect(requireOrgRole(hostAdminCtx, 'org-1', 'host_member')).toBe(true);
+    expect(requireOrgRole(hostAdminCtx, 'org-1', 'host_admin')).toBe(true);
+    expect(requireOrgRole(hostAdminCtx, 'org-2', 'host_member')).toBe(false);
+    expect(requireOrgRole(oranAdminCtx, 'org-any', 'host_admin')).toBe(true);
+  });
+
+  it('detects oran admins explicitly', () => {
+    expect(isOranAdmin(oranAdminCtx)).toBe(true);
+    expect(isOranAdmin(hostAdminCtx)).toBe(false);
+  });
+
+  it('reuses org-role checks for write and team management helpers', () => {
+    expect(canWriteToOrg(hostAdminCtx, 'org-1')).toBe(true);
+    expect(canWriteToOrg(hostAdminCtx, 'org-2')).toBe(false);
+    expect(canManageTeam(hostAdminCtx, 'org-1')).toBe(true);
+    expect(canManageTeam({
+      ...hostAdminCtx,
+      role: 'host_member',
+      orgRoles: new Map([['org-1', 'host_member']]),
+    }, 'org-1')).toBe(false);
   });
 });

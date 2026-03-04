@@ -11,6 +11,8 @@ import { z } from 'zod';
 import { flagService } from '@/services/flags/flags';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
+import { getAuthContext } from '@/services/auth/session';
+import { requireMinRole } from '@/services/auth/guards';
 import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -46,7 +48,21 @@ export async function GET(req: NextRequest) {
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
+    );
+  }
+
+  const authCtx = await getAuthContext();
+  if (!authCtx) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+  if (!requireMinRole(authCtx, 'oran_admin')) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
   try {
@@ -69,7 +85,21 @@ export async function PUT(req: NextRequest) {
     maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
+    );
+  }
+
+  const authCtx = await getAuthContext();
+  if (!authCtx) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+  if (!requireMinRole(authCtx, 'oran_admin')) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
   let body: unknown;

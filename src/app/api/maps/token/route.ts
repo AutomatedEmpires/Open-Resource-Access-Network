@@ -27,7 +27,10 @@ export async function GET(req: NextRequest) {
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before retrying.' },
-      { status: 429 },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
     );
   }
 

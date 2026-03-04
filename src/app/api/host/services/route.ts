@@ -7,10 +7,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
+import { executeQuery, withTransaction, isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
-import { getAuthContext, isAuthConfigured, isOranAdmin, requireOrgAccess } from '@/services/auth';
+import { getAuthContext, shouldEnforceAuth, isOranAdmin, requireOrgAccess } from '@/services/auth';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -37,7 +37,9 @@ const CreateServiceSchema = z.object({
   description:           z.string().max(5000).optional(),
   url:                   z.string().url().max(2000).optional(),
   email:                 z.string().email().max(500).optional(),
-  status:                z.enum(['active', 'inactive', 'defunct']).default('active'),
+  // New services default to 'inactive' — they must complete the verification
+  // cycle before appearing as active in search results.
+  status:                z.enum(['active', 'inactive', 'defunct']).default('inactive'),
   interpretationServices: z.string().max(1000).optional(),
   applicationProcess:    z.string().max(2000).optional(),
   waitTime:              z.string().max(500).optional(),
@@ -65,7 +67,7 @@ export async function GET(req: NextRequest) {
 
   // Auth check
   const authCtx = await getAuthContext();
-  if (!authCtx && isAuthConfigured()) {
+  if (!authCtx && shouldEnforceAuth()) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
@@ -75,7 +77,13 @@ export async function GET(req: NextRequest) {
     maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
+    );
   }
 
   const raw: Record<string, string> = {};
@@ -168,7 +176,7 @@ export async function POST(req: NextRequest) {
 
   // Auth check
   const authCtx = await getAuthContext();
-  if (!authCtx && isAuthConfigured()) {
+  if (!authCtx && shouldEnforceAuth()) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
@@ -178,7 +186,13 @@ export async function POST(req: NextRequest) {
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
+    );
   }
 
   let body: unknown;
@@ -216,31 +230,47 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Cannot add services to a defunct organization' }, { status: 400 });
     }
 
-    const rows = await executeQuery<Service>(
-      `INSERT INTO services
-         (organization_id, name, description, url, email, status,
-          interpretation_services, application_process, wait_time, fees,
-          accreditations, licenses, created_by_user_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-       RETURNING *`,
-      [
-        d.organizationId,
-        d.name,
-        d.description ?? null,
-        d.url ?? null,
-        d.email ?? null,
-        d.status,
-        d.interpretationServices ?? null,
-        d.applicationProcess ?? null,
-        d.waitTime ?? null,
-        d.fees ?? null,
-        d.accreditations ?? null,
-        d.licenses ?? null,
-        authCtx?.userId ?? null,
-      ],
-    );
+    const result = await withTransaction(async (client) => {
+      // 1. Create the service
+      const svcRows = await client.query<Service>(
+        `INSERT INTO services
+           (organization_id, name, description, url, email, status,
+            interpretation_services, application_process, wait_time, fees,
+            accreditations, licenses, created_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         RETURNING *`,
+        [
+          d.organizationId,
+          d.name,
+          d.description ?? null,
+          d.url ?? null,
+          d.email ?? null,
+          d.status,
+          d.interpretationServices ?? null,
+          d.applicationProcess ?? null,
+          d.waitTime ?? null,
+          d.fees ?? null,
+          d.accreditations ?? null,
+          d.licenses ?? null,
+          authCtx?.userId ?? null,
+        ],
+      );
+      const service = svcRows.rows[0];
 
-    return NextResponse.json(rows[0], { status: 201 });
+      // 2. Auto-enqueue service for verification.
+      //    Every service must pass the community admin review cycle before
+      //    it can be marked active in search results.
+      await client.query(
+        `INSERT INTO verification_queue (service_id, status, submitted_by_user_id)
+         VALUES ($1, 'pending', $2)
+         ON CONFLICT (service_id) DO NOTHING`,
+        [service.id, authCtx?.userId ?? null],
+      );
+
+      return service;
+    });
+
+    return NextResponse.json(result, { status: 201 });
   } catch (error) {
     await captureException(error, { feature: 'api_host_services_create' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

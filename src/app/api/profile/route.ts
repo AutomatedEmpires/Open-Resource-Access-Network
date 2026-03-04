@@ -49,12 +49,12 @@ const UpdateProfileSchema = z.object({
 // RATE LIMIT HELPER
 // ============================================================
 
-function checkProfileRateLimit(ip: string): boolean {
+function checkProfileRateLimit(ip: string) {
   const rateLimit = checkRateLimit(`profile:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: PROFILE_RATE_LIMIT_MAX,
   });
-  return rateLimit.exceeded;
+  return rateLimit;
 }
 
 // ============================================================
@@ -72,10 +72,14 @@ export async function GET(req: NextRequest) {
 
   // Rate limiting
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  if (checkProfileRateLimit(ip)) {
+  const rateLimit = checkProfileRateLimit(ip);
+  if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
-      { status: 429 }
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      }
     );
   }
 
@@ -135,10 +139,14 @@ export async function PUT(req: NextRequest) {
 
   // Rate limiting
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  if (checkProfileRateLimit(ip)) {
+  const rateLimit = checkProfileRateLimit(ip);
+  if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
-      { status: 429 }
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      }
     );
   }
 

@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
-import { getAuthContext, isAuthConfigured, requireOrgAccess, isOranAdmin } from '@/services/auth';
+import { getAuthContext, shouldEnforceAuth, requireOrgAccess, isOranAdmin } from '@/services/auth';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -61,7 +61,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
 
   // Auth check
   const authCtx = await getAuthContext();
-  if (!authCtx && isAuthConfigured()) {
+  if (!authCtx && shouldEnforceAuth()) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
@@ -71,7 +71,13 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
+    );
   }
 
   try {
@@ -115,7 +121,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
   // Auth check
   const authCtx = await getAuthContext();
-  if (!authCtx && isAuthConfigured()) {
+  if (!authCtx && shouldEnforceAuth()) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
@@ -125,7 +131,13 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
+    );
   }
 
   let body: unknown;
@@ -223,7 +235,7 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
 
   // Auth check
   const authCtx = await getAuthContext();
-  if (!authCtx && isAuthConfigured()) {
+  if (!authCtx && shouldEnforceAuth()) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
@@ -233,7 +245,13 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
+    );
   }
 
   try {

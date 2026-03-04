@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
-import { getAuthContext, isAuthConfigured } from '@/services/auth';
+import { getAuthContext } from '@/services/auth';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
@@ -63,7 +63,13 @@ export async function POST(req: NextRequest) {
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
   if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
+    );
   }
 
   let body: unknown;
@@ -83,27 +89,19 @@ export async function POST(req: NextRequest) {
 
   const d = parsed.data;
 
-  try {
-    // Use authenticated user ID if available, otherwise hash the IP for pseudonymous tracking
-    let submitterId: string;
-    const authCtx = await getAuthContext();
+  // Auth required unconditionally for claim submission.
+  // Claims create organizations and enter the approval queue — they must be
+  // attributed to a real, authenticated user in all environments.
+  const authCtx = await getAuthContext();
+  if (!authCtx) {
+    return NextResponse.json(
+      { error: 'Authentication required to submit claims' },
+      { status: 401 },
+    );
+  }
 
-    if (authCtx) {
-      // Authenticated user — use their actual user ID
-      submitterId = authCtx.userId;
-    } else if (isAuthConfigured()) {
-      // Auth is required but user isn't logged in — they should authenticate
-      return NextResponse.json(
-        { error: 'Authentication required to submit claims' },
-        { status: 401 },
-      );
-    } else {
-      // Dev mode without auth — hash the IP for pseudonymous tracking
-      const encoder = new TextEncoder();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(ip));
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      submitterId = `anon:${hashArray.slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('')}`;
-    }
+  try {
+    const submitterId = authCtx.userId;
 
     // All inserts in a transaction — if any fail, everything rolls back
     const result = await withTransaction(async (client) => {

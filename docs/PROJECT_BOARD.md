@@ -59,6 +59,9 @@ Generate token and copy it.
 
 ✅ You’re done when you have a token string that starts with something like `github_pat_...` (fine-grained) or `ghp_...` (classic).
 
+Important: “max read/write scoped to this repository” is NOT enough for Projects v2.
+This Project is user-owned (`users/AutomatedEmpires`), so the token must include **Account permissions → Projects (read/write)** (or classic scope `project`).
+
 ---
 
 ### Step 2 — Add the token as a repo secret
@@ -154,6 +157,15 @@ Safety:
 - Look at the workflow run logs — you should see it either:
   - exit early due to missing secret, or
   - perform “add to project” + “update field” operations.
+
+### “Resource not accessible by personal access token”
+
+This means the token does not have Projects access.
+
+- Regenerate `PROJECT_TOKEN` so it has:
+  - Fine-grained: **Account permissions → Projects: Read and write**
+  - or Classic: scope `project`
+- Make sure the token’s owner can access the Project at https://github.com/users/AutomatedEmpires/projects/3
 
 ### Codespaces / CLI weirdness (“Resource not accessible by integration”)
 

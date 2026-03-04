@@ -201,7 +201,25 @@ jobs:
               core.info(`Synced project fields for node ${contentNodeId}`);
             };
 
-            const fields = await getProjectFields();
+            let fields;
+            try {
+              fields = await getProjectFields();
+            } catch (err) {
+              const message = String(err?.message ?? err);
+              if (message.includes('Resource not accessible by personal access token')) {
+                core.setFailed(
+                  [
+                    'PROJECT_TOKEN cannot access the ORAN Roadmap Project.',
+                    'Fix: regenerate PROJECT_TOKEN with Account-level Projects read/write (classic PAT scope: project; or fine-grained PAT Account permissions: Projects read/write).',
+                    'Then update the repo Actions secret PROJECT_TOKEN and re-run this workflow.',
+                  ].join(' ')
+                );
+                return;
+              }
+
+              core.setFailed(`Failed to load Project fields: ${message}`);
+              return;
+            }
 
             if (context.eventName === 'workflow_dispatch') {
               const inputs = context?.payload?.inputs ?? {};

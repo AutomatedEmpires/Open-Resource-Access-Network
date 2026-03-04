@@ -5,6 +5,9 @@ set -euo pipefail
 #
 # This script provisions resource groups + core resources for dev/staging/prod.
 # It intentionally avoids printing secrets.
+# Environment variables: none required; uses active Azure CLI authentication context.
+# Required RBAC roles: Contributor on target subscription/resource groups,
+# and User Access Administrator or Owner if role assignments are needed for Key Vault.
 #
 # Prereqs:
 # - Azure CLI installed and logged in: az login

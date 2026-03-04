@@ -7,6 +7,9 @@ set -euo pipefail
 # - Azure AD app registration + service principal
 # - Role assignment for deploying to a specific resource group
 # - Federated credential for GitHub Actions (repo + environment)
+# Environment variables: none required; uses active Azure CLI authentication context.
+# Required RBAC roles: Application Administrator (or equivalent app registration rights)
+# plus User Access Administrator or Owner on target scope for role assignments.
 #
 # Prereqs:
 # - Azure CLI installed and logged in: az login

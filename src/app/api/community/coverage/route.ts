@@ -1,8 +1,8 @@
 /**
- * GET /api/community/coverage — Aggregate verification stats for coverage zone dashboard.
+ * GET /api/community/coverage — Aggregate submission stats for coverage zone dashboard.
  *
- * Returns counts by status, recent activity, and staleness metrics.
- * No write operations — community admins manage zone assignment via ORAN admin.
+ * Returns counts by status, recent activity, staleness metrics, and SLA breach info.
+ * Queries the universal submissions table (migration 0022).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -57,46 +57,64 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 1. Counts by verification status
+    // 1. Counts by submission status
     const statusCounts = await executeQuery<{ status: string; count: number }>(
       `SELECT status, count(*)::int AS count
-       FROM verification_queue
+       FROM submissions
        GROUP BY status
        ORDER BY status`,
       [],
     );
 
-    // 2. Recent activity (last 30 days)
+    // 2. Counts by submission type
+    const typeCounts = await executeQuery<{ submission_type: string; count: number }>(
+      `SELECT submission_type, count(*)::int AS count
+       FROM submissions
+       GROUP BY submission_type
+       ORDER BY submission_type`,
+      [],
+    );
+
+    // 3. Recent activity (last 30 days)
     const recentActivity = await executeQuery<{
       date: string;
-      verified: number;
-      rejected: number;
+      approved: number;
+      denied: number;
       escalated: number;
     }>(
       `SELECT
          to_char(updated_at, 'YYYY-MM-DD') AS date,
-         count(*) FILTER (WHERE status = 'verified')::int  AS verified,
-         count(*) FILTER (WHERE status = 'rejected')::int  AS rejected,
+         count(*) FILTER (WHERE status = 'approved')::int  AS approved,
+         count(*) FILTER (WHERE status = 'denied')::int    AS denied,
          count(*) FILTER (WHERE status = 'escalated')::int AS escalated
-       FROM verification_queue
+       FROM submissions
        WHERE updated_at >= now() - interval '30 days'
-         AND status IN ('verified', 'rejected', 'escalated')
+         AND status IN ('approved', 'denied', 'escalated')
        GROUP BY to_char(updated_at, 'YYYY-MM-DD')
        ORDER BY date DESC
        LIMIT 30`,
       [],
     );
 
-    // 3. Stale entries — pending entries older than 14 days
+    // 4. Stale entries — submitted entries older than 14 days
     const staleRows = await executeQuery<{ count: number }>(
       `SELECT count(*)::int AS count
-       FROM verification_queue
-       WHERE status = 'pending'
+       FROM submissions
+       WHERE status = 'submitted'
          AND created_at < now() - interval '14 days'`,
       [],
     );
 
-    // 4. Top organizations with pending entries
+    // 5. SLA breached entries
+    const slaBreachedRows = await executeQuery<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM submissions
+       WHERE sla_breached = true
+         AND status NOT IN ('approved', 'denied', 'withdrawn', 'archived')`,
+      [],
+    );
+
+    // 6. Top organizations with pending/in-review entries
     const topOrgs = await executeQuery<{
       organization_id: string;
       organization_name: string;
@@ -104,10 +122,11 @@ export async function GET(req: NextRequest) {
     }>(
       `SELECT o.id AS organization_id, o.name AS organization_name,
               count(*)::int AS pending_count
-       FROM verification_queue vq
-       JOIN services s ON s.id = vq.service_id
-       JOIN organizations o ON o.id = s.organization_id
-       WHERE vq.status IN ('pending', 'in_review')
+       FROM submissions sub
+       LEFT JOIN services s ON s.id = sub.service_id
+       LEFT JOIN organizations o ON o.id = s.organization_id
+       WHERE sub.status IN ('submitted', 'under_review', 'pending_second_approval')
+         AND o.id IS NOT NULL
        GROUP BY o.id, o.name
        ORDER BY pending_count DESC
        LIMIT 10`,
@@ -120,17 +139,27 @@ export async function GET(req: NextRequest) {
       byStatus[row.status] = row.count;
     }
 
+    const byType: Record<string, number> = {};
+    for (const row of typeCounts) {
+      byType[row.submission_type] = row.count;
+    }
+
     return NextResponse.json(
       {
         summary: {
-          pending:   byStatus['pending'] ?? 0,
-          inReview:  byStatus['in_review'] ?? 0,
-          verified:  byStatus['verified'] ?? 0,
-          rejected:  byStatus['rejected'] ?? 0,
-          escalated: byStatus['escalated'] ?? 0,
-          total:     Object.values(byStatus).reduce((a, b) => a + b, 0),
-          stale:     staleRows[0]?.count ?? 0,
+          submitted:              byStatus['submitted'] ?? 0,
+          underReview:            byStatus['under_review'] ?? 0,
+          pendingSecondApproval:  byStatus['pending_second_approval'] ?? 0,
+          approved:               byStatus['approved'] ?? 0,
+          denied:                 byStatus['denied'] ?? 0,
+          escalated:              byStatus['escalated'] ?? 0,
+          returned:               byStatus['returned'] ?? 0,
+          withdrawn:              byStatus['withdrawn'] ?? 0,
+          total:                  Object.values(byStatus).reduce((a, b) => a + b, 0),
+          stale:                  staleRows[0]?.count ?? 0,
+          slaBreached:            slaBreachedRows[0]?.count ?? 0,
         },
+        byType,
         recentActivity,
         topOrganizations: topOrgs,
       },

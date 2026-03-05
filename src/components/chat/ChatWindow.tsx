@@ -18,6 +18,19 @@ import { ChatServiceCard } from '@/components/chat/ChatServiceCard';
 const SAVED_KEY = 'oran:saved-service-ids';
 
 // ============================================================
+// SUGGESTION CHIPS — pre-fill and auto-submit on tap
+// ============================================================
+
+const SUGGESTION_CHIPS = [
+  { label: 'Help paying rent',          prompt: 'I need help paying rent or utilities' },
+  { label: 'Food pantry near me',       prompt: 'Where can I find a food pantry near me?' },
+  { label: 'Mental health support',     prompt: 'I need mental health support or counseling' },
+  { label: 'Job training programs',     prompt: 'Are there job training or employment programs available?' },
+  { label: 'Free or low-cost care',     prompt: 'I need free or low-cost healthcare options' },
+  { label: 'Shelter tonight',           prompt: 'I need a shelter or safe place to stay tonight' },
+] as const;
+
+// ============================================================
 // LOCAL STORAGE HELPERS
 // ============================================================
 
@@ -181,11 +194,11 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
     });
   }, []);
 
-  const sendMessage = useCallback(async () => {
-    const trimmed = input.trim();
+  const sendMessage = useCallback(async (override?: string) => {
+    const trimmed = (override ?? input).trim();
     if (!trimmed || isLoading) return;
 
-    setInput('');
+    if (!override) setInput('');
     setMessages((prev) => [
       ...prev,
       { role: 'user', content: trimmed, timestamp: new Date() },
@@ -198,6 +211,15 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: trimmed, sessionId, userId }),
       });
+
+      if (!response.ok) {
+        let errorMsg = 'Something went wrong. Please try again.';
+        try {
+          const errBody = await response.json() as { error?: string };
+          if (typeof errBody.error === 'string' && errBody.error) errorMsg = errBody.error;
+        } catch { /* fall through to generic message */ }
+        throw new Error(errorMsg);
+      }
 
       const data: ChatResponse = await response.json();
 
@@ -241,18 +263,42 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      void sendMessage();
     }
   };
 
+  const handleChipClick = useCallback((prompt: string) => {
+    if (isLoading || quotaRemaining === 0) return;
+    void sendMessage(prompt);
+  }, [isLoading, quotaRemaining, sendMessage]);
+
   return (
-    <div className="flex flex-col h-full max-h-[80vh] bg-gray-50 rounded-lg border border-gray-200 shadow">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 bg-white rounded-t-lg">
-        <h2 className="font-semibold text-gray-900">Find Services</h2>
-        <p className="text-xs text-gray-500">
-          Searches verified service records · {quotaRemaining} messages remaining
-        </p>
+    <div className="flex flex-col h-[calc(100dvh-13rem)] md:h-auto md:max-h-[80vh] bg-gray-50 rounded-lg border border-gray-200 shadow">
+      {/* Header — quota indicator only (page h1 owns the title) */}
+      <div className="px-4 py-2.5 border-b border-gray-200 bg-white rounded-t-lg">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-500">Verified records only</p>
+          <p className={`text-xs font-medium tabular-nums ${
+            quotaRemaining <= 10 ? 'text-amber-600' : 'text-gray-400'
+          }`}>
+            {quotaRemaining} msg{quotaRemaining !== 1 ? 's' : ''} left
+          </p>
+        </div>
+        {/* Quota progress bar — visible when ≤ 40 remaining */}
+        {quotaRemaining <= 40 && (
+          <div className="mt-1.5 h-1 w-full rounded-full bg-gray-100 overflow-hidden" aria-hidden="true">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${
+                quotaRemaining > 20
+                  ? 'bg-blue-400'
+                  : quotaRemaining > 10
+                  ? 'bg-amber-400'
+                  : 'bg-red-500'
+              }`}
+              style={{ width: `${(quotaRemaining / 50) * 100}%` }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Messages */}
@@ -276,13 +322,28 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
         )}
 
         {messages.length === 0 && (
-          <div className="text-center text-gray-400 text-sm py-8">
-            <p className="text-gray-700">Describe what you need help with.</p>
-            <p className="text-xs mt-2 text-gray-500">
-              Examples: “help paying rent”, “food pantry”, “job training”, “mental health counseling”.
-            </p>
-            <p className="text-xs mt-2 text-gray-500">
-              Results come from verified service records only.
+          <div className="flex flex-col items-center py-6 gap-5">
+            <div className="text-center">
+              <p className="text-gray-800 font-medium text-base">What do you need help with?</p>
+              <p className="text-xs mt-1 text-gray-400">
+                Tap a topic below or type your own question.
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2 max-w-xs mx-auto">
+              {SUGGESTION_CHIPS.map((chip) => (
+                <button
+                  key={chip.label}
+                  type="button"
+                  onClick={() => handleChipClick(chip.prompt)}
+                  disabled={isLoading || quotaRemaining === 0}
+                  className="text-xs px-3 py-2 rounded-full border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 active:bg-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[36px]"
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400 text-center max-w-[18rem]">
+              Results come from verified service records only — no personal data collected.
             </p>
           </div>
         )}
@@ -356,7 +417,7 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
             disabled={isLoading || quotaRemaining === 0}
           />
           <Button
-            onClick={sendMessage}
+            onClick={() => void sendMessage()}
             disabled={isLoading || !input.trim() || quotaRemaining === 0}
             size="icon"
             aria-label="Send message"

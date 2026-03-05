@@ -8,9 +8,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, AlertTriangle, Search } from 'lucide-react';
+import { AlertTriangle, Search } from 'lucide-react';
+
+import { Breadcrumb } from '@/components/ui/breadcrumb';
 
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
@@ -105,8 +106,6 @@ async function removeServerSaved(serviceId: string): Promise<void> {
 // ============================================================
 
 export default function ServiceDetailPage({ serviceId }: { serviceId: string }) {
-  const router = useRouter();
-
   const [service, setService] = useState<EnrichedService | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -173,24 +172,21 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
     });
   }, []);
 
-  const handleBack = useCallback(() => {
-    router.back();
-  }, [router]);
-
   return (
     <main className="container mx-auto max-w-2xl px-4 py-8">
       <ErrorBoundary>
-        {/* Back navigation */}
-        <div className="mb-6">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            Back to results
-          </button>
-        </div>
+        {/* Breadcrumb navigation */}
+        <Breadcrumb
+          className="mb-6"
+          items={[
+            { label: 'Directory', href: '/directory' },
+            ...(service
+              ? [{ label: service.service.name }]
+              : notFound
+              ? [{ label: 'Not found' }]
+              : []),
+          ]}
+        />
 
         {/* Loading */}
         {isLoading && (
@@ -224,7 +220,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
         {notFound && !isLoading && (
           <div className="rounded-lg border border-gray-200 bg-white p-10 text-center">
             <AlertTriangle className="h-10 w-10 mx-auto text-amber-400 mb-3" aria-hidden="true" />
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Service not found</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 mb-2">Service not found</h1>
             <p className="text-sm text-gray-600 mb-4">
               This service may no longer be available, or the link may be incorrect.
             </p>
@@ -240,6 +236,8 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
         {/* Service card */}
         {service && !isLoading && !notFound && (
           <div>
+            {/* sr-only h1 gives the page a semantic heading without duplicating the card */}
+            <h1 className="sr-only">{service.service.name}</h1>
             <ServiceCard
               enriched={service}
               isSaved={savedIds.has(service.service.id)}

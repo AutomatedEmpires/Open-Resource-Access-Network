@@ -3,14 +3,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { Search, MessageCircle, List, AlertTriangle, MapPin } from 'lucide-react';
+import { Search, MapPin, List, AlertTriangle, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { ServiceCard } from '@/components/directory/ServiceCard';
 import type { SearchResponse } from '@/services/search/types';
 import type { EnrichedService } from '@/domain/types';
+import { useToast } from '@/components/ui/toast';
 
 // Azure Maps SDK accesses `window` at module evaluation time — must be loaded
 // client-side only. The ssr:false dynamic import prevents SSR prerender errors.
@@ -50,7 +52,11 @@ export default function MapPage() {
   // Guard: only auto-query after user has done at least one manual search
   const [hasSearched, setHasSearched] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const savedIdsRef = useRef<Set<string>>(new Set());
   const resultsContainerRef = useRef<HTMLDivElement>(null);
+  /** Mobile-only toggle between map and list view */
+  const [mobileView, setMobileView] = useState<'map' | 'list'>('map');
+  const { success } = useToast();
 
   // Load saved IDs from localStorage on mount
   useEffect(() => {
@@ -58,19 +64,32 @@ export default function MapPage() {
       const raw = localStorage.getItem(SAVED_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as unknown;
-        if (Array.isArray(parsed)) setSavedIds(new Set(parsed.filter((v): v is string => typeof v === 'string')));
+        if (Array.isArray(parsed)) {
+          const next = new Set(parsed.filter((v): v is string => typeof v === 'string'));
+          savedIdsRef.current = next;
+          setSavedIds(next);
+        }
       }
     } catch { /* ignore */ }
   }, []);
 
+  // Keep ref in sync in case savedIds is updated elsewhere.
+  useEffect(() => {
+    savedIdsRef.current = savedIds;
+  }, [savedIds]);
+
   const toggleSave = useCallback((serviceId: string) => {
+    // Read from ref so this callback never goes stale — no savedIds in dep array.
+    const wasSaved = savedIdsRef.current.has(serviceId);
     setSavedIds((prev) => {
       const next = new Set(prev);
       if (next.has(serviceId)) { next.delete(serviceId); } else { next.add(serviceId); }
+      savedIdsRef.current = next;
       try { localStorage.setItem(SAVED_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
       return next;
     });
-  }, []);
+    success(wasSaved ? 'Removed from saved' : 'Saved');
+  }, [success]);
 
   const canSearch = useMemo(() => query.trim().length > 0, [query]);
 
@@ -175,26 +194,22 @@ export default function MapPage() {
   }, [data, isLoading]);
 
   return (
-    <main className="container mx-auto max-w-6xl px-4 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Service Map</h1>
-      <p className="text-gray-600 mb-6">
-        Verified service locations. No device location is requested.
-        Prefer browsing?{' '}
-        <Link href="/directory" className="text-blue-600 hover:underline inline-flex items-center gap-1">
-          <List className="h-4 w-4" aria-hidden="true" />
-          Directory
-        </Link>
-        {' '}or{' '}
-        <Link href="/chat" className="text-blue-600 hover:underline inline-flex items-center gap-1">
-          <MessageCircle className="h-4 w-4" aria-hidden="true" />
-          Chat
-        </Link>
-        .
-      </p>
+    <main className="container mx-auto max-w-6xl px-4 py-4 md:py-8">
+      <PageHeader
+        title="Service Map"
+        subtitle={
+          <>
+            Search verified service locations. Prefer browsing?{' '}
+            <Link href="/directory" className="text-blue-600 hover:underline">Directory</Link>
+            {' '}or{' '}
+            <Link href="/chat" className="text-blue-600 hover:underline">Chat</Link>.
+          </>
+        }
+      />
 
       <ErrorBoundary>
         {/* Search bar */}
-        <form onSubmit={handleSubmit} className="flex gap-2 items-center mb-4">
+        <form onSubmit={handleSubmit} className="flex gap-2 items-center mb-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
             <input
@@ -202,33 +217,52 @@ export default function MapPage() {
               onChange={(e) => setQuery(e.target.value)}
               type="search"
               placeholder="Search for services (e.g., food bank, shelter)"
-              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
               aria-label="Search services to plot"
             />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
           </div>
           <Button type="submit" disabled={!canSearch || isLoading}>
             Search
           </Button>
         </form>
 
-        {/* "Search this area" toggle */}
+        {/* Mobile view toggle — only visible below md */}
         {hasSearched && (
-          <div className="flex items-center gap-3 mb-4 text-sm">
-            <Button
+          <div className="flex gap-1 mb-3 md:hidden">
+            <button
               type="button"
-              variant="outline"
-              size="sm"
-              onClick={searchThisArea}
-              className="gap-1.5"
+              onClick={() => setMobileView('map')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
+                mobileView === 'map'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
             >
               <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-              Search this area
-            </Button>
-            {searchMode === 'bbox' && (
-              <span className="text-gray-500 text-xs">
-                Results update as you pan and zoom.
-              </span>
-            )}
+              Map view
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileView('list')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
+                mobileView === 'list'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <List className="h-3.5 w-3.5" aria-hidden="true" />
+              List ({data?.total ?? 0})
+            </button>
           </div>
         )}
 
@@ -246,74 +280,102 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* Map */}
-        <MapContainer
-          className="w-full h-[60vh]"
-          services={services}
-          onBoundsChange={handleBoundsChange}
-        />
+        {/* Split-pane layout: stacked on mobile, side-by-side on desktop */}
+        <div className="md:grid md:grid-cols-[1fr_380px] md:gap-4 md:items-start">
+          {/* Map column */}
+          <div className={`rounded-lg overflow-hidden md:sticky md:top-24 ${
+            hasSearched && mobileView === 'list' ? 'hidden md:block' : ''
+          }`}>
+            <MapContainer
+              className="w-full h-[50vh] md:h-[calc(100vh-16rem)]"
+              services={services}
+              onBoundsChange={handleBoundsChange}
+            />
+            {/* "Search this area" overlaid at map bottom */}
+            {hasSearched && (
+              <div className="flex items-center gap-3 mt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={searchThisArea}
+                  className="gap-1.5 text-xs"
+                >
+                  <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                  Search this area
+                </Button>
+                {searchMode === 'bbox' && (
+                  <span className="text-gray-500 text-xs">
+                    Updates as you pan.
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
 
-        {/* Pin count */}
-        {data && pinnedCount > 0 && (
-          <p className="mt-2 text-xs text-gray-500">
-            {pinnedCount} of {services.length} results have map coordinates.
-          </p>
-        )}
+          {/* Results column */}
+          <div
+            ref={resultsContainerRef}
+            tabIndex={-1}
+            className={`mt-4 md:mt-0 md:max-h-[calc(100vh-16rem)] md:overflow-y-auto outline-none ${
+              hasSearched && mobileView === 'map' ? 'hidden md:block' : ''
+            }`}
+          >
+            {isLoading && (
+              <div
+                className="space-y-3"
+                role="status"
+                aria-busy="true"
+                aria-label="Loading map results"
+              >
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <SkeletonCard key={`map-skeleton-${i}`} />
+                ))}
+              </div>
+            )}
 
-        {/* Results panel */}
-        <div className="mt-6">
-          {isLoading && (
-            <div
-              className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-              role="status"
-              aria-busy="true"
-              aria-label="Loading map results"
-            >
-              {Array.from({ length: 9 }).map((_, i) => (
-                <SkeletonCard key={`map-skeleton-${i}`} />
-              ))}
-            </div>
-          )}
+            {!isLoading && !data && !error && (
+              <div className="rounded-lg border border-gray-200 bg-white p-6 text-center">
+                <MapPin className="h-8 w-8 text-gray-300 mx-auto mb-2" aria-hidden="true" />
+                <p className="text-gray-700 font-medium text-sm">Search to view services</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Verified records only. Click a pin to preview.
+                </p>
+              </div>
+            )}
 
-          {!isLoading && !data && !error && (
-            <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-              <p className="text-gray-700 font-medium">Search to view services</p>
-              <p className="mt-1 text-sm text-gray-500">
-                Results come from verified records. Click a pin to preview.
-              </p>
-            </div>
-          )}
-
-          {!isLoading && data && (
-            <div
-              ref={resultsContainerRef}
-              tabIndex={-1}
-              className="space-y-3 outline-none"
-            >
-              <p className="text-sm text-gray-600" role="status" aria-live="polite">
-                {data.total} total matches · showing {data.results.length}
-              </p>
-              {data.results.length === 0 ? (
-                <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-                  <p className="text-gray-700 font-medium">No matches</p>
-                  <p className="mt-1 text-sm text-gray-500">Try different keywords or pan to a new area.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {data.results.map((r) => (
-                    <ServiceCard
-                    key={r.service.service.id}
-                    enriched={r.service}
-                    compact
-                    isSaved={savedIds.has(r.service.service.id)}
-                    onToggleSave={toggleSave}
-                    href={`/service/${r.service.service.id}`}
-                  />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+            {!isLoading && data && (
+              <>
+                <p className="text-xs text-gray-500 mb-3" role="status" aria-live="polite">
+                  {data.results.length === 0
+                    ? 'No matches'
+                    : `${data.results.length} of ${data.total} shown`}
+                  {pinnedCount > 0 && data.results.length > 0 && (
+                    <span className="ml-1">· {pinnedCount} pinned</span>
+                  )}
+                </p>
+                {data.results.length === 0 ? (
+                  <div className="rounded-lg border border-gray-200 bg-white p-6 text-center">
+                    <p className="text-gray-700 font-medium text-sm">No matches</p>
+                    <p className="mt-1 text-xs text-gray-500">Try different keywords or pan to a new area.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {data.results.map((r) => (
+                      <ServiceCard
+                        key={r.service.service.id}
+                        enriched={r.service}
+                        compact
+                        isSaved={savedIds.has(r.service.service.id)}
+                        onToggleSave={toggleSave}
+                        href={`/service/${r.service.service.id}`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </ErrorBoundary>
     </main>

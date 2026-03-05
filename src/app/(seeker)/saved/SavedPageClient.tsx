@@ -16,9 +16,11 @@ import { Bookmark, Search, Trash2, MessageCircle, MapPin, AlertTriangle } from '
 
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { ServiceCard } from '@/components/directory/ServiceCard';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import type { EnrichedService } from '@/domain/types';
+import { useToast } from '@/components/ui/toast';
 
 const STORAGE_KEY = 'oran:saved-service-ids';
 
@@ -135,6 +137,7 @@ export default function SavedPage() {
   const [error, setError] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [notFoundCount, setNotFoundCount] = useState(0);
+  const { success } = useToast();
 
   // Fetch details for saved IDs on mount and when IDs change
   useEffect(() => {
@@ -150,25 +153,39 @@ export default function SavedPage() {
         const serverIds = await fetchServerSavedIds();
         const localIds = readSavedIds();
 
-        // Union of localStorage IDs + server-side IDs, deduplicated
-        const allIds = [...new Set([...localIds, ...(serverIds ?? [])])];
+        let mergedIds: string[];
+
+        if (serverIds !== null) {
+          // Authenticated: server is source of truth.
+          // Push any local-only IDs to server, then use server set.
+          const localOnly = localIds.filter((id) => !serverIds.includes(id));
+          for (const id of localOnly) {
+            try {
+              await fetch('/api/user/saved', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ serviceId: id }),
+              });
+            } catch { /* best-effort */ }
+          }
+          mergedIds = [...new Set([...serverIds, ...localOnly])];
+          writeSavedIds(mergedIds);
+          setSavedIds(mergedIds);
+        } else {
+          // Not authenticated: use localStorage only
+          mergedIds = localIds;
+        }
 
         if (cancelled) return;
 
-        // Update localStorage with merged IDs
-        if (serverIds !== null && serverIds.length > 0) {
-          writeSavedIds(allIds);
-          setSavedIds(allIds);
-        }
-
-        if (allIds.length === 0) {
+        if (mergedIds.length === 0) {
           setServices([]);
           setIsLoading(false);
           return;
         }
 
         // Fetch services by IDs using batch endpoint
-        const { services: fetchedServices, notFound } = await fetchServicesByIds(allIds);
+        const { services: fetchedServices, notFound } = await fetchServicesByIds(mergedIds);
 
         if (cancelled) return;
 
@@ -177,7 +194,7 @@ export default function SavedPage() {
 
         // If some IDs were not found, clean them from saved IDs
         if (notFound.length > 0) {
-          const validIds = allIds.filter((id) => !notFound.includes(id));
+          const validIds = mergedIds.filter((id) => !notFound.includes(id));
           writeSavedIds(validIds);
           setSavedIds(validIds);
         }
@@ -204,7 +221,8 @@ export default function SavedPage() {
     setServices((prev) => prev.filter((s) => s.service.id !== serviceId));
     // Best-effort server-side removal
     void removeServerSaved(serviceId);
-  }, []);
+    success('Removed from saved');
+  }, [success]);
 
   const clearAll = useCallback(() => {
     // Clear localStorage
@@ -220,50 +238,46 @@ export default function SavedPage() {
 
   return (
     <main className="container mx-auto max-w-4xl px-4 py-8">
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2">
-            <Bookmark className="h-6 w-6 text-blue-600" aria-hidden="true" />
-            Saved Services
-          </h1>
-          <p className="text-gray-600 text-sm">
-            Bookmarks are stored on your device only. No data is sent to ORAN servers.
-          </p>
-        </div>
-        {savedIds.length > 0 && (
-          !showClearConfirm ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowClearConfirm(true)}
-              className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
-            >
-              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-              Clear all
-            </Button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                onClick={clearAll}
-                className="bg-red-600 hover:bg-red-700 text-white gap-1.5"
-              >
-                Confirm
-              </Button>
+      <PageHeader
+        title="Saved Services"
+        icon={<Bookmark className="h-6 w-6" aria-hidden="true" />}
+        subtitle="Bookmarks are stored on your device. Sign in to sync across devices."
+        actions={
+          savedIds.length > 0 ? (
+            !showClearConfirm ? (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setShowClearConfirm(false)}
+                onClick={() => setShowClearConfirm(true)}
+                className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
               >
-                Cancel
+                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                Clear all
               </Button>
-            </div>
-          )
-        )}
-      </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={clearAll}
+                  className="bg-red-600 hover:bg-red-700 text-white gap-1.5"
+                >
+                  Confirm
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowClearConfirm(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )
+          ) : undefined
+        }
+      />
 
       <ErrorBoundary>
         {/* Error */}
@@ -285,7 +299,7 @@ export default function SavedPage() {
             aria-busy="true"
             aria-label="Loading saved services"
           >
-            {Array.from({ length: Math.min(savedIds.length, 6) }).map((_, i) => (
+            {Array.from({ length: Math.min(savedIds.length, 4) }).map((_, i) => (
               <SkeletonCard key={`saved-skeleton-${i}`} />
             ))}
           </div>
@@ -294,28 +308,28 @@ export default function SavedPage() {
         {/* Empty state */}
         {!isLoading && isEmpty && (
           <div className="rounded-lg border border-gray-200 bg-white p-10 text-center">
-            <Bookmark className="h-10 w-10 mx-auto text-gray-300 mb-3" aria-hidden="true" />
-            <p className="text-gray-700 font-medium mb-1">No saved services yet</p>
-            <p className="text-sm text-gray-500 mb-4">
-              Find services and bookmark them for quick access later.
+            <Bookmark className="h-12 w-12 mx-auto text-gray-200 mb-4" aria-hidden="true" />
+            <p className="text-gray-800 font-semibold text-base mb-1">No saved services yet</p>
+            <p className="text-sm text-gray-500 mb-6 max-w-xs mx-auto">
+              Bookmark services to access them quickly. Saves stay on your device.
             </p>
-            <div className="flex items-center justify-center gap-3">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
               <Link href="/chat">
-                <Button variant="outline" size="sm" className="gap-1.5">
+                <Button size="sm" className="gap-1.5 w-full sm:w-auto">
                   <MessageCircle className="h-4 w-4" aria-hidden="true" />
-                  Find services
+                  Find services via Chat
                 </Button>
               </Link>
               <Link href="/directory">
-                <Button variant="outline" size="sm" className="gap-1.5">
+                <Button variant="outline" size="sm" className="gap-1.5 w-full sm:w-auto">
                   <Search className="h-4 w-4" aria-hidden="true" />
-                  Directory
+                  Browse directory
                 </Button>
               </Link>
               <Link href="/map">
-                <Button variant="outline" size="sm" className="gap-1.5">
+                <Button variant="outline" size="sm" className="gap-1.5 w-full sm:w-auto">
                   <MapPin className="h-4 w-4" aria-hidden="true" />
-                  Map
+                  Map view
                 </Button>
               </Link>
             </div>
@@ -325,7 +339,9 @@ export default function SavedPage() {
         {/* Results */}
         {!isLoading && services.length > 0 && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-500" role="status" aria-live="polite">{services.length} saved</p>
+            <p className="text-sm font-medium text-gray-700" role="status" aria-live="polite">
+              {services.length} saved service{services.length !== 1 ? 's' : ''}
+            </p>
             {notFoundCount > 0 && (
               <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
@@ -334,17 +350,13 @@ export default function SavedPage() {
             )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {services.map((s) => (
-                <div key={s.service.id} className="relative group">
-                  <ServiceCard enriched={s} href={`/service/${s.service.id}`} />
-                  <button
-                    type="button"
-                    onClick={() => removeService(s.service.id)}
-                    className="absolute top-2 right-2 p-1.5 rounded-md bg-white/90 border border-gray-200 text-gray-400 hover:text-red-600 hover:border-red-200 focus:text-red-600 focus:border-red-200 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus:opacity-100 transition-opacity min-w-[44px] min-h-[44px] flex items-center justify-center"
-                    aria-label={`Remove ${s.service.name} from saved`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+                <ServiceCard
+                  key={s.service.id}
+                  enriched={s}
+                  href={`/service/${s.service.id}`}
+                  isSaved
+                  onToggleSave={removeService}
+                />
               ))}
             </div>
           </div>

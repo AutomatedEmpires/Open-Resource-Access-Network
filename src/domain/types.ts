@@ -188,6 +188,10 @@ export interface ConfidenceScore {
  */
 export type { ConfidenceBand } from './confidence';
 
+// ============================================================
+// LEGACY VERIFICATION (kept for backward compatibility)
+// ============================================================
+
 export type VerificationStatus =
   | 'pending'
   | 'in_review'
@@ -204,6 +208,256 @@ export interface VerificationQueueEntry {
   notes?: string | null;
   createdByUserId?: string | null;
   updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================================
+// UNIVERSAL SUBMISSIONS (migration 0022)
+// ============================================================
+
+export type SubmissionType =
+  | 'service_verification'
+  | 'org_claim'
+  | 'data_correction'
+  | 'new_service'
+  | 'removal_request'
+  | 'community_report'
+  | 'appeal';
+
+export type SubmissionStatus =
+  | 'draft'
+  | 'submitted'
+  | 'auto_checking'
+  | 'needs_review'
+  | 'under_review'
+  | 'escalated'
+  | 'pending_second_approval'
+  | 'approved'
+  | 'denied'
+  | 'returned'
+  | 'withdrawn'
+  | 'expired'
+  | 'archived';
+
+export type SubmissionTargetType =
+  | 'service'
+  | 'organization'
+  | 'location'
+  | 'user'
+  | 'system';
+
+export type SubmissionPriority = 0 | 1 | 2 | 3;
+
+export interface Submission {
+  id: string;
+  submissionType: SubmissionType;
+  status: SubmissionStatus;
+  targetType: SubmissionTargetType;
+  targetId?: string | null;
+  serviceId?: string | null;
+  submittedByUserId: string;
+  assignedToUserId?: string | null;
+  title?: string | null;
+  notes?: string | null;
+  reviewerNotes?: string | null;
+  payload: Record<string, unknown>;
+  evidence: SubmissionEvidenceItem[];
+  priority: SubmissionPriority;
+  isLocked: boolean;
+  lockedAt?: Date | null;
+  lockedByUserId?: string | null;
+  slaDeadline?: Date | null;
+  slaBreached: boolean;
+  jurisdictionState?: string | null;
+  jurisdictionCounty?: string | null;
+  submittedAt?: Date | null;
+  reviewedAt?: Date | null;
+  resolvedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SubmissionEvidenceItem {
+  type: VerificationEvidenceType;
+  description?: string;
+  fileUrl?: string;
+  fileName?: string;
+  fileSizeBytes?: number;
+  submittedByUserId: string;
+  submittedAt: string;
+}
+
+export interface SubmissionTransition {
+  id: string;
+  submissionId: string;
+  fromStatus: SubmissionStatus;
+  toStatus: SubmissionStatus;
+  actorUserId: string;
+  actorRole?: string | null;
+  reason?: string | null;
+  gatesChecked: GateCheckResult[];
+  gatesPassed: boolean;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export interface GateCheckResult {
+  gate: string;
+  passed: boolean;
+  message?: string;
+}
+
+export interface SubmissionSla {
+  id: string;
+  submissionType: SubmissionType;
+  jurisdictionState?: string | null;
+  jurisdictionCounty?: string | null;
+  reviewHours: number;
+  escalationHours: number;
+  notifyOnBreach: string[];
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================================
+// PLATFORM SCOPES & RBAC (migration 0022)
+// ============================================================
+
+export type ScopeRiskLevel = 'low' | 'standard' | 'elevated' | 'critical';
+export type ScopeCategory =
+  | 'submission'
+  | 'verification'
+  | 'org_management'
+  | 'user_management'
+  | 'platform_admin'
+  | 'data_management'
+  | 'reporting';
+
+export interface PlatformScope {
+  id: string;
+  name: string;
+  description: string;
+  category: ScopeCategory;
+  riskLevel: ScopeRiskLevel;
+  requiresApproval: boolean;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PlatformRole {
+  id: string;
+  name: string;
+  description: string;
+  isSystem: boolean;
+  isOrgScoped: boolean;
+  hierarchyLevel: number;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface RoleScopeAssignment {
+  id: string;
+  roleId: string;
+  scopeId: string;
+  createdAt: Date;
+}
+
+export interface UserScopeGrant {
+  id: string;
+  userId: string;
+  scopeId: string;
+  organizationId?: string | null;
+  grantedByUserId: string;
+  grantedAt: Date;
+  expiresAt?: Date | null;
+  isActive: boolean;
+  approvalId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================================
+// TWO-PERSON APPROVAL (migration 0022)
+// ============================================================
+
+export type PendingGrantStatus = 'pending' | 'approved' | 'denied' | 'expired';
+
+export interface PendingScopeGrant {
+  id: string;
+  userId: string;
+  scopeId: string;
+  organizationId?: string | null;
+  requestedByUserId: string;
+  requestedAt: Date;
+  justification: string;
+  status: PendingGrantStatus;
+  decidedByUserId?: string | null;
+  decidedAt?: Date | null;
+  decisionReason?: string | null;
+  expiresAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ScopeAuditLogEntry {
+  id: string;
+  actorUserId: string;
+  actorRole?: string | null;
+  action: string;
+  targetType: string;
+  targetId: string;
+  beforeState?: Record<string, unknown> | null;
+  afterState?: Record<string, unknown> | null;
+  justification?: string | null;
+  ipDigest?: string | null;
+  createdAt: Date;
+}
+
+// ============================================================
+// NOTIFICATIONS (migration 0022)
+// ============================================================
+
+export type NotificationChannel = 'in_app' | 'email';
+export type NotificationStatus = 'pending' | 'sent' | 'read' | 'failed';
+
+export type NotificationEventType =
+  | 'submission_assigned'
+  | 'submission_status_changed'
+  | 'submission_sla_warning'
+  | 'submission_sla_breach'
+  | 'scope_grant_requested'
+  | 'scope_grant_decided'
+  | 'scope_grant_revoked'
+  | 'two_person_approval_needed'
+  | 'system_alert';
+
+export interface NotificationEvent {
+  id: string;
+  recipientUserId: string;
+  eventType: NotificationEventType;
+  channel: NotificationChannel;
+  title: string;
+  body: string;
+  resourceType?: string | null;
+  resourceId?: string | null;
+  actionUrl?: string | null;
+  status: NotificationStatus;
+  sentAt?: Date | null;
+  readAt?: Date | null;
+  idempotencyKey?: string | null;
+  createdAt: Date;
+}
+
+export interface NotificationPreference {
+  id: string;
+  userId: string;
+  eventType: NotificationEventType;
+  channel: NotificationChannel;
+  enabled: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

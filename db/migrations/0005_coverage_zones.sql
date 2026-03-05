@@ -1,7 +1,7 @@
 -- 0005_coverage_zones.sql
 -- Coverage zones table for community admin zone management and coverage routing.
 -- Uses PostGIS polygon geometry for zone boundaries.
--- Referenced by: docs/ROLES_PERMISSIONS.md, /coverage and /zone-management pages.
+-- Referenced by: docs/governance/ROLES_PERMISSIONS.md, /coverage and /zone-management pages.
 -- Idempotent: safe to run multiple times.
 
 CREATE TABLE IF NOT EXISTS coverage_zones (

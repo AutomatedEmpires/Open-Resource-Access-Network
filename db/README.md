@@ -48,7 +48,7 @@ Then add a server with:
 
 ## Azure Database for PostgreSQL (Production / Staging)
 
-ORAN uses **Azure Database for PostgreSQL Flexible Server** in production. See `docs/PLATFORM_AZURE.md` for provisioning details.
+ORAN uses **Azure Database for PostgreSQL Flexible Server** in production. See `docs/platform/PLATFORM_AZURE.md` for provisioning details.
 
 1. Provision a Flexible Server instance with PostGIS enabled:
    ```sql

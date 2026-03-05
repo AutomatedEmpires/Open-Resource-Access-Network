@@ -153,4 +153,4 @@ import { ErrorBoundary } from '@/components/ui/error-boundary';
 2. Export from file (no barrel)
 3. Add section to this README with props table + example
 4. Verify WCAG 2.1 AA compliance
-5. Update `docs/UI_SURFACE_MAP.md` if primitive affects seeker flows
+5. Update `docs/ui/UI_SURFACE_MAP.md` if primitive affects seeker flows

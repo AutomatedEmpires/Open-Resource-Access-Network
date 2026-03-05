@@ -157,6 +157,8 @@ export function selectAdminsForAssignment(
   closestAdmins: ClosestAdmin[],
   targetCount: number = 5
 ): ClosestAdmin[] {
+  if (targetCount <= 0) return [];
+
   const admins = closestAdmins.filter(a => a.profileType === 'admin');
   const orgs = closestAdmins.filter(a => a.profileType === 'org');
 
@@ -182,5 +184,7 @@ export function selectAdminsForAssignment(
   }
 
   // Sort final selection by distance
-  return selected.sort((a, b) => a.distanceMeters - b.distanceMeters);
+  return selected
+    .sort((a, b) => a.distanceMeters - b.distanceMeters)
+    .slice(0, targetCount);
 }

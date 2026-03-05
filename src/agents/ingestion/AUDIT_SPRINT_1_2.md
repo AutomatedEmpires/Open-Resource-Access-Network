@@ -36,9 +36,9 @@ You are auditing the first two sprints of the ORAN Ingestion Agent implementatio
 - `src/agents/ingestion/__tests__/fetcher.test.ts` — Unit tests (57 tests)
 
 ### SSOT Documents to Cross-Reference
-- `docs/AGENTS_INGESTION_PIPELINE.md` — Pipeline contract specification
-- `docs/AGENTS_SOURCE_REGISTRY.md` — Source allowlist/quarantine rules
-- `docs/AGENTS_OVERVIEW.md` — Agent architecture overview
+- `docs/agents/AGENTS_INGESTION_PIPELINE.md` — Pipeline contract specification
+- `docs/agents/AGENTS_SOURCE_REGISTRY.md` — Source allowlist/quarantine rules
+- `docs/agents/AGENTS_OVERVIEW.md` — Agent architecture overview
 - `src/agents/ingestion/AGENT_PROCESSING_SPEC.md` — Processing specification
 - `src/agents/ingestion/contracts.ts` — Core Zod contracts (EvidenceSnapshot, ExtractedCandidate, etc.)
 - `.github/copilot-instructions.md` — Safety non-negotiables

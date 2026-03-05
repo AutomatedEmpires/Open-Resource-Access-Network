@@ -47,6 +47,10 @@ export default function MapPage() {
   // Default to bbox mode so panning/zooming can re-query immediately.
   const [searchMode, setSearchMode] = useState<'text' | 'bbox'>('bbox');
 
+  // Opt-in device geolocation (in-session only; never stored)
+  const [isLocating, setIsLocating] = useState(false);
+  const [deviceCenter, setDeviceCenter] = useState<{ lat: number; lng: number } | null>(null);
+
   // Track latest bounds from the map for bbox-on-pan queries
   const boundsRef = useRef<Bounds | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -55,7 +59,50 @@ export default function MapPage() {
   const resultsContainerRef = useRef<HTMLDivElement>(null);
   /** Mobile-only toggle between map and list view */
   const [mobileView, setMobileView] = useState<'map' | 'list'>('map');
-  const { success } = useToast();
+  const { success, error: toastError, info } = useToast();
+
+  const roundForPrivacy = useCallback((value: number): number => {
+    // ~0.01° ≈ 1km (varies by latitude); used to reduce precision exposure.
+    return Math.round(value * 100) / 100;
+  }, []);
+
+  const handleUseMyLocation = useCallback(() => {
+    if (isLocating) return;
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+      toastError('Device location is not available in this browser.');
+      return;
+    }
+
+    setIsLocating(true);
+    info('Requesting device location…');
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = roundForPrivacy(pos.coords.latitude);
+        const lng = roundForPrivacy(pos.coords.longitude);
+        setDeviceCenter({ lat, lng });
+        setMobileView('map');
+        setSearchMode('bbox');
+        success('Centered near your location (not saved).');
+        setIsLocating(false);
+      },
+      (err) => {
+        const message =
+          err.code === err.PERMISSION_DENIED
+            ? 'Location permission denied.'
+            : err.code === err.TIMEOUT
+              ? 'Location request timed out.'
+              : 'Location unavailable.';
+        toastError(message);
+        setIsLocating(false);
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 10_000,
+        maximumAge: 60_000,
+      },
+    );
+  }, [info, isLocating, roundForPrivacy, success, toastError]);
 
   // Load saved IDs from localStorage on mount
   useEffect(() => {
@@ -231,7 +278,20 @@ export default function MapPage() {
           <Button type="submit" disabled={!canSearch || isLoading}>
             Search
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleUseMyLocation}
+            disabled={isLocating}
+            title="Opt-in: uses device location in-session only; not stored"
+          >
+            {isLocating ? 'Locating…' : 'Use my location'}
+          </Button>
         </form>
+
+        <p className="-mt-2 mb-3 text-xs text-gray-600">
+          Location is optional. If you choose “Use my location”, ORAN uses an approximate location to center the map in-session only and does not store it.
+        </p>
 
         {/* Mobile view toggle — only visible below md */}
         <div className="flex gap-1 mb-3 md:hidden">
@@ -283,6 +343,9 @@ export default function MapPage() {
           }`}>
             <MapContainer
               className="w-full h-[50vh] md:h-[calc(100vh-16rem)]"
+              centerLat={deviceCenter?.lat}
+              centerLng={deviceCenter?.lng}
+              zoom={deviceCenter ? 12 : undefined}
               services={services}
               onBoundsChange={handleBoundsChange}
             />

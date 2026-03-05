@@ -51,7 +51,7 @@ Use this file as the authoritative checklist in PRs.
 - [ ] No PII added to logs/telemetry.
 - [ ] Any new API call validates input via Zod (if applicable).
 - [ ] Any profile persistence requires explicit consent UI and matches docs/SECURITY_PRIVACY.md.
-- [ ] Location remains approximate by default (no precise GPS requests).
+- [ ] Location remains approximate by default (no automatic geolocation; device geolocation only on explicit user action).
 
 ---
 

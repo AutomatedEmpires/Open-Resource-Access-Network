@@ -2,7 +2,8 @@
  * ORAN Map Container — Azure Maps
  *
  * Safety / Privacy:
- * - Does NOT request device location.
+ * - Does NOT request device location (any device location use must be explicit
+ *   and happen at the page level).
  * - Plots only coordinates from stored, verified records.
  * - Subscription key is fetched from /api/maps/token (server-side broker)
  *   so it never appears in the client JS bundle.
@@ -124,6 +125,16 @@ export function MapContainer({
   const popupRef = useRef<atlas.Popup | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // If the parent provides a new center/zoom (e.g. after opt-in geolocation),
+  // re-center the map. This component never requests device location itself.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (isLoading) return;
+
+    map.setCamera({ center: [centerLng, centerLat], zoom });
+  }, [centerLat, centerLng, isLoading, zoom]);
 
   // ── extract plottable pins ────────────────────────────────
   const pins: Pin[] = useMemo(() => {

@@ -62,7 +62,7 @@ Completed: 2026-03-02
 Acceptance criteria:
 
 - Explicit consent before saving. ✅ (localStorage opt-in, no server sync)
-- No precise GPS. ✅ ("ORAN never requests precise GPS location")
+- Location remains approximate by default. ✅ (no automatic geolocation; device geolocation only on explicit user action)
 - Clear data deletion path. ✅ (confirm/cancel flow on profile page)
 
 ---

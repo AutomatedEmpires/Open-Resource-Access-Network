@@ -58,7 +58,7 @@
 5. Debounced bbox re-query on pan (600ms)
 6. Save toggle works same as directory (localStorage)
 7. **Where it breaks/degrades**:
-   - No "Use my location" button (intentional per privacy policy — no browser GPS)
+   - Location-based centering is opt-in only (device geolocation must be explicitly requested by the user and not stored)
    - No filter panel for taxonomy/confidence on map
    - No click-pin-to-see-detail interaction documented in `MapContainer` source
 
@@ -117,7 +117,7 @@
 ### What IS enforced
 - Rate limiting on `/api/chat` (20/min), `/api/search` (60/min), `/api/feedback` (10/min) — in-memory, per-IP
 - Input validation via Zod on all three API routes
-- Security headers in `next.config.mjs`: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` disabling camera/mic/geolocation
+- Security headers in `next.config.mjs`: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` disabling camera/mic and allowing geolocation for same-origin opt-in flows
 
 ---
 
@@ -311,12 +311,12 @@ The chat pipeline in `src/services/chat/orchestrator.ts` implements an 8-stage p
 ### Safety & Compliance
 - [x] Never guarantees eligibility — "may qualify" language everywhere
 - [x] No PII stored in telemetry
-- [x] No browser GPS requested
-- [x] Approximate location only (city-level)
+- [x] No browser GPS requested without explicit user action
+- [x] Approximate location only; device geolocation rounded (~1km) if user opts in
 - [x] Crisis detection fires before quota (never rate-limited)
 - [ ] **Consent gates** — documented in SECURITY_PRIVACY.md but not implemented
 - [ ] **Cookie consent banner** — not implemented
-- [ ] **Location consent flow** — not implemented
+- [x] Location consent flow (map) — explicit opt-in; in-session only; not stored
 
 ### UX Quality
 - [x] Loading states on all async pages

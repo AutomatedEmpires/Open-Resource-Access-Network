@@ -83,7 +83,7 @@ ORAN explicitly prohibits:
 - Approximate location (city/ZIP level) shown to user before use
 - User must explicitly grant or deny location sharing
 - IP-based geolocation: city-level only, never stored
-- Precise GPS coordinates: never requested
+- Device geolocation: requested only on explicit user action, used in-session only, never stored
 
 ### Profile Save Consent
 - Profile saving is **opt-in**, not default
@@ -106,7 +106,7 @@ ORAN explicitly prohibits:
 | IP geolocation  | City-level     | Used as default if user consents |
 | User-entered ZIP| ZIP code area  | Centroid of ZIP for queries |
 | User-entered city| City centroid | Used for queries |
-| Browser GPS     | Never requested| Not used in current implementation |
+| Browser geolocation | Rounded (~0.01° ≈ 1km) | Opt-in only (explicit user action); used to center the map/search; never stored |
 | Saved preference| City/county    | Stored as city name, not coordinates |
 
 API responses round coordinates to ~0.01 degree precision (~1km) even when internal storage is precise.
@@ -181,7 +181,7 @@ Configured in `next.config.mjs`:
 - `X-Frame-Options: DENY`
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`
-- `Permissions-Policy`: disables camera/mic/geolocation and other sensitive capabilities by default
+- `Permissions-Policy`: disables camera/mic and other sensitive capabilities by default; allows geolocation for same-origin consent-based flows
 
 Planned:
 - Nonce-based `Content-Security-Policy` (see ADR-0005 for current baseline CSP).

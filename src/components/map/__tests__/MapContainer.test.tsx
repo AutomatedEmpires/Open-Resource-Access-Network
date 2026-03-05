@@ -257,7 +257,7 @@ describe('MapContainer', () => {
     const { MapContainer } = await loadMapContainer();
 
     MapContainer({ className: 'h-48' });
-    effects[0]();
+  effects[1]();
     await Promise.resolve();
     await Promise.resolve();
 
@@ -306,7 +306,7 @@ describe('MapContainer', () => {
 
     expect(regions).toHaveLength(1);
 
-    const cleanup = effects[0]() as () => void;
+    const cleanup = effects[1]() as () => void;
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -332,7 +332,7 @@ describe('MapContainer', () => {
       maxLat: 48.0,
     });
 
-    effects[1]();
+    effects[2]();
 
     expect(map.markers.add).toHaveBeenCalledWith(expect.arrayContaining(markerInstances));
     expect(boundingBoxFromPositionsMock).toHaveBeenCalledWith([

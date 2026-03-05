@@ -31,7 +31,9 @@ If a UI implementation conflicts with this doc, update this doc (and add an ADR 
 4. **Privacy-first**
    - UI MUST default to approximate location.
    - UI MUST require explicit consent before saving profile details.
-   - UI MUST NOT request precise GPS (unless/until a future ADR + security review approves it).
+   - UI MUST NOT request device geolocation without explicit user action.
+   - If device geolocation is requested, UI MUST explain it is used in-session only and is not stored.
+   - UI SHOULD reduce location precision before use (see ADR-0006).
 
 ---
 

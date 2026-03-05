@@ -204,7 +204,12 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
       for (const [tsKey, dbCol] of Object.entries(locFieldMap)) {
         if (tsKey in d) {
-          locParams.push((d as Record<string, unknown>)[tsKey] ?? null);
+          let val = (d as Record<string, unknown>)[tsKey] ?? null;
+          // Round coordinates to 3 decimal places (~111m) for privacy
+          if ((tsKey === 'latitude' || tsKey === 'longitude') && typeof val === 'number') {
+            val = Math.round(val * 1000) / 1000;
+          }
+          locParams.push(val);
           locClauses.push(`${dbCol} = $${locParams.length}`);
         }
       }

@@ -1,12 +1,8 @@
 /**
  * POST /api/host/claim — Submit an organization claim.
  *
- * Creates an organization record and a verification_queue entry with status 'pending'.
- * The community admin workflow processes the queue and verifies claims.
- *
- * This does NOT create SQL migrations — the verification_queue table is assumed
- * to exist from 0000_initial_schema.sql. The submitted_by column was renamed to
- * submitted_by_user_id in 0002_audit_fields.sql.
+ * Creates an organization record and a submissions entry with submission_type='org_claim'
+ * and status='submitted'. The community/ORAN admin workflow processes the queue.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -15,6 +11,7 @@ import { isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth';
+import { applySla } from '@/services/workflow/engine';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
@@ -33,6 +30,8 @@ const ClaimSchema = z.object({
   url:              z.string().url().max(2000).optional(),
   /** Contact email for verification */
   email:            z.string().email().max(500).optional(),
+  /** Contact phone for verification */
+  phone:            z.string().max(30).optional(),
   /** Notes for the reviewer (role at org, how to verify, etc.) */
   claimNotes:       z.string().max(2000).optional(),
 });
@@ -107,14 +106,15 @@ export async function POST(req: NextRequest) {
     const result = await withTransaction(async (client) => {
       // 1. Create the organization
       const orgResult = await client.query<{ id: string }>(
-        `INSERT INTO organizations (name, description, url, email)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO organizations (name, description, url, email, phone)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id`,
         [
           d.organizationName,
           d.description ?? null,
           d.url ?? null,
           d.email ?? null,
+          d.phone ?? null,
         ],
       );
       const orgId = orgResult.rows[0].id;
@@ -128,19 +128,69 @@ export async function POST(req: NextRequest) {
       );
       const serviceId = svcResult.rows[0].id;
 
-      // 3. Create verification_queue entry with submitter ID
-      await client.query(
-        `INSERT INTO verification_queue (service_id, status, submitted_by_user_id, notes)
-         VALUES ($1, 'pending', $2, $3)`,
+      // 3. Create submission entry for org claim
+      const subResult = await client.query<{ id: string }>(
+        `INSERT INTO submissions
+           (submission_type, status, target_type, target_id, service_id,
+            submitted_by_user_id, title, notes, payload, submitted_at)
+         VALUES ('org_claim', 'submitted', 'organization', $1, $2, $3, $4, $5, $6, NOW())
+         RETURNING id`,
         [
+          orgId,
           serviceId,
           submitterId,
+          `Organization claim: ${d.organizationName}`,
           d.claimNotes ?? 'Organization claim submitted via host portal.',
+          JSON.stringify({ phone: d.phone ?? null }),
+        ],
+      );
+      const submissionId = subResult.rows[0].id;
+
+      // 4. Record the initial transition (draft → submitted)
+      await client.query(
+        `INSERT INTO submission_transitions
+           (submission_id, from_status, to_status, actor_user_id, actor_role,
+            reason, gates_checked, gates_passed, metadata)
+         VALUES ($1, 'draft', 'submitted', $2, $3, $4, '[]', true, $5)`,
+        [
+          submissionId,
+          submitterId,
+          authCtx.role,
+          'Organization claim submitted',
+          JSON.stringify({ organization_id: orgId, service_id: serviceId }),
         ],
       );
 
-      return { orgId, serviceId };
+      // 5. Notify admin pool of new submission
+      await client.query(
+        `INSERT INTO notification_events
+           (recipient_user_id, event_type, title, body, resource_type, resource_id, action_url, idempotency_key)
+         SELECT up.user_id,
+                'submission_status_changed',
+                'New organization claim submitted',
+                $2,
+                'submission',
+                $1,
+                '/admin/approvals',
+                'new_claim_' || $1 || '_' || up.user_id
+         FROM user_profiles up
+         WHERE up.role IN ('community_admin', 'oran_admin')
+         ON CONFLICT (idempotency_key) DO NOTHING`,
+        [
+          submissionId,
+          `New org claim: ${d.organizationName}`,
+        ],
+      );
+
+      return { orgId, serviceId, submissionId };
     });
+
+    // Apply SLA deadline for the new claim
+    try {
+      await applySla(result.submissionId, 'org_claim');
+    } catch {
+      // SLA is best-effort — don't fail the submission
+    }
 
     return NextResponse.json(
       {

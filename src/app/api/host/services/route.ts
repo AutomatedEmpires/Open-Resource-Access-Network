@@ -174,9 +174,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }
 
-  // Auth check
+  // Auth check — required unconditionally because submitted_by_user_id is NOT NULL
   const authCtx = await getAuthContext();
-  if (!authCtx && shouldEnforceAuth()) {
+  if (!authCtx) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
@@ -252,20 +252,43 @@ export async function POST(req: NextRequest) {
           d.fees ?? null,
           d.accreditations ?? null,
           d.licenses ?? null,
-          authCtx?.userId ?? null,
+          authCtx.userId,
         ],
       );
       const service = svcRows.rows[0];
 
-      // 2. Auto-enqueue service for verification.
+      // 2. Auto-enqueue service for verification via submissions table.
       //    Every service must pass the community admin review cycle before
       //    it can be marked active in search results.
-      await client.query(
-        `INSERT INTO verification_queue (service_id, status, submitted_by_user_id)
-         VALUES ($1, 'pending', $2)
-         ON CONFLICT (service_id) DO NOTHING`,
-        [service.id, authCtx?.userId ?? null],
+      const subRows = await client.query(
+        `INSERT INTO submissions
+           (submission_type, status, target_type, target_id, service_id,
+            submitted_by_user_id, title, submitted_at)
+         VALUES ('service_verification', 'submitted', 'service', $1, $1, $2, $3, NOW())
+         RETURNING id`,
+        [service.id, authCtx.userId, `Service verification: ${service.name}`],
       );
+      const submissionId = subRows.rows[0]?.id;
+
+      // Notify admin pool of new service verification
+      if (submissionId) {
+        await client.query(
+          `INSERT INTO notification_events
+             (recipient_user_id, event_type, title, body, resource_type, resource_id, action_url, idempotency_key)
+           SELECT up.user_id,
+                  'submission_status_changed',
+                  'New service submitted for verification',
+                  $2,
+                  'submission',
+                  $1,
+                  '/community/queue',
+                  'new_service_' || $1 || '_' || up.user_id
+           FROM user_profiles up
+           WHERE up.role IN ('community_admin', 'oran_admin')
+           ON CONFLICT (idempotency_key) DO NOTHING`,
+          [submissionId, `Service: ${service.name}`],
+        );
+      }
 
       return service;
     });

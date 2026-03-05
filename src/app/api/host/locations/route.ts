@@ -235,8 +235,8 @@ export async function POST(req: NextRequest) {
           d.alternateName ?? null,
           d.description ?? null,
           d.transportation ?? null,
-          d.latitude ?? null,
-          d.longitude ?? null,
+          d.latitude != null ? Math.round(d.latitude * 1000) / 1000 : null,
+          d.longitude != null ? Math.round(d.longitude * 1000) / 1000 : null,
           authCtx?.userId ?? null,
         ],
       );

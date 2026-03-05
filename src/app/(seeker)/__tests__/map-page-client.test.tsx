@@ -48,7 +48,23 @@ vi.mock('@/components/directory/ServiceCard', () => ({
   ),
 }));
 
+const toastSuccessMock = vi.hoisted(() => vi.fn());
+vi.mock('@/components/ui/toast', () => ({
+  ToastProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useToast: () => ({
+    toast: vi.fn(),
+    success: toastSuccessMock,
+    error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
+  }),
+}));
+
 import MapPage from '@/app/(seeker)/map/MapPageClient';
+
+function renderWithToast(ui: React.ReactElement) {
+  return render(ui);
+}
 
 function makeSearchResponse(overrides: Record<string, unknown> = {}) {
   return {
@@ -85,7 +101,7 @@ beforeEach(() => {
 
 describe('MapPageClient', () => {
   it('renders initial state and waits for a manual search', () => {
-    render(<MapPage />);
+    renderWithToast(<MapPage />);
 
     expect(screen.getByRole('heading', { name: 'Service Map' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled();
@@ -98,7 +114,7 @@ describe('MapPageClient', () => {
       json: async () => makeSearchResponse(),
     });
 
-    render(<MapPage />);
+    renderWithToast(<MapPage />);
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
       target: { value: 'shelter' },
@@ -126,7 +142,7 @@ describe('MapPageClient', () => {
         json: async () => makeSearchResponse(),
       });
 
-    render(<MapPage />);
+    renderWithToast(<MapPage />);
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
       target: { value: 'food' },
@@ -158,7 +174,7 @@ describe('MapPageClient', () => {
       json: async () => ({ error: 'search service unavailable' }),
     });
 
-    render(<MapPage />);
+    renderWithToast(<MapPage />);
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
       target: { value: 'legal aid' },
@@ -175,7 +191,7 @@ describe('MapPageClient', () => {
       json: async () => makeSearchResponse(),
     });
 
-    render(<MapPage />);
+    renderWithToast(<MapPage />);
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
       target: { value: 'shelter' },
@@ -196,7 +212,7 @@ describe('MapPageClient', () => {
       json: async () => makeSearchResponse({ results: [], total: 0, hasMore: false }),
     });
 
-    render(<MapPage />);
+    renderWithToast(<MapPage />);
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
       target: { value: 'rare query' },

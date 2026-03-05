@@ -29,11 +29,11 @@ vi.mock('@/components/ui/button', () => ({
 }));
 
 async function loadAuthErrorPage() {
-  return import('../error/page');
+  return import('../error/AuthErrorPageClient');
 }
 
 async function loadSignInPage() {
-  return import('../signin/page');
+  return import('../signin/SignInPageClient');
 }
 
 beforeEach(() => {

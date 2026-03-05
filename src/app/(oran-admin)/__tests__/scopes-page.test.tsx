@@ -206,8 +206,8 @@ describe('oran admin scope center page', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Audit Log' }));
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenLastCalledWith('/api/admin/scopes?limit=1');
-      expect(screen.getByText('Failed')).toBeInTheDocument();
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/admin/scopes/audit?limit=50');
+      expect(screen.getByText('Failed to load audit log')).toBeInTheDocument();
     });
   });
 });

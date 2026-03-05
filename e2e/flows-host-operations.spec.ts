@@ -88,6 +88,27 @@ test.describe('Host operations workflow coverage', () => {
     }
   });
 
+  test('services create dialog requires organization selection before create', async ({ page }) => {
+    await loginAs(page, 'host_admin');
+    await page.goto('/services');
+
+    await expect(page.getByRole('heading', { name: 'Services' })).toBeVisible();
+
+    const addService = page.getByRole('button', { name: 'Add Service' });
+    if (await addService.isEnabled().catch(() => false)) {
+      await addService.click();
+      await expect(page.getByRole('heading', { name: 'Add Service' })).toBeVisible();
+
+      await page.locator('#svc-name').fill(`E2E Service ${Date.now().toString(36)}`);
+      await expect(page.getByRole('button', { name: 'Create' })).toBeDisabled();
+
+      await page.getByRole('button', { name: 'Cancel' }).first().click();
+      await expect(page.getByRole('heading', { name: 'Add Service' })).toHaveCount(0);
+    } else {
+      await expect(addService).toBeDisabled();
+    }
+  });
+
   test('locations page enforces client-side latitude validation in the create dialog', async ({ page }) => {
     await loginAs(page, 'host_admin');
     await page.goto('/locations');
@@ -104,6 +125,28 @@ test.describe('Host operations workflow coverage', () => {
       await page.getByRole('button', { name: 'Create' }).click();
 
       await expect(page.getByText('Latitude must be a number between -90 and 90.')).toBeVisible();
+      await page.getByRole('button', { name: 'Cancel' }).first().click();
+    } else {
+      await expect(addLocation).toBeDisabled();
+    }
+  });
+
+  test('locations page enforces client-side longitude validation in the create dialog', async ({ page }) => {
+    await loginAs(page, 'host_admin');
+    await page.goto('/locations');
+
+    await expect(page.getByRole('heading', { name: 'Locations' })).toBeVisible();
+
+    const addLocation = page.getByRole('button', { name: 'Add Location' });
+    if (await addLocation.isEnabled().catch(() => false)) {
+      await addLocation.click();
+      await expect(page.getByRole('heading', { name: 'Add Location' })).toBeVisible();
+
+      await page.locator('#loc-name').fill(`E2E Location ${Date.now().toString(36)}`);
+      await page.locator('#loc-lng').fill('500');
+      await page.getByRole('button', { name: 'Create' }).click();
+
+      await expect(page.getByText('Longitude must be a number between -180 and 180.')).toBeVisible();
       await page.getByRole('button', { name: 'Cancel' }).first().click();
     } else {
       await expect(addLocation).toBeDisabled();

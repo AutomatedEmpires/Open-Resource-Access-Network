@@ -155,6 +155,7 @@ test.describe('Portals and role-based flows', () => {
 
     await expect(page.getByRole('heading', { name: 'Team Management' })).toBeVisible();
 
+    await page.getByRole('button', { name: 'User ID' }).click();
     await page.locator('#invite-user-id').fill('not-a-uuid');
     await expect(page.getByText('Enter a valid UUID')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Add Member' })).toBeDisabled();

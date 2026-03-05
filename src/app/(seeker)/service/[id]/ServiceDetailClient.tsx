@@ -184,6 +184,8 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               ? [{ label: service.service.name }]
               : notFound
               ? [{ label: 'Not found' }]
+              : error
+              ? [{ label: 'Error' }]
               : []),
           ]}
         />

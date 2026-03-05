@@ -52,7 +52,12 @@ vi.mock('@/components/directory/ServiceCard', () => ({
   ),
 }));
 
+import { ToastProvider } from '@/components/ui/toast';
 import DirectoryPage from '@/app/(seeker)/directory/DirectoryPageClient';
+
+function renderWithToast(ui: React.ReactElement) {
+  return render(<ToastProvider>{ui}</ToastProvider>);
+}
 
 function makeSearchResponse(overrides: Record<string, unknown> = {}) {
   return {
@@ -82,7 +87,7 @@ beforeEach(() => {
 
 describe('DirectoryPageClient', () => {
   it('shows initial empty state before any search', () => {
-    render(<DirectoryPage />);
+    renderWithToast(<DirectoryPage />);
 
     expect(screen.getByText('Start with a search')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -97,7 +102,7 @@ describe('DirectoryPageClient', () => {
       json: async () => makeSearchResponse({ page: 2 }),
     });
 
-    render(<DirectoryPage />);
+    renderWithToast(<DirectoryPage />);
 
     await screen.findByText('Page 2 · end of results');
     expect(screen.getByText('Food Pantry')).toBeInTheDocument();
@@ -131,7 +136,7 @@ describe('DirectoryPageClient', () => {
         json: async () => makeSearchResponse({ page: 2, total: 3, hasMore: false }),
       });
 
-    render(<DirectoryPage />);
+    renderWithToast(<DirectoryPage />);
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search services' }), {
       target: { value: 'rent help' },
@@ -171,7 +176,7 @@ describe('DirectoryPageClient', () => {
       json: async () => ({ error: 'backend unavailable' }),
     });
 
-    render(<DirectoryPage />);
+    renderWithToast(<DirectoryPage />);
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search services' }), {
       target: { value: 'housing' },
@@ -189,7 +194,7 @@ describe('DirectoryPageClient', () => {
       json: async () => makeSearchResponse(),
     });
 
-    render(<DirectoryPage />);
+    renderWithToast(<DirectoryPage />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
 
@@ -211,7 +216,7 @@ describe('DirectoryPageClient', () => {
       json: async () => makeSearchResponse({ results: [], total: 0, hasMore: false }),
     });
 
-    render(<DirectoryPage />);
+    renderWithToast(<DirectoryPage />);
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search services' }), {
       target: { value: 'very specific query' },

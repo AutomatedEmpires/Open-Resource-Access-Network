@@ -140,6 +140,95 @@ test.describe('Admin workflow coverage', () => {
     }).toPass({ timeout: 30_000 });
   });
 
+  test('community admin queue tabs switch between assigned and status filters', async ({ page }) => {
+    await loginAs(page, 'community_admin');
+    await page.goto('/queue');
+
+    await expect(page.getByRole('heading', { name: 'Verification Queue' })).toBeVisible();
+
+    const assignedTab = page.getByRole('tab', { name: 'Assigned to me' });
+    await assignedTab.click();
+    await expect(assignedTab).toHaveAttribute('aria-selected', 'true');
+
+    const submittedTab = page.getByRole('tab', { name: 'Submitted' });
+    await submittedTab.click();
+    await expect(submittedTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('Application error')).toHaveCount(0);
+  });
+
+  test('ORAN zone management create dialog enforces required zone name', async ({ page }) => {
+    await loginAs(page, 'oran_admin');
+    await page.goto('/zone-management');
+
+    await expect(page.getByRole('heading', { name: 'Coverage Zone Administration' })).toBeVisible();
+    await page.getByRole('button', { name: 'New Zone' }).click();
+    await expect(page.getByRole('heading', { name: 'Create Coverage Zone' })).toBeVisible();
+
+    const createButton = page.getByRole('button', { name: 'Create Zone' });
+    await expect(createButton).toBeDisabled();
+
+    await page.locator('#create-name').fill(`E2E Zone ${runId()}`);
+    await expect(createButton).toBeEnabled();
+
+    await page.getByRole('button', { name: 'Cancel' }).last().click();
+    await expect(page.getByRole('heading', { name: 'Create Coverage Zone' })).toHaveCount(0);
+  });
+
+  test('ORAN rules editor can open and cancel without saving', async ({ page }) => {
+    await loginAs(page, 'oran_admin');
+    await page.goto('/rules');
+
+    await expect(page.getByRole('heading', { name: /System Rules & Feature Flags/i })).toBeVisible();
+
+    const editButtons = page.getByRole('button', { name: 'Edit' });
+    if (await editButtons.first().isVisible().catch(() => false)) {
+      await editButtons.first().click();
+      await expect(page.getByRole('button', { name: 'Save Changes' })).toBeVisible();
+      await page.getByRole('button', { name: 'Cancel' }).first().click();
+      await expect(page.getByRole('button', { name: 'Save Changes' })).toHaveCount(0);
+    } else {
+      await expect(page.getByText('No feature flags configured')).toBeVisible();
+    }
+  });
+
+  test('ORAN audit filters can be applied and then cleared', async ({ page }) => {
+    await loginAs(page, 'oran_admin');
+    await page.goto('/audit');
+
+    await expect(page.getByRole('heading', { name: 'Audit Log' })).toBeVisible();
+
+    const actionFilter = page.locator('#action-filter');
+    const tableFilter = page.locator('#table-filter');
+    await actionFilter.selectOption('create');
+    await tableFilter.fill('submissions');
+    await expect(page.getByRole('button', { name: 'Clear filters' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Clear filters' }).click();
+    await expect(actionFilter).toHaveValue('');
+    await expect(tableFilter).toHaveValue('');
+  });
+
+  test('ORAN ingestion process tab enforces input-driven button enablement', async ({ page }) => {
+    await loginAs(page, 'oran_admin');
+    await page.goto('/ingestion');
+
+    await expect(page.getByRole('heading', { name: 'Ingestion Agent' })).toBeVisible();
+    await page.getByRole('tab', { name: 'Process' }).click();
+    await expect(page.getByRole('heading', { name: 'Process Single URL' })).toBeVisible();
+
+    const processButton = page.getByRole('button', { name: 'Process' });
+    await expect(processButton).toBeDisabled();
+    await page.getByLabel('Source URL to process').fill('https://example.org/services');
+    await expect(processButton).toBeEnabled();
+    await page.getByLabel('Source URL to process').fill('');
+    await expect(processButton).toBeDisabled();
+
+    const batchButton = page.getByRole('button', { name: 'Run Batch' });
+    await expect(batchButton).toBeDisabled();
+    await page.getByLabel('URLs to batch process').fill('https://example.org/a\nhttps://example.org/b');
+    await expect(batchButton).toBeEnabled();
+  });
+
   test('ORAN appeals page supports review action or empty-state fallback', async ({ page }) => {
     await loginAs(page, 'oran_admin');
     await page.goto('/appeals');

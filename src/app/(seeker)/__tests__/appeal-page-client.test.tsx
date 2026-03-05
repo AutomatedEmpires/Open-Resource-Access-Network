@@ -53,6 +53,11 @@ vi.mock('@/components/ui/PageHeader', () => ({
   ),
 }));
 
+vi.mock('next-auth/react', () => ({
+  useSession: () => ({ data: { user: { name: 'Test', email: 'test@example.com' } }, status: 'authenticated' }),
+  SessionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 import AppealPageContent from '@/app/(seeker)/appeal/AppealPageClient';
 
 function makeAppeal(overrides: Record<string, unknown> = {}) {

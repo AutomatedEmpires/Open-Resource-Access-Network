@@ -5,12 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const fetchMock = vi.hoisted(() => vi.fn());
-const backMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({
-    back: backMock,
-  }),
+  useRouter: () => ({}),
 }));
 
 vi.mock('@/components/ui/error-boundary', () => ({
@@ -134,7 +131,7 @@ describe('ServiceDetailClient', () => {
     });
   });
 
-  it('shows error state on server failures and handles back navigation', async () => {
+  it('shows error state on server failures and renders breadcrumb navigation', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,
       status: 500,
@@ -142,10 +139,9 @@ describe('ServiceDetailClient', () => {
 
     render(<ServiceDetailPage serviceId="svc-error" />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Back to results' })[0]);
-    expect(backMock).toHaveBeenCalledTimes(1);
-
     await screen.findByText('Could not load service');
     expect(screen.getByText('Failed to fetch service')).toBeInTheDocument();
+    // Breadcrumb renders a Directory crumb for orientation
+    expect(screen.getByText('Directory')).toBeInTheDocument();
   });
 });

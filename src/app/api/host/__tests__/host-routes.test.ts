@@ -30,6 +30,9 @@ vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
 }));
 vi.mock('@/services/auth', () => authMocks);
+vi.mock('@/services/workflow/engine', () => ({
+  applySla: vi.fn(),
+}));
 
 type JsonRequestOptions = {
   search?: string;
@@ -473,6 +476,12 @@ describe('host services collection route', () => {
   });
 
   it('rejects invalid POST payloads', async () => {
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: 'user-1',
+      role: 'host_admin',
+      orgIds: ['org-1'],
+      orgRoles: new Map([['org-1', 'host_admin']]),
+    });
     const { POST } = await loadServicesCollectionRoute();
 
     const response = await POST(
@@ -1109,6 +1118,29 @@ describe('host locations routes', () => {
 });
 
 describe('host admins routes', () => {
+  it('returns 503 when the database is unavailable for admins collection', async () => {
+    dbMocks.isDatabaseConfigured.mockReturnValue(false);
+    const { GET } = await loadAdminsCollectionRoute();
+
+    const response = await GET(createRequest());
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: 'Database not configured.' });
+  });
+
+  it('returns 429 when admins collection reads are rate limited', async () => {
+    rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 17 });
+    const { GET } = await loadAdminsCollectionRoute();
+
+    const response = await GET(createRequest({
+      search: '?organizationId=11111111-1111-4111-8111-111111111111',
+      ip: '203.0.113.10',
+    }));
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('17');
+  });
+
   it('requires organizationId to list organization members', async () => {
     authMocks.shouldEnforceAuth.mockReturnValue(true);
     authMocks.getAuthContext.mockResolvedValue({
@@ -1125,6 +1157,26 @@ describe('host admins routes', () => {
     await expect(response.json()).resolves.toEqual({
       error: 'organizationId query parameter is required and must be a valid UUID',
     });
+  });
+
+  it('returns 403 when listing members without host admin scope', async () => {
+    authMocks.shouldEnforceAuth.mockReturnValue(true);
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: 'user-1',
+      role: 'host_member',
+      orgIds: ['org-1'],
+      orgRoles: new Map([['org-1', 'host_member']]),
+    });
+    authMocks.requireOrgRole.mockReturnValue(false);
+    authMocks.isOranAdmin.mockReturnValue(false);
+    const { GET } = await loadAdminsCollectionRoute();
+
+    const response = await GET(
+      createRequest({ search: '?organizationId=11111111-1111-4111-8111-111111111111' }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: 'Forbidden' });
   });
 
   it('returns an empty member list when the organization_members table does not exist', async () => {
@@ -1145,6 +1197,51 @@ describe('host admins routes', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ members: [], total: 0 });
+  });
+
+  it('lists organization members when the backing table exists', async () => {
+    authMocks.shouldEnforceAuth.mockReturnValue(true);
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: 'user-1',
+      role: 'host_admin',
+      orgIds: ['org-1'],
+      orgRoles: new Map([['org-1', 'host_admin']]),
+    });
+    authMocks.requireOrgRole.mockReturnValue(true);
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([{ exists: true }])
+      .mockResolvedValueOnce([
+        {
+          id: 'member-1',
+          user_id: 'user-2',
+          organization_id: '11111111-1111-4111-8111-111111111111',
+          role: 'host_member',
+          status: null,
+          created_at: '2026-03-03T00:00:00.000Z',
+          updated_at: null,
+        },
+      ]);
+    const { GET } = await loadAdminsCollectionRoute();
+
+    const response = await GET(
+      createRequest({ search: '?organizationId=11111111-1111-4111-8111-111111111111' }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      members: [
+        {
+          id: 'member-1',
+          user_id: 'user-2',
+          organization_id: '11111111-1111-4111-8111-111111111111',
+          role: 'host_member',
+          status: null,
+          created_at: '2026-03-03T00:00:00.000Z',
+          updated_at: null,
+        },
+      ],
+      total: 1,
+    });
   });
 
   it('returns 409 when inviting an already active organization member', async () => {
@@ -1183,6 +1280,96 @@ describe('host admins routes', () => {
     await expect(response.json()).resolves.toEqual({
       error: 'User is already a member of this organization',
     });
+  });
+
+  it('reactivates a deactivated member during invite', async () => {
+    authMocks.shouldEnforceAuth.mockReturnValue(true);
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: 'user-1',
+      role: 'host_admin',
+      orgIds: ['org-1'],
+      orgRoles: new Map([['org-1', 'host_admin']]),
+    });
+    authMocks.requireOrgRole.mockReturnValue(true);
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: {
+      query: ReturnType<typeof vi.fn>;
+    }) => Promise<unknown>) => {
+      const client = {
+        query: vi
+          .fn()
+          .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
+          .mockResolvedValueOnce({ rows: [{ id: 'member-1', status: 'deactivated' }] })
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: 'member-1',
+                user_id: '22222222-2222-4222-8222-222222222222',
+                organization_id: '11111111-1111-4111-8111-111111111111',
+                role: 'host_admin',
+                status: null,
+                created_at: '2026-03-03T00:00:00.000Z',
+                updated_at: '2026-03-03T01:00:00.000Z',
+              },
+            ],
+          }),
+      };
+      return callback(client);
+    });
+    const { POST } = await loadAdminsCollectionRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          organizationId: '11111111-1111-4111-8111-111111111111',
+          userId: '22222222-2222-4222-8222-222222222222',
+          role: 'host_admin',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      id: 'member-1',
+      user_id: '22222222-2222-4222-8222-222222222222',
+      organization_id: '11111111-1111-4111-8111-111111111111',
+      role: 'host_admin',
+      status: null,
+      created_at: '2026-03-03T00:00:00.000Z',
+      updated_at: '2026-03-03T01:00:00.000Z',
+    });
+  });
+
+  it('returns 404 when inviting into a missing organization', async () => {
+    authMocks.shouldEnforceAuth.mockReturnValue(true);
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: 'user-1',
+      role: 'host_admin',
+      orgIds: ['org-1'],
+      orgRoles: new Map([['org-1', 'host_admin']]),
+    });
+    authMocks.requireOrgRole.mockReturnValue(true);
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: {
+      query: ReturnType<typeof vi.fn>;
+    }) => Promise<unknown>) => {
+      const client = {
+        query: vi.fn().mockResolvedValueOnce({ rows: [] }),
+      };
+      return callback(client);
+    });
+    const { POST } = await loadAdminsCollectionRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          organizationId: '11111111-1111-4111-8111-111111111111',
+          userId: '22222222-2222-4222-8222-222222222222',
+          role: 'host_member',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: 'Organization not found' });
   });
 
   it('blocks removal of the last host_admin in an organization', async () => {
@@ -1429,6 +1616,25 @@ describe('host admins routes', () => {
     });
   });
 
+  it('rejects invalid JSON when updating member roles', async () => {
+    authMocks.shouldEnforceAuth.mockReturnValue(true);
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: 'user-1',
+      role: 'host_admin',
+      orgIds: ['org-1'],
+      orgRoles: new Map([['org-1', 'host_admin']]),
+    });
+    const { PUT } = await loadAdminDetailRoute();
+
+    const response = await PUT(
+      createRequest({ jsonError: true }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'Invalid JSON body' });
+  });
+
   it('soft-deletes a member for authorized admins', async () => {
     authMocks.shouldEnforceAuth.mockReturnValue(true);
     authMocks.getAuthContext.mockResolvedValue({
@@ -1473,6 +1679,33 @@ describe('host admins routes', () => {
       id: '11111111-1111-4111-8111-111111111111',
     });
   });
+
+  it('returns 404 when deleting a missing member', async () => {
+    authMocks.shouldEnforceAuth.mockReturnValue(true);
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: 'user-1',
+      role: 'host_admin',
+      orgIds: ['org-1'],
+      orgRoles: new Map([['org-1', 'host_admin']]),
+    });
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: {
+      query: ReturnType<typeof vi.fn>;
+    }) => Promise<unknown>) => {
+      const client = {
+        query: vi.fn().mockResolvedValueOnce({ rows: [] }),
+      };
+      return callback(client);
+    });
+    const { DELETE } = await loadAdminDetailRoute();
+
+    const response = await DELETE(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: 'Member not found' });
+  });
 });
 
 describe('host claim route', () => {
@@ -1509,9 +1742,11 @@ describe('host claim route', () => {
       const client = {
         query: vi
           .fn()
-          .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
-          .mockResolvedValueOnce({ rows: [{ id: 'svc-1' }] })
-          .mockResolvedValueOnce({ rows: [] }),
+          .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })    // org INSERT
+          .mockResolvedValueOnce({ rows: [{ id: 'svc-1' }] })    // service INSERT
+          .mockResolvedValueOnce({ rows: [{ id: 'sub-1' }] })    // submission INSERT RETURNING id
+          .mockResolvedValueOnce({ rows: [] })                     // transition INSERT
+          .mockResolvedValueOnce({ rows: [] }),                    // notification INSERT
       };
       return callback(client);
     });

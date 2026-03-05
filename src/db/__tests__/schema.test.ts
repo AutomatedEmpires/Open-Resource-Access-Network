@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getTableConfig } from 'drizzle-orm/pg-core';
 
 const mutableEnv = process.env as Record<string, string | undefined>;
 
@@ -42,6 +43,28 @@ describe('db schema and helpers', () => {
         'adminRoutingRules',
       ]),
     );
+  });
+
+  it('builds table configs for schema exports with indexes/constraints callbacks', async () => {
+    const schema = await loadSchemaModule();
+    const tableConfigs = Object.values(schema).flatMap((value) => {
+      if (!value || (typeof value !== 'object' && typeof value !== 'function')) {
+        return [];
+      }
+      try {
+        return [getTableConfig(value as Parameters<typeof getTableConfig>[0])];
+      } catch {
+        return [];
+      }
+    });
+
+    expect(tableConfigs.length).toBeGreaterThan(20);
+    expect(tableConfigs.some((cfg) => cfg.name === 'scope_audit_log')).toBe(true);
+    expect(tableConfigs.some((cfg) => cfg.name === 'notification_events')).toBe(true);
+    expect(tableConfigs.some((cfg) => cfg.name === 'notification_preferences')).toBe(true);
+
+    const withIndexes = tableConfigs.filter((cfg) => cfg.indexes.length > 0);
+    expect(withIndexes.length).toBeGreaterThan(10);
   });
 
   it('fails fast when DATABASE_URL is missing and no-ops on close without a pool', async () => {

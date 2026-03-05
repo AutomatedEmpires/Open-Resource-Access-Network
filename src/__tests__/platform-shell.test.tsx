@@ -18,13 +18,17 @@ vi.mock('next/link', () => ({
     children: React.ReactNode;
   }) => React.createElement('a', { href, ...props }, children),
 }));
-vi.mock('lucide-react', () => ({
-  MessageCircle: (props: Record<string, unknown>) => React.createElement('svg', props),
-  List: (props: Record<string, unknown>) => React.createElement('svg', props),
-  MapPin: (props: Record<string, unknown>) => React.createElement('svg', props),
-  Shield: (props: Record<string, unknown>) => React.createElement('svg', props),
-  Phone: (props: Record<string, unknown>) => React.createElement('svg', props),
-}));
+vi.mock('lucide-react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('lucide-react')>();
+  return {
+    ...actual,
+    MessageCircle: (props: Record<string, unknown>) => React.createElement('svg', props),
+    List: (props: Record<string, unknown>) => React.createElement('svg', props),
+    MapPin: (props: Record<string, unknown>) => React.createElement('svg', props),
+    Shield: (props: Record<string, unknown>) => React.createElement('svg', props),
+    Phone: (props: Record<string, unknown>) => React.createElement('svg', props),
+  };
+});
 vi.mock('@/components/nav/AppNav', () => ({
   AppNav: () => React.createElement('nav', {}, 'AppNav'),
 }));
@@ -81,8 +85,9 @@ describe('platform shell', () => {
     const { Providers } = await loadProviders();
 
     const element = Providers({ children: 'Child' }) as React.ReactElement<any, any>;
+    const toastProvider = element.props.children as React.ReactElement<any, any>;
 
-    expect(element.props.children).toBe('Child');
+    expect(toastProvider.props.children).toBe('Child');
   });
 
   it('builds the root layout with skip link and metadata exports', async () => {

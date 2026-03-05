@@ -4,10 +4,10 @@ import { InMemoryFlagService } from '@/services/flags/flags';
 import { FEATURE_FLAGS } from '@/domain/constants';
 
 describe('InMemoryFlagService', () => {
-  it('defaults: llm_summarize disabled; map_enabled enabled', async () => {
+  it('defaults: llm_summarize enabled; map_enabled enabled', async () => {
     const service = new InMemoryFlagService();
 
-    await expect(service.isEnabled(FEATURE_FLAGS.LLM_SUMMARIZE)).resolves.toBe(false);
+    await expect(service.isEnabled(FEATURE_FLAGS.LLM_SUMMARIZE)).resolves.toBe(true);
     await expect(service.isEnabled(FEATURE_FLAGS.MAP_ENABLED)).resolves.toBe(true);
   });
 

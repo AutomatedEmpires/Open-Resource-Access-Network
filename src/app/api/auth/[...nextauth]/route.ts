@@ -44,11 +44,13 @@ function rateLimitGuard(req: NextRequest): NextResponse | null {
 export async function GET(req: NextRequest, ctx: { params: Promise<{ nextauth: string[] }> }) {
   const blocked = rateLimitGuard(req);
   if (blocked) return blocked;
-  return nextAuthHandler(req as unknown as Request, ctx) as Promise<Response>;
+  const params = await Promise.resolve(ctx.params);
+  return nextAuthHandler(req as unknown as Request, { params }) as Promise<Response>;
 }
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ nextauth: string[] }> }) {
   const blocked = rateLimitGuard(req);
   if (blocked) return blocked;
-  return nextAuthHandler(req as unknown as Request, ctx) as Promise<Response>;
+  const params = await Promise.resolve(ctx.params);
+  return nextAuthHandler(req as unknown as Request, { params }) as Promise<Response>;
 }

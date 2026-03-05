@@ -47,7 +47,9 @@ describe('nextauth route', () => {
       'auth:unknown',
       expect.objectContaining({ maxRequests: 30 }),
     );
-    expect(nextAuthHandlerMock).toHaveBeenCalledWith(req, ctx);
+    expect(nextAuthHandlerMock).toHaveBeenCalledWith(req, {
+      params: { nextauth: ['signin'] },
+    });
     expect(response.status).toBe(200);
   });
 
@@ -91,7 +93,9 @@ describe('nextauth route', () => {
       'auth:198.51.100.4',
       expect.objectContaining({ maxRequests: 30 }),
     );
-    expect(nextAuthHandlerMock).toHaveBeenCalledWith(req, ctx);
+    expect(nextAuthHandlerMock).toHaveBeenCalledWith(req, {
+      params: { nextauth: ['callback', 'azure-ad'] },
+    });
     expect(response.status).toBe(201);
   });
 });

@@ -19,26 +19,30 @@ vi.mock('@/components/ui/badge', () => ({
 vi.mock('@/components/feedback/FeedbackForm', () => ({
   FeedbackForm: 'feedback-form',
 }));
-vi.mock('lucide-react', () => ({
-  MapPin: 'svg',
-  Phone: 'svg',
-  Clock: 'svg',
-  ExternalLink: 'svg',
-  Tag: 'svg',
-  Globe2: 'svg',
-  Accessibility: 'svg',
-  FileText: 'svg',
-  Heart: 'svg',
-  Bookmark: 'svg',
-  BookmarkCheck: 'svg',
-  AlertCircle: 'svg',
-  Utensils: 'svg',
-  Navigation: 'svg',
-  Bus: 'svg',
-  Users: 'svg',
-  Layers: 'svg',
-  MessageSquare: 'svg',
-}));
+vi.mock('lucide-react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('lucide-react')>();
+  return {
+    ...actual,
+    MapPin: 'svg',
+    Phone: 'svg',
+    Clock: 'svg',
+    ExternalLink: 'svg',
+    Tag: 'svg',
+    Globe2: 'svg',
+    Accessibility: 'svg',
+    FileText: 'svg',
+    Heart: 'svg',
+    Bookmark: 'svg',
+    BookmarkCheck: 'svg',
+    AlertCircle: 'svg',
+    Utensils: 'svg',
+    Navigation: 'svg',
+    Bus: 'svg',
+    Users: 'svg',
+    Layers: 'svg',
+    MessageSquare: 'svg',
+  };
+});
 
 async function loadServiceCard() {
   return import('../ServiceCard');

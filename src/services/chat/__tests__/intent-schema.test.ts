@@ -12,6 +12,7 @@ import {
 import {
   CRISIS_KEYWORDS,
   ELIGIBILITY_DISCLAIMER,
+  FEATURE_FLAGS,
   MAX_CHAT_QUOTA,
 } from '@/domain/constants';
 import type { EnrichedService } from '@/domain/types';
@@ -233,7 +234,9 @@ describe('orchestrateChat', () => {
     expect(response.message).toContain('message limit');
     expect(response.quotaRemaining).toBe(0);
     expect(retrieveServices).not.toHaveBeenCalled();
-    expect(isFlagEnabled).not.toHaveBeenCalled();
+    // Crisis safety flag (Stage 1b) runs before quota — that's correct.
+    // The key contract: LLM summarization must NOT trigger on quota exceeded.
+    expect(isFlagEnabled).not.toHaveBeenCalledWith(FEATURE_FLAGS.LLM_SUMMARIZE);
   });
 });
 

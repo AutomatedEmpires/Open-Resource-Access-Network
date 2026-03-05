@@ -2,7 +2,7 @@
  * Community Queue API Contract Tests
  *
  * Validates Zod schemas, status transitions, and input sanitization
- * for the community verification queue API routes.
+ * for the community submission queue API routes (universal pipeline).
  * These tests run against the schema/validation layer — NOT the database.
  */
 
@@ -11,10 +11,12 @@ import { z } from 'zod';
 import {
   COMMUNITY_READ_RATE_LIMIT_MAX_REQUESTS,
   COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS,
-  VERIFICATION_STATUSES,
+  SUBMISSION_STATUSES,
+  SUBMISSION_TYPES,
+  SUBMISSION_TRANSITIONS,
   DEFAULT_PAGE_SIZE,
 } from '@/domain/constants';
-import type { VerificationStatus } from '@/domain/types';
+import type { SubmissionStatus } from '@/domain/types';
 
 // ============================================================
 // Re-declare schemas matching the route files (unit-testable)
@@ -22,23 +24,24 @@ import type { VerificationStatus } from '@/domain/types';
 
 const ListParamsSchema = z.object({
   status: z
-    .enum(['pending', 'in_review', 'verified', 'rejected', 'escalated'])
+    .enum(SUBMISSION_STATUSES as unknown as [string, ...string[]])
+    .optional(),
+  type: z
+    .enum(SUBMISSION_TYPES as unknown as [string, ...string[]])
     .optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(DEFAULT_PAGE_SIZE),
 });
 
-const AssignSchema = z.object({
-  queueEntryId: z.string().uuid('queueEntryId must be a valid UUID'),
-  assignedTo: z.string().min(1, 'assignedTo is required').max(500),
+const ClaimSchema = z.object({
+  submissionId: z.string().uuid('submissionId must be a valid UUID'),
 });
 
 const DecisionSchema = z.object({
-  decision: z.enum(['verified', 'rejected', 'escalated'], {
+  decision: z.enum(['approved', 'denied', 'escalated', 'returned', 'pending_second_approval'], {
     message: 'decision is required',
   }),
   notes: z.string().max(5000).optional(),
-  reviewerUserId: z.string().min(1).max(500),
 });
 
 // ============================================================
@@ -53,18 +56,31 @@ describe('community queue list params', () => {
       expect(result.data.page).toBe(1);
       expect(result.data.limit).toBe(DEFAULT_PAGE_SIZE);
       expect(result.data.status).toBeUndefined();
+      expect(result.data.type).toBeUndefined();
     }
   });
 
   it('accepts valid status filter', () => {
-    for (const status of VERIFICATION_STATUSES) {
+    for (const status of SUBMISSION_STATUSES) {
       const result = ListParamsSchema.safeParse({ status });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('accepts valid type filter', () => {
+    for (const type of SUBMISSION_TYPES) {
+      const result = ListParamsSchema.safeParse({ type });
       expect(result.success).toBe(true);
     }
   });
 
   it('rejects invalid status', () => {
     const result = ListParamsSchema.safeParse({ status: 'nonexistent' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects invalid type', () => {
+    const result = ListParamsSchema.safeParse({ type: 'invalid_type' });
     expect(result.success).toBe(false);
   });
 
@@ -94,46 +110,26 @@ describe('community queue list params', () => {
 });
 
 // ============================================================
-// ASSIGN SCHEMA
+// CLAIM SCHEMA
 // ============================================================
 
-describe('community queue assign schema', () => {
-  it('accepts valid assign payload', () => {
-    const result = AssignSchema.safeParse({
-      queueEntryId: '550e8400-e29b-41d4-a716-446655440000',
-      assignedTo: 'user_abc123',
+describe('community queue claim schema', () => {
+  it('accepts valid claim payload', () => {
+    const result = ClaimSchema.safeParse({
+      submissionId: '550e8400-e29b-41d4-a716-446655440000',
     });
     expect(result.success).toBe(true);
   });
 
-  it('rejects non-UUID queueEntryId', () => {
-    const result = AssignSchema.safeParse({
-      queueEntryId: 'not-a-uuid',
-      assignedTo: 'user_123',
+  it('rejects non-UUID submissionId', () => {
+    const result = ClaimSchema.safeParse({
+      submissionId: 'not-a-uuid',
     });
     expect(result.success).toBe(false);
   });
 
-  it('rejects empty assignedTo', () => {
-    const result = AssignSchema.safeParse({
-      queueEntryId: '550e8400-e29b-41d4-a716-446655440000',
-      assignedTo: '',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects assignedTo exceeding 500 chars', () => {
-    const result = AssignSchema.safeParse({
-      queueEntryId: '550e8400-e29b-41d4-a716-446655440000',
-      assignedTo: 'x'.repeat(501),
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects missing fields', () => {
-    expect(AssignSchema.safeParse({}).success).toBe(false);
-    expect(AssignSchema.safeParse({ queueEntryId: '550e8400-e29b-41d4-a716-446655440000' }).success).toBe(false);
-    expect(AssignSchema.safeParse({ assignedTo: 'user_123' }).success).toBe(false);
+  it('rejects missing submissionId', () => {
+    expect(ClaimSchema.safeParse({}).success).toBe(false);
   });
 });
 
@@ -142,19 +138,17 @@ describe('community queue assign schema', () => {
 // ============================================================
 
 describe('community queue decision schema', () => {
-  it('accepts valid verified decision', () => {
+  it('accepts valid approved decision', () => {
     const result = DecisionSchema.safeParse({
-      decision: 'verified',
-      reviewerUserId: 'user_abc123',
+      decision: 'approved',
     });
     expect(result.success).toBe(true);
   });
 
-  it('accepts valid rejected decision with notes', () => {
+  it('accepts valid denied decision with notes', () => {
     const result = DecisionSchema.safeParse({
-      decision: 'rejected',
+      decision: 'denied',
       notes: 'Phone number is disconnected.',
-      reviewerUserId: 'user_abc123',
     });
     expect(result.success).toBe(true);
   });
@@ -163,54 +157,55 @@ describe('community queue decision schema', () => {
     const result = DecisionSchema.safeParse({
       decision: 'escalated',
       notes: 'Suspicious organization — needs deeper investigation.',
-      reviewerUserId: 'user_abc123',
     });
     expect(result.success).toBe(true);
   });
 
-  it('rejects "pending" as a decision (not a terminal decision)', () => {
+  it('accepts valid returned decision', () => {
     const result = DecisionSchema.safeParse({
-      decision: 'pending',
-      reviewerUserId: 'user_abc123',
+      decision: 'returned',
+      notes: 'Please provide additional documentation.',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts pending_second_approval decision', () => {
+    const result = DecisionSchema.safeParse({
+      decision: 'pending_second_approval',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects "submitted" as a decision (not a terminal decision)', () => {
+    const result = DecisionSchema.safeParse({
+      decision: 'submitted',
     });
     expect(result.success).toBe(false);
   });
 
-  it('rejects "in_review" as a decision', () => {
+  it('rejects "under_review" as a decision', () => {
     const result = DecisionSchema.safeParse({
-      decision: 'in_review',
-      reviewerUserId: 'user_abc123',
+      decision: 'under_review',
     });
     expect(result.success).toBe(false);
   });
 
   it('rejects missing decision', () => {
-    const result = DecisionSchema.safeParse({
-      reviewerUserId: 'user_abc123',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects missing reviewerUserId', () => {
-    const result = DecisionSchema.safeParse({
-      decision: 'verified',
-    });
+    const result = DecisionSchema.safeParse({});
     expect(result.success).toBe(false);
   });
 
   it('rejects notes exceeding 5000 chars', () => {
     const result = DecisionSchema.safeParse({
-      decision: 'rejected',
+      decision: 'denied',
       notes: 'x'.repeat(5001),
-      reviewerUserId: 'user_abc123',
     });
     expect(result.success).toBe(false);
   });
 
   it('allows notes to be omitted', () => {
     const result = DecisionSchema.safeParse({
-      decision: 'verified',
-      reviewerUserId: 'user_abc123',
+      decision: 'approved',
     });
     expect(result.success).toBe(true);
     if (result.success) {
@@ -240,37 +235,50 @@ describe('community rate limit constants', () => {
 });
 
 // ============================================================
-// VERIFICATION STATUS TRANSITIONS
+// SUBMISSION STATUS TRANSITIONS (Universal Pipeline)
 // ============================================================
 
-describe('verification status transitions', () => {
-  // Only these starting statuses are valid for a decision
-  const DECIDABLE_STATUSES: VerificationStatus[] = ['pending', 'in_review'];
-  const TERMINAL_STATUSES: VerificationStatus[] = ['verified', 'rejected', 'escalated'];
+describe('submission status transitions', () => {
+  const TERMINAL_STATUSES: SubmissionStatus[] = ['approved', 'denied', 'withdrawn', 'expired', 'archived'];
+  const DECIDABLE_STATUSES: SubmissionStatus[] = ['under_review', 'escalated', 'pending_second_approval'];
 
-  it('decidable statuses are pending and in_review', () => {
-    expect(DECIDABLE_STATUSES).toEqual(['pending', 'in_review']);
+  it('decidable statuses include under_review, escalated, and pending_second_approval', () => {
+    expect(DECIDABLE_STATUSES).toEqual(['under_review', 'escalated', 'pending_second_approval']);
   });
 
-  it('terminal statuses are verified, rejected, escalated', () => {
-    expect(TERMINAL_STATUSES).toEqual(['verified', 'rejected', 'escalated']);
+  it('terminal statuses include approved, denied, withdrawn, expired, archived', () => {
+    expect(TERMINAL_STATUSES).toEqual(['approved', 'denied', 'withdrawn', 'expired', 'archived']);
   });
 
-  it('all statuses are accounted for', () => {
-    const allStatuses = [...DECIDABLE_STATUSES, ...TERMINAL_STATUSES];
-    expect(new Set(allStatuses).size).toBe(5);
-    for (const s of VERIFICATION_STATUSES) {
-      expect(allStatuses).toContain(s);
+  it('all submission statuses are in SUBMISSION_STATUSES', () => {
+    for (const status of SUBMISSION_STATUSES) {
+      expect(typeof status).toBe('string');
+    }
+    expect(SUBMISSION_STATUSES.length).toBe(13);
+  });
+
+  it('every status has a transition entry', () => {
+    for (const status of SUBMISSION_STATUSES) {
+      expect(SUBMISSION_TRANSITIONS).toHaveProperty(status);
     }
   });
 
-  it('decision enum only includes terminal statuses', () => {
-    const decisionEnum = z.enum(['verified', 'rejected', 'escalated']);
-    for (const status of TERMINAL_STATUSES) {
-      expect(decisionEnum.safeParse(status).success).toBe(true);
+  it('archived has no outgoing transitions', () => {
+    expect(SUBMISSION_TRANSITIONS['archived']).toEqual([]);
+  });
+
+  it('draft can only go to submitted or withdrawn', () => {
+    expect([...SUBMISSION_TRANSITIONS['draft']]).toEqual(expect.arrayContaining(['submitted', 'withdrawn']));
+    expect(SUBMISSION_TRANSITIONS['draft']).toHaveLength(2);
+  });
+
+  it('decision enum only includes decidable decisions', () => {
+    const decisionEnum = z.enum(['approved', 'denied', 'escalated', 'returned', 'pending_second_approval']);
+    for (const d of ['approved', 'denied', 'escalated', 'returned', 'pending_second_approval']) {
+      expect(decisionEnum.safeParse(d).success).toBe(true);
     }
-    for (const status of DECIDABLE_STATUSES) {
-      expect(decisionEnum.safeParse(status).success).toBe(false);
+    for (const d of ['draft', 'submitted', 'under_review', 'needs_review']) {
+      expect(decisionEnum.safeParse(d).success).toBe(false);
     }
   });
 });
@@ -282,9 +290,9 @@ describe('verification status transitions', () => {
 describe('community queue SQL injection prevention via schema', () => {
   it('status filter rejects SQL injection payloads', () => {
     const payloads = [
-      "'; DROP TABLE verification_queue; --",
-      "pending' OR '1'='1",
-      'pending; SELECT * FROM users',
+      "'; DROP TABLE submissions; --",
+      "submitted' OR '1'='1",
+      'submitted; SELECT * FROM users',
     ];
 
     for (const payload of payloads) {
@@ -293,17 +301,16 @@ describe('community queue SQL injection prevention via schema', () => {
     }
   });
 
-  it('queueEntryId rejects SQL injection payloads', () => {
+  it('submissionId rejects SQL injection payloads', () => {
     const payloads = [
-      "'; DROP TABLE verification_queue; --",
+      "'; DROP TABLE submissions; --",
       '1 OR 1=1',
       'abc',
     ];
 
     for (const payload of payloads) {
-      const result = AssignSchema.safeParse({
-        queueEntryId: payload,
-        assignedTo: 'user_123',
+      const result = ClaimSchema.safeParse({
+        submissionId: payload,
       });
       expect(result.success).toBe(false);
     }

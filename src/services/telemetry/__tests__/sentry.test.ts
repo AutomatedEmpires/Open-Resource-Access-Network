@@ -16,8 +16,6 @@ const sentryMocks = vi.hoisted(() => ({
 }));
 const mutableEnv = process.env as Record<string, string | undefined>;
 
-vi.mock('@sentry/nextjs', () => sentryMocks);
-
 async function loadSentryModule() {
   return import('../sentry');
 }
@@ -27,6 +25,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   delete mutableEnv.NEXT_PUBLIC_SENTRY_DSN;
   delete mutableEnv.NODE_ENV;
+  delete (globalThis as { __ORAN_SENTRY__?: unknown }).__ORAN_SENTRY__;
 });
 
 describe('sentry telemetry wrapper', () => {
@@ -41,6 +40,7 @@ describe('sentry telemetry wrapper', () => {
 
   it('captures sanitized exceptions with context when configured', async () => {
     mutableEnv.NEXT_PUBLIC_SENTRY_DSN = 'https://dsn';
+    (globalThis as { __ORAN_SENTRY__?: unknown }).__ORAN_SENTRY__ = sentryMocks;
     const { captureException } = await loadSentryModule();
 
     await captureException(new Error('boom'), {
@@ -70,6 +70,7 @@ describe('sentry telemetry wrapper', () => {
 
   it('captures redacted messages with scope tags', async () => {
     mutableEnv.NEXT_PUBLIC_SENTRY_DSN = 'https://dsn';
+    (globalThis as { __ORAN_SENTRY__?: unknown }).__ORAN_SENTRY__ = sentryMocks;
     const { captureMessage } = await loadSentryModule();
 
     await captureMessage('contact me at user@example.org', 'warning', {
@@ -85,6 +86,7 @@ describe('sentry telemetry wrapper', () => {
 
   it('adds sanitized breadcrumbs when configured', async () => {
     mutableEnv.NEXT_PUBLIC_SENTRY_DSN = 'https://dsn';
+    (globalThis as { __ORAN_SENTRY__?: unknown }).__ORAN_SENTRY__ = sentryMocks;
     const { addBreadcrumb } = await loadSentryModule();
 
     await addBreadcrumb({

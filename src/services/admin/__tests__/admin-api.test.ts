@@ -27,14 +27,14 @@ import {
 
 const ApprovalsListSchema = z.object({
   status: z
-    .enum(['pending', 'in_review', 'verified', 'rejected', 'escalated'])
+    .enum(['submitted', 'under_review', 'approved', 'denied', 'escalated', 'pending_second_approval'])
     .optional(),
   page:  z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(DEFAULT_PAGE_SIZE),
 });
 
 const ApprovalsDecisionSchema = z.object({
-  queueEntryId: z.string().uuid('queueEntryId must be a valid UUID'),
+  submissionId: z.string().uuid('submissionId must be a valid UUID'),
   decision:     z.enum(['approved', 'denied'], {
     message: 'decision must be approved or denied',
   }),
@@ -124,7 +124,7 @@ describe('admin approvals list params', () => {
   });
 
   it('accepts valid status values', () => {
-    for (const status of ['pending', 'in_review', 'verified', 'rejected', 'escalated']) {
+    for (const status of ['submitted', 'under_review', 'approved', 'denied', 'escalated', 'pending_second_approval']) {
       expect(ApprovalsListSchema.safeParse({ status }).success).toBe(true);
     }
   });
@@ -161,7 +161,7 @@ describe('admin approvals list params', () => {
 
 describe('admin approvals decision schema', () => {
   const VALID = {
-    queueEntryId: '550e8400-e29b-41d4-a716-446655440000',
+    submissionId: '550e8400-e29b-41d4-a716-446655440000',
     decision: 'approved' as const,
   };
 
@@ -180,9 +180,9 @@ describe('admin approvals decision schema', () => {
     expect(r.success).toBe(true);
   });
 
-  it('rejects non-UUID queueEntryId', () => {
+  it('rejects non-UUID submissionId', () => {
     expect(
-      ApprovalsDecisionSchema.safeParse({ ...VALID, queueEntryId: 'bad-id' }).success,
+      ApprovalsDecisionSchema.safeParse({ ...VALID, submissionId: 'bad-id' }).success,
     ).toBe(false);
   });
 
@@ -192,7 +192,7 @@ describe('admin approvals decision schema', () => {
     ).toBe(false);
   });
 
-  it('rejects missing queueEntryId', () => {
+  it('rejects missing submissionId', () => {
     expect(
       ApprovalsDecisionSchema.safeParse({ decision: 'approved' }).success,
     ).toBe(false);
@@ -200,7 +200,7 @@ describe('admin approvals decision schema', () => {
 
   it('rejects missing decision', () => {
     expect(
-      ApprovalsDecisionSchema.safeParse({ queueEntryId: VALID.queueEntryId }).success,
+      ApprovalsDecisionSchema.safeParse({ submissionId: VALID.submissionId }).success,
     ).toBe(false);
   });
 

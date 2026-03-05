@@ -22,9 +22,13 @@ vi.mock('lucide-react', () => ({
   List: 'svg',
   MapPin: 'svg',
   Bookmark: 'svg',
+  Flag: 'svg',
   User: 'svg',
   Menu: 'svg',
   X: 'svg',
+}));
+vi.mock('../NotificationBell', () => ({
+  NotificationBell: () => null,
 }));
 
 async function loadAppNav() {
@@ -74,7 +78,7 @@ describe('AppNav', () => {
     const activeLink = links.find((child) => child.props.href === '/saved');
     const toggle = collectElements(element, (child) => child.type === 'button')[0];
 
-    expect(links).toHaveLength(6);
+    expect(links).toHaveLength(7);
     expect(activeLink?.props['aria-current']).toBe('page');
     expect(toggle.props['aria-expanded']).toBe(false);
     expect(toggle.props['aria-label']).toBe('Open navigation');

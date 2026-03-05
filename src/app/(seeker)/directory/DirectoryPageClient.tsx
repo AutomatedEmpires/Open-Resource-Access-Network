@@ -140,44 +140,6 @@ export default function DirectoryPage() {
     return Math.round(value * 100) / 100;
   }, []);
 
-  const handleUseMyLocation = useCallback(() => {
-    if (isLocating) return;
-    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
-      toastError('Device location is not available in this browser.');
-      return;
-    }
-
-    setIsLocating(true);
-    info('Requesting device location…');
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = roundForPrivacy(pos.coords.latitude);
-        const lng = roundForPrivacy(pos.coords.longitude);
-        const next = { lat, lng };
-        setDeviceLocation(next);
-        success('Showing results near your location (approximate, not saved).');
-        setIsLocating(false);
-        void runSearch(1, confidenceFilter, sortBy, undefined, undefined, next);
-      },
-      (err) => {
-        const message =
-          err.code === err.PERMISSION_DENIED
-            ? 'Location permission denied.'
-            : err.code === err.TIMEOUT
-              ? 'Location request timed out.'
-              : 'Location unavailable.';
-        toastError(message);
-        setIsLocating(false);
-      },
-      {
-        enableHighAccuracy: false,
-        timeout: 10_000,
-        maximumAge: 60_000,
-      },
-    );
-  }, [confidenceFilter, info, isLocating, roundForPrivacy, runSearch, sortBy, success, toastError]);
-
   const runSearch = useCallback(async (
     nextPage: number,
     confidence: ConfidenceFilter = confidenceFilter,
@@ -239,6 +201,44 @@ export default function DirectoryPage() {
       setIsLoading(false);
     }
   }, [query, confidenceFilter, sortBy, activeCategory, deviceLocation, pushUrlState]);
+
+  const handleUseMyLocation = useCallback(() => {
+    if (isLocating) return;
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+      toastError('Device location is not available in this browser.');
+      return;
+    }
+
+    setIsLocating(true);
+    info('Requesting device location…');
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = roundForPrivacy(pos.coords.latitude);
+        const lng = roundForPrivacy(pos.coords.longitude);
+        const next = { lat, lng };
+        setDeviceLocation(next);
+        success('Showing results near your location (approximate, not saved).');
+        setIsLocating(false);
+        void runSearch(1, confidenceFilter, sortBy, undefined, undefined, next);
+      },
+      (err) => {
+        const message =
+          err.code === err.PERMISSION_DENIED
+            ? 'Location permission denied.'
+            : err.code === err.TIMEOUT
+              ? 'Location request timed out.'
+              : 'Location unavailable.';
+        toastError(message);
+        setIsLocating(false);
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 10_000,
+        maximumAge: 60_000,
+      },
+    );
+  }, [confidenceFilter, info, isLocating, roundForPrivacy, runSearch, sortBy, success, toastError]);
 
   // Auto-run search on first render if URL has a query param
   const didAutoRun = useRef(false);

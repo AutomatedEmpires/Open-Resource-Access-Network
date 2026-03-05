@@ -210,6 +210,44 @@ describe('DirectoryPageClient', () => {
     expect(replaceMock).toHaveBeenCalledWith('/directory', { scroll: false });
   });
 
+  it('supports opt-in device location search without putting coordinates in the URL', async () => {
+    const geolocation = {
+      getCurrentPosition: vi.fn(
+        (onSuccess: (pos: { coords: { latitude: number; longitude: number } }) => void) => {
+          onSuccess({ coords: { latitude: 47.6159, longitude: -122.3321 } });
+        },
+      ),
+    };
+
+    Object.defineProperty(global.navigator, 'geolocation', {
+      value: geolocation,
+      configurable: true,
+    });
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => makeSearchResponse(),
+    });
+
+    renderWithToast(<DirectoryPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
+
+    await waitFor(() => {
+      expect(geolocation.getCurrentPosition).toHaveBeenCalledOnce();
+      expect(fetchMock).toHaveBeenCalledOnce();
+    });
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toContain('/api/search?');
+    expect(url).toContain('lat=47.62');
+    expect(url).toContain('lng=-122.33');
+    expect(url).not.toContain('q=');
+
+    // Location coordinates must not be persisted into shareable URL params.
+    expect(replaceMock).toHaveBeenCalledWith('/directory', { scroll: false });
+  });
+
   it('renders no-match results state from successful empty responses', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,

@@ -440,6 +440,14 @@ export const FEATURE_FLAGS = {
    * Azure AI Content Safety F0 free tier: 5,000 text records/month.
    */
   CONTENT_SAFETY_CRISIS: 'content_safety_crisis',
+  /**
+   * Enables pgvector-backed semantic search using Cohere-embed-v3-multilingual.
+   * When enabled, the chat retrieval pipeline re-ranks results by combining
+   * the existing trust/tsvector score with cosine similarity to the query embedding.
+   * Requires FOUNDRY_ENDPOINT + FOUNDRY_KEY + FOUNDRY_EMBED_DEPLOYMENT env vars.
+   * Requires migration 0026_pgvector_embeddings.sql to be applied first.
+   */
+  VECTOR_SEARCH: 'vector_search',
 } as const;
 
 // ============================================================

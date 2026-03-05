@@ -64,6 +64,8 @@ const DEFAULT_FLAGS: FeatureFlag[] = [
   makeFlag(FEATURE_FLAGS.HOST_CLAIMS, true, 100),
   // Azure AI Content Safety on ORAN-FOUNDRY-resource (AIServices/S0) — provisioned 2026-03-05
   makeFlag(FEATURE_FLAGS.CONTENT_SAFETY_CRISIS, true, 100),
+  // Cohere-embed-v3-multilingual on ORAN-FOUNDRY-resource — Phase 3 (off until 0026 migration applied)
+  makeFlag(FEATURE_FLAGS.VECTOR_SEARCH, false, 0),
 ];
 
 export class InMemoryFlagService implements FlagService {

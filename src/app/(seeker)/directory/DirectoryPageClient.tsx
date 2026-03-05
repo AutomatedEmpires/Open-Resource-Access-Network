@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, X, AlertTriangle, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Search, X, AlertTriangle, ArrowLeft, ArrowRight, MapPin } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
@@ -70,9 +70,14 @@ export default function DirectoryPage() {
     return valid.includes(v as SortOption) ? (v as SortOption) : 'relevance';
   });
   const [activeCategory, setActiveCategory] = useState<string | null>(() => searchParams.get('category'));
+
+  // Opt-in device geolocation (in-session only; never stored; not reflected in URL)
+  const [isLocating, setIsLocating] = useState(false);
+  const [deviceLocation, setDeviceLocation] = useState<{ lat: number; lng: number } | null>(null);
+
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const savedIdsRef = useRef<Set<string>>(new Set());
-  const { success } = useToast();
+  const { success, error: toastError, info } = useToast();
 
   // Ref for focus management after search
   const resultsContainerRef = useRef<HTMLDivElement>(null);
@@ -128,7 +133,50 @@ export default function DirectoryPage() {
     success(wasSaved ? 'Removed from saved' : 'Saved');
   }, [success]);
 
-  const canSearch = useMemo(() => query.trim().length > 0, [query]);
+  const canSearch = useMemo(() => query.trim().length > 0 || deviceLocation != null, [query, deviceLocation]);
+
+  const roundForPrivacy = useCallback((value: number): number => {
+    // ~0.01° ≈ 1km (varies by latitude); used to reduce precision exposure.
+    return Math.round(value * 100) / 100;
+  }, []);
+
+  const handleUseMyLocation = useCallback(() => {
+    if (isLocating) return;
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+      toastError('Device location is not available in this browser.');
+      return;
+    }
+
+    setIsLocating(true);
+    info('Requesting device location…');
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = roundForPrivacy(pos.coords.latitude);
+        const lng = roundForPrivacy(pos.coords.longitude);
+        const next = { lat, lng };
+        setDeviceLocation(next);
+        success('Showing results near your location (approximate, not saved).');
+        setIsLocating(false);
+        void runSearch(1, confidenceFilter, sortBy, undefined, undefined, next);
+      },
+      (err) => {
+        const message =
+          err.code === err.PERMISSION_DENIED
+            ? 'Location permission denied.'
+            : err.code === err.TIMEOUT
+              ? 'Location request timed out.'
+              : 'Location unavailable.';
+        toastError(message);
+        setIsLocating(false);
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 10_000,
+        maximumAge: 60_000,
+      },
+    );
+  }, [confidenceFilter, info, isLocating, roundForPrivacy, runSearch, sortBy, success, toastError]);
 
   const runSearch = useCallback(async (
     nextPage: number,
@@ -136,9 +184,12 @@ export default function DirectoryPage() {
     sort: SortOption = sortBy,
     searchText?: string,
     category?: string | null,
+    locationOverride?: { lat: number; lng: number } | null,
   ) => {
     const trimmed = (searchText ?? query).trim();
-    if (!trimmed) return;
+
+    const effectiveLocation = locationOverride !== undefined ? locationOverride : deviceLocation;
+    if (!trimmed && !effectiveLocation) return;
 
     const effectiveCategory = category !== undefined ? category : activeCategory;
 
@@ -146,7 +197,16 @@ export default function DirectoryPage() {
     setError(null);
 
     try {
-      const params = new URLSearchParams({ status: 'active', q: trimmed, page: String(nextPage), limit: String(DEFAULT_LIMIT) });
+      const params = new URLSearchParams({ status: 'active', page: String(nextPage), limit: String(DEFAULT_LIMIT) });
+
+      if (trimmed) {
+        params.set('q', trimmed);
+      }
+
+      if (effectiveLocation) {
+        params.set('lat', String(effectiveLocation.lat));
+        params.set('lng', String(effectiveLocation.lng));
+      }
 
       if (sort !== 'relevance') {
         params.set('sortBy', sort);
@@ -178,7 +238,7 @@ export default function DirectoryPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [query, confidenceFilter, sortBy, activeCategory, pushUrlState]);
+  }, [query, confidenceFilter, sortBy, activeCategory, deviceLocation, pushUrlState]);
 
   // Auto-run search on first render if URL has a query param
   const didAutoRun = useRef(false);
@@ -201,7 +261,7 @@ export default function DirectoryPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [query]);
+  }, [query, deviceLocation]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -287,7 +347,22 @@ export default function DirectoryPage() {
           <Button type="submit" disabled={!canSearch || isLoading}>
             Search
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleUseMyLocation}
+            disabled={isLocating}
+            title="Opt-in: uses device location in-session only; not stored"
+            className="gap-1.5"
+          >
+            <MapPin className="h-4 w-4" aria-hidden="true" />
+            {isLocating ? 'Locating…' : 'Use my location'}
+          </Button>
         </form>
+
+        <p className="-mt-2 mb-3 text-xs text-gray-600">
+          Location is optional. If you choose “Use my location”, ORAN uses an approximate location to show nearby results in-session only and does not store it.
+        </p>
 
         {/* Category chips */}
         <div className="mb-2 flex flex-wrap items-center gap-2" role="group" aria-label="Quick category filters">

@@ -187,6 +187,12 @@ export async function extractService(
       address: llmExtraction.address,
       isRemoteService: false,
     },
+    provenance: {
+      serviceName: {
+        evidenceId: message.evidenceId,
+        confidenceHint: 'medium',
+      },
+    },
     review: {
       status: 'pending',
       timers: {},

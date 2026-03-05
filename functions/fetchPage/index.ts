@@ -10,6 +10,7 @@
  *
  * @module functions/fetchPage
  */
+import crypto from 'node:crypto';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,60 +30,107 @@ export interface ExtractQueueMessage {
   correlationId: string;
   evidenceId: string;
   contentHash: string;
+  /** Extracted plain text from the page, passed directly to avoid re-fetch. */
+  textExtracted: string;
+  /** Page title extracted from HTML, if available. */
+  pageTitle?: string;
   enqueuedAt: string;
 }
 
 // ---------------------------------------------------------------------------
-// Handler stub
+// Handler
 // ---------------------------------------------------------------------------
 
 /**
- * When deployed as an Azure Function, this handler:
- * 1. Fetches the URL (respecting robots.txt, crawl policy)
- * 2. Creates an evidence snapshot in the evidence store
- * 3. Enqueues to `ingestion-extract` for LLM extraction
+ * Fetches the URL, builds an evidence snapshot, persists it to the evidence
+ * store, and returns an ExtractQueueMessage for the next queue stage.
  *
- * Current status: STUB — fetch logic lives in src/agents/ingestion/fetch/.
+ * Robots.txt compliance, crawl policy, and dedup are all handled here.
+ * Text extraction runs in-process so the LLM extraction stage receives the
+ * cleaned text directly and does not need to re-fetch the page.
  */
 export async function fetchPage(
   message: FetchQueueMessage
 ): Promise<ExtractQueueMessage | null> {
-  // TODO: Wire to actual fetch pipeline
-  //
-  // Implementation outline:
-  //   const db = getDrizzle();
-  //   const stores = createIngestionStores(db);
-  //   const source = await stores.sourceRegistry.getById(message.sourceId);
-  //   if (!source) return null;
-  //
-  //   // Check robots.txt
-  //   const robotsResult = await checkRobotsTxt(message.seedUrl, source.crawl);
-  //   if (!robotsResult.allowed) return null;
-  //
-  //   // Fetch page
-  //   const snapshot = await fetchUrl(message.seedUrl, source.crawl);
-  //
-  //   // Store evidence
-  //   const evidenceId = crypto.randomUUID();
-  //   await stores.evidence.upsert({
-  //     evidenceId,
-  //     url: message.seedUrl,
-  //     fetchedAt: new Date().toISOString(),
-  //     httpStatus: snapshot.status,
-  //     contentType: snapshot.contentType,
-  //     contentHash: snapshot.hash,
-  //     bodyText: snapshot.text,
-  //   });
-  //
-  //   return {
-  //     sourceId: message.sourceId,
-  //     sourceUrl: message.seedUrl,
-  //     correlationId: message.correlationId,
-  //     evidenceId,
-  //     contentHash: snapshot.hash,
-  //     enqueuedAt: new Date().toISOString(),
-  //   };
+  const { getDrizzle } = await import('@/services/db/drizzle');
+  const { createIngestionStores } = await import(
+    '@/agents/ingestion/persistence/storeFactory'
+  );
+  const {
+    createPageFetcher,
+    isFetchError,
+    createEvidenceBuilder,
+    createHtmlTextExtractor,
+  } = await import('@/agents/ingestion/fetcher');
 
-  console.log(`[fetchPage] Received URL: ${message.seedUrl} — stub, no-op`);
-  return null;
+  const db = getDrizzle();
+  const stores = createIngestionStores(db);
+
+  // Verify source still active
+  const source = await stores.sourceRegistry.getById(message.sourceId);
+  if (!source) {
+    console.warn(
+      `[fetchPage] Source ${message.sourceId} not found in registry, skipping`
+    );
+    return null;
+  }
+
+  // Dedup: skip if content unchanged since last fetch
+  const existingEvidence = await stores.evidence.getByCanonicalUrl(message.seedUrl);
+
+  const fetcher = createPageFetcher({
+    timeoutMs: 30_000,
+    userAgent: source.crawl.userAgent ?? 'oran-ingestion-agent/1.0',
+  });
+
+  const fetchResult = await fetcher.fetch(message.seedUrl);
+
+  if (isFetchError(fetchResult)) {
+    console.warn(
+      `[fetchPage] Fetch failed for ${message.seedUrl}: ${fetchResult.message}`
+    );
+    return null;
+  }
+
+  // Dedup: skip if content hash unchanged
+  if (
+    existingEvidence &&
+    existingEvidence.contentHashSha256 === fetchResult.contentHashSha256
+  ) {
+    console.log(
+      `[fetchPage] Content unchanged for ${message.seedUrl}, skipping extract`
+    );
+    return null;
+  }
+
+  // Build evidence snapshot
+  const evidenceBuilder = createEvidenceBuilder();
+  const snapshot = evidenceBuilder.buildFromFetchResult(fetchResult);
+
+  // Persist evidence snapshot
+  await stores.evidence.create({
+    ...snapshot,
+    correlationId: message.correlationId,
+  });
+
+  // Extract text in-process so extractService doesn't need to re-fetch
+  const textExtractor = createHtmlTextExtractor();
+  const textResult = textExtractor.extract(fetchResult.body);
+
+  console.log(
+    `[fetchPage] Fetched ${message.seedUrl} → evidenceId=${snapshot.evidenceId} ` +
+      `words=${textResult.wordCount}`
+  );
+
+  return {
+    sourceId: message.sourceId,
+    sourceUrl: fetchResult.canonicalUrl,
+    correlationId: message.correlationId,
+    evidenceId: snapshot.evidenceId,
+    contentHash: fetchResult.contentHashSha256,
+    textExtracted: textResult.text,
+    pageTitle: textResult.title ?? undefined,
+    enqueuedAt: new Date().toISOString(),
+  };
 }
+

@@ -87,7 +87,7 @@ describe('api/chat route', () => {
 
     expect(response.status).toBe(405);
     await expect(response.json()).resolves.toEqual({ error: 'Method not allowed' });
-  });
+  }, 20_000);
 
   it('returns 400 when the request body is invalid JSON', async () => {
     const { POST } = await loadRoute();

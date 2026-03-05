@@ -218,6 +218,7 @@ export interface VerificationQueueEntry {
 
 export type SubmissionType =
   | 'service_verification'
+  | 'confidence_regression'
   | 'org_claim'
   | 'data_correction'
   | 'new_service'

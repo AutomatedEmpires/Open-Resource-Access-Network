@@ -11,16 +11,17 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { Building2, Wrench, MapPin, Users, Tag } from 'lucide-react';
 import { isRoleAtLeast } from '@/services/auth/roles';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const NAV_ITEMS = [
-  { href: '/org', label: 'Organization' },
-  { href: '/services', label: 'Services' },
-  { href: '/locations', label: 'Locations' },
-  { href: '/admins', label: 'Team' },
-  { href: '/claim', label: 'Claim' },
+  { href: '/org', label: 'Organization', icon: Building2 },
+  { href: '/services', label: 'Services', icon: Wrench },
+  { href: '/locations', label: 'Locations', icon: MapPin },
+  { href: '/admins', label: 'Team', icon: Users },
+  { href: '/claim', label: 'Claim', icon: Tag },
 ] as const;
 
 export default function HostLayoutShell({ children }: { children: React.ReactNode }) {
@@ -54,17 +55,18 @@ export default function HostLayoutShell({ children }: { children: React.ReactNod
           </Link>
 
           <nav className="flex items-center gap-1 overflow-x-auto" aria-label="Host navigation">
-            {NAV_ITEMS.map(({ href, label }) => (
+            {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
                 href={href}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                   isActive(href)
                     ? 'bg-gray-100 text-gray-900'
                     : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
                 }`}
                 aria-current={isActive(href) ? 'page' : undefined}
               >
+                <Icon className="h-4 w-4" aria-hidden="true" />
                 {label}
               </Link>
             ))}

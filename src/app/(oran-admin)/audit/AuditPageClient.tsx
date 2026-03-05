@@ -19,6 +19,20 @@ import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { SkeletonCard } from '@/components/ui/skeleton';
 
 // ============================================================
+// HELPERS
+// ============================================================
+
+/** Mask the last octet(s) of an IP address for privacy (oran_admin view only). */
+function maskIp(ip: string): string {
+  // IPv4: mask last octet  →  192.168.1.xxx
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
+    return ip.replace(/\.\d+$/, '.xxx');
+  }
+  // IPv6: show first group only  →  2001:xxx
+  return ip.split(':')[0] + ':xxx';
+}
+
+// ============================================================
 // TYPES
 // ============================================================
 
@@ -318,8 +332,14 @@ function AuditPageInner() {
                             </div>
                             {row.user_id && (
                               <p className="mt-2 text-xs text-gray-400">
-                                User: <span className="font-mono">{row.user_id}</span>
-                                {row.ip_address ? ` · IP: ${row.ip_address}` : ''}
+                                User:{' '}
+                                <span
+                                  className="font-mono"
+                                  title={row.user_id}
+                                >
+                                  {row.user_id.slice(0, 8)}&hellip;
+                                </span>
+                                {row.ip_address ? ` · IP: ${maskIp(row.ip_address)}` : ''}
                               </p>
                             )}
                           </td>

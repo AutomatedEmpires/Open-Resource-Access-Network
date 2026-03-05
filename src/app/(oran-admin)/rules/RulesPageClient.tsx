@@ -14,6 +14,10 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  Dialog, DialogContent, DialogFooter,
+  DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { SkeletonCard } from '@/components/ui/skeleton';
 
@@ -42,6 +46,7 @@ function RulesPageInner() {
   const [draftRollout, setDraftRollout] = useState(100);
   const [isSaving, setIsSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // ── Fetch flags ──
   const fetchFlags = useCallback(async () => {
@@ -272,7 +277,7 @@ function RulesPageInner() {
                     <div className="flex items-center gap-2">
                       <Button
                         size="sm"
-                        onClick={() => void handleSave()}
+                        onClick={() => setConfirmOpen(true)}
                         disabled={isSaving}
                         className="gap-1"
                       >
@@ -294,6 +299,45 @@ function RulesPageInner() {
           })}
         </div>
       )}
+
+      {/* Confirmation dialog before saving production flag changes */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+              Confirm Flag Change
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-700 mt-2">
+            You are about to change{' '}
+            <span className="font-mono font-medium">{editingFlag}</span> to{' '}
+            <span className="font-medium">{draftEnabled ? 'enabled' : 'disabled'}</span> at{' '}
+            <span className="font-medium">{draftRollout}%</span> rollout.
+          </p>
+          <p className="text-sm text-red-700 font-medium mt-1">
+            This change takes effect in production immediately.
+          </p>
+          <DialogFooter className="mt-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirmOpen(false)}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => { setConfirmOpen(false); void handleSave(); }}
+              disabled={isSaving}
+              className="bg-amber-600 hover:bg-amber-700 text-white gap-1"
+            >
+              {isSaving ? 'Saving...' : 'Confirm Change'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

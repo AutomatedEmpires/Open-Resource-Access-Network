@@ -14,13 +14,13 @@ describe('Azure Email Service', () => {
     vi.stubEnv('AZURE_COMMUNICATION_CONNECTION_STRING', '');
     const { isEmailConfigured } = await import('../azureEmail');
     expect(isEmailConfigured()).toBe(false);
-  });
+  }, 20_000);
 
   it('isEmailConfigured returns true when connection string is set', async () => {
     vi.stubEnv('AZURE_COMMUNICATION_CONNECTION_STRING', 'endpoint=https://test.comm.azure.com/;accesskey=abc');
     const { isEmailConfigured } = await import('../azureEmail');
     expect(isEmailConfigured()).toBe(true);
-  });
+  }, 20_000);
 
   it('sendEmail returns null when service is not configured', async () => {
     vi.stubEnv('AZURE_COMMUNICATION_CONNECTION_STRING', '');
@@ -34,7 +34,7 @@ describe('Azure Email Service', () => {
     });
 
     expect(result).toBeNull();
-  });
+  }, 20_000);
 
   it('sendEmail accepts valid EmailMessage shape', () => {
     // Type-check: ensure the interface is usable

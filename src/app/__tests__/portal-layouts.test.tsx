@@ -38,6 +38,10 @@ vi.mock('lucide-react', () => ({
   MapPin: 'svg',
   Bookmark: 'svg',
   User: 'svg',
+  Building2: 'svg',
+  Wrench: 'svg',
+  Users: 'svg',
+  Tag: 'svg',
 }));
 
 async function loadHostLayout() {

@@ -223,6 +223,7 @@ function JobsTab() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const fetchJobs = useCallback(async () => {
     setIsLoading(true);
@@ -242,6 +243,22 @@ function JobsTab() {
   }, [statusFilter]);
 
   useEffect(() => { fetchJobs(); }, [fetchJobs]);
+
+  const handleCancelJob = useCallback(async (jobId: string) => {
+    setCancellingId(jobId);
+    try {
+      const res = await fetch(`/api/admin/ingestion/jobs/${jobId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Cancel failed');
+      }
+      await fetchJobs();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to cancel job');
+    } finally {
+      setCancellingId(null);
+    }
+  }, [fetchJobs]);
 
   const statusFilters = ['', 'queued', 'running', 'completed', 'failed', 'cancelled'];
 
@@ -298,6 +315,7 @@ function JobsTab() {
                 <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Errors</th>
                 <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Queued</th>
                 <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Duration</th>
+                <th scope="col" className="px-4 py-3 text-right font-medium text-gray-600">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
@@ -324,6 +342,19 @@ function JobsTab() {
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{formatDateSafe(job.queuedAt)}</td>
                     <td className="px-4 py-3 text-gray-500">
                       {durationMs !== null ? `${(durationMs / 1000).toFixed(1)}s` : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {(job.status === 'queued' || job.status === 'running') && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 border-red-200 hover:bg-red-50"
+                          disabled={cancellingId === job.id}
+                          onClick={() => void handleCancelJob(job.id)}
+                        >
+                          {cancellingId === job.id ? 'Cancelling…' : 'Cancel'}
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 );

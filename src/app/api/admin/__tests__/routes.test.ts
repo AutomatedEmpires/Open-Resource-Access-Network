@@ -12,6 +12,11 @@ const authMocks = vi.hoisted(() => ({
   getAuthContext: vi.fn(),
 }));
 const requireMinRoleMock = vi.hoisted(() => vi.fn());
+const engineMocks = vi.hoisted(() => ({
+  advance: vi.fn(),
+  acquireLock: vi.fn(),
+  releaseLock: vi.fn(),
+}));
 const flagServiceMocks = vi.hoisted(() => ({
   getAllFlags: vi.fn(),
   getFlag: vi.fn(),
@@ -29,6 +34,7 @@ vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/auth/guards', () => ({
   requireMinRole: requireMinRoleMock,
 }));
+vi.mock('@/services/workflow/engine', () => engineMocks);
 vi.mock('@/services/flags/flags', () => ({
   flagService: flagServiceMocks,
 }));
@@ -103,6 +109,9 @@ beforeEach(() => {
   flagServiceMocks.getFlag.mockResolvedValue(null);
   flagServiceMocks.setFlag.mockResolvedValue(undefined);
   captureExceptionMock.mockResolvedValue(undefined);
+  engineMocks.advance.mockResolvedValue({ success: true, fromStatus: 'submitted', toStatus: 'approved', transitionId: 'tx-1' });
+  engineMocks.acquireLock.mockResolvedValue(true);
+  engineMocks.releaseLock.mockResolvedValue(undefined);
 });
 
 describe('admin api routes', () => {
@@ -123,51 +132,51 @@ describe('admin api routes', () => {
         {
           id: 'queue-1',
           service_id: 'svc-1',
-          status: 'pending',
+          status: 'submitted',
         },
       ]);
     const { GET } = await loadApprovalsRoute();
 
-    const response = await GET(createRequest({ search: '?status=pending&page=2' }));
+    const response = await GET(createRequest({ search: '?status=submitted&page=2' }));
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      results: [{ id: 'queue-1', service_id: 'svc-1', status: 'pending' }],
+      results: [{ id: 'queue-1', service_id: 'svc-1', status: 'submitted' }],
       total: 1,
       page: 2,
       hasMore: false,
     });
   });
 
-  it('approves a queue entry in a transaction', async () => {
-    authMocks.getAuthContext.mockResolvedValue({ userId: 'admin-1' });
+  it('approves an org claim via the workflow engine', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'admin-1', role: 'oran_admin' });
+    engineMocks.acquireLock.mockResolvedValueOnce(true);
+    engineMocks.advance.mockResolvedValueOnce({ success: true, fromStatus: 'submitted', toStatus: 'approved', transitionId: 'tx-1' });
     dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
       const client = {
         query: vi
           .fn()
-          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [{ service_id: 'svc-1' }] })
           .mockResolvedValueOnce({ rows: [] }),
       };
-      const result = await callback(client);
-      expect(client.query).toHaveBeenCalledTimes(2);
-      return result;
+      return callback(client);
     });
     const { POST } = await loadApprovalsRoute();
 
     const response = await POST(
       createRequest({
         jsonBody: {
-          queueEntryId: '11111111-1111-4111-8111-111111111111',
+          submissionId: '11111111-1111-4111-8111-111111111111',
           decision: 'approved',
         },
       }),
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      success: true,
-      message: 'Claim approved. Organization is now active.',
-    });
+    const body = await response.json();
+    expect(body.success).toBe(true);
+    expect(body.id).toBe('11111111-1111-4111-8111-111111111111');
+    expect(body.message).toBe('Claim approved. Organization is now active.');
   });
 
   it('validates audit log query parameters', async () => {

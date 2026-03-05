@@ -12,8 +12,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   MessageCircle, List, MapPin, Bookmark, User,
-  Menu, X,
+  Menu, X, Flag,
 } from 'lucide-react';
+import { NotificationBell } from './NotificationBell';
 
 // ============================================================
 // NAV ITEMS
@@ -32,6 +33,7 @@ const SEEKER_NAV: NavItem[] = [
   { href: '/directory', label: 'Directory',  icon: List },
   { href: '/map',       label: 'Map',        icon: MapPin },
   { href: '/saved',     label: 'Saved',      icon: Bookmark },
+  { href: '/report',    label: 'Report',     icon: Flag },
   { href: '/profile',   label: 'Profile',    icon: User },
 ];
 
@@ -79,21 +81,26 @@ export function AppNav() {
               </Link>
             );
           })}
+          <NotificationBell />
         </div>
 
-        {/* Mobile menu toggle */}
-        <button
-          type="button"
-          className="sm:hidden p-2 rounded-md hover:bg-gray-100 min-w-[44px] min-h-[44px] flex items-center justify-center"
-          onClick={() => setMobileOpen((v) => !v)}
-          aria-expanded={mobileOpen}
-          aria-controls="mobile-nav"
-          aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}
-        >
-          {mobileOpen
-            ? <X className="h-5 w-5 text-gray-700" aria-hidden="true" />
-            : <Menu className="h-5 w-5 text-gray-700" aria-hidden="true" />}
-        </button>
+        {/* Notification bell (mobile) + Mobile menu toggle */}
+        <div className="flex items-center gap-1 sm:hidden">
+          <NotificationBell />
+          <button
+            type="button"
+            className="p-2 rounded-md hover:bg-gray-100 min-w-[44px] min-h-[44px] flex items-center justify-center"
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-nav"
+            aria-label={mobileOpen ? 'Close navigation' : 'Open navigation'}
+          >
+            {mobileOpen
+              ? <X className="h-5 w-5 text-gray-700" aria-hidden="true" />
+              : <Menu className="h-5 w-5 text-gray-700" aria-hidden="true" />}
+          </button>
+        </div>
+
       </div>
 
       {/* Mobile nav */}

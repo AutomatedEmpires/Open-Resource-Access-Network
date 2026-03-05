@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { ServiceSearchEngine } from '@/services/search/engine';
 import type { SearchQuery } from '@/services/search/types';
 import { SORT_OPTIONS } from '@/services/search/types';
+import { cachedSearch } from '@/services/search/cache';
 import { executeCount, executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import {
   DEFAULT_SEARCH_RADIUS_METERS,
@@ -158,7 +159,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const results = await engine.search(query);
+    const results = await cachedSearch(engine, query);
     return NextResponse.json(results, {
       headers: { 'Cache-Control': 'private, no-store' },
     });

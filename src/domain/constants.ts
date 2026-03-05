@@ -3,7 +3,16 @@
  * Centralized constants used across the platform.
  */
 
-import type { ConfidenceBand, OranRole, VerificationStatus } from './types';
+import type {
+  ConfidenceBand,
+  OranRole,
+  VerificationStatus,
+  SubmissionStatus,
+  SubmissionType,
+  SubmissionTargetType,
+  ScopeRiskLevel,
+  NotificationEventType,
+} from './types';
 
 // ============================================================
 // CRISIS DETECTION
@@ -139,6 +148,120 @@ export const VERIFICATION_STATUSES: readonly VerificationStatus[] = [
 ] as const;
 
 // ============================================================
+// SUBMISSIONS (Universal Pipeline)
+// ============================================================
+
+export const SUBMISSION_STATUSES: readonly SubmissionStatus[] = [
+  'draft',
+  'submitted',
+  'auto_checking',
+  'needs_review',
+  'under_review',
+  'escalated',
+  'pending_second_approval',
+  'approved',
+  'denied',
+  'returned',
+  'withdrawn',
+  'expired',
+  'archived',
+] as const;
+
+export const SUBMISSION_TYPES: readonly SubmissionType[] = [
+  'service_verification',
+  'org_claim',
+  'data_correction',
+  'new_service',
+  'removal_request',
+  'community_report',
+  'appeal',
+] as const;
+
+export const SUBMISSION_TARGET_TYPES: readonly SubmissionTargetType[] = [
+  'service',
+  'organization',
+  'location',
+  'user',
+  'system',
+] as const;
+
+/**
+ * Valid state transitions in the submission workflow.
+ * Key = current status, value = array of permitted next statuses.
+ */
+export const SUBMISSION_TRANSITIONS: Record<SubmissionStatus, readonly SubmissionStatus[]> = {
+  draft:                    ['submitted', 'withdrawn'],
+  submitted:                ['auto_checking', 'needs_review', 'withdrawn'],
+  auto_checking:            ['needs_review', 'approved', 'denied'],
+  needs_review:             ['under_review', 'expired'],
+  under_review:             ['escalated', 'pending_second_approval', 'approved', 'denied', 'returned'],
+  escalated:                ['under_review', 'approved', 'denied'],
+  pending_second_approval:  ['approved', 'denied', 'returned'],
+  approved:                 ['archived'],
+  denied:                   ['archived'],
+  returned:                 ['submitted', 'withdrawn'],
+  withdrawn:                ['archived'],
+  expired:                  ['archived'],
+  archived:                 [],
+} as const;
+
+/**
+ * Submission types that require two-person (second-approver) gating.
+ */
+export const TWO_PERSON_REQUIRED_TYPES: readonly SubmissionType[] = [
+  'org_claim',
+  'removal_request',
+] as const;
+
+/**
+ * Map legacy VerificationStatus → SubmissionStatus for migration compatibility.
+ */
+export const LEGACY_STATUS_MAP: Record<VerificationStatus, SubmissionStatus> = {
+  pending:   'submitted',
+  in_review: 'under_review',
+  verified:  'approved',
+  rejected:  'denied',
+  escalated: 'escalated',
+} as const;
+
+/**
+ * Confidence score tiers for auto-checking gate.
+ * Submissions with auto_score >= autoApproveMin skip manual review.
+ * Submissions with auto_score < sendToReviewBelow go to needs_review.
+ */
+export const AUTO_CHECK_THRESHOLDS = {
+  autoApproveMin: 90,
+  sendToReviewBelow: 70,
+} as const;
+
+// ============================================================
+// SCOPE RISK LEVELS
+// ============================================================
+
+export const SCOPE_RISK_LEVELS: readonly ScopeRiskLevel[] = [
+  'low',
+  'standard',
+  'elevated',
+  'critical',
+] as const;
+
+// ============================================================
+// NOTIFICATION EVENT TYPES
+// ============================================================
+
+export const NOTIFICATION_EVENT_TYPES: readonly NotificationEventType[] = [
+  'submission_assigned',
+  'submission_status_changed',
+  'submission_sla_warning',
+  'submission_sla_breach',
+  'scope_grant_requested',
+  'scope_grant_decided',
+  'scope_grant_revoked',
+  'two_person_approval_needed',
+  'system_alert',
+] as const;
+
+// ============================================================
 // ROLES
 // ============================================================
 
@@ -173,7 +296,7 @@ export const PERMISSIONS = {
   WRITE_OWN_SERVICES: 'write:own_services',
   WRITE_ANY_SERVICES: 'write:any_services',
 
-  // Verification
+  // Verification (legacy)
   SUBMIT_VERIFICATION: 'submit:verification',
   REVIEW_VERIFICATION: 'review:verification',
   APPROVE_VERIFICATION: 'approve:verification',
@@ -187,6 +310,35 @@ export const PERMISSIONS = {
   READ_AUDIT_LOGS: 'read:audit_logs',
   MANAGE_FEATURE_FLAGS: 'manage:feature_flags',
   MANAGE_COVERAGE_ZONES: 'manage:coverage_zones',
+
+  // Submissions (universal pipeline)
+  SUBMISSION_CREATE: 'submission:create',
+  SUBMISSION_READ_OWN: 'submission:read_own',
+  SUBMISSION_READ_ASSIGNED: 'submission:read_assigned',
+  SUBMISSION_READ_ALL: 'submission:read_all',
+  SUBMISSION_REVIEW: 'submission:review',
+  SUBMISSION_APPROVE: 'submission:approve',
+  SUBMISSION_DENY: 'submission:deny',
+  SUBMISSION_ESCALATE: 'submission:escalate',
+  SUBMISSION_SECOND_APPROVE: 'submission:second_approve',
+  SUBMISSION_LOCK: 'submission:lock',
+  SUBMISSION_REASSIGN: 'submission:reassign',
+  SUBMISSION_BULK_ACTION: 'submission:bulk_action',
+
+  // Scope administration
+  SCOPE_GRANT: 'scope:grant',
+  SCOPE_REVOKE: 'scope:revoke',
+  SCOPE_REQUEST: 'scope:request',
+  SCOPE_APPROVE_GRANT: 'scope:approve_grant',
+
+  // Notification management
+  NOTIFICATION_MANAGE_TEMPLATES: 'notification:manage_templates',
+  NOTIFICATION_BROADCAST: 'notification:broadcast',
+
+  // Platform settings
+  PLATFORM_SETTINGS_READ: 'platform:settings_read',
+  PLATFORM_SETTINGS_WRITE: 'platform:settings_write',
+  PLATFORM_TOGGLE_FEATURES: 'platform:toggle_features',
 } as const;
 
 // ============================================================
@@ -232,6 +384,12 @@ export const ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS = 30;
 /** Maximum oran-admin read API requests per RATE_LIMIT_WINDOW_MS */
 export const ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS = 60;
 
+/** Maximum authenticated user read API requests per RATE_LIMIT_WINDOW_MS */
+export const USER_READ_RATE_LIMIT_MAX_REQUESTS = 60;
+
+/** Maximum authenticated user write API requests per RATE_LIMIT_WINDOW_MS */
+export const USER_WRITE_RATE_LIMIT_MAX_REQUESTS = 30;
+
 /** Maximum services returned per chat response */
 export const MAX_SERVICES_PER_RESPONSE = 5;
 
@@ -266,10 +424,21 @@ export const CRISIS_RESOURCES = {
 // ============================================================
 
 export const FEATURE_FLAGS = {
-  LLM_SUMMARIZE:  'llm_summarize',
-  MAP_ENABLED:    'map_enabled',
-  FEEDBACK_FORM:  'feedback_form',
-  HOST_CLAIMS:    'host_claims',
+  LLM_SUMMARIZE:         'llm_summarize',
+  MAP_ENABLED:           'map_enabled',
+  FEEDBACK_FORM:         'feedback_form',
+  HOST_CLAIMS:           'host_claims',
+  TWO_PERSON_APPROVAL:   'two_person_approval',
+  SLA_ENFORCEMENT:       'sla_enforcement',
+  AUTO_CHECK_GATE:       'auto_check_gate',
+  NOTIFICATIONS_IN_APP:  'notifications_in_app',
+  /**
+   * Enables Azure AI Content Safety as a second crisis detection gate.
+   * Runs AFTER keyword matching, ONLY when local distress signals are found.
+   * Requires AZURE_CONTENT_SAFETY_ENDPOINT + AZURE_CONTENT_SAFETY_KEY env vars.
+   * Azure AI Content Safety F0 free tier: 5,000 text records/month.
+   */
+  CONTENT_SAFETY_CRISIS: 'content_safety_crisis',
 } as const;
 
 // ============================================================

@@ -1,8 +1,9 @@
 /**
- * GET  /api/community/queue — List verification queue entries.
- * POST /api/community/queue — Assign a queue entry to self (claim for review).
+ * GET  /api/community/queue — List submission entries (universal pipeline).
+ * POST /api/community/queue — Claim a submission for review (lock + assign).
  *
- * Sorted by oldest pending first. Supports status filter and pagination.
+ * Replaces the legacy verification_queue with the universal submissions table.
+ * Supports filtering by submission_type, status, and pagination.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -12,11 +13,14 @@ import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
+import { advance, acquireLock, releaseLock } from '@/services/workflow/engine';
 import {
   RATE_LIMIT_WINDOW_MS,
   COMMUNITY_READ_RATE_LIMIT_MAX_REQUESTS,
   COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_PAGE_SIZE,
+  SUBMISSION_STATUSES,
+  SUBMISSION_TYPES,
 } from '@/domain/constants';
 
 // ============================================================
@@ -25,14 +29,18 @@ import {
 
 const ListParamsSchema = z.object({
   status: z
-    .enum(['pending', 'in_review', 'verified', 'rejected', 'escalated'])
+    .enum(SUBMISSION_STATUSES as unknown as [string, ...string[]])
     .optional(),
+  type: z
+    .enum(SUBMISSION_TYPES as unknown as [string, ...string[]])
+    .optional(),
+  assignedToMe: z.enum(['true', 'false']).optional(),
   page:  z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(DEFAULT_PAGE_SIZE),
 });
 
-const AssignSchema = z.object({
-  queueEntryId: z.string().uuid('queueEntryId must be a valid UUID'),
+const ClaimSchema = z.object({
+  submissionId: z.string().uuid('submissionId must be a valid UUID'),
 });
 
 // ============================================================
@@ -85,7 +93,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const { status, page, limit } = parsed.data;
+  const { status, type, assignedToMe, page, limit } = parsed.data;
   const offset = (page - 1) * limit;
 
   try {
@@ -94,13 +102,23 @@ export async function GET(req: NextRequest) {
 
     if (status) {
       params.push(status);
-      conditions.push(`vq.status = $${params.length}`);
+      conditions.push(`sub.status = $${params.length}`);
+    }
+
+    if (type) {
+      params.push(type);
+      conditions.push(`sub.submission_type = $${params.length}`);
+    }
+
+    if (assignedToMe === 'true') {
+      params.push(authCtx.userId);
+      conditions.push(`sub.assigned_to_user_id = $${params.length}`);
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const countRows = await executeQuery<{ count: number }>(
-      `SELECT count(*)::int AS count FROM verification_queue vq ${where}`,
+      `SELECT count(*)::int AS count FROM submissions sub ${where}`,
       params,
     );
     const total = countRows[0]?.count ?? 0;
@@ -108,28 +126,41 @@ export async function GET(req: NextRequest) {
     params.push(limit, offset);
     const rows = await executeQuery<{
       id: string;
-      service_id: string;
+      submission_type: string;
       status: string;
+      service_id: string | null;
+      target_type: string;
+      target_id: string | null;
       submitted_by_user_id: string;
       assigned_to_user_id: string | null;
+      title: string | null;
       notes: string | null;
+      priority: number;
+      is_locked: boolean;
+      locked_by_user_id: string | null;
+      sla_deadline: string | null;
+      sla_breached: boolean;
       created_at: string;
       updated_at: string;
-      service_name: string;
-      service_status: string;
-      organization_id: string;
-      organization_name: string;
+      service_name: string | null;
+      service_status: string | null;
+      organization_id: string | null;
+      organization_name: string | null;
     }>(
-      `SELECT vq.id, vq.service_id, vq.status,
-              vq.submitted_by_user_id, vq.assigned_to_user_id, vq.notes,
-              vq.created_at, vq.updated_at,
+      `SELECT sub.id, sub.submission_type, sub.status,
+              sub.service_id, sub.target_type, sub.target_id,
+              sub.submitted_by_user_id, sub.assigned_to_user_id,
+              sub.title, sub.notes, sub.priority,
+              sub.is_locked, sub.locked_by_user_id,
+              sub.sla_deadline, sub.sla_breached,
+              sub.created_at, sub.updated_at,
               s.name AS service_name, s.status AS service_status,
               o.id AS organization_id, o.name AS organization_name
-       FROM verification_queue vq
-       JOIN services s ON s.id = vq.service_id
-       JOIN organizations o ON o.id = s.organization_id
+       FROM submissions sub
+       LEFT JOIN services s ON s.id = sub.service_id
+       LEFT JOIN organizations o ON o.id = s.organization_id
        ${where}
-       ORDER BY vq.created_at ASC
+       ORDER BY sub.priority DESC, sub.created_at ASC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
@@ -179,7 +210,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const parsed = AssignSchema.safeParse(body);
+  const parsed = ClaimSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: 'Validation failed', details: parsed.error.issues },
@@ -187,27 +218,42 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { queueEntryId } = parsed.data;
+  const { submissionId } = parsed.data;
 
   try {
-    // Only allow assigning 'pending' entries → 'in_review'
-    const rows = await executeQuery<{ id: string }>(
-      `UPDATE verification_queue
-       SET status = 'in_review', assigned_to_user_id = $1, updated_at = now()
-       WHERE id = $2 AND status = 'pending'
-       RETURNING id`,
-      [authCtx.userId, queueEntryId],
-    );
-
-    if (rows.length === 0) {
+    // Acquire lock + assign
+    const locked = await acquireLock(submissionId, authCtx.userId);
+    if (!locked) {
       return NextResponse.json(
-        { error: 'Queue entry not found or already assigned' },
-        { status: 404 },
+        { error: 'Submission not found, already locked, or already assigned' },
+        { status: 409 },
       );
     }
 
-    return NextResponse.json({ success: true, id: rows[0].id }, { status: 200 });
+    // Move submitted → under_review via workflow engine
+    const result = await advance({
+      submissionId,
+      toStatus: 'under_review',
+      actorUserId: authCtx.userId,
+      actorRole: authCtx.role,
+      reason: 'Claimed for review',
+    });
+
+    if (!result.success) {
+      // Release lock so the submission doesn't remain stuck
+      await releaseLock(submissionId, authCtx.userId, false);
+      return NextResponse.json(
+        { error: result.error ?? 'Cannot claim this submission' },
+        { status: 409 },
+      );
+    }
+
+    return NextResponse.json({ success: true, id: submissionId }, { status: 200 });
   } catch (error) {
+    // Best-effort lock release on unexpected failure
+    try {
+      await releaseLock(submissionId, authCtx.userId, false);
+    } catch { /* lock release is best-effort */ }
     await captureException(error, { feature: 'api_community_queue_assign' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

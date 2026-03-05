@@ -16,16 +16,28 @@ import { isDatabaseConfigured, executeQuery, withTransaction } from '@/services/
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { getIp } from '@/services/security/ip';
 import { captureException } from '@/services/telemetry/sentry';
+import { send as sendNotification } from '@/services/notifications/service';
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const HOST_READ_RATE_LIMIT_MAX_REQUESTS = 60;
 const HOST_WRITE_RATE_LIMIT_MAX_REQUESTS = 20;
 
-// Schema for POST body (invite)
+// Schema for POST body (invite) — accepts userId OR email (at least one required)
 const InviteMemberSchema = z.object({
   organizationId: z.string().uuid(),
-  userId: z.string().uuid(),
+  userId: z.string().uuid().optional(),
+  email: z.string().email().max(320).optional(),
   role: z.enum(['host_member', 'host_admin'] as const),
+  inviteMode: z.boolean().default(false),
+}).refine(
+  (data) => data.userId || data.email,
+  { message: 'Either userId or email must be provided' },
+);
+
+// Schema for PATCH body (accept/decline invite)
+const InviteResponseSchema = z.object({
+  membershipId: z.string().uuid(),
+  action: z.enum(['accept', 'decline']),
 });
 
 interface OrganizationMember {
@@ -167,7 +179,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { organizationId, userId, role } = parsed.data;
+  const { organizationId, role, inviteMode } = parsed.data;
+  let { userId } = parsed.data;
+  const { email } = parsed.data;
 
   // Only host_admin of this org or oran_admin can invite members
   if (!requireOrgRole(auth, organizationId, 'host_admin') && !isOranAdmin(auth)) {
@@ -175,6 +189,25 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Resolve email to userId if only email was provided
+    if (!userId && email) {
+      const userRows = await executeQuery<{ user_id: string }>(
+        `SELECT user_id FROM user_profiles WHERE email = $1 LIMIT 1`,
+        [email],
+      );
+      if (userRows.length === 0) {
+        return NextResponse.json(
+          { error: 'No user found with that email address' },
+          { status: 404 },
+        );
+      }
+      userId = userRows[0].user_id;
+    }
+
+    if (!userId) {
+      return NextResponse.json({ error: 'Could not resolve user' }, { status: 400 });
+    }
+
     const result = await withTransaction(async (client) => {
       // Verify organization exists
       const orgCheck = await client.query<{ id: string }>(
@@ -207,12 +240,13 @@ export async function POST(req: NextRequest) {
         return { member: reactivated.rows[0] };
       }
 
-      // Insert new member
+      // Insert new member (pending_invite if inviteMode, otherwise active immediately)
+      const memberStatus = inviteMode ? 'pending_invite' : null;
       const inserted = await client.query<OrganizationMember>(
-        `INSERT INTO organization_members (organization_id, user_id, role)
-         VALUES ($1, $2, $3)
+        `INSERT INTO organization_members (organization_id, user_id, role, status)
+         VALUES ($1, $2, $3, $4)
          RETURNING id, user_id, organization_id, role, status, created_at, updated_at`,
-        [organizationId, userId, role],
+        [organizationId, userId, role, memberStatus],
       );
 
       return { member: inserted.rows[0] };
@@ -222,9 +256,99 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
+    // Send invite notification to the invited user
+    if (inviteMode && result.member) {
+      const orgRows = await executeQuery<{ name: string }>(
+        `SELECT name FROM organizations WHERE id = $1`,
+        [organizationId],
+      );
+      const orgName = orgRows[0]?.name ?? 'an organization';
+      await sendNotification({
+        recipientUserId: result.member.user_id,
+        eventType: 'system_alert',
+        title: `You've been invited to join ${orgName}`,
+        body: `You have been invited as ${role.replace('_', ' ')} for ${orgName}. Visit your team page to accept or decline.`,
+        resourceType: 'organization',
+        resourceId: organizationId,
+        actionUrl: '/host/team',
+      }).catch(() => { /* best-effort */ });
+    }
+
     return NextResponse.json(result.member, { status: 201 });
   } catch (error) {
     await captureException(error, { feature: 'api_host_admins_invite' });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH /api/host/admins
+ * Accept or decline an organization invite. The invited user themselves
+ * calls this endpoint — they can only act on their own pending invites.
+ */
+export async function PATCH(req: NextRequest) {
+  if (!isDatabaseConfigured()) {
+    return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
+  }
+
+  const ip = getIp(req);
+  const rl = checkRateLimit(`host:admins:write:${ip}`, {
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
+  });
+  if (rl.exceeded) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+
+  const auth = await getAuthContext();
+  if (shouldEnforceAuth() && !auth) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (!auth) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const parsed = InviteResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'Validation failed', details: parsed.error.issues },
+      { status: 400 },
+    );
+  }
+
+  const { membershipId, action } = parsed.data;
+
+  try {
+    // Only allow the invited user to accept/decline their own invite
+    const newStatus = action === 'accept' ? null : 'declined';
+    const result = await executeQuery<OrganizationMember>(
+      `UPDATE organization_members
+       SET status = $1, updated_at = NOW()
+       WHERE id = $2 AND user_id = $3 AND status = 'pending_invite'
+       RETURNING id, user_id, organization_id, role, status, created_at, updated_at`,
+      [newStatus, membershipId, auth.userId],
+    );
+
+    if (result.length === 0) {
+      return NextResponse.json(
+        { error: 'Invite not found or already actioned' },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json(result[0]);
+  } catch (error) {
+    await captureException(error, { feature: 'api_host_admins_respond_invite' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

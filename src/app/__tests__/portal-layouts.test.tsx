@@ -17,7 +17,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('next-auth/react', () => ({
   useSession: useSessionMock,
 }));
-vi.mock('@/services/auth/guards', () => ({
+vi.mock('@/services/auth/roles', () => ({
   isRoleAtLeast: isRoleAtLeastMock,
 }));
 vi.mock('@/components/ui/access-denied', () => ({

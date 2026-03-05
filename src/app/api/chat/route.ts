@@ -13,6 +13,7 @@ import {
   ChatRateLimitExceededError,
 } from '@/services/chat/orchestrator';
 import { flagService } from '@/services/flags/flags';
+import { summarizeWithLLM } from '@/services/chat/llm';
 import type { EnrichedService } from '@/domain/types';
 import type { Intent, ChatContext } from '@/services/chat/types';
 import type { SearchQuery } from '@/services/search/types';
@@ -121,6 +122,7 @@ export async function POST(req: NextRequest) {
     const response = await orchestrateChat(message, sessionId, effectiveUserId, locale, rateLimitKey, {
       retrieveServices,
       isFlagEnabled: (flagName) => flagService.isEnabled(flagName),
+      summarizeWithLLM,
     });
 
     return NextResponse.json(response, {

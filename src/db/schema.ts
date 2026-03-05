@@ -718,6 +718,386 @@ export const tagConfirmationQueueRelations = relations(tagConfirmationQueue, ({ 
   }),
 }));
 
+// ============================================================
+// SUBMISSIONS (Universal Pipeline) — 0022_universal_pipeline.sql
+// ============================================================
+export const submissions = pgTable(
+  'submissions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    submissionType: text('submission_type').notNull(),
+    status: text('status').notNull().default('draft'),
+
+    targetType: text('target_type').notNull().default('service'),
+    targetId: uuid('target_id'),
+    serviceId: uuid('service_id'),
+
+    submittedByUserId: text('submitted_by_user_id').notNull(),
+    assignedToUserId: text('assigned_to_user_id'),
+
+    title: text('title'),
+    notes: text('notes'),
+    reviewerNotes: text('reviewer_notes'),
+
+    payload: jsonb('payload').notNull().default({}),
+    evidence: jsonb('evidence').notNull().default([]),
+
+    priority: integer('priority').notNull().default(0),
+
+    isLocked: boolean('is_locked').notNull().default(false),
+    lockedAt: timestamp('locked_at', { withTimezone: true }),
+    lockedByUserId: text('locked_by_user_id'),
+
+    slaDeadline: timestamp('sla_deadline', { withTimezone: true }),
+    slaBreached: boolean('sla_breached').notNull().default(false),
+
+    jurisdictionState: text('jurisdiction_state'),
+    jurisdictionCounty: text('jurisdiction_county'),
+
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_submissions_type').on(table.submissionType),
+    index('idx_submissions_status').on(table.status),
+    index('idx_submissions_target').on(table.targetType, table.targetId),
+    index('idx_submissions_service').on(table.serviceId),
+    index('idx_submissions_submitter').on(table.submittedByUserId),
+    index('idx_submissions_assigned').on(table.assignedToUserId),
+    index('idx_submissions_priority').on(table.priority),
+    index('idx_submissions_type_status').on(table.submissionType, table.status),
+    index('idx_submissions_created').on(table.createdAt),
+  ]
+);
+
+export type SubmissionRow = typeof submissions.$inferSelect;
+export type NewSubmissionRow = typeof submissions.$inferInsert;
+
+// ============================================================
+// SUBMISSION TRANSITIONS (Full State Audit Trail)
+// ============================================================
+export const submissionTransitions = pgTable(
+  'submission_transitions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    submissionId: uuid('submission_id').notNull().references(() => submissions.id, { onDelete: 'cascade' }),
+
+    fromStatus: text('from_status').notNull(),
+    toStatus: text('to_status').notNull(),
+
+    actorUserId: text('actor_user_id').notNull(),
+    actorRole: text('actor_role'),
+
+    reason: text('reason'),
+
+    gatesChecked: jsonb('gates_checked').notNull().default([]),
+    gatesPassed: boolean('gates_passed').notNull().default(true),
+
+    metadata: jsonb('metadata').notNull().default({}),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_sub_transitions_submission').on(table.submissionId),
+    index('idx_sub_transitions_actor').on(table.actorUserId),
+    index('idx_sub_transitions_created').on(table.createdAt),
+  ]
+);
+
+export type SubmissionTransitionRow = typeof submissionTransitions.$inferSelect;
+export type NewSubmissionTransitionRow = typeof submissionTransitions.$inferInsert;
+
+// ============================================================
+// SUBMISSION SLAS (Deadline Rules)
+// ============================================================
+export const submissionSlas = pgTable(
+  'submission_slas',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    submissionType: text('submission_type').notNull(),
+    jurisdictionState: text('jurisdiction_state'),
+    jurisdictionCounty: text('jurisdiction_county'),
+    reviewHours: integer('review_hours').notNull().default(48),
+    escalationHours: integer('escalation_hours').notNull().default(72),
+    notifyOnBreach: text('notify_on_breach').array().default([]),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_sub_slas_type').on(table.submissionType),
+  ]
+);
+
+export type SubmissionSlaRow = typeof submissionSlas.$inferSelect;
+export type NewSubmissionSlaRow = typeof submissionSlas.$inferInsert;
+
+// ============================================================
+// PLATFORM SCOPES (Global Scope Registry)
+// ============================================================
+export const platformScopes = pgTable(
+  'platform_scopes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull().unique(),
+    description: text('description').notNull(),
+    category: text('category').notNull(),
+    riskLevel: text('risk_level').notNull().default('standard'),
+    requiresApproval: boolean('requires_approval').notNull().default(false),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_platform_scopes_category').on(table.category),
+    index('idx_platform_scopes_risk').on(table.riskLevel),
+  ]
+);
+
+export type PlatformScopeRow = typeof platformScopes.$inferSelect;
+export type NewPlatformScopeRow = typeof platformScopes.$inferInsert;
+
+// ============================================================
+// PLATFORM ROLES (Role Templates)
+// ============================================================
+export const platformRoles = pgTable(
+  'platform_roles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull().unique(),
+    description: text('description').notNull(),
+    isSystem: boolean('is_system').notNull().default(false),
+    isOrgScoped: boolean('is_org_scoped').notNull().default(false),
+    hierarchyLevel: integer('hierarchy_level').notNull().default(0),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_platform_roles_active').on(table.isActive),
+  ]
+);
+
+export type PlatformRoleRow = typeof platformRoles.$inferSelect;
+export type NewPlatformRoleRow = typeof platformRoles.$inferInsert;
+
+// ============================================================
+// ROLE SCOPE ASSIGNMENTS (Role → Scope mappings)
+// ============================================================
+export const roleScopeAssignments = pgTable(
+  'role_scope_assignments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    roleId: uuid('role_id').notNull().references(() => platformRoles.id, { onDelete: 'cascade' }),
+    scopeId: uuid('scope_id').notNull().references(() => platformScopes.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_role_scopes_unique').on(table.roleId, table.scopeId),
+    index('idx_role_scopes_role').on(table.roleId),
+    index('idx_role_scopes_scope').on(table.scopeId),
+  ]
+);
+
+export type RoleScopeAssignmentRow = typeof roleScopeAssignments.$inferSelect;
+export type NewRoleScopeAssignmentRow = typeof roleScopeAssignments.$inferInsert;
+
+// ============================================================
+// USER SCOPE GRANTS (Direct scope grants to users)
+// ============================================================
+export const userScopeGrants = pgTable(
+  'user_scope_grants',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id').notNull(),
+    scopeId: uuid('scope_id').notNull().references(() => platformScopes.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id'),
+    grantedByUserId: text('granted_by_user_id').notNull(),
+    grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    isActive: boolean('is_active').notNull().default(true),
+    approvalId: uuid('approval_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_user_scopes_unique').on(table.userId, table.scopeId, table.organizationId),
+    index('idx_user_scopes_user').on(table.userId),
+    index('idx_user_scopes_scope').on(table.scopeId),
+    index('idx_user_scopes_active').on(table.isActive, table.expiresAt),
+  ]
+);
+
+export type UserScopeGrantRow = typeof userScopeGrants.$inferSelect;
+export type NewUserScopeGrantRow = typeof userScopeGrants.$inferInsert;
+
+// ============================================================
+// PENDING SCOPE GRANTS (Two-Person Approval Queue)
+// ============================================================
+export const pendingScopeGrants = pgTable(
+  'pending_scope_grants',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id').notNull(),
+    scopeId: uuid('scope_id').notNull().references(() => platformScopes.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id'),
+    requestedByUserId: text('requested_by_user_id').notNull(),
+    requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
+    justification: text('justification').notNull(),
+    status: text('status').notNull().default('pending'),
+    decidedByUserId: text('decided_by_user_id'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    decisionReason: text('decision_reason'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_pending_grants_status').on(table.status),
+    index('idx_pending_grants_user').on(table.userId),
+    index('idx_pending_grants_requester').on(table.requestedByUserId),
+  ]
+);
+
+export type PendingScopeGrantRow = typeof pendingScopeGrants.$inferSelect;
+export type NewPendingScopeGrantRow = typeof pendingScopeGrants.$inferInsert;
+
+// ============================================================
+// SCOPE AUDIT LOG
+// ============================================================
+export const scopeAuditLog = pgTable(
+  'scope_audit_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    actorUserId: text('actor_user_id').notNull(),
+    actorRole: text('actor_role'),
+    action: text('action').notNull(),
+    targetType: text('target_type').notNull(),
+    targetId: text('target_id').notNull(),
+    beforeState: jsonb('before_state'),
+    afterState: jsonb('after_state'),
+    justification: text('justification'),
+    ipDigest: text('ip_digest'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_scope_audit_actor').on(table.actorUserId),
+    index('idx_scope_audit_action').on(table.action),
+    index('idx_scope_audit_target').on(table.targetType, table.targetId),
+    index('idx_scope_audit_created').on(table.createdAt),
+  ]
+);
+
+export type ScopeAuditLogRow = typeof scopeAuditLog.$inferSelect;
+export type NewScopeAuditLogRow = typeof scopeAuditLog.$inferInsert;
+
+// ============================================================
+// NOTIFICATION EVENTS
+// ============================================================
+export const notificationEvents = pgTable(
+  'notification_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    recipientUserId: text('recipient_user_id').notNull(),
+    eventType: text('event_type').notNull(),
+    channel: text('channel').notNull().default('in_app'),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    resourceType: text('resource_type'),
+    resourceId: text('resource_id'),
+    actionUrl: text('action_url'),
+    status: text('status').notNull().default('pending'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    idempotencyKey: text('idempotency_key').unique(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_notifications_recipient').on(table.recipientUserId, table.status),
+    index('idx_notifications_type').on(table.eventType),
+    index('idx_notifications_created').on(table.createdAt),
+  ]
+);
+
+export type NotificationEventRow = typeof notificationEvents.$inferSelect;
+export type NewNotificationEventRow = typeof notificationEvents.$inferInsert;
+
+// ============================================================
+// NOTIFICATION PREFERENCES
+// ============================================================
+export const notificationPreferences = pgTable(
+  'notification_preferences',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id').notNull(),
+    eventType: text('event_type').notNull(),
+    channel: text('channel').notNull().default('in_app'),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_notif_prefs_unique').on(table.userId, table.eventType, table.channel),
+    index('idx_notif_prefs_user').on(table.userId),
+  ]
+);
+
+export type NotificationPreferenceRow = typeof notificationPreferences.$inferSelect;
+export type NewNotificationPreferenceRow = typeof notificationPreferences.$inferInsert;
+
+// ============================================================
+// RELATIONS (0022 Universal Pipeline)
+// ============================================================.
+export const submissionsRelations = relations(submissions, ({ many }) => ({
+  transitions: many(submissionTransitions),
+}));
+
+export const submissionTransitionsRelations = relations(submissionTransitions, ({ one }) => ({
+  submission: one(submissions, {
+    fields: [submissionTransitions.submissionId],
+    references: [submissions.id],
+  }),
+}));
+
+export const platformRolesRelations = relations(platformRoles, ({ many }) => ({
+  scopeAssignments: many(roleScopeAssignments),
+}));
+
+export const platformScopesRelations = relations(platformScopes, ({ many }) => ({
+  roleAssignments: many(roleScopeAssignments),
+  userGrants: many(userScopeGrants),
+  pendingGrants: many(pendingScopeGrants),
+}));
+
+export const roleScopeAssignmentsRelations = relations(roleScopeAssignments, ({ one }) => ({
+  role: one(platformRoles, {
+    fields: [roleScopeAssignments.roleId],
+    references: [platformRoles.id],
+  }),
+  scope: one(platformScopes, {
+    fields: [roleScopeAssignments.scopeId],
+    references: [platformScopes.id],
+  }),
+}));
+
+export const userScopeGrantsRelations = relations(userScopeGrants, ({ one }) => ({
+  scope: one(platformScopes, {
+    fields: [userScopeGrants.scopeId],
+    references: [platformScopes.id],
+  }),
+}));
+
+export const pendingScopeGrantsRelations = relations(pendingScopeGrants, ({ one }) => ({
+  scope: one(platformScopes, {
+    fields: [pendingScopeGrants.scopeId],
+    references: [platformScopes.id],
+  }),
+}));
+
 export const candidateReadinessRelations = relations(candidateReadiness, ({ one }) => ({
   candidate: one(extractedCandidates, {
     fields: [candidateReadiness.candidateId],

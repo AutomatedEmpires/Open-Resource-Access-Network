@@ -6,7 +6,7 @@ Timestamp: 2026-03-02T00:00:00Z
 
 ## Context
 
-ORAN is Azure-first (docs/PLATFORM_AZURE.md). Several planned integrations currently use
+ORAN is Azure-first (docs/platform/PLATFORM_AZURE.md). Several planned integrations currently use
 external providers or in-memory stubs. The team has:
 
 - **$200 Azure credits** (primary subscription)

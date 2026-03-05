@@ -10,13 +10,22 @@ The ORAN chatbot is a **retrieval-first** pipeline. No LLM participates in retri
 User Message
      │
      ▼
-┌─────────────────────┐
-│  1. Crisis Detection │  ← Keyword-match against CRISIS_KEYWORDS
-└─────────────────────┘
+┌──────────────────────────┐
+│  1a. Crisis Detection    │  ← Keyword-match against CRISIS_KEYWORDS (sync, free)
+└──────────────────────────┘
      │ crisis detected?
      ├── YES → Return 911/988/211 routing immediately. STOP.
      │
-     ▼ no crisis
+     ▼ no keyword match
+┌──────────────────────────────────────────────────────┐
+│  1b. Content Safety Crisis Gate (OPTIONAL)           │  ← Flag: content_safety_crisis
+│      Pre-filter: hasDistressSignals() (sync, free)   │  ← Only calls API if signals found
+│      API: Azure AI Content Safety SelfHarm severity  │  ← FAIL-OPEN on any error
+└──────────────────────────────────────────────────────┘
+     │ SelfHarm severity ≥ medium (4)?
+     ├── YES → Return 911/988/211 routing immediately. STOP.
+     │
+     ▼ not crisis
 ┌─────────────────────┐
 │  2. Quota Check      │  ← MAX_CHAT_QUOTA per session
 └─────────────────────┘
@@ -65,7 +74,7 @@ Return ChatResponse (with eligibility disclaimer always included)
 
 ## Stage Details
 
-### Stage 1: Crisis Detection
+### Stage 1a: Crisis Detection (Keyword Gate)
 
 - Runs synchronously before any other processing
 - Checks message against `CRISIS_KEYWORDS` constant (50+ terms)
@@ -74,6 +83,18 @@ Return ChatResponse (with eligibility disclaimer always included)
   - Emergency numbers: **911** (life-threatening emergency)
   - Crisis line: **988** (Suicide & Crisis Lifeline)
   - Community support: **211** (local social services)
+
+### Stage 1b: Content Safety Semantic Crisis Gate (Optional, async)
+
+- Only runs when feature flag `content_safety_crisis` is **enabled**
+- Only fires when keyword gate (Stage 1a) did **not** detect crisis
+- **Pre-filter**: `hasDistressSignals()` — synchronous, free local check against indirect distress phrases (e.g. "no way out", "nobody would miss me"). If this returns false, the API is never called.
+- **API call**: Azure AI Content Safety `text:analyze` endpoint, `SelfHarm` category only
+- **Routing threshold**: SelfHarm severity ≥ 4 (medium or high) → route to 911/988/211
+- **FAIL-OPEN**: any API error (network, timeout, 4xx/5xx, malformed response) returns false — the pipeline continues normally. Crisis routing is never blocked by API unavailability.
+- **Cost control**: Azure AI Content Safety F0 free tier = 5,000 text records/month. Combined with the pre-filter, expected API call rate is &lt;5% of total messages.
+- **Configuration**: `AZURE_CONTENT_SAFETY_ENDPOINT` + `AZURE_CONTENT_SAFETY_KEY` env vars; module is a no-op when either is absent
+- **No LLM**: Azure AI Content Safety is a classifier, not a generative model
   - Warm handoff message: "I can see you may be going through something difficult. Please reach out to these services immediately."
 - Crisis routing fires regardless of quota or rate limit status
 
@@ -169,10 +190,16 @@ Safety rule:
 
 ### Stage 8: LLM Summarization Gate
 
+**Status: ACTIVE** (flag `llm_summarize` = `true`, 100% rollout, activated 2026-03-05)
+
+Model: `gpt-4o-mini` on Azure OpenAI resource `oranhf57ir-prod-oai` (eastus). Implemented in `src/services/chat/llm.ts`.
+
 Only activated when feature flag `llm_summarize` is enabled:
 - **Input**: The already-retrieved and assembled service records (plain text)
-- **Task**: Write 1–2 sentence natural language summary of what was found
-- **Constraints**: LLM must not add any information not present in the records
+- **Task**: Write 2–4 sentence natural language summary of what was found
+- **Constraints**: LLM must not add any information not present in the records; temperature=0.2; max_tokens=300
+- **Eligibility disclaimer**: Always appended unconditionally after LLM content
+- **Fail-open**: On any LLM error the orchestrator silently falls back to the assembled plain-text message
 - **Not activated for**: retrieval, ranking, eligibility assessment, crisis routing
 
 ---

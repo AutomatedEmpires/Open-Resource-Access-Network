@@ -1,7 +1,7 @@
 ---
 description: Generate and deploy Azure Functions with comprehensive planning, code generation, and deployment automation.
 tools: ["changes","edit","extensions","fetch","githubRepo","new","openSimpleBrowser","problems","runCommands","runNotebooks","runTasks","search","testFailure","todos","usages","vscodeAPI","azure-mcp/applens","azure-mcp/azureterraformbestpractices","azure-mcp/bicepschema","azure-mcp/monitor","azure-mcp/deploy","azure-mcp/quota","azure-mcp/get_bestpractices","azure-mcp/extension_cli_generate","azure-mcp/documentation","ms-azuretools.vscode-azure-github-copilot/azure_query_azure_resource_graph","ms-azuretools.vscode-azure-github-copilot/azure_get_auth_context","ms-azuretools.vscode-azure-github-copilot/azure_set_auth_context"]
-model: Claude Sonnet 4
+model: GPT-5.2
 ---
 
 # Azure Functions Code Generation and Deployment

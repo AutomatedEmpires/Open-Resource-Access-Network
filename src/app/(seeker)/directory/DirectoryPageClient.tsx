@@ -3,13 +3,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, MessageCircle, AlertTriangle, ArrowLeft, ArrowRight, MapIcon, Filter } from 'lucide-react';
+import { Search, X, AlertTriangle, ArrowLeft, ArrowRight } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { ServiceCard } from '@/components/directory/ServiceCard';
 import type { SearchResponse } from '@/services/search/types';
+import { useToast } from '@/components/ui/toast';
 
 const DEFAULT_LIMIT = 12;
 const SAVED_KEY = 'oran:saved-service-ids';
@@ -68,8 +70,9 @@ export default function DirectoryPage() {
     return valid.includes(v as SortOption) ? (v as SortOption) : 'relevance';
   });
   const [activeCategory, setActiveCategory] = useState<string | null>(() => searchParams.get('category'));
-  const [showFilters, setShowFilters] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const savedIdsRef = useRef<Set<string>>(new Set());
+  const { success } = useToast();
 
   // Ref for focus management after search
   const resultsContainerRef = useRef<HTMLDivElement>(null);
@@ -98,19 +101,32 @@ export default function DirectoryPage() {
       const raw = localStorage.getItem(SAVED_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as unknown;
-        if (Array.isArray(parsed)) setSavedIds(new Set(parsed.filter((v): v is string => typeof v === 'string')));
+        if (Array.isArray(parsed)) {
+          const next = new Set(parsed.filter((v): v is string => typeof v === 'string'));
+          savedIdsRef.current = next;
+          setSavedIds(next);
+        }
       }
     } catch { /* ignore */ }
   }, []);
 
+  // Keep ref in sync in case savedIds is updated elsewhere.
+  useEffect(() => {
+    savedIdsRef.current = savedIds;
+  }, [savedIds]);
+
   const toggleSave = useCallback((serviceId: string) => {
+    // Read from ref so this callback never goes stale — no savedIds in dep array.
+    const wasSaved = savedIdsRef.current.has(serviceId);
     setSavedIds((prev) => {
       const next = new Set(prev);
       if (next.has(serviceId)) { next.delete(serviceId); } else { next.add(serviceId); }
+      savedIdsRef.current = next;
       try { localStorage.setItem(SAVED_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
       return next;
     });
-  }, []);
+    success(wasSaved ? 'Removed from saved' : 'Saved');
+  }, [success]);
 
   const canSearch = useMemo(() => query.trim().length > 0, [query]);
 
@@ -221,26 +237,28 @@ export default function DirectoryPage() {
     }
   };
 
+  const handleClearSearch = useCallback(() => {
+    setQuery('');
+    setData(null);
+    setError(null);
+    setPage(1);
+    setActiveCategory(null);
+    pushUrlState('', confidenceFilter, sortBy, null, 1);
+  }, [confidenceFilter, sortBy, pushUrlState]);
+
   return (
     <main className="container mx-auto max-w-6xl px-4 py-8">
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Service Directory</h1>
-          <p className="text-gray-600">
-            Search verified service listings. Try{' '}
-            <Link href="/map" className="text-blue-600 hover:underline inline-flex items-center gap-1">
-              <MapIcon className="h-4 w-4" aria-hidden="true" />
-              Map view
-            </Link>{' '}
-            or{' '}
-            <Link href="/chat" className="text-blue-600 hover:underline inline-flex items-center gap-1">
-              <MessageCircle className="h-4 w-4" aria-hidden="true" />
-              Chat
-            </Link>
-            .
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Service Directory"
+        subtitle={
+          <>
+            Search verified listings. Also try{' '}
+            <Link href="/chat" className="text-blue-600 hover:underline">Chat</Link>
+            {' '}or{' '}
+            <Link href="/map" className="text-blue-600 hover:underline">Map view</Link>.
+          </>
+        }
+      />
 
       <ErrorBoundary>
         {/* Search + filters */}
@@ -252,29 +270,27 @@ export default function DirectoryPage() {
               onChange={(e) => setQuery(e.target.value)}
               type="search"
               placeholder="Search for services (e.g., rent help, food pantry, job training)"
-              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
               aria-label="Search services"
             />
+            {query && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
           </div>
           <Button type="submit" disabled={!canSearch || isLoading}>
             Search
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setShowFilters((v) => !v)}
-            className="gap-1 px-2.5"
-            aria-expanded={showFilters}
-            aria-controls="directory-filters"
-          >
-            <Filter className="h-4 w-4" aria-hidden="true" />
-            <span className="sr-only sm:not-sr-only">Filters</span>
-          </Button>
         </form>
 
         {/* Category chips */}
-        <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Quick category filters">
+        <div className="mb-2 flex flex-wrap items-center gap-2" role="group" aria-label="Quick category filters">
           <span className="text-xs font-medium text-gray-500">Categories:</span>
           {CATEGORY_CHIPS.map((cat) => (
             <button
@@ -293,56 +309,44 @@ export default function DirectoryPage() {
           ))}
         </div>
 
-        {/* Filter panel */}
-        {showFilters && (
-          <div
-            id="directory-filters"
-            className="mb-4 space-y-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3"
-          >
-            {/* Trust filter row */}
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-xs font-medium text-gray-700">Trust:</span>
-              {CONFIDENCE_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => handleConfidenceChange(opt.value)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                    confidenceFilter === opt.value
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
-                  }`}
-                  aria-pressed={confidenceFilter === opt.value}
-                >
-                  {opt.label}
-                </button>
-              ))}
-              <span className="text-xs text-gray-500 ml-auto hidden sm:inline">
-                Trust does not imply certainty — always confirm with the provider.
-              </span>
-            </div>
-
-            {/* Sort row */}
-            <div className="flex items-center gap-3">
-              <label htmlFor="sort-select" className="text-xs font-medium text-gray-700">
-                Sort:
-              </label>
-              {/* select inputs: min-h-[32px] is acceptable per UI_UX_TOKENS.md §select-exception */}
-              <select
-                id="sort-select"
-                value={sortBy}
-                onChange={handleSortChange}
-                className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[32px]"
+        {/* Confidence + sort controls — always visible, no toggle required */}
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Trust filter">
+            <span className="text-xs font-medium text-gray-500">Trust:</span>
+            {CONFIDENCE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => handleConfidenceChange(opt.value)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  confidenceFilter === opt.value
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                }`}
+                aria-pressed={confidenceFilter === opt.value}
               >
-                {SORT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+                {opt.label}
+              </button>
+            ))}
           </div>
-        )}
+          <div className="flex items-center gap-2 ml-auto">
+            <label htmlFor="sort-select" className="text-xs font-medium text-gray-500 whitespace-nowrap">
+              Sort:
+            </label>
+            <select
+              id="sort-select"
+              value={sortBy}
+              onChange={handleSortChange}
+              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[32px]"
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         {error && (
           <div
@@ -365,7 +369,7 @@ export default function DirectoryPage() {
             aria-busy="true"
             aria-label="Loading search results"
           >
-            {Array.from({ length: DEFAULT_LIMIT }).map((_, i) => (
+            {Array.from({ length: 4 }).map((_, i) => (
               <SkeletonCard key={`skeleton-${i}`} />
             ))}
           </div>
@@ -390,7 +394,10 @@ export default function DirectoryPage() {
           >
             <div className="flex items-center justify-between gap-4">
               <p className="text-sm text-gray-600" role="status" aria-live="polite">
-                Showing page {data.page} · {data.total} total
+                {data.results.length === 0
+                  ? `0 of ${data.total} results`
+                  : `Showing ${(page - 1) * DEFAULT_LIMIT + 1}–${(page - 1) * DEFAULT_LIMIT + data.results.length} of ${data.total}`
+                }
               </p>
 
               <div className="flex items-center gap-2">
@@ -437,6 +444,39 @@ export default function DirectoryPage() {
                     href={`/service/${r.service.service.id}`}
                   />
                 ))}
+              </div>
+            )}
+
+            {/* Bottom pagination — mirrors top bar so users don’t scroll back up */}
+            {data.results.length > 0 && (
+              <div className="flex items-center justify-between gap-4 pt-3 border-t border-gray-100">
+                <p className="text-xs text-gray-400">
+                  Page {page}{data.hasMore ? '' : ' · end of results'}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void runSearch(Math.max(1, page - 1))}
+                    disabled={page <= 1 || isLoading}
+                    className="gap-1"
+                  >
+                    <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                    Prev
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void runSearch(page + 1)}
+                    disabled={!data.hasMore || isLoading}
+                    className="gap-1"
+                  >
+                    Next
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </div>
               </div>
             )}
           </div>

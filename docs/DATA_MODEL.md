@@ -528,6 +528,126 @@ Computed readiness status for each candidate (all criteria met, score, tier).
 
 ---
 
+## Universal Pipeline (Migration 0022)
+
+### `submissions`
+Replaces `verification_queue` as the universal pipeline table. Supports polymorphic types (`service_verification`, `org_claim`, `data_correction`, `new_service`, `removal_request`, `community_report`, `appeal`) with a full state machine (`draft` → `submitted` → `auto_checking` → `needs_review` → `under_review` → `approved`/`denied`/`returned`/`escalated`/`pending_second_approval`/`withdrawn`/`expired`/`archived`).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID PK | Unique identifier |
+| submission_type | TEXT | Polymorphic discriminator |
+| status | TEXT | Current state machine status |
+| target_type | TEXT | Entity type this submission is about |
+| target_id | UUID | Reference to the target entity |
+| service_id | UUID FK | Legacy compatibility reference |
+| submitted_by_user_id | TEXT | Who submitted |
+| assigned_to_user_id | TEXT | Current reviewer |
+| title | TEXT | Human-readable title |
+| notes | TEXT | Submitter notes |
+| reviewer_notes | TEXT | Reviewer notes |
+| payload | JSONB | Type-specific structured fields |
+| evidence | JSONB | Attachments/evidence metadata |
+| priority | INT | Queue ordering (0=normal) |
+| is_locked | BOOLEAN | Prevents edits during review |
+| sla_deadline | TIMESTAMPTZ | SLA breach deadline |
+| created_at | TIMESTAMPTZ | Submission time |
+| updated_at | TIMESTAMPTZ | Last update |
+
+### `submission_transitions`
+Append-only audit trail of every status change on a submission.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID PK | Transition identifier |
+| submission_id | UUID FK | Parent submission |
+| from_status | TEXT | Previous status |
+| to_status | TEXT | New status |
+| changed_by_user_id | TEXT | Who made the transition |
+| notes | TEXT | Transition notes |
+| created_at | TIMESTAMPTZ | When transition occurred |
+
+### `submission_slas`
+Deadline rules per submission type.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID PK | SLA rule identifier |
+| submission_type | TEXT | Which type this rule applies to |
+| max_hours | INT | Hours before SLA breach |
+| escalation_action | TEXT | What happens on breach |
+
+### `platform_scopes`
+RBAC scope definitions (e.g. `service:write`, `submission:approve`, `service:merge`).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID PK | Scope identifier |
+| name | TEXT UNIQUE | Machine-readable scope name |
+| description | TEXT | Human-readable description |
+| created_at | TIMESTAMPTZ | Creation time |
+
+### `platform_roles`
+Named platform roles (beyond the 5 base roles) for fine-grained RBAC.
+
+### `role_scope_assignments`
+Maps platform roles to scopes (many-to-many).
+
+### `user_scope_grants`
+Direct scope grants to individual users.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID PK | Grant identifier |
+| user_id | TEXT | Granted user |
+| scope_id | UUID FK | Granted scope |
+| granted_by_user_id | TEXT | Who granted |
+| granted_at | TIMESTAMPTZ | When granted |
+| expires_at | TIMESTAMPTZ | Optional expiration |
+| revoked_at | TIMESTAMPTZ | Null if active |
+
+### `pending_scope_grants`
+Two-person approval queue for scope grants. The requestor cannot approve their own requests.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID PK | Request identifier |
+| user_id | TEXT | Target user |
+| scope_id | UUID FK | Requested scope |
+| requested_by_user_id | TEXT | Who initiated |
+| decided_by_user_id | TEXT | Who decided (must differ from requestor) |
+| decision | TEXT | pending/approved/denied |
+| reason | TEXT | Justification |
+| decided_at | TIMESTAMPTZ | When decided |
+
+### `scope_audit_log`
+Append-only audit trail for all scope-related actions.
+
+### `notification_events`
+In-app notification delivery records.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| id | UUID PK | Event identifier |
+| user_id | TEXT | Recipient |
+| event_type | TEXT | Notification category |
+| channel | TEXT | Delivery channel (in_app, email) |
+| title | TEXT | Notification title |
+| body | TEXT | Notification body |
+| resource_type | TEXT | Related resource type |
+| resource_id | UUID | Related resource ID |
+| is_read | BOOLEAN | Read status |
+| idempotency_key | TEXT UNIQUE | Deduplication key |
+| created_at | TIMESTAMPTZ | Sent time |
+
+### `notification_preferences`
+Per-user opt-in/opt-out preferences by event type and channel.
+
+### `verification_queue` (Compatibility View)
+Backward-compatible view over `submissions` for code that references the old table.
+
+---
+
 ## Key Relationships
 
 ```
@@ -542,6 +662,12 @@ services ──< service_taxonomy >── taxonomy_terms
 taxonomy_terms ──< taxonomy_terms (self-referential parent)
 services ──< confidence_scores
 services ──< verification_queue
+services ──< submissions
+submissions ──< submission_transitions
+submissions ──< submission_slas
+platform_scopes ──< role_scope_assignments >── platform_roles
+platform_scopes ──< user_scope_grants
+platform_scopes ──< pending_scope_grants
 services ──< seeker_feedback
 services ──< eligibility
 services ──< required_documents

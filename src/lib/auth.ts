@@ -14,6 +14,7 @@
 
 import type { AuthOptions } from 'next-auth';
 import AzureADProvider from 'next-auth/providers/azure-ad';
+import CredentialsProvider from 'next-auth/providers/credentials';
 import type { OranRole } from '@/domain/types';
 
 // ============================================================
@@ -65,6 +66,38 @@ export function resolveOranRole(roles?: string[]): OranRole {
 
 export const authOptions: AuthOptions = {
   providers: [
+    ...(process.env.ORAN_TEST_AUTH_ENABLED === '1' && process.env.NODE_ENV !== 'production'
+      ? [
+          CredentialsProvider({
+            id: 'oran-test',
+            name: 'ORAN Test Auth',
+            credentials: {
+              userId: { label: 'User ID', type: 'text' },
+              role: { label: 'Role', type: 'text' },
+            },
+            async authorize(credentials) {
+              const userId = credentials?.userId?.trim() || 'oran-e2e-user';
+              const role = (credentials?.role?.trim() || 'seeker') as OranRole;
+              const allowed: OranRole[] = [
+                'seeker',
+                'host_member',
+                'host_admin',
+                'community_admin',
+                'oran_admin',
+              ];
+              if (!allowed.includes(role)) {
+                return null;
+              }
+              return {
+                id: userId,
+                name: `Test ${role}`,
+                email: `${userId}@oran.test`,
+                role,
+              } as unknown as { id: string; name: string; email: string; role: OranRole };
+            },
+          }),
+        ]
+      : []),
     ...(process.env.AZURE_AD_CLIENT_ID
       ? [
           AzureADProvider({

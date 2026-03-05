@@ -38,6 +38,17 @@ All API routes must:
 | `/api/host/admins` | GET/POST | `host_admin`/`oran_admin` | Yes | Yes (60/30 min) | Team member management |
 | `/api/host/admins/[id]` | GET/PUT/DELETE | `host_admin`/`oran_admin` | Yes (UUID) | Yes | Team member detail |
 | `/api/host/claim` | POST | Conditional | Yes | Yes (30/min) | Org claim; auth if configured |
+| `/api/admin/scopes` | GET/POST | `oran_admin` | Yes | Yes (60/30 min) | Platform scope CRUD |
+| `/api/admin/scopes/grants` | GET/POST | `oran_admin` | Yes | Yes (60/30 min) | Scope grant requests |
+| `/api/admin/scopes/grants/[id]` | PUT/DELETE | `oran_admin` | Yes (UUID) | Yes (30/min) | Grant approve/deny/revoke |
+| `/api/user/scopes` | GET | Auth required | N/A | Yes (60/min) | Current user's scopes |
+| `/api/user/notifications` | GET | Auth required | Yes | Yes (60/min) | Notification listing |
+| `/api/user/notifications/[id]/read` | PUT | Auth required | Yes (UUID) | Yes (30/min) | Mark notification read |
+| `/api/user/notifications/read-all` | PUT | Auth required | N/A | Yes (30/min) | Mark all notifications read |
+| `/api/user/notifications/preferences` | GET/PUT | Auth required | Yes | Yes (60/30 min) | Notification preferences |
+| `/api/admin/appeals` | GET/POST | `community_admin` | Yes | Yes (60/30 min) | Appeal review queue + decisions |
+| `/api/submissions/appeal` | POST/GET | Auth required | Yes | Yes (30/60 min) | Submit appeal + list own appeals |
+| `/api/submissions/report` | POST/GET | Optional/Auth | Yes | Yes (10/60 min) | Report listing issue + list own reports |
 
 ## Auth Enforcement
 

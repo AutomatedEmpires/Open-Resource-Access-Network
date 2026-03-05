@@ -4,9 +4,28 @@
  * Client-side rendering is handled by ServiceDetailClient.
  */
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import ServiceDetailContent from './ServiceDetailClient';
 
-const BASE_URL = 'https://openresourceaccessnetwork.com';
+async function getBaseUrlFromHeaders(): Promise<string> {
+  const defaultBaseUrl = 'https://openresourceaccessnetwork.com';
+
+  // Prefer proxy headers (Vercel/Azure/App Service) when available.
+  // In unit tests / build-time environments there may be no request context,
+  // and `headers()` can throw — fall back to the canonical base URL.
+  try {
+    const h = await headers();
+    const host = h.get('x-forwarded-host') ?? h.get('host');
+    if (!host) return defaultBaseUrl;
+
+    const protoFromHeader = h.get('x-forwarded-proto');
+    const isLocalHost = host.includes('localhost') || host.startsWith('127.0.0.1');
+    const proto = protoFromHeader ?? (isLocalHost ? 'http' : 'https');
+    return `${proto}://${host}`;
+  } catch {
+    return defaultBaseUrl;
+  }
+}
 
 interface ServiceDetailPageProps {
   params: Promise<{ id: string }>;
@@ -21,9 +40,9 @@ interface ServiceMeta {
   url?: string;
 }
 
-async function fetchServiceMeta(id: string): Promise<ServiceMeta | null> {
+async function fetchServiceMeta(id: string, baseUrl: string): Promise<ServiceMeta | null> {
   try {
-    const res = await fetch(`${BASE_URL}/api/services?ids=${encodeURIComponent(id)}`, {
+    const res = await fetch(`${baseUrl}/api/services?ids=${encodeURIComponent(id)}`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return null;
@@ -52,7 +71,8 @@ async function fetchServiceMeta(id: string): Promise<ServiceMeta | null> {
 
 export async function generateMetadata({ params }: ServiceDetailPageProps): Promise<Metadata> {
   const { id } = await params;
-  const meta = await fetchServiceMeta(id);
+  const baseUrl = await getBaseUrlFromHeaders();
+  const meta = await fetchServiceMeta(id, baseUrl);
 
   if (!meta) {
     return {
@@ -74,7 +94,7 @@ export async function generateMetadata({ params }: ServiceDetailPageProps): Prom
     openGraph: {
       title: `${title} | ORAN`,
       description,
-      url: `${BASE_URL}/service/${id}`,
+      url: `${baseUrl}/service/${id}`,
       type: 'website',
     },
     twitter: {
@@ -86,7 +106,7 @@ export async function generateMetadata({ params }: ServiceDetailPageProps): Prom
 }
 
 /** Build JSON-LD BreadcrumbList schema */
-function buildBreadcrumbJsonLd(id: string, serviceName: string) {
+function buildBreadcrumbJsonLd(baseUrl: string, id: string, serviceName: string) {
   return {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -95,26 +115,26 @@ function buildBreadcrumbJsonLd(id: string, serviceName: string) {
         '@type': 'ListItem',
         position: 1,
         name: 'Home',
-        item: BASE_URL,
+        item: baseUrl,
       },
       {
         '@type': 'ListItem',
         position: 2,
         name: 'Directory',
-        item: `${BASE_URL}/directory`,
+        item: `${baseUrl}/directory`,
       },
       {
         '@type': 'ListItem',
         position: 3,
         name: serviceName,
-        item: `${BASE_URL}/service/${id}`,
+        item: `${baseUrl}/service/${id}`,
       },
     ],
   };
 }
 
 /** Build JSON-LD LocalBusiness/GovernmentService schema */
-function buildServiceJsonLd(id: string, meta: ServiceMeta) {
+function buildServiceJsonLd(baseUrl: string, id: string, meta: ServiceMeta) {
   return {
     '@context': 'https://schema.org',
     '@type': 'GovernmentService',
@@ -124,7 +144,7 @@ function buildServiceJsonLd(id: string, meta: ServiceMeta) {
       '@type': 'Organization',
       name: meta.orgName,
     },
-    url: meta.url || `${BASE_URL}/service/${id}`,
+    url: meta.url || `${baseUrl}/service/${id}`,
     ...(meta.address && {
       areaServed: {
         '@type': 'Place',
@@ -143,7 +163,8 @@ function buildServiceJsonLd(id: string, meta: ServiceMeta) {
 
 export default async function ServiceDetailPage({ params }: ServiceDetailPageProps) {
   const { id } = await params;
-  const meta = await fetchServiceMeta(id);
+  const baseUrl = await getBaseUrlFromHeaders();
+  const meta = await fetchServiceMeta(id, baseUrl);
 
   return (
     <>
@@ -152,13 +173,13 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
           <script
             type="application/ld+json"
             dangerouslySetInnerHTML={{
-              __html: JSON.stringify(buildBreadcrumbJsonLd(id, meta.name)),
+              __html: JSON.stringify(buildBreadcrumbJsonLd(baseUrl, id, meta.name)),
             }}
           />
           <script
             type="application/ld+json"
             dangerouslySetInnerHTML={{
-              __html: JSON.stringify(buildServiceJsonLd(id, meta)),
+              __html: JSON.stringify(buildServiceJsonLd(baseUrl, id, meta)),
             }}
           />
         </>

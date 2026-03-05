@@ -12,6 +12,10 @@ const authMocks = vi.hoisted(() => ({
   getAuthContext: vi.fn(),
 }));
 const requireMinRoleMock = vi.hoisted(() => vi.fn());
+const engineMocks = vi.hoisted(() => ({
+  advance: vi.fn(),
+  acquireLock: vi.fn(),
+}));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
@@ -24,6 +28,7 @@ vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/auth/guards', () => ({
   requireMinRole: requireMinRoleMock,
 }));
+vi.mock('@/services/workflow/engine', () => engineMocks);
 
 function createRequest(options: {
   search?: string;
@@ -84,6 +89,8 @@ beforeEach(() => {
   authMocks.getAuthContext.mockResolvedValue(null);
   requireMinRoleMock.mockReturnValue(true);
   captureExceptionMock.mockResolvedValue(undefined);
+  engineMocks.advance.mockResolvedValue({ success: true, fromStatus: 'submitted', toStatus: 'under_review', transitionId: 'tx-1' });
+  engineMocks.acquireLock.mockResolvedValue(true);
 });
 
 describe('community api routes', () => {
@@ -100,11 +107,15 @@ describe('community api routes', () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
     dbMocks.executeQuery
       .mockResolvedValueOnce([
-        { status: 'pending', count: 2 },
-        { status: 'verified', count: 3 },
+        { status: 'submitted', count: 2 },
+        { status: 'approved', count: 3 },
       ])
-      .mockResolvedValueOnce([{ date: '2026-03-01', verified: 1, rejected: 0, escalated: 0 }])
+      .mockResolvedValueOnce([
+        { submission_type: 'service_verification', count: 4 },
+      ])
+      .mockResolvedValueOnce([{ date: '2026-03-01', approved: 1, denied: 0, escalated: 0 }])
       .mockResolvedValueOnce([{ count: 1 }])
+      .mockResolvedValueOnce([{ count: 0 }])
       .mockResolvedValueOnce([{ organization_id: 'org-1', organization_name: 'Org', pending_count: 2 }]);
     const { GET } = await loadCoverageRoute();
 
@@ -113,14 +124,19 @@ describe('community api routes', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.summary).toEqual({
-      pending: 2,
-      inReview: 0,
-      verified: 3,
-      rejected: 0,
+      submitted: 2,
+      underReview: 0,
+      pendingSecondApproval: 0,
+      approved: 3,
+      denied: 0,
       escalated: 0,
+      returned: 0,
+      withdrawn: 0,
       total: 5,
       stale: 1,
+      slaBreached: 0,
     });
+    expect(body.byType).toEqual({ service_verification: 4 });
     expect(body.topOrganizations).toEqual([
       { organization_id: 'org-1', organization_name: 'Org', pending_count: 2 },
     ]);
@@ -141,14 +157,14 @@ describe('community api routes', () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
     dbMocks.executeQuery
       .mockResolvedValueOnce([{ count: 1 }])
-      .mockResolvedValueOnce([{ id: 'queue-1', status: 'pending' }]);
+      .mockResolvedValueOnce([{ id: 'queue-1', status: 'submitted' }]);
     const { GET } = await loadQueueRoute();
 
-    const response = await GET(createRequest({ search: '?status=pending' }));
+    const response = await GET(createRequest({ search: '?status=submitted' }));
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      results: [{ id: 'queue-1', status: 'pending' }],
+      results: [{ id: 'queue-1', status: 'submitted' }],
       total: 1,
       page: 1,
       hasMore: false,
@@ -165,40 +181,41 @@ describe('community api routes', () => {
     await expect(response.json()).resolves.toEqual({ error: 'Invalid JSON body' });
   });
 
-  it('returns 404 when assigning a queue entry that is not pending', async () => {
+  it('returns 409 when claiming a submission that is already locked', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
-    dbMocks.executeQuery.mockResolvedValueOnce([]);
+    engineMocks.acquireLock.mockResolvedValueOnce(false);
     const { POST } = await loadQueueRoute();
 
     const response = await POST(
       createRequest({
         jsonBody: {
-          queueEntryId: '11111111-1111-4111-8111-111111111111',
+          submissionId: '11111111-1111-4111-8111-111111111111',
         },
       }),
     );
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
-      error: 'Queue entry not found or already assigned',
+      error: 'Submission not found, already locked, or already assigned',
     });
   });
 
-  it('assigns a queue entry to the current community admin', async () => {
+  it('claims a submission for the current community admin', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
-    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'queue-1' }]);
+    engineMocks.acquireLock.mockResolvedValueOnce(true);
+    engineMocks.advance.mockResolvedValueOnce({ success: true, fromStatus: 'submitted', toStatus: 'under_review', transitionId: 'tx-1' });
     const { POST } = await loadQueueRoute();
 
     const response = await POST(
       createRequest({
         jsonBody: {
-          queueEntryId: '11111111-1111-4111-8111-111111111111',
+          submissionId: '11111111-1111-4111-8111-111111111111',
         },
       }),
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ success: true, id: 'queue-1' });
+    await expect(response.json()).resolves.toEqual({ success: true, id: '11111111-1111-4111-8111-111111111111' });
   });
 
   it('validates queue detail ids', async () => {
@@ -207,22 +224,25 @@ describe('community api routes', () => {
     const response = await GET(createRequest(), createRouteContext('bad-id'));
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: 'Invalid queue entry ID' });
+    await expect(response.json()).resolves.toEqual({ error: 'Invalid submission ID' });
   });
 
-  it('returns a detailed queue entry payload', async () => {
+  it('returns a detailed submission payload', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
     dbMocks.executeQuery
       .mockResolvedValueOnce([
         {
-          id: 'queue-1',
+          id: '11111111-1111-4111-8111-111111111111',
           service_id: 'svc-1',
           service_name: 'Food Pantry',
+          submission_type: 'service_verification',
+          status: 'under_review',
         },
       ])
       .mockResolvedValueOnce([{ id: 'loc-1', name: 'Main Site' }])
       .mockResolvedValueOnce([{ id: 'phone-1', number: '555-0100' }])
-      .mockResolvedValueOnce([{ score: 75 }]);
+      .mockResolvedValueOnce([{ score: 75 }])
+      .mockResolvedValueOnce([{ id: 'tx-1', from_status: 'submitted', to_status: 'under_review', actor_user_id: 'u-1', created_at: '2026-01-01' }]);
     const { GET } = await loadQueueDetailRoute();
 
     const response = await GET(
@@ -232,10 +252,11 @@ describe('community api routes', () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.id).toBe('queue-1');
+    expect(body.id).toBe('11111111-1111-4111-8111-111111111111');
     expect(body.locations).toEqual([{ id: 'loc-1', name: 'Main Site' }]);
     expect(body.phones).toEqual([{ id: 'phone-1', number: '555-0100' }]);
     expect(body.confidenceScore).toEqual({ score: 75 });
+    expect(body.transitions).toEqual([{ id: 'tx-1', from_status: 'submitted', to_status: 'under_review', actor_user_id: 'u-1', created_at: '2026-01-01' }]);
   });
 
   it('returns 400 when queue decisions have invalid JSON', async () => {
@@ -248,50 +269,37 @@ describe('community api routes', () => {
     await expect(response.json()).resolves.toEqual({ error: 'Invalid JSON body' });
   });
 
-  it('returns 404 when a queue entry has already been reviewed', async () => {
+  it('returns 409 when a submission cannot be advanced', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
-    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
-      const client = {
-        query: vi.fn().mockResolvedValueOnce({ rows: [] }),
-      };
-      return callback(client);
-    });
+    engineMocks.advance.mockResolvedValueOnce({ success: false, error: 'Invalid transition' });
     const { PUT } = await loadQueueDetailRoute();
 
     const response = await PUT(
       createRequest({
-        jsonBody: { decision: 'verified' },
+        jsonBody: { decision: 'approved' },
       }),
       createRouteContext('11111111-1111-4111-8111-111111111111'),
     );
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
-      error: 'Queue entry not found or already reviewed',
+      error: 'Invalid transition',
     });
   });
 
-  it('verifies a queue entry and updates confidence scores', async () => {
+  it('approves a submission and updates confidence scores', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
-    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
-      const client = {
-        query: vi
-          .fn()
-          .mockResolvedValueOnce({
-            rows: [{ id: 'queue-1', service_id: 'svc-1' }],
-          })
-          .mockResolvedValueOnce({ rows: [] }),
-      };
-      const result = await callback(client);
-      expect(client.query).toHaveBeenCalledTimes(2);
-      return result;
-    });
+    engineMocks.advance.mockResolvedValueOnce({ success: true, fromStatus: 'under_review', toStatus: 'approved', transitionId: 'tx-2' });
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([])                        // notes update
+      .mockResolvedValueOnce([{ service_id: 'svc-1' }]) // service lookup
+      .mockResolvedValueOnce([]);                        // confidence upsert
     const { PUT } = await loadQueueDetailRoute();
 
     const response = await PUT(
       createRequest({
         jsonBody: {
-          decision: 'verified',
+          decision: 'approved',
           notes: 'Confirmed by phone.',
         },
       }),
@@ -301,8 +309,9 @@ describe('community api routes', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.success).toBe(true);
-    expect(body.id).toBe('queue-1');
-    expect(body.serviceId).toBe('svc-1');
-    expect(body.message).toBe('Record verified. Confidence score updated.');
+    expect(body.id).toBe('11111111-1111-4111-8111-111111111111');
+    expect(body.fromStatus).toBe('under_review');
+    expect(body.toStatus).toBe('approved');
+    expect(body.message).toBe('Record approved. Confidence score updated.');
   });
 });

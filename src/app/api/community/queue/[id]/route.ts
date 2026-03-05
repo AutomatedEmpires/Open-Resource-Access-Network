@@ -1,27 +1,31 @@
 /**
- * GET /api/community/queue/[id] — Fetch a single verification queue entry with full service + org details.
- * PUT /api/community/queue/[id] — Submit a verification decision (verify / reject / escalate).
+ * GET /api/community/queue/[id] — Fetch a single submission with full service + org details.
+ * PUT /api/community/queue/[id] — Submit a review decision (approve / deny / escalate / return).
+ *
+ * Uses the universal submissions table (migration 0022).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
+import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
+import { advance } from '@/services/workflow/engine';
 import {
   RATE_LIMIT_WINDOW_MS,
   COMMUNITY_READ_RATE_LIMIT_MAX_REQUESTS,
   COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import type { SubmissionStatus } from '@/domain/types';
 
 // ============================================================
 // SCHEMAS
 // ============================================================
 
 const DecisionSchema = z.object({
-  decision: z.enum(['verified', 'rejected', 'escalated'], {
+  decision: z.enum(['approved', 'denied', 'escalated', 'returned', 'pending_second_approval'], {
     message: 'decision is required',
   }),
   notes: z.string().max(5000).optional(),
@@ -48,7 +52,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
 
   const { id } = await ctx.params;
   if (!z.string().uuid().safeParse(id).success) {
-    return NextResponse.json({ error: 'Invalid queue entry ID' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid submission ID' }, { status: 400 });
   }
 
   const ip = getIp(req);
@@ -75,92 +79,133 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
   }
 
   try {
-    // Full detail: queue entry + service + organization + location(s) + address(es) + phone(s)
+    // Full detail: submission + service + organization
     const rows = await executeQuery<{
       id: string;
-      service_id: string;
+      submission_type: string;
       status: string;
+      service_id: string | null;
+      target_type: string;
+      target_id: string | null;
       submitted_by_user_id: string;
       assigned_to_user_id: string | null;
+      title: string | null;
       notes: string | null;
+      reviewer_notes: string | null;
+      payload: Record<string, unknown>;
+      evidence: unknown[];
+      priority: number;
+      is_locked: boolean;
+      locked_by_user_id: string | null;
+      sla_deadline: string | null;
+      sla_breached: boolean;
       created_at: string;
       updated_at: string;
       // Service
-      service_name: string;
+      service_name: string | null;
       service_description: string | null;
       service_url: string | null;
       service_email: string | null;
-      service_status: string;
+      service_status: string | null;
       // Organization
-      organization_id: string;
-      organization_name: string;
+      organization_id: string | null;
+      organization_name: string | null;
       organization_url: string | null;
       organization_email: string | null;
       organization_description: string | null;
     }>(
-      `SELECT vq.id, vq.service_id, vq.status,
-              vq.submitted_by_user_id, vq.assigned_to_user_id, vq.notes,
-              vq.created_at, vq.updated_at,
+      `SELECT sub.id, sub.submission_type, sub.status,
+              sub.service_id, sub.target_type, sub.target_id,
+              sub.submitted_by_user_id, sub.assigned_to_user_id,
+              sub.title, sub.notes, sub.reviewer_notes,
+              sub.payload, sub.evidence, sub.priority,
+              sub.is_locked, sub.locked_by_user_id,
+              sub.sla_deadline, sub.sla_breached,
+              sub.created_at, sub.updated_at,
               s.name AS service_name, s.description AS service_description,
               s.url AS service_url, s.email AS service_email, s.status AS service_status,
               o.id AS organization_id, o.name AS organization_name,
               o.url AS organization_url, o.email AS organization_email,
               o.description AS organization_description
-       FROM verification_queue vq
-       JOIN services s ON s.id = vq.service_id
-       JOIN organizations o ON o.id = s.organization_id
-       WHERE vq.id = $1`,
+       FROM submissions sub
+       LEFT JOIN services s ON s.id = sub.service_id
+       LEFT JOIN organizations o ON o.id = s.organization_id
+       WHERE sub.id = $1`,
       [id],
     );
 
     if (rows.length === 0) {
-      return NextResponse.json({ error: 'Queue entry not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Submission not found' }, { status: 404 });
     }
 
     const entry = rows[0];
 
-    // Fetch locations associated with this service
-    const locations = await executeQuery<{
-      id: string;
-      name: string | null;
-      address_1: string | null;
-      city: string | null;
-      state_province: string | null;
-      postal_code: string | null;
-      latitude: number | null;
-      longitude: number | null;
-    }>(
-      `SELECT l.id, l.name, a.address_1, a.city, a.state_province, a.postal_code,
-              l.latitude, l.longitude
-       FROM service_at_location sal
-       JOIN locations l ON l.id = sal.location_id
-       LEFT JOIN addresses a ON a.location_id = l.id
-       WHERE sal.service_id = $1`,
-      [entry.service_id],
-    );
+    // Fetch locations if service exists
+    let locations: unknown[] = [];
+    let phones: unknown[] = [];
+    if (entry.service_id) {
+      locations = await executeQuery<{
+        id: string;
+        name: string | null;
+        address_1: string | null;
+        city: string | null;
+        state_province: string | null;
+        postal_code: string | null;
+        latitude: number | null;
+        longitude: number | null;
+      }>(
+        `SELECT l.id, l.name, a.address_1, a.city, a.state_province, a.postal_code,
+                l.latitude, l.longitude
+         FROM service_at_location sal
+         JOIN locations l ON l.id = sal.location_id
+         LEFT JOIN addresses a ON a.location_id = l.id
+         WHERE sal.service_id = $1`,
+        [entry.service_id],
+      );
 
-    // Fetch phones for this service
-    const phones = await executeQuery<{
-      id: string;
-      number: string;
-      type: string | null;
-      description: string | null;
-    }>(
-      `SELECT id, number, type, description FROM phones WHERE service_id = $1`,
-      [entry.service_id],
-    );
+      phones = await executeQuery<{
+        id: string;
+        number: string;
+        type: string | null;
+        description: string | null;
+      }>(
+        `SELECT id, number, type, description FROM phones WHERE service_id = $1`,
+        [entry.service_id],
+      );
+    }
 
     // Fetch confidence score
-    const scores = await executeQuery<{
-      score: number;
-      verification_confidence: number;
-      eligibility_match: number;
-      constraint_fit: number;
-      computed_at: string;
+    const scores = entry.service_id
+      ? await executeQuery<{
+          score: number;
+          verification_confidence: number;
+          eligibility_match: number;
+          constraint_fit: number;
+          computed_at: string;
+        }>(
+          `SELECT score, verification_confidence, eligibility_match, constraint_fit, computed_at
+           FROM confidence_scores WHERE service_id = $1`,
+          [entry.service_id],
+        )
+      : [];
+
+    // Fetch transition history
+    const transitions = await executeQuery<{
+      id: string;
+      from_status: string;
+      to_status: string;
+      actor_user_id: string;
+      actor_role: string | null;
+      reason: string | null;
+      gates_passed: boolean;
+      created_at: string;
     }>(
-      `SELECT score, verification_confidence, eligibility_match, constraint_fit, computed_at
-       FROM confidence_scores WHERE service_id = $1`,
-      [entry.service_id],
+      `SELECT id, from_status, to_status, actor_user_id, actor_role,
+              reason, gates_passed, created_at
+       FROM submission_transitions
+       WHERE submission_id = $1
+       ORDER BY created_at ASC`,
+      [id],
     );
 
     return NextResponse.json(
@@ -169,6 +214,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
         locations,
         phones,
         confidenceScore: scores[0] ?? null,
+        transitions,
       },
       { headers: { 'Cache-Control': 'private, no-store' } },
     );
@@ -185,7 +231,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
   const { id } = await ctx.params;
   if (!z.string().uuid().safeParse(id).success) {
-    return NextResponse.json({ error: 'Invalid queue entry ID' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid submission ID' }, { status: 400 });
   }
 
   const ip = getIp(req);
@@ -229,62 +275,64 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
   const { decision, notes } = parsed.data;
 
   try {
-    const result = await withTransaction(async (client) => {
-      // 1. Update the verification queue entry
-      const queueResult = await client.query<{
-        id: string;
-        service_id: string;
-      }>(
-        `UPDATE verification_queue
-         SET status = $1, notes = $2, assigned_to_user_id = $3, updated_at = now()
-         WHERE id = $4 AND status IN ('pending', 'in_review')
-         RETURNING id, service_id`,
-        [decision, notes ?? null, authCtx.userId, id],
+    // Save reviewer notes before advancing
+    if (notes) {
+      await executeQuery(
+        `UPDATE submissions SET reviewer_notes = $1, updated_at = NOW() WHERE id = $2`,
+        [notes, id],
       );
+    }
 
-      if (queueResult.rows.length === 0) {
-        return null; // 404 or already decided
-      }
+    // Use the workflow engine to advance the submission
+    const result = await advance({
+      submissionId: id,
+      toStatus: decision as SubmissionStatus,
+      actorUserId: authCtx.userId,
+      actorRole: authCtx.role,
+      reason: notes ?? `Decision: ${decision}`,
+    });
 
-      const serviceId = queueResult.rows[0].service_id;
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error ?? 'Cannot apply this decision' },
+        { status: 409 },
+      );
+    }
 
-      // 2. If verified, update the confidence score
-      if (decision === 'verified') {
-        // Bump verification_confidence to 80+ since a human verified it
-        await client.query(
+    // If approved, bump confidence score for the associated service
+    if (decision === 'approved') {
+      const serviceRows = await executeQuery<{ service_id: string }>(
+        `SELECT service_id FROM submissions WHERE id = $1 AND service_id IS NOT NULL`,
+        [id],
+      );
+      if (serviceRows.length > 0) {
+        await executeQuery(
           `INSERT INTO confidence_scores (service_id, score, verification_confidence, eligibility_match, constraint_fit)
            VALUES ($1, 80, 80, 50, 50)
            ON CONFLICT (service_id)
            DO UPDATE SET verification_confidence = 80,
                          score = GREATEST(confidence_scores.score, 80),
                          computed_at = now()`,
-          [serviceId],
+          [serviceRows[0].service_id],
         );
       }
-
-      // 3. If rejected, create an actionable change request note
-      //    This is recorded in the verification_queue notes for now.
-      //    The host will see this when checking their service claim status.
-
-      return { id: queueResult.rows[0].id, serviceId, decision };
-    });
-
-    if (result === null) {
-      return NextResponse.json(
-        { error: 'Queue entry not found or already reviewed' },
-        { status: 404 },
-      );
     }
+
+    const messages: Record<string, string> = {
+      approved: 'Record approved. Confidence score updated.',
+      denied: 'Record denied. Change request notes saved for the host.',
+      escalated: 'Record escalated for ORAN admin review.',
+      returned: 'Record returned to submitter for revision.',
+      pending_second_approval: 'Record sent for second approval (two-person rule).',
+    };
 
     return NextResponse.json({
       success: true,
-      ...result,
-      message:
-        decision === 'verified'
-          ? 'Record verified. Confidence score updated.'
-          : decision === 'rejected'
-            ? 'Record rejected. Change request notes saved for the host.'
-            : 'Record escalated for ORAN admin review.',
+      id,
+      fromStatus: result.fromStatus,
+      toStatus: result.toStatus,
+      transitionId: result.transitionId,
+      message: messages[decision] ?? `Decision: ${decision}`,
     });
   } catch (error) {
     await captureException(error, { feature: 'api_community_verify_decision' });

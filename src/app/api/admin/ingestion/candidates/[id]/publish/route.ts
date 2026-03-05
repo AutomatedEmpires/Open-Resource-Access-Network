@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { isDatabaseConfigured } from '@/services/db/postgres';
+import { isDatabaseConfigured, executeQuery } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
@@ -99,6 +99,17 @@ export async function POST(
       outputs: { serviceId },
       evidenceRefs: [],
     });
+
+    // Bridge into unified submissions workflow so published ingestion
+    // candidates appear in the same audit/reporting pipeline as all
+    // other submission types.
+    await executeQuery(
+      `INSERT INTO submissions
+         (submission_type, status, target_type, target_id, service_id,
+          submitted_by_user_id, title, submitted_at)
+       VALUES ('service_verification', 'approved', 'service', $1, $1, $2, $3, NOW())`,
+      [serviceId, authCtx.userId, `Ingestion publish: candidate ${id}`],
+    );
 
     return NextResponse.json({ success: true, serviceId });
   } catch (error) {

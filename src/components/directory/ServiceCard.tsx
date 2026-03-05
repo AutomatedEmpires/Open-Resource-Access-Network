@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { FeedbackForm } from '@/components/feedback/FeedbackForm';
+import { ReportProblemDialog } from '@/components/feedback/ReportProblemDialog';
 import type { EnrichedService } from '@/domain/types';
 import type { ConfidenceBand } from '@/domain/types';
 import { CONFIDENCE_BANDS, ORAN_CONFIDENCE_WEIGHTS } from '@/domain/constants';
@@ -89,6 +90,7 @@ interface ServiceCardProps {
 
 export function ServiceCard({ enriched, compact = false, isSaved, onToggleSave, href }: ServiceCardProps) {
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showReport, setShowReport] = useState(false);
 
   const {
     service, organization, address, phones, schedules, confidenceScore,
@@ -127,14 +129,14 @@ export function ServiceCard({ enriched, compact = false, isSaved, onToggleSave, 
       className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow p-4"
       aria-label={`Service: ${service.name}`}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3 mb-2">
+      {/* Header: service name + save action */}
+      <div className="flex items-start justify-between gap-3 mb-1">
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-gray-900 leading-tight">
+          <h3 className="font-bold text-gray-900 leading-snug text-base">
             {href ? (
               <Link
                 href={href}
-                className="hover:underline text-blue-600 inline-flex items-center gap-1"
+                className="hover:underline text-blue-700 inline-flex items-center gap-1"
               >
                 {service.name}
               </Link>
@@ -143,7 +145,7 @@ export function ServiceCard({ enriched, compact = false, isSaved, onToggleSave, 
                 href={service.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:underline text-blue-600 inline-flex items-center gap-1"
+                className="hover:underline text-blue-700 inline-flex items-center gap-1"
               >
                 {service.name}
                 <ExternalLink className="h-3 w-3 flex-shrink-0" aria-label="(opens in new tab)" />
@@ -152,56 +154,53 @@ export function ServiceCard({ enriched, compact = false, isSaved, onToggleSave, 
               service.name
             )}
           </h3>
-          <p className="text-sm text-gray-500 mt-0.5">{organization.name}</p>
+          <p className="text-xs text-gray-500 mt-0.5 leading-tight">{organization.name}</p>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {onToggleSave && (
-            <button
-              type="button"
-              onClick={() => onToggleSave(service.id)}
-              className="p-1 rounded-md hover:bg-gray-100 transition-colors"
-              aria-label={isSaved ? 'Unsave this service' : 'Save this service'}
-              title={isSaved ? 'Remove from saved' : 'Save for later'}
-            >
-              {isSaved
-                ? <BookmarkCheck className="h-5 w-5 text-blue-600" aria-hidden="true" />
-                : <Bookmark className="h-5 w-5 text-gray-400" aria-hidden="true" />}
-            </button>
-          )}
-          <Badge
-            band={trustBand}
-            title={`Trust: ${bandShortLabel(trustBand)}`}
-            aria-label={`Trust: ${bandShortLabel(trustBand)}`}
+        {onToggleSave && (
+          <button
+            type="button"
+            onClick={() => onToggleSave(service.id)}
+            className="flex-shrink-0 flex items-center justify-center min-w-[44px] min-h-[44px] rounded-lg hover:bg-gray-100 transition-colors -mr-2 -mt-1"
+            aria-pressed={isSaved ?? false}
+            aria-label={isSaved ? 'Unsave this service' : 'Save this service'}
+            title={isSaved ? 'Remove from saved' : 'Save for later'}
           >
-            Trust: {bandShortLabel(trustBand)}
-          </Badge>
-          {matchScore != null && (
-            <Badge
-              band={matchBand}
-              title={`Match: ${bandShortLabel(matchBand)}`}
-              aria-label={`Match: ${bandShortLabel(matchBand)}`}
-            >
-              Match: {bandShortLabel(matchBand)}
-            </Badge>
-          )}
-        </div>
+            {isSaved
+              ? <BookmarkCheck className="h-5 w-5 text-blue-600" aria-hidden="true" />
+              : <Bookmark className="h-5 w-5 text-gray-400" aria-hidden="true" />}
+          </button>
+        )}
       </div>
 
-      {/* Capacity status + wait time */}
-      {(capacity || service.estimatedWaitDays != null) && (
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          {capacity && (
-            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${capacity.color}`}>
-              {capacity.label}
-            </span>
-          )}
-          {service.estimatedWaitDays != null && (
-            <span className="text-xs text-gray-500">
-              ~{service.estimatedWaitDays} day{service.estimatedWaitDays !== 1 ? 's' : ''} wait
-            </span>
-          )}
-        </div>
-      )}
+      {/* Badge row: trust band + match + capacity — below org name, above description */}
+      <div className="flex flex-wrap items-center gap-1.5 mb-2">
+        <Badge
+          band={trustBand}
+          title={`Trust: ${bandShortLabel(trustBand)}`}
+          aria-label={`Trust: ${bandShortLabel(trustBand)}`}
+        >
+          {bandShortLabel(trustBand)}
+        </Badge>
+        {matchScore != null && (
+          <Badge
+            band={matchBand}
+            title={`Match: ${bandShortLabel(matchBand)}`}
+            aria-label={`Match: ${bandShortLabel(matchBand)}`}
+          >
+            Match: {bandShortLabel(matchBand)}
+          </Badge>
+        )}
+        {capacity && (
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium leading-none ${capacity.color}`}>
+            {capacity.label}
+          </span>
+        )}
+        {service.estimatedWaitDays != null && (
+          <span className="text-xs text-gray-500 leading-none">
+            ~{service.estimatedWaitDays}d wait
+          </span>
+        )}
+      </div>
 
       {/* Description */}
       {!compact && service.description && (
@@ -428,19 +427,40 @@ export function ServiceCard({ enriched, compact = false, isSaved, onToggleSave, 
 
       {/* Eligibility hint — "may qualify" language — NEVER guarantee */}
       <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-        You may qualify for this service. Confirm eligibility with the provider before visiting.
+        You may qualify. Confirm eligibility and hours with the provider.
       </p>
 
-      {/* Feedback button */}
+      {/* Bottom action row: View details + feedback/report */}
       {!showFeedback && (
-        <button
-          type="button"
-          onClick={() => setShowFeedback(true)}
-          className="mt-2 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 transition-colors"
-        >
-          <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
-          Give feedback
-        </button>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowFeedback(true)}
+              className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 transition-colors"
+            >
+              <MessageSquare className="h-3 w-3" aria-hidden="true" />
+              Feedback
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowReport(true)}
+              className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-amber-600 transition-colors"
+            >
+              <AlertCircle className="h-3 w-3" aria-hidden="true" />
+              Flag issue
+            </button>
+          </div>
+          {href && (
+            <Link
+              href={href}
+              className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
+            >
+              View details
+              <ExternalLink className="h-3 w-3" aria-hidden="true" />
+            </Link>
+          )}
+        </div>
       )}
 
       {/* Feedback form */}
@@ -454,12 +474,15 @@ export function ServiceCard({ enriched, compact = false, isSaved, onToggleSave, 
         </div>
       )}
 
-      {/* Confidence score detail */}
-      {confidenceScore && (
-        <div className="mt-2 text-xs text-gray-400 text-right">
-          Trust: {confidenceScore.verificationConfidence.toFixed(0)}% · Match: {matchScore != null ? matchScore.toFixed(0) : '—'}%
-        </div>
-      )}
+      {/* Confidence score — accessible via badge row; raw numbers omitted to reduce noise */}
+
+      {/* Report Problem Dialog */}
+      <ReportProblemDialog
+        serviceId={service.id}
+        serviceName={service.name}
+        open={showReport}
+        onOpenChange={setShowReport}
+      />
     </article>
   );
 }

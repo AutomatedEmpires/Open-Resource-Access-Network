@@ -25,6 +25,10 @@ import {
   checkRateLimit as checkRateLimitBase,
   type RateLimitState,
 } from '@/services/security/rateLimit';
+import {
+  hasDistressSignals,
+  checkCrisisContentSafety,
+} from '@/services/security/contentSafety';
 import type { EnrichedService } from '@/domain/types';
 import type {
   Intent,
@@ -295,10 +299,24 @@ export async function orchestrateChat(
   rateLimitKey: string,
   deps: OrchestratorDeps
 ): Promise<ChatResponse> {
-  // Stage 1: Crisis detection — always first, always takes priority
+  // Stage 1a: Crisis detection (keyword gate) — always first, always takes priority
   if (detectCrisis(message)) {
     const intent = detectIntent(message);
     return assembleCrisisResponse(intent, sessionId);
+  }
+
+  // Stage 1b: Content Safety semantic crisis gate (second layer, async)
+  // Runs only when: (a) flag enabled AND (b) local distress signals found in the message.
+  // Uses Azure AI Content Safety SelfHarm severity classification.
+  // FAIL-OPEN: any API error is swallowed and pipeline continues normally.
+  // Cost: calls the API only when hasDistressSignals() → true (<5% of messages).
+  const contentSafetyEnabled = await deps.isFlagEnabled(FEATURE_FLAGS.CONTENT_SAFETY_CRISIS);
+  if (contentSafetyEnabled && hasDistressSignals(message)) {
+    const isCrisisBySemantic = await checkCrisisContentSafety(message);
+    if (isCrisisBySemantic) {
+      const intent = detectIntent(message);
+      return assembleCrisisResponse(intent, sessionId);
+    }
   }
 
   // Stage 2: Quota check (DB-backed when configured, in-memory fallback)

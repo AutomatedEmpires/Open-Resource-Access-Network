@@ -42,4 +42,4 @@ func start          # local testing
 func azure functionapp publish <APP_NAME>
 ```
 
-See `docs/PLATFORM_AZURE.md` for provisioning instructions.
+See `docs/platform/PLATFORM_AZURE.md` for provisioning instructions.

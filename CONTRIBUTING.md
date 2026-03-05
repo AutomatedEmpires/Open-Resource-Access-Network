@@ -4,7 +4,7 @@ ORAN is safety-critical. Contributions must preserve the non-negotiables in docs
 
 ## Required before opening a PR
 
-- Read docs/SSOT.md and docs/OPERATING_MODEL.md.
+- Read docs/SSOT.md and docs/governance/OPERATING_MODEL.md.
 - If you change a safety-critical behavior, update the SSOT doc for that area (or add an ADR).
 
 ## PR requirements

@@ -1,6 +1,6 @@
 # ORAN Import Pipeline
 
-See the full pipeline documentation in [/docs/IMPORT_PIPELINE.md](../../docs/IMPORT_PIPELINE.md).
+See the full pipeline documentation in [/docs/solutions/IMPORT_PIPELINE.md](../../docs/solutions/IMPORT_PIPELINE.md).
 
 ## Quick Start
 
@@ -40,7 +40,7 @@ Tags services with searchable attributes across 6 dimensions.
 |--------|----------|-------------|
 | service_id | Yes | UUID of the service |
 | taxonomy | Yes | One of: `delivery`, `cost`, `access`, `culture`, `population`, `situation` |
-| tag | Yes | Tag value (see [TAGGING_GUIDE.md](../../docs/TAGGING_GUIDE.md)) |
+| tag | Yes | Tag value (see [TAGGING_GUIDE.md](../../docs/governance/TAGGING_GUIDE.md)) |
 | details | No | Human-readable elaboration |
 
 Example:
@@ -61,7 +61,7 @@ Service-level disability/health accommodations (distinct from location accessibi
 |--------|----------|-------------|
 | service_id | Yes | UUID of the service |
 | adaptation_type | Yes | One of: `disability`, `health_condition`, `age_group`, `learning` |
-| adaptation_tag | Yes | Tag value (see [TAGGING_GUIDE.md](../../docs/TAGGING_GUIDE.md)) |
+| adaptation_tag | Yes | Tag value (see [TAGGING_GUIDE.md](../../docs/governance/TAGGING_GUIDE.md)) |
 | details | No | Description of the accommodation |
 
 Example:
@@ -95,4 +95,4 @@ abc123,kosher,limited,When donated
 
 For automated ingestion from unstructured sources (website scrapes, PDFs), see:
 - `src/services/ingestion/tagging-prompt.ts` — LLM prompt templates
-- `docs/TAGGING_GUIDE.md` — Complete tagging reference
+- `docs/governance/TAGGING_GUIDE.md` — Complete tagging reference

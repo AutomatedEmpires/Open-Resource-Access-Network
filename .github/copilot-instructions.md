@@ -16,7 +16,7 @@ If any requested change conflicts with these constraints, propose a safer altern
 ## SSOT + Operating Model
 
 - SSOT hierarchy: docs/SSOT.md
-- Engineering operating model: docs/OPERATING_MODEL.md
+- Engineering operating model: docs/governance/OPERATING_MODEL.md
 - For safety-critical changes, add an ADR: docs/DECISIONS/
 
 Update-on-touch rule:
@@ -50,7 +50,7 @@ Update-on-touch rule:
 ## Azure-first rules
 
 - Prefer Azure-native services when adding infrastructure (App Service, PostgreSQL Flexible Server, Key Vault, Azure Cache for Redis, Application Insights).
-- Never introduce a new external provider for core hosting/DB/secrets without updating `docs/PLATFORM_AZURE.md` and `docs/INTEGRATIONS.md`.
+- Never introduce a new external provider for core hosting/DB/secrets without updating `docs/platform/PLATFORM_AZURE.md` and `docs/platform/INTEGRATIONS.md`.
 
 ## Chat behavior rules
 

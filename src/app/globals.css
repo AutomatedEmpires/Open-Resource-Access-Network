@@ -25,3 +25,19 @@ body {
   outline: 2px solid #2563eb;
   outline-offset: 2px;
 }
+
+/* Toast slide-up enter animation */
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@theme inline {
+  --animate-toast-enter: toast-enter 200ms ease-out both;
+}

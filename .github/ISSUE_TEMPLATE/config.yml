@@ -7,5 +7,5 @@ contact_links:
     url: https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/docs/SSOT.md
     about: Understand what is authoritative when docs and code disagree.
   - name: Audit baseline
-    url: https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/docs/AUDIT_REPORT.md
+    url: https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/docs/audit/AUDIT_REPORT.md
     about: Current repo-forensic truth map and known gaps.

@@ -9,14 +9,14 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import type { OranRole } from '@/domain/types';
-import { isRoleAtLeast } from '@/services/auth/guards';
+import { isRoleAtLeast } from '@/services/auth/roles';
 
 // Protected route patterns by minimum role
 const PROTECTED_ROUTES: { pattern: RegExp; minRole: OranRole }[] = [
   { pattern: /^\/(saved|profile)/, minRole: 'seeker' },
   { pattern: /^\/(claim|org|locations|services|admins)/, minRole: 'host_member' },
   { pattern: /^\/(queue|verify|coverage)/, minRole: 'community_admin' },
-  { pattern: /^\/(approvals|rules|audit|zone-management)/, minRole: 'oran_admin' },
+  { pattern: /^\/(approvals|rules|audit|zone-management|ingestion)/, minRole: 'oran_admin' },
 ];
 
 const ENTRA_CLIENT_ID = process.env.AZURE_AD_CLIENT_ID;

@@ -7,34 +7,13 @@
 
 import type { OranRole } from '@/domain/types';
 import type { AuthContext } from './session';
+import { ROLE_LEVELS, isRoleAtLeast } from './roles';
 
 // ============================================================
 // ROLE HIERARCHY
 // ============================================================
 
-/**
- * Role privilege levels (higher = more access)
- */
-export const ROLE_LEVELS: Record<OranRole, number> = {
-  seeker: 0,
-  host_member: 1,
-  host_admin: 2,
-  community_admin: 3,
-  oran_admin: 4,
-};
-
-/**
- * Check if a role meets or exceeds a minimum role level.
- * Pure function suitable for Edge middleware (no AuthContext required).
- *
- * @example
- * if (!isRoleAtLeast('seeker', 'host_member')) {
- *   // seeker does not meet host_member minimum
- * }
- */
-export function isRoleAtLeast(userRole: OranRole, minRole: OranRole): boolean {
-  return ROLE_LEVELS[userRole] >= ROLE_LEVELS[minRole];
-}
+export { ROLE_LEVELS, isRoleAtLeast };
 
 // ============================================================
 // GUARDS
@@ -152,4 +131,38 @@ export function canWriteToOrg(ctx: AuthContext, orgId: string): boolean {
  */
 export function canManageTeam(ctx: AuthContext, orgId: string): boolean {
   return requireOrgRole(ctx, orgId, 'host_admin');
+}
+
+// ============================================================
+// SCOPE-BASED GUARDS (Universal Pipeline)
+// ============================================================
+
+/**
+ * Check if a user has a specific scope grant (direct or via role).
+ * Queries the database — use sparingly in hot paths.
+ * For role-only checks, prefer requireMinRole() which is in-memory.
+ */
+export async function hasScope(
+  userId: string,
+  scopeName: string,
+  organizationId?: string | null,
+): Promise<boolean> {
+  // Import dynamically to avoid circular dependency
+  const { userHasScope } = await import('@/services/workflow/two-person');
+  return userHasScope(userId, scopeName, organizationId);
+}
+
+/**
+ * Guard: require a scope for the current user.
+ * Returns true if the user has the scope, false otherwise.
+ */
+export async function requireScope(
+  ctx: AuthContext,
+  scopeName: string,
+  organizationId?: string | null,
+): Promise<boolean> {
+  // oran_admin bypasses scope checks
+  if (ctx.role === 'oran_admin') return true;
+
+  return hasScope(ctx.userId, scopeName, organizationId);
 }

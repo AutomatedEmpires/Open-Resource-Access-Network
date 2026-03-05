@@ -57,10 +57,13 @@ function makeFlag(name: string, enabled: boolean, rolloutPct = 0): FeatureFlag {
  * Runtime DB-backed flags are planned, but not yet wired.
  */
 const DEFAULT_FLAGS: FeatureFlag[] = [
-  makeFlag(FEATURE_FLAGS.LLM_SUMMARIZE, false, 0),
+  // gpt-4o-mini on oranhf57ir-prod-oai (eastus) — provisioned 2026-03-05
+  makeFlag(FEATURE_FLAGS.LLM_SUMMARIZE, true, 100),
   makeFlag(FEATURE_FLAGS.MAP_ENABLED, true, 100),
   makeFlag(FEATURE_FLAGS.FEEDBACK_FORM, true, 100),
   makeFlag(FEATURE_FLAGS.HOST_CLAIMS, true, 100),
+  // Azure AI Content Safety on ORAN-FOUNDRY-resource (AIServices/S0) — provisioned 2026-03-05
+  makeFlag(FEATURE_FLAGS.CONTENT_SAFETY_CRISIS, true, 100),
 ];
 
 export class InMemoryFlagService implements FlagService {

@@ -101,9 +101,21 @@ async function getSentry(): Promise<any | null> {
   const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
   if (!dsn) return null;
 
+  const injected = (globalThis as { __ORAN_SENTRY__?: unknown }).__ORAN_SENTRY__;
+  if (injected) {
+    return injected as any;
+  }
+
+  if (typeof window !== 'undefined') {
+    return null;
+  }
+
   try {
+    // Keep module loading on server-only runtime path and avoid static import resolution.
+    // eslint-disable-next-line no-eval
+    const nodeRequire = (0, eval)('require') as (id: string) => unknown;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const Sentry = await import('@sentry/nextjs' as any);
+    const Sentry = nodeRequire('@sentry/nextjs') as any;
     return Sentry;
   } catch {
     return null;

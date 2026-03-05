@@ -13,7 +13,7 @@ Dark mode done poorly undermines trust (contrast failures, unreadable badges, in
 1. Remove all `prefers-color-scheme: dark` blocks from `globals.css`.
 2. Remove any remaining `dark:*` Tailwind utilities from templates.
 3. Do **not** implement dark mode until:
-   - The light-mode token set in `docs/UI_UX_TOKENS.md` is finalized.
+   - The light-mode token set in `docs/ui/UI_UX_TOKENS.md` is finalized.
    - A dark palette is designed and accessibility-reviewed (WCAG AA contrast).
    - Dark mode can be feature-flagged and QA'd independently.
 

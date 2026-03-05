@@ -7,7 +7,7 @@
 This document includes both **Implemented** and **Planned** controls. When this file conflicts with executable behavior, follow docs/SSOT.md.
 
 Implemented today:
-- Zod validation at API boundaries for all endpoints (all 25 API routes).
+- Zod validation at API boundaries for all endpoints (all 34+ API routes).
 - Chat pipeline includes crisis-first gate (before quota and rate limiting), quota/rate limiting logic.
 - Rate limiting on all API routes, including auth endpoints, with `Retry-After` headers on 429 responses.
 - Protected route authentication gating via middleware (JWT extraction + role enforcement via `isRoleAtLeast()`).
@@ -141,6 +141,17 @@ Status: Implemented.
 	- All /api/admin/** routes
 	- All /api/community/** routes
 	- All /api/host/** routes
+	- GET/POST /api/admin/scopes (platform scope management)
+	- GET/POST /api/admin/scopes/grants (scope grant requests)
+	- GET/PUT/DELETE /api/admin/scopes/grants/[id] (grant decisions)
+	- GET /api/user/scopes (user scope listing)
+	- GET /api/user/notifications (notification listing)
+	- PUT /api/user/notifications/[id]/read (mark read)
+	- PUT /api/user/notifications/read-all (mark all read)
+	- GET/PUT /api/user/notifications/preferences (notification preferences)
+	- GET/POST /api/admin/appeals (appeal review queue + decisions)
+	- POST/GET /api/submissions/appeal (submit appeal + list own appeals)
+	- POST/GET /api/submissions/report (listing reports; POST allows anonymous, GET requires auth)
 - Implemented: all 429 responses include `Retry-After` header with seconds until window reset.
 - Planned: Redis-backed rate limiting for multi-instance deployments.
 
@@ -155,6 +166,8 @@ Status: Implemented.
 ### Authentication & Authorization
 - Implemented: write endpoints require valid Entra ID / NextAuth.js session via `getAuthContext()`.
 - Implemented: role-based access control via `isRoleAtLeast()`, `requireMinRole()`, `requireOrgRole()`.
+- Implemented: scope-based access control via `platform_scopes`, `user_scope_grants`, and two-person approval workflow.
+- Implemented: error boundary hierarchy — root `global-error.tsx`, app-level `error.tsx`, per-route-group boundaries (`(seeker)`, `(host)`, `(community-admin)`, `(oran-admin)`), and custom `not-found.tsx`.
 - Planned: CSRF protection considerations per endpoint.
 
 ### Sensitive Data Exposure
@@ -164,6 +177,7 @@ Status: Implemented.
 
 ### Security Headers
 Configured in `next.config.mjs`:
+- `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` (HSTS — enforces HTTPS for 2 years with preload eligibility)
 - `X-Frame-Options: DENY`
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`

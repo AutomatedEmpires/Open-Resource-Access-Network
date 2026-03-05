@@ -37,7 +37,7 @@ Repo: `AutomatedEmpires/Open-Resource-Access-Network`
 - Branch used during this work: `codespace`
 
 Key runbooks/scripts:
-- Azure deploy runbook: [docs/DEPLOYMENT_AZURE.md](docs/DEPLOYMENT_AZURE.md)
+- Azure deploy runbook: [docs/platform/DEPLOYMENT_AZURE.md](docs/platform/DEPLOYMENT_AZURE.md)
 - Provisioning script: [scripts/azure/bootstrap.sh](scripts/azure/bootstrap.sh)
 - GitHub OIDC helper: [scripts/azure/github-oidc.sh](scripts/azure/github-oidc.sh)
 

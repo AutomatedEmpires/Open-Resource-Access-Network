@@ -12,9 +12,13 @@
     "test:chat": "vitest run src/services/chat/__tests__/intent-schema.test.ts",
     "test:search": "vitest run src/services/search/__tests__/query-builder.test.ts",
     "test:scoring": "vitest run src/services/scoring/__tests__/scoring.test.ts",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
+    "@azure/communication-email": "^1.1.0",
     "@azure/openai": "^2.0.0",
     "@neondatabase/serverless": "^1.0.2",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -29,6 +33,7 @@
     "clsx": "^2.1.1",
     "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.1",
+    "ioredis": "^5.10.0",
     "lucide-react": "^0.575.0",
     "next": "16.1.6",
     "next-auth": "^4.24.13",
@@ -39,11 +44,13 @@
   },
   "devDependencies": {
     "@axe-core/react": "^4.11.1",
+    "@playwright/test": "^1.51.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/cheerio": "^1.0.0",
+    "@types/ioredis": "^4.28.10",
     "@types/jest-axe": "^3.5.9",
     "@types/node": "^25",
     "@types/pg": "^8.16.0",

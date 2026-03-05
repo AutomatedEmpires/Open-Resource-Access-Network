@@ -44,8 +44,9 @@ Open http://localhost:3000
 
 ORAN is **Azure-first** for hosting and production operations.
 
-- Azure deployment guide: `docs/DEPLOYMENT_AZURE.md`
+- Azure deployment guide: `docs/platform/DEPLOYMENT_AZURE.md`
 - Environment variable reference: `.env.example` (never commit real secrets)
+
 
 ## Database local setup
 
@@ -54,4 +55,4 @@ cd db
 docker compose up -d
 ```
 
-See `db/README.md`, `docs/IMPORT_PIPELINE.md`, and `docs/SCORING_MODEL.md` for workflow details.
+See `db/README.md`, `docs/solutions/IMPORT_PIPELINE.md`, and `docs/SCORING_MODEL.md` for workflow details.

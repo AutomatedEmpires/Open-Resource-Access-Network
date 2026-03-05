@@ -6,14 +6,44 @@ on:
   pull_request:
     types: [opened, edited, reopened, labeled, unlabeled, closed]
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode: backfill recently-updated open items, or sync a single issue/PR"
+        required: false
+        default: "backfill-open"
+        type: choice
+        options:
+          - backfill-open
+          - single
+      limit:
+        description: "For backfill-open: max number of open issues/PRs to process (1-200)"
+        required: false
+        default: "50"
+      kind:
+        description: "For mode=single: whether number refers to an issue or pull request"
+        required: false
+        default: "issue"
+        type: choice
+        options:
+          - issue
+          - pr
+      number:
+        description: "For mode=single: the issue/PR number (e.g. 24)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
+
+concurrency:
+  group: project-sync-${{ github.repository }}-${{ github.event.issue.number || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   sync:
     name: Sync ORAN Roadmap fields
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
 

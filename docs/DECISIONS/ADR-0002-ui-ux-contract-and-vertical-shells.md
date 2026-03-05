@@ -13,10 +13,10 @@ ORAN is also multi-role (seeker, host, community admin, ORAN admin). A single sh
 Adopt a sitewide UI/UX contract and implement role-based “vertical shells”:
 
 1. Establish the following contract docs as UI SSOT once accepted:
-   - `docs/UI_UX_CONTRACT.md`
-   - `docs/UI_UX_TOKENS.md`
-   - `docs/UX_FLOWS.md`
-   - `docs/PAGE_DEFINITION_OF_DONE.md`
+   - `docs/ui/UI_UX_CONTRACT.md`
+   - `docs/ui/UI_UX_TOKENS.md`
+   - `docs/ui/UX_FLOWS.md`
+   - `docs/governance/PAGE_DEFINITION_OF_DONE.md`
 
 2. Define vertical shells (separate layouts) for:
    - Seeker (public)
@@ -48,7 +48,7 @@ Tradeoffs:
 
 ## Rollout / verification plan
 
-1. Update `docs/SSOT.md` and `docs/UI_SURFACE_MAP.md` (done in same change set).
+1. Update `docs/SSOT.md` and `docs/ui/UI_SURFACE_MAP.md` (done in same change set).
 2. For the next UI PRs:
    - Start with seeker navigation/home → directory (most visible surfaces).
    - Add vertical layouts (`src/app/(...)/layout.tsx`) as the first implementation step.

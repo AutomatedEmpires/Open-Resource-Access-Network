@@ -12,7 +12,7 @@ When two sources conflict, the higher-precedence source wins:
 1. **Executable enforcement** (what actually runs): `src/**`, `src/services/**/__tests__/**`
 1. **Data persistence truth** (schema): `db/migrations/**`, `src/domain/types.ts`
 1. **System specs** (design contracts): `docs/CHAT_ARCHITECTURE.md`, `docs/SCORING_MODEL.md`, `docs/DATA_MODEL.md`, `docs/SECURITY_PRIVACY.md`
-1. **Operational workflow** (how humans operate): `docs/GOVERNANCE.md`, `docs/ROLES_PERMISSIONS.md`, `.github/ISSUE_TEMPLATE/**`
+1. **Operational workflow** (how humans operate): `docs/governance/GOVERNANCE.md`, `docs/governance/ROLES_PERMISSIONS.md`, `.github/ISSUE_TEMPLATE/**`
 
 ## SSOT Alignment Rules
 
@@ -40,11 +40,11 @@ When two sources conflict, the higher-precedence source wins:
   - Add: new migration in `db/migrations/**`
 
 - Auth/roles/security changes:
-  - Update: `docs/SECURITY_PRIVACY.md`, `docs/ROLES_PERMISSIONS.md`
+  - Update: `docs/SECURITY_PRIVACY.md`, `docs/governance/ROLES_PERMISSIONS.md`
   - Tests: add targeted tests for authorization boundaries
 
 - Ingestion/verification agent changes:
-  - Update: `docs/AGENTS_INGESTION_PIPELINE.md`
+  - Update: `docs/agents/AGENTS_INGESTION_PIPELINE.md`
   - Tests: add targeted tests under `src/agents/ingestion/__tests__/` for invariants (dedupe, scoring bounds, publish gate)
 
 ## ADRs (decisions)

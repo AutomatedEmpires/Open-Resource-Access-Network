@@ -44,13 +44,12 @@ export default function MapPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<SearchResponse | null>(null);
-  const [searchMode, setSearchMode] = useState<'text' | 'bbox'>('text');
+  // Default to bbox mode so panning/zooming can re-query immediately.
+  const [searchMode, setSearchMode] = useState<'text' | 'bbox'>('bbox');
 
   // Track latest bounds from the map for bbox-on-pan queries
   const boundsRef = useRef<Bounds | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Guard: only auto-query after user has done at least one manual search
-  const [hasSearched, setHasSearched] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const savedIdsRef = useRef<Set<string>>(new Set());
   const resultsContainerRef = useRef<HTMLDivElement>(null);
@@ -151,15 +150,14 @@ export default function MapPage() {
   // ── text search submit ────────────────────────────────────
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setHasSearched(true);
-    setSearchMode('text');
-    void runSearch();
+    // Keep bbox mode so results remain tied to the visible map area.
+    setSearchMode('bbox');
+    void runSearch({ bbox: boundsRef.current ?? undefined });
   };
 
   // ── toggle to "search this area" mode ─────────────────────
   const searchThisArea = useCallback(() => {
     if (!boundsRef.current) return;
-    setHasSearched(true);
     setSearchMode('bbox');
     void runSearch({ bbox: boundsRef.current });
   }, [runSearch]);
@@ -168,7 +166,6 @@ export default function MapPage() {
   const handleBoundsChange = useCallback(
     (bounds: Bounds) => {
       boundsRef.current = bounds;
-      if (!hasSearched) return; // don't auto-query before first search
       if (searchMode !== 'bbox') return; // only auto re-query in bbox mode
 
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -176,7 +173,7 @@ export default function MapPage() {
         void runSearch({ bbox: bounds });
       }, DEBOUNCE_MS);
     },
-    [searchMode, runSearch, hasSearched],
+    [searchMode, runSearch],
   );
 
   // cleanup on unmount
@@ -237,34 +234,32 @@ export default function MapPage() {
         </form>
 
         {/* Mobile view toggle — only visible below md */}
-        {hasSearched && (
-          <div className="flex gap-1 mb-3 md:hidden">
-            <button
-              type="button"
-              onClick={() => setMobileView('map')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
-                mobileView === 'map'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-              Map view
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileView('list')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
-                mobileView === 'list'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <List className="h-3.5 w-3.5" aria-hidden="true" />
-              List ({data?.total ?? 0})
-            </button>
-          </div>
-        )}
+        <div className="flex gap-1 mb-3 md:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileView('map')}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
+              mobileView === 'map'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+            Map view
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileView('list')}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
+              mobileView === 'list'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <List className="h-3.5 w-3.5" aria-hidden="true" />
+            List ({data?.total ?? 0})
+          </button>
+        </div>
 
         {/* Error */}
         {error && (
@@ -284,7 +279,7 @@ export default function MapPage() {
         <div className="md:grid md:grid-cols-[1fr_380px] md:gap-4 md:items-start">
           {/* Map column */}
           <div className={`rounded-lg overflow-hidden md:sticky md:top-24 ${
-            hasSearched && mobileView === 'list' ? 'hidden md:block' : ''
+            mobileView === 'list' ? 'hidden md:block' : ''
           }`}>
             <MapContainer
               className="w-full h-[50vh] md:h-[calc(100vh-16rem)]"
@@ -292,25 +287,23 @@ export default function MapPage() {
               onBoundsChange={handleBoundsChange}
             />
             {/* "Search this area" overlaid at map bottom */}
-            {hasSearched && (
-              <div className="flex items-center gap-3 mt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={searchThisArea}
-                  className="gap-1.5 text-xs"
-                >
-                  <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                  Search this area
-                </Button>
-                {searchMode === 'bbox' && (
-                  <span className="text-gray-500 text-xs">
-                    Updates as you pan.
-                  </span>
-                )}
-              </div>
-            )}
+            <div className="flex items-center gap-3 mt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={searchThisArea}
+                className="gap-1.5 text-xs"
+              >
+                <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                Search this area
+              </Button>
+              {searchMode === 'bbox' && (
+                <span className="text-gray-500 text-xs">
+                  Updates as you pan.
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Results column */}
@@ -318,7 +311,7 @@ export default function MapPage() {
             ref={resultsContainerRef}
             tabIndex={-1}
             className={`mt-4 md:mt-0 md:max-h-[calc(100vh-16rem)] md:overflow-y-auto outline-none ${
-              hasSearched && mobileView === 'map' ? 'hidden md:block' : ''
+              mobileView === 'map' ? 'hidden md:block' : ''
             }`}
           >
             {isLoading && (
@@ -337,9 +330,9 @@ export default function MapPage() {
             {!isLoading && !data && !error && (
               <div className="rounded-lg border border-gray-200 bg-white p-6 text-center">
                 <MapPin className="h-8 w-8 text-gray-300 mx-auto mb-2" aria-hidden="true" />
-                <p className="text-gray-700 font-medium text-sm">Search to view services</p>
+                <p className="text-gray-700 font-medium text-sm">Pan/zoom to explore services</p>
                 <p className="mt-1 text-xs text-gray-500">
-                  Verified records only. Click a pin to preview.
+                  Verified records only. Use keywords to narrow results.
                 </p>
               </div>
             )}
@@ -362,14 +355,18 @@ export default function MapPage() {
                 ) : (
                   <div className="space-y-3">
                     {data.results.map((r) => (
-                      <ServiceCard
-                        key={r.service.service.id}
-                        enriched={r.service}
-                        compact
-                        isSaved={savedIds.has(r.service.service.id)}
-                        onToggleSave={toggleSave}
-                        href={`/service/${r.service.service.id}`}
-                      />
+                      <div key={r.service.service.id} className="flex items-stretch gap-3">
+                        <ConfidenceRing enriched={r.service} />
+                        <div className="flex-1">
+                          <ServiceCard
+                            enriched={r.service}
+                            compact
+                            isSaved={savedIds.has(r.service.service.id)}
+                            onToggleSave={toggleSave}
+                            href={`/service/${r.service.service.id}`}
+                          />
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -379,5 +376,64 @@ export default function MapPage() {
         </div>
       </ErrorBoundary>
     </main>
+  );
+}
+
+function getConfidenceScore(enriched: EnrichedService): number | null {
+  const score = enriched.confidenceScore?.score;
+  return typeof score === 'number' && Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : null;
+}
+
+function ConfidenceRing({ enriched }: { enriched: EnrichedService }) {
+  const score = getConfidenceScore(enriched);
+  const value = score ?? 0;
+  const radius = 18;
+  const circumference = 2 * Math.PI * radius;
+  const dash = (value / 100) * circumference;
+
+  const strokeClass =
+    score == null ? 'stroke-gray-300' :
+      value >= 80 ? 'stroke-green-600' :
+      value >= 60 ? 'stroke-yellow-500' :
+      value >= 40 ? 'stroke-orange-500' :
+      'stroke-red-600';
+
+  return (
+    <div
+      className="flex-shrink-0 w-10"
+      aria-label={score == null ? 'Confidence unknown' : `Confidence ${Math.round(value)} percent`}
+      title={score == null ? 'Confidence unknown' : `Confidence: ${Math.round(value)}%`}
+    >
+      <svg width="40" height="40" viewBox="0 0 40 40" role="img" aria-hidden="true">
+        <circle
+          cx="20"
+          cy="20"
+          r={radius}
+          className="stroke-gray-200"
+          strokeWidth="4"
+          fill="none"
+        />
+        <circle
+          cx="20"
+          cy="20"
+          r={radius}
+          className={strokeClass}
+          strokeWidth="4"
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${dash} ${circumference - dash}`}
+          transform="rotate(-90 20 20)"
+        />
+        <text
+          x="20"
+          y="21"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          className="fill-gray-700 text-[10px] font-semibold"
+        >
+          {score == null ? '—' : `${Math.round(value)}%`}
+        </text>
+      </svg>
+    </div>
   );
 }

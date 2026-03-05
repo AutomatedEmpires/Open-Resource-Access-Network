@@ -10,6 +10,7 @@
  *
  * @module functions/scheduledCrawl
  */
+import crypto from 'node:crypto';
 
 // ---------------------------------------------------------------------------
 // Types for Azure Functions v4 programming model
@@ -29,49 +30,54 @@ export interface QueueMessage {
 }
 
 // ---------------------------------------------------------------------------
-// Handler stub
+// Handler
 // ---------------------------------------------------------------------------
 
 /**
- * When deployed as an Azure Function, this handler:
- * 1. Lists all active sources from the SourceRegistryStore
- * 2. For each source, checks if fetchTtlHours has elapsed
- * 3. Enqueues seed URLs to `ingestion-fetch` queue
+ * Lists all active sources from the SourceRegistryStore and enqueues
+ * their seed URLs to the `ingestion-fetch` queue.
  *
- * Current status: STUB — pipeline logic lives in createIngestionService().
- * Wire this to Azure Storage Queue output binding when deploying.
+ * Each source with discovery rules of type 'seeded_only' or 'crawl' will have
+ * its seed URLs enqueued. Sources without seed URLs in their discovery config
+ * are skipped.
+ *
+ * Returns the array of queue messages; Azure binds this to queue output.
  */
 export async function scheduledCrawl(
   _timer: TimerInfo
 ): Promise<QueueMessage[]> {
-  // TODO: Wire to actual stores + queue
-  //
-  // Implementation outline:
-  //   const db = getDrizzle();
-  //   const stores = createIngestionStores(db);
-  //   const sources = await stores.sourceRegistry.listActive();
-  //   const messages: QueueMessage[] = [];
-  //
-  //   for (const source of sources) {
-  //     const ttlMs = source.crawl.fetchTtlHours * 60 * 60 * 1000;
-  //     // Check if last fetch was > fetchTtlHours ago
-  //     for (const discovery of source.discovery) {
-  //       if (discovery.seedUrls) {
-  //         for (const url of discovery.seedUrls) {
-  //           messages.push({
-  //             sourceId: source.id,
-  //             seedUrl: url,
-  //             correlationId: crypto.randomUUID(),
-  //             priority: 5,
-  //             enqueuedAt: new Date().toISOString(),
-  //           });
-  //         }
-  //       }
-  //     }
-  //   }
-  //
-  //   return messages; // Azure binds this to queue output
+  const { getDrizzle } = await import('@/services/db/drizzle');
+  const { createIngestionStores } = await import(
+    '@/agents/ingestion/persistence/storeFactory'
+  );
 
-  console.log('[scheduledCrawl] Timer triggered — stub, no-op');
-  return [];
+  const db = getDrizzle();
+  const stores = createIngestionStores(db);
+  const sources = await stores.sourceRegistry.listActive();
+  const messages: QueueMessage[] = [];
+  const now = new Date().toISOString();
+
+  for (const source of sources) {
+    for (const discovery of source.discovery) {
+      const seedUrls: string[] =
+        'seedUrls' in discovery && Array.isArray(discovery.seedUrls)
+          ? (discovery.seedUrls as string[])
+          : [];
+
+      for (const url of seedUrls) {
+        messages.push({
+          sourceId: source.id,
+          seedUrl: url,
+          correlationId: crypto.randomUUID(),
+          priority: 5,
+          enqueuedAt: now,
+        });
+      }
+    }
+  }
+
+  console.log(
+    `[scheduledCrawl] Enqueuing ${messages.length} URLs from ${sources.length} active sources`
+  );
+  return messages;
 }

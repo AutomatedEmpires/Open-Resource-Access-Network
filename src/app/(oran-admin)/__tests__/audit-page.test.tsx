@@ -68,7 +68,7 @@ describe('oran admin audit page', () => {
 
     await screen.findByText('Previous Data');
     expect(screen.getByText('New Data')).toBeInTheDocument();
-    expect(screen.getByText(/IP: 127.0.0.1/)).toBeInTheDocument();
+    expect(screen.getByText(/IP: 127\.0\.0\.xxx/)).toBeInTheDocument();
     expect(document.body).toHaveTextContent('User: admin-1');
   });
 

@@ -359,7 +359,12 @@ function ZoneManagementInner() {
                           {zone.assigned_user_id ? (
                             <span className="inline-flex items-center gap-1 text-xs">
                               <Users className="h-3 w-3 text-gray-400" aria-hidden="true" />
-                              <span className="font-mono truncate max-w-[120px]">{zone.assigned_user_id}</span>
+                              <span
+                                className="font-mono truncate max-w-[120px]"
+                                title={zone.assigned_user_id}
+                              >
+                                {zone.assigned_user_id.slice(0, 8)}&hellip;
+                              </span>
                             </span>
                           ) : (
                             <span className="text-xs text-gray-400">Unassigned</span>

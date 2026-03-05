@@ -19,6 +19,8 @@ All API routes must:
 | `/api/feedback` | POST | No | Yes | Yes (10/min) | Public feedback submission |
 | `/api/services` | GET | No | Yes | Yes (60/min) | Batch service fetch by IDs |
 | `/api/maps/token` | GET | No | N/A | Yes (60/5min) | Azure Maps key broker |
+| `/api/internal/sla-check` | POST | Internal (Bearer `INTERNAL_API_KEY`) | N/A | No | SLA breach scanner (timer-triggered) |
+| `/api/internal/confidence-regression-scan` | POST | Internal (Bearer `INTERNAL_API_KEY`) | N/A | No | Creates deduped confidence regression submissions |
 | `/api/profile` | GET/PUT | Auth required | Yes | Yes | Seeker profile CRUD |
 | `/api/saved` | GET/POST/DELETE | Auth required | Yes | Yes | Saved services CRUD |
 | `/api/admin/audit` | GET | `oran_admin` | Yes | Yes (60/min) | Audit log read |

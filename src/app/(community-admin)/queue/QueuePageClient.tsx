@@ -10,7 +10,7 @@
 
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   ClipboardList, RefreshCw, ChevronLeft, ChevronRight,
@@ -86,6 +86,8 @@ export default function QueuePage() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const { toast } = useToast();
 
   // ── Fetch queue entries ──
@@ -142,6 +144,57 @@ export default function QueuePage() {
       setClaimingId(null);
     }
   }, [page, statusFilter, fetchQueue, toast]);
+
+  // ── Bulk actions ──
+  const selectableIds = useMemo(
+    () => (data?.results ?? []).filter((r) => r.status === 'submitted' || r.status === 'under_review').map((r) => r.id),
+    [data],
+  );
+
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((prev) => {
+      if (allSelected) return new Set();
+      return new Set([...prev, ...selectableIds]);
+    });
+  }, [allSelected, selectableIds]);
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleBulkDecision = useCallback(async (decision: 'approved' | 'denied') => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    setIsBulkProcessing(true);
+    try {
+      const res = await fetch('/api/community/queue/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, decision }),
+      });
+      const json = (await res.json()) as { succeeded?: string[]; failed?: { id: string; error: string }[]; error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Bulk action failed');
+      const { succeeded = [], failed = [] } = json;
+      if (succeeded.length > 0) {
+        toast('success', `${succeeded.length} ${decision === 'approved' ? 'approved' : 'denied'}.`);
+      }
+      if (failed.length > 0) {
+        toast('error', `${failed.length} could not be processed.`);
+      }
+      setSelectedIds(new Set());
+      void fetchQueue(page, statusFilter);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Bulk action failed');
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  }, [selectedIds, page, statusFilter, fetchQueue, toast]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / LIMIT)) : 1;
 
@@ -206,6 +259,41 @@ export default function QueuePage() {
         </button>
       </div>
 
+      {/* Bulk action toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2">
+          <span className="text-sm font-medium text-blue-800">{selectedIds.size} selected</span>
+          <div className="flex gap-2 ml-auto">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1 border-green-300 text-green-700 hover:bg-green-50"
+              disabled={isBulkProcessing}
+              onClick={() => void handleBulkDecision('approved')}
+            >
+              Approve selected
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1 border-red-300 text-red-700 hover:bg-red-50"
+              disabled={isBulkProcessing}
+              onClick={() => void handleBulkDecision('denied')}
+            >
+              Reject selected
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSelectedIds(new Set())}
+              disabled={isBulkProcessing}
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Error state */}
       {error && (
         <FormAlert variant="error" message={error} onDismiss={() => setError(null)} />
@@ -241,6 +329,16 @@ export default function QueuePage() {
               <caption className="sr-only">Verification queue entries with status, submission date, assignee, and actions.</caption>
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
+                  <th scope="col" className="w-10 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      disabled={selectableIds.length === 0}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                  </th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Service</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Organization</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
@@ -259,6 +357,17 @@ export default function QueuePage() {
                       key={entry.id}
                       className="hover:bg-gray-50 transition-colors"
                     >
+                      <td className="px-4 py-3">
+                        {(entry.status === 'submitted' || entry.status === 'under_review') && (
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${entry.service_name}`}
+                            checked={selectedIds.has(entry.id)}
+                            onChange={() => toggleSelect(entry.id)}
+                            className="h-4 w-4 rounded border-gray-300"
+                          />
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <Link
                           href={`/verify?id=${entry.id}`}

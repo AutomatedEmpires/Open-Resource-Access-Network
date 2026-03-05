@@ -21,6 +21,15 @@ vi.mock('@/components/ui/button', () => ({
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
 }));
 
+vi.mock('@/components/ui/dialog', () => ({
+  Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
+    open ? <div data-testid="dialog">{children}</div> : null,
+  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogFooter: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
+  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => <h2 {...props}>{children}</h2>,
+}));
+
 import RulesPage from '@/app/(oran-admin)/rules/page';
 
 function makeRulesResponse(overrides: Record<string, unknown> = {}) {
@@ -93,6 +102,10 @@ describe('oran admin rules page', () => {
     fireEvent.change(screen.getByLabelText('Rollout percentage'), { target: { value: '65' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
+    // Confirm in the dialog
+    await screen.findByText('Confirm Change');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Change' }));
+
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/admin/rules', {
         method: 'PUT',
@@ -136,6 +149,10 @@ describe('oran admin rules page', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    // Confirm in the dialog
+    await screen.findByText('Confirm Change');
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Change' }));
 
     await screen.findByRole('alert');
     expect(screen.getByText('flag update denied')).toBeInTheDocument();

@@ -169,6 +169,7 @@ export const SUBMISSION_STATUSES: readonly SubmissionStatus[] = [
 
 export const SUBMISSION_TYPES: readonly SubmissionType[] = [
   'service_verification',
+  'confidence_regression',
   'org_claim',
   'data_correction',
   'new_service',

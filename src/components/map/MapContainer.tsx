@@ -16,6 +16,7 @@ import 'azure-maps-control/dist/atlas.min.css';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 
 import type { EnrichedService } from '@/domain/types';
+import { getConfidenceTier } from '@/domain/confidence';
 
 // ============================================================
 // TYPES
@@ -25,6 +26,8 @@ interface Pin {
   id: string;
   name: string;
   orgName: string;
+  orgLogoUrl: string | null;
+  confidenceScore: number | null;
   lat: number;
   lng: number;
 }
@@ -48,9 +51,23 @@ interface MapContainerProps {
 // ============================================================
 
 function popupContent(pin: Pin): string {
-  return `<div style="padding:8px 12px;max-width:220px;font-family:system-ui,sans-serif">
-    <p style="margin:0;font-weight:600;font-size:14px;color:#111">${escapeHtml(pin.name)}</p>
-    <p style="margin:2px 0 0;font-size:12px;color:#666">${escapeHtml(pin.orgName)}</p>
+  const safeLogo = safeHttpUrl(pin.orgLogoUrl ?? null);
+
+  const logoHtml = safeLogo
+    ? `<img src="${escapeAttribute(safeLogo)}" alt="${escapeAttribute(`${pin.orgName} logo`)}" style="width:32px;height:32px;border-radius:8px;object-fit:contain;background:#fff;border:1px solid #e5e7eb" />`
+    : `<div style="width:32px;height:32px;border-radius:8px;background:#f3f4f6;border:1px solid #e5e7eb;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#111">ORAN</div>`;
+
+  return `<div style="padding:10px 12px;max-width:260px;font-family:system-ui,sans-serif">
+    <div style="display:flex;gap:10px;align-items:center">
+      ${logoHtml}
+      <div style="min-width:0">
+        <p style="margin:0;font-weight:700;font-size:14px;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(pin.name)}</p>
+        <p style="margin:2px 0 0;font-size:12px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(pin.orgName)}</p>
+      </div>
+    </div>
+    <div style="margin-top:8px">
+      <a href="/service/${encodeURIComponent(pin.id)}" style="font-size:12px;color:#1d4ed8;text-decoration:none;font-weight:600">View service</a>
+    </div>
   </div>`;
 }
 
@@ -60,6 +77,33 @@ function escapeHtml(str: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function escapeAttribute(str: string): string {
+  return escapeHtml(str).replace(/'/g, '&#39;');
+}
+
+function safeHttpUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function markerHtml(tier: 'green' | 'yellow' | 'orange' | 'red' | 'unknown'): string {
+  const className =
+    tier === 'green' ? 'bg-green-600' :
+      tier === 'yellow' ? 'bg-yellow-500' :
+      tier === 'orange' ? 'bg-orange-500' :
+      tier === 'red' ? 'bg-red-600' :
+      'bg-gray-400';
+
+  // A simple, touch-friendly pin dot. Tailwind classes apply because the marker is injected into the same document.
+  return `<div class="${className} w-4 h-4 rounded-full border-2 border-white shadow"></div>`;
 }
 
 // ============================================================
@@ -83,15 +127,17 @@ export function MapContainer({
 
   // ── extract plottable pins ────────────────────────────────
   const pins: Pin[] = useMemo(() => {
-    return services
-      .map((s) => ({
-        id: s.service.id,
-        name: s.service.name,
-        orgName: s.organization?.name ?? '',
-        lat: s.location?.latitude ?? null,
-        lng: s.location?.longitude ?? null,
-      }))
-      .filter((p): p is Pin => typeof p.lat === 'number' && typeof p.lng === 'number');
+    const raw = services.map((s) => ({
+      id: s.service.id,
+      name: s.service.name,
+      orgName: s.organization?.name ?? '',
+      orgLogoUrl: s.organization?.logoUrl ?? null,
+      confidenceScore: s.confidenceScore?.score ?? null,
+      lat: s.location?.latitude ?? null,
+      lng: s.location?.longitude ?? null,
+    }));
+
+    return raw.filter((p): p is Pin => typeof p.lat === 'number' && typeof p.lng === 'number');
   }, [services]);
 
   // ── fetch key from server-side broker ─────────────────────
@@ -213,9 +259,14 @@ export function MapContainer({
     const nextMarkers: atlas.HtmlMarker[] = [];
 
     for (const pin of pins) {
+      const tier =
+        typeof pin.confidenceScore === 'number' && Number.isFinite(pin.confidenceScore)
+          ? getConfidenceTier(Math.max(0, Math.min(100, pin.confidenceScore)))
+          : 'unknown';
+
       const marker = new atlas.HtmlMarker({
         position: [pin.lng, pin.lat],
-        color: '#2563eb', // blue-600
+        htmlContent: markerHtml(tier),
       });
 
       // popup on click

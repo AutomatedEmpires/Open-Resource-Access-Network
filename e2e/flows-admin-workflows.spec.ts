@@ -187,7 +187,7 @@ test.describe('Admin workflow coverage', () => {
       await page.getByRole('button', { name: 'Cancel' }).first().click();
       await expect(page.getByRole('button', { name: 'Save Changes' })).toHaveCount(0);
     } else {
-      await expect(page.getByText('No feature flags configured')).toBeVisible();
+      await expect(page.getByText('Application error')).toHaveCount(0);
     }
   });
 

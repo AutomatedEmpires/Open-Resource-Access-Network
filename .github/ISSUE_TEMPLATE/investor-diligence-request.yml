@@ -1,0 +1,53 @@
+name: Investor diligence request
+description: Request verifiable proof links, architecture clarity, or governance artifacts for diligence review.
+title: "[Diligence]: "
+labels:
+  - type:docs
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template is for evidence-based diligence requests.
+        Link only to verifiable repository artifacts.
+
+  - type: textarea
+    id: diligence_topic
+    attributes:
+      label: Diligence topic
+      placeholder: Security posture, deployment discipline, operational readiness, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence_needed
+    attributes:
+      label: Evidence needed
+      description: List exact proof expected (docs, workflows, tests, logs, runbooks).
+      placeholder: |
+        - CI and security workflow evidence
+        - Runbook readiness matrix
+        - SSOT governance artifacts
+    validations:
+      required: true
+
+  - type: textarea
+    id: candidate_sources
+    attributes:
+      label: Candidate source links reviewed
+      description: Include repo paths already reviewed.
+      placeholder: |
+        - README.md
+        - docs/SSOT.md
+        - docs/ops/core/OPERATIONS_READINESS.md
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I am requesting only verifiable repository evidence.
+        - label: I did not include private or sensitive data.
+    validations:
+      required: true

@@ -23,6 +23,7 @@ Create an ADR before implementing changes to:
 | ADR-0004 | [Crisis-First Chat Gate + Retry-After Rate Limit Contract](ADR-0004-crisis-first-chat-and-retry-after.md) | Accepted |
 | ADR-0005 | [Content Security Policy (CSP)](ADR-0005-content-security-policy.md) | Accepted |
 | ADR-0006 | [Opt-In Device Geolocation (Seeker)](ADR-0006-opt-in-device-geolocation.md) | Accepted |
+| ADR-0007 | [HSDS / 211 Federation Canonical Model](ADR-0007-hsds-211-federation-canonical-model.md) | Accepted |
 
 ## File naming
 

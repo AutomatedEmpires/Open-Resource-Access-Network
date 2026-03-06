@@ -145,9 +145,10 @@ The following categories are **unconditionally approved** without appearing in t
 | `h-[60vh]`, `h-[50vh]`, `min-h-[60vh]` | Content-well viewport heights |
 | `max-h-[85vh]`, `max-h-[80vh]` | Modal / panel max heights |
 | `h-[calc(100dvh-13rem)]`, `h-[calc(100vh-16rem)]`, `max-h-[calc(100vh-16rem)]` | Computed scroll container heights |
-| `max-w-[120px]`…`max-w-[200px]`, `max-w-[18rem]`, `max-w-[85%]` | Truncation constraints for names / labels |
+| `max-w-[120px]`…`max-w-[220px]`, `max-w-[18rem]`, `max-w-[85%]` | Truncation constraints for names / labels |
 | `max-h-[120px]`, `max-h-[420px]` | Scrollable list max heights |
 | `grid-cols-[1fr,auto,auto]`, `grid-cols-[1fr_380px]` | Two-panel / sidebar layouts |
 | `text-[9px]`, `text-[10px]`, `text-[11px]` | Sub-`xs` font sizes for badge labels |
 | `bottom-[4.5rem]`, `top-[20%]` | Fixed / absolute positioning |
 | `[animation-delay:-0.3s]`, `[animation-delay:-0.15s]` | Staggered loading-dot animation delays |
+| `animate-[page-enter_var(--transition-standard)_both]` | Page-enter transition animation |

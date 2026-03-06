@@ -61,19 +61,23 @@ ORAN uses **Microsoft Entra ID** for identity management via NextAuth.js with th
 - Service category preferences
 - Feedback ratings (no identifying info required)
 
-### What ORAN Does NOT Store
+### What ORAN Does NOT Store (current implementation)
 - Full name (managed by Entra ID)
 - Email address in ORAN DB (managed by Entra ID)
-- Precise GPS coordinates of seekers
+- Precise GPS coordinates of seekers (see Approximate Location section)
 - Chat message content beyond session metadata
 - Sensitive inferences (health conditions, immigration status, etc.)
+
+> Note: This reflects current technical implementation. Data collection and retention
+> practices may expand as the platform evolves. Any changes will be reflected in the
+> published Privacy Policy.
 
 ### Prohibited Inferences
 ORAN explicitly prohibits:
 - Inferring immigration status from service queries
 - Inferring health conditions from service categories
 - Profiling users based on chat history
-- Selling or sharing seeker data with service providers
+- Disclosing seeker data to third parties without a lawful basis or explicit user consent
 
 ---
 

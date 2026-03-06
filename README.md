@@ -2,6 +2,34 @@
 
 ORAN is a civic-grade, safety-critical platform for finding government, state, county, nonprofit, and community services quickly and safely.
 
+[![CI](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/codeql.yml)
+[![Runbook Freshness](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/runbook-freshness.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/runbook-freshness.yml)
+[![Deploy App Service](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-appservice.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-appservice.yml)
+[![Deploy Functions](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-functions.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-functions.yml)
+
+## Experience Hub
+
+| Need | Go To |
+| --- | --- |
+| Role-based onboarding | [START_HERE.md](START_HERE.md) |
+| Live proof and assurance panel | [docs/EVIDENCE_DASHBOARD.md](docs/EVIDENCE_DASHBOARD.md) |
+| Verified dev setup and command paths | [docs/DEVELOPER_GOLDEN_PATH.md](docs/DEVELOPER_GOLDEN_PATH.md) |
+| Visual architecture and change map | [docs/REPO_MAP.md](docs/REPO_MAP.md) |
+| Behavior guarantees and contracts | [docs/contracts/README.md](docs/contracts/README.md) |
+| Public now/next/later roadmap | [docs/ROADMAP_PUBLIC.md](docs/ROADMAP_PUBLIC.md) |
+| Operational command center | [docs/ops/README.md](docs/ops/README.md) |
+
+<details>
+<summary>Interactive first-click paths</summary>
+
+- Investor / executive: [START_HERE.md#investor-lane](START_HERE.md#investor-lane)
+- Developer: [START_HERE.md#developer-lane](START_HERE.md#developer-lane)
+- Operator / on-call: [START_HERE.md#operator-lane](START_HERE.md#operator-lane)
+- Contributor: [START_HERE.md#contributor-lane](START_HERE.md#contributor-lane)
+
+</details>
+
 ## Executive Snapshot
 
 | Dimension | Position | Evidence |
@@ -20,6 +48,7 @@ ORAN is a civic-grade, safety-critical platform for finding government, state, c
 [![Accessibility Gate](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/a11y.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/a11y.yml)
 [![Bundle Size Budget](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/bundle-size.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/bundle-size.yml)
 [![Visual Regression](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/visual-regression.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/visual-regression.yml)
+[![Runbook Freshness](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/runbook-freshness.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/runbook-freshness.yml)
 
 ### Security
 

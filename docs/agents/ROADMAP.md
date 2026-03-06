@@ -133,19 +133,19 @@ Verify → Score → BuildCandidate → RouteToAdmin`
 
 ### 7.3 Monitoring & Alerting ✅
 - Azure Monitor alert rules (`infra/monitoring.bicep`): web 5xx, web latency, function failures, SLA breaches, queue backlog, coverage gaps
-- KQL query reference (`docs/ops/MONITORING_QUERIES.md`): 14+ queries across 6 sections
+- KQL query reference (`docs/ops/monitoring/MONITORING_QUERIES.md`): 14+ queries across 6 sections
 - Wired to `checkSlaBreaches` and `alertCoverageGaps` functions
 
 ### 7.4 Runbooks ✅
-- `docs/ops/RUNBOOK_INGESTION.md` — Pipeline troubleshooting
-- `docs/ops/RUNBOOK_ADMIN_ROUTING.md` — Routing failures + emergency procedures
-- `docs/ops/RUNBOOK_LLM_OUTAGE.md` — Azure OpenAI outage handling
+- `docs/ops/services/RUNBOOK_INGESTION.md` — Pipeline troubleshooting
+- `docs/ops/services/RUNBOOK_ADMIN_ROUTING.md` — Routing failures + emergency procedures
+- `docs/ops/services/RUNBOOK_LLM_OUTAGE.md` — Azure OpenAI outage handling
 
 ### 7.5 Load & Scale Testing ✅
 - Queue concurrency tuned in `functions/host.json` (batchSize=4, maxDequeueCount=3)
 - DB connection pool sized in `src/db/index.ts` (max=10)
 - Load test script: `scripts/load-test.mjs`
-- Scale triggers and upgrade paths documented in `docs/ops/LOAD_SCALE_TESTING.md`
+- Scale triggers and upgrade paths documented in `docs/ops/monitoring/LOAD_SCALE_TESTING.md`
 
 ---
 

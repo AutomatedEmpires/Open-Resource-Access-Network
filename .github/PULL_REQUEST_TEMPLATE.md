@@ -1,5 +1,29 @@
 ## Summary (What / Why)
 
+## Contract Impact
+
+- Contract(s) impacted:
+- Behavioral change summary:
+- Contract docs updated:
+
+## Ops / Runbook Impact
+
+- Operational behavior changed? (`yes/no`):
+- Runbook(s) updated (if yes):
+- Deployment or rollback implications:
+
+## Verification Evidence
+
+- Tests run (exact commands):
+- Key outputs or screenshots:
+- Related issue/spec links:
+
+## Rollback Plan
+
+- Trigger condition to rollback:
+- Rollback path:
+- Data or migration considerations:
+
 ## Safety-critical checklist
 - [ ] No invented services/data; all facts originate from DB records or approved constants (911/988/211)
 - [ ] Crisis routing unaffected OR updated with a spec and tested

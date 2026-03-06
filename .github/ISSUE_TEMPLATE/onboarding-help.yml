@@ -1,0 +1,63 @@
+name: Onboarding help
+description: Request guided onboarding help by role (investor, developer, operator, contributor).
+title: "[Onboarding]: "
+labels:
+  - type:docs
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form if you need help navigating repo onboarding, workflows, or contracts.
+        Do not include PII or secrets.
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Audience
+      options:
+        - Investor / Executive
+        - Developer
+        - Operator / On-call
+        - Contributor
+    validations:
+      required: true
+
+  - type: dropdown
+    id: current_start_point
+    attributes:
+      label: Where did you start?
+      options:
+        - START_HERE.md
+        - README.md
+        - docs/README.md
+        - docs/REPO_MAP.md
+        - docs/contracts/README.md
+        - docs/ops/README.md
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What are you trying to accomplish?
+      placeholder: I need to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: blocked_by
+    attributes:
+      label: What's unclear or blocking?
+      placeholder: I could not find...
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested_improvement
+    attributes:
+      label: Suggested improvement
+      description: Share exact docs or workflow changes that would improve onboarding.
+    validations:
+      required: false

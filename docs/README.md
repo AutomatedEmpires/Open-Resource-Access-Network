@@ -2,6 +2,16 @@
 
 Start here if you’re new to the repo.
 
+## Guided experiences
+
+- Start-here role lanes: [START_HERE.md](../START_HERE.md)
+- Live evidence dashboard: [docs/EVIDENCE_DASHBOARD.md](EVIDENCE_DASHBOARD.md)
+- Developer golden path: [docs/DEVELOPER_GOLDEN_PATH.md](DEVELOPER_GOLDEN_PATH.md)
+- Visual repository map: [docs/REPO_MAP.md](REPO_MAP.md)
+- Contracts hub: [docs/contracts/README.md](contracts/README.md)
+- Public roadmap: [docs/ROADMAP_PUBLIC.md](ROADMAP_PUBLIC.md)
+- Wiki bridge index: [docs/WIKI_INDEX.md](WIKI_INDEX.md)
+
 ## Mission and non-negotiables
 
 - Vision (what we’re building and why): `docs/VISION.md`
@@ -27,6 +37,15 @@ Start here if you’re new to the repo.
 - Import workflow: `docs/solutions/IMPORT_PIPELINE.md`
 - Security and privacy controls: `docs/SECURITY_PRIVACY.md`
 
+## Contracts and guarantees
+
+- Contracts index: [docs/contracts/README.md](contracts/README.md)
+- Chat contract: [docs/contracts/CHAT_CONTRACT.md](contracts/CHAT_CONTRACT.md)
+- Search contract: [docs/contracts/SEARCH_CONTRACT.md](contracts/SEARCH_CONTRACT.md)
+- Scoring contract: [docs/contracts/SCORING_CONTRACT.md](contracts/SCORING_CONTRACT.md)
+- Authz contract: [docs/contracts/AUTHZ_CONTRACT.md](contracts/AUTHZ_CONTRACT.md)
+- Ingestion contract: [docs/contracts/INGESTION_CONTRACT.md](contracts/INGESTION_CONTRACT.md)
+
 ## Governance and roles
 
 - Governance norms: `docs/governance/GOVERNANCE.md`
@@ -36,6 +55,7 @@ Start here if you’re new to the repo.
 
 - Engineering log (append-only): `docs/ENGINEERING_LOG.md`
 - ADRs: `docs/DECISIONS/`
+- Runbook freshness CI: `.github/workflows/runbook-freshness.yml`
 
 ## Folder map
 

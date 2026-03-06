@@ -35,6 +35,7 @@ function makeWithCapacity(overrides: Partial<AdminWithCapacity>): AdminWithCapac
     displayName: 'Admin A',
     profileType: 'admin',
     maxPendingReviews: 10,
+    maxInReview: 5,
     jurisdictionCountry: 'US',
     jurisdictionStates: [],
     jurisdictionCounties: [],
@@ -120,6 +121,30 @@ describe('adminProfiles edge coverage', () => {
     expect(rich.isActive).toBe(false);
     expect(rich.isAcceptingReviews).toBe(false);
     expect(rich.totalReviewsCompleted).toBe(0);
+  });
+
+  it('applies role-based capacity defaults', () => {
+    const oranAdmin = createAdminProfile('u1', 'ORAN Admin', { role: 'oran_admin' });
+    expect(oranAdmin.maxPendingReviews).toBe(50);
+    expect(oranAdmin.maxInReview).toBe(20);
+
+    const communityAdmin = createAdminProfile('u2', 'Community Admin', { role: 'community_admin' });
+    expect(communityAdmin.maxPendingReviews).toBe(10);
+    expect(communityAdmin.maxInReview).toBe(5);
+
+    const hostAdmin = createAdminProfile('u3', 'Host Admin', { role: 'host_admin' });
+    expect(hostAdmin.maxPendingReviews).toBe(5);
+    expect(hostAdmin.maxInReview).toBe(3);
+  });
+
+  it('allows explicit capacity to override role defaults', () => {
+    const custom = createAdminProfile('u1', 'Custom', {
+      role: 'oran_admin',
+      maxPendingReviews: 30,
+      maxInReview: 10,
+    });
+    expect(custom.maxPendingReviews).toBe(30);
+    expect(custom.maxInReview).toBe(10);
   });
 
   it('evaluates and filters capacity correctly', () => {

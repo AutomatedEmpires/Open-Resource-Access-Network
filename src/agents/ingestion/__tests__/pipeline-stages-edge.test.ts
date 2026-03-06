@@ -68,6 +68,37 @@ afterEach(() => {
 });
 
 describe('pipeline stages edge cases', () => {
+  it('records unknown sourceId metric when allowlisted source has no sourceId', async () => {
+    vi.spyOn(sourceRegistryModule, 'matchSourceForUrl').mockReturnValue({
+      allowed: true,
+      trustLevel: 'vetted',
+    } as unknown as ReturnType<typeof sourceRegistryModule.matchSourceForUrl>);
+
+    const stage = new SourceCheckStage([]);
+    const result = await stage.execute(createContext());
+
+    expect(result.status).toBe('completed');
+    expect(result.metrics).toMatchObject({
+      trustLevel: 'vetted',
+      sourceId: 'unknown',
+    });
+  });
+
+  it('stringifies non-Error source matching failures', async () => {
+    vi.spyOn(sourceRegistryModule, 'matchSourceForUrl').mockImplementation(() => {
+      throw 'registry panicked';
+    });
+
+    const stage = new SourceCheckStage([]);
+    const result = await stage.execute(createContext());
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toMatchObject({
+      code: 'source_check_error',
+      message: 'registry panicked',
+    });
+  });
+
   it('returns source_check_error when source matching throws', async () => {
     vi.spyOn(sourceRegistryModule, 'matchSourceForUrl').mockImplementation(() => {
       throw new Error('registry unavailable');
@@ -170,6 +201,66 @@ describe('pipeline stages edge cases', () => {
     expect(stage.shouldSkip?.(createContext({ discoveredLinks: [] }))).toBe(true);
   });
 
+  it('uses default fetcher path and normalizes empty contentType metric', async () => {
+    const defaultFetcher: Fetcher = {
+      fetch: vi.fn().mockResolvedValue(
+        createFetcherResult({
+          contentType: undefined,
+        }),
+      ),
+    };
+    const createPageFetcherSpy = vi
+      .spyOn(fetcherModule, 'createPageFetcher')
+      .mockReturnValue(defaultFetcher);
+
+    const stage = new FetchStage();
+    const result = await stage.execute(createContext());
+
+    expect(createPageFetcherSpy).toHaveBeenCalled();
+    expect(result.status).toBe('completed');
+    expect(result.metrics).toMatchObject({
+      contentType: 'unknown',
+    });
+  });
+
+  it('stringifies non-Error fetch failures', async () => {
+    const stage = new FetchStage();
+    const context = createContext({
+      fetcher: {
+        fetch: vi.fn().mockRejectedValue('network exploded'),
+      },
+    });
+
+    const result = await stage.execute(context);
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toMatchObject({
+      code: 'fetch_error',
+      message: 'network exploded',
+    });
+  });
+
+  it('stringifies non-Error extraction failures', async () => {
+    vi.spyOn(fetcherModule, 'createHtmlTextExtractor').mockReturnValue({
+      extract: () => {
+        throw 'extract crash';
+      },
+    } as unknown as ReturnType<typeof fetcherModule.createHtmlTextExtractor>);
+
+    const stage = new ExtractTextStage();
+    const result = await stage.execute(
+      createContext({
+        fetchResult: createPipelineFetchResult(),
+      }),
+    );
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toMatchObject({
+      code: 'extract_text_error',
+      message: 'extract crash',
+    });
+  });
+
   it('returns llm_not_configured when LLM env config is missing', async () => {
     vi.spyOn(llmModule, 'getLLMConfigFromEnv').mockReturnValue({
       provider: 'azure_openai',
@@ -191,6 +282,153 @@ describe('pipeline stages edge cases', () => {
 
     expect(result.status).toBe('failed');
     expect(result.error?.code).toBe('llm_not_configured');
+  });
+
+  it('maps quarantine source quality and defaults confidence when confidences are absent', async () => {
+    const extractSpy = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        services: [
+          {
+            organizationName: 'Org',
+            serviceName: 'Service',
+            description: 'Description',
+            websiteUrl: undefined,
+            phones: [],
+            hours: [],
+            languages: [],
+            isRemoteService: false,
+            address: {
+              line1: '123 Main',
+              line2: 'Suite 200',
+              city: 'Portland',
+              region: 'OR',
+              postalCode: '97201',
+              country: 'US',
+            },
+          },
+        ],
+        confidences: [],
+        pageType: 'service_detail',
+      },
+    });
+
+    const stage = new LlmExtractStage({
+      llmClient: {
+        provider: 'mock',
+        model: 'mock-model',
+        extract: extractSpy,
+        categorize: vi.fn(),
+        healthCheck: vi.fn().mockResolvedValue(true),
+      },
+    });
+
+    const context = createContext({
+      sourceCheck: {
+        allowed: true,
+        trustLevel: 'quarantine',
+      },
+      textExtraction: {
+        text: 'service description',
+        title: 'Example Service',
+        wordCount: 2,
+      },
+    });
+
+    const result = await stage.execute(context);
+
+    expect(result.status).toBe('completed');
+    expect(extractSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceQuality: 'quarantine',
+      }),
+    );
+    expect(context.llmExtraction?.confidence).toBe(50);
+    expect(context.llmExtraction?.address).toMatchObject({
+      line1: '123 Main',
+      line2: 'Suite 200',
+      city: 'Portland',
+      region: 'OR',
+      postalCode: '97201',
+      country: 'US',
+    });
+  });
+
+  it('uses vetted source quality when source trust is not provided', async () => {
+    const extractSpy = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        services: [
+          {
+            organizationName: 'Org',
+            serviceName: 'Service',
+            description: 'Description',
+            websiteUrl: 'https://example.gov/svc',
+            phones: [],
+            hours: [],
+            languages: [],
+            isRemoteService: false,
+          },
+        ],
+        confidences: [{ serviceName: { confidence: 80 } }],
+        pageType: 'service_detail',
+      },
+    });
+
+    const stage = new LlmExtractStage({
+      llmClient: {
+        provider: 'mock',
+        model: 'mock-model',
+        extract: extractSpy,
+        categorize: vi.fn(),
+        healthCheck: vi.fn().mockResolvedValue(true),
+      },
+    });
+
+    const result = await stage.execute(
+      createContext({
+        textExtraction: {
+          text: 'service description',
+          title: 'Example Service',
+          wordCount: 2,
+        },
+      }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(extractSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceQuality: 'vetted',
+      }),
+    );
+  });
+
+  it('stringifies non-Error extraction runtime failures', async () => {
+    const stage = new LlmExtractStage({
+      llmClient: {
+        provider: 'mock',
+        model: 'mock-model',
+        extract: vi.fn().mockRejectedValue('extract runtime failed'),
+        categorize: vi.fn(),
+        healthCheck: vi.fn().mockResolvedValue(true),
+      },
+    });
+
+    const result = await stage.execute(
+      createContext({
+        textExtraction: {
+          text: 'service description',
+          title: 'Example Service',
+          wordCount: 2,
+        },
+      }),
+    );
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toMatchObject({
+      code: 'llm_extract_error',
+      message: 'extract runtime failed',
+    });
   });
 
   it('surfaces LLM extraction failure from dynamically created client', async () => {
@@ -273,6 +511,93 @@ describe('pipeline stages edge cases', () => {
         })
       )
     ).toBe(true);
+  });
+
+  it('creates and caches categorize client from env and handles optional tags', async () => {
+    const categorizeSpy = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        tags: undefined,
+        primaryCategory: undefined,
+      },
+    });
+    const client: LLMClient = {
+      provider: 'mock',
+      model: 'mock-model',
+      extract: vi.fn(),
+      categorize: categorizeSpy,
+      healthCheck: vi.fn().mockResolvedValue(true),
+    };
+
+    vi.spyOn(llmModule, 'getLLMConfigFromEnv').mockReturnValue({
+      provider: 'azure_openai',
+      model: 'gpt-4o',
+      endpoint: 'https://example.openai.azure.com',
+      apiKey: 'test-key',
+      apiVersion: '2024-08-01-preview',
+    });
+    const createClientSpy = vi.spyOn(llmModule, 'createLLMClient').mockResolvedValue(client);
+
+    const stage = new LlmCategorizeStage();
+    const makeContext = () =>
+      createContext({
+        llmExtraction: {
+          organizationName: 'Org',
+          serviceName: 'Service',
+          description: 'Description',
+          phone: '555-0101',
+          confidence: 70,
+          fieldConfidences: {},
+        },
+      });
+
+    const first = await stage.execute(makeContext());
+    const second = await stage.execute(makeContext());
+
+    expect(first.status).toBe('completed');
+    expect(second.status).toBe('completed');
+    expect(createClientSpy).toHaveBeenCalledTimes(1);
+    expect(categorizeSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        service: expect.objectContaining({
+          phones: [{ number: '555-0101', type: 'voice' }],
+        }),
+      }),
+    );
+    expect(first.metrics).toMatchObject({
+      categoryCount: 0,
+      primaryCategory: 'unknown',
+    });
+  });
+
+  it('stringifies non-Error categorize failures', async () => {
+    const stage = new LlmCategorizeStage({
+      llmClient: {
+        provider: 'mock',
+        model: 'mock-model',
+        extract: vi.fn(),
+        categorize: vi.fn().mockRejectedValue('categorize crashed'),
+        healthCheck: vi.fn().mockResolvedValue(true),
+      },
+    });
+
+    const result = await stage.execute(
+      createContext({
+        llmExtraction: {
+          organizationName: 'Org',
+          serviceName: 'Service',
+          description: 'Description',
+          confidence: 70,
+          fieldConfidences: {},
+        },
+      }),
+    );
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toMatchObject({
+      code: 'llm_categorize_error',
+      message: 'categorize crashed',
+    });
   });
 
   it('returns llm_not_configured from categorization when env config is missing', async () => {
@@ -517,4 +842,60 @@ describe('pipeline stages edge cases', () => {
     expect(result.error?.code).toBe('build_candidate_error');
     expect(stage.shouldSkip?.(createContext({ candidateId: 'already-built' }))).toBe(true);
   });
+
+  it('builds candidate without fetch result using input URL and unknown score defaults', async () => {
+    vi.spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce('11111111-1111-4111-8111-111111111111')
+      .mockReturnValueOnce('22222222-2222-4222-8222-222222222222');
+    vi.spyOn(crypto, 'randomBytes').mockReturnValue(Buffer.alloc(32, 7));
+
+    const stage = new BuildCandidateStage();
+    const context = createContext({
+      llmExtraction: {
+        organizationName: 'Org',
+        serviceName: 'Service',
+        description: 'Description',
+        confidence: 70,
+        fieldConfidences: {},
+      },
+      input: createInput('https://fallback.example.gov/service'),
+    });
+
+    const result = await stage.execute(context);
+
+    expect(result.status).toBe('completed');
+    expect(context.candidateId).toBe('11111111-1111-4111-8111-111111111111');
+    expect(context.extractionId).toBe('22222222-2222-4222-8222-222222222222');
+    expect(result.metrics).toMatchObject({
+      tier: 'unknown',
+      score: 0,
+    });
+  });
 });
+  it('marks location plausibility as unknown for partial addresses', async () => {
+    const stage = new VerifyStage();
+    const context = createContext({
+      llmExtraction: {
+        organizationName: 'Org',
+        serviceName: 'Service',
+        description: 'This is a long enough description to satisfy policy constraints.',
+        address: {
+          line1: '12',
+          city: 'Portland',
+          region: 'OR',
+          postalCode: '97201',
+          country: 'US',
+        },
+        confidence: 70,
+        fieldConfidences: {},
+      },
+    });
+
+    const result = await stage.execute(context);
+    const location = context.verificationResults?.find((r) => r.checkType === 'location_plausibility');
+    const domain = context.verificationResults?.find((r) => r.checkType === 'domain_allowlist');
+
+    expect(result.status).toBe('completed');
+    expect(location?.status).toBe('unknown');
+    expect(domain?.status).toBe('fail');
+  });

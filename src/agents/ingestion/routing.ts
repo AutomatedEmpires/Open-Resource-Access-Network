@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import { ROLE_CAPACITY_DEFAULTS } from '@/domain/constants';
 
 // ============================================================
 // ADMIN CAPACITY
@@ -25,9 +26,9 @@ export const AdminCapacitySchema = z.object({
   pendingCount: z.number().int().min(0).default(0),
   inReviewCount: z.number().int().min(0).default(0),
 
-  // Capacity limits
-  maxPending: z.number().int().min(1).default(10),
-  maxInReview: z.number().int().min(1).default(5),
+  // Capacity limits (defaults from community_admin tier; overridden per role)
+  maxPending: z.number().int().min(1).default(ROLE_CAPACITY_DEFAULTS.community_admin.maxPending),
+  maxInReview: z.number().int().min(1).default(ROLE_CAPACITY_DEFAULTS.community_admin.maxInReview),
 
   // Performance metrics
   totalVerified: z.number().int().min(0).default(0),
@@ -50,6 +51,53 @@ export const AdminCapacitySchema = z.object({
 
 export type AdminCapacity = z.infer<typeof AdminCapacitySchema>;
 
+// ============================================================
+// AUTO-CAPACITY SCALING
+// ============================================================
+
+/**
+ * Minimum number of completed reviews before scaling kicks in.
+ * Prevents newly-onboarded admins from getting inflated limits.
+ */
+export const CAPACITY_SCALING_MIN_REVIEWS = 20;
+
+/**
+ * Performance tiers for capacity scaling, keyed by avg review hours.
+ * Each tier defines a multiplier for maxPending.
+ *
+ * - fast (< 4h avg): 1.5x capacity
+ * - normal (4-12h): 1.0x (no change)
+ * - slow (> 12h): 0.75x capacity (but never below role default minimum)
+ */
+export const CAPACITY_SCALING_TIERS = [
+  { maxAvgHours: 4,      multiplier: 1.5 },
+  { maxAvgHours: 12,     multiplier: 1.0 },
+  { maxAvgHours: Infinity, multiplier: 0.75 },
+] as const;
+
+/**
+ * Compute the effective maxPending for an admin based on their avgReviewHours.
+ *
+ * Returns the original maxPending if:
+ * - No avgReviewHours data available
+ * - Fewer than CAPACITY_SCALING_MIN_REVIEWS completed reviews
+ *
+ * Otherwise, applies the tier multiplier and floors to ensure at least 1.
+ */
+export function computeEffectiveMaxPending(admin: AdminCapacity): number {
+  const totalCompleted = admin.totalVerified + admin.totalRejected;
+
+  // Not enough history — use configured max
+  if (admin.avgReviewHours == null || totalCompleted < CAPACITY_SCALING_MIN_REVIEWS) {
+    return admin.maxPending;
+  }
+
+  const tier = CAPACITY_SCALING_TIERS.find((t) => admin.avgReviewHours! <= t.maxAvgHours);
+  const multiplier = tier?.multiplier ?? 1.0;
+
+  return Math.max(1, Math.floor(admin.maxPending * multiplier));
+}
+
 /**
  * Available slots calculation
  */
@@ -66,6 +114,30 @@ export function canAcceptAssignment(admin: AdminCapacity): boolean {
     admin.isAcceptingNew &&
     admin.pendingCount < admin.maxPending
   );
+}
+
+/**
+ * Auto-pause threshold: 100% of maxPending.
+ * Auto-resume threshold: 80% of maxPending.
+ *
+ * Returns the new value of `isAcceptingNew` if it should change, or null if no change needed.
+ */
+export const AUTO_RESUME_THRESHOLD = 0.8;
+
+export function shouldToggleAcceptingNew(admin: AdminCapacity): boolean | null {
+  // Pause: at or over capacity
+  if (admin.isAcceptingNew && admin.pendingCount >= admin.maxPending) {
+    return false;
+  }
+  // Resume: dropped below 80% of max
+  if (
+    !admin.isAcceptingNew &&
+    admin.isActive &&
+    admin.pendingCount < Math.floor(admin.maxPending * AUTO_RESUME_THRESHOLD)
+  ) {
+    return true;
+  }
+  return null;
 }
 
 // ============================================================
@@ -178,6 +250,7 @@ export const GeoMatchLevel = z.enum([
   'state', // Admin covers state
   'zone', // Admin covers zone
   'fallback', // Admin covers all (no geo restriction)
+  'none', // No geographic match
 ]);
 export type GeoMatchLevel = z.infer<typeof GeoMatchLevel>;
 
@@ -189,6 +262,7 @@ export const PRIORITY_SCORES: Record<GeoMatchLevel, number> = {
   state: 50,
   zone: 25,
   fallback: 10,
+  none: 0,
 };
 
 /**
@@ -225,7 +299,7 @@ export function computeAdminPriority(
   }
 
   // No match
-  return { score: 0, matchLevel: 'fallback' };
+  return { score: 0, matchLevel: 'none' };
 }
 
 /**
@@ -372,6 +446,7 @@ export interface AdminCapacityStore {
   ): Promise<AdminCapacity[]>;
   incrementPending(userId: string): Promise<void>;
   decrementPending(userId: string): Promise<void>;
+  setAcceptingNew(userId: string, accepting: boolean): Promise<void>;
   updateReviewMetrics(
     userId: string,
     reviewTimeHours: number,

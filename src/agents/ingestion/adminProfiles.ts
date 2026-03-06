@@ -9,6 +9,8 @@
  */
 import { z } from 'zod';
 
+import { ROLE_CAPACITY_DEFAULTS } from '@/domain/constants';
+
 // ============================================================
 // Admin Profile Types
 // ============================================================
@@ -25,6 +27,7 @@ export const AdminProfileSchema = z.object({
 
   // Capacity settings
   maxPendingReviews: z.number().int().min(1).max(100).default(10),
+  maxInReview: z.number().int().min(1).max(50).default(5),
 
   // Location for geographic routing
   location: z.object({
@@ -87,13 +90,20 @@ export type ClosestAdmin = z.infer<typeof ClosestAdminSchema>;
 export function createAdminProfile(
   userId: string,
   displayName: string,
-  options: Partial<Omit<AdminProfile, 'userId' | 'displayName' | 'id'>> = {}
+  options: Partial<Omit<AdminProfile, 'userId' | 'displayName' | 'id'>> & {
+    role?: 'oran_admin' | 'community_admin' | 'host_admin';
+  } = {}
 ): AdminProfile {
+  const roleDefaults = options.role
+    ? ROLE_CAPACITY_DEFAULTS[options.role]
+    : ROLE_CAPACITY_DEFAULTS.community_admin;
+
   return {
     userId,
     displayName,
     profileType: options.profileType ?? 'admin',
-    maxPendingReviews: options.maxPendingReviews ?? 10,
+    maxPendingReviews: options.maxPendingReviews ?? roleDefaults.maxPending,
+    maxInReview: options.maxInReview ?? roleDefaults.maxInReview,
     jurisdictionCountry: options.jurisdictionCountry ?? 'US',
     jurisdictionStates: options.jurisdictionStates ?? [],
     jurisdictionCounties: options.jurisdictionCounties ?? [],

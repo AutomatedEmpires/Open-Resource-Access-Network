@@ -9,7 +9,10 @@ import {
   RoutingRequestSchema,
   getAvailableSlots,
   canAcceptAssignment,
+  shouldToggleAcceptingNew,
   computeAdminPriority,
+  computeEffectiveMaxPending,
+  CAPACITY_SCALING_MIN_REVIEWS,
   sortAdminsByPriority,
   createAssignment,
   claimAssignment,
@@ -222,6 +225,54 @@ describe('canAcceptAssignment', () => {
   });
 });
 
+describe('shouldToggleAcceptingNew', () => {
+  const baseAdmin: AdminCapacity = {
+    id: '550e8400-e29b-41d4-a716-446655440000',
+    userId: 'user-123',
+    pendingCount: 5,
+    inReviewCount: 2,
+    maxPending: 10,
+    maxInReview: 5,
+    totalVerified: 50,
+    totalRejected: 5,
+    avgReviewHours: null,
+    lastReviewAt: null,
+    coverageZoneId: null,
+    coverageStates: [],
+    coverageCounties: [],
+    isActive: true,
+    isAcceptingNew: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  it('returns false (pause) when at maxPending', () => {
+    expect(shouldToggleAcceptingNew({ ...baseAdmin, pendingCount: 10 })).toBe(false);
+  });
+
+  it('returns false (pause) when over maxPending', () => {
+    expect(shouldToggleAcceptingNew({ ...baseAdmin, pendingCount: 12 })).toBe(false);
+  });
+
+  it('returns true (resume) when below 80% threshold and paused', () => {
+    // 80% of 10 = 8; pendingCount 7 < 8 → resume
+    expect(shouldToggleAcceptingNew({ ...baseAdmin, isAcceptingNew: false, pendingCount: 7 })).toBe(true);
+  });
+
+  it('returns null when below threshold but already accepting', () => {
+    expect(shouldToggleAcceptingNew({ ...baseAdmin, pendingCount: 7 })).toBeNull();
+  });
+
+  it('returns null when paused but still above threshold', () => {
+    // 80% of 10 = 8; pendingCount 9 >= 8 → no change
+    expect(shouldToggleAcceptingNew({ ...baseAdmin, isAcceptingNew: false, pendingCount: 9 })).toBeNull();
+  });
+
+  it('does not resume when admin is inactive', () => {
+    expect(shouldToggleAcceptingNew({ ...baseAdmin, isActive: false, isAcceptingNew: false, pendingCount: 2 })).toBeNull();
+  });
+});
+
 describe('computeAdminPriority', () => {
   const baseAdmin: AdminCapacity = {
     id: '550e8400-e29b-41d4-a716-446655440000',
@@ -265,6 +316,7 @@ describe('computeAdminPriority', () => {
   it('gives zero score when no match', () => {
     const result = computeAdminPriority(baseAdmin, 'CA', 'LosAngeles');
     expect(result.score).toBe(0);
+    expect(result.matchLevel).toBe('none');
   });
 });
 
@@ -464,5 +516,99 @@ describe('isAssignmentExpired', () => {
       createdAt: new Date(),
     };
     expect(isAssignmentExpired(noExpiry)).toBe(false);
+  });
+});
+
+describe('computeEffectiveMaxPending', () => {
+  const baseAdmin: AdminCapacity = {
+    id: '550e8400-e29b-41d4-a716-446655440000',
+    userId: 'user-123',
+    pendingCount: 5,
+    inReviewCount: 2,
+    maxPending: 10,
+    maxInReview: 5,
+    totalVerified: 50,
+    totalRejected: 5,
+    avgReviewHours: 3,
+    lastReviewAt: new Date(),
+    coverageZoneId: null,
+    coverageStates: [],
+    coverageCounties: [],
+    isActive: true,
+    isAcceptingNew: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  it('returns base maxPending when no avgReviewHours data', () => {
+    const admin = { ...baseAdmin, avgReviewHours: null };
+    expect(computeEffectiveMaxPending(admin)).toBe(10);
+  });
+
+  it('returns base maxPending when too few completed reviews', () => {
+    const admin = {
+      ...baseAdmin,
+      totalVerified: 5,
+      totalRejected: 2,
+      avgReviewHours: 2,
+    };
+    // 5+2=7 < CAPACITY_SCALING_MIN_REVIEWS (20)
+    expect(computeEffectiveMaxPending(admin)).toBe(10);
+  });
+
+  it('scales up to 1.5x for fast reviewers (< 4h avg)', () => {
+    const admin = {
+      ...baseAdmin,
+      totalVerified: 15,
+      totalRejected: 10,
+      avgReviewHours: 2,
+    };
+    // 15+10 = 25 >= 20; 2h < 4h → 1.5x → floor(10*1.5) = 15
+    expect(computeEffectiveMaxPending(admin)).toBe(15);
+  });
+
+  it('keeps 1.0x for normal reviewers (4-12h avg)', () => {
+    const admin = {
+      ...baseAdmin,
+      totalVerified: 15,
+      totalRejected: 10,
+      avgReviewHours: 8,
+    };
+    // 8h → normal tier → 1.0x → 10
+    expect(computeEffectiveMaxPending(admin)).toBe(10);
+  });
+
+  it('scales down to 0.75x for slow reviewers (> 12h avg)', () => {
+    const admin = {
+      ...baseAdmin,
+      totalVerified: 15,
+      totalRejected: 10,
+      avgReviewHours: 24,
+    };
+    // 24h > 12h → 0.75x → floor(10*0.75) = 7
+    expect(computeEffectiveMaxPending(admin)).toBe(7);
+  });
+
+  it('never returns less than 1', () => {
+    const admin = {
+      ...baseAdmin,
+      maxPending: 1,
+      totalVerified: 15,
+      totalRejected: 10,
+      avgReviewHours: 48,
+    };
+    // floor(1*0.75) = 0 → clamped to 1
+    expect(computeEffectiveMaxPending(admin)).toBe(1);
+  });
+
+  it('applies at exactly the CAPACITY_SCALING_MIN_REVIEWS threshold', () => {
+    const admin = {
+      ...baseAdmin,
+      totalVerified: CAPACITY_SCALING_MIN_REVIEWS,
+      totalRejected: 0,
+      avgReviewHours: 2,
+    };
+    // Exactly at threshold → scaling applies → 1.5x → 15
+    expect(computeEffectiveMaxPending(admin)).toBe(15);
   });
 });

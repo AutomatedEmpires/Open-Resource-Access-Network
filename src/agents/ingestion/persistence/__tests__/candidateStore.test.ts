@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createDrizzleCandidateStore } from '../candidateStore';
-import type { CandidateReviewStatus } from '../stores';
+import type { CandidateReviewStatus } from '../../stores';
 
 function createMockDb(selectResults: unknown[] = []) {
   const insertValues: unknown[] = [];

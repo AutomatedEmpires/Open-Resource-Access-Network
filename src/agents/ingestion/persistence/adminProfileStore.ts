@@ -23,6 +23,7 @@ function rowToProfile(row: typeof adminReviewProfiles.$inferSelect): AdminProfil
     profileType: 'admin', // DB doesn't have profileType; default to admin
     displayName: row.userId, // DB doesn't have displayName; use userId
     maxPendingReviews: row.maxPending,
+    maxInReview: row.maxInReview,
     jurisdictionCountry: 'US',
     jurisdictionStates: row.coverageStates ?? [],
     jurisdictionCounties: row.coverageCounties ?? [],
@@ -60,7 +61,7 @@ export function createDrizzleAdminProfileStore(
       await db.insert(adminReviewProfiles).values({
         userId: profile.userId,
         maxPending: profile.maxPendingReviews ?? 10,
-        maxInReview: 5,
+        maxInReview: profile.maxInReview ?? 5,
         isActive: profile.isActive ?? true,
         isAcceptingNew: profile.isAcceptingReviews ?? true,
         coverageStates: profile.jurisdictionStates ?? [],
@@ -101,6 +102,8 @@ export function createDrizzleAdminProfileStore(
 
       if (updates.maxPendingReviews !== undefined)
         dbUpdates.maxPending = updates.maxPendingReviews;
+      if (updates.maxInReview !== undefined)
+        dbUpdates.maxInReview = updates.maxInReview;
       if (updates.isActive !== undefined) dbUpdates.isActive = updates.isActive;
       if (updates.isAcceptingReviews !== undefined)
         dbUpdates.isAcceptingNew = updates.isAcceptingReviews;

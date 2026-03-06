@@ -19,6 +19,7 @@ import {
   SEARCH_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
 import { checkRateLimit } from '@/services/security/rateLimit';
+import { getSearchPreset, mergePresetFilters } from '@/services/search/presets';
 import { captureException } from '@/services/telemetry/sentry';
 
 // ============================================================
@@ -40,6 +41,15 @@ const SearchParamsSchema = z.object({
   /** Legacy (0-1) */
   minConfidence:  z.coerce.number().min(0).max(1).optional(),
   taxonomyIds:    z.string().optional(),
+  /**
+   * Attribute filters as JSON: {"delivery":["virtual"],"cost":["free"]}.
+   * Each key is a taxonomy dimension, values are tags within it.
+   * Services must match at least one tag per specified dimension.
+   */
+  attributes:     z.string().max(2000).optional(),
+  /** Composite search preset ID (e.g., 'low_cost_dental'). Merges preset
+   *  text + attribute filters; user params take precedence. */
+  preset:         z.string().max(50).optional(),
   organizationId: z.string().uuid().optional(),
   sortBy:         z.enum(SORT_OPTIONS).default('relevance'),
   page:           z.coerce.number().int().min(1).default(1),
@@ -116,6 +126,58 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Parse attribute filters (JSON string → Record<string, string[]>)
+  let attributeFilters: Record<string, string[]> | undefined;
+  if (params.attributes) {
+    try {
+      const parsed = JSON.parse(params.attributes);
+      // Validate: must be a plain object with string[] values, bounded key/value lengths
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        !Array.isArray(parsed) &&
+        Object.entries(parsed).every(
+          ([k, v]) =>
+            typeof k === 'string' &&
+            k.length <= 50 &&
+            Array.isArray(v) &&
+            v.length > 0 &&
+            v.every((t: unknown) => typeof t === 'string' && (t as string).length <= 100),
+        )
+      ) {
+        attributeFilters = parsed as Record<string, string[]>;
+      } else {
+        return NextResponse.json(
+          { error: 'Invalid query parameters', details: [{ message: 'attributes must be a JSON object mapping taxonomy names to tag arrays' }] },
+          { status: 400 },
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid query parameters', details: [{ message: 'attributes must be valid JSON' }] },
+        { status: 400 },
+      );
+    }
+  }
+
+  // Apply composite search preset (merges text + attribute filters)
+  let presetText: string | undefined;
+  if (params.preset) {
+    const preset = getSearchPreset(params.preset);
+    if (!preset) {
+      return NextResponse.json(
+        { error: 'Invalid query parameters', details: [{ message: `Unknown preset: ${params.preset}` }] },
+        { status: 400 },
+      );
+    }
+    // Preset text is used only if user didn't supply their own query
+    if (!params.q && preset.text) {
+      presetText = preset.text;
+    }
+    // Merge preset attribute filters; user-selected filters take precedence
+    attributeFilters = mergePresetFilters(preset, attributeFilters);
+  }
+
   // Build structured query
   const query: SearchQuery = {
     filters: {
@@ -123,6 +185,7 @@ export async function GET(req: NextRequest) {
       minConfidenceScore,
       organizationId: params.organizationId,
       taxonomyTermIds: taxonomyTermIds as undefined | string[],
+      attributeFilters,
     },
     pagination: {
       page: params.page,
@@ -156,6 +219,8 @@ export async function GET(req: NextRequest) {
 
   if (params.q) {
     query.text = params.q;
+  } else if (presetText) {
+    query.text = presetText;
   }
 
   try {

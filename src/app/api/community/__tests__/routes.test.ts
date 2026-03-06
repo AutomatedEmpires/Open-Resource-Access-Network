@@ -163,12 +163,16 @@ describe('community api routes', () => {
     const response = await GET(createRequest({ search: '?status=submitted' }));
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      results: [{ id: 'queue-1', status: 'submitted' }],
-      total: 1,
-      page: 1,
-      hasMore: false,
-    });
+    const body = await response.json() as { results: unknown[]; total: number; page: number; hasMore: boolean };
+    expect(body.total).toBe(1);
+    expect(body.page).toBe(1);
+    expect(body.hasMore).toBe(false);
+    expect(body.results).toHaveLength(1);
+    expect(body.results[0]).toMatchObject({ id: 'queue-1', status: 'submitted' });
+    // triage fields are always present (computed server-side)
+    expect(body.results[0]).toHaveProperty('triage_tier');
+    expect(body.results[0]).toHaveProperty('triage_priority');
+    expect(body.results[0]).toHaveProperty('triage_explanations');
   });
 
   it('returns 400 when assigning a queue entry has invalid JSON', async () => {

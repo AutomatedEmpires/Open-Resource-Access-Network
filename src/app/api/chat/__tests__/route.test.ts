@@ -259,7 +259,7 @@ describe('api/chat route', () => {
           locale: 'en',
           filters: {
             trust: 'HIGH',
-            taxonomyTermIds: ['a1000000-0000-0000-0000-000000000001'],
+            taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
           },
         },
       }),
@@ -270,7 +270,7 @@ describe('api/chat route', () => {
       text: 'food',
       filters: {
         status: 'active',
-        taxonomyTermIds: ['a1000000-0000-0000-0000-000000000001'],
+        taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
         minConfidenceScore: 80,
       },
       pagination: {

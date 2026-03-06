@@ -165,4 +165,156 @@ describe('api/search route', () => {
     await expect(response.json()).resolves.toEqual({ error: 'Internal server error' });
     expect(captureExceptionMock).toHaveBeenCalledOnce();
   });
+
+  it('passes parsed attribute filters to search engine', async () => {
+    const { GET } = await loadRoute();
+    const attrs = JSON.stringify({ delivery: ['virtual'], cost: ['free'] });
+
+    const response = await GET(
+      createRequest({ search: `?q=food&attributes=${encodeURIComponent(attrs)}` }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          attributeFilters: { delivery: ['virtual'], cost: ['free'] },
+        }),
+      }),
+    );
+  });
+
+  it('returns 400 for invalid attributes JSON', async () => {
+    const { GET } = await loadRoute();
+
+    const response = await GET(
+      createRequest({ search: '?q=food&attributes=not-json' }),
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.details[0].message).toContain('valid JSON');
+  });
+
+  it('returns 400 when attributes is not an object of string arrays', async () => {
+    const { GET } = await loadRoute();
+    const attrs = JSON.stringify({ delivery: 'virtual' }); // string, not array
+
+    const response = await GET(
+      createRequest({ search: `?q=food&attributes=${encodeURIComponent(attrs)}` }),
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.details[0].message).toContain('JSON object mapping taxonomy');
+  });
+
+  it('returns 400 when attribute filter keys exceed max length', async () => {
+    const { GET } = await loadRoute();
+    const longKey = 'x'.repeat(51);
+    const attrs = JSON.stringify({ [longKey]: ['value'] });
+
+    const response = await GET(
+      createRequest({ search: `?q=food&attributes=${encodeURIComponent(attrs)}` }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 400 when attribute filter tags exceed max length', async () => {
+    const { GET } = await loadRoute();
+    const longTag = 'x'.repeat(101);
+    const attrs = JSON.stringify({ delivery: [longTag] });
+
+    const response = await GET(
+      createRequest({ search: `?q=food&attributes=${encodeURIComponent(attrs)}` }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 400 when attribute filter has empty tag array', async () => {
+    const { GET } = await loadRoute();
+    const attrs = JSON.stringify({ delivery: [] });
+
+    const response = await GET(
+      createRequest({ search: `?q=food&attributes=${encodeURIComponent(attrs)}` }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 400 for an unknown preset ID', async () => {
+    const { GET } = await loadRoute();
+
+    const response = await GET(
+      createRequest({ search: '?preset=nonexistent_xyz' }),
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.details[0].message).toContain('Unknown preset');
+  });
+
+  it('applies preset text and attribute filters when no user query', async () => {
+    const { GET } = await loadRoute();
+
+    const response = await GET(
+      createRequest({ search: '?preset=low_cost_dental' }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'dental',
+        filters: expect.objectContaining({
+          attributeFilters: expect.objectContaining({
+            cost: expect.arrayContaining(['free']),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('user query overrides preset text', async () => {
+    const { GET } = await loadRoute();
+
+    const response = await GET(
+      createRequest({ search: '?q=orthodontist&preset=low_cost_dental' }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'orthodontist',
+        filters: expect.objectContaining({
+          attributeFilters: expect.objectContaining({
+            cost: expect.arrayContaining(['free']),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('user attribute filters override preset attribute filters on same key', async () => {
+    const { GET } = await loadRoute();
+    const attrs = JSON.stringify({ cost: ['medicaid'] });
+
+    const response = await GET(
+      createRequest({
+        search: `?preset=low_cost_dental&attributes=${encodeURIComponent(attrs)}`,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          attributeFilters: expect.objectContaining({
+            cost: ['medicaid'],
+          }),
+        }),
+      }),
+    );
+  });
 });

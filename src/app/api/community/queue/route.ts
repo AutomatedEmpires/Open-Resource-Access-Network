@@ -14,6 +14,7 @@ import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
 import { advance, acquireLock, releaseLock } from '@/services/workflow/engine';
+import { computeTriagePriority } from '@/services/queue/triage';
 import {
   RATE_LIMIT_WINDOW_MS,
   COMMUNITY_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -165,8 +166,19 @@ export async function GET(req: NextRequest) {
       params,
     );
 
+    const enriched = rows.map((row) => {
+      const triage = computeTriagePriority({
+        dbPriority: row.priority,
+        createdAt: row.created_at,
+        status: row.status,
+        slaDeadline: row.sla_deadline,
+        slaBreached: row.sla_breached,
+      });
+      return { ...row, triage_priority: triage.score, triage_tier: triage.tier, triage_explanations: triage.explanations };
+    });
+
     return NextResponse.json(
-      { results: rows, total, page, hasMore: offset + rows.length < total },
+      { results: enriched, total, page, hasMore: offset + rows.length < total },
       { headers: { 'Cache-Control': 'private, no-store' } },
     );
   } catch (error) {

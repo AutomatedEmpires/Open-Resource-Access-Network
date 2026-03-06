@@ -2,11 +2,15 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const searchParamsGetMock = vi.hoisted(() => vi.fn());
+const signInMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
   useSearchParams: () => ({
     get: searchParamsGetMock,
   }),
+}));
+vi.mock('next-auth/react', () => ({
+  signIn: signInMock,
 }));
 vi.mock('next/link', () => ({
   default: ({
@@ -24,8 +28,8 @@ vi.mock('lucide-react', () => ({
   Shield: (props: Record<string, unknown>) => React.createElement('svg', props),
 }));
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, ...props }: { children: React.ReactNode }) =>
-    React.createElement('button', props, children),
+  Button: ({ children, onClick, ...props }: { children: React.ReactNode; onClick?: () => void }) =>
+    React.createElement('button', { ...props, onClick }, children),
 }));
 
 async function loadAuthErrorPage() {
@@ -89,13 +93,15 @@ describe('auth pages', () => {
     const cardChildren = React.Children.toArray(card.props.children) as React.ReactElement<any, any>[];
     const errorAlert = cardChildren[1] as React.ReactElement<any, any>;
     const button = cardChildren[2] as React.ReactElement<any, any>;
-    const buttonLink = React.Children.only(button.props.children) as React.ReactElement<any, any>;
     const backLink = React.Children.only((cardChildren[4] as React.ReactElement<any, any>).props.children) as React.ReactElement<any, any>;
     const errorChildren = React.Children.toArray(errorAlert.props.children);
 
     expect(errorAlert.props.role).toBe('alert');
     expect(errorChildren).toContain('Could not start the sign-in process. Please try again.');
-    expect(buttonLink.props.href).toContain('/api/auth/signin/azure-ad?callbackUrl=%2Fprofile');
+    // Sign-in button should use onClick with signIn()
+    expect(button.props.onClick).toBeDefined();
+    button.props.onClick();
+    expect(signInMock).toHaveBeenCalledWith('azure-ad', { callbackUrl: '/profile' });
     expect(backLink.props.href).toBe('/profile');
   });
 

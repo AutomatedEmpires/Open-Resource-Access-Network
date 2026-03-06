@@ -9,6 +9,7 @@
 
 import React, { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 import { Shield, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -42,24 +43,24 @@ function SignInContent() {
             {error === 'OAuthCallback' && 'There was an error during sign-in. Please try again.'}
             {error === 'OAuthAccountNotLinked' && 'This email is already linked to another account.'}
             {error === 'Callback' && 'Sign-in failed. Please try again.'}
-            {!['OAuthSignin', 'OAuthCallback', 'OAuthAccountNotLinked', 'Callback'].includes(error) &&
+            {error === 'AccessDenied' && 'Access denied. You may not have permission to sign in.'}
+            {!['OAuthSignin', 'OAuthCallback', 'OAuthAccountNotLinked', 'Callback', 'AccessDenied'].includes(error) &&
               'An unexpected error occurred. Please try again.'}
           </div>
         )}
 
         {/* Sign-in button */}
-        <Button asChild className="w-full min-h-[44px] text-sm font-medium gap-2">
-          <Link
-            href={`/api/auth/signin/azure-ad?callbackUrl=${encodeURIComponent(callbackUrl)}`}
-          >
-            <svg viewBox="0 0 21 21" className="h-5 w-5" aria-hidden="true">
-              <rect x="1" y="1" width="9" height="9" fill="#f25022" />
-              <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
-              <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
-              <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
-            </svg>
-            Sign in with Microsoft
-          </Link>
+        <Button
+          className="w-full min-h-[44px] text-sm font-medium gap-2"
+          onClick={() => signIn('azure-ad', { callbackUrl })}
+        >
+          <svg viewBox="0 0 21 21" className="h-5 w-5" aria-hidden="true">
+            <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+            <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+            <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+            <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+          </svg>
+          Sign in with Microsoft
         </Button>
 
         {/* Info text */}
@@ -82,8 +83,10 @@ function SignInContent() {
 
       {/* Privacy note */}
       <p className="mt-4 text-xs text-gray-400 text-center max-w-sm mx-auto">
-        ORAN does not store your full name, email, or GPS coordinates.
-        Your approximate city is used for search only, with your consent.
+        By signing in, you agree to ORAN collecting your name, email, and
+        location data to deliver and improve our services.
+        See our <Link href="/privacy" className="underline hover:text-gray-600">Privacy Policy</Link> for
+        details.
       </p>
     </main>
   );

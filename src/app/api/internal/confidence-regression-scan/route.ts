@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
              'A verified service changed and may need re-review.',
              'submission',
              i.id,
-             '/community/queue',
+             '/verify?id=' || i.id,
              'confidence_regression_' || i.id || '_' || up.user_id
            FROM inserted i
            JOIN user_profiles up ON up.role IN ('community_admin', 'oran_admin')

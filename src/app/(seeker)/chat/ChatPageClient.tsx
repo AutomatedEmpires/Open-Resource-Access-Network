@@ -22,6 +22,9 @@ export default function ChatPage() {
   const [sessionId, setSessionId] = useState<string>('');
 
   useEffect(() => {
+    // sessionStorage unavailable on SSR — initialising via effect ensures SSR and first client
+    // render produce identical '' output, eliminating hydration mismatch / skeleton flash.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSessionId(generateSessionId());
   }, []);
 

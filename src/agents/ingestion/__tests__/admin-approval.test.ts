@@ -6,9 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   createAdminProfile,
   hasCapacity,
-  filterByCapacity,
   selectAdminsForAssignment,
-  sortClosestAdmins,
   type AdminWithCapacity,
   type ClosestAdmin,
 } from '../adminProfiles';
@@ -21,7 +19,6 @@ import {
   expireAssignment,
   withdrawAssignment,
   calculateSlaDuration,
-  isOverdue,
   countApprovals,
   countRejections,
   isValidTransition,

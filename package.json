@@ -15,7 +15,8 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e:headed": "playwright test --headed",
+    "check:bundle": "node scripts/check-bundle-sizes.js"
   },
   "dependencies": {
     "@azure/communication-email": "^1.1.0",

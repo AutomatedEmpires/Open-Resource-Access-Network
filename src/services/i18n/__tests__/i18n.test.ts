@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTranslator, t } from '@/services/i18n/i18n';
+import { createTranslator, isRTL, t } from '@/services/i18n/i18n';
 
 function withNodeEnv<T>(nodeEnv: string | undefined, fn: () => T): T {
   const env = process.env as unknown as Record<string, string | undefined>;
@@ -18,6 +18,15 @@ describe('i18n t()', () => {
     expect(t('nav.chat')).toBe('Find Services');
   });
 
+  it('interpolates template params and preserves missing placeholders', () => {
+    expect(t('chat.quota.exceeded', { count: 3 })).toContain("You've reached");
+    expect(t('chat.input.placeholder', { missing: 1 })).toBe('Describe what you need help with...');
+  });
+
+  it('falls back to English when locale is non-default and key exists in English', () => {
+    expect(t('nav.map', undefined, 'es')).toBe('Map');
+  });
+
   it('falls back to key when missing (non-development)', () => {
     const result = withNodeEnv('test', () => t('missing.key'));
     expect(result).toBe('missing.key');
@@ -32,5 +41,10 @@ describe('i18n t()', () => {
   it('createTranslator returns a locale-bound function', () => {
     const tl = createTranslator('en');
     expect(tl('nav.directory')).toBe('Directory');
+  });
+
+  it('identifies RTL locales', () => {
+    expect(isRTL('ar')).toBe(true);
+    expect(isRTL('en')).toBe(false);
   });
 });

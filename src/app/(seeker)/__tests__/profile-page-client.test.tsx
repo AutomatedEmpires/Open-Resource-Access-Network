@@ -245,4 +245,103 @@ describe('ProfilePageClient', () => {
       expect(toggle).toBeChecked();
     });
   });
+
+  it('toggles color theme preference and supports canceling delete confirmation', async () => {
+    fetchMock.mockResolvedValueOnce({
+      status: 401,
+      ok: false,
+    });
+
+    render(<ProfilePage />);
+    await screen.findByText('Profile');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dark' }));
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+    expect(localStorage.getItem('oran-theme')).toBe('dark');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Light' }));
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+    expect(localStorage.getItem('oran-theme')).toBe('light');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete my data' }));
+    expect(screen.getByRole('button', { name: 'Confirm delete' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('button', { name: 'Confirm delete' })).not.toBeInTheDocument();
+  });
+
+  it('shows export and delete failures for authenticated users without clearing local data', async () => {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ approximateCity: 'Dallas', language: 'en' }));
+    localStorage.setItem(SAVED_KEY, JSON.stringify(['svc-1']));
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          profile: {
+            userId: 'user-1',
+            preferredLocale: 'en',
+            approximateCity: 'Dallas',
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ preferences: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+    render(<ProfilePage />);
+    await screen.findByText('You are signed in. Your preferences are syncing across devices.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'downloading your data' }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/user/data-export', { method: 'POST' });
+      expect(toastMock).toHaveBeenCalledWith('error', 'Failed to export data.');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete my data' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/user/data-delete', { method: 'DELETE' });
+      expect(toastMock).toHaveBeenCalledWith('error', 'Failed to delete server data. Please try again.');
+      expect(localStorage.getItem(PREFS_KEY)).not.toBeNull();
+      expect(localStorage.getItem(SAVED_KEY)).not.toBeNull();
+    });
+  });
+
+  it('defaults notification channels to enabled when no explicit preference exists', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          profile: {
+            userId: 'user-1',
+            preferredLocale: 'en',
+            approximateCity: null,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ preferences: [] }),
+      });
+
+    render(<ProfilePage />);
+
+    const inApp = await screen.findByLabelText('Submission assigned to you in-app notifications');
+    const email = await screen.findByLabelText('Submission assigned to you email notifications');
+    expect(inApp).toBeChecked();
+    expect(email).toBeChecked();
+  });
 });

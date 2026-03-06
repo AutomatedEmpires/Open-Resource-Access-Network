@@ -94,6 +94,48 @@ describe('Azure AI Translator', () => {
       const result = await translate({ text: 'goodbye', to: 'es' });
       expect(result.translatedText).toBe('goodbye');
     });
+
+    it('returns original text when API response has no translations', async () => {
+      process.env.AZURE_TRANSLATOR_KEY = 'key';
+      process.env.AZURE_TRANSLATOR_ENDPOINT = 'https://api.test.com/';
+      process.env.AZURE_TRANSLATOR_REGION = 'westus2';
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ detectedLanguage: { language: 'en' }, translations: [] }],
+      } as Response);
+
+      const result = await translate({ text: 'no translation', to: 'es' });
+      expect(result.translatedText).toBe('no translation');
+    });
+
+    it('includes "from" language in request params when provided', async () => {
+      process.env.AZURE_TRANSLATOR_KEY = 'key';
+      process.env.AZURE_TRANSLATOR_ENDPOINT = 'https://api.test.com/';
+      process.env.AZURE_TRANSLATOR_REGION = 'westus2';
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ translations: [{ text: 'bonjour' }] }],
+      } as Response);
+
+      await translate({ text: 'hello-from', from: 'en', to: 'fr' });
+
+      const requestUrl = String(fetchSpy.mock.calls[0]?.[0]);
+      expect(requestUrl).toContain('from=en');
+      expect(requestUrl).toContain('to=fr');
+    });
+
+    it('returns original text when fetch throws', async () => {
+      process.env.AZURE_TRANSLATOR_KEY = 'key';
+      process.env.AZURE_TRANSLATOR_ENDPOINT = 'https://api.test.com/';
+      process.env.AZURE_TRANSLATOR_REGION = 'westus2';
+
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce('network-down');
+
+      const result = await translate({ text: 'error case', to: 'es' });
+      expect(result.translatedText).toBe('error case');
+    });
   });
 
   // ── Batch translate ────────────────────────────────────────
@@ -130,6 +172,71 @@ describe('Azure AI Translator', () => {
       expect(results).toHaveLength(2);
       expect(results[0].translatedText).toBe('buenos días');
       expect(results[1].translatedText).toBe('buenas noches');
+    });
+
+    it('returns cached batch results without API call', async () => {
+      process.env.AZURE_TRANSLATOR_KEY = 'key';
+      process.env.AZURE_TRANSLATOR_ENDPOINT = 'https://api.test.com/';
+      process.env.AZURE_TRANSLATOR_REGION = 'westus2';
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ translations: [{ text: 'hola-cached' }] }],
+      } as Response);
+
+      const first = await translateBatch(['hello-cached'], 'es');
+      expect(first[0].translatedText).toBe('hola-cached');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+      const second = await translateBatch(['hello-cached'], 'es');
+      expect(second[0].translatedText).toBe('hola-cached');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns originals when batch API response is not an array', async () => {
+      process.env.AZURE_TRANSLATOR_KEY = 'key';
+      process.env.AZURE_TRANSLATOR_ENDPOINT = 'https://api.test.com/';
+      process.env.AZURE_TRANSLATOR_REGION = 'westus2';
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ invalid: true }),
+      } as Response);
+
+      const results = await translateBatch(['x', 'y'], 'es');
+      expect(results.map((r) => r.translatedText)).toEqual(['x', 'y']);
+    });
+
+    it('falls back for uncached entries when response is shorter than request batch', async () => {
+      process.env.AZURE_TRANSLATOR_KEY = 'key';
+      process.env.AZURE_TRANSLATOR_ENDPOINT = 'https://api.test.com/';
+      process.env.AZURE_TRANSLATOR_REGION = 'westus2';
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ translations: [{ text: 'uno' }] }],
+      } as Response);
+
+      const results = await translateBatch(['one-short', 'two-short'], 'es');
+      expect(results[0].translatedText).toBe('uno');
+      expect(results[1].translatedText).toBe('two-short');
+    });
+
+    it('returns originals on non-OK batch response and thrown errors', async () => {
+      process.env.AZURE_TRANSLATOR_KEY = 'key';
+      process.env.AZURE_TRANSLATOR_ENDPOINT = 'https://api.test.com/';
+      process.env.AZURE_TRANSLATOR_REGION = 'westus2';
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+      } as Response);
+      const notOk = await translateBatch(['rate-limited'], 'es', 'en');
+      expect(notOk[0].translatedText).toBe('rate-limited');
+
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('boom'));
+      const errored = await translateBatch(['throws'], 'es', 'en');
+      expect(errored[0].translatedText).toBe('throws');
     });
   });
 });

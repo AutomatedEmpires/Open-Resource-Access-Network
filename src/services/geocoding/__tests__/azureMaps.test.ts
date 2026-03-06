@@ -76,6 +76,51 @@ describe('Azure Maps geocoding', () => {
       expect(results[0].confidence).toBe(0.95);
     });
 
+    it('includes country filter and maps confidence fallbacks', async () => {
+      process.env.AZURE_MAPS_KEY = 'test-key';
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          features: [
+            {
+              geometry: { coordinates: [-1, 2] },
+              properties: { confidence: 'Medium', address: { formattedAddress: 'A' } },
+            },
+            {
+              geometry: { coordinates: [-3, 4] },
+              properties: { confidence: 'Low', address: { formattedAddress: 'B' } },
+            },
+            {
+              geometry: {},
+              properties: { confidence: 'Unknown', address: {} },
+            },
+          ],
+        }),
+      } as Response);
+
+      const results = await geocode('Seattle', { countryCode: 'US', limit: 3 });
+      expect(results).toHaveLength(3);
+      expect(results.map((r) => r.confidence)).toEqual([0.7, 0.4, 0.5]);
+      expect(results[2].lat).toBe(0);
+      expect(results[2].lon).toBe(0);
+
+      const url = String(fetchSpy.mock.calls[0]?.[0]);
+      expect(url).toContain('countryRegion=US');
+      expect(url).toContain('top=3');
+    });
+
+    it('returns empty array when features is not an array', async () => {
+      process.env.AZURE_MAPS_KEY = 'test-key';
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ features: null }),
+      } as Response);
+
+      const results = await geocode('non-array');
+      expect(results).toEqual([]);
+    });
+
     it('returns empty array on API error', async () => {
       process.env.AZURE_MAPS_KEY = 'test-key';
 
@@ -131,6 +176,52 @@ describe('Azure Maps geocoding', () => {
       expect(result).not.toBeNull();
       expect(result?.formattedAddress).toBe('123 Main St, Seattle, WA');
       expect(result?.city).toBe('Seattle');
+    });
+
+    it('maps reverse geocode optional fields and handles API/error paths', async () => {
+      process.env.AZURE_MAPS_KEY = 'test-key';
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          features: [
+            {
+              properties: {
+                address: {
+                  formattedAddress: '400 Broad St, Seattle, WA',
+                  locality: 'Seattle',
+                  adminDistricts: 'WA',
+                  postalCode: '98109',
+                  countryRegion: 'US',
+                },
+              },
+            },
+          ],
+        }),
+      } as Response);
+      const mapped = await reverseGeocode(47.6205, -122.3493);
+      expect(mapped).toEqual({
+        formattedAddress: '400 Broad St, Seattle, WA',
+        city: 'Seattle',
+        state: 'WA',
+        postalCode: '98109',
+        country: 'US',
+      });
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      } as Response);
+      await expect(reverseGeocode(1, 2)).resolves.toBeNull();
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ features: [] }),
+      } as Response);
+      await expect(reverseGeocode(1, 2)).resolves.toBeNull();
+
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('timeout'));
+      await expect(reverseGeocode(1, 2)).resolves.toBeNull();
     });
   });
 });

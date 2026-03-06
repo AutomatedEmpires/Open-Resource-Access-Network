@@ -33,6 +33,8 @@
 // Expand this list conservatively. Every addition increases API call rate.
 // ---------------------------------------------------------------------------
 
+import { trackAiEvent } from '@/services/telemetry/appInsights';
+
 export const CRISIS_DISTRESS_SIGNALS: readonly string[] = [
   // Hopelessness / no future
   'feel hopeless',
@@ -156,6 +158,7 @@ export async function checkCrisisContentSafety(message: string): Promise<boolean
   }
 
   const url = `${endpoint.replace(/\/+$/, '')}/contentsafety/text:analyze?api-version=${CONTENT_SAFETY_API_VERSION}`;
+  const t0 = Date.now();
 
   try {
     const response = await fetch(url, {
@@ -175,6 +178,13 @@ export async function checkCrisisContentSafety(message: string): Promise<boolean
     if (!response.ok) {
       // Non-2xx: log the status code but NOT the message content (PII rule)
       console.warn(`[contentSafety] API returned HTTP ${response.status} — failing open`);
+      void trackAiEvent('content_safety_check', {
+        duration_ms: Date.now() - t0,
+        http_status: response.status,
+        error_type: 'http_error',
+        triggered_crisis: false,
+        success: false,
+      });
       return false;
     }
 
@@ -182,13 +192,32 @@ export async function checkCrisisContentSafety(message: string): Promise<boolean
 
     const selfHarm = data.categoriesAnalysis.find((c) => c.category === 'SelfHarm');
     if (!selfHarm) {
+      void trackAiEvent('content_safety_check', {
+        duration_ms: Date.now() - t0,
+        severity: 0,
+        triggered_crisis: false,
+        success: true,
+      });
       return false;
     }
 
-    return selfHarm.severity >= SELF_HARM_CRISIS_THRESHOLD;
+    const triggered = selfHarm.severity >= SELF_HARM_CRISIS_THRESHOLD;
+    void trackAiEvent('content_safety_check', {
+      duration_ms: Date.now() - t0,
+      severity: selfHarm.severity,
+      triggered_crisis: triggered,
+      success: true,
+    });
+    return triggered;
   } catch {
     // Network error, timeout, JSON parse failure — fail-open
     // Intentionally not logging message content
+    void trackAiEvent('content_safety_check', {
+      duration_ms: Date.now() - t0,
+      error_type: 'network_error',
+      triggered_crisis: false,
+      success: false,
+    });
     return false;
   }
 }

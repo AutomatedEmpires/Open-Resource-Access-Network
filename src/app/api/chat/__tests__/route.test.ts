@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FEATURE_FLAGS } from '@/domain/constants';
 
 const dbMocks = vi.hoisted(() => ({
   executeCount: vi.fn(),
@@ -14,6 +15,8 @@ const searchMock = vi.hoisted(() => vi.fn());
 const orchestrateChatMock = vi.hoisted(() => vi.fn());
 const isEnabledMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
+const translateBatchMock = vi.hoisted(() => vi.fn());
+const isTranslatorConfiguredMock = vi.hoisted(() => vi.fn());
 
 class MockChatRateLimitExceededError extends Error {
   retryAfterSeconds: number;
@@ -29,6 +32,7 @@ vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/search/engine', () => ({
   ServiceSearchEngine: class {
     search = searchMock;
+    hybridSearch = searchMock;
   },
 }));
 vi.mock('@/services/chat/orchestrator', () => ({
@@ -39,6 +43,10 @@ vi.mock('@/services/flags/flags', () => ({
   flagService: {
     isEnabled: isEnabledMock,
   },
+}));
+vi.mock('@/services/i18n/translator', () => ({
+  translateBatch: translateBatchMock,
+  isConfigured: isTranslatorConfiguredMock,
 }));
 vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
@@ -75,6 +83,8 @@ beforeEach(() => {
   authMocks.getAuthContext.mockResolvedValue(null);
   searchMock.mockResolvedValue({ results: [] });
   isEnabledMock.mockReturnValue(false);
+  isTranslatorConfiguredMock.mockReturnValue(false);
+  translateBatchMock.mockResolvedValue([]);
   orchestrateChatMock.mockResolvedValue({ reply: 'ok' });
   captureExceptionMock.mockResolvedValue(undefined);
 });
@@ -141,11 +151,10 @@ describe('api/chat route', () => {
     });
   });
 
-  it('loads city bias and retrieves services for authenticated users', async () => {
+  it('retrieves services for authenticated users with /api/search-aligned ordering', async () => {
     authMocks.getAuthContext.mockResolvedValue({
       userId: 'user-1',
     });
-    dbMocks.executeQuery.mockResolvedValueOnce([{ approximate_city: 'Denver' }]);
     searchMock.mockResolvedValueOnce({
       results: [
         {
@@ -173,17 +182,19 @@ describe('api/chat route', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(searchMock).toHaveBeenCalledWith({
-      text: 'food',
-      filters: {
-        status: 'active',
+    expect(searchMock).toHaveBeenCalledWith(
+      {
+        text: 'food',
+        filters: {
+          status: 'active',
+        },
+        pagination: {
+          page: 1,
+          limit: 5,
+        },
+        sortBy: 'relevance',
       },
-      pagination: {
-        page: 1,
-        limit: 5,
-      },
-      cityBias: 'Denver',
-    });
+    );
     await expect(response.json()).resolves.toEqual({
       rateLimitKey: 'chat:user:user-1',
       services: [
@@ -230,5 +241,137 @@ describe('api/chat route', () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({ error: 'Internal server error' });
     expect(captureExceptionMock).toHaveBeenCalledOnce();
+  });
+
+  it('applies trust/taxonomy filters when provided', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'user-filtered' });
+    orchestrateChatMock.mockImplementationOnce(async (_message, _sessionId, userId, _locale, _rateLimitKey, deps) => {
+      const services = await deps.retrieveServices({ rawQuery: 'food' }, { userId });
+      return { services };
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          message: 'food',
+          sessionId: '11111111-1111-4111-8111-111111111111',
+          locale: 'en',
+          filters: {
+            trust: 'HIGH',
+            taxonomyTermIds: ['a1000000-0000-0000-0000-000000000001'],
+          },
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchMock).toHaveBeenCalledWith({
+      text: 'food',
+      filters: {
+        status: 'active',
+        taxonomyTermIds: ['a1000000-0000-0000-0000-000000000001'],
+        minConfidenceScore: 80,
+      },
+      pagination: {
+        page: 1,
+        limit: 5,
+      },
+      sortBy: 'relevance',
+    });
+  });
+
+  it('translates descriptions when multilingual flag and translator are enabled for supported locales', async () => {
+    isEnabledMock.mockImplementation((flagName: string) => flagName === FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS);
+    isTranslatorConfiguredMock.mockReturnValue(true);
+    translateBatchMock.mockResolvedValueOnce([
+      { translatedText: 'Despensa de alimentos' },
+      { translatedText: 'Refugio nocturno' },
+    ]);
+    orchestrateChatMock.mockResolvedValueOnce({
+      reply: 'ok',
+      services: [
+        { id: 'svc-1', description: 'Food pantry' },
+        { id: 'svc-2', description: 'Overnight shelter' },
+      ],
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          message: 'help',
+          sessionId: '11111111-1111-4111-8111-111111111111',
+          locale: 'es',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(translateBatchMock).toHaveBeenCalledWith(
+      ['Food pantry', 'Overnight shelter'],
+      'es',
+    );
+    await expect(response.json()).resolves.toEqual({
+      reply: 'ok',
+      services: [
+        { id: 'svc-1', description: 'Despensa de alimentos' },
+        { id: 'svc-2', description: 'Refugio nocturno' },
+      ],
+    });
+  });
+
+  it('skips translation for unsupported locales even when multilingual is enabled', async () => {
+    isEnabledMock.mockImplementation((flagName: string) => flagName === FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS);
+    isTranslatorConfiguredMock.mockReturnValue(true);
+    orchestrateChatMock.mockResolvedValueOnce({
+      reply: 'ok',
+      services: [{ id: 'svc-1', description: 'Food pantry' }],
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          message: 'help',
+          sessionId: '11111111-1111-4111-8111-111111111111',
+          locale: 'xx',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(translateBatchMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      reply: 'ok',
+      services: [{ id: 'svc-1', description: 'Food pantry' }],
+    });
+  });
+
+  it('fails open when translation errors occur and keeps original descriptions', async () => {
+    isEnabledMock.mockImplementation((flagName: string) => flagName === FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS);
+    isTranslatorConfiguredMock.mockReturnValue(true);
+    translateBatchMock.mockRejectedValueOnce(new Error('translator timeout'));
+    orchestrateChatMock.mockResolvedValueOnce({
+      reply: 'ok',
+      services: [{ id: 'svc-1', description: 'Food pantry' }],
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          message: 'help',
+          sessionId: '11111111-1111-4111-8111-111111111111',
+          locale: 'es',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      reply: 'ok',
+      services: [{ id: 'svc-1', description: 'Food pantry' }],
+    });
   });
 });

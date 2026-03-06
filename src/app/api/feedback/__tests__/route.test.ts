@@ -7,6 +7,10 @@ const dbMocks = vi.hoisted(() => ({
 
 const rateLimitMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
+const flagServiceMocks = vi.hoisted(() => ({
+  isEnabled: vi.fn(),
+}));
+const triageFeedbackMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
@@ -14,6 +18,12 @@ vi.mock('@/services/security/rateLimit', () => ({
 }));
 vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
+}));
+vi.mock('@/services/flags/flags', () => ({
+  flagService: flagServiceMocks,
+}));
+vi.mock('@/services/feedback/triage', () => ({
+  triageFeedback: triageFeedbackMock,
 }));
 
 function createRequest(options: {
@@ -43,12 +53,14 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
-  dbMocks.executeQuery.mockResolvedValue([]);
+  dbMocks.executeQuery.mockResolvedValue([{ id: 'fb-1' }]);
   rateLimitMock.mockReturnValue({
     exceeded: false,
     retryAfterSeconds: 0,
   });
   captureExceptionMock.mockResolvedValue(undefined);
+  flagServiceMocks.isEnabled.mockResolvedValue(false);
+  triageFeedbackMock.mockResolvedValue(null);
 });
 
 describe('api/feedback route', () => {
@@ -132,5 +144,71 @@ describe('api/feedback route', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ success: true });
     expect(dbMocks.executeQuery).toHaveBeenCalledOnce();
+  });
+
+  it('persists triage data asynchronously when flag is enabled and triage returns a result', async () => {
+    flagServiceMocks.isEnabled.mockResolvedValueOnce(true);
+    triageFeedbackMock.mockResolvedValueOnce({
+      category: 'incorrect_phone',
+      urgency: 'high',
+      extractedFields: ['phone'],
+    });
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([{ id: 'fb-triage' }])
+      .mockResolvedValueOnce([]);
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          serviceId: '11111111-1111-4111-8111-111111111111',
+          sessionId: '22222222-2222-4222-8222-222222222222',
+          rating: 4,
+          comment: 'Phone number is disconnected',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await vi.waitFor(() => {
+      expect(flagServiceMocks.isEnabled).toHaveBeenCalledOnce();
+      expect(triageFeedbackMock).toHaveBeenCalledWith('Phone number is disconnected');
+      expect(dbMocks.executeQuery).toHaveBeenCalledTimes(2);
+    });
+    expect(dbMocks.executeQuery.mock.calls[1]?.[0]).toContain(
+      'UPDATE seeker_feedback SET triage_category = $1, triage_result = $2 WHERE id = $3',
+    );
+    expect(dbMocks.executeQuery.mock.calls[1]?.[1]).toEqual([
+      'incorrect_phone',
+      JSON.stringify({
+        category: 'incorrect_phone',
+        urgency: 'high',
+        extractedFields: ['phone'],
+      }),
+      'fb-triage',
+    ]);
+  });
+
+  it('returns 500 and captures exception when insert fails', async () => {
+    flagServiceMocks.isEnabled.mockResolvedValueOnce(false);
+    dbMocks.executeQuery.mockRejectedValueOnce(new Error('insert failed'));
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          serviceId: '11111111-1111-4111-8111-111111111111',
+          sessionId: '22222222-2222-4222-8222-222222222222',
+          rating: 3,
+        },
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: 'Internal server error' });
+    expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(Error), {
+      feature: 'api_feedback',
+      sessionId: '22222222-2222-4222-8222-222222222222',
+    });
   });
 });

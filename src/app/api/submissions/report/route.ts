@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
                 $2,
                 'submission',
                 $1,
-                '/community/queue',
+            '/verify?id=' || $1,
                 'new_report_' || $1 || '_' || up.user_id
          FROM user_profiles up
          WHERE up.role IN ('community_admin', 'oran_admin')

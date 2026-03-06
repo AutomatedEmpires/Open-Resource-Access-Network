@@ -4,12 +4,11 @@
  * These tests verify the store implementations work correctly.
  * Uses in-memory mocks since real DB requires docker.
  */
-import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { describe, test, expect } from 'vitest';
 
 import {
   ReviewStatusSchema,
   EvidenceSnapshotSchema,
-  AuditEventSchema,
 } from '../contracts';
 import { LinkTypeSchema } from '../fetcher/types';
 

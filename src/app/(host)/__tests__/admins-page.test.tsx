@@ -290,4 +290,133 @@ describe('host admins page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     expect(fetchMock).toHaveBeenCalledWith('/api/host/admins?organizationId=org-1');
   });
+
+  it('renders 401 auth errors from team-member fetch responses', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeOrganizationsResponse(),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: 'unauthorized' }),
+      });
+
+    render(<AdminsPage />);
+
+    await screen.findByText('Authentication required to view team members.');
+  });
+
+  it('shows network failure message when member fetch throws', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeOrganizationsResponse(),
+      })
+      .mockRejectedValueOnce(new Error('network down'));
+
+    render(<AdminsPage />);
+
+    await screen.findByText('Failed to connect to the server.');
+  });
+
+  it('shows invite API errors in email mode', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeOrganizationsResponse(),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeMembersResponse({ members: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'User already invited' }),
+      });
+
+    render(<AdminsPage />);
+    await screen.findByText('No team members yet. Use the form above to add a collaborator.');
+
+    fireEvent.change(screen.getByLabelText('Email Address'), {
+      target: { value: 'already@invited.org' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Member' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/host/admins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organizationId: 'org-1',
+          role: 'host_member',
+          inviteMode: true,
+          email: 'already@invited.org',
+        }),
+      });
+      expect(screen.getByRole('alert')).toHaveTextContent('User already invited');
+    });
+  });
+
+  it('shows fallback role-update error when API fails without json body', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeOrganizationsResponse(),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeMembersResponse(),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => {
+          throw new Error('malformed json');
+        },
+      });
+
+    render(<AdminsPage />);
+    await screen.findByText('11111111-1111-4111-8111-111111111111');
+
+    fireEvent.change(screen.getByLabelText('Change role for 11111111-1111-4111-8111-111111111111'), {
+      target: { value: 'host_admin' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await screen.findByRole('alert');
+    expect(screen.getByRole('alert')).toHaveTextContent('Failed to update member role.');
+  });
+
+  it('removes member successfully and refreshes empty-state list', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeOrganizationsResponse(),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeMembersResponse(),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeMembersResponse({ members: [] }),
+      });
+
+    render(<AdminsPage />);
+    await screen.findByText('11111111-1111-4111-8111-111111111111');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[1]);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/host/admins/mem-1', { method: 'DELETE' });
+      expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/host/admins?organizationId=org-1');
+      expect(screen.getByText('No team members yet. Use the form above to add a collaborator.')).toBeInTheDocument();
+    });
+  });
 });

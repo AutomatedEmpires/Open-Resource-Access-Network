@@ -69,6 +69,7 @@ export async function routeToAdmin(message: RouteQueueMessage): Promise<void> {
   );
 
   let assignmentsCreated = 0;
+  let routingFallback = false;
 
   if (rule?.assignedUserId) {
     const profile = await stores.adminProfiles.getByUserId(rule.assignedUserId);
@@ -105,6 +106,79 @@ export async function routeToAdmin(message: RouteQueueMessage): Promise<void> {
     );
   }
 
+  // --- Fallback: route to ORAN admin when no assignment was created ---
+  if (assignmentsCreated === 0) {
+    const { findOranAdmins } = await import('@/services/escalation/engine');
+    const oranAdmins = await findOranAdmins();
+
+    if (oranAdmins.length > 0) {
+      const fallbackAdmin = oranAdmins[0];
+      const fallbackProfile = await stores.adminProfiles.getByUserId(
+        fallbackAdmin.user_id
+      );
+
+      if (fallbackProfile?.id) {
+        await stores.assignments.create({
+          candidateId: message.candidateId,
+          adminProfileId: fallbackProfile.id,
+          assignmentRank: 1,
+          assignmentStatus: 'pending',
+          assignedAt: new Date().toISOString(),
+          decisionDueBy: new Date(
+            Date.now() + 48 * 60 * 60 * 1000 // 48-hour SLA for fallback
+          ).toISOString(),
+        });
+
+        assignmentsCreated = 1;
+        routingFallback = true;
+
+        // Notify the ORAN admin
+        const { executeQuery } = await import('@/services/db/postgres');
+        await executeQuery(
+          `INSERT INTO notification_events
+             (recipient_user_id, event_type, title, body,
+              resource_type, resource_id, action_url, idempotency_key)
+           VALUES ($1, 'submission_assigned',
+                   'Fallback assignment: No regional admin available',
+                   'Candidate ' || $2 || ' has been assigned to you because no regional admin covers this area.',
+                   'candidate', $2, '/verify?candidateId=' || $2, $3)
+           ON CONFLICT (idempotency_key) DO NOTHING`,
+          [
+            fallbackAdmin.user_id,
+            message.candidateId,
+            `fallback_assign_${message.candidateId}`,
+          ],
+        );
+
+        console.log(
+          `[routeToAdmin] Fallback: assigned candidate ${message.candidateId} ` +
+            `to ORAN admin ${fallbackAdmin.user_id}`
+        );
+      }
+    } else {
+      // No ORAN admins available — fire system alert
+      const { executeQuery } = await import('@/services/db/postgres');
+      await executeQuery(
+        `INSERT INTO notification_events
+           (recipient_user_id, event_type, title, body,
+            resource_type, resource_id, idempotency_key)
+         SELECT up.user_id, 'system_alert',
+                'Unrouted candidate: No admin available',
+                'Candidate ' || $1 || ' could not be assigned to any admin. All admins are at capacity or no admins exist.',
+                'candidate', $1,
+                'unrouted_' || $1 || '_' || up.user_id
+         FROM user_profiles up WHERE up.role = 'oran_admin'
+         ON CONFLICT (idempotency_key) DO NOTHING`,
+        [message.candidateId],
+      );
+
+      console.error(
+        `[routeToAdmin] CRITICAL: No admin available for candidate ` +
+          `${message.candidateId} — system alert sent`
+      );
+    }
+  }
+
   // --- Audit event ---
   await stores.audit.append({
     eventId: crypto.randomUUID(),
@@ -121,7 +195,7 @@ export async function routeToAdmin(message: RouteQueueMessage): Promise<void> {
       verificationsPassed: message.verificationsPassed,
       verificationsTotal: message.verificationsTotal,
     },
-    outputs: { assignmentsCreated },
+    outputs: { assignmentsCreated, routingFallback },
     evidenceRefs: [],
   });
 }

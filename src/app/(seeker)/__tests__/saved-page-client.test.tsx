@@ -72,6 +72,36 @@ beforeEach(() => {
 });
 
 describe('SavedPageClient', () => {
+  it('merges authenticated server saves with local-only IDs and backfills server', async () => {
+    const SavedPage = await loadSavedPage();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(['svc-local']));
+    fetchMock
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: async () => ({ savedIds: ['svc-server'] }),
+      })
+      .mockResolvedValueOnce({ ok: true }) // /api/user/saved backfill
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [service('svc-server', 'Server Save'), service('svc-local', 'Local Save')],
+          notFound: [],
+        }),
+      });
+
+    render(<SavedPage />);
+
+    await screen.findByText('Server Save');
+    expect(screen.getByText('Local Save')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/user/saved', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serviceId: 'svc-local' }),
+    });
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('["svc-server","svc-local"]');
+  });
+
   it('loads saved services from local IDs and cleans out not-found entries', async () => {
     const SavedPage = await loadSavedPage();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(['svc-1', 'svc-2']));
@@ -170,6 +200,32 @@ describe('SavedPageClient', () => {
     });
   });
 
+  it('can cancel clear-all confirmation without changing saved state', async () => {
+    const SavedPage = await loadSavedPage();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(['svc-1']));
+    fetchMock
+      .mockResolvedValueOnce({
+        status: 401,
+        ok: false,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [service('svc-1', 'Shelter')],
+          notFound: [],
+        }),
+      });
+
+    render(<SavedPage />);
+
+    await screen.findByTestId('saved-service-card-svc-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.getByTestId('saved-service-card-svc-1')).toBeInTheDocument();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('["svc-1"]');
+  });
+
   it('shows an error alert when batch service fetching fails', async () => {
     const SavedPage = await loadSavedPage();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(['bad-id']));
@@ -188,5 +244,52 @@ describe('SavedPageClient', () => {
 
     await screen.findByRole('alert');
     expect(screen.getByText('Invalid service IDs')).toBeInTheDocument();
+  });
+
+  it('shows generic fetch error for non-400 service lookup failures', async () => {
+    const SavedPage = await loadSavedPage();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(['svc-1']));
+    fetchMock
+      .mockResolvedValueOnce({
+        status: 401,
+        ok: false,
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+      });
+
+    render(<SavedPage />);
+
+    await screen.findByRole('alert');
+    expect(screen.getByText('Failed to fetch services')).toBeInTheDocument();
+  });
+
+  it('removes local saved state even when server delete request throws', async () => {
+    const SavedPage = await loadSavedPage();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(['svc-1']));
+    fetchMock
+      .mockResolvedValueOnce({
+        status: 401,
+        ok: false,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [service('svc-1', 'Shelter')],
+          notFound: [],
+        }),
+      })
+      .mockRejectedValueOnce(new Error('network down'));
+
+    render(<SavedPage />);
+
+    await screen.findByTestId('saved-service-card-svc-1');
+    fireEvent.click(screen.getByRole('button', { name: /Remove Shelter from saved/i }));
+
+    await waitFor(() => {
+      expect(localStorage.getItem(STORAGE_KEY)).toBe('[]');
+      expect(screen.getByText('No saved services yet')).toBeInTheDocument();
+    });
   });
 });

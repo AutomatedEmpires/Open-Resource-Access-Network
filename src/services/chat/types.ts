@@ -62,6 +62,14 @@ export const ChatRequestSchema = z.object({
   sessionId: z.string().uuid(),
   userId: z.string().optional(),
   locale: z.string().default('en'),
+  filters: z
+    .object({
+      /** Canonical taxonomy term IDs (UUIDs). */
+      taxonomyTermIds: z.array(z.string().uuid()).max(20).optional(),
+      /** Trust-tier filter aligned with Directory UI. */
+      trust: z.enum(['all', 'LIKELY', 'HIGH']).optional(),
+    })
+    .optional(),
 });
 
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;

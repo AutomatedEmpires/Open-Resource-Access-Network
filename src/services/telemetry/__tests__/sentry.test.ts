@@ -24,8 +24,10 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   delete mutableEnv.NEXT_PUBLIC_SENTRY_DSN;
+  delete mutableEnv.NEXT_PUBLIC_TELEMETRY_INTERACTIONS;
   delete mutableEnv.NODE_ENV;
-  delete (globalThis as { __ORAN_SENTRY__?: unknown }).__ORAN_SENTRY__;
+  (globalThis as { __ORAN_SENTRY__?: unknown }).__ORAN_SENTRY__ = undefined;
+  (globalThis as unknown as { window?: unknown }).window = undefined;
 });
 
 describe('sentry telemetry wrapper', () => {
@@ -68,6 +70,24 @@ describe('sentry telemetry wrapper', () => {
     expect(sentryError.message).toBe('Error');
   });
 
+  it('sanitizes non-Error inputs into safe error names', async () => {
+    mutableEnv.NEXT_PUBLIC_SENTRY_DSN = 'https://dsn';
+    (globalThis as { __ORAN_SENTRY__?: unknown }).__ORAN_SENTRY__ = sentryMocks;
+    const { captureException } = await loadSentryModule();
+
+    await captureException('something broke');
+    await captureException({ name: '  CustomOops  ' });
+    await captureException(null);
+
+    expect(sentryMocks.captureException).toHaveBeenCalledTimes(3);
+    const first = sentryMocks.captureException.mock.calls[0][0] as Error;
+    const second = sentryMocks.captureException.mock.calls[1][0] as Error;
+    const third = sentryMocks.captureException.mock.calls[2][0] as Error;
+    expect(first.name).toBe('StringError');
+    expect(second.name).toBe('CustomOops');
+    expect(third.name).toBe('UnknownError');
+  });
+
   it('captures redacted messages with scope tags', async () => {
     mutableEnv.NEXT_PUBLIC_SENTRY_DSN = 'https://dsn';
     (globalThis as { __ORAN_SENTRY__?: unknown }).__ORAN_SENTRY__ = sentryMocks;
@@ -82,6 +102,17 @@ describe('sentry telemetry wrapper', () => {
     expect(scopeMocks.setTag).toHaveBeenCalledWith('sessionId', 'session-2');
     expect(scopeMocks.setTag).toHaveBeenCalledWith('feature', 'chat');
     expect(sentryMocks.captureMessage).toHaveBeenCalledWith('[redacted]', 'warning');
+  });
+
+  it('logs captureMessage in development mode', async () => {
+    mutableEnv.NEXT_PUBLIC_SENTRY_DSN = 'https://dsn';
+    mutableEnv.NODE_ENV = 'development';
+    (globalThis as { __ORAN_SENTRY__?: unknown }).__ORAN_SENTRY__ = sentryMocks;
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { captureMessage } = await loadSentryModule();
+
+    await captureMessage('debug me', 'info', { feature: 'dev-mode' });
+    expect(consoleSpy).toHaveBeenCalled();
   });
 
   it('adds sanitized breadcrumbs when configured', async () => {
@@ -105,5 +136,36 @@ describe('sentry telemetry wrapper', () => {
       level: 'info',
       data: { ip: '[redacted]' },
     });
+  });
+
+  it('trackInteraction is gated and emits breadcrumb when enabled', async () => {
+    mutableEnv.NEXT_PUBLIC_SENTRY_DSN = 'https://dsn';
+    (globalThis as { __ORAN_SENTRY__?: unknown }).__ORAN_SENTRY__ = sentryMocks;
+    const { trackInteraction } = await loadSentryModule();
+
+    trackInteraction('click.noop', { safe: true });
+    expect(sentryMocks.addBreadcrumb).not.toHaveBeenCalled();
+
+    mutableEnv.NEXT_PUBLIC_TELEMETRY_INTERACTIONS = 'true';
+    mutableEnv.NODE_ENV = 'development';
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    trackInteraction('click.enabled', { count: 1 });
+
+    await vi.waitFor(() => {
+      expect(sentryMocks.addBreadcrumb).toHaveBeenCalled();
+    });
+    expect(debugSpy).toHaveBeenCalled();
+  });
+
+  it('returns early in browser-like runtime without injected sentry', async () => {
+    mutableEnv.NEXT_PUBLIC_SENTRY_DSN = 'https://dsn';
+    const withWindow = globalThis as unknown as { window?: unknown };
+    withWindow.window = {};
+
+    const { captureMessage } = await loadSentryModule();
+    await captureMessage('browser runtime');
+    expect(sentryMocks.withScope).not.toHaveBeenCalled();
+
+    withWindow.window = undefined;
   });
 });

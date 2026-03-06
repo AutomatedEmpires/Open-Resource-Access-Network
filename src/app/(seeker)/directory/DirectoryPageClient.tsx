@@ -12,6 +12,15 @@ import { SkeletonCard } from '@/components/ui/skeleton';
 import { ServiceCard } from '@/components/directory/ServiceCard';
 import type { SearchResponse } from '@/services/search/types';
 import { useToast } from '@/components/ui/toast';
+import { trackInteraction } from '@/services/telemetry/sentry';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 
 const DEFAULT_LIMIT = 12;
 const SAVED_KEY = 'oran:saved-service-ids';
@@ -47,9 +56,29 @@ const CATEGORY_CHIPS: { value: string; label: string }[] = [
   { value: 'transportation', label: 'Transportation' },
 ];
 
+type TaxonomyTermDTO = {
+  id: string;
+  term: string;
+  description: string | null;
+  parentId: string | null;
+  taxonomy: string | null;
+  serviceCount: number;
+};
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export default function DirectoryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // ── Seed state from URL params so filters are linkable/shareable ──
   const [query, setQuery] = useState(() => searchParams.get('q') ?? '');
@@ -71,6 +100,19 @@ export default function DirectoryPage() {
   });
   const [activeCategory, setActiveCategory] = useState<string | null>(() => searchParams.get('category'));
 
+  const [taxonomyDialogOpen, setTaxonomyDialogOpen] = useState(false);
+  const [taxonomyTerms, setTaxonomyTerms] = useState<TaxonomyTermDTO[]>([]);
+  const [isLoadingTaxonomy, setIsLoadingTaxonomy] = useState(false);
+  const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
+  const [taxonomySearch, setTaxonomySearch] = useState('');
+  const [selectedTaxonomyIds, setSelectedTaxonomyIds] = useState<string[]>(() => {
+    const raw = searchParams.get('taxonomyIds');
+    if (!raw) return [];
+    return raw.split(',').map((s) => s.trim()).filter((s) => s && isUuid(s));
+  });
+  const hasLoadedTaxonomyRef = useRef(false);
+  const taxonomyLoadInFlightRef = useRef(false);
+
   // Opt-in device geolocation (in-session only; never stored; not reflected in URL)
   const [isLocating, setIsLocating] = useState(false);
   const [deviceLocation, setDeviceLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -81,6 +123,13 @@ export default function DirectoryPage() {
 
   // Ref for focus management after search
   const resultsContainerRef = useRef<HTMLDivElement>(null);
+  // Accumulated results across infinite-scroll pages
+  const [allResults, setAllResults] = useState<SearchResponse['results']>([]);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<(() => void) | null>(null);
+
+  const inFlightControllerRef = useRef<AbortController | null>(null);
 
   /** Push current filter state to the URL without adding history entries */
   const pushUrlState = useCallback((
@@ -88,6 +137,7 @@ export default function DirectoryPage() {
     confidence: ConfidenceFilter,
     sort: SortOption,
     category: string | null,
+    taxonomyIds: string[],
     p: number,
   ) => {
     const params = new URLSearchParams();
@@ -95,6 +145,7 @@ export default function DirectoryPage() {
     if (confidence !== 'all') params.set('confidence', confidence);
     if (sort !== 'relevance') params.set('sort', sort);
     if (category) params.set('category', category);
+    if (taxonomyIds.length > 0) params.set('taxonomyIds', taxonomyIds.join(','));
     if (p > 1) params.set('page', String(p));
     const qs = params.toString();
     router.replace(qs ? `/directory?${qs}` : '/directory', { scroll: false });
@@ -133,7 +184,17 @@ export default function DirectoryPage() {
     success(wasSaved ? 'Removed from saved' : 'Saved');
   }, [success]);
 
-  const canSearch = useMemo(() => query.trim().length > 0 || deviceLocation != null, [query, deviceLocation]);
+  const canSearch = useMemo(() => {
+    return query.trim().length > 0 || deviceLocation != null || selectedTaxonomyIds.length > 0;
+  }, [query, deviceLocation, selectedTaxonomyIds.length]);
+
+  const resetResultsToEmpty = useCallback(() => {
+    setData(null);
+    setAllResults([]);
+    setError(null);
+    setPage(1);
+    pushUrlState('', 'all', 'relevance', null, [], 1);
+  }, [pushUrlState]);
 
   const roundForPrivacy = useCallback((value: number): number => {
     // ~0.01° ≈ 1km (varies by latitude); used to reduce precision exposure.
@@ -147,16 +208,28 @@ export default function DirectoryPage() {
     searchText?: string,
     category?: string | null,
     locationOverride?: { lat: number; lng: number } | null,
+    taxonomyOverride?: string[],
+    append = false,
   ) => {
     const trimmed = (searchText ?? query).trim();
 
     const effectiveLocation = locationOverride !== undefined ? locationOverride : deviceLocation;
-    if (!trimmed && !effectiveLocation) return;
+    const effectiveTaxonomyIds = taxonomyOverride !== undefined ? taxonomyOverride : selectedTaxonomyIds;
+    if (!trimmed && !effectiveLocation && effectiveTaxonomyIds.length === 0) return;
 
     const effectiveCategory = category !== undefined ? category : activeCategory;
 
-    setIsLoading(true);
+    if (append) {
+      setIsFetchingMore(true);
+    } else {
+      setIsLoading(true);
+    }
     setError(null);
+
+    // Abort any in-flight request to avoid stale results.
+    inFlightControllerRef.current?.abort();
+    const controller = new AbortController();
+    inFlightControllerRef.current = controller;
 
     try {
       const params = new URLSearchParams({ status: 'active', page: String(nextPage), limit: String(DEFAULT_LIMIT) });
@@ -168,6 +241,10 @@ export default function DirectoryPage() {
       if (effectiveLocation) {
         params.set('lat', String(effectiveLocation.lat));
         params.set('lng', String(effectiveLocation.lng));
+      }
+
+      if (effectiveTaxonomyIds.length > 0) {
+        params.set('taxonomyIds', effectiveTaxonomyIds.join(','));
       }
 
       if (sort !== 'relevance') {
@@ -182,6 +259,7 @@ export default function DirectoryPage() {
       const res = await fetch(`/api/search?${params.toString()}`, {
         method: 'GET',
         headers: { Accept: 'application/json' },
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -192,15 +270,56 @@ export default function DirectoryPage() {
       const json = (await res.json()) as SearchResponse;
       setData(json);
       setPage(nextPage);
+      if (append) {
+        setAllResults((prev) => {
+          const seen = new Set(prev.map((r) => r.service.service.id));
+          return [...prev, ...json.results.filter((r) => !seen.has(r.service.service.id))];
+        });
+      } else {
+        setAllResults(json.results);
+        // Track non-append searches only (page 1 new queries)
+        trackInteraction('search_executed', {
+          page: nextPage,
+          has_category: (effectiveCategory ?? 'general') !== 'general',
+          result_count: json.total,
+        });
+      }
       // Sync filter state to URL so results are shareable
-      pushUrlState(trimmed, confidence, sort, effectiveCategory, nextPage);
+      pushUrlState(trimmed, confidence, sort, effectiveCategory, effectiveTaxonomyIds, nextPage);
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        return;
+      }
       setError(e instanceof Error ? e.message : 'Search failed');
       setData(null);
     } finally {
-      setIsLoading(false);
+      if (append) {
+        setIsFetchingMore(false);
+      } else {
+        setIsLoading(false);
+      }
     }
-  }, [query, confidenceFilter, sortBy, activeCategory, deviceLocation, pushUrlState]);
+  }, [query, confidenceFilter, sortBy, activeCategory, deviceLocation, pushUrlState, selectedTaxonomyIds]);
+
+  // Keep ref current so the IntersectionObserver callback always sees the latest state.
+  loadMoreRef.current = () => {
+    if (data?.hasMore && !isLoading && !isFetchingMore) {
+      void runSearch(page + 1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, true);
+    }
+  };
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMoreRef.current?.();
+      },
+      { rootMargin: '0px 0px 200px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, []); // empty: all state access goes via loadMoreRef
 
   const handleUseMyLocation = useCallback(() => {
     if (isLocating) return;
@@ -245,12 +364,198 @@ export default function DirectoryPage() {
   useEffect(() => {
     if (didAutoRun.current) return;
     const urlQuery = searchParams.get('q');
-    if (urlQuery?.trim()) {
+    const urlTaxonomyIds = searchParams.get('taxonomyIds');
+    const parsedTaxonomyIds = urlTaxonomyIds
+      ? urlTaxonomyIds.split(',').map((s) => s.trim()).filter((s) => s && isUuid(s))
+      : [];
+    if (parsedTaxonomyIds.length > 0) {
+      setSelectedTaxonomyIds(parsedTaxonomyIds);
+    }
+
+    if (urlQuery?.trim() || parsedTaxonomyIds.length > 0) {
       didAutoRun.current = true;
-      void runSearch(page, confidenceFilter, sortBy, urlQuery.trim(), activeCategory);
+      void runSearch(page, confidenceFilter, sortBy, urlQuery?.trim() ?? '', activeCategory, undefined, parsedTaxonomyIds);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadTaxonomyTermsIfNeeded = useCallback(async () => {
+    if (hasLoadedTaxonomyRef.current) return;
+    if (taxonomyLoadInFlightRef.current) return;
+    taxonomyLoadInFlightRef.current = true;
+
+    setIsLoadingTaxonomy(true);
+    setTaxonomyError(null);
+    try {
+      const res = await fetch('/api/taxonomy/terms?limit=250', {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Failed to load filters');
+      }
+      const json = (await res.json()) as { terms: TaxonomyTermDTO[] };
+      if (!isMountedRef.current) return;
+      setTaxonomyTerms(Array.isArray(json.terms) ? json.terms : []);
+      hasLoadedTaxonomyRef.current = true;
+    } catch (e) {
+      if (!isMountedRef.current) return;
+      setTaxonomyError(e instanceof Error ? e.message : 'Failed to load filters');
+    } finally {
+      if (isMountedRef.current) setIsLoadingTaxonomy(false);
+      taxonomyLoadInFlightRef.current = false;
+    }
+  }, []);
+
+  // Load taxonomy terms on mount so we can show taxonomy-backed “top tags” chips.
+  useEffect(() => {
+    void loadTaxonomyTermsIfNeeded();
+  }, [loadTaxonomyTermsIfNeeded]);
+
+  const handleTaxonomyOpenChange = useCallback((next: boolean) => {
+    setTaxonomyDialogOpen(next);
+    if (next) {
+      void loadTaxonomyTermsIfNeeded();
+    }
+  }, [loadTaxonomyTermsIfNeeded]);
+
+  const visibleTaxonomyTerms = useMemo(() => {
+    const trimmed = taxonomySearch.trim().toLowerCase();
+    if (!trimmed) return taxonomyTerms;
+    return taxonomyTerms.filter((t) => t.term.toLowerCase().includes(trimmed));
+  }, [taxonomySearch, taxonomyTerms]);
+
+  const visibleTaxonomyTermsSorted = useMemo(() => {
+    const selected = new Set(selectedTaxonomyIds);
+    return [...visibleTaxonomyTerms].sort((a, b) => {
+      const aSel = selected.has(a.id);
+      const bSel = selected.has(b.id);
+      if (aSel !== bSel) return aSel ? -1 : 1;
+
+      const aCount = typeof a.serviceCount === 'number' ? a.serviceCount : 0;
+      const bCount = typeof b.serviceCount === 'number' ? b.serviceCount : 0;
+      if (aCount !== bCount) return bCount - aCount;
+
+      return a.term.localeCompare(b.term);
+    });
+  }, [selectedTaxonomyIds, visibleTaxonomyTerms]);
+
+  const topTaxonomyTerms = useMemo(() => {
+    if (taxonomyTerms.length === 0) return [] as TaxonomyTermDTO[];
+    return [...taxonomyTerms]
+      .filter((t) => typeof t.serviceCount === 'number' && t.serviceCount > 0)
+      .sort((a, b) => b.serviceCount - a.serviceCount)
+      .slice(0, 8);
+  }, [taxonomyTerms]);
+
+  const selectedTagLabel = useMemo(() => {
+    if (selectedTaxonomyIds.length === 0) return null;
+    const byId = new Map(taxonomyTerms.map((t) => [t.id, t.term] as const));
+    const names = selectedTaxonomyIds.map((id) => byId.get(id)).filter((v): v is string => Boolean(v));
+    const total = selectedTaxonomyIds.length;
+
+    if (names.length === 0) return `Tags: ${total}`;
+    if (total === 1) return `Tag: ${names[0]}`;
+    if (names.length === 1) return `Tags: ${names[0]} +${total - 1}`;
+
+    const first = names[0];
+    const second = names[1];
+    if (total === 2) return `Tags: ${first}, ${second}`;
+    return `Tags: ${first}, ${second} +${total - 2}`;
+  }, [selectedTaxonomyIds, taxonomyTerms]);
+
+  const selectedTagsKnown = useMemo(() => {
+    if (selectedTaxonomyIds.length === 0) return [] as Array<{ id: string; term: string }>;
+    const byId = new Map(taxonomyTerms.map((t) => [t.id, t.term] as const));
+    return selectedTaxonomyIds
+      .map((id) => {
+        const term = byId.get(id);
+        return term ? { id, term } : null;
+      })
+      .filter((v): v is { id: string; term: string } => Boolean(v));
+  }, [selectedTaxonomyIds, taxonomyTerms]);
+
+  const appliedTagChips = useMemo(() => {
+    if (selectedTaxonomyIds.length === 0) {
+      return {
+        chips: [] as Array<{ id: string; term: string }>,
+        remaining: 0,
+        hasUnknown: false,
+      };
+    }
+
+    const known = selectedTagsKnown;
+    const unknown = selectedTaxonomyIds.length - known.length;
+    const chips = known.slice(0, 2);
+    const remaining = Math.max(0, selectedTaxonomyIds.length - chips.length);
+    return { chips, remaining, hasUnknown: unknown > 0 };
+  }, [selectedTagsKnown, selectedTaxonomyIds.length]);
+
+  const toggleTaxonomyId = useCallback((id: string) => {
+    setSelectedTaxonomyIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      if (next.length === 0 && !query.trim() && !deviceLocation) {
+        resetResultsToEmpty();
+      } else {
+        void runSearch(1, confidenceFilter, sortBy, undefined, undefined, undefined, next);
+      }
+      return next;
+    });
+  }, [confidenceFilter, deviceLocation, query, resetResultsToEmpty, runSearch, sortBy]);
+
+  const clearTaxonomyFilters = useCallback(() => {
+    setSelectedTaxonomyIds([]);
+    if (!query.trim() && !deviceLocation) {
+      resetResultsToEmpty();
+      return;
+    }
+    void runSearch(1, confidenceFilter, sortBy, undefined, undefined, undefined, []);
+  }, [confidenceFilter, deviceLocation, query, resetResultsToEmpty, runSearch, sortBy]);
+
+  const clearCategory = useCallback(() => {
+    setActiveCategory(null);
+    if (!query.trim() && !deviceLocation && selectedTaxonomyIds.length === 0) {
+      resetResultsToEmpty();
+      return;
+    }
+    void runSearch(1, confidenceFilter, sortBy, undefined, null);
+  }, [confidenceFilter, deviceLocation, query, resetResultsToEmpty, runSearch, selectedTaxonomyIds.length, sortBy]);
+
+  const clearTrust = useCallback(() => {
+    setConfidenceFilter('all');
+    if (data) {
+      void runSearch(1, 'all', sortBy);
+    }
+  }, [data, runSearch, sortBy]);
+
+  const clearSort = useCallback(() => {
+    setSortBy('relevance');
+    if (data) {
+      void runSearch(1, confidenceFilter, 'relevance');
+    }
+  }, [confidenceFilter, data, runSearch]);
+
+  const clearAllFilters = useCallback(() => {
+    const nextQuery = (activeCategory && query.trim().toLowerCase() === activeCategory.toLowerCase())
+      ? ''
+      : query;
+
+    setConfidenceFilter('all');
+    setSortBy('relevance');
+    setActiveCategory(null);
+    setSelectedTaxonomyIds([]);
+    setTaxonomySearch('');
+    setDeviceLocation(null);
+
+    if (!nextQuery.trim()) {
+      setQuery('');
+      resetResultsToEmpty();
+      return;
+    }
+    setQuery(nextQuery);
+    void runSearch(1, 'all', 'relevance', nextQuery, null, null, []);
+  }, [activeCategory, query, resetResultsToEmpty, runSearch]);
 
   // Focus results container after search completes with results
   useEffect(() => {
@@ -289,7 +594,7 @@ export default function DirectoryPage() {
       // Deselect — clear category and push URL
       setActiveCategory(null);
       setQuery('');
-      pushUrlState('', confidenceFilter, sortBy, null, 1);
+      pushUrlState('', confidenceFilter, sortBy, null, selectedTaxonomyIds, 1);
     } else {
       setActiveCategory(category);
       setQuery(category);
@@ -300,11 +605,22 @@ export default function DirectoryPage() {
   const handleClearSearch = useCallback(() => {
     setQuery('');
     setData(null);
+    setAllResults([]);
     setError(null);
     setPage(1);
     setActiveCategory(null);
-    pushUrlState('', confidenceFilter, sortBy, null, 1);
+    setSelectedTaxonomyIds([]);
+    pushUrlState('', confidenceFilter, sortBy, null, [], 1);
   }, [confidenceFilter, sortBy, pushUrlState]);
+
+  const clearDeviceLocation = useCallback(() => {
+    setDeviceLocation(null);
+    if (!query.trim() && selectedTaxonomyIds.length === 0) {
+      resetResultsToEmpty();
+      return;
+    }
+    void runSearch(1);
+  }, [query, resetResultsToEmpty, runSearch, selectedTaxonomyIds.length]);
 
   return (
     <main className="container mx-auto max-w-6xl px-4 py-8">
@@ -364,6 +680,21 @@ export default function DirectoryPage() {
           Location is optional. If you choose “Use my location”, ORAN uses an approximate location to show nearby results in-session only and does not store it.
         </p>
 
+        {deviceLocation && (
+          <div className="mb-3">
+            <button
+              type="button"
+              onClick={clearDeviceLocation}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              aria-label="Clear location filter"
+              title="Clear location (not saved)"
+            >
+              Near you (approx.)
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+
         {/* Category chips */}
         <div className="mb-2 flex flex-wrap items-center gap-2" role="group" aria-label="Quick category filters">
           <span className="text-xs font-medium text-gray-500">Categories:</span>
@@ -382,6 +713,115 @@ export default function DirectoryPage() {
               {cat.label}
             </button>
           ))}
+        </div>
+
+        {/* Taxonomy tag filters (multi-select) */}
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-gray-500">Tags:</span>
+
+          {taxonomyError && taxonomyTerms.length === 0 && (
+            <span className="text-xs text-red-700" role="status">Filters unavailable</span>
+          )}
+
+          {!taxonomyError && !isLoadingTaxonomy && topTaxonomyTerms.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Top tags">
+              {topTaxonomyTerms.map((t) => {
+                const selected = selectedTaxonomyIds.includes(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => toggleTaxonomyId(t.id)}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                      selected
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                    }`}
+                    aria-pressed={selected}
+                    title={`${t.serviceCount} services`}
+                  >
+                    {t.term}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <Dialog open={taxonomyDialogOpen} onOpenChange={handleTaxonomyOpenChange}>
+            <DialogTrigger asChild>
+              <Button type="button" variant="outline" size="sm">
+                More filters{selectedTaxonomyIds.length > 0 ? ` (${selectedTaxonomyIds.length})` : ''}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Filter by service tags</DialogTitle>
+                <DialogDescription>
+                  Tags come from stored taxonomy terms. You may need to confirm details with the provider.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    value={taxonomySearch}
+                    onChange={(e) => setTaxonomySearch(e.target.value)}
+                    type="search"
+                    placeholder="Search tags…"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    aria-label="Search service tags"
+                  />
+                  {selectedTaxonomyIds.length > 0 && (
+                    <Button type="button" variant="outline" onClick={clearTaxonomyFilters}>
+                      Clear
+                    </Button>
+                  )}
+                </div>
+
+                {taxonomyError && (
+                  <p className="text-sm text-red-700" role="alert">{taxonomyError}</p>
+                )}
+
+                {isLoadingTaxonomy ? (
+                  <p className="text-sm text-gray-600">Loading tags…</p>
+                ) : (
+                  <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 p-2">
+                    <div className="flex flex-wrap gap-2">
+                      {visibleTaxonomyTermsSorted.map((t) => {
+                        const selected = selectedTaxonomyIds.includes(t.id);
+                        return (
+                          <Button
+                            key={t.id}
+                            type="button"
+                            size="sm"
+                            variant={selected ? 'secondary' : 'outline'}
+                            onClick={() => toggleTaxonomyId(t.id)}
+                            title={t.description ?? undefined}
+                            className="text-xs"
+                          >
+                            {t.term}
+                          </Button>
+                        );
+                      })}
+                      {visibleTaxonomyTerms.length === 0 && (
+                        <p className="text-sm text-gray-600 p-2">No matching tags.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {selectedTaxonomyIds.length > 0 && (
+            <button
+              type="button"
+              onClick={clearTaxonomyFilters}
+              className="text-xs text-blue-700 hover:underline"
+            >
+              Clear tags
+            </button>
+          )}
         </div>
 
         {/* Confidence + sort controls — always visible, no toggle required */}
@@ -422,6 +862,113 @@ export default function DirectoryPage() {
             </select>
           </div>
         </div>
+
+        {(deviceLocation || activeCategory || selectedTaxonomyIds.length > 0 || confidenceFilter !== 'all' || sortBy !== 'relevance') && (
+          <div
+            className="mb-4 flex flex-nowrap items-center gap-2 overflow-x-auto md:flex-wrap md:overflow-visible"
+            aria-label="Applied filters"
+          >
+            <span className="text-xs font-medium text-gray-500">Applied:</span>
+
+            {deviceLocation && (
+              <button
+                type="button"
+                onClick={clearDeviceLocation}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                aria-label="Clear location filter"
+              >
+                Near you (approx.)
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
+
+            {activeCategory && (
+              <button
+                type="button"
+                onClick={clearCategory}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                aria-label="Clear category filter"
+              >
+                Category: {activeCategory}
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
+
+            {selectedTaxonomyIds.length > 0 && (
+              <>
+                {appliedTagChips.chips.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => toggleTaxonomyId(t.id)}
+                    className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                    aria-label={`Remove tag ${t.term}`}
+                    title="Remove tag"
+                  >
+                    Tag: {t.term}
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                ))}
+
+                {appliedTagChips.remaining > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleTaxonomyOpenChange(true)}
+                    className="inline-flex flex-shrink-0 items-center rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                    aria-label={`View ${appliedTagChips.remaining} more tag filters`}
+                    title="View more tags"
+                  >
+                    +{appliedTagChips.remaining} more
+                  </button>
+                )}
+
+                {appliedTagChips.hasUnknown && appliedTagChips.chips.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleTaxonomyOpenChange(true)}
+                    className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                    aria-label={`View tag filters (${selectedTaxonomyIds.length})`}
+                    title="View tag filters"
+                  >
+                    {selectedTagLabel ?? `Tags: ${selectedTaxonomyIds.length}`}
+                  </button>
+                )}
+              </>
+            )}
+
+            {confidenceFilter !== 'all' && (
+              <button
+                type="button"
+                onClick={clearTrust}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                aria-label="Clear trust filter"
+              >
+                Trust: {confidenceFilter === 'HIGH' ? 'High' : 'Likely+'}
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
+
+            {sortBy !== 'relevance' && (
+              <button
+                type="button"
+                onClick={clearSort}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                aria-label="Clear sort option"
+              >
+                Sort: {SORT_OPTIONS.find((s) => s.value === sortBy)?.label ?? sortBy}
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="ml-auto text-xs text-blue-700 hover:underline"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
 
         {error && (
           <div
@@ -469,9 +1016,9 @@ export default function DirectoryPage() {
           >
             <div className="flex items-center justify-between gap-4">
               <p className="text-sm text-gray-600" role="status" aria-live="polite">
-                {data.results.length === 0
+                {allResults.length === 0
                   ? `0 of ${data.total} results`
-                  : `Showing ${(page - 1) * DEFAULT_LIMIT + 1}–${(page - 1) * DEFAULT_LIMIT + data.results.length} of ${data.total}`
+                  : `Showing ${allResults.length} of ${data.total}`
                 }
               </p>
 
@@ -481,7 +1028,7 @@ export default function DirectoryPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => void runSearch(Math.max(1, page - 1))}
-                  disabled={page <= 1 || isLoading}
+                  disabled={page <= 1 || isLoading || isFetchingMore}
                   className="gap-1"
                 >
                   <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -491,8 +1038,8 @@ export default function DirectoryPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => void runSearch(page + 1)}
-                  disabled={!data.hasMore || isLoading}
+                  onClick={() => void runSearch(page + 1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, true)}
+                  disabled={!data.hasMore || isLoading || isFetchingMore}
                   className="gap-1"
                 >
                   Next
@@ -501,29 +1048,69 @@ export default function DirectoryPage() {
               </div>
             </div>
 
-            {data.results.length === 0 ? (
+            {allResults.length === 0 ? (
               <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
                 <p className="text-gray-700 font-medium">No matches</p>
                 <p className="mt-1 text-sm text-gray-500">
-                  Try different keywords, or use chat for guided searching.
+                  Try different keywords, broaden trust filters, or clear tags.
                 </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  {selectedTaxonomyIds.length > 0 && (
+                    <Button type="button" variant="outline" size="sm" onClick={clearTaxonomyFilters}>
+                      Clear tags
+                    </Button>
+                  )}
+                  {confidenceFilter !== 'all' && (
+                    <Button type="button" variant="outline" size="sm" onClick={clearTrust}>
+                      Show all trust levels
+                    </Button>
+                  )}
+                  {activeCategory && (
+                    <Button type="button" variant="outline" size="sm" onClick={clearCategory}>
+                      Clear category
+                    </Button>
+                  )}
+                  {deviceLocation && (
+                    <Button type="button" variant="outline" size="sm" onClick={clearDeviceLocation}>
+                      Clear location
+                    </Button>
+                  )}
+                  <Link href="/chat" className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                    Try Chat
+                  </Link>
+                </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {data.results.map((r) => (
-                  <ServiceCard
-                    key={r.service.service.id}
-                    enriched={r.service}
-                    isSaved={savedIds.has(r.service.service.id)}
-                    onToggleSave={toggleSave}
-                    href={`/service/${r.service.service.id}`}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {allResults.map((r) => (
+                    <ServiceCard
+                      key={r.service.service.id}
+                      enriched={r.service}
+                      isSaved={savedIds.has(r.service.service.id)}
+                      onToggleSave={toggleSave}
+                      href={`/service/${r.service.service.id}`}
+                    />
+                  ))}
+                </div>
+                {/* Sentinel for infinite scroll — IntersectionObserver auto-loads next page */}
+                <div ref={sentinelRef} aria-hidden="true" className="h-4" />
+                {isFetchingMore && (
+                  <div
+                    className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+                    role="status"
+                    aria-label="Loading more results"
+                  >
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <SkeletonCard key={`more-skeleton-${i}`} />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
 
-            {/* Bottom pagination — mirrors top bar so users don’t scroll back up */}
-            {data.results.length > 0 && (
+            {/* Bottom pagination — fallback for when infinite scroll hasn’t triggered */}
+            {allResults.length > 0 && (
               <div className="flex items-center justify-between gap-4 pt-3 border-t border-gray-100">
                 <p className="text-xs text-gray-400">
                   Page {page}{data.hasMore ? '' : ' · end of results'}
@@ -534,7 +1121,7 @@ export default function DirectoryPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => void runSearch(Math.max(1, page - 1))}
-                    disabled={page <= 1 || isLoading}
+                    disabled={page <= 1 || isLoading || isFetchingMore}
                     className="gap-1"
                   >
                     <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -544,8 +1131,8 @@ export default function DirectoryPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => void runSearch(page + 1)}
-                    disabled={!data.hasMore || isLoading}
+                    onClick={() => void runSearch(page + 1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, true)}
+                    disabled={!data.hasMore || isLoading || isFetchingMore}
                     className="gap-1"
                   >
                     Next

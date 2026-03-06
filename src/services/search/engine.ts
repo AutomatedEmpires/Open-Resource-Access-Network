@@ -1,10 +1,12 @@
 /**
  * ORAN Service Search Engine
  *
- * IMPORTANT: Pure SQL/retrieval only. No LLM. No vector similarity. No ML ranking.
- * Results are ordered by trust (verification confidence) DESC, then overall score,
- * then distance ASC (for geo queries).
+ * Pure SQL/retrieval + optional pgvector re-ranking.
+ * No LLM. Trust-based ordering. Vector similarity only re-ranks, never replaces.
  */
+
+import { buildVectorSimilarityQuery, reRankWithVectorSimilarity } from './vectorSearch';
+import type { VectorSimilarityRow } from './vectorSearch';
 
 import type {
   SearchQuery,
@@ -17,6 +19,7 @@ import type {
 } from './types';
 import type { SearchFilters } from './types';
 import { CONFIDENCE_BANDS } from '@/domain/constants';
+import { buildVectorSimilarityQuery, reRankWithVectorSimilarity } from './vectorSearch';
 
 // ============================================================
 // WHERE CLAUSE BUILDERS
@@ -345,6 +348,69 @@ export class ServiceSearchEngine {
   }
 
   /**
+   * Hybrid search: run the standard SQL search, then (optionally) re-rank the
+   * SQL candidates using pgvector cosine similarity. This NEVER introduces new
+   * services — it only re-orders already retrieved rows.
+   */
+  async hybridSearch(
+    query: SearchQuery,
+    queryEmbedding: number[] | null,
+    alpha?: number,
+  ): Promise<SearchResponse> {
+    const sqlResponse = await this.search(query);
+
+    if (!queryEmbedding) {
+      return sqlResponse;
+    }
+
+    if (sqlResponse.results.length === 0) {
+      return sqlResponse;
+    }
+
+    const candidateIds = sqlResponse.results.map((r) => r.service.service.id);
+    if (candidateIds.length === 0) {
+      return sqlResponse;
+    }
+
+    const vectorQuery = buildVectorSimilarityQuery(queryEmbedding, candidateIds, candidateIds.length);
+    const vectorRows = await this.deps.executeQuery<{ id: string; similarity: number }>(
+      vectorQuery.sql,
+      vectorQuery.params,
+    );
+
+    if (!Array.isArray(vectorRows) || vectorRows.length === 0) {
+      return sqlResponse;
+    }
+
+    const similarityMap = new Map<string, number>();
+    for (const row of vectorRows) {
+      if (row?.id && typeof row.similarity === 'number') {
+        similarityMap.set(row.id, row.similarity);
+      }
+    }
+
+    if (similarityMap.size === 0) {
+      return sqlResponse;
+    }
+
+    const items = sqlResponse.results.map((result) => ({
+      id: result.service.service.id,
+      confidenceScore:
+        result.service.confidenceScore?.verificationConfidence ??
+        result.service.confidenceScore?.score ??
+        null,
+      result,
+    }));
+
+    const reranked = reRankWithVectorSimilarity(items, similarityMap, alpha);
+
+    return {
+      ...sqlResponse,
+      results: reranked.map((i) => i.result),
+    };
+  }
+
+  /**
    * Search for services by a list of UUIDs.
    * Max 50 IDs per request. Returns services in the order they appear in the DB
    * (not the order of input IDs).
@@ -475,6 +541,62 @@ export class ServiceSearchEngine {
           : null,
       },
       distanceMeters: row.distance_meters != null ? (row.distance_meters as number) : undefined,
+    };
+  }
+
+  /**
+   * Hybrid search: runs the standard SQL query then re-ranks with pgvector cosine
+   * similarity when a query embedding is provided.
+   *
+   * Non-negotiable: vector similarity never introduces new results.
+   * It only re-orders records already returned by the SQL layer.
+   * Services without embeddings keep their original SQL position (vectorSim=0).
+   *
+   * When queryEmbedding is null (Foundry unconfigured, flag off, or embed failed),
+   * falls back transparently to the standard SQL search order.
+   *
+   * @param query          Standard SearchQuery
+   * @param queryEmbedding 1024-dim float[] from embedForQuery(), or null for fallback
+   * @param vectorAlpha    Weight of SQL confidence in hybrid score (default 0.6)
+   */
+  async hybridSearch(
+    query: SearchQuery,
+    queryEmbedding: number[] | null,
+    vectorAlpha = 0.6
+  ): Promise<SearchResponse> {
+    const sqlResponse = await this.search(query);
+
+    if (!queryEmbedding || sqlResponse.results.length === 0) {
+      return sqlResponse;
+    }
+
+    // Collect IDs from SQL results to scope the vector query
+    const candidateIds = sqlResponse.results.map((r) => r.service.service.id);
+
+    const vectorQuery = buildVectorSimilarityQuery(queryEmbedding, candidateIds, candidateIds.length);
+    const vectorRows = await this.deps.executeQuery<VectorSimilarityRow>(
+      vectorQuery.sql,
+      vectorQuery.params
+    );
+
+    const similarityMap = new Map(vectorRows.map((r) => [r.id, r.similarity]));
+
+    // Attach id + confidenceScore at top level for the generic re-ranker
+    const withIds = sqlResponse.results.map((r) => ({
+      ...r,
+      id: r.service.service.id,
+      confidenceScore: r.service.confidenceScore?.score ?? null,
+    }));
+
+    const reranked = reRankWithVectorSimilarity(withIds, similarityMap, vectorAlpha);
+
+    // Strip the ephemeral fields added above before returning to callers.
+    const stripHelpers = ({ id: _, confidenceScore: __, ...rest }: typeof withIds[number]) =>
+      rest as SearchResult;
+
+    return {
+      ...sqlResponse,
+      results: reranked.map(stripHelpers),
     };
   }
 }

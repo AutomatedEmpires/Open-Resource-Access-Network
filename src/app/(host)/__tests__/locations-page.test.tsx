@@ -252,4 +252,90 @@ describe('host locations page', () => {
       expect(screen.getByText('No locations found')).toBeInTheDocument();
     });
   });
+
+  it('handles org-list failures non-fatally and renders unnamed/no-address rows', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new Error('orgs unavailable'))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          locationsResponse({
+            results: [
+              {
+                id: 'loc-unnamed',
+                organization_id: 'org-x',
+                organization_name: null,
+                name: null,
+                address_1: null,
+                city: null,
+                state_province: null,
+                postal_code: null,
+                latitude: null,
+                longitude: null,
+                created_at: '2026-01-01T00:00:00.000Z',
+                updated_at: '2026-01-01T00:00:00.000Z',
+              },
+            ],
+          }),
+      });
+
+    render(<LocationsPage />);
+
+    await screen.findByText('Unnamed Location');
+    expect(screen.getByRole('button', { name: 'Add Location' })).toBeDisabled();
+    expect(screen.queryByText(/Seattle|WA|98101/)).not.toBeInTheDocument();
+  });
+
+  it('validates longitude client-side before saving', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
+      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse({ results: [] }) });
+
+    render(<LocationsPage />);
+    await screen.findByText('No locations found');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
+    fireEvent.change(screen.getByLabelText(/^Organization/i), {
+      target: { value: 'org-1' },
+    });
+    fireEvent.change(screen.getByLabelText(/Location Name/i), {
+      target: { value: 'Bad Longitude Location' },
+    });
+    fireEvent.change(screen.getByLabelText('Longitude'), {
+      target: { value: '-181' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('updates existing locations through PUT endpoint', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
+      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'loc-1' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() });
+
+    render(<LocationsPage />);
+    await screen.findByText('Downtown Office');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText(/Location Name/i), {
+      target: { value: 'Downtown Office v2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find((call) =>
+        String(call[0]).includes('/api/host/locations/loc-1')
+      );
+      expect(putCall).toBeTruthy();
+      expect((putCall?.[1] as { method: string }).method).toBe('PUT');
+      const body = JSON.parse((putCall?.[1] as { body: string }).body);
+      expect(body.name).toBe('Downtown Office v2');
+      expect(body.organizationId).toBeUndefined();
+    });
+  });
 });

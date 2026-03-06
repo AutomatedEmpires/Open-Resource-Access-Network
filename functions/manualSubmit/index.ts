@@ -8,8 +8,14 @@
  *   trigger: http  methods: ["POST"]  route: "ingestion/submit"
  *   output:  queue  queueName: "ingestion-fetch"
  *
+ * Idea 13 (Phase 5): If the submitted URL is a PDF and the
+ * doc_intelligence_intake feature flag is enabled, Document Intelligence
+ * pre-extracts the text before the URL is enqueued for the main pipeline.
+ *
  * @module functions/manualSubmit
  */
+
+import crypto from 'node:crypto';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,6 +43,8 @@ export interface FetchQueueMessage {
   correlationId: string;
   priority: number;
   enqueuedAt: string;
+  /** Pre-extracted PDF text from Document Intelligence, if available. */
+  docText?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -46,9 +54,11 @@ export interface FetchQueueMessage {
 /**
  * When deployed as an Azure Function, this handler:
  * 1. Validates the incoming URL
- * 2. Looks up the source registry for matching domain rules
- * 3. Creates an ingestion job record
- * 4. Enqueues the URL to `ingestion-fetch`
+ * 2. (Idea 13) If the URL is a PDF and DOC_INTELLIGENCE_INTAKE flag is on,
+ *    calls Document Intelligence to pre-extract text
+ * 3. Looks up the source registry for matching domain rules
+ * 4. Creates an ingestion job record
+ * 5. Enqueues the URL (+ optional docText) to `ingestion-fetch`
  *
  * Current status: STUB — same logic is available via
  *   POST /api/admin/ingestion/process (Next.js API route)
@@ -64,6 +74,23 @@ export async function manualSubmit(
   //       response: { status: 400, body: { error: 'sourceUrl is required' } },
   //       queueMessage: null,
   //     };
+  //   }
+  //
+  //   const { flagService } = await import('@/services/flags/flags');
+  //   const { FEATURE_FLAGS } = await import('@/domain/constants');
+  //   const { isPdfUrl, analyzeDocument, isDocIntelligenceConfigured } =
+  //     await import('@/services/ingestion/docIntelligence');
+  //
+  //   let docText: string | undefined;
+  //   const docIntakeEnabled =
+  //     await flagService.isEnabled(FEATURE_FLAGS.DOC_INTELLIGENCE_INTAKE);
+  //   if (docIntakeEnabled && isDocIntelligenceConfigured() &&
+  //       isPdfUrl(req.body.sourceUrl)) {
+  //     const result = await analyzeDocument(req.body.sourceUrl);
+  //     if (result) {
+  //       console.log(`[manualSubmit] Doc Intelligence extracted ${result.pages} page(s)`);
+  //       docText = result.text;
+  //     }
   //   }
   //
   //   const db = getDrizzle();
@@ -84,6 +111,7 @@ export async function manualSubmit(
   //     correlationId,
   //     priority: req.body.priority ?? 5,
   //     enqueuedAt: new Date().toISOString(),
+  //     ...(docText ? { docText } : {}),
   //   };
   //
   //   return {
@@ -95,6 +123,7 @@ export async function manualSubmit(
   //   };
 
   console.log(`[manualSubmit] Received submission — stub, no-op`);
+  void crypto; // referenced in outline above
   return {
     response: {
       status: 501,

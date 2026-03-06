@@ -18,15 +18,18 @@ import type { ErrorContext, SeverityLevel } from './sentry';
 // ============================================================
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _client: any = null;
+let _client: any = undefined; // undefined = not yet tried; null = tried but unavailable
 
 /**
  * Get the default Application Insights TelemetryClient if available.
  * Returns null when App Insights is not configured (e.g., local dev).
+ *
+ * Uses `undefined` as the "not yet tried" sentinel so the env-var check and
+ * dynamic import are executed at most once per process, not on every call.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getClient(): Promise<any | null> {
-  if (_client !== undefined && _client !== null) return _client;
+  if (_client !== undefined) return _client;
 
   if (!process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
     _client = null;
@@ -103,6 +106,48 @@ export async function trackEvent(
   if (!client) return;
 
   client.trackEvent({ name, properties, measurements });
+}
+
+/**
+ * Track an AI integration event with mixed property types.
+ *
+ * Automatically splits the payload into App Insights `properties` (strings) and
+ * `measurements` (numbers).  Boolean values are converted to "true"/"false" strings.
+ *
+ * Always fail-open — telemetry errors must never affect core functionality.
+ *
+ * Privacy rule: callers MUST NOT include message content, user queries, or any PII.
+ * Acceptable fields: duration_ms, token counts, model names, flag states, severity scores.
+ *
+ * @example
+ * await trackAiEvent('llm_summarize', { duration_ms: 420, tokens_used: 87, model: 'gpt-4o-mini', success: true });
+ */
+export async function trackAiEvent(
+  name: string,
+  payload: Record<string, string | number | boolean | undefined | null>
+): Promise<void> {
+  try {
+    const client = await getClient();
+    if (!client) return;
+
+    const properties: Record<string, string> = {};
+    const measurements: Record<string, number> = {};
+
+    for (const [key, value] of Object.entries(payload)) {
+      if (value === undefined || value === null) continue;
+      if (typeof value === 'number') {
+        measurements[key] = value;
+      } else if (typeof value === 'boolean') {
+        properties[key] = value ? 'true' : 'false';
+      } else {
+        properties[key] = String(value);
+      }
+    }
+
+    client.trackEvent({ name, properties, measurements });
+  } catch {
+    // Intentionally swallowed — telemetry must never affect core functionality
+  }
 }
 
 /**

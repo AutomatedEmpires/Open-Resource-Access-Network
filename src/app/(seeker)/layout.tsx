@@ -16,6 +16,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { MessageCircle, List, MapPin, Bookmark, User } from 'lucide-react';
+import { CommandPalette } from '@/components/command/CommandPalette';
 
 // ============================================================
 // CONSTANTS
@@ -57,6 +58,20 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
   // Saved count badge — re-reads on every route change.
   // Same-tab real-time updates wired in Phase 7 via custom event.
   const [savedCount, setSavedCount] = useState(0);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+  // ⌘K / Ctrl+K opens the command palette
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setSavedCount(readSavedCount());
@@ -69,9 +84,15 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
     pathname === href || pathname.startsWith(href + '/');
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
+      <div className="flex flex-col min-h-screen bg-[var(--bg-page)]">
+      {/* Command palette — opens on ⌘K / Ctrl+K */}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+      />
+
       {/* ── Top bar ─────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
+      <header className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
         <div className="container mx-auto max-w-6xl flex items-center justify-between px-4 h-14">
 
           {/* Brand */}
@@ -131,7 +152,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
         the outer nav just grows downward into the safe area.
       */}
       <nav
-        className="fixed bottom-0 inset-x-0 z-40 border-t border-gray-200 bg-white md:hidden"
+        className="fixed bottom-0 inset-x-0 z-[var(--z-nav)] border-t border-[var(--border)] bg-[var(--bg-surface)] md:hidden"
         aria-label="Mobile navigation"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >

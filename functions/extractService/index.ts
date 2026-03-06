@@ -45,17 +45,6 @@ export interface VerifyQueueMessage {
 }
 
 // ---------------------------------------------------------------------------
-// Confidence tier helper
-// ---------------------------------------------------------------------------
-
-function scoreToTier(score: number): 'green' | 'yellow' | 'orange' | 'red' {
-  if (score >= 80) return 'green';
-  if (score >= 60) return 'yellow';
-  if (score >= 40) return 'orange';
-  return 'red';
-}
-
-// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
@@ -91,6 +80,7 @@ export async function extractService(
   const { PipelineConfigSchema } = await import(
     '@/agents/ingestion/pipeline/types'
   );
+  const { getConfidenceTier } = await import('@/domain/confidence');
 
   const db = getDrizzle();
   const stores = createIngestionStores(db);
@@ -162,7 +152,8 @@ export async function extractService(
   }
 
   const confidenceScore = candidateScore?.overall ?? llmExtraction.confidence ?? 50;
-  const confidenceTier = candidateScore?.tier ?? scoreToTier(confidenceScore);
+  const { getConfidenceTier } = await import('@/domain/confidence');
+  const confidenceTier = candidateScore?.tier ?? getConfidenceTier(confidenceScore);
 
   // Persist candidate record
   const { computeExtractKeySha256 } = await import('@/agents/ingestion/fetcher');

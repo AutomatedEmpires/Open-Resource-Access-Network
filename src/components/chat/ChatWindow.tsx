@@ -14,8 +14,39 @@ import { Button } from '@/components/ui/button';
 import { ELIGIBILITY_DISCLAIMER } from '@/domain/constants';
 import type { ChatResponse, ServiceCard } from '@/services/chat/types';
 import { ChatServiceCard } from '@/components/chat/ChatServiceCard';
+import { trackInteraction } from '@/services/telemetry/sentry';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 
 const SAVED_KEY = 'oran:saved-service-ids';
+
+/** Trust filter options — 'all' shows everything */
+type TrustFilter = 'all' | 'HIGH' | 'LIKELY';
+
+const TRUST_OPTIONS: { value: TrustFilter; label: string }[] = [
+  { value: 'all', label: 'All results' },
+  { value: 'LIKELY', label: 'Likely or higher' },
+  { value: 'HIGH', label: 'High confidence only' },
+];
+
+type TaxonomyTermDTO = {
+  id: string;
+  term: string;
+  description: string | null;
+  parentId: string | null;
+  taxonomy: string | null;
+  serviceCount: number;
+};
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
 
 // ============================================================
 // SUGGESTION CHIPS — pre-fill and auto-submit on tap
@@ -166,6 +197,16 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Filters: trust tier + taxonomy term IDs
+  const [trustFilter, setTrustFilter] = useState<TrustFilter>('all');
+  const [taxonomyDialogOpen, setTaxonomyDialogOpen] = useState(false);
+  const [taxonomyTerms, setTaxonomyTerms] = useState<TaxonomyTermDTO[]>([]);
+  const [isLoadingTaxonomy, setIsLoadingTaxonomy] = useState(false);
+  const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
+  const [taxonomySearch, setTaxonomySearch] = useState('');
+  const [selectedTaxonomyIds, setSelectedTaxonomyIds] = useState<string[]>([]);
+  const hasLoadedTaxonomyRef = useRef(false);
+
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
@@ -194,9 +235,59 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
     });
   }, []);
 
+  const loadTaxonomyTermsIfNeeded = useCallback(async () => {
+    if (hasLoadedTaxonomyRef.current) return;
+    setIsLoadingTaxonomy(true);
+    setTaxonomyError(null);
+    try {
+      const res = await fetch('/api/taxonomy/terms?limit=250', {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Failed to load filters');
+      }
+      const json = (await res.json()) as { terms: TaxonomyTermDTO[] };
+      setTaxonomyTerms(Array.isArray(json.terms) ? json.terms : []);
+      hasLoadedTaxonomyRef.current = true;
+    } catch (e) {
+      setTaxonomyError(e instanceof Error ? e.message : 'Failed to load filters');
+    } finally {
+      setIsLoadingTaxonomy(false);
+    }
+  }, []);
+
+  const handleTaxonomyOpenChange = useCallback((next: boolean) => {
+    setTaxonomyDialogOpen(next);
+    if (next) {
+      void loadTaxonomyTermsIfNeeded();
+    }
+  }, [loadTaxonomyTermsIfNeeded]);
+
+  const visibleTaxonomyTerms = React.useMemo(() => {
+    const trimmed = taxonomySearch.trim().toLowerCase();
+    if (!trimmed) return taxonomyTerms;
+    return taxonomyTerms.filter((t) => t.term.toLowerCase().includes(trimmed));
+  }, [taxonomySearch, taxonomyTerms]);
+
+  const toggleTaxonomyId = useCallback((id: string) => {
+    if (!isUuid(id)) return;
+    setSelectedTaxonomyIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      return next.slice(0, 20);
+    });
+  }, []);
+
+  const clearTaxonomyFilters = useCallback(() => {
+    setSelectedTaxonomyIds([]);
+  }, []);
+
   const sendMessage = useCallback(async (override?: string) => {
     const trimmed = (override ?? input).trim();
     if (!trimmed || isLoading) return;
+
+    trackInteraction('chat_message_sent', { quota_remaining: quotaRemaining });
 
     if (!override) setInput('');
     setMessages((prev) => [
@@ -206,10 +297,16 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
     setIsLoading(true);
 
     try {
+      const requestBody: Record<string, unknown> = { message: trimmed, sessionId, userId };
+      const filterPayload: Record<string, unknown> = {};
+      if (trustFilter !== 'all') filterPayload.trust = trustFilter;
+      if (selectedTaxonomyIds.length > 0) filterPayload.taxonomyTermIds = selectedTaxonomyIds;
+      if (Object.keys(filterPayload).length > 0) requestBody.filters = filterPayload;
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: trimmed, sessionId, userId }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -225,6 +322,7 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
 
       if (data.isCrisis) {
         setHasCrisis(true);
+        trackInteraction('crisis_banner_shown');
       }
 
       setQuotaRemaining(data.quotaRemaining);
@@ -258,7 +356,7 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
       setIsLoading(false);
       inputRef.current?.focus();
     }
-  }, [input, isLoading, sessionId, userId]);
+  }, [input, isLoading, quotaRemaining, selectedTaxonomyIds, sessionId, trustFilter, userId]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -299,6 +397,97 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
             />
           </div>
         )}
+
+        {/* Filters */}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-gray-500">Trust:</span>
+          <div role="group" aria-label="Trust filter" className="flex flex-wrap gap-1">
+            {TRUST_OPTIONS.map((opt) => {
+              const selected = trustFilter === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setTrustFilter(opt.value)}
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
+                    selected
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                  }`}
+                  aria-pressed={selected}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <Dialog open={taxonomyDialogOpen} onOpenChange={handleTaxonomyOpenChange}>
+            <DialogTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="text-xs">
+                Tags{selectedTaxonomyIds.length > 0 ? ` (${selectedTaxonomyIds.length})` : ''}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Filter by service tags</DialogTitle>
+                <DialogDescription>
+                  Filters are based on stored taxonomy terms. You may need to confirm details with the provider.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    value={taxonomySearch}
+                    onChange={(e) => setTaxonomySearch(e.target.value)}
+                    type="search"
+                    placeholder="Search tags…"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    aria-label="Search service tags"
+                  />
+                  {selectedTaxonomyIds.length > 0 && (
+                    <Button type="button" variant="outline" onClick={clearTaxonomyFilters}>
+                      Clear
+                    </Button>
+                  )}
+                </div>
+
+                {taxonomyError && (
+                  <p className="text-sm text-red-700" role="alert">{taxonomyError}</p>
+                )}
+
+                {isLoadingTaxonomy ? (
+                  <p className="text-sm text-gray-600">Loading tags…</p>
+                ) : (
+                  <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 p-2">
+                    <div className="flex flex-wrap gap-2">
+                      {visibleTaxonomyTerms.map((t) => {
+                        const selected = selectedTaxonomyIds.includes(t.id);
+                        return (
+                          <Button
+                            key={t.id}
+                            type="button"
+                            size="sm"
+                            variant={selected ? 'secondary' : 'outline'}
+                            onClick={() => toggleTaxonomyId(t.id)}
+                            title={t.description ?? undefined}
+                            className="text-xs"
+                          >
+                            {t.term}
+                          </Button>
+                        );
+                      })}
+                      {visibleTaxonomyTerms.length === 0 && (
+                        <p className="text-sm text-gray-600">No matching tags.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Messages */}

@@ -257,4 +257,149 @@ describe('community admin verify page', () => {
     await screen.findByRole('alert');
     expect(screen.getByText('review lock conflict')).toBeInTheDocument();
   });
+
+  it('renders compact detail state when optional fields are absent and status is unknown', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () =>
+        makeQueueDetail({
+          status: 'unknown_status',
+          service_description: null,
+          service_url: null,
+          service_email: null,
+          organization_description: null,
+          organization_url: null,
+          organization_email: null,
+          notes: null,
+          assigned_to_user_id: null,
+          locations: [],
+          phones: [],
+          eligibility: [],
+          required_documents: [],
+          languages: [],
+          accessibility: [],
+          confidenceScore: null,
+        }),
+    });
+
+    render(<VerifyPage />);
+
+    await screen.findByRole('heading', { name: 'Housing Navigator' });
+    expect(screen.getByText('No confidence score yet')).toBeInTheDocument();
+    expect(screen.queryByText(/Locations \(/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Phone Numbers \(/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Eligibility Criteria \(/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Required Documents \(/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Languages \(/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Accessibility \(/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/already been reviewed/i)).toBeInTheDocument();
+  });
+
+  it('submits an approval decision without notes and omits notes from payload', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail({ status: 'under_review' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ message: 'Approved successfully' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail({ status: 'approved' }),
+      });
+
+    render(<VerifyPage />);
+    await screen.findByRole('heading', { name: 'Housing Navigator' });
+
+    fireEvent.click(screen.getByLabelText(/Verify/));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Decision' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/community/queue/q-1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision: 'approved',
+          notes: undefined,
+          reviewerUserId: 'current-user',
+        }),
+      });
+      expect(screen.getByText('Approved successfully')).toBeInTheDocument();
+    });
+  });
+
+  it('requires notes for escalation and submits once notes are provided', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail({ status: 'needs_review' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ message: 'Escalated to ORAN' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail({ status: 'escalated' }),
+      });
+
+    render(<VerifyPage />);
+    await screen.findByRole('heading', { name: 'Housing Navigator' });
+
+    fireEvent.click(screen.getByLabelText(/Escalate/));
+    const submitButton = screen.getByRole('button', { name: 'Submit Decision' });
+    expect(submitButton).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/Notes/), {
+      target: { value: '  Needs second-level review  ' },
+    });
+    expect(submitButton).toBeEnabled();
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/community/queue/q-1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision: 'escalated',
+          notes: 'Needs second-level review',
+          reviewerUserId: 'current-user',
+        }),
+      });
+      expect(screen.getByText('Escalated to ORAN')).toBeInTheDocument();
+    });
+  });
+
+  it('shows fallback message when detail fetch throws a non-Error value', async () => {
+    fetchMock.mockRejectedValueOnce('network-down');
+
+    render(<VerifyPage />);
+
+    await screen.findByText('Failed to load entry');
+  });
+
+  it('shows fallback decision error when API failure has no JSON body', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail(),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => {
+          throw new Error('bad-json');
+        },
+      });
+
+    render(<VerifyPage />);
+    await screen.findByRole('heading', { name: 'Housing Navigator' });
+
+    fireEvent.click(screen.getByLabelText(/Verify/));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Decision' }));
+
+    await screen.findByRole('alert');
+    expect(screen.getByText('Decision submission failed')).toBeInTheDocument();
+  });
 });

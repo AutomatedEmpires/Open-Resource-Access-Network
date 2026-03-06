@@ -69,6 +69,7 @@ export default function GlobalError({
             >
               Try again
             </button>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- global-error must provide its own <html>/<body>; Next.js <Link> cannot be used here */}
             <a
               href="/"
               style={{

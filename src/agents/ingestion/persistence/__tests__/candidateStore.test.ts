@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createDrizzleCandidateStore } from '../candidateStore';
+import type { CandidateReviewStatus } from '../stores';
 
 function createMockDb(selectResults: unknown[] = []) {
   const insertValues: unknown[] = [];
@@ -203,6 +204,49 @@ describe('candidateStore', () => {
     );
   });
 
+  it('returns null for missing candidate lookups', async () => {
+    const { db } = createMockDb([[], []]);
+    const store = createDrizzleCandidateStore(db as never);
+
+    await expect(store.getById('missing')).resolves.toBeNull();
+    await expect(store.getByExtractKey('missing-key')).resolves.toBeNull();
+  });
+
+  it('maps jurisdiction kinds and optional fields across row permutations', async () => {
+    const { db } = createMockDb([
+      [makeRow({ candidateId: 'cand-municipal', jurisdictionKind: 'municipal' })],
+      [makeRow({ candidateId: 'cand-state', jurisdictionKind: 'state' })],
+      [makeRow({ candidateId: 'cand-unknown', jurisdictionKind: 'unknown' })],
+      [makeRow({
+        candidateId: 'cand-no-jurisdiction',
+        jurisdictionState: null,
+        jurisdictionCounty: null,
+        jurisdictionCity: null,
+        jurisdictionKind: null,
+        addressLine1: null,
+        addressCity: null,
+        addressRegion: null,
+        addressPostalCode: null,
+        phones: null,
+        isRemoteService: null,
+      })],
+    ]);
+    const store = createDrizzleCandidateStore(db as never);
+
+    const municipal = await store.getById('cand-municipal');
+    const state = await store.getById('cand-state');
+    const unknown = await store.getById('cand-unknown');
+    const noJurisdiction = await store.getById('cand-no-jurisdiction');
+
+    expect(municipal?.review?.jurisdiction?.kind).toBe('local');
+    expect(state?.review?.jurisdiction?.kind).toBe('statewide');
+    expect(unknown?.review?.jurisdiction?.kind).toBe('local');
+    expect(noJurisdiction?.review?.jurisdiction).toBeUndefined();
+    expect(noJurisdiction?.fields.address).toBeUndefined();
+    expect(noJurisdiction?.fields.phones).toEqual([]);
+    expect(noJurisdiction?.fields.isRemoteService).toBe(false);
+  });
+
   it('updates fields, review metadata, investigation, and provenance then audits the changed columns', async () => {
     const { db, insertValues, updateSets } = createMockDb();
     const store = createDrizzleCandidateStore(db as never);
@@ -278,6 +322,53 @@ describe('candidateStore', () => {
     );
   });
 
+  it('skips writes when update payload has no mutable fields', async () => {
+    const { db, insertValues, updateSets } = createMockDb();
+    const store = createDrizzleCandidateStore(db as never);
+
+    await store.update('cand-noop', {} as never);
+
+    expect(updateSets).toHaveLength(0);
+    expect(insertValues).toHaveLength(0);
+  });
+
+  it('maps jurisdiction kind updates to DB enums including virtual and default', async () => {
+    const { db, updateSets } = createMockDb();
+    const store = createDrizzleCandidateStore(db as never);
+
+    await store.update('cand-regional', {
+      review: {
+        jurisdiction: { country: 'US', stateProvince: 'WA', kind: 'regional' },
+      },
+    } as never);
+    await store.update('cand-local', {
+      review: {
+        jurisdiction: { country: 'US', stateProvince: 'WA', kind: 'local' },
+      },
+    } as never);
+    await store.update('cand-national', {
+      review: {
+        jurisdiction: { country: 'US', stateProvince: 'WA', kind: 'national' },
+      },
+    } as never);
+    await store.update('cand-virtual', {
+      review: {
+        jurisdiction: { country: 'US', stateProvince: 'WA', kind: 'virtual' },
+      },
+    } as never);
+    await store.update('cand-default', {
+      review: {
+        jurisdiction: { country: 'US', stateProvince: 'WA', kind: 'unknown' as never },
+      },
+    } as never);
+
+    expect(updateSets[0]).toEqual(expect.objectContaining({ jurisdictionKind: 'county' }));
+    expect(updateSets[1]).toEqual(expect.objectContaining({ jurisdictionKind: 'municipal' }));
+    expect(updateSets[2]).toEqual(expect.objectContaining({ jurisdictionKind: 'federal' }));
+    expect(updateSets[3]).toEqual(expect.objectContaining({ jurisdictionKind: 'municipal' }));
+    expect(updateSets[4]).toEqual(expect.objectContaining({ jurisdictionKind: 'municipal' }));
+  });
+
   it('updates review status, confidence score, assignment, and publication with the correct audit events', async () => {
     const { db, insertValues, updateSets } = createMockDb();
     const store = createDrizzleCandidateStore(db as never);
@@ -313,6 +404,17 @@ describe('candidateStore', () => {
     ]);
   });
 
+  it('records system actor when review status changes without a user id', async () => {
+    const { db, insertValues } = createMockDb();
+    const store = createDrizzleCandidateStore(db as never);
+
+    await store.updateReviewStatus('cand-actor', 'pending' as CandidateReviewStatus, undefined);
+
+    expect(insertValues[0]).toEqual(
+      expect.objectContaining({ eventType: 'status_changed', actorType: 'system', actorId: undefined }),
+    );
+  });
+
   it('lists filtered candidates and due review queues from mapped rows', async () => {
     const { db } = createMockDb([
       [makeRow(), makeRow({ candidateId: 'cand-2', reviewStatus: 'published' })],
@@ -337,5 +439,68 @@ describe('candidateStore', () => {
     expect(listed).toHaveLength(2);
     expect(dueReview).toEqual([expect.objectContaining({ candidateId: 'cand-3' })]);
     expect(dueReverify).toEqual([expect.objectContaining({ candidateId: 'cand-4' })]);
+  });
+
+  it('applies all list filters and supports unfiltered list queries', async () => {
+    const { db } = createMockDb([
+      [makeRow({ candidateId: 'cand-filtered' })],
+      [makeRow({ candidateId: 'cand-unfiltered' })],
+    ]);
+    const store = createDrizzleCandidateStore(db as never);
+
+    const filtered = await store.list(
+      {
+        reviewStatus: 'pending',
+        confidenceTier: 'green',
+        jurisdictionState: 'WA',
+        jurisdictionCounty: 'King',
+        assignedToUserId: 'user-1',
+        assignedToRole: 'community_admin',
+        reviewByBefore: new Date('2026-03-01T00:00:00.000Z'),
+        reverifyAtBefore: new Date('2026-04-01T00:00:00.000Z'),
+      },
+      25,
+      0,
+    );
+    const unfiltered = await store.list({}, 5, 0);
+
+    expect(filtered).toEqual([expect.objectContaining({ candidateId: 'cand-filtered' })]);
+    expect(unfiltered).toEqual([expect.objectContaining({ candidateId: 'cand-unfiltered' })]);
+    expect(db.select).toHaveBeenCalledTimes(2);
+  });
+
+  it('creates candidates with defaults when optional fields are omitted', async () => {
+    const { db, insertValues } = createMockDb();
+    const store = createDrizzleCandidateStore(db as never);
+
+    await store.create({
+      extractionId: 'ext-defaults',
+      candidateId: 'cand-defaults',
+      extractKeySha256: 'b'.repeat(64) as `${string}`,
+      extractedAt: '2026-03-01T00:00:00.000Z',
+      fields: {
+        organizationName: 'Minimal Org',
+        serviceName: 'Minimal Service',
+        description: 'Minimal',
+      },
+      review: {
+        timers: {},
+        tags: [],
+        checklist: {} as never,
+      },
+      investigation: {},
+      provenance: {},
+      correlationId: 'corr-min',
+    } as never);
+
+    expect(insertValues[0]).toEqual(
+      expect.objectContaining({
+        candidateId: 'cand-defaults',
+        addressCountry: 'US',
+        isRemoteService: false,
+        reviewStatus: 'pending',
+        jobId: undefined,
+      }),
+    );
   });
 });

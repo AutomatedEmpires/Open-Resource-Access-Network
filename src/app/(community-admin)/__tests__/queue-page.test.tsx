@@ -52,6 +52,8 @@ function makeQueueResponse(overrides: Record<string, unknown> = {}) {
         service_status: 'active',
         organization_id: 'org-1',
         organization_name: 'Helping Hands',
+        sla_deadline: null,
+        sla_breached: false,
       },
     ],
     total: 1,
@@ -114,6 +116,46 @@ describe('community admin queue page', () => {
       expect(fetchMock).toHaveBeenLastCalledWith('/api/community/queue?page=1&limit=20&status=approved');
       expect(screen.getByText('No entries found')).toBeInTheDocument();
       expect(screen.getByText('No entries with status "Approved".')).toBeInTheDocument();
+    });
+  });
+
+  it('applies the assigned-to-me filter and supports manual refresh', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueResponse(),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          makeQueueResponse({
+            results: [
+              {
+                ...makeQueueResponse().results[0],
+                assigned_to_user_id: 'community-admin-1',
+              },
+            ],
+          }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueResponse(),
+      });
+
+    render(<QueuePage />);
+    await screen.findByText('Food Pantry');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Assigned to me' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/community/queue?page=1&limit=20&assignedToMe=true');
+      expect(screen.getByText('community-admin-1')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/community/queue?page=1&limit=20&assignedToMe=true');
     });
   });
 
@@ -184,5 +226,98 @@ describe('community admin queue page', () => {
 
     await screen.findByRole('alert');
     expect(screen.getByText('already claimed by another reviewer')).toBeInTheDocument();
+  });
+
+  it('renders bulk actions, processes approval selection, and resets selected state', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          makeQueueResponse({
+            total: 2,
+            results: [
+              {
+                ...makeQueueResponse().results[0],
+                id: 'q-1',
+                service_name: 'Food Pantry',
+                status: 'submitted',
+                sla_breached: true,
+              },
+              {
+                ...makeQueueResponse().results[0],
+                id: 'q-2',
+                service_name: 'Health Clinic',
+                status: 'under_review',
+                assigned_to_user_id: 'reviewer-2',
+                sla_deadline: '2026-02-20T00:00:00.000Z',
+              },
+            ],
+          }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ succeeded: ['q-1'], failed: [{ id: 'q-2', error: 'locked' }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueResponse({ total: 0, results: [] }),
+      });
+
+    render(<QueuePage />);
+    await screen.findByText('Food Pantry');
+    expect(screen.getByText('Breached')).toBeInTheDocument();
+    expect(screen.getByText('reviewer-2')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve selected' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/community/queue/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: ['q-1', 'q-2'], decision: 'approved' }),
+      });
+    });
+
+    await screen.findByText('No entries found');
+    expect(screen.queryByText('2 selected')).not.toBeInTheDocument();
+  });
+
+  it('surfaces bulk-action API errors and allows dismissing the alert', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueResponse(),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'bulk queue unavailable' }),
+      });
+
+    render(<QueuePage />);
+    await screen.findByText('Food Pantry');
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Select Food Pantry/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reject selected' }));
+
+    await screen.findByRole('alert');
+    expect(screen.getByText('bulk queue unavailable')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText('bulk queue unavailable')).not.toBeInTheDocument();
+  });
+
+  it('shows default empty-state copy when no status filter is active', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => makeQueueResponse({ results: [], total: 0 }),
+    });
+
+    render(<QueuePage />);
+
+    await screen.findByText('No entries found');
+    expect(screen.getByText('The verification queue is empty.')).toBeInTheDocument();
   });
 });

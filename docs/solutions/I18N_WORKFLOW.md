@@ -65,3 +65,24 @@ For Arabic (`ar`) and other RTL languages:
 - In non-development environments: return the key as a fallback so the UI does not break.
 
 Note: “never display raw translation keys to end users” is a **design goal**, but is not currently enforced.
+---
+
+## `<html lang>` Attribute Policy (Decision Record — TASK-17)
+
+**Decision (Option C — remove premature mutation):** The `updateHtmlLang()` function that
+directly mutated `document.documentElement.lang` has been removed from
+`src/app/(seeker)/profile/ProfilePageClient.tsx`.
+
+**Rationale:** Setting `lang="es"` on `<html>` while all UI text is still rendered in
+English is *worse* for screen readers than leaving it at the default `lang="en"` — the
+browser will apply a Spanish pronunciation engine to English words, producing incorrect
+speech output. The lang attribute must only change when the actual translated strings are
+served.
+
+**Path to correct implementation:**
+1. Adopt `next-intl` or similar and serve locale-specific string bundles.
+2. Set `<html lang={locale}>` in `src/app/layout.tsx` at render time based on the resolved
+   locale — not via `document.documentElement.lang` mutation in a client component.
+3. RTL locales additionally need `dir="rtl"`.
+
+Until translated string bundles are available, the `<html lang>` attribute remains `en`.

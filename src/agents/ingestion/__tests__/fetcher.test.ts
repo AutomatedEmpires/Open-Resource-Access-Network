@@ -8,9 +8,7 @@ import {
   FetchResultSchema,
   FetchErrorSchema,
   TextExtractionOptionsSchema,
-  TextExtractionResultSchema,
   LinkDiscoveryOptionsSchema,
-  DiscoveredLinkResultSchema,
   // Fetcher
   isFetchError,
   isFetchSuccess,
@@ -24,7 +22,6 @@ import {
   createLinkDiscovery,
   discoverLinks,
   // Evidence Builder
-  EvidenceBuilder,
   createEvidenceBuilder,
   buildEvidenceSnapshot,
   // Dedup

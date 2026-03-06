@@ -48,6 +48,21 @@ export interface RouteQueueMessage {
 const DISCREPANCY_PENALTY = 20;
 const MAX_PAGE_CHARS = 1800;
 
+/**
+ * Computes cosine similarity between two equal-length vectors.
+ * Returns 0 if either vector is zero-norm.
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
 function scoreToTier(score: number): 'green' | 'yellow' | 'orange' | 'red' {
   if (score >= 80) return 'green';
   if (score >= 60) return 'yellow';
@@ -200,6 +215,39 @@ export async function verifyCandidate(
           console.log(
             `[verifyCandidate] Phi-4 discrepancy penalty=${penalty} ` +
               `for candidate ${message.candidateId}`
+          );
+        }
+
+        // --- Idea 12: cosine similarity calibration ---
+        // Embed both the candidate text and the live page text and apply a
+        // small penalty when embedding space divergence suggests a mismatch.
+        try {
+          const { buildServiceEmbeddingText, embedForIndexing } = await import(
+            '@/services/search/embeddings'
+          );
+          const candidateText = buildServiceEmbeddingText({
+            name: candidate.fields.serviceName,
+            description: candidate.fields.description ?? '',
+          });
+          const [candidateEmb, pageEmb] = await Promise.all([
+            embedForIndexing(candidateText),
+            embedForIndexing(text.slice(0, 2048)),
+          ]);
+          if (candidateEmb && pageEmb) {
+            const sim = cosineSimilarity(candidateEmb, pageEmb);
+            if (sim < 0.7) {
+              const simPenalty = Math.round((0.7 - sim) * 30); // up to 21 pts (linearly scaled)
+              penalty = Math.min(penalty + simPenalty, 30);
+              console.log(
+                `[verifyCandidate] Cosine similarity=${sim.toFixed(3)} ` +
+                  `sim_penalty=${simPenalty} candidate=${message.candidateId}`
+              );
+            }
+          }
+        } catch (simErr) {
+          console.warn(
+            `[verifyCandidate] Cosine calibration failed (non-fatal): ` +
+              (simErr instanceof Error ? simErr.message : String(simErr))
           );
         }
       }

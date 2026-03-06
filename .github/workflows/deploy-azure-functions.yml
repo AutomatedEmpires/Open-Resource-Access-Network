@@ -1,0 +1,66 @@
+name: Deploy (Azure Functions)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-azure-functions
+  cancel-in-progress: true
+
+jobs:
+  deploy-functions:
+    if: ${{ vars.AZURE_DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install function dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Build functions
+        working-directory: functions
+        run: npm run build
+
+      - name: Prune dev dependencies
+        working-directory: functions
+        run: npm prune --production
+
+      - name: Login to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure Functions
+        uses: azure/functions-action@v2
+        with:
+          app-name: ${{ vars.AZURE_FUNC_APP_NAME }}
+          package: functions
+
+      - name: Verify deployment
+        run: |
+          echo "Functions deployed to: ${{ vars.AZURE_FUNC_APP_NAME }}"
+          az functionapp function list \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_FUNC_APP_NAME }}" \
+            --query "[].name" -o tsv

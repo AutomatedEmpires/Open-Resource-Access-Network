@@ -15,7 +15,7 @@ export function Skeleton({ className, circle, ...props }: SkeletonProps) {
     <div
       aria-hidden="true"
       className={cn(
-        'bg-gray-200 motion-safe:animate-pulse',
+        'bg-gray-200 dark:bg-slate-700 motion-safe:animate-pulse',
         circle ? 'rounded-full' : 'rounded-md',
         className,
       )}
@@ -31,7 +31,7 @@ export function SkeletonCard({ className, ...props }: React.HTMLAttributes<HTMLD
   return (
     <div
       aria-hidden="true"
-      className={cn('border border-gray-200 rounded-lg p-4 space-y-3', className)}
+      className={cn('border border-[var(--border)] rounded-lg p-4 space-y-3', className)}
       {...props}
     >
       <div className="flex items-start justify-between gap-2">

@@ -9,6 +9,20 @@ async function expectSuccessOrAlert(page: Page, successPattern: RegExp): Promise
   }).toPass({ timeout: 30_000 });
 }
 
+async function openSeekerSubmissionPage(page: Page, path: string, heading: string): Promise<void> {
+  await expect(async () => {
+    await page.goto(path);
+    const signInRequired = page.getByText('Sign in required');
+    if (await signInRequired.isVisible().catch(() => false)) {
+      await loginAs(page, 'seeker');
+      await page.goto(path);
+    }
+
+    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+    await expect(signInRequired).toHaveCount(0);
+  }).toPass({ timeout: 45_000 });
+}
+
 test.describe('Seeker account & submission workflows', () => {
   test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
@@ -55,7 +69,7 @@ test.describe('Seeker account & submission workflows', () => {
 
   test('seeker can submit a listing report (success or API error surfaced)', async ({ page }) => {
     await loginAs(page, 'seeker');
-    await page.goto('/report?serviceId=11111111-1111-4111-8111-111111111111');
+    await openSeekerSubmissionPage(page, '/report?serviceId=11111111-1111-4111-8111-111111111111', 'Report a Listing');
 
     const submit = page.getByRole('button', { name: 'Submit Report' });
     await expect(submit).toBeDisabled();
@@ -70,7 +84,11 @@ test.describe('Seeker account & submission workflows', () => {
 
   test('seeker can submit an appeal (success or API error surfaced)', async ({ page }) => {
     await loginAs(page, 'seeker');
-    await page.goto('/appeal?submissionId=11111111-1111-4111-8111-111111111111');
+    await openSeekerSubmissionPage(
+      page,
+      '/appeal?submissionId=11111111-1111-4111-8111-111111111111',
+      'Appeal a Decision',
+    );
 
     const submit = page.getByRole('button', { name: 'Submit Appeal' });
     await expect(submit).toBeDisabled();

@@ -18,13 +18,29 @@ import type { ServiceSearchEngine } from '@/services/search/engine';
 const SEARCH_CACHE_TTL_SECONDS = 300; // 5 minutes
 const CACHE_KEY_PREFIX = 'search:';
 
+function stableStringify(value: unknown): string {
+  if (value === null) return 'null';
+  const t = typeof value;
+  if (t === 'number' || t === 'boolean') return String(value);
+  if (t === 'string') return JSON.stringify(value);
+  if (t !== 'object') return 'null';
+
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => stableStringify(v)).join(',')}]`;
+  }
+
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  const pairs = keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`);
+  return `{${pairs.join(',')}}`;
+}
+
 /**
  * Build a deterministic cache key from a search query.
  * Uses SHA-256 of canonical JSON to avoid key length issues.
  */
 export function buildCacheKey(query: SearchQuery): string {
-  // Create a canonical representation (sorted keys)
-  const canonical = JSON.stringify(query, Object.keys(query).sort());
+  const canonical = stableStringify(query);
   const hash = createHash('sha256').update(canonical).digest('hex').slice(0, 16);
   return `${CACHE_KEY_PREFIX}${hash}`;
 }

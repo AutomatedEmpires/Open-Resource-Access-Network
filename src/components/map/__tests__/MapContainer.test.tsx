@@ -9,6 +9,7 @@ const useEffectMock = vi.hoisted(() => vi.fn());
 const mapInstances = vi.hoisted(() => [] as any[]);
 const popupInstances = vi.hoisted(() => [] as any[]);
 const markerInstances = vi.hoisted(() => [] as any[]);
+const mapCtorError = vi.hoisted(() => ({ error: null as Error | null }));
 const boundingBoxFromPositionsMock = vi.hoisted(() =>
   vi.fn((positions: [number, number][]) => ({ kind: 'bounds', positions })),
 );
@@ -36,6 +37,9 @@ vi.mock('azure-maps-control', () => {
     dispose: ReturnType<typeof vi.fn>;
 
     constructor(_container: unknown, options: unknown) {
+      if (mapCtorError.error) {
+        throw mapCtorError.error;
+      }
       this.options = options;
       this.handlers = {};
       this.markers = {
@@ -189,6 +193,7 @@ beforeEach(() => {
   mapInstances.length = 0;
   popupInstances.length = 0;
   markerInstances.length = 0;
+  mapCtorError.error = null;
 
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -301,7 +306,10 @@ describe('MapContainer', () => {
     }) as React.ReactElement<any, any>;
     const regions = collectElements(
       regionElement,
-      (child) => child.props.role === 'region' && child.props['aria-label'] === 'Interactive service map',
+      (child) =>
+        child.props.role === 'application'
+        && typeof child.props['aria-label'] === 'string'
+        && child.props['aria-label'].includes('Interactive service map'),
     );
 
     expect(regions).toHaveLength(1);
@@ -371,5 +379,177 @@ describe('MapContainer', () => {
     expect(markersRef.current).toEqual([]);
     expect(popupRef.current).toBeNull();
     expect(setMapError).not.toHaveBeenCalled();
+  });
+
+  it('supports keyboard map navigation controls', async () => {
+    const setCamera = vi.fn();
+    const mapRef = {
+      current: {
+        getCamera: vi.fn(() => ({ center: [-122.33, 47.61], zoom: 4 })),
+        setCamera,
+      },
+    };
+    queueRefs([
+      { current: { node: true } },
+      mapRef,
+      { current: [] },
+      { current: null },
+    ]);
+    useStateMock
+      .mockImplementationOnce(() => [null, vi.fn()])
+      .mockImplementationOnce(() => [false, vi.fn()]);
+
+    const { MapContainer } = await loadMapContainer();
+    const element = MapContainer({
+      centerLat: 40,
+      centerLng: -99,
+      zoom: 5,
+      className: 'h-48',
+    }) as React.ReactElement<any, any>;
+    const app = collectElements(
+      element,
+      (child) => child.props.role === 'application',
+    )[0];
+    expect(app).toBeDefined();
+
+    const emit = (key: string) => {
+      const preventDefault = vi.fn();
+      app.props.onKeyDown({ key, preventDefault });
+      return preventDefault;
+    };
+
+    expect(emit('ArrowUp')).toHaveBeenCalledOnce();
+    expect(emit('ArrowDown')).toHaveBeenCalledOnce();
+    expect(emit('ArrowLeft')).toHaveBeenCalledOnce();
+    expect(emit('ArrowRight')).toHaveBeenCalledOnce();
+    expect(emit('+')).toHaveBeenCalledOnce();
+    expect(emit('=')).toHaveBeenCalledOnce();
+    expect(emit('-')).toHaveBeenCalledOnce();
+    expect(emit('R')).toHaveBeenCalledOnce();
+    expect(emit('x')).not.toHaveBeenCalled();
+
+    const calls = setCamera.mock.calls.map((c) => c[0]);
+    expect(calls[0]).toEqual({ center: [-122.33, 47.71] });
+    expect(calls[1]).toEqual({ center: [-122.33, 47.51] });
+    expect((calls[2].center as [number, number])[0]).toBeCloseTo(-122.43, 8);
+    expect((calls[2].center as [number, number])[1]).toBeCloseTo(47.61, 8);
+    expect(calls[3]).toEqual({ center: [-122.23, 47.61] });
+    expect(calls[4]).toEqual({ zoom: 5 });
+    expect(calls[5]).toEqual({ zoom: 5 });
+    expect(calls[6]).toEqual({ zoom: 3 });
+    expect(calls[7]).toEqual({ center: [-99, 40], zoom: 4 });
+  });
+
+  it('centers camera directly when exactly one pin is available', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ subscriptionKey: 'atlas-key' }),
+    });
+    const effects: Array<() => void | (() => void)> = [];
+    useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
+      effects.push(effect);
+    });
+    queueRefs([
+      { current: { node: true } },
+      { current: null },
+      { current: [] },
+      { current: null },
+    ]);
+    useStateMock
+      .mockImplementationOnce(() => [null, vi.fn()])
+      .mockImplementationOnce(() => [false, vi.fn()]);
+    const { MapContainer } = await loadMapContainer();
+
+    MapContainer({
+      services: [serviceOne] as never,
+      className: 'h-48',
+    });
+
+    effects[1]();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mapInstances).toHaveLength(1);
+    const map = mapInstances[0];
+    effects[2]();
+
+    expect(map.markers.add).toHaveBeenCalled();
+    expect(map.setCamera).toHaveBeenCalledWith({ center: [-122.33, 47.61], zoom: 13 });
+    expect(boundingBoxFromPositionsMock).not.toHaveBeenCalled();
+  });
+
+  it('captures map initialization constructor failures and sets error state', async () => {
+    mapCtorError.error = new Error('atlas init failed');
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ subscriptionKey: 'atlas-key' }),
+    });
+    const setMapError = vi.fn();
+    const setIsLoading = vi.fn();
+    const effects: Array<() => void | (() => void)> = [];
+    useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
+      effects.push(effect);
+    });
+    queueRefs([
+      { current: { node: true } },
+      { current: null },
+      { current: [] },
+      { current: null },
+    ]);
+    useStateMock
+      .mockImplementationOnce(() => [null, setMapError])
+      .mockImplementationOnce(() => [true, setIsLoading]);
+    const { MapContainer } = await loadMapContainer();
+
+    MapContainer({ className: 'h-48' });
+    effects[1]();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setMapError).toHaveBeenCalledWith('atlas init failed');
+    expect(setIsLoading).toHaveBeenCalledWith(false);
+  });
+
+  it('removes previously-rendered markers before adding the next marker set', async () => {
+    const oldMarkers = [{ id: 'old-1' }];
+    const map = {
+      markers: {
+        remove: vi.fn(),
+        add: vi.fn(),
+      },
+      events: {
+        add: vi.fn(),
+      },
+      setCamera: vi.fn(),
+    };
+    const effects: Array<() => void | (() => void)> = [];
+    useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
+      effects.push(effect);
+    });
+    const markersRef = { current: oldMarkers as unknown[] };
+    queueRefs([
+      { current: { node: true } },
+      { current: map },
+      markersRef,
+      { current: null },
+    ]);
+    useStateMock
+      .mockImplementationOnce(() => [null, vi.fn()])
+      .mockImplementationOnce(() => [false, vi.fn()]);
+    const { MapContainer } = await loadMapContainer();
+
+    MapContainer({
+      services: [serviceOne] as never,
+      className: 'h-48',
+    });
+    effects[2]();
+
+    expect(map.markers.remove).toHaveBeenCalledWith(oldMarkers);
+    expect(map.markers.add).toHaveBeenCalled();
+    expect(markersRef.current.length).toBeGreaterThan(0);
   });
 });

@@ -1,0 +1,84 @@
+name: Deploy Infrastructure (Bicep)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      whatIf:
+        description: 'Preview only (what-if mode)'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: infra-deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-infra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Login to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run What-If preview
+        if: ${{ inputs.whatIf }}
+        run: |
+          az deployment group what-if \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --template-file infra/main.bicep \
+            --parameters \
+              prefix="${{ vars.ORAN_PREFIX || 'oran' }}" \
+              environment="${{ inputs.environment }}" \
+              pgAdminPassword="${{ secrets.PG_ADMIN_PASSWORD }}" \
+              nextAuthSecret="${{ secrets.NEXTAUTH_SECRET }}" \
+              internalApiKey="${{ secrets.INTERNAL_API_KEY }}" \
+              entraClientId="${{ vars.AZURE_AD_CLIENT_ID || '' }}" \
+              entraClientSecret="${{ secrets.AZURE_AD_CLIENT_SECRET }}" \
+              entraTenantId="${{ vars.AZURE_AD_TENANT_ID || '' }}"
+
+      - name: Deploy infrastructure
+        if: ${{ !inputs.whatIf }}
+        run: |
+          az deployment group create \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --template-file infra/main.bicep \
+            --parameters \
+              prefix="${{ vars.ORAN_PREFIX || 'oran' }}" \
+              environment="${{ inputs.environment }}" \
+              pgAdminPassword="${{ secrets.PG_ADMIN_PASSWORD }}" \
+              nextAuthSecret="${{ secrets.NEXTAUTH_SECRET }}" \
+              internalApiKey="${{ secrets.INTERNAL_API_KEY }}" \
+              entraClientId="${{ vars.AZURE_AD_CLIENT_ID || '' }}" \
+              entraClientSecret="${{ secrets.AZURE_AD_CLIENT_SECRET }}" \
+              entraTenantId="${{ vars.AZURE_AD_TENANT_ID || '' }}" \
+            --query "properties.outputs" -o json
+
+      - name: Show deployment outputs
+        if: ${{ !inputs.whatIf }}
+        run: |
+          az deployment group show \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name main \
+            --query "properties.outputs.{webApp:webAppUrl.value,funcApp:funcAppUrl.value,keyVault:keyVaultName.value,postgres:pgServerFqdn.value}" \
+            -o table

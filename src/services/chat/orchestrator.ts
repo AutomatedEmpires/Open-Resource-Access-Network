@@ -286,6 +286,8 @@ export interface OrchestratorDeps {
   isFlagEnabled: (flagName: string) => Promise<boolean>;
   /** Optional: LLM summarization — only called if flag enabled, only summarizes retrieved records */
   summarizeWithLLM?: (services: EnrichedService[], intent: Intent) => Promise<string>;
+  /** Optional: LLM intent enrichment — only called for 'general' fallback queries, if flag enabled */
+  enrichIntent?: (message: string, intent: Intent) => Promise<Intent>;
 }
 
 /**
@@ -342,7 +344,20 @@ export async function orchestrateChat(
   }
 
   // Stage 4: Intent detection — no LLM
-  const intent = detectIntent(message);
+  let intent = detectIntent(message);
+
+  // Stage 4.5: LLM intent enrichment (Idea 10)
+  // Only fires when keyword classifier returns 'general' (ambiguous fallback).
+  // Never runs for crisis-detected messages (guarded by early returns above).
+  // FAIL-OPEN: any error keeps the original intent.
+  const intentEnrichEnabled = await deps.isFlagEnabled(FEATURE_FLAGS.LLM_INTENT_ENRICH);
+  if (intentEnrichEnabled && intent.category === 'general' && deps.enrichIntent) {
+    try {
+      intent = await deps.enrichIntent(message, intent);
+    } catch {
+      // LLM failure is non-fatal — keep original intent
+    }
+  }
 
   // Stage 5: Context assembly (profile hydration)
   const context = { ...assembleContext(sessionId, userId), locale };

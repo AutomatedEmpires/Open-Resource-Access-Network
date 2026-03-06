@@ -96,9 +96,10 @@ describe('platform shell', () => {
     const layout = RootLayout({ children: 'Child' }) as React.ReactElement<any, any>;
     const body = React.Children.only(layout.props.children) as React.ReactElement<any, any>;
     const bodyChildren = React.Children.toArray(body.props.children) as React.ReactElement<any, any>[];
+    const skipLink = bodyChildren.find((child) => child?.props?.href === '#main-content');
 
     expect(layout.props.lang).toBe('en');
-    expect(bodyChildren[0].props.href).toBe('#main-content');
+    expect(skipLink?.props.href).toBe('#main-content');
     expect(metadata.title && typeof metadata.title).toBe('object');
     expect(viewport.initialScale).toBe(1);
   });

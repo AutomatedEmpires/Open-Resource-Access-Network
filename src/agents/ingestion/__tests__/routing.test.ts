@@ -7,7 +7,6 @@ import {
   AdminCapacitySchema,
   CandidateAssignmentSchema,
   RoutingRequestSchema,
-  AdminMatchSchema,
   getAvailableSlots,
   canAcceptAssignment,
   computeAdminPriority,

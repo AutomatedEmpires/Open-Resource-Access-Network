@@ -26,12 +26,27 @@ import { FormAlert } from '@/components/ui/form-alert';
 import { FormField } from '@/components/ui/form-field';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/toast';
+import { getConfidenceTier } from '@/domain/confidence';
+import type { ConfidenceTier } from '@/domain/confidence';
 import type { SubmissionStatus } from '@/domain/types';
 import {
   SUBMISSION_STATUS_STYLES,
   DEFAULT_STATUS_STYLE,
 } from '@/domain/status-styles';
 import { formatDateTime } from '@/lib/format';
+import { getConfidenceTier } from '@/domain/confidence';
+import type { ConfidenceTier } from '@/domain/confidence';
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+
+const SCORE_TEXT_COLOR: Record<ConfidenceTier, string> = {
+  green:  'text-green-700',
+  yellow: 'text-yellow-700',
+  orange: 'text-orange-600',
+  red:    'text-red-600',
+};
 
 // ============================================================
 // TYPES
@@ -120,6 +135,13 @@ interface QueueDetail {
 
 type Decision = 'approved' | 'denied' | 'escalated';
 
+const SCORE_TEXT_COLOR: Record<ConfidenceTier, string> = {
+  green:  'text-green-700',
+  yellow: 'text-yellow-700',
+  orange: 'text-orange-600',
+  red:    'text-red-600',
+};
+
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -134,7 +156,12 @@ function safeHostname(url: string): string {
 }
 
 function ScoreMeter({ label, value }: { label: string; value: number }) {
-  const color = value >= 80 ? 'bg-green-500' : value >= 60 ? 'bg-yellow-500' : 'bg-red-500';
+  const tier = getConfidenceTier(value);
+  const color =
+    tier === 'green'  ? 'bg-green-500'  :
+    tier === 'yellow' ? 'bg-yellow-500' :
+    tier === 'orange' ? 'bg-orange-500' :
+    'bg-red-500';
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs text-gray-600">
@@ -575,7 +602,9 @@ export default function VerifyPage() {
             {entry.confidenceScore ? (
               <div className="space-y-4">
                 <div className="text-center">
-                  <p className="text-4xl font-bold text-gray-900">{entry.confidenceScore.score}</p>
+                  <p className={`text-4xl font-bold ${SCORE_TEXT_COLOR[getConfidenceTier(entry.confidenceScore.score)]}`}>
+                    {entry.confidenceScore.score}
+                  </p>
                   <p className="text-xs text-gray-500 mt-1">Overall Score</p>
                 </div>
                 <div className="space-y-3">

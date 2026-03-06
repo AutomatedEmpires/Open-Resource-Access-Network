@@ -66,6 +66,16 @@ const DEFAULT_FLAGS: FeatureFlag[] = [
   makeFlag(FEATURE_FLAGS.CONTENT_SAFETY_CRISIS, true, 100),
   // Cohere-embed-v3-multilingual on ORAN-FOUNDRY-resource — Phase 3 (off until 0026 migration applied)
   makeFlag(FEATURE_FLAGS.VECTOR_SEARCH, false, 0),
+  // Phase 4 flags — off by default, require external env vars
+  makeFlag(FEATURE_FLAGS.LLM_INTENT_ENRICH, false, 0),
+  makeFlag(FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS, false, 0),
+  makeFlag(FEATURE_FLAGS.TTS_SUMMARIES, false, 0),
+  // Phase 5 flags — off by default, require external env vars
+  makeFlag(FEATURE_FLAGS.LLM_ADMIN_ASSIST, false, 0),
+  makeFlag(FEATURE_FLAGS.LLM_FEEDBACK_TRIAGE, false, 0),
+  makeFlag(FEATURE_FLAGS.DOC_INTELLIGENCE_INTAKE, false, 0),
+  // Privacy-safe UI interaction telemetry (breadcrumbs only — no PII). Off by default.
+  makeFlag(FEATURE_FLAGS.TELEMETRY_INTERACTIONS, false, 0),
 ];
 
 export class InMemoryFlagService implements FlagService {

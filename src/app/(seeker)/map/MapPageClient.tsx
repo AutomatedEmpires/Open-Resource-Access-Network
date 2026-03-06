@@ -13,6 +13,14 @@ import { ServiceCard } from '@/components/directory/ServiceCard';
 import type { SearchResponse } from '@/services/search/types';
 import type { EnrichedService } from '@/domain/types';
 import { useToast } from '@/components/ui/toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 
 // Azure Maps SDK accesses `window` at module evaluation time — must be loaded
 // client-side only. The ssr:false dynamic import prevents SSR prerender errors.
@@ -39,6 +47,15 @@ interface Bounds {
   maxLng: number;
 }
 
+type TaxonomyTermDTO = {
+  id: string;
+  term: string;
+  description: string | null;
+  parentId: string | null;
+  taxonomy: string | null;
+  serviceCount: number;
+};
+
 export default function MapPage() {
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -51,15 +68,68 @@ export default function MapPage() {
   const [isLocating, setIsLocating] = useState(false);
   const [deviceCenter, setDeviceCenter] = useState<{ lat: number; lng: number } | null>(null);
 
+  // Taxonomy filters (IDs are canonical DB UUIDs)
+  const [taxonomyTerms, setTaxonomyTerms] = useState<TaxonomyTermDTO[]>([]);
+  const [isLoadingTaxonomy, setIsLoadingTaxonomy] = useState(false);
+  const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
+  const [selectedTaxonomyIds, setSelectedTaxonomyIds] = useState<string[]>([]);
+  const [taxonomyDialogOpen, setTaxonomyDialogOpen] = useState(false);
+  const [taxonomySearch, setTaxonomySearch] = useState('');
+
   // Track latest bounds from the map for bbox-on-pan queries
   const boundsRef = useRef<Bounds | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isAreaDirty, setIsAreaDirty] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const savedIdsRef = useRef<Set<string>>(new Set());
   const resultsContainerRef = useRef<HTMLDivElement>(null);
   /** Mobile-only toggle between map and list view */
   const [mobileView, setMobileView] = useState<'map' | 'list'>('map');
   const { success, error: toastError, info } = useToast();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTerms() {
+      setIsLoadingTaxonomy(true);
+      setTaxonomyError(null);
+      try {
+        const res = await fetch('/api/taxonomy/terms?limit=250', {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(body?.error ?? 'Failed to load filters');
+        }
+        const json = (await res.json()) as { terms: TaxonomyTermDTO[] };
+        if (!cancelled) {
+          setTaxonomyTerms(Array.isArray(json.terms) ? json.terms : []);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setTaxonomyError(e instanceof Error ? e.message : 'Failed to load filters');
+        }
+      } finally {
+        if (!cancelled) setIsLoadingTaxonomy(false);
+      }
+    }
+
+    void loadTerms();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const roundForPrivacy = useCallback((value: number): number => {
     // ~0.01° ≈ 1km (varies by latitude); used to reduce precision exposure.
@@ -83,6 +153,7 @@ export default function MapPage() {
         setDeviceCenter({ lat, lng });
         setMobileView('map');
         setSearchMode('bbox');
+        setIsAreaDirty(true);
         success('Centered near your location (not saved).');
         setIsLocating(false);
       },
@@ -139,6 +210,18 @@ export default function MapPage() {
 
   const canSearch = useMemo(() => query.trim().length > 0, [query]);
 
+  const taxonomyIdsParam = useMemo(() => {
+    return selectedTaxonomyIds.length > 0 ? selectedTaxonomyIds.join(',') : '';
+  }, [selectedTaxonomyIds]);
+
+  const quickTaxonomyTerms = useMemo(() => taxonomyTerms.slice(0, 6), [taxonomyTerms]);
+
+  const visibleTaxonomyTerms = useMemo(() => {
+    const trimmed = taxonomySearch.trim().toLowerCase();
+    if (!trimmed) return taxonomyTerms;
+    return taxonomyTerms.filter((t) => t.term.toLowerCase().includes(trimmed));
+  }, [taxonomySearch, taxonomyTerms]);
+
   const services: EnrichedService[] = useMemo(() => {
     return data?.results?.map((r) => r.service) ?? [];
   }, [data]);
@@ -150,9 +233,10 @@ export default function MapPage() {
 
   // ── fetch services (text OR bbox) ─────────────────────────
   const runSearch = useCallback(
-    async (opts?: { bbox?: Bounds }) => {
+    async (opts?: { bbox?: Bounds; taxonomyIds?: string }) => {
       const trimmed = query.trim();
       const bbox = opts?.bbox;
+      const taxonomyIds = opts?.taxonomyIds;
 
       // Need either text or bbox
       if (!trimmed && !bbox) return;
@@ -172,6 +256,11 @@ export default function MapPage() {
           params.set('maxLng', String(bbox.maxLng));
         }
 
+        const effectiveTaxonomyIds = taxonomyIds ?? taxonomyIdsParam;
+        if (effectiveTaxonomyIds) {
+          params.set('taxonomyIds', effectiveTaxonomyIds);
+        }
+
         const res = await fetch(`/api/search?${params.toString()}`, {
           method: 'GET',
           headers: { Accept: 'application/json' },
@@ -184,6 +273,7 @@ export default function MapPage() {
 
         const json = (await res.json()) as SearchResponse;
         setData(json);
+        setIsAreaDirty(false);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Search failed');
         setData(null);
@@ -191,14 +281,40 @@ export default function MapPage() {
         setIsLoading(false);
       }
     },
-    [query],
+    [query, taxonomyIdsParam],
   );
+
+  const toggleTaxonomyId = useCallback((id: string) => {
+    setSelectedTaxonomyIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      const nextParam = next.length > 0 ? next.join(',') : '';
+
+      // Re-run the current search context so filters feel immediate.
+      if (boundsRef.current) {
+        void runSearch({ bbox: boundsRef.current, taxonomyIds: nextParam });
+      } else if (query.trim()) {
+        void runSearch({ taxonomyIds: nextParam });
+      }
+
+      return next;
+    });
+  }, [query, runSearch]);
+
+  const clearTaxonomyFilters = useCallback(() => {
+    setSelectedTaxonomyIds([]);
+    if (boundsRef.current) {
+      void runSearch({ bbox: boundsRef.current, taxonomyIds: '' });
+    } else if (query.trim()) {
+      void runSearch({ taxonomyIds: '' });
+    }
+  }, [query, runSearch]);
 
   // ── text search submit ────────────────────────────────────
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Keep bbox mode so results remain tied to the visible map area.
     setSearchMode('bbox');
+    setIsAreaDirty(false);
     void runSearch({ bbox: boundsRef.current ?? undefined });
   };
 
@@ -206,6 +322,7 @@ export default function MapPage() {
   const searchThisArea = useCallback(() => {
     if (!boundsRef.current) return;
     setSearchMode('bbox');
+    setIsAreaDirty(false);
     void runSearch({ bbox: boundsRef.current });
   }, [runSearch]);
 
@@ -215,12 +332,19 @@ export default function MapPage() {
       boundsRef.current = bounds;
       if (searchMode !== 'bbox') return; // only auto re-query in bbox mode
 
+      // Mobile behavior: Zillow-like “Search this area” CTA.
+      if (isMobile) {
+        setIsAreaDirty(true);
+        return;
+      }
+
+      // Desktop behavior: auto refresh (debounced).
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         void runSearch({ bbox: bounds });
       }, DEBOUNCE_MS);
     },
-    [searchMode, runSearch],
+    [isMobile, searchMode, runSearch],
   );
 
   // cleanup on unmount
@@ -289,6 +413,102 @@ export default function MapPage() {
           </Button>
         </form>
 
+        {/* Quick filters + full taxonomy dialog */}
+        {(isLoadingTaxonomy || taxonomyError || taxonomyTerms.length > 0) && (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {quickTaxonomyTerms.map((t) => {
+              const selected = selectedTaxonomyIds.includes(t.id);
+              return (
+                <Button
+                  key={t.id}
+                  type="button"
+                  size="sm"
+                  variant={selected ? 'secondary' : 'outline'}
+                  onClick={() => toggleTaxonomyId(t.id)}
+                  title={t.description ?? undefined}
+                  className="text-xs"
+                >
+                  {t.term}
+                </Button>
+              );
+            })}
+
+            <Dialog open={taxonomyDialogOpen} onOpenChange={setTaxonomyDialogOpen}>
+              <DialogTrigger asChild>
+                <Button type="button" size="sm" variant="outline" className="text-xs">
+                  More filters{selectedTaxonomyIds.length > 0 ? ` (${selectedTaxonomyIds.length})` : ''}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Filter by service tags</DialogTitle>
+                  <DialogDescription>
+                    Filters are based on stored taxonomy terms. You may need to confirm details with the provider.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      value={taxonomySearch}
+                      onChange={(e) => setTaxonomySearch(e.target.value)}
+                      type="search"
+                      placeholder="Search tags…"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                      aria-label="Search service tags"
+                    />
+                    {selectedTaxonomyIds.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={clearTaxonomyFilters}
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+
+                  {taxonomyError && (
+                    <p className="text-sm text-red-700" role="alert">{taxonomyError}</p>
+                  )}
+
+                  {isLoadingTaxonomy ? (
+                    <p className="text-sm text-gray-600">Loading tags…</p>
+                  ) : (
+                    <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 p-2">
+                      <div className="flex flex-wrap gap-2">
+                        {visibleTaxonomyTerms.map((t) => {
+                          const selected = selectedTaxonomyIds.includes(t.id);
+                          return (
+                            <Button
+                              key={t.id}
+                              type="button"
+                              size="sm"
+                              variant={selected ? 'secondary' : 'outline'}
+                              onClick={() => toggleTaxonomyId(t.id)}
+                              title={t.description ?? undefined}
+                              className="text-xs"
+                            >
+                              {t.term}
+                            </Button>
+                          );
+                        })}
+                        {visibleTaxonomyTerms.length === 0 && (
+                          <p className="text-sm text-gray-600 p-2">No matching tags.</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {taxonomyError && taxonomyTerms.length === 0 && (
+              <span className="text-xs text-gray-600">Filters unavailable</span>
+            )}
+          </div>
+        )}
+
         <p className="-mt-2 mb-3 text-xs text-gray-600">
           Location is optional. If you choose “Use my location”, ORAN uses an approximate location to center the map in-session only and does not store it.
         </p>
@@ -341,16 +561,35 @@ export default function MapPage() {
           <div className={`rounded-lg overflow-hidden md:sticky md:top-24 ${
             mobileView === 'list' ? 'hidden md:block' : ''
           }`}>
-            <MapContainer
-              className="w-full h-[50vh] md:h-[calc(100vh-16rem)]"
-              centerLat={deviceCenter?.lat}
-              centerLng={deviceCenter?.lng}
-              zoom={deviceCenter ? 12 : undefined}
-              services={services}
-              onBoundsChange={handleBoundsChange}
-            />
-            {/* "Search this area" overlaid at map bottom */}
-            <div className="flex items-center gap-3 mt-2">
+            <div className="relative">
+              <MapContainer
+                className="w-full h-[50vh] md:h-[calc(100vh-16rem)]"
+                centerLat={deviceCenter?.lat}
+                centerLng={deviceCenter?.lng}
+                zoom={deviceCenter ? 12 : undefined}
+                services={services}
+                onBoundsChange={handleBoundsChange}
+              />
+
+              {/* Mobile: show CTA only after pan/zoom */}
+              {isMobile && isAreaDirty && (
+                <div className="absolute left-0 right-0 top-3 flex justify-center px-3 pointer-events-none">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={searchThisArea}
+                    className="gap-1.5 text-xs pointer-events-auto"
+                  >
+                    <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                    Search this area
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Desktop: always-visible control */}
+            <div className="hidden md:flex items-center gap-3 mt-2">
               <Button
                 type="button"
                 variant="outline"
@@ -362,9 +601,7 @@ export default function MapPage() {
                 Search this area
               </Button>
               {searchMode === 'bbox' && (
-                <span className="text-gray-500 text-xs">
-                  Updates as you pan.
-                </span>
+                <span className="text-gray-500 text-xs">Updates as you pan.</span>
               )}
             </div>
           </div>

@@ -197,7 +197,7 @@ export function NotificationBell() {
 
       {open && (
         <div
-          className="absolute right-0 mt-1 w-80 max-h-[420px] bg-white border border-gray-200 rounded-lg shadow-lg z-50 flex flex-col"
+          className="absolute right-0 mt-1 w-80 max-h-[420px] bg-white border border-gray-200 rounded-lg shadow-lg z-[var(--z-modal)] flex flex-col"
           role="menu"
           aria-label="Notifications"
         >

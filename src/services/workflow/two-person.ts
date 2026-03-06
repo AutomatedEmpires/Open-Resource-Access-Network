@@ -181,7 +181,7 @@ export async function requestGrant(req: GrantRequest): Promise<GrantResult> {
               'A scope grant for "' || $2 || '" requires your approval',
               'pending_grant',
               $1,
-              '/admin/approvals/grants/' || $1,
+              '/scopes',
               'grant_req_' || $1 || '_' || up.user_id
        FROM user_profiles up
        WHERE up.role IN ('oran_admin')

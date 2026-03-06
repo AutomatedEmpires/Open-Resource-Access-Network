@@ -18,6 +18,8 @@ import { createLLMClient, getLLMConfigFromEnv } from '../llm';
 
 import '../llm/providers';
 
+import { trackAiEvent } from '@/services/telemetry/appInsights';
+
 import type {
   PipelineContext,
   PipelineStageHandler,
@@ -417,6 +419,13 @@ export class LlmExtractStage implements PipelineStageHandler {
         fieldConfidences,
       };
 
+      void trackAiEvent('ingestion_llm_extract', {
+        duration_ms: Date.now() - startTime.getTime(),
+        model: client.model,
+        confidence: overallConfidence,
+        success: true,
+      });
+
       return createStageResult(this.stage, 'completed', startTime, undefined, {
         method: 'llm',
         provider: client.provider,
@@ -425,6 +434,11 @@ export class LlmExtractStage implements PipelineStageHandler {
         servicesExtracted: result.data.services.length,
       });
     } catch (err) {
+      void trackAiEvent('ingestion_llm_extract', {
+        duration_ms: Date.now() - startTime.getTime(),
+        error_type: 'network_error',
+        success: false,
+      });
       return createStageResult(this.stage, 'failed', startTime, {
         code: err instanceof Error && err.message.includes('LLM not configured') ? 'llm_not_configured' : 'llm_extract_error',
         message: err instanceof Error ? err.message : String(err),
@@ -524,6 +538,13 @@ export class LlmCategorizeStage implements PipelineStageHandler {
         categoryConfidences,
       };
 
+      void trackAiEvent('ingestion_llm_categorize', {
+        duration_ms: Date.now() - startTime.getTime(),
+        model: client.model,
+        category_count: result.data.tags?.length ?? 0,
+        success: true,
+      });
+
       return createStageResult(this.stage, 'completed', startTime, undefined, {
         method: 'llm',
         provider: client.provider,
@@ -532,6 +553,11 @@ export class LlmCategorizeStage implements PipelineStageHandler {
         primaryCategory: result.data.primaryCategory ?? 'unknown',
       });
     } catch (err) {
+      void trackAiEvent('ingestion_llm_categorize', {
+        duration_ms: Date.now() - startTime.getTime(),
+        error_type: 'network_error',
+        success: false,
+      });
       return createStageResult(this.stage, 'failed', startTime, {
         code: err instanceof Error && err.message.includes('LLM not configured') ? 'llm_not_configured' : 'llm_categorize_error',
         message: err instanceof Error ? err.message : String(err),

@@ -1,8 +1,39 @@
 @import "tailwindcss";
 
+/* Enables dark: utilities via .dark class on <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Z-Index scale — named layers to prevent ad-hoc stacking conflicts */
+  --z-skip-link: 100;
+  --z-toast: 100;
+  --z-modal: 50;
+  --z-nav: 40;
+  --z-sticky: 30;
+  --z-elevated: 20;
+
+  /* Semantic color tokens — light mode defaults */
+  --bg-page: #f9fafb;
+  --bg-surface: #ffffff;
+  --border: #e5e7eb;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+}
+
+/* Dark mode token overrides — applied when .dark is on <html> */
+.dark {
+  --background: #0f172a;
+  --foreground: #f1f5f9;
+  --bg-page: #0f172a;
+  --bg-surface: #1e293b;
+  --border: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
 }
 
 @theme inline {
@@ -40,4 +71,62 @@ body {
 
 @theme inline {
   --animate-toast-enter: toast-enter 200ms ease-out both;
+}
+
+/* ── Print stylesheet ─────────────────────────────────────── */
+/* Optimises printed output: hides chrome, expands content, shows tel: links */
+@media print {
+  /* Hide navigation chrome, buttons, toasts, and interactive elements */
+  header,
+  nav,
+  footer,
+  button,
+  [role="navigation"],
+  [aria-label="Primary navigation"],
+  [aria-label="Mobile navigation"],
+  .skip-link,
+  [data-radix-toast-viewport] {
+    display: none !important;
+  }
+
+  /* Expand content to full width */
+  body,
+  main,
+  .container {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Remove shadows and rounded corners */
+  * {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Show tel: and href links inline after link text */
+  a[href^="tel:"]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.85em;
+    color: #444;
+  }
+
+  /* Prevent page breaks inside service cards and sections */
+  article,
+  section,
+  [data-service-card] {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Ensure text is black on white for print fidelity */
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Keep crisis banners highly visible */
+  [role="alert"] {
+    border: 2px solid #000 !important;
+  }
 }

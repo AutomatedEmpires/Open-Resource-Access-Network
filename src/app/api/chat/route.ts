@@ -14,12 +14,17 @@ import {
 } from '@/services/chat/orchestrator';
 import { flagService } from '@/services/flags/flags';
 import { summarizeWithLLM } from '@/services/chat/llm';
+import { enrichIntent } from '@/services/chat/intentEnrich';
+import { translateBatch, isConfigured as isTranslatorConfigured } from '@/services/i18n/translator';
+import { SUPPORTED_LOCALES } from '@/services/i18n/i18n';
+import type { LocaleCode } from '@/services/i18n/i18n';
 import type { EnrichedService } from '@/domain/types';
 import type { Intent, ChatContext } from '@/services/chat/types';
 import type { SearchQuery } from '@/services/search/types';
 import { ServiceSearchEngine } from '@/services/search/engine';
+import { cachedSearch } from '@/services/search/cache';
 import { executeQuery, executeCount, isDatabaseConfigured } from '@/services/db/postgres';
-import { MAX_SERVICES_PER_RESPONSE } from '@/domain/constants';
+import { MAX_SERVICES_PER_RESPONSE, FEATURE_FLAGS } from '@/domain/constants';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 
@@ -34,59 +39,6 @@ const RequestSchema = ChatRequestSchema;
 // ============================================================
 
 const engine = new ServiceSearchEngine({ executeQuery, executeCount });
-
-/**
- * Load user profile from database if authenticated.
- * Returns approximateCity if set, null otherwise.
- */
-async function loadUserApproximateCity(userId?: string): Promise<string | null> {
-  if (!userId || !isDatabaseConfigured()) {
-    return null;
-  }
-  try {
-    const rows = await executeQuery<{ approximate_city: string | null }>(
-      'SELECT approximate_city FROM user_profiles WHERE user_id = $1',
-      [userId]
-    );
-    return rows[0]?.approximate_city ?? null;
-  } catch {
-    // Silently ignore profile lookup failures
-    return null;
-  }
-}
-
-/**
- * Maps a chat intent to a SearchQuery and retrieves matching services.
- * Pure SQL — no LLM, no ML. Text search uses the intent's raw query.
- * Uses userProfile.approximateCity for city-biased sorting if available.
- */
-async function retrieveServices(
-  intent: Intent,
-  context: ChatContext,
-): Promise<EnrichedService[]> {
-  if (!isDatabaseConfigured()) {
-    return [];
-  }
-
-  // Load user's approximate city for distance-based sorting bias
-  const cityBias = await loadUserApproximateCity(context.userId);
-
-  const query: SearchQuery = {
-    text: intent.rawQuery,
-    filters: {
-      status: 'active',
-    },
-    pagination: {
-      page: 1,
-      limit: MAX_SERVICES_PER_RESPONSE,
-    },
-    // Add city bias if user has set approximate city in their profile
-    ...(cityBias && { cityBias }),
-  };
-
-  const response = await engine.search(query);
-  return response.results.map((r) => r.service);
-}
 
 // ============================================================
 // HANDLER
@@ -109,7 +61,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { message, sessionId, locale } = parsed.data;
+  const { message, sessionId, locale, filters } = parsed.data;
 
   const authCtx = await getAuthContext();
   const effectiveUserId = authCtx?.userId;
@@ -118,12 +70,72 @@ export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   const rateLimitKey = effectiveUserId ? `chat:user:${effectiveUserId}` : `chat:ip:${ip}`;
 
+  /**
+   * Maps a chat intent to a SearchQuery and retrieves matching services.
+   * Pure SQL — no LLM, no ML. Text search uses the intent's raw query.
+   * Uses the same cachedSearch() helper as /api/search to keep behavior aligned.
+   */
+  async function retrieveServices(
+    intent: Intent,
+    _context: ChatContext,
+  ): Promise<EnrichedService[]> {
+    if (!isDatabaseConfigured()) {
+      return [];
+    }
+
+    const trust = filters?.trust;
+    const minConfidenceScore = trust === 'HIGH' ? 80 : trust === 'LIKELY' ? 60 : undefined;
+
+    const query: SearchQuery = {
+      text: intent.rawQuery,
+      filters: {
+        status: 'active',
+        taxonomyTermIds: filters?.taxonomyTermIds,
+        minConfidenceScore,
+      },
+      pagination: {
+        page: 1,
+        limit: MAX_SERVICES_PER_RESPONSE,
+      },
+      sortBy: 'relevance',
+    };
+
+    const response = await cachedSearch(engine, query);
+    return response.results.map((r) => r.service);
+  }
+
   try {
-    const response = await orchestrateChat(message, sessionId, effectiveUserId, locale, rateLimitKey, {
+    let response = await orchestrateChat(message, sessionId, effectiveUserId, locale, rateLimitKey, {
       retrieveServices,
       isFlagEnabled: (flagName) => flagService.isEnabled(flagName),
       summarizeWithLLM,
+      enrichIntent,
     });
+
+    // Idea 8: Multilingual service descriptions
+    // Translate service card descriptions when the request locale is not English.
+    // Fail-open: any translation error keeps original descriptions.
+    const multilingualEnabled = await flagService.isEnabled(FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS);
+    if (multilingualEnabled && locale !== 'en' && response.services.length > 0 && isTranslatorConfigured()) {
+      const safeLocale: LocaleCode | null = SUPPORTED_LOCALES.includes(locale as LocaleCode)
+        ? (locale as LocaleCode)
+        : null;
+      if (safeLocale) {
+        const descriptions = response.services.map((s) => s.description ?? '');
+        try {
+          const translated = await translateBatch(descriptions, safeLocale);
+          response = {
+            ...response,
+            services: response.services.map((s, i) => ({
+              ...s,
+              description: (descriptions[i] && translated[i]?.translatedText) || s.description,
+            })),
+          };
+        } catch {
+          // Translator failure is non-fatal — keep original descriptions
+        }
+      }
+    }
 
     return NextResponse.json(response, {
       headers: { 'Cache-Control': 'private, no-store' },

@@ -67,12 +67,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body className="antialiased font-sans">
+        {/* Theme init — runs synchronously before paint to avoid flash.
+             Reads oran-theme from localStorage; falls back to OS preference. */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script
+          dangerouslySetInnerHTML={{
+            // biome-ignore lint: intentionally using dangerouslySetInnerHTML for blocking init
+            __html: `try{var t=localStorage.getItem('oran-theme');if(t==='dark'||(t===null&&matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}`,
+          }}
+        />
         {/* Skip to main content — WCAG 2.4.1: must be first focusable element */}
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:fixed focus:z-[100] focus:top-2 focus:left-2 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-md focus:text-sm focus:font-medium focus:shadow-lg"
+          className="sr-only focus:not-sr-only focus:fixed focus:z-[var(--z-skip-link)] focus:top-2 focus:left-2 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-md focus:text-sm focus:font-medium focus:shadow-lg"
         >
           Skip to main content
         </a>

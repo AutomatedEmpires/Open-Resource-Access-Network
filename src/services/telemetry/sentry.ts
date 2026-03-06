@@ -103,6 +103,7 @@ async function getSentry(): Promise<any | null> {
 
   const injected = (globalThis as { __ORAN_SENTRY__?: unknown }).__ORAN_SENTRY__;
   if (injected) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic injection; shape unknown at compile time
     return injected as any;
   }
 
@@ -214,5 +215,33 @@ export async function addBreadcrumb(entry: BreadcrumbEntry): Promise<void> {
     category: entry.category,
     level: entry.level,
     data: entry.data ? sanitizeExtra(entry.data) : undefined,
+  });
+}
+
+/**
+ * Track a privacy-safe UI interaction event.
+ *
+ * Gated by NEXT_PUBLIC_TELEMETRY_INTERACTIONS=true.
+ * NEVER pass user-provided text, search terms, location, or any PII as event or properties.
+ * Only pass structural metadata (page, has_filters, quota_remaining, etc.).
+ *
+ * Internally adds a Sentry breadcrumb (no standalone network request).
+ */
+export function trackInteraction(
+  event: string,
+  properties?: Record<string, string | number | boolean>
+): void {
+  if (process.env.NEXT_PUBLIC_TELEMETRY_INTERACTIONS !== 'true') return;
+
+  if (process.env.NODE_ENV === 'development') {
+    console.debug('[Telemetry]', event, properties);
+  }
+
+  // Fire-and-forget — breadcrumbs are attached to the next Sentry error event
+  void addBreadcrumb({
+    message: event,
+    category: 'ui.interaction',
+    level: 'info',
+    data: properties,
   });
 }

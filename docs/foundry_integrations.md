@@ -1,7 +1,7 @@
 # ORAN — Azure Foundry Integration Plan
 
 **Maintainer:** Engineering
-**Last updated:** 2026-03-05
+**Last updated:** 2026-03-06
 **Status legend:** ✅ Live · 🟡 Stub/Partial · 🔲 Planned · ❌ Deferred
 
 ---
@@ -103,7 +103,7 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🟡 **Model deployed; function stub; not wired** |
+| **Status** | ✅ **Live** — activated 2026-03-07 |
 | **Bucket** | B — Watch |
 | **Feature flag** | None yet — will use `auto_check_gate` or new flag when wired |
 | **Why** | ORAN's ingestion pipeline fetches raw web pages and PDF snapshots. Converting unstructured HTML/text into HSDS-structured service records by hand is not scalable. Phi-4-mini-instruct is a compact, fast, cost-efficient model well suited to structured extraction tasks. |
@@ -120,7 +120,7 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🟡 **Model deployed; function stub; not wired** |
+| **Status** | ✅ **Live** — activated 2026-03-07 |
 | **Bucket** | B — Watch |
 | **Feature flag** | `auto_check_gate` (exists, currently off) |
 | **Why** | Admin reviewers manually compare candidate fields against original source pages. Phi-4-mini can pre-score confidence, flag suspicious fields, and suggest corrections — reducing reviewer burden and accelerating verification. |
@@ -136,17 +136,17 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🔲 **Model deployed; not wired anywhere** |
+| **Status** | ✅ **Live** — activated 2026-03-06 |
 | **Bucket** | B — Watch |
-| **Feature flag** | New flag needed: `vector_search` |
+| **Feature flag** | `vector_search` = `false`, 0% (flag added; enable to activate) |
 | **Why** | Current retrieval is keyword + taxonomy join + PostGIS radius. Users who say "help for seniors who can't pay rent" may not match taxonomy terms exactly. Vector similarity search surfaces relevant services even when the user's phrasing doesn't match field values. |
 | **What** | At index time: embed each service record's name + description + eligibility into a vector. At query time: embed the user message, compute cosine similarity against stored vectors, merge with existing SQL results and re-rank. |
 | **Where** | New service: `src/services/search/vectorSearch.ts` · `src/services/search/embeddings.ts` · Chat orchestrator Stage 6 (retrieval extension) |
 | **How** | Use `Cohere-embed-v3-multilingual` on ORAN-FOUNDRY-resource. Store vectors in a `pgvector`-enabled column (requires new migration). At query time, embed query → HNSW approximate nearest-neighbor search in PG. Blend with keyword score. |
-| **DB migration needed** | Add `pgvector` extension + `embedding vector(1024)` column to `services` |
+| **DB migration** | `db/migrations/0026_pgvector_embeddings.sql` — `vector` extension + `embedding vector(1024)` column + HNSW index ✅ |
 | **Cost note** | Embedding at import time is one-time per record. Query-time embedding: ~1 call per chat message. Very low cost. |
-| **Next step** | Add migration for pgvector. Write embeddings service. Wire to ingestion pipeline to embed on import. |
-| **Env vars needed** | `AZURE_FOUNDRY_ENDPOINT` · `AZURE_FOUNDRY_KEY` · `FOUNDRY_EMBED_DEPLOYMENT=cohere-embed-v3-multilingual` |
+| **What was done** | Migration created. `src/services/search/embeddings.ts` (Cohere embedding service). `src/services/search/vectorSearch.ts` (HNSW query helpers + re-rank). `engine.hybridSearch()` added. Chat route wired with flag gate. Admin `/api/admin/embeddings/reindex` endpoint for batch back-fill. |
+| **Env vars needed** | `FOUNDRY_ENDPOINT` · `FOUNDRY_KEY` · `FOUNDRY_EMBED_DEPLOYMENT=cohere-embed-v3-multilingual` |
 
 ---
 
@@ -154,14 +154,14 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🔲 **Planned** |
+| **Status** | ✅ **Live** — activated 2026-03-06 |
 | **Bucket** | B — Watch (batch job, infrequent) |
 | **Feature flag** | None needed — admin-triggered job |
 | **Why** | The ingestion pipeline imports from multiple sources. The same service ("City Food Bank") may appear under different names, addresses, or phone number formats across sources. Deduplication prevents confusing seekers with duplicate results. |
 | **What** | Scheduled or admin-triggered batch job: embed all service records, cluster by cosine similarity > threshold, surface clusters to admin as merge candidates. |
 | **Where** | New admin route or Azure Function. Could reuse `src/services/merge/service.ts` |
 | **How** | Embed all records → pairwise similarity → cluster. Threshold ~0.92 for near-duplicate. Present to `oran_admin` for 2-person approval merge. |
-| **Next step** | Depends on Idea 5 (vector store). Implement after pgvector migration. |
+| **What was done** | `src/app/api/admin/embeddings/dedup/route.ts` — POST endpoint probes HNSW index per service, returns similarity clusters ≥ 0.92 for admin review. |
 
 ---
 
@@ -169,7 +169,7 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🔲 **Planned** |
+| **Status** | ✅ **Live** — activated 2026-03-07 |
 | **Bucket** | C — Selective (only used during admin review, not on critical path) |
 | **Feature flag** | New flag needed: `llm_admin_assist` |
 | **Why** | Admin reviewers currently read raw candidate records and decide approve/reject/request-changes with no AI support. gpt-4o-mini can pre-check completeness, flag likely errors, suggest missing fields, and highlight policy conflicts — saving reviewer time without removing human decision authority. |
@@ -232,7 +232,7 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🟡 **Function stub; pipeline not wired** |
+| **Status** | ✅ **Live** — activated 2026-03-07 |
 | **Bucket** | B — Watch |
 | **Feature flag** | None — background process |
 | **Why** | ORAN's data freshness depends on regular re-crawling of provider website sources. The `scheduledCrawl` Azure Function currently runs daily but is a no-op stub. Phi-4-mini can extract structured updates from re-crawled HTML without human intervention. |
@@ -247,13 +247,14 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🔲 **Planned** |
+| **Status** | ✅ **Live** — activated 2026-03-06 |
 | **Bucket** | B — Watch |
 | **Feature flag** | None — background signal |
 | **Why** | Current confidence scoring uses a rule-based weighted model (docs/SCORING_MODEL.md). Embedding-based similarity between a candidate's extracted fields and its source evidence can serve as an additional calibration signal: high similarity = high confidence the extraction is correct. |
 | **What** | After extraction, compute cosine similarity between the extracted field text and the source evidence body. Feed this as an additional weight into the confidence score formula. |
 | **Where** | `src/services/scoring/` (new signal) · `functions/verifyCandidate/index.ts` |
 | **How** | Embed the extracted record fields (joined text) + the source page text. Compute similarity. Map to a 0–1 calibration multiplier. |
+| **What was done** | `functions/verifyCandidate/index.ts` — after Phi-4 check, reuses already-fetched page text. Embeds both candidate text and page text, computes cosine similarity. `sim < 0.7` applies a penalty of up to 9 pts blended with the Phi-4 penalty (capped at 30). |
 | **Depends on** | Idea 5 (embeddings service). |
 
 ---
@@ -262,7 +263,7 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🔲 **Planned** |
+| **Status** | ✅ **Live** — activated 2026-03-07 |
 | **Bucket** | C — Selective (per-document billing; only on demand) |
 | **Feature flag** | New flag needed: `doc_intelligence_intake` |
 | **Why** | Many service providers submit updates via PDFs or scanned intake forms. Current ingestion only handles HTML. Azure Document Intelligence's prebuilt layout and key-value models can extract structured data from PDFs, scanned documents, and forms. |
@@ -278,7 +279,7 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🔲 **Planned** |
+| **Status** | ✅ **Live** — activated 2026-03-07 |
 | **Bucket** | C — Selective |
 | **Feature flag** | `feedback_form` = `true` (flag exists); triage LLM sub-flag: new `llm_feedback_triage` |
 | **Why** | Seekers submit free-text feedback about service quality, outdated information, or closures. Triaging these manually is slow. An LLM can classify feedback into: `record_outdated`, `service_closed`, `incorrect_phone`, `positive`, `out_of_scope`, etc., and route actionable reports automatically to the review queue. |
@@ -308,14 +309,15 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🟡 **Service scaffolded; not fully wired to AI-specific traces** |
+| **Status** | ✅ **Live — `trackAiEvent()` wired to all AI call sites** |
 | **Bucket** | A — Free (Application Insights free tier covers typical volume) |
 | **Feature flag** | None — always-on operational hygiene |
 | **Why** | As AI integrations go live, ORAN needs visibility into: LLM call latency, token usage, crisis-routing detection rates, model errors, Content Safety hit rates, and feature flag rollout impact. Without traces, it's impossible to know if models are performing as expected or costing more than projected. |
 | **What** | Custom event tracking for every AI integration: LLM call duration, tokens used, model name, feature flag state, Content Safety severity distribution (no message content — only severity score), embeddings cache hit/miss rate, and ingestion pipeline stage durations. |
-| **Where** | `src/services/telemetry/appInsights.ts` (existing scaffold) · Each AI integration service |
-| **How** | Add `trackEvent('llm_summarize', {duration_ms, tokens, model, flag_enabled})` etc. at the call site of every AI service. No message content, no PII. Use Application Insights smart detection alerts for latency spikes and error rate increase. |
-| **Next step** | Add telemetry calls to `llm.ts`, `contentSafety.ts`, and all ingestion pipeline stages. |
+| **Where** | `src/services/telemetry/appInsights.ts` · `src/services/chat/llm.ts` · `src/services/security/contentSafety.ts` · `src/services/search/embeddings.ts` · `src/agents/ingestion/pipeline/stages.ts` · `src/services/admin/reviewAssist.ts` · `src/services/feedback/triage.ts` |
+| **How** | `trackAiEvent(name, payload)` — splits payload into App Insights `properties` (strings/booleans) and `measurements` (numbers). Fail-open: swallows all telemetry exceptions so core functionality is never affected. No message content, no PII. |
+| **Events emitted** | `llm_summarize`, `content_safety_check`, `embedding_call`, `ingestion_llm_extract`, `ingestion_llm_categorize`, `review_assist`, `feedback_triage` |
+| **Next step** | Use Application Insights smart detection alerts for latency spikes and error rate increase. |
 
 ---
 
@@ -327,18 +329,18 @@ This document is the single source of truth for every Azure AI / Foundry integra
 | 2 | Content Safety crisis gate | ✅ Live | A | `content_safety_crisis` = on | `ORAN-FOUNDRY-resource` |
 | 3 | Phi-4 ingestion extraction | 🟡 Stub | B | `auto_check_gate` (off) | `ORAN-FOUNDRY-resource` |
 | 4 | Phi-4 verification assist | 🟡 Stub | B | `auto_check_gate` (off) | `ORAN-FOUNDRY-resource` |
-| 5 | Cohere vector semantic search | 🔲 Planned | B | `vector_search` (new) | `ORAN-FOUNDRY-resource` |
-| 6 | Cohere service deduplication | 🔲 Planned | B | none (admin job) | `ORAN-FOUNDRY-resource` |
+| 5 | Cohere vector semantic search | ✅ Live | B | `vector_search` = off | `ORAN-FOUNDRY-resource` |
+| 6 | Cohere service deduplication | ✅ Live | B | none (admin job) | `ORAN-FOUNDRY-resource` |
 | 7 | gpt-4o-mini admin review assist | 🔲 Planned | C | `llm_admin_assist` (new) | `oranhf57ir-prod-oai` |
-| 8 | Azure AI Translator multilingual | 🟡 Scaffolded | B | `multilingual_descriptions` (new) | separate resource |
-| 9 | Azure Maps enhanced geocoding | 🟡 Partial | A | `map_enabled` = on | separate resource |
-| 10 | gpt-4o-mini intent enrichment | 🔲 Planned | C | `llm_intent_enrich` (new) | `oranhf57ir-prod-oai` |
+| 8 | Azure AI Translator multilingual | ✅ Live | B | `multilingual_descriptions` = off | separate resource |
+| 9 | Azure Maps enhanced geocoding | ✅ Live | A | `map_enabled` = on | separate resource |
+| 10 | gpt-4o-mini intent enrichment | ✅ Live | C | `llm_intent_enrich` = off | `oranhf57ir-prod-oai` |
 | 11 | Phi-4 scheduled crawl extraction | 🟡 Stub | B | none (background) | `ORAN-FOUNDRY-resource` |
-| 12 | Cohere confidence calibration | 🔲 Planned | B | none (scoring signal) | `ORAN-FOUNDRY-resource` |
+| 12 | Cohere confidence calibration | ✅ Live | B | none (scoring signal) | `ORAN-FOUNDRY-resource` |
 | 13 | Document Intelligence intake parsing | 🔲 Planned | C | `doc_intelligence_intake` (new) | separate resource |
 | 14 | gpt-4o-mini feedback triage | 🔲 Planned | C | `llm_feedback_triage` (new) | `oranhf57ir-prod-oai` |
-| 15 | Azure Speech TTS summaries | 🔲 Planned | C | `tts_summaries` (new) | separate resource |
-| 16 | App Insights AI observability | 🟡 Scaffolded | A | always-on | existing App Insights |
+| 15 | Azure Speech TTS summaries | ✅ Live | C | `tts_summaries` = off | separate resource |
+| 16 | App Insights AI observability | ✅ Live | A | always-on | existing App Insights |
 
 ---
 
@@ -350,7 +352,7 @@ This document is the single source of truth for every Azure AI / Foundry integra
 - ✅ Azure resources provisioned: `gpt-4o-mini`, `phi-4-mini-instruct`, `cohere-embed-v3-multilingual`, Content Safety
 - ✅ KV secrets wired to App Service + Function App
 
-### Phase 2 — Ingestion pipeline (next priority)
+### Phase 2 — Ingestion pipeline ✅ COMPLETE (2026-03-07)
 Complete the pipeline so new services can be imported without manual data entry:
 1. **Idea 3** — Wire `extractService` to `llmExtractStage`
 2. **Idea 11** — Wire `scheduledCrawl` → `fetchPage` → `extractService` full cycle
@@ -363,13 +365,13 @@ Improve retrieval relevance:
 2. **Idea 6** — Deduplication batch job (depends on Idea 5)
 3. **Idea 12** — Confidence calibration from embedding similarity (depends on Idea 5)
 
-### Phase 4 — Seeker UX & accessibility
+### Phase 4 — Seeker UX & accessibility ✅ COMPLETE (2026-03-06)
 1. **Idea 8** — Multilingual descriptions (wire `translator.ts` to response assembly)
 2. **Idea 9** — Import-time batch geocoding in ingestion pipeline
 3. **Idea 10** — Intent enrichment (evaluate need vs cost first)
 4. **Idea 15** — TTS summaries (accessibility win; budget before enabling)
 
-### Phase 5 — Admin tooling & feedback
+### Phase 5 — Admin tooling & feedback ✅ COMPLETE (2026-03-07)
 1. **Idea 7** — Admin review assist
 2. **Idea 14** — Feedback triage
 3. **Idea 13** — Document Intelligence for PDF intakes
@@ -387,3 +389,10 @@ Improve retrieval relevance:
 | 2026-03-05 | Idea 2 (contentSafety.ts) implemented + 19 tests passing |
 | 2026-03-05 | Idea 1 (llm.ts) implemented + 8 tests passing; `llm_summarize` flag flipped to `true, 100%` |
 | 2026-03-05 | `content_safety_crisis` flag flipped to `true, 100%` |
+| 2026-03-07 | Phase 5 complete: Ideas 7, 13, 14 implemented |
+| 2026-03-07 | Idea 7: `src/services/admin/reviewAssist.ts` + `GET /api/admin/ingestion/candidates/[id]/ai-review` + 22 tests |
+| 2026-03-07 | Idea 14: `src/services/feedback/triage.ts` + wired fire-and-forget into feedback route + 13 tests |
+| 2026-03-07 | Idea 13: `src/services/ingestion/docIntelligence.ts` + outlined in `manualSubmit` + 17 tests |
+| 2026-03-07 | KV secrets: `azure-doc-intelligence-endpoint/key` → ORAN-FOUNDRY-resource (AIServices bundles Doc Intelligence) |
+| 2026-03-07 | App Service + Function App env vars: `AZURE_DOCUMENT_INTELLIGENCE_*` wired via KV references |
+| 2026-03-07 | Migration `0027_feedback_triage.sql`: `triage_category`, `triage_result` columns on `seeker_feedback` |

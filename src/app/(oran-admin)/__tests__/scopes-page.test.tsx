@@ -210,4 +210,141 @@ describe('oran admin scope center page', () => {
       expect(screen.getByText('Failed to load audit log')).toBeInTheDocument();
     });
   });
+
+  it('renders fallback scope badges and surfaces create-scope API errors', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [
+            makeScope({
+              id: 'scope-x',
+              name: 'custom.scope',
+              description: 'Custom scope for edge-case rendering',
+              risk_level: 'unknown_risk',
+              requires_approval: false,
+              is_active: false,
+            }),
+          ],
+          total: 1,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'Scope already exists' }),
+      });
+
+    render(<ScopeCenterPage />);
+
+    await screen.findByText('custom.scope');
+    expect(screen.getByText('unknown_risk')).toBeInTheDocument();
+    expect(screen.getByText('Auto')).toBeInTheDocument();
+    expect(screen.getByText('Inactive')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Scope' }));
+    fireEvent.change(screen.getByLabelText('Scope name'), {
+      target: { value: 'custom.scope' },
+    });
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: 'Duplicate attempt' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/admin/scopes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'custom.scope',
+          description: 'Duplicate attempt',
+          risk_level: 'medium',
+          requires_approval: true,
+        }),
+      });
+      expect(toastErrorMock).toHaveBeenCalledWith('Scope already exists');
+    });
+  });
+
+  it('shows grant decision API errors and allows canceling review mode', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [makeScope()], total: 1 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [
+            makeGrant({
+              id: 'grant-2',
+              status: 'unknown_state',
+              expires_at: '2026-03-01T00:00:00.000Z',
+            }),
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'Decision window closed' }),
+      });
+
+    render(<ScopeCenterPage />);
+    await screen.findByText('admin.manage_users');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Pending Grants' }));
+    await screen.findByText('Need to handle weekly access reviews');
+    expect(screen.getByText('unknown_state')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+    expect(screen.getByText(/Expires:/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Decision reason'), {
+      target: { value: 'Denied after policy review.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/admin/scopes/grants/grant-2', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'denied', reason: 'Denied after policy review.' }),
+      });
+      expect(toastErrorMock).toHaveBeenCalledWith('Decision window closed');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByLabelText('Decision reason')).not.toBeInTheDocument();
+  });
+
+  it('renders populated audit log rows with null-justification fallback', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [makeScope()], total: 1 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [
+            {
+              id: 'audit-1',
+              actor_user_id: '12345678-1234-4234-8234-123456789abc',
+              action: 'scope_grant_denied',
+              target_type: 'scope',
+              target_id: 'abcdef12-1234-4123-8123-abcdefabcdef',
+              justification: null,
+              created_at: '2026-01-11T00:00:00.000Z',
+            },
+          ],
+        }),
+      });
+
+    render(<ScopeCenterPage />);
+    await screen.findByText('admin.manage_users');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Audit Log' }));
+
+    await screen.findByText('scope_grant_denied');
+    expect(screen.getByText(/scope: abcdef12…/i)).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
+  });
 });

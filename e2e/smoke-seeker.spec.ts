@@ -55,7 +55,7 @@ test.describe('Seeker flows (public)', () => {
 
     await expect(page.getByRole('heading', { name: 'Service Map' })).toBeVisible();
     await expect(page.getByRole('searchbox', { name: 'Search services to plot' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Search' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
   });
 
   test('service detail page renders for a retrieved record when DB is configured', async ({ page }) => {

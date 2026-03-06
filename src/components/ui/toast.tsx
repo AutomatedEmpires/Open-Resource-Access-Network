@@ -121,7 +121,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         aria-live="polite"
         aria-atomic="false"
         aria-label="Notifications"
-        className="fixed bottom-[4.5rem] right-4 z-[100] flex flex-col gap-2 max-w-sm w-full pointer-events-none md:bottom-4"
+        className="fixed bottom-[4.5rem] right-4 z-[var(--z-toast)] flex flex-col gap-2 max-w-sm w-full pointer-events-none md:bottom-4"
       >
         {toasts.map((t) => (
           <ToastItem key={t.id} toast={t} onDismiss={() => removeToast(t.id)} />

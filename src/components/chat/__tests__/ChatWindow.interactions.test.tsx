@@ -47,7 +47,7 @@ describe('ChatWindow interactions', () => {
   it('sends chat messages, renders service cards, and toggles save/unsave', async () => {
     localStorage.setItem('oran:saved-service-ids', JSON.stringify(['existing-service']));
 
-    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/chat') {
         return {

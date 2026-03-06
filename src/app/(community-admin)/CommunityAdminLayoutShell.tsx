@@ -29,7 +29,7 @@ export default function CommunityAdminLayoutShell({ children }: { children: Reac
   if (status === 'loading') {
     return (
       <div className="min-h-screen bg-gray-50" aria-busy="true" aria-label="Loading Community Admin portal">
-        <div className="sticky top-0 z-40 h-14 border-b border-gray-200 bg-white" />
+        <div className="sticky top-0 z-[var(--z-nav)] h-14 border-b border-gray-200 bg-white" />
         <div className="container mx-auto max-w-7xl space-y-4 px-4 py-6">
           <Skeleton className="h-7 w-40" />
           <Skeleton className="h-4 w-full" />
@@ -45,7 +45,7 @@ export default function CommunityAdminLayoutShell({ children }: { children: Reac
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
+      <header className="sticky top-0 z-[var(--z-nav)] border-b border-gray-200 bg-white">
         <div className="container mx-auto max-w-7xl flex items-center justify-between px-4 h-14">
           <Link href="/queue" className="font-bold text-gray-900 tracking-tight">
             ORAN Community Admin

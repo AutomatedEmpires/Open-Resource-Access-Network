@@ -16,6 +16,7 @@ import { AzureOpenAI } from 'openai';
 import type { EnrichedService } from '@/domain/types';
 import type { Intent } from './types';
 import { ELIGIBILITY_DISCLAIMER, MAX_SERVICES_PER_RESPONSE } from '@/domain/constants';
+import { trackAiEvent } from '@/services/telemetry/appInsights';
 
 // ---------------------------------------------------------------------------
 // Client (lazy singleton — created once per process)
@@ -113,16 +114,48 @@ export async function summarizeWithLLM(
   const client = getClient();
   const deployment = process.env.AZURE_OPENAI_DEPLOYMENT ?? 'gpt-4o-mini';
   const messages = buildMessages(services, intent);
+  const t0 = Date.now();
 
-  const response = await client.chat.completions.create({
-    model: deployment,
-    messages,
-    max_tokens: 300,
-    temperature: 0.2, // Low temperature — factual, deterministic
-  });
+  let response;
+  try {
+    response = await client.chat.completions.create({
+      model: deployment,
+      messages,
+      max_tokens: 300,
+      temperature: 0.2, // Low temperature — factual, deterministic
+    });
+  } catch (err) {
+    void trackAiEvent('llm_summarize', {
+      duration_ms: Date.now() - t0,
+      model: deployment,
+      service_count: services.length,
+      error_type: 'network_error',
+      success: false,
+    });
+    throw err;
+  }
 
   const content = response.choices?.[0]?.message?.content?.trim();
-  if (!content) throw new Error('LLM returned empty response');
+  if (!content) {
+    void trackAiEvent('llm_summarize', {
+      duration_ms: Date.now() - t0,
+      model: deployment,
+      service_count: services.length,
+      error_type: 'empty_response',
+      success: false,
+    });
+    throw new Error('LLM returned empty response');
+  }
+
+  void trackAiEvent('llm_summarize', {
+    duration_ms: Date.now() - t0,
+    tokens_used: response.usage?.total_tokens ?? null,
+    prompt_tokens: response.usage?.prompt_tokens ?? null,
+    completion_tokens: response.usage?.completion_tokens ?? null,
+    model: deployment,
+    service_count: services.length,
+    success: true,
+  });
 
   // Always append eligibility disclaimer — non-negotiable
   return `${content}\n\n${ELIGIBILITY_DISCLAIMER}`;

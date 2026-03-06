@@ -12,6 +12,10 @@ const getDrizzleMock = vi.hoisted(() => vi.fn());
 const storeFactoryMocks = vi.hoisted(() => ({
   createIngestionStores: vi.fn(),
 }));
+const geocodingMocks = vi.hoisted(() => ({
+  geocode: vi.fn(),
+  isConfigured: vi.fn(),
+}));
 
 const stores = vi.hoisted(() => ({
   publishReadiness: {
@@ -20,6 +24,7 @@ const stores = vi.hoisted(() => ({
   },
   candidates: {
     markPublished: vi.fn(),
+    getById: vi.fn(),
   },
   links: {
     transferToService: vi.fn(),
@@ -60,6 +65,7 @@ vi.mock('@/services/db/drizzle', () => ({
   getDrizzle: getDrizzleMock,
 }));
 vi.mock('@/agents/ingestion/persistence/storeFactory', () => storeFactoryMocks);
+vi.mock('@/services/geocoding/azureMaps', () => geocodingMocks);
 
 function createRequest(options: {
   jsonBody?: unknown;
@@ -126,6 +132,7 @@ beforeEach(() => {
     thresholdMet: true,
   });
   stores.candidates.markPublished.mockResolvedValue(undefined);
+  stores.candidates.getById.mockResolvedValue(null);
   stores.links.transferToService.mockResolvedValue(undefined);
   stores.assignments.withdrawAllForCandidate.mockResolvedValue(2);
   stores.audit.append.mockResolvedValue(undefined);
@@ -139,6 +146,8 @@ beforeEach(() => {
     red: 0,
   });
   stores.tagConfirmations.updateDecision.mockResolvedValue(undefined);
+  geocodingMocks.isConfigured.mockReturnValue(false);
+  geocodingMocks.geocode.mockResolvedValue([]);
 });
 
 describe('admin ingestion candidate action routes', () => {
@@ -210,6 +219,113 @@ describe('admin ingestion candidate action routes', () => {
       serviceId: 'service-id',
     });
 
+    uuidSpy.mockRestore();
+  });
+
+  it('enforces publish route infra/auth/rate-limit/input guards', async () => {
+    const { POST } = await loadPublishRoute();
+
+    dbConfigMock.mockReturnValueOnce(false);
+    const unavailable = await POST(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'));
+    expect(unavailable.status).toBe(503);
+
+    dbConfigMock.mockReturnValue(true);
+    rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 9 });
+    const limited = await POST(
+      createRequest({ ip: '203.0.113.25' }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('Retry-After')).toBe('9');
+
+    authMocks.getAuthContext.mockResolvedValueOnce(null);
+    const unauth = await POST(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'));
+    expect(unauth.status).toBe(401);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'oran-1' });
+    requireMinRoleMock.mockReturnValueOnce(false);
+    const forbidden = await POST(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'));
+    expect(forbidden.status).toBe(403);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'oran-1' });
+    const invalid = await POST(createRequest(), createRouteContext('bad-id'));
+    expect(invalid.status).toBe(400);
+  });
+
+  it('enriches candidate investigation pack with geocoding when enabled', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    geocodingMocks.isConfigured.mockReturnValueOnce(true);
+    geocodingMocks.geocode.mockResolvedValueOnce([
+      {
+        lat: 47.62,
+        lon: -122.33,
+        formattedAddress: '123 Main St, Seattle, WA',
+        confidence: 'High',
+      },
+    ]);
+    stores.candidates.getById.mockResolvedValueOnce({
+      fields: {
+        address: {
+          line1: '123 Main St',
+          city: 'Seattle',
+          region: 'WA',
+          postalCode: '98101',
+          country: 'US',
+        },
+      },
+    });
+    const uuidSpy = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce('service-id')
+      .mockReturnValueOnce('event-id')
+      .mockReturnValueOnce('corr-id');
+    const { POST } = await loadPublishRoute();
+
+    const response = await POST(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(geocodingMocks.geocode).toHaveBeenCalledWith('123 Main St, Seattle, WA, 98101, US');
+    expect(executeQueryMock).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE extracted_candidates'),
+      [
+        expect.stringContaining('"geocodedLat":47.62'),
+        '11111111-1111-4111-8111-111111111111',
+      ],
+    );
+    uuidSpy.mockRestore();
+  });
+
+  it('ignores non-fatal geocoding failures and still publishes', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    geocodingMocks.isConfigured.mockReturnValueOnce(true);
+    geocodingMocks.geocode.mockRejectedValueOnce(new Error('maps down'));
+    stores.candidates.getById.mockResolvedValueOnce({
+      fields: {
+        address: {
+          line1: '500 Pine St',
+          city: 'Seattle',
+        },
+      },
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const uuidSpy = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce('service-id')
+      .mockReturnValueOnce('event-id')
+      .mockReturnValueOnce('corr-id');
+    const { POST } = await loadPublishRoute();
+
+    const response = await POST(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(warnSpy).toHaveBeenCalledWith('[publish] Geocoding failed (non-fatal):', 'maps down');
+    warnSpy.mockRestore();
     uuidSpy.mockRestore();
   });
 
@@ -387,5 +503,188 @@ describe('admin ingestion candidate action routes', () => {
     await expect(response.json()).resolves.toEqual({
       error: 'Internal server error.',
     });
+  });
+
+  it('covers tag route guard and validation branches for GET and PUT', async () => {
+    const { GET, PUT } = await loadTagsRoute();
+
+    dbConfigMock.mockReturnValueOnce(false);
+    expect((await GET(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(503);
+
+    dbConfigMock.mockReturnValue(true);
+    rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 5 });
+    const limitedGet = await GET(
+      createRequest({ ip: '203.0.113.10' }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    expect(limitedGet.status).toBe(429);
+    expect(limitedGet.headers.get('Retry-After')).toBe('5');
+
+    authMocks.getAuthContext.mockResolvedValueOnce(null);
+    expect((await GET(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(401);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    requireMinRoleMock.mockReturnValueOnce(false);
+    expect((await GET(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(403);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    expect((await GET(createRequest(), createRouteContext('bad-id'))).status).toBe(400);
+
+    dbConfigMock.mockReturnValueOnce(false);
+    expect((await PUT(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(503);
+
+    dbConfigMock.mockReturnValue(true);
+    rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 4 });
+    const limitedPut = await PUT(
+      createRequest({ ip: '203.0.113.11' }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    expect(limitedPut.status).toBe(429);
+    expect(limitedPut.headers.get('Retry-After')).toBe('4');
+
+    authMocks.getAuthContext.mockResolvedValueOnce(null);
+    expect((await PUT(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(401);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    requireMinRoleMock.mockReturnValueOnce(false);
+    expect((await PUT(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(403);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    expect((await PUT(createRequest(), createRouteContext('bad-id'))).status).toBe(400);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    const invalidBody = await PUT(
+      createRequest({
+        jsonBody: {
+          confirmationId: 'not-a-uuid',
+          status: 'confirmed',
+        },
+      }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    expect(invalidBody.status).toBe(400);
+    await expect(invalidBody.json()).resolves.toEqual(
+      expect.objectContaining({
+        error: 'Invalid input.',
+      }),
+    );
+  });
+
+  it('captures tag PUT exceptions and returns 500', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
+    stores.tagConfirmations.updateDecision.mockRejectedValueOnce(new Error('write failed'));
+    const { PUT } = await loadTagsRoute();
+
+    const response = await PUT(
+      createRequest({
+        jsonBody: {
+          confirmationId: '44444444-4444-4444-8444-444444444444',
+          status: 'rejected',
+          notes: 'not valid',
+        },
+      }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+
+    expect(response.status).toBe(500);
+    expect(captureExceptionMock).toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      error: 'Internal server error.',
+    });
+  });
+
+  it('covers readiness route guard branches and exceptions', async () => {
+    const { GET } = await loadReadinessRoute();
+
+    dbConfigMock.mockReturnValueOnce(false);
+    expect((await GET(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(503);
+
+    dbConfigMock.mockReturnValue(true);
+    rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 6 });
+    expect((await GET(createRequest({ ip: '203.0.113.6' }), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(429);
+
+    authMocks.getAuthContext.mockResolvedValueOnce(null);
+    expect((await GET(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(401);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    requireMinRoleMock.mockReturnValueOnce(false);
+    expect((await GET(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(403);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    expect((await GET(createRequest(), createRouteContext('bad-id'))).status).toBe(400);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    stores.publishReadiness.getReadiness.mockRejectedValueOnce(new Error('readiness down'));
+    const failed = await GET(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    expect(failed.status).toBe(500);
+  });
+
+  it('covers suggestions route guard branches and exceptions', async () => {
+    const { GET, PUT } = await loadSuggestionsRoute();
+
+    dbConfigMock.mockReturnValueOnce(false);
+    expect((await GET(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(503);
+
+    dbConfigMock.mockReturnValue(true);
+    rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 8 });
+    expect((await GET(createRequest({ ip: '203.0.113.8' }), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(429);
+
+    authMocks.getAuthContext.mockResolvedValueOnce(null);
+    expect((await GET(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(401);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    requireMinRoleMock.mockReturnValueOnce(false);
+    expect((await GET(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(403);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    expect((await GET(createRequest(), createRouteContext('bad-id'))).status).toBe(400);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    stores.llmSuggestions.listForCandidate.mockRejectedValueOnce(new Error('list down'));
+    const getFailed = await GET(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    expect(getFailed.status).toBe(500);
+
+    dbConfigMock.mockReturnValueOnce(false);
+    expect((await PUT(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(503);
+
+    dbConfigMock.mockReturnValue(true);
+    rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 9 });
+    expect((await PUT(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(429);
+
+    authMocks.getAuthContext.mockResolvedValueOnce(null);
+    expect((await PUT(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(401);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    requireMinRoleMock.mockReturnValueOnce(false);
+    expect((await PUT(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(403);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    expect((await PUT(createRequest(), createRouteContext('bad-id'))).status).toBe(400);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    const badJsonPut = await PUT(
+      createRequest({ jsonError: true }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    expect(badJsonPut.status).toBe(500);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    stores.llmSuggestions.updateDecision.mockRejectedValueOnce(new Error('update failed'));
+    const putFailed = await PUT(
+      createRequest({
+        jsonBody: {
+          suggestionId: '22222222-2222-4222-8222-222222222222',
+          status: 'accepted',
+        },
+      }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    expect(putFailed.status).toBe(500);
   });
 });

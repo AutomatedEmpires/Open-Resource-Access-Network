@@ -223,6 +223,30 @@ describe('PUT /api/user/notifications/[id]/read', () => {
 // ============================================================
 
 describe('PUT /api/user/notifications/read-all', () => {
+  it('returns 503 when database is unavailable', async () => {
+    dbMocks.isDatabaseConfigured.mockReturnValue(false);
+    const { PUT } = await loadReadAllRoute();
+
+    const response = await PUT(createRequest());
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: 'Database not configured.' });
+  });
+
+  it('returns 429 when read-all is rate limited', async () => {
+    rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 14 });
+    const { PUT } = await loadReadAllRoute();
+
+    const response = await PUT(createRequest({ ip: '203.0.113.55, 10.0.0.2' }));
+
+    expect(rateLimitMock).toHaveBeenCalledWith(
+      'user:notifications:read-all:203.0.113.55',
+      expect.any(Object),
+    );
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('14');
+  });
+
   it('marks all notifications as read', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'user-1' });
     notificationMocks.markAllRead.mockResolvedValue(5);
@@ -238,6 +262,21 @@ describe('PUT /api/user/notifications/read-all', () => {
     const { PUT } = await loadReadAllRoute();
     const response = await PUT(createRequest());
     expect(response.status).toBe(401);
+  });
+
+  it('returns 500 and captures exceptions when mark-all fails', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'user-1' });
+    const serviceError = new Error('mark-all failed');
+    notificationMocks.markAllRead.mockRejectedValueOnce(serviceError);
+    const { PUT } = await loadReadAllRoute();
+
+    const response = await PUT(createRequest());
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: 'Internal server error' });
+    expect(captureExceptionMock).toHaveBeenCalledWith(serviceError, {
+      feature: 'api_user_notifications_read_all',
+    });
   });
 });
 

@@ -1,0 +1,55 @@
+name: Bundle Size Budget
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'next.config.mjs'
+      - 'scripts/check-bundle-sizes.js'
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Limit GITHUB_TOKEN permissions to minimum required
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: Bundle Size Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Minimal env vars for a successful Next.js build
+      NEXTAUTH_SECRET: bundle-check-secret
+      NEXTAUTH_URL: http://localhost:3000
+      AZURE_AD_CLIENT_ID: bundle-client-id
+      AZURE_AD_CLIENT_SECRET: bundle-client-secret
+      AZURE_AD_TENANT_ID: bundle-tenant-id
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Check bundle size budgets
+        run: node scripts/check-bundle-sizes.js
+
+      - name: Upload build output summary
+        if: always()
+        run: node scripts/check-bundle-sizes.js --json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true

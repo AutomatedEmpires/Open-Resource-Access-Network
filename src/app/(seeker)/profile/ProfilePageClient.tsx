@@ -16,7 +16,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { User, MapPin, Trash2, Shield, Bookmark, Settings, Globe, LogOut, CheckCircle, Bell } from 'lucide-react';
+import { User, MapPin, Trash2, Shield, Bookmark, Settings, Globe, LogOut, CheckCircle, Bell, Sun, Moon } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,7 @@ import type { NotificationChannel, NotificationEventType } from '@/domain/types'
 
 const PREFS_KEY = 'oran:preferences';
 const SAVED_KEY = 'oran:saved-service-ids';
+const THEME_KEY = 'oran-theme';
 
 interface Preferences {
   /** Approximate city name — manually entered, never geolocated without consent */
@@ -70,13 +71,6 @@ function writePrefs(prefs: Preferences) {
     localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
   } catch {
     /* quota exceeded */
-  }
-}
-
-/** Update HTML lang attribute for screen readers */
-function updateHtmlLang(locale: string) {
-  if (typeof document !== 'undefined') {
-    document.documentElement.lang = locale;
   }
 }
 
@@ -259,6 +253,15 @@ export default function ProfilePage() {
   const [city, setCity] = useState(() => readPrefs().approximateCity ?? '');
   const [language, setLanguage] = useState(() => readPrefs().language ?? 'en');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const saved = localStorage.getItem(THEME_KEY);
+      return saved === 'dark' || (saved === null && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    } catch {
+      return false;
+    }
+  });
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
   const { toast } = useToast();
 
@@ -286,17 +289,23 @@ export default function ProfilePage() {
         };
         setPrefs(merged);
         writePrefs(merged);
-        updateHtmlLang(serverLocale);
-      } else {
-        // Not authenticated — use localStorage values and update HTML lang
-        const localPrefs = readPrefs();
-        updateHtmlLang(localPrefs.language ?? 'en');
       }
+      // Not authenticated: localStorage values already loaded via readPrefs() initialiser
     })();
 
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  const toggleTheme = useCallback((dark: boolean) => {
+    setIsDark(dark);
+    try {
+      document.documentElement.classList.toggle('dark', dark);
+      localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
+    } catch {
+      // localStorage unavailable
+    }
   }, []);
 
   const saveCity = useCallback(() => {
@@ -314,7 +323,6 @@ export default function ProfilePage() {
     const updated = { ...prefs, language: code };
     setPrefs(updated);
     writePrefs(updated);
-    updateHtmlLang(code);
     // Sync to server (best-effort)
     void updateServerProfile({ preferredLocale: code });
     toast('success', `Language set to ${LANGUAGE_OPTIONS.find((l) => l.code === code)?.label ?? code}.`);
@@ -343,7 +351,6 @@ export default function ProfilePage() {
     setLanguage('en');
     setSavedCount(0);
     setShowDeleteConfirm(false);
-    updateHtmlLang('en');
     toast('success', 'All data deleted.');
   }, [toast, isAuthenticated]);
 
@@ -363,6 +370,49 @@ export default function ProfilePage() {
 
       <ErrorBoundary>
         <div className="space-y-6">
+          {/* ── Display preference ────────────────────────── */}
+          <section className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+            <div className="flex items-center gap-2 mb-3">
+              {isDark ? (
+                <Moon className="h-4 w-4 text-gray-500" aria-hidden="true" />
+              ) : (
+                <Sun className="h-4 w-4 text-gray-500" aria-hidden="true" />
+              )}
+              <h2 className="text-sm font-semibold text-gray-900">Display</h2>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Choose light or dark mode. This preference stays on your device only.
+            </p>
+            <div className="flex gap-2" role="group" aria-label="Color theme">
+              <button
+                type="button"
+                onClick={() => toggleTheme(false)}
+                className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm min-h-[44px] transition-colors ${
+                  !isDark
+                    ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+                aria-pressed={!isDark}
+              >
+                <Sun className="h-4 w-4" aria-hidden="true" />
+                Light
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleTheme(true)}
+                className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm min-h-[44px] transition-colors ${
+                  isDark
+                    ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+                aria-pressed={isDark}
+              >
+                <Moon className="h-4 w-4" aria-hidden="true" />
+                Dark
+              </button>
+            </div>
+          </section>
+
           {/* ── Approximate location ──────────────────────── */}
           <section className="rounded-lg border border-gray-200 bg-white p-5">
             <div className="flex items-center gap-2 mb-3">

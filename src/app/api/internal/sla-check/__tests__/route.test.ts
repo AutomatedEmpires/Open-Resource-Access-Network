@@ -5,6 +5,11 @@ vi.mock('@/services/workflow/engine', () => ({
   checkSlaBreaches: vi.fn(),
 }));
 
+vi.mock('@/services/escalation/engine', () => ({
+  checkSlaWarnings: vi.fn(),
+  escalateBreachedSubmissions: vi.fn(),
+}));
+
 vi.mock('@/services/db/postgres', () => ({
   isDatabaseConfigured: vi.fn(),
 }));
@@ -14,11 +19,17 @@ vi.mock('@/services/telemetry/sentry', () => ({
 }));
 
 import { checkSlaBreaches } from '@/services/workflow/engine';
+import {
+  checkSlaWarnings,
+  escalateBreachedSubmissions,
+} from '@/services/escalation/engine';
 import { isDatabaseConfigured } from '@/services/db/postgres';
 import { POST } from '../route';
 import { NextRequest } from 'next/server';
 
 const mockCheckSlaBreaches = vi.mocked(checkSlaBreaches);
+const mockCheckSlaWarnings = vi.mocked(checkSlaWarnings);
+const mockEscalateBreachedSubmissions = vi.mocked(escalateBreachedSubmissions);
 const mockIsDatabaseConfigured = vi.mocked(isDatabaseConfigured);
 
 function makeRequest(apiKey?: string): NextRequest {
@@ -37,6 +48,14 @@ describe('POST /api/internal/sla-check', () => {
     vi.clearAllMocks();
     vi.stubEnv('INTERNAL_API_KEY', 'test-secret-key');
     mockIsDatabaseConfigured.mockReturnValue(true);
+    mockCheckSlaWarnings.mockResolvedValue(1);
+    mockCheckSlaBreaches.mockResolvedValue(0);
+    mockEscalateBreachedSubmissions.mockResolvedValue({
+      warnings: 0,
+      renotified: 0,
+      reassigned: 0,
+      escalatedToOran: 0,
+    });
   });
 
   it('returns 503 when INTERNAL_API_KEY is not configured', async () => {
@@ -62,14 +81,23 @@ describe('POST /api/internal/sla-check', () => {
   });
 
   it('runs SLA check and returns breach count on success', async () => {
+    mockCheckSlaWarnings.mockResolvedValueOnce(2);
     mockCheckSlaBreaches.mockResolvedValueOnce(3);
+    mockEscalateBreachedSubmissions.mockResolvedValueOnce({
+      warnings: 0,
+      renotified: 1,
+      reassigned: 0,
+      escalatedToOran: 0,
+    });
 
     const res = await POST(makeRequest('test-secret-key'));
     const body = await res.json();
 
     expect(res.status).toBe(200);
     expect(body.success).toBe(true);
+    expect(body.warningCount).toBe(2);
     expect(body.breachedCount).toBe(3);
+    expect(body.escalation.renotified).toBe(1);
     expect(body.checkedAt).toBeDefined();
   });
 

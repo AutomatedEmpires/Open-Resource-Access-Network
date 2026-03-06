@@ -233,4 +233,85 @@ describe('host org dashboard page', () => {
       expect(screen.getByText('No organizations found')).toBeInTheDocument();
     });
   });
+
+  it('sends HSDS/legal fields and coerces year incorporated to a number on save', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          makeListResponse({
+            results: [{
+              id: 'org-3',
+              name: 'Org Three',
+              description: 'Legal profile org',
+              url: 'https://org3.example.org',
+              email: 'admin@org3.example.org',
+              tax_status: '501(c)(3)',
+              tax_id: '12-3456789',
+              year_incorporated: 2001,
+              legal_status: 'nonprofit',
+            }],
+          }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeListResponse(),
+      });
+
+    render(<OrgDashboardPage />);
+    await screen.findByText('Org Three');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(await screen.findByLabelText(/Year Incorporated/i), {
+      target: { value: '1999' },
+    });
+    fireEvent.change(screen.getByLabelText(/Tax Status/i), {
+      target: { value: 'Nonprofit' },
+    });
+    fireEvent.change(screen.getByLabelText(/Tax ID/i), {
+      target: { value: '98-7654321' },
+    });
+    fireEvent.change(screen.getByLabelText(/Legal Status/i), {
+      target: { value: 'government' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/api/host/organizations/org-3'));
+      expect(putCall).toBeTruthy();
+      const body = JSON.parse((putCall?.[1] as { body: string }).body);
+      expect(body).toMatchObject({
+        name: 'Org Three',
+        taxStatus: 'Nonprofit',
+        taxId: '98-7654321',
+        yearIncorporated: 1999,
+        legalStatus: 'government',
+      });
+    });
+  });
+
+  it('shows save fallback error text when update fails without JSON body', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeListResponse(),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => {
+          throw new Error('malformed');
+        },
+      });
+
+    render(<OrgDashboardPage />);
+    await screen.findByText('Helping Hands');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await screen.findByRole('alert');
+    expect(screen.getByText('Update failed')).toBeInTheDocument();
+  });
 });

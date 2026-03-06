@@ -69,7 +69,7 @@ async function loadRoute() {
 // Mock transaction helper
 // ============================================================
 
-function mockTransaction(callback: (client: ReturnType<typeof createMockClient>) => unknown) {
+function _mockTransaction(callback: (client: ReturnType<typeof createMockClient>) => unknown) {
   const client = createMockClient();
   dbMocks.withTransaction.mockImplementation(async (fn: (c: typeof client) => unknown) => fn(client));
   callback(client);

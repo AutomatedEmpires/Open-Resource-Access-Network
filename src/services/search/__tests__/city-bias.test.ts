@@ -45,7 +45,7 @@ describe('buildSearchQuery with cityCoords', () => {
     // sort_distance should be NULL
     expect(result.sql).toContain('NULL::float AS sort_distance');
     // No ST_Distance for sorting
-    const sortPart = result.sql.split('sort_distance')[0];
+    void result.sql.split('sort_distance')[0];
     // The base query without geo or cityBias should not have ST_MakePoint for the bias expr
     expect(result.params).not.toContain(40.7128);
   });

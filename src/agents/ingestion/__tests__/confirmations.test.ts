@@ -13,7 +13,6 @@ import {
   autoConfirmTag,
   rejectTag,
   modifyTag,
-  createFieldSuggestion,
   acceptFieldSuggestion,
   rejectFieldSuggestion,
   modifyFieldSuggestion,

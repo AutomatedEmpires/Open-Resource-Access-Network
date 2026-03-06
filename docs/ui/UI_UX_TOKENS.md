@@ -106,3 +106,48 @@ Standard copy conventions:
 - Native `<select>` inputs MAY use a minimum height of **32px** in dense filter panels.
 - Justification: the native control opens a platform picker on tap; this is treated as an input control rather than a small icon button.
 - When used, add a short inline note referencing this section (see directory sort select).
+
+---
+
+## 10) Z-Index Scale
+
+Named CSS custom properties in `:root` of `src/app/globals.css`. **Always use these — never use arbitrary numeric `z-*` values.**
+
+| Variable | Value | Use |
+|---|---|---|
+| `--z-skip-link` | 100 | Keyboard skip-to-content link (always on top) |
+| `--z-toast` | 100 | Toast / notification stack |
+| `--z-modal` | 50 | Dialog overlays, floating dropdowns, chat bubble |
+| `--z-nav` | 40 | Sticky header bar, fixed bottom nav |
+| `--z-sticky` | 30 | Sticky sub-headers or table headers |
+| `--z-elevated` | 20 | Cards with drop-shadows that need to float above siblings |
+
+In Tailwind: `z-[var(--z-modal)]`, `z-[var(--z-nav)]`, etc.
+
+---
+
+## 11) Approved Arbitrary Tailwind Values
+
+Arbitrary Tailwind values (`utility-[value]`) are restricted by the `oran/no-unapproved-arbitrary` ESLint rule defined in `eslint-plugin-oran.mjs`. New values not in the list below will trigger a **warning** at lint time.
+
+To add a new value: add it to both `APPROVED_ARBITRARY` in `eslint-plugin-oran.mjs` **and** the table below.
+
+The following categories are **unconditionally approved** without appearing in the list:
+- CSS custom-property references: `z-[var(--z-nav)]`, `bg-[var(--bg-surface)]`, etc.
+- Radix UI data-attribute selectors: `data-[state=open]`, `data-[state=closed]`
+
+### Approved list
+
+| Class | Reason |
+|---|---|
+| `min-h-[44px]`, `min-w-[44px]` | WCAG 2.5.5 minimum touch target (44 × 44 px) |
+| `min-h-[28px]`…`min-h-[80px]`, `min-w-[14px]`…`min-w-[200px]` | Icon / badge sizes inside labelled containers |
+| `h-[60vh]`, `h-[50vh]`, `min-h-[60vh]` | Content-well viewport heights |
+| `max-h-[85vh]`, `max-h-[80vh]` | Modal / panel max heights |
+| `h-[calc(100dvh-13rem)]`, `h-[calc(100vh-16rem)]`, `max-h-[calc(100vh-16rem)]` | Computed scroll container heights |
+| `max-w-[120px]`…`max-w-[200px]`, `max-w-[18rem]`, `max-w-[85%]` | Truncation constraints for names / labels |
+| `max-h-[120px]`, `max-h-[420px]` | Scrollable list max heights |
+| `grid-cols-[1fr,auto,auto]`, `grid-cols-[1fr_380px]` | Two-panel / sidebar layouts |
+| `text-[9px]`, `text-[10px]`, `text-[11px]` | Sub-`xs` font sizes for badge labels |
+| `bottom-[4.5rem]`, `top-[20%]` | Fixed / absolute positioning |
+| `[animation-delay:-0.3s]`, `[animation-delay:-0.15s]` | Staggered loading-dot animation delays |

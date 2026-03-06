@@ -3,15 +3,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const providerMock = vi.hoisted(() =>
   vi.fn((config: Record<string, unknown>) => config),
 );
+const credentialsProviderMock = vi.hoisted(() =>
+  vi.fn((config: Record<string, unknown>) => config),
+);
 
 vi.mock('next-auth/providers/azure-ad', () => ({
   default: providerMock,
+}));
+vi.mock('next-auth/providers/credentials', () => ({
+  default: credentialsProviderMock,
 }));
 
 const originalEnv = {
   clientId: process.env.AZURE_AD_CLIENT_ID,
   clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
   tenantId: process.env.AZURE_AD_TENANT_ID,
+  testAuthEnabled: process.env.ORAN_TEST_AUTH_ENABLED,
+  nodeEnv: process.env.NODE_ENV,
 };
 
 const mutableEnv = process.env as Record<string, string | undefined>;
@@ -31,6 +39,8 @@ beforeEach(() => {
   delete mutableEnv.AZURE_AD_CLIENT_ID;
   delete mutableEnv.AZURE_AD_CLIENT_SECRET;
   delete mutableEnv.AZURE_AD_TENANT_ID;
+  delete mutableEnv.ORAN_TEST_AUTH_ENABLED;
+  delete mutableEnv.NODE_ENV;
 });
 
 afterEach(() => {
@@ -50,6 +60,18 @@ afterEach(() => {
     delete mutableEnv.AZURE_AD_TENANT_ID;
   } else {
     mutableEnv.AZURE_AD_TENANT_ID = originalEnv.tenantId;
+  }
+
+  if (originalEnv.testAuthEnabled === undefined) {
+    delete mutableEnv.ORAN_TEST_AUTH_ENABLED;
+  } else {
+    mutableEnv.ORAN_TEST_AUTH_ENABLED = originalEnv.testAuthEnabled;
+  }
+
+  if (originalEnv.nodeEnv === undefined) {
+    delete mutableEnv.NODE_ENV;
+  } else {
+    mutableEnv.NODE_ENV = originalEnv.nodeEnv;
   }
 });
 
@@ -101,13 +123,13 @@ describe('authOptions', () => {
 
     expect(
       providerConfig.profile({
-        sub: 'user-sub',
+        oid: 'fallback-oid',
         name: 'A User',
         email: 'user@example.com',
         roles: ['HostMember', 'Seeker'],
       }),
     ).toEqual({
-      id: 'user-sub',
+      id: 'fallback-oid',
       name: 'A User',
       email: 'user@example.com',
       role: 'host_member',
@@ -165,5 +187,47 @@ describe('authOptions', () => {
         role: 'oran_admin',
       },
     });
+  });
+
+  it('adds ORAN test credentials provider outside production', async () => {
+    mutableEnv.ORAN_TEST_AUTH_ENABLED = '1';
+    mutableEnv.NODE_ENV = 'test';
+    const { authOptions } = await loadAuthModule();
+
+    expect(credentialsProviderMock).toHaveBeenCalledOnce();
+    expect(authOptions.providers).toHaveLength(1);
+
+    const providerConfig = authOptions.providers[0] as unknown as {
+      authorize: (credentials?: { userId?: string; role?: string }) => Promise<unknown>;
+    };
+
+    await expect(providerConfig.authorize({ userId: '  abc123 ', role: ' host_admin ' })).resolves.toEqual({
+      id: 'abc123',
+      name: 'Test host_admin',
+      email: 'abc123@oran.test',
+      role: 'host_admin',
+    });
+    await expect(providerConfig.authorize({ role: 'invalid' })).resolves.toBeNull();
+  });
+
+  it('does not include ORAN test credentials provider in production', async () => {
+    mutableEnv.ORAN_TEST_AUTH_ENABLED = '1';
+    mutableEnv.NODE_ENV = 'production';
+
+    const { authOptions } = await loadAuthModule();
+    expect(authOptions.providers).toEqual([]);
+    expect(credentialsProviderMock).not.toHaveBeenCalled();
+  });
+
+  it('jwt and session callbacks preserve defaults without optional fields', async () => {
+    const { authOptions } = await loadAuthModule();
+    const jwt = authOptions.callbacks?.jwt;
+    const session = authOptions.callbacks?.session;
+
+    const token = await jwt?.({ token: { sub: 'existing-sub' } } as never);
+    expect(token).toMatchObject({ sub: 'existing-sub' });
+
+    const result = await session?.({ session: {}, token: {} } as never);
+    expect(result).toEqual({});
   });
 });

@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
                 $2,
                 'submission',
                 $1,
-                '/admin/approvals',
+                '/approvals',
                 'new_claim_' || $1 || '_' || up.user_id
          FROM user_profiles up
          WHERE up.role IN ('community_admin', 'oran_admin')

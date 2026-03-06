@@ -430,6 +430,7 @@ export type NotificationEventType =
   | 'submission_status_changed'
   | 'submission_sla_warning'
   | 'submission_sla_breach'
+  | 'submission_escalation_warning'
   | 'scope_grant_requested'
   | 'scope_grant_decided'
   | 'scope_grant_revoked'

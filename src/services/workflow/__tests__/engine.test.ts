@@ -4,10 +4,15 @@ const dbMocks = vi.hoisted(() => ({
   executeQuery: vi.fn(),
   withTransaction: vi.fn(),
 }));
+const emailMocks = vi.hoisted(() => ({
+  sendEmail: vi.fn().mockResolvedValue(undefined),
+  isEmailConfigured: vi.fn().mockReturnValue(false),
+}));
 
 const clientQueryMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/db/postgres', () => dbMocks);
+vi.mock('@/services/email/azureEmail', () => emailMocks);
 
 import {
   acquireLock,
@@ -29,6 +34,9 @@ beforeEach(() => {
   });
 
   clientQueryMock.mockReset();
+  emailMocks.sendEmail.mockClear();
+  emailMocks.isEmailConfigured.mockReset();
+  emailMocks.isEmailConfigured.mockReturnValue(false);
 });
 
 describe('workflow/engine', () => {
@@ -136,6 +144,101 @@ describe('workflow/engine', () => {
     expect(result.error).toContain('two-person rule');
   });
 
+  it('advance allows required types when two-person flag is disabled', async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-4b',
+          submission_type: 'org_claim',
+          status: 'pending_second_approval',
+          is_locked: false,
+          locked_by_user_id: null,
+          assigned_to_user_id: null,
+          service_id: null,
+          submitted_by_user_id: 'submitter-x',
+          target_type: 'organization',
+          target_id: null,
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [{ enabled: false }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-ok-flag-off' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await advance({
+      submissionId: 'sub-4b',
+      toStatus: 'approved',
+      actorUserId: 'reviewer-other',
+      actorRole: 'community_admin',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.transitionId).toBe('transition-ok-flag-off');
+  });
+
+  it('advance blocks second approver when actor already reviewed', async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-4c',
+          submission_type: 'org_claim',
+          status: 'pending_second_approval',
+          is_locked: false,
+          locked_by_user_id: null,
+          assigned_to_user_id: null,
+          service_id: null,
+          submitted_by_user_id: 'submitter-z',
+          target_type: 'organization',
+          target_id: null,
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [{ enabled: true }] })
+      .mockResolvedValueOnce({ rows: [{ actor_user_id: 'reviewer-1' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-failed-reviewed' }] });
+
+    const result = await advance({
+      submissionId: 'sub-4c',
+      toStatus: 'approved',
+      actorUserId: 'reviewer-1',
+      actorRole: 'community_admin',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Final approver must be different');
+  });
+
+  it('advance succeeds for a lock owner transitioning out of submitted', async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-4d',
+          submission_type: 'service_verification',
+          status: 'submitted',
+          is_locked: true,
+          locked_by_user_id: 'reviewer-lock',
+          assigned_to_user_id: null,
+          service_id: null,
+          submitted_by_user_id: 'submitter-4d',
+          target_type: 'service',
+          target_id: null,
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-ok-lock' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await advance({
+      submissionId: 'sub-4d',
+      toStatus: 'needs_review',
+      actorUserId: 'reviewer-lock',
+      actorRole: 'community_admin',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.transitionId).toBe('transition-ok-lock');
+  });
+
   it('advance succeeds, records transition, and releases lock on terminal status', async () => {
     clientQueryMock
       .mockResolvedValueOnce({
@@ -168,6 +271,119 @@ describe('workflow/engine', () => {
     expect(result.success).toBe(true);
     expect(result.transitionId).toBe('transition-ok-1');
     expect(result.toStatus).toBe('approved');
+  });
+
+  it('advance to pending_second_approval triggers second-approver notifications', async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-5b',
+          submission_type: 'org_claim',
+          status: 'under_review',
+          is_locked: false,
+          locked_by_user_id: null,
+          assigned_to_user_id: null,
+          service_id: null,
+          submitted_by_user_id: 'submitter-5b',
+          target_type: 'organization',
+          target_id: null,
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-ok-5b' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await advance({
+      submissionId: 'sub-5b',
+      toStatus: 'pending_second_approval',
+      actorUserId: 'reviewer-5b',
+      actorRole: 'community_admin',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toStatus).toBe('pending_second_approval');
+    expect(clientQueryMock).toHaveBeenCalledTimes(5);
+  });
+
+  it('sends terminal status email when configured and contact email exists', async () => {
+    emailMocks.isEmailConfigured.mockReturnValue(true);
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-5c',
+          submission_type: 'community_report',
+          status: 'under_review',
+          is_locked: false,
+          locked_by_user_id: null,
+          assigned_to_user_id: null,
+          service_id: null,
+          submitted_by_user_id: 'submitter-5c',
+          target_type: 'service',
+          target_id: null,
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-ok-5c' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ payload: JSON.stringify({ contact_email: 'person@example.org' }), title: 'Broken listing' }],
+      });
+
+    const result = await advance({
+      submissionId: 'sub-5c',
+      toStatus: 'approved',
+      actorUserId: 'reviewer-5c',
+      actorRole: 'community_admin',
+    });
+
+    expect(result.success).toBe(true);
+    expect(emailMocks.sendEmail).toHaveBeenCalledWith({
+      to: 'person@example.org',
+      subject: 'Update: Broken listing — approved',
+      text: 'Your submission has been updated to "approved". Thank you for your report.',
+    });
+  });
+
+  it('uses submitter action URL mapping for routed submission types', async () => {
+    const cases = [
+      ['community_report', '/report'],
+      ['appeal', '/appeal'],
+      ['org_claim', '/claim'],
+      ['new_service', '/services'],
+    ] as const;
+
+    for (const [submissionType, expectedUrl] of cases) {
+      clientQueryMock
+        .mockResolvedValueOnce({
+          rows: [{
+            id: `sub-url-${submissionType}`,
+            submission_type: submissionType,
+            status: 'submitted',
+            is_locked: false,
+            locked_by_user_id: null,
+            assigned_to_user_id: null,
+            service_id: null,
+            submitted_by_user_id: 'submitter-url',
+            target_type: 'service',
+            target_id: null,
+          }],
+        })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ id: `transition-url-${submissionType}` }] })
+        .mockResolvedValueOnce({ rows: [] });
+
+      const res = await advance({
+        submissionId: `sub-url-${submissionType}`,
+        toStatus: 'needs_review',
+        actorUserId: 'reviewer-url',
+        actorRole: 'community_admin',
+      });
+      expect(res.success).toBe(true);
+      expect(clientQueryMock.mock.calls.at(-1)?.[1]?.[4]).toBe(expectedUrl);
+      clientQueryMock.mockClear();
+    }
   });
 
   it('acquireLock returns true when row is updated and false otherwise', async () => {
@@ -365,5 +581,57 @@ describe('workflow/engine', () => {
 
     expect(result.success).toBe(true);
     expect(result.toStatus).toBe('approved');
+  });
+
+  it('runAutoCheck routes to manual review for low or missing confidence', async () => {
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([{ enabled: true }])
+      .mockResolvedValueOnce([{ service_id: 'svc-15', score: 40 }]);
+
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-15',
+          submission_type: 'service_verification',
+          status: 'auto_checking',
+          is_locked: false,
+          locked_by_user_id: null,
+          assigned_to_user_id: null,
+          service_id: 'svc-15',
+          submitted_by_user_id: 'system',
+          target_type: 'service',
+          target_id: 'svc-15',
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-ok-15' }] });
+
+    const lowScore = await runAutoCheck('sub-15', 'system');
+    expect(lowScore.success).toBe(true);
+    expect(lowScore.toStatus).toBe('needs_review');
+
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([{ enabled: true }])
+      .mockResolvedValueOnce([{ service_id: null, score: null }]);
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-16',
+          submission_type: 'service_verification',
+          status: 'auto_checking',
+          is_locked: false,
+          locked_by_user_id: null,
+          assigned_to_user_id: null,
+          service_id: null,
+          submitted_by_user_id: 'system',
+          target_type: 'service',
+          target_id: null,
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-ok-16' }] });
+    const missingScore = await runAutoCheck('sub-16', 'system');
+    expect(missingScore.success).toBe(true);
+    expect(missingScore.toStatus).toBe('needs_review');
   });
 });

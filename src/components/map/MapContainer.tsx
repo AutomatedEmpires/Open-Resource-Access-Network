@@ -309,6 +309,52 @@ export function MapContainer({
     }
   }, [pins]);
 
+  // ── keyboard navigation ───────────────────────────────────
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const cam = map.getCamera();
+    const center = cam.center as [number, number] | undefined;
+    const zoom = typeof cam.zoom === 'number' ? cam.zoom : 4;
+    const delta = 0.1 / Math.pow(2, zoom - 4); // pan step shrinks as zoom increases
+
+    switch (e.key) {
+      case 'ArrowUp':
+        e.preventDefault();
+        if (center) map.setCamera({ center: [center[0], center[1] + delta] });
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        if (center) map.setCamera({ center: [center[0], center[1] - delta] });
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        if (center) map.setCamera({ center: [center[0] - delta, center[1]] });
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        if (center) map.setCamera({ center: [center[0] + delta, center[1]] });
+        break;
+      case '+':
+      case '=':
+        e.preventDefault();
+        map.setCamera({ zoom: zoom + 1 });
+        break;
+      case '-':
+        e.preventDefault();
+        map.setCamera({ zoom: Math.max(1, zoom - 1) });
+        break;
+      case 'r':
+      case 'R':
+        e.preventDefault();
+        map.setCamera({ center: [centerLng, centerLat], zoom });
+        break;
+      default:
+        break;
+    }
+  }, [centerLat, centerLng]);
+
   // ── loading state ─────────────────────────────────────────
   if (isLoading && !mapError) {
     return (
@@ -343,12 +389,23 @@ export function MapContainer({
 
   // ── map canvas ────────────────────────────────────────────
   return (
-    <div
-      ref={containerRef}
-      className={`rounded-lg border border-gray-200 overflow-hidden bg-gray-100 ${className}`}
-      role="region"
-      aria-label="Interactive service map"
-    />
+    <>
+      <div
+        ref={containerRef}
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- keyboard nav requires focus; role="application" signals interactive widget
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        className={`rounded-lg border border-gray-200 overflow-hidden bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${className}`}
+        role="application"
+        aria-label="Interactive service map. Arrow keys to pan, + and - to zoom, R to reset."
+      />
+      <p className="mt-1 text-xs text-gray-500">
+        Keyboard: Arrow keys to pan, <kbd className="font-mono">+</kbd> / <kbd className="font-mono">-</kbd> to zoom, <kbd className="font-mono">R</kbd> to reset.{' '}
+        <a href="#map-results" className="underline text-blue-600 hover:text-blue-800">
+          Skip to results
+        </a>
+      </p>
+    </>
   );
 }
 

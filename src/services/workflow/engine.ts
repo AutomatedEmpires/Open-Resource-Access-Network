@@ -434,7 +434,7 @@ export async function assignSubmission(
         'Submission assigned to you',
         `You have been assigned submission ${submissionId}`,
         submissionId,
-        `/community/queue/${submissionId}`,
+        `/verify?id=${submissionId}`,
         `assign_${submissionId}_${assigneeUserId}_${Date.now()}`,
       ],
     );
@@ -506,7 +506,7 @@ export async function checkSlaBreaches(): Promise<number> {
               'Submission ' || $1 || ' has breached its SLA deadline',
               'submission',
               $1,
-              '/community/queue/' || $1,
+              '/verify?id=' || $1,
               'sla_breach_' || $1 || '_' || NOW()::text
        FROM submissions WHERE id = $1
        ON CONFLICT (idempotency_key) DO NOTHING`,
@@ -649,6 +649,21 @@ export async function runAutoCheck(
 // HELPERS
 // ============================================================
 
+function getSubmitterActionUrl(submissionType: string): string | null {
+  switch (submissionType as SubmissionType) {
+    case 'community_report':
+      return '/report';
+    case 'appeal':
+      return '/appeal';
+    case 'org_claim':
+      return '/claim';
+    case 'new_service':
+      return '/services';
+    default:
+      return null;
+  }
+}
+
 function isTerminalStatus(status: SubmissionStatus): boolean {
   return ['approved', 'denied', 'withdrawn', 'expired', 'archived'].includes(status);
 }
@@ -696,6 +711,7 @@ async function fireStatusChangeNotification(
 ): Promise<void> {
   // Notify the submitter about status changes (unless actor is the submitter)
   if (submission.submitted_by_user_id !== actorUserId) {
+    const submitterActionUrl = getSubmitterActionUrl(submission.submission_type);
     await client.query(
       `INSERT INTO notification_events
          (recipient_user_id, event_type, title, body, resource_type, resource_id, action_url, idempotency_key)
@@ -706,7 +722,7 @@ async function fireStatusChangeNotification(
         `Submission ${toStatus}`,
         `Your submission has been moved from ${fromStatus} to ${toStatus}`,
         submissionId,
-        `/community/queue/${submissionId}`,
+        submitterActionUrl,
         `status_${submissionId}_${toStatus}_${Date.now()}`,
       ],
     );
@@ -723,7 +739,7 @@ async function fireStatusChangeNotification(
               'Submission ' || $1 || ' requires a second approver',
               'submission',
               $1,
-              '/admin/approvals/' || $1,
+              '/verify?id=' || $1,
               'two_person_' || $1 || '_' || up.user_id || '_' || $2
        FROM user_profiles up
        WHERE up.role IN ('community_admin', 'oran_admin')

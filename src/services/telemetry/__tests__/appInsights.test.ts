@@ -108,6 +108,75 @@ describe('appInsights telemetry wrapper', () => {
     });
   });
 
+  it('tracks AI events by splitting properties and measurements', async () => {
+    process.env.APPLICATIONINSIGHTS_CONNECTION_STRING = 'InstrumentationKey=test';
+    const appInsights = await loadAppInsightsModule();
+
+    await appInsights.trackAiEvent('content_safety_check', {
+      duration_ms: 123,
+      severity: 4,
+      success: true,
+      model: 'safety-v1',
+      skipped: undefined,
+      note: null,
+    });
+
+    expect(mockClient.trackEvent).toHaveBeenCalledWith({
+      name: 'content_safety_check',
+      properties: {
+        success: 'true',
+        model: 'safety-v1',
+      },
+      measurements: {
+        duration_ms: 123,
+        severity: 4,
+      },
+    });
+  });
+
+  it('supports debug/fatal trace severities and swallows AI-event telemetry errors', async () => {
+    process.env.APPLICATIONINSIGHTS_CONNECTION_STRING = 'InstrumentationKey=test';
+    const appInsights = await loadAppInsightsModule();
+
+    await appInsights.trackTrace('debug trace', 'debug');
+    await appInsights.trackTrace('fatal trace', 'fatal');
+
+    expect(mockClient.trackTrace).toHaveBeenNthCalledWith(1, {
+      message: 'debug trace',
+      severity: 0,
+      properties: undefined,
+    });
+    expect(mockClient.trackTrace).toHaveBeenNthCalledWith(2, {
+      message: 'fatal trace',
+      severity: 4,
+      properties: undefined,
+    });
+
+    mockClient.trackEvent.mockImplementationOnce(() => {
+      throw new Error('telemetry down');
+    });
+    await expect(
+      appInsights.trackAiEvent('content_safety_check', { duration_ms: 20 }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('fails open when app insights import cannot be loaded at runtime', async () => {
+    vi.resetModules();
+    vi.doMock('applicationinsights', () => {
+      throw new Error('module missing');
+    });
+    process.env.APPLICATIONINSIGHTS_CONNECTION_STRING = 'InstrumentationKey=test';
+
+    const appInsights = await loadAppInsightsModule();
+    await expect(appInsights.trackEvent('event_after_import_fail')).resolves.toBeUndefined();
+    await expect(appInsights.trackMetric('m', 1)).resolves.toBeUndefined();
+
+    // Restore the default module mock for subsequent tests.
+    vi.doMock('applicationinsights', () => ({
+      defaultClient: mockClient,
+    }));
+  });
+
   it('flushes pending telemetry through the client callback', async () => {
     process.env.APPLICATIONINSIGHTS_CONNECTION_STRING = 'InstrumentationKey=test';
     const appInsights = await loadAppInsightsModule();

@@ -14,6 +14,10 @@ const storeFactoryMocks = vi.hoisted(() => ({
 const jobsStore = vi.hoisted(() => ({
   listByStatus: vi.fn(),
   getById: vi.fn(),
+  update: vi.fn(),
+}));
+const jobsModuleMocks = vi.hoisted(() => ({
+  transitionJobStatus: vi.fn(),
 }));
 
 vi.mock('@/services/db/postgres', () => ({
@@ -33,6 +37,7 @@ vi.mock('@/services/db/drizzle', () => ({
   getDrizzle: getDrizzleMock,
 }));
 vi.mock('@/agents/ingestion/persistence/storeFactory', () => storeFactoryMocks);
+vi.mock('@/agents/ingestion/jobs', () => jobsModuleMocks);
 
 function createRequest(options: {
   search?: string;
@@ -83,6 +88,12 @@ beforeEach(() => {
   });
   jobsStore.listByStatus.mockResolvedValue([]);
   jobsStore.getById.mockResolvedValue(null);
+  jobsStore.update.mockResolvedValue(undefined);
+  jobsModuleMocks.transitionJobStatus.mockImplementation((job, status) => ({
+    ...job,
+    status,
+    completedAt: '2026-01-01T05:00:00.000Z',
+  }));
   captureExceptionMock.mockResolvedValue(undefined);
 });
 
@@ -188,5 +199,156 @@ describe('admin ingestion job routes', () => {
         queuedAt: '2026-01-01T00:00:00.000Z',
       },
     });
+  });
+
+  it('enforces detail route rate limiting and authz', async () => {
+    const { GET } = await loadJobDetailRoute();
+
+    rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 6 });
+    const limited = await GET(
+      createRequest({ ip: '198.51.100.15' }),
+      createRouteContext('11111111-1111-4111-8111-111111111111')
+    );
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('Retry-After')).toBe('6');
+
+    authMocks.getAuthContext.mockResolvedValueOnce(null);
+    const unauth = await GET(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111')
+    );
+    expect(unauth.status).toBe(401);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'oran-1' });
+    requireMinRoleMock.mockReturnValueOnce(false);
+    const forbidden = await GET(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111')
+    );
+    expect(forbidden.status).toBe(403);
+  });
+
+  it('returns 404 when job detail record does not exist', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    jobsStore.getById.mockResolvedValueOnce(null);
+    const { GET } = await loadJobDetailRoute();
+
+    const response = await GET(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111')
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: 'Job not found.' });
+  });
+
+  it('enforces delete route rate limiting/authz and validates ids', async () => {
+    const { DELETE } = await loadJobDetailRoute();
+
+    rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 4 });
+    const limited = await DELETE(
+      createRequest({ ip: '198.51.100.20' }),
+      createRouteContext('11111111-1111-4111-8111-111111111111')
+    );
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('Retry-After')).toBe('4');
+
+    authMocks.getAuthContext.mockResolvedValueOnce(null);
+    const unauth = await DELETE(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111')
+    );
+    expect(unauth.status).toBe(401);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'oran-1' });
+    requireMinRoleMock.mockReturnValueOnce(false);
+    const forbidden = await DELETE(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111')
+    );
+    expect(forbidden.status).toBe(403);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'oran-1' });
+    const invalid = await DELETE(createRequest(), createRouteContext('not-a-uuid'));
+    expect(invalid.status).toBe(400);
+  });
+
+  it('cancels queued/running jobs and persists update', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    jobsStore.getById.mockResolvedValueOnce({
+      id: '11111111-1111-4111-8111-111111111111',
+      status: 'queued',
+      queuedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const { DELETE } = await loadJobDetailRoute();
+
+    const response = await DELETE(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111')
+    );
+
+    expect(jobsModuleMocks.transitionJobStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'queued' }),
+      'cancelled'
+    );
+    expect(jobsStore.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'cancelled' })
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      job: expect.objectContaining({
+        id: '11111111-1111-4111-8111-111111111111',
+        status: 'cancelled',
+      }),
+    });
+  });
+
+  it('returns 404 when deleting a missing job', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    jobsStore.getById.mockResolvedValueOnce(null);
+    const { DELETE } = await loadJobDetailRoute();
+
+    const response = await DELETE(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111')
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: 'Job not found.' });
+  });
+
+  it('rejects cancellation for non-active jobs', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    jobsStore.getById.mockResolvedValueOnce({
+      id: '11111111-1111-4111-8111-111111111111',
+      status: 'completed',
+      queuedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const { DELETE } = await loadJobDetailRoute();
+
+    const response = await DELETE(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111')
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Cannot cancel a job with status 'completed'.",
+    });
+  });
+
+  it('returns 500 for detail route failures', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    jobsStore.getById.mockRejectedValueOnce(new Error('read failure'));
+    const { GET } = await loadJobDetailRoute();
+
+    const response = await GET(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111')
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: 'Internal server error.' });
+    expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(Error));
   });
 });

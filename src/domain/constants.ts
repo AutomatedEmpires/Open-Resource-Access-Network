@@ -255,11 +255,46 @@ export const NOTIFICATION_EVENT_TYPES: readonly NotificationEventType[] = [
   'submission_status_changed',
   'submission_sla_warning',
   'submission_sla_breach',
+  'submission_escalation_warning',
   'scope_grant_requested',
   'scope_grant_decided',
   'scope_grant_revoked',
   'two_person_approval_needed',
   'system_alert',
+] as const;
+
+// ============================================================
+// ESCALATION
+// ============================================================
+
+/**
+ * Threshold for SLA warning — fires at 75% of the SLA window.
+ * e.g. a 48-hour SLA triggers a warning at 36 hours.
+ */
+export const SLA_WARNING_THRESHOLD = 0.75;
+
+/**
+ * Tiered auto-escalation cadence (hours after SLA breach).
+ * Each tier specifies the delay after breach and the action taken.
+ */
+export const ESCALATION_TIERS = [
+  { hoursAfterBreach: 0,  action: 'notify_assignee' as const },
+  { hoursAfterBreach: 12, action: 'renotify_and_alert_org' as const },
+  { hoursAfterBreach: 24, action: 'reassign_to_next_admin' as const },
+  { hoursAfterBreach: 48, action: 'escalate_to_oran_admin' as const },
+] as const;
+
+export type EscalationAction = typeof ESCALATION_TIERS[number]['action'];
+
+/**
+ * Default notification event types that should be auto-enabled (in_app)
+ * when an admin profile is created.
+ */
+export const DEFAULT_ADMIN_NOTIFICATION_EVENTS: readonly NotificationEventType[] = [
+  'submission_assigned',
+  'submission_sla_warning',
+  'submission_sla_breach',
+  'submission_escalation_warning',
 ] as const;
 
 // ============================================================
@@ -426,6 +461,10 @@ export const CRISIS_RESOURCES = {
 
 export const FEATURE_FLAGS = {
   LLM_SUMMARIZE:         'llm_summarize',
+  /** Enables admin-only LLM assist for candidate review (advisory only). */
+  LLM_ADMIN_ASSIST:      'llm_admin_assist',
+  /** Enables text-to-speech summaries for seeker/admin surfaces where supported. */
+  TTS_SUMMARIES:         'tts_summaries',
   MAP_ENABLED:           'map_enabled',
   FEEDBACK_FORM:         'feedback_form',
   HOST_CLAIMS:           'host_claims',
@@ -448,7 +487,84 @@ export const FEATURE_FLAGS = {
    * Requires migration 0026_pgvector_embeddings.sql to be applied first.
    */
   VECTOR_SEARCH: 'vector_search',
+  /**
+   * Enables gpt-4o-mini intent enrichment for ambiguous 'general' fallback queries.
+   * Only fires when the keyword classifier cannot classify the query (category='general').
+   * Never runs for crisis-routed messages.
+   * Requires AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_KEY env vars (already wired for llm_summarize).
+   * Cost: ~$0.0002 per call (gpt-4o-mini at $0.15/1M input tokens, ~100 tokens/call).
+   */
+  LLM_INTENT_ENRICH: 'llm_intent_enrich',
+  /**
+   * Enables Azure AI Translator for multilingual service descriptions.
+   * Translates service card descriptions post-response-assembly when locale != 'en'.
+   * Requires AZURE_TRANSLATOR_KEY + AZURE_TRANSLATOR_ENDPOINT + AZURE_TRANSLATOR_REGION.
+   * Azure AI Translator F0: 2M characters/month free.
+   */
+  MULTILINGUAL_DESCRIPTIONS: 'multilingual_descriptions',
+  /**
+   * Enables Azure Speech TTS generation of service summaries.
+   * Requires AZURE_SPEECH_KEY + AZURE_SPEECH_REGION env vars.
+   * Azure Speech F0: 5 hours/month free. Neural HD: $16/1M chars at S0.
+   */
+  TTS_SUMMARIES: 'tts_summaries',
+  /**
+   * Phase 5 — Idea 7: gpt-4o-mini pre-checks candidate records during admin review.
+   * Returns completenessScore, warnings, and suggestions — advisory only, never auto-approves.
+   * Only service record metadata is sent — no PII.
+   * Requires AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_KEY (already wired for Idea 1).
+   */
+  LLM_ADMIN_ASSIST: 'llm_admin_assist',
+  /**
+   * Phase 5 — Idea 14: gpt-4o-mini classifies seeker feedback comments into actionable categories.
+   * Only the comment text is sent — no session/user identity. Fail-open.
+   * Requires AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_KEY (already wired).
+   */
+  LLM_FEEDBACK_TRIAGE: 'llm_feedback_triage',
+  /**
+   * Phase 5 — Idea 13: Azure Document Intelligence parses PDF/form submissions.
+   * Applied in the manualSubmit pipeline when a PDF content-type is detected.
+   * Requires AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT + AZURE_DOCUMENT_INTELLIGENCE_KEY env vars.
+   */
+  DOC_INTELLIGENCE_INTAKE: 'doc_intelligence_intake',
+  /**
+   * Enables privacy-safe UI interaction telemetry (breadcrumbs only — no PII).
+   * When enabled, trackInteraction() emits breadcrumbs for chat sends, searches,
+   * and crisis banner displays. Requires NEXT_PUBLIC_TELEMETRY_INTERACTIONS=true.
+   */
+  TELEMETRY_INTERACTIONS: 'telemetry_interactions',
 } as const;
+
+// ============================================================
+// SLA ESCALATION DEFAULTS
+// ============================================================
+
+/** Fraction of SLA window elapsed before sending a warning (e.g., 0.75 = 75%). */
+export const SLA_WARNING_THRESHOLD = 0.75;
+
+export const ESCALATION_TIERS: Array<{
+  hoursAfterBreach: number;
+  action:
+    | 'notify_assignee'
+    | 'renotify_and_alert_org'
+    | 'reassign_to_next_admin'
+    | 'escalate_to_oran_admin';
+}> = [
+  { hoursAfterBreach: 0, action: 'notify_assignee' },
+  { hoursAfterBreach: 12, action: 'renotify_and_alert_org' },
+  { hoursAfterBreach: 24, action: 'reassign_to_next_admin' },
+  { hoursAfterBreach: 48, action: 'escalate_to_oran_admin' },
+];
+
+/** Critical admin notification event types enabled by default (in-app). */
+export const DEFAULT_ADMIN_NOTIFICATION_EVENTS: readonly NotificationEventType[] = [
+  'submission_assigned',
+  'submission_status_changed',
+  'submission_sla_warning',
+  'submission_sla_breach',
+  'two_person_approval_needed',
+  'system_alert',
+];
 
 // ============================================================
 // SEARCH DEFAULTS

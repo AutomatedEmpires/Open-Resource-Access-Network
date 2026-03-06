@@ -299,4 +299,89 @@ describe('admin ingestion source routes', () => {
       deactivated: true,
     });
   });
+
+  it('covers source detail auth/rate/missing-id branches', async () => {
+    const { GET, PUT, DELETE } = await loadSourceDetailRoute();
+
+    dbConfigMock.mockReturnValueOnce(false);
+    expect((await GET(createRequest(), createRouteContext('source-1'))).status).toBe(503);
+
+    dbConfigMock.mockReturnValue(true);
+    rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 5 });
+    const limited = await GET(createRequest({ ip: '203.0.113.5' }), createRouteContext('source-1'));
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('Retry-After')).toBe('5');
+
+    authMocks.getAuthContext.mockResolvedValueOnce(null);
+    expect((await GET(createRequest(), createRouteContext('source-1'))).status).toBe(401);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'oran-1' });
+    requireMinRoleMock.mockReturnValueOnce(false);
+    expect((await GET(createRequest(), createRouteContext('source-1'))).status).toBe(403);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'oran-1' });
+    expect((await GET(createRequest(), createRouteContext(''))).status).toBe(400);
+
+    dbConfigMock.mockReturnValueOnce(false);
+    expect((await PUT(createRequest(), createRouteContext('source-1'))).status).toBe(503);
+
+    dbConfigMock.mockReturnValue(true);
+    rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 7 });
+    expect((await PUT(createRequest(), createRouteContext('source-1'))).status).toBe(429);
+
+    authMocks.getAuthContext.mockResolvedValueOnce(null);
+    expect((await PUT(createRequest(), createRouteContext('source-1'))).status).toBe(401);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'oran-1' });
+    requireMinRoleMock.mockReturnValueOnce(false);
+    expect((await PUT(createRequest(), createRouteContext('source-1'))).status).toBe(403);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'oran-1' });
+    expect((await PUT(createRequest(), createRouteContext(''))).status).toBe(400);
+
+    dbConfigMock.mockReturnValueOnce(false);
+    expect((await DELETE(createRequest(), createRouteContext('source-1'))).status).toBe(503);
+
+    dbConfigMock.mockReturnValue(true);
+    rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 11 });
+    expect((await DELETE(createRequest(), createRouteContext('source-1'))).status).toBe(429);
+
+    authMocks.getAuthContext.mockResolvedValueOnce(null);
+    expect((await DELETE(createRequest(), createRouteContext('source-1'))).status).toBe(401);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'oran-1' });
+    requireMinRoleMock.mockReturnValueOnce(false);
+    expect((await DELETE(createRequest(), createRouteContext('source-1'))).status).toBe(403);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'oran-1' });
+    expect((await DELETE(createRequest(), createRouteContext(''))).status).toBe(400);
+  });
+
+  it('covers source detail route error handling', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    const { GET, PUT, DELETE } = await loadSourceDetailRoute();
+
+    sourceRegistryStore.getById.mockRejectedValueOnce(new Error('read failed'));
+    const getFailed = await GET(createRequest(), createRouteContext('source-1'));
+    expect(getFailed.status).toBe(500);
+
+    sourceRegistryStore.getById.mockResolvedValueOnce(null);
+    const putMissing = await PUT(
+      createRequest({ jsonBody: { displayName: 'new' } }),
+      createRouteContext('source-1'),
+    );
+    expect(putMissing.status).toBe(404);
+
+    const putBadJson = await PUT(
+      createRequest({ jsonError: true }),
+      createRouteContext('source-1'),
+    );
+    expect(putBadJson.status).toBe(500);
+
+    sourceRegistryStore.deactivate.mockRejectedValueOnce(new Error('deactivate failed'));
+    const delFailed = await DELETE(createRequest(), createRouteContext('source-1'));
+    expect(delFailed.status).toBe(500);
+
+    expect(captureExceptionMock).toHaveBeenCalledTimes(3);
+  });
 });

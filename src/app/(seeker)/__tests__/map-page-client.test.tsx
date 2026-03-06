@@ -463,7 +463,7 @@ describe('MapPageClient', () => {
           json: async () => {
             throw new Error('bad taxonomy body');
           },
-        } as Response;
+        } as unknown as Response;
       }
       if (url.includes('/api/search?')) {
         return {
@@ -471,7 +471,7 @@ describe('MapPageClient', () => {
           json: async () => {
             throw new Error('bad search body');
           },
-        } as Response;
+        } as unknown as Response;
       }
       return {
         ok: false,

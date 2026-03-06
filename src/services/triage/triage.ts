@@ -109,7 +109,7 @@ async function fetchRawSignals(submissionId: string): Promise<RawSignalRow | nul
     [submissionId, CRISIS_ADJACENT_SITUATION_TAGS],
   );
 
-  return result.rows[0] ?? null;
+  return result[0] ?? null;
 }
 
 // ============================================================
@@ -220,7 +220,7 @@ export async function scoreSubmission(submissionId: string): Promise<TriageScore
     ],
   );
 
-  return result.rows[0] ?? null;
+  return result[0] ?? null;
 }
 
 // ============================================================
@@ -249,7 +249,7 @@ export async function scoreAllPendingSubmissions(): Promise<number> {
   );
 
   let scored = 0;
-  for (const { id } of pending.rows) {
+  for (const { id } of pending) {
     const result = await scoreSubmission(id);
     if (result) scored++;
   }
@@ -335,8 +335,8 @@ export async function getTriageQueue(opts: GetTriageQueueOptions): Promise<{
   ]);
 
   return {
-    entries: dataResult.rows,
-    total:   Number(countResult.rows[0]?.count ?? 0),
+    entries: dataResult,
+    total:   Number(countResult[0]?.count ?? 0),
   };
 }
 
@@ -385,7 +385,7 @@ export async function getTriageSummary(): Promise<TriageQueueSummary[]> {
       ],
     );
 
-    const r = row.rows[0];
+    const r = row[0];
     results.push({
       queue_type:    queueType,
       label:         QUEUE_TYPE_LABELS[queueType],
@@ -412,5 +412,5 @@ export async function getTriageScore(submissionId: string): Promise<TriageScore 
     `SELECT * FROM triage_scores WHERE submission_id = $1`,
     [submissionId],
   );
-  return result.rows[0] ?? null;
+  return result[0] ?? null;
 }

@@ -235,7 +235,7 @@ describe('scoreSubmission', () => {
   };
 
   it('returns null when submission is not found', async () => {
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [] });
+    mockExecuteQuery.mockResolvedValueOnce([]);
     const { scoreSubmission } = await import('@/services/triage/triage');
     const result = await scoreSubmission('nonexistent-id');
     expect(result).toBeNull();
@@ -257,9 +257,9 @@ describe('scoreSubmission', () => {
     };
 
     // First call: fetchRawSignals
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [RAW_ROW] });
+    mockExecuteQuery.mockResolvedValueOnce([RAW_ROW]);
     // Second call: upsert INSERT
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [expectedScore] });
+    mockExecuteQuery.mockResolvedValueOnce([expectedScore]);
 
     const { scoreSubmission } = await import('@/services/triage/triage');
     const result = await scoreSubmission('sub-001');
@@ -269,7 +269,7 @@ describe('scoreSubmission', () => {
   });
 
   it('passes crisis_adjacent tags array to raw signal query', async () => {
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [] });
+    mockExecuteQuery.mockResolvedValueOnce([]);
 
     const { scoreSubmission } = await import('@/services/triage/triage');
     await scoreSubmission('sub-001');
@@ -282,7 +282,7 @@ describe('scoreSubmission', () => {
 
   it('computes signal_trust = 1.0 when avg_confidence is null (unknown)', async () => {
     const rowWithNullConfidence = { ...RAW_ROW, avg_confidence: null };
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [rowWithNullConfidence] });
+    mockExecuteQuery.mockResolvedValueOnce([rowWithNullConfidence]);
 
     const savedScore = {
       id:                  'ts-002',
@@ -297,7 +297,7 @@ describe('scoreSubmission', () => {
       triage_explanations: ['Very low confidence score'],
       scored_at:           new Date().toISOString(),
     };
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [savedScore] });
+    mockExecuteQuery.mockResolvedValueOnce([savedScore]);
 
     const { scoreSubmission } = await import('@/services/triage/triage');
     await scoreSubmission('sub-001');
@@ -311,8 +311,8 @@ describe('scoreSubmission', () => {
 
   it('sets signal_sla_breach = 1 when sla_breached = true', async () => {
     const breachedRow = { ...RAW_ROW, sla_breached: true, sla_deadline: new Date(Date.now() - 1000).toISOString() };
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [breachedRow] });
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [{ id: 'ts-003', submission_id: 'sub-001', triage_priority: 90, triage_explanations: ['SLA breached'], scored_at: new Date().toISOString() }] });
+    mockExecuteQuery.mockResolvedValueOnce([breachedRow]);
+    mockExecuteQuery.mockResolvedValueOnce([{ id: 'ts-003', submission_id: 'sub-001', triage_priority: 90, triage_explanations: ['SLA breached'], scored_at: new Date().toISOString() }]);
 
     const { scoreSubmission } = await import('@/services/triage/triage');
     await scoreSubmission('sub-001');
@@ -331,7 +331,7 @@ describe('scoreAllPendingSubmissions', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('returns 0 when no pending submissions exist', async () => {
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [] }); // pending query
+    mockExecuteQuery.mockResolvedValueOnce([]); // pending query
     const { scoreAllPendingSubmissions } = await import('@/services/triage/triage');
     const count = await scoreAllPendingSubmissions();
     expect(count).toBe(0);
@@ -339,13 +339,13 @@ describe('scoreAllPendingSubmissions', () => {
 
   it('scores each pending submission and returns count', async () => {
     // pending query returns 2 IDs
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [{ id: 'sub-a' }, { id: 'sub-b' }] });
+    mockExecuteQuery.mockResolvedValueOnce([{ id: 'sub-a' }, { id: 'sub-b' }]);
     // For sub-a: fetchRawSignals, then upsert
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [{ submission_id: 'sub-a', created_at: new Date().toISOString(), sla_deadline: null, sla_breached: false, saves_count: '5', avg_confidence: '80', neg_feedback: '0', has_crisis_tag: false, service_id: null }] });
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [{ id: 'ts-a', submission_id: 'sub-a', triage_priority: 10, triage_explanations: [], scored_at: new Date().toISOString() }] });
+    mockExecuteQuery.mockResolvedValueOnce([{ submission_id: 'sub-a', created_at: new Date().toISOString(), sla_deadline: null, sla_breached: false, saves_count: '5', avg_confidence: '80', neg_feedback: '0', has_crisis_tag: false, service_id: null }]);
+    mockExecuteQuery.mockResolvedValueOnce([{ id: 'ts-a', submission_id: 'sub-a', triage_priority: 10, triage_explanations: [], scored_at: new Date().toISOString() }]);
     // For sub-b: fetchRawSignals, then upsert
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [{ submission_id: 'sub-b', created_at: new Date().toISOString(), sla_deadline: null, sla_breached: false, saves_count: '10', avg_confidence: '30', neg_feedback: '6', has_crisis_tag: true, service_id: null }] });
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [{ id: 'ts-b', submission_id: 'sub-b', triage_priority: 85, triage_explanations: ['Very low confidence score', 'Crisis-adjacent service category'], scored_at: new Date().toISOString() }] });
+    mockExecuteQuery.mockResolvedValueOnce([{ submission_id: 'sub-b', created_at: new Date().toISOString(), sla_deadline: null, sla_breached: false, saves_count: '10', avg_confidence: '30', neg_feedback: '6', has_crisis_tag: true, service_id: null }]);
+    mockExecuteQuery.mockResolvedValueOnce([{ id: 'ts-b', submission_id: 'sub-b', triage_priority: 85, triage_explanations: ['Very low confidence score', 'Crisis-adjacent service category'], scored_at: new Date().toISOString() }]);
 
     const { scoreAllPendingSubmissions } = await import('@/services/triage/triage');
     const count = await scoreAllPendingSubmissions();
@@ -378,8 +378,8 @@ describe('getTriageQueue', () => {
       },
     ];
 
-    mockExecuteQuery.mockResolvedValueOnce({ rows: entries });
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [{ count: '1' }] });
+    mockExecuteQuery.mockResolvedValueOnce(entries);
+    mockExecuteQuery.mockResolvedValueOnce([{ count: '1' }]);
 
     const { getTriageQueue } = await import('@/services/triage/triage');
     const result = await getTriageQueue({ queueType: 'pending_verification' });
@@ -390,9 +390,9 @@ describe('getTriageQueue', () => {
   });
 
   it('passes limit and offset to query', async () => {
-    mockExecuteQuery.mockResolvedValue({ rows: [] });
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [] });
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [{ count: '0' }] });
+    mockExecuteQuery.mockResolvedValue([]);
+    mockExecuteQuery.mockResolvedValueOnce([]);
+    mockExecuteQuery.mockResolvedValueOnce([{ count: '0' }]);
 
     const { getTriageQueue } = await import('@/services/triage/triage');
     await getTriageQueue({ queueType: 'disputes_appeals', limit: 10, offset: 20 });
@@ -403,8 +403,8 @@ describe('getTriageQueue', () => {
   });
 
   it('returns empty list for empty queue', async () => {
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [] });
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [{ count: '0' }] });
+    mockExecuteQuery.mockResolvedValueOnce([]);
+    mockExecuteQuery.mockResolvedValueOnce([{ count: '0' }]);
 
     const { getTriageQueue } = await import('@/services/triage/triage');
     const result = await getTriageQueue({ queueType: 'regression_alerts' });
@@ -422,9 +422,9 @@ describe('getTriageSummary', () => {
 
   it('returns a summary entry for each queue type', async () => {
     // 5 queue types, each gets one executeQuery call
-    mockExecuteQuery.mockResolvedValue({
-      rows: [{ total: '5', high_priority: '2', critical: '1', avg_priority: '72.50' }],
-    });
+    mockExecuteQuery.mockResolvedValue(
+      [{ total: '5', high_priority: '2', critical: '1', avg_priority: '72.50' }],
+    );
 
     const { getTriageSummary } = await import('@/services/triage/triage');
     const summary = await getTriageSummary();
@@ -439,9 +439,9 @@ describe('getTriageSummary', () => {
   });
 
   it('handles zero-count queues gracefully', async () => {
-    mockExecuteQuery.mockResolvedValue({
-      rows: [{ total: '0', high_priority: '0', critical: '0', avg_priority: null }],
-    });
+    mockExecuteQuery.mockResolvedValue(
+      [{ total: '0', high_priority: '0', critical: '0', avg_priority: null }],
+    );
 
     const { getTriageSummary } = await import('@/services/triage/triage');
     const summary = await getTriageSummary();
@@ -467,7 +467,7 @@ describe('getTriageScore', () => {
       triage_explanations: ['Very low confidence score'],
       scored_at:           new Date().toISOString(),
     };
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [score] });
+    mockExecuteQuery.mockResolvedValueOnce([score]);
 
     const { getTriageScore } = await import('@/services/triage/triage');
     const result = await getTriageScore('sub-001');
@@ -477,7 +477,7 @@ describe('getTriageScore', () => {
   });
 
   it('returns null when no score exists', async () => {
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [] });
+    mockExecuteQuery.mockResolvedValueOnce([]);
 
     const { getTriageScore } = await import('@/services/triage/triage');
     const result = await getTriageScore('no-score-id');

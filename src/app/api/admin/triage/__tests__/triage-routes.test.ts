@@ -1,8 +1,9 @@
+import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockIsDatabaseConfigured = vi.fn(() => true);
-const mockGetServerSession = vi.fn();
-const mockCheckRateLimit = vi.fn(async () => ({ success: true }));
+const mockGetAuthContext = vi.fn();
+const mockCheckRateLimit = vi.fn(() => ({ exceeded: false }));
 
 const triageServiceMocks = {
   getTriageQueue: vi.fn(),
@@ -16,14 +17,21 @@ vi.mock('@/services/db/postgres', () => ({
   isDatabaseConfigured: mockIsDatabaseConfigured,
 }));
 
-vi.mock('next-auth', () => ({
-  getServerSession: mockGetServerSession,
+vi.mock('@/services/auth/session', () => ({
+  getAuthContext: mockGetAuthContext,
 }));
 
-vi.mock('@/services/security/rate-limit', () => ({
+vi.mock('@/services/auth/guards', () => ({
+  requireMinRole: vi.fn((ctx: { role: string }, minRole: string) => {
+    const levels: Record<string, number> = {
+      seeker: 0, host_member: 1, host_admin: 2, community_admin: 3, oran_admin: 4,
+    };
+    return (levels[ctx.role] ?? 0) >= (levels[minRole] ?? 0);
+  }),
+}));
+
+vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimit: mockCheckRateLimit,
-  ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS: 200,
-  ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS: 50,
 }));
 
 vi.mock('@/services/triage/triage', () => triageServiceMocks);
@@ -33,27 +41,27 @@ const getStatus = (res: unknown): number | undefined => {
   return candidate?.status ?? candidate?.statusCode ?? candidate?.init?.status;
 };
 
-const adminSession = {
-  user: {
-    id: 'admin-1',
-    email: 'admin@example.org',
-    role: 'oran_admin',
-  },
+const adminAuthCtx = {
+  userId: 'admin-1',
+  email: 'admin@example.org',
+  role: 'oran_admin',
+  name: 'Admin',
+  orgId: null,
 };
 
 describe('GET /api/admin/triage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsDatabaseConfigured.mockReturnValue(true);
-    mockGetServerSession.mockResolvedValue(adminSession);
-    mockCheckRateLimit.mockResolvedValue({ success: true });
+    mockGetAuthContext.mockResolvedValue(adminAuthCtx);
+    mockCheckRateLimit.mockReturnValue({ exceeded: false });
   });
 
   it('returns 503 when database is not configured', async () => {
     mockIsDatabaseConfigured.mockReturnValue(false);
     const { GET } = await import('@/app/api/admin/triage/route');
 
-    const req = new Request('http://localhost/api/admin/triage?queue_type=pending_verification');
+    const req = new NextRequest('http://localhost/api/admin/triage?queue_type=pending_verification');
     const res = await GET(req);
 
     expect(getStatus(res)).toBe(503);
@@ -82,7 +90,7 @@ describe('GET /api/admin/triage', () => {
     });
 
     const { GET } = await import('@/app/api/admin/triage/route');
-    const req = new Request('http://localhost/api/admin/triage?queue_type=pending_verification&limit=10&offset=0');
+    const req = new NextRequest('http://localhost/api/admin/triage?queue_type=pending_verification&limit=10&offset=0');
     const res = await GET(req);
 
     expect(getStatus(res) ?? 200).toBe(200);
@@ -94,14 +102,14 @@ describe('POST /api/admin/triage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsDatabaseConfigured.mockReturnValue(true);
-    mockGetServerSession.mockResolvedValue(adminSession);
-    mockCheckRateLimit.mockResolvedValue({ success: true });
+    mockGetAuthContext.mockResolvedValue(adminAuthCtx);
+    mockCheckRateLimit.mockReturnValue({ exceeded: false });
   });
 
   it('returns scored count', async () => {
     triageServiceMocks.scoreAllPendingSubmissions.mockResolvedValue(7);
     const { POST } = await import('@/app/api/admin/triage/route');
-    const req = new Request('http://localhost/api/admin/triage', { method: 'POST' });
+    const req = new NextRequest('http://localhost/api/admin/triage', { method: 'POST' });
     const res = await POST(req);
 
     expect(getStatus(res) ?? 200).toBe(200);
@@ -113,8 +121,8 @@ describe('GET /api/admin/triage/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsDatabaseConfigured.mockReturnValue(true);
-    mockGetServerSession.mockResolvedValue(adminSession);
-    mockCheckRateLimit.mockResolvedValue({ success: true });
+    mockGetAuthContext.mockResolvedValue(adminAuthCtx);
+    mockCheckRateLimit.mockReturnValue({ exceeded: false });
   });
 
   it('returns score when found', async () => {
@@ -132,7 +140,7 @@ describe('GET /api/admin/triage/[id]', () => {
       scored_at: new Date().toISOString(),
     });
     const { GET } = await import('@/app/api/admin/triage/[id]/route');
-    const req = new Request('http://localhost/api/admin/triage/sub-1');
+    const req = new NextRequest('http://localhost/api/admin/triage/sub-1');
     const res = await GET(req, { params: Promise.resolve({ id: 'sub-1' }) });
     expect(getStatus(res) ?? 200).toBe(200);
   });
@@ -142,8 +150,8 @@ describe('POST /api/admin/triage/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsDatabaseConfigured.mockReturnValue(true);
-    mockGetServerSession.mockResolvedValue(adminSession);
-    mockCheckRateLimit.mockResolvedValue({ success: true });
+    mockGetAuthContext.mockResolvedValue(adminAuthCtx);
+    mockCheckRateLimit.mockReturnValue({ exceeded: false });
   });
 
   it('returns rescored record when found', async () => {
@@ -161,7 +169,7 @@ describe('POST /api/admin/triage/[id]', () => {
       scored_at: new Date().toISOString(),
     });
     const { POST } = await import('@/app/api/admin/triage/[id]/route');
-    const req = new Request('http://localhost/api/admin/triage/sub-2', { method: 'POST' });
+    const req = new NextRequest('http://localhost/api/admin/triage/sub-2', { method: 'POST' });
     const res = await POST(req, { params: Promise.resolve({ id: 'sub-2' }) });
     expect(getStatus(res) ?? 200).toBe(200);
   });
@@ -171,8 +179,8 @@ describe('GET /api/admin/triage/summary', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsDatabaseConfigured.mockReturnValue(true);
-    mockGetServerSession.mockResolvedValue(adminSession);
-    mockCheckRateLimit.mockResolvedValue({ success: true });
+    mockGetAuthContext.mockResolvedValue(adminAuthCtx);
+    mockCheckRateLimit.mockReturnValue({ exceeded: false });
   });
 
   it('returns summary', async () => {
@@ -188,7 +196,7 @@ describe('GET /api/admin/triage/summary', () => {
     ]);
 
     const { GET } = await import('@/app/api/admin/triage/summary/route');
-    const req = new Request('http://localhost/api/admin/triage/summary');
+    const req = new NextRequest('http://localhost/api/admin/triage/summary');
     const res = await GET(req);
 
     expect(getStatus(res) ?? 200).toBe(200);

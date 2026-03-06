@@ -57,15 +57,18 @@ export async function GET(req: NextRequest) {
   }
 
   const authCtx = await getAuthContext();
-  const authError = requireMinRole(authCtx, 'oran_admin');
-  if (authError) return authError;
+  if (!authCtx) {
+    return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
+  }
+  if (!requireMinRole(authCtx, 'oran_admin')) {
+    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+  }
 
-  const limited = await checkRateLimit(
-    `triage:list:${authCtx!.userId}`,
-    ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
-    RATE_LIMIT_WINDOW_MS,
+  const limited = checkRateLimit(
+    `triage:list:${authCtx.userId}`,
+    { maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS },
   );
-  if (limited) {
+  if (limited.exceeded) {
     return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
   }
 
@@ -112,15 +115,18 @@ export async function POST(req: NextRequest) {
   }
 
   const authCtx = await getAuthContext();
-  const authError = requireMinRole(authCtx, 'oran_admin');
-  if (authError) return authError;
+  if (!authCtx) {
+    return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
+  }
+  if (!requireMinRole(authCtx, 'oran_admin')) {
+    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+  }
 
-  const limited = await checkRateLimit(
-    `triage:score:${authCtx!.userId}`,
-    ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
-    RATE_LIMIT_WINDOW_MS,
+  const limited = checkRateLimit(
+    `triage:score:${authCtx.userId}`,
+    { maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS },
   );
-  if (limited) {
+  if (limited.exceeded) {
     return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
   }
 

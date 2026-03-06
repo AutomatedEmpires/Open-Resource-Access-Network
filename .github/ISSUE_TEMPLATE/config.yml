@@ -1,8 +1,14 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Support and triage
+    url: https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/SUPPORT.md
+    about: Find the best channel for bugs, feature requests, and operational questions.
   - name: Security policy
     url: https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/SECURITY.md
     about: Read reporting guidance before filing security issues.
+  - name: Code of conduct
+    url: https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/CODE_OF_CONDUCT.md
+    about: Review collaboration standards and expected community behavior.
   - name: SSOT and operating model
     url: https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/docs/SSOT.md
     about: Understand what is authoritative when docs and code disagree.

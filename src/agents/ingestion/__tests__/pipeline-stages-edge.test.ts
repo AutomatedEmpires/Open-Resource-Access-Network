@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import * as checklistModule from '../checklist';
 import * as fetcherModule from '../fetcher';
-import type { FetchResult, Fetcher } from '../fetcher';
+import type { FetchResult, Fetcher, PageFetcher } from '../fetcher';
 import type { LLMClient } from '../llm';
 import * as llmModule from '../llm';
 import { DEFAULT_PIPELINE_CONFIG } from '../pipeline/orchestrator';
@@ -211,7 +211,7 @@ describe('pipeline stages edge cases', () => {
     };
     const createPageFetcherSpy = vi
       .spyOn(fetcherModule, 'createPageFetcher')
-      .mockReturnValue(defaultFetcher);
+      .mockReturnValue(defaultFetcher as unknown as PageFetcher);
 
     const stage = new FetchStage();
     const result = await stage.execute(createContext());
@@ -847,7 +847,7 @@ describe('pipeline stages edge cases', () => {
     vi.spyOn(crypto, 'randomUUID')
       .mockReturnValueOnce('11111111-1111-4111-8111-111111111111')
       .mockReturnValueOnce('22222222-2222-4222-8222-222222222222');
-    vi.spyOn(crypto, 'randomBytes').mockReturnValue(Buffer.alloc(32, 7));
+    vi.spyOn(crypto, 'randomBytes').mockReturnValue(Buffer.alloc(32, 7) as unknown as void);
 
     const stage = new BuildCandidateStage();
     const context = createContext({

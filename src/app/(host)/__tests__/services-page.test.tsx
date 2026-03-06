@@ -267,6 +267,9 @@ describe('host services page', () => {
       expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/host/services?page=1&limit=12&q=food+pantry&organizationId=org-1');
     });
 
+    // Wait for results to render so pagination buttons are visible
+    await screen.findByText('Food Pantry');
+
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/host/services?page=2&limit=12&q=food+pantry&organizationId=org-1');

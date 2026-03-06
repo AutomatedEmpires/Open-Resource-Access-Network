@@ -152,7 +152,6 @@ export async function extractService(
   }
 
   const confidenceScore = candidateScore?.overall ?? llmExtraction.confidence ?? 50;
-  const { getConfidenceTier } = await import('@/domain/confidence');
   const confidenceTier = candidateScore?.tier ?? getConfidenceTier(confidenceScore);
 
   // Persist candidate record

@@ -24,6 +24,8 @@ export interface RouteQueueMessage {
   verificationsPassed: number;
   verificationsTotal: number;
   enqueuedAt: string;
+  /** Optional: user ID of the person who submitted this candidate (manual submissions). */
+  submittedByUserId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +156,25 @@ export async function routeToAdmin(message: RouteQueueMessage): Promise<void> {
           `[routeToAdmin] Fallback: assigned candidate ${message.candidateId} ` +
             `to ORAN admin ${fallbackAdmin.user_id}`
         );
+
+        // Notify the submitter (if this was a manual submission)
+        if (message.submittedByUserId) {
+          await executeQuery(
+            `INSERT INTO notification_events
+               (recipient_user_id, event_type, title, body,
+                resource_type, resource_id, action_url, idempotency_key)
+             VALUES ($1, 'submission_status_changed',
+                     'Your submission is being reviewed',
+                     'Your submission is being reviewed. Coverage in your area is limited — we''re assigning a platform reviewer.',
+                     'candidate', $2, '/submissions?candidateId=' || $2, $3)
+             ON CONFLICT (idempotency_key) DO NOTHING`,
+            [
+              message.submittedByUserId,
+              message.candidateId,
+              `submitter_fallback_notify_${message.candidateId}`,
+            ],
+          );
+        }
       }
     } else {
       // No ORAN admins available — fire system alert

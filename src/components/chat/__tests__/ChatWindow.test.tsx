@@ -1,155 +1,353 @@
+// @vitest-environment jsdom
+
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
-const useStateMock = vi.hoisted(() => vi.fn());
-const useRefMock = vi.hoisted(() => vi.fn());
-const useEffectMock = vi.hoisted(() => vi.fn());
-const useCallbackMock = vi.hoisted(() => vi.fn());
+const fetchMock = vi.hoisted(() => vi.fn());
+const trackInteractionMock = vi.hoisted(() => vi.fn());
 
-vi.mock('react', async () => {
-  const actual = await vi.importActual<typeof import('react')>('react');
-  return {
-    ...actual,
-    useState: useStateMock,
-    useRef: useRefMock,
-    useEffect: useEffectMock,
-    useCallback: useCallbackMock,
-  };
-});
 vi.mock('@/components/ui/button', () => ({
-  Button: 'button',
+  Button: ({
+    children,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
 }));
+
 vi.mock('@/components/chat/ChatServiceCard', () => ({
-  ChatServiceCard: 'chat-service-card',
+  ChatServiceCard: ({
+    card,
+    isSaved,
+    onToggleSave,
+  }: {
+    card: { serviceId: string; serviceName: string };
+    isSaved: boolean;
+    onToggleSave: (serviceId: string) => void;
+  }) => (
+    <div data-testid={`chat-card-${card.serviceId}`}>
+      <span>{card.serviceName}</span>
+      <button type="button" onClick={() => onToggleSave(card.serviceId)}>
+        {isSaved ? 'Unsave' : 'Save'}
+      </button>
+    </div>
+  ),
 }));
+
 vi.mock('lucide-react', () => ({
   Send: 'svg',
   AlertTriangle: 'svg',
   Phone: 'svg',
 }));
 
-async function loadChatWindow() {
-  return import('../ChatWindow');
-}
+vi.mock('@/services/telemetry/sentry', () => ({
+  trackInteraction: trackInteractionMock,
+}));
 
-function collectElements(
-  node: React.ReactNode,
-  predicate: (element: React.ReactElement<any, any>) => boolean,
-): React.ReactElement<any, any>[] {
-  const elements: React.ReactElement<any, any>[] = [];
-
-  const visit = (value: React.ReactNode) => {
-    if (Array.isArray(value)) {
-      value.forEach(visit);
-      return;
-    }
-    if (!React.isValidElement(value)) {
-      return;
-    }
-
-    const element = value as React.ReactElement<any, any>;
-    if (predicate(element)) {
-      elements.push(element);
-    }
-    visit(element.props.children);
-  };
-
-  visit(node);
-  return elements;
-}
-
-function mockStateSequence(values: unknown[]) {
-  values.forEach((value) => {
-    useStateMock.mockImplementationOnce(() => [value, vi.fn()]);
+vi.mock('@/components/ui/dialog', () => {
+  const DialogContext = React.createContext<{
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+  }>({
+    open: false,
+    onOpenChange: () => {},
   });
+
+  return {
+    Dialog: ({
+      children,
+      open = false,
+      onOpenChange = () => {},
+    }: {
+      children: React.ReactNode;
+      open?: boolean;
+      onOpenChange?: (open: boolean) => void;
+    }) => (
+      <DialogContext.Provider value={{ open, onOpenChange }}>
+        <div>{children}</div>
+      </DialogContext.Provider>
+    ),
+    DialogTrigger: ({ children }: { children: React.ReactNode }) => {
+      const ctx = React.useContext(DialogContext);
+      if (React.isValidElement(children)) {
+        const child = children as React.ReactElement<{ onClick?: () => void }>;
+        return React.cloneElement(child, {
+          onClick: () => {
+            child.props.onClick?.();
+            ctx.onOpenChange(true);
+          },
+        });
+      }
+      return <button type="button" onClick={() => ctx.onOpenChange(true)}>{children}</button>;
+    },
+    DialogContent: ({ children }: { children: React.ReactNode }) => {
+      const ctx = React.useContext(DialogContext);
+      if (!ctx.open) return null;
+      return <div>{children}</div>;
+    },
+    DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
+    DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
+  };
+});
+
+import { ChatWindow } from '../ChatWindow';
+
+function makeChatResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    message: 'Here are options',
+    services: [],
+    isCrisis: false,
+    sessionId: '11111111-1111-4111-8111-111111111111',
+    quotaRemaining: 49,
+    eligibilityDisclaimer: 'You may qualify for this service. Please confirm eligibility with the provider.',
+    llmSummarized: false,
+    intent: {
+      category: 'food_assistance',
+      rawQuery: 'food',
+      urgencyQualifier: 'standard',
+    },
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
-  vi.resetModules();
   vi.clearAllMocks();
-
-  useStateMock.mockImplementation((initial: unknown) => [initial, vi.fn()]);
-  useRefMock.mockImplementation(() => ({ current: null }));
-  useEffectMock.mockImplementation(() => undefined);
-  useCallbackMock.mockImplementation((fn: unknown) => fn);
+  cleanup();
+  localStorage.clear();
+  global.fetch = fetchMock as unknown as typeof fetch;
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+    configurable: true,
+    value: vi.fn(),
+  });
+  fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('/api/chat')) {
+      return {
+        ok: true,
+        json: async () => makeChatResponse(),
+      } as Response;
+    }
+    if (url.includes('/api/taxonomy/terms')) {
+      return {
+        ok: true,
+        json: async () => ({ terms: [] }),
+      } as Response;
+    }
+    return {
+      ok: true,
+      json: async () => ({}),
+    } as Response;
+  });
 });
 
 describe('ChatWindow', () => {
-  it('renders the empty-state chat shell with the always-on eligibility disclaimer', async () => {
-    mockStateSequence([
-      [],
-      '',
-      false,
-      50,
-      false,
-      false,
-      new Set<string>(),
-    ]);
-    useRefMock
-      .mockImplementationOnce(() => ({ current: null }))
-      .mockImplementationOnce(() => ({ current: { focus: vi.fn() } }));
-    const { ChatWindow } = await loadChatWindow();
+  it('renders empty state + disclaimer and sends a suggestion chip prompt', async () => {
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
 
-    const element = ChatWindow({ sessionId: 'session-1' }) as React.ReactElement<any, any>;
-    const logs = collectElements(element, (child) => child.props.role === 'log');
-    const notes = collectElements(element, (child) => child.props.role === 'note');
-    const sendButton = collectElements(
-      element,
-      (child) => child.type === 'button' && child.props['aria-label'] === 'Send message',
-    )[0];
-    const alerts = collectElements(element, (child) => child.props.role === 'alert');
+    expect(screen.getByRole('note', { name: 'Eligibility disclaimer' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    expect(screen.getByText('What do you need help with?')).toBeInTheDocument();
 
-    expect(logs).toHaveLength(1);
-    expect(notes.length).toBeGreaterThanOrEqual(1);
-    expect(sendButton.props.disabled).toBe(true);
-    expect(alerts).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Food pantry near me' }));
+
+    await screen.findByText('Here are options');
+    expect(trackInteractionMock).toHaveBeenCalledWith('chat_message_sent', expect.any(Object));
+
+    const chatCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/api/chat'));
+    const body = JSON.parse(String((chatCall?.[1] as { body: string }).body));
+    expect(body.message).toContain('food pantry');
   });
 
-  it('renders crisis, result cards, loading state, and quota exhaustion when populated', async () => {
-    mockStateSequence([
-      [
-        {
-          role: 'assistant',
-          content: 'Here are some services you can contact.',
-          timestamp: new Date('2026-01-01T00:00:00.000Z'),
-          services: [
-            {
-              serviceId: 'svc-1',
-              serviceName: 'Food Pantry',
-              organizationName: 'Helping Hands',
-              confidenceBand: 'HIGH',
-              eligibilityHint: 'You may qualify.',
-            },
-          ],
-          isCrisis: true,
-        },
-      ],
-      'need food',
-      true,
-      0,
-      true,
-      true,
-      new Set<string>(['svc-1']),
-    ]);
-    useRefMock
-      .mockImplementationOnce(() => ({ current: null }))
-      .mockImplementationOnce(() => ({ current: { focus: vi.fn() } }));
-    const { ChatWindow } = await loadChatWindow();
+  it('loads taxonomy tags, filters them, applies valid tag IDs, and sends trust filter payload', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/taxonomy/terms')) {
+        return {
+          ok: true,
+          json: async () => ({
+            terms: [
+              {
+                id: 'not-a-uuid',
+                term: 'Invalid Tag',
+                description: null,
+                parentId: null,
+                taxonomy: 'demo',
+                serviceCount: 1,
+              },
+              {
+                id: 'a1000000-4000-4000-8000-000000000001',
+                term: 'Food Assistance',
+                description: 'Food help',
+                parentId: null,
+                taxonomy: 'demo',
+                serviceCount: 4,
+              },
+            ],
+          }),
+        } as Response;
+      }
+      if (url.includes('/api/chat')) {
+        return {
+          ok: true,
+          json: async () => makeChatResponse(),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response;
+    });
 
-    const element = ChatWindow({ sessionId: 'session-1', userId: 'user-1' }) as React.ReactElement<any, any>;
-    const serviceCards = collectElements(element, (child) => child.type === 'chat-service-card');
-    const alerts = collectElements(element, (child) => child.props.role === 'alert');
-    const statuses = collectElements(element, (child) => child.props.role === 'status');
-    const notes = collectElements(element, (child) => child.props.role === 'note');
-    const sendButton = collectElements(
-      element,
-      (child) => child.type === 'button' && child.props['aria-label'] === 'Send message',
-    )[0];
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
 
-    expect(serviceCards).toHaveLength(1);
-    expect(alerts.length).toBeGreaterThanOrEqual(1);
-    expect(statuses).toHaveLength(1);
-    expect(notes).toHaveLength(1);
-    expect(sendButton.props.disabled).toBe(true);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Tags' })[0]);
+    await screen.findByRole('heading', { name: 'Filter by service tags' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Invalid Tag' }));
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search service tags' }), {
+      target: { value: 'zzzz' },
+    });
+    expect(screen.getByText('No matching tags.')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search service tags' }), {
+      target: { value: 'food' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Food Assistance' }));
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'High confidence only' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'food' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await screen.findByText('Here are options');
+
+    const chatCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/api/chat'));
+    const body = JSON.parse(String((chatCall?.[1] as { body: string }).body));
+    expect(body.filters).toEqual({
+      trust: 'HIGH',
+      taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'rent help' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await waitFor(() => {
+      const chatCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes('/api/chat'));
+      const secondBody = JSON.parse(String((chatCalls.at(-1)?.[1] as { body: string }).body));
+      expect(secondBody.filters).toEqual({ trust: 'HIGH' });
+    });
+  });
+
+  it('shows taxonomy fetch failure and chat fallback when chat response is non-ok', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/taxonomy/terms')) {
+        return {
+          ok: false,
+          json: async () => ({ error: 'taxonomy offline' }),
+        } as Response;
+      }
+      if (url.includes('/api/chat')) {
+        return {
+          ok: false,
+          json: async () => ({ error: 'upstream down' }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response;
+    });
+
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Tags' })[0]);
+    expect(await screen.findByRole('alert')).toHaveTextContent('taxonomy offline');
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'help' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await screen.findByText('Something went wrong. Please try again.');
+  });
+
+  it('handles crisis responses, quota exhaustion, and saved toggles', async () => {
+    localStorage.setItem('oran:saved-service-ids', '{not-json');
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/chat')) {
+        return {
+          ok: true,
+          json: async () =>
+            makeChatResponse({
+              isCrisis: true,
+              quotaRemaining: 0,
+              services: [
+                {
+                  serviceId: 'svc-1',
+                  serviceName: 'Food Pantry',
+                  organizationName: 'Helping Hands',
+                  confidenceBand: 'HIGH',
+                  confidenceScore: 90,
+                  eligibilityHint: 'You may qualify',
+                  description: 'Food support',
+                },
+              ],
+            }),
+        } as Response;
+      }
+      if (url.includes('/api/saved') && init?.method === 'POST') {
+        return { ok: true, json: async () => ({}) } as Response;
+      }
+      if (url.includes('/api/saved') && init?.method === 'DELETE') {
+        return { ok: true, json: async () => ({}) } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response;
+    });
+
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" userId="user-1" />);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'urgent shelter' },
+    });
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      key: 'Enter',
+      code: 'Enter',
+    });
+
+    await screen.findByText('Immediate Help Available');
+    expect(
+      screen.getAllByRole('alert').some((el) =>
+        String(el.textContent).includes('Message limit reached. Start a new session to continue.'),
+      ),
+    ).toBe(true);
+
+    const card = await screen.findByTestId('chat-card-svc-1');
+    fireEvent.click(within(card).getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/saved',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Unsave' }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/saved',
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
   });
 });

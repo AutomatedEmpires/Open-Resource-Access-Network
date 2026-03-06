@@ -64,7 +64,7 @@ describe('ui render components', () => {
       null,
     );
 
-    expect(buttonElement.props.className).toContain('bg-blue-600');
+    expect(buttonElement.props.className).toContain('bg-action-base');
     expect(linkElement.type).toBeDefined();
     expect(linkElement.props.className).toContain('text-blue-600');
   });

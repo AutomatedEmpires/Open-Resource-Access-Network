@@ -8,7 +8,7 @@
 
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Send, AlertTriangle, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ELIGIBILITY_DISCLAIMER } from '@/domain/constants';
@@ -265,7 +265,7 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
     }
   }, [loadTaxonomyTermsIfNeeded]);
 
-  const visibleTaxonomyTerms = React.useMemo(() => {
+  const visibleTaxonomyTerms = useMemo(() => {
     const trimmed = taxonomySearch.trim().toLowerCase();
     if (!trimmed) return taxonomyTerms;
     return taxonomyTerms.filter((t) => t.term.toLowerCase().includes(trimmed));

@@ -552,4 +552,251 @@ describe('MapContainer', () => {
     expect(map.markers.add).toHaveBeenCalled();
     expect(markersRef.current.length).toBeGreaterThan(0);
   });
+
+  it('re-centers camera only after loading completes', async () => {
+    const setCamera = vi.fn();
+    const effects: Array<() => void | (() => void)> = [];
+    useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
+      effects.push(effect);
+    });
+    queueRefs([
+      { current: { node: true } },
+      { current: { setCamera } },
+      { current: [] },
+      { current: null },
+    ]);
+    useStateMock
+      .mockImplementationOnce(() => [null, vi.fn()])
+      .mockImplementationOnce(() => [true, vi.fn()]);
+    const { MapContainer } = await loadMapContainer();
+
+    MapContainer({
+      centerLat: 45,
+      centerLng: -120,
+      zoom: 6,
+      className: 'h-48',
+    });
+    effects[0]();
+    expect(setCamera).not.toHaveBeenCalled();
+
+    queueRefs([
+      { current: { node: true } },
+      { current: { setCamera } },
+      { current: [] },
+      { current: null },
+    ]);
+    useStateMock
+      .mockImplementationOnce(() => [null, vi.fn()])
+      .mockImplementationOnce(() => [false, vi.fn()]);
+
+    MapContainer({
+      centerLat: 45,
+      centerLng: -120,
+      zoom: 6,
+      className: 'h-48',
+    });
+    effects[3]();
+    expect(setCamera).toHaveBeenCalledWith({ center: [-120, 45], zoom: 6 });
+  });
+
+  it('treats successful token responses without subscriptionKey as unconfigured', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: vi.fn().mockResolvedValue({}),
+    });
+    const setMapError = vi.fn();
+    const setIsLoading = vi.fn();
+    const effects: Array<() => void | (() => void)> = [];
+    useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
+      effects.push(effect);
+    });
+    queueRefs([
+      { current: { node: true } },
+      { current: null },
+      { current: [] as unknown[] },
+      { current: null },
+    ]);
+    useStateMock
+      .mockImplementationOnce(() => [null, setMapError])
+      .mockImplementationOnce(() => [true, setIsLoading]);
+    const { MapContainer } = await loadMapContainer();
+
+    MapContainer({ className: 'h-48' });
+    effects[1]();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setMapError).toHaveBeenCalledWith('Azure Maps is not configured. Contact your administrator.');
+    expect(setIsLoading).toHaveBeenCalledWith(false);
+  });
+
+  it('renders confidence tier marker classes and sanitizes popup logo URLs', async () => {
+    const map = {
+      markers: {
+        remove: vi.fn(),
+        add: vi.fn(),
+      },
+      events: {
+        add: vi.fn(),
+      },
+      setCamera: vi.fn(),
+    };
+    const popup = {
+      setOptions: vi.fn(),
+      open: vi.fn(),
+    };
+    const effects: Array<() => void | (() => void)> = [];
+    useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
+      effects.push(effect);
+    });
+    queueRefs([
+      { current: { node: true } },
+      { current: map },
+      { current: [] as unknown[] },
+      { current: popup },
+    ]);
+    useStateMock
+      .mockImplementationOnce(() => [null, vi.fn()])
+      .mockImplementationOnce(() => [false, vi.fn()]);
+    const { MapContainer } = await loadMapContainer();
+
+    MapContainer({
+      services: [
+        {
+          service: { id: 'green', name: 'Green Service' },
+          organization: { name: 'Org A', logoUrl: 'https://cdn.example/logo.png' },
+          confidenceScore: { score: 90 },
+          location: { latitude: 47.61, longitude: -122.33 },
+        },
+        {
+          service: { id: 'yellow', name: 'Yellow Service' },
+          organization: { name: 'Org B', logoUrl: 'javascript:alert(1)' },
+          confidenceScore: { score: 65 },
+          location: { latitude: 47.62, longitude: -122.32 },
+        },
+        {
+          service: { id: 'orange', name: 'Orange Service' },
+          organization: { name: 'Org C' },
+          confidenceScore: { score: 45 },
+          location: { latitude: 47.63, longitude: -122.31 },
+        },
+        {
+          service: { id: 'red', name: 'Red Service' },
+          organization: { name: 'Org D' },
+          confidenceScore: { score: 10 },
+          location: { latitude: 47.64, longitude: -122.30 },
+        },
+        {
+          service: { id: 'unknown', name: 'Unknown Service' },
+          organization: { name: 'Org E', logoUrl: 'not-a-url' },
+          confidenceScore: { score: Number.NaN },
+          location: { latitude: 47.65, longitude: -122.29 },
+        },
+      ] as never,
+      className: 'h-48',
+    });
+    effects[2]();
+
+    const html = markerInstances
+      .map((m) => (m.options as { htmlContent?: string }).htmlContent ?? '')
+      .join('\n');
+    expect(html).toContain('bg-green-600');
+    expect(html).toContain('bg-yellow-500');
+    expect(html).toContain('bg-orange-500');
+    expect(html).toContain('bg-red-600');
+    expect(html).toContain('bg-gray-400');
+
+    const clickHandlers = map.events.add.mock.calls
+      .filter((c) => c[0] === 'click')
+      .map((c) => c[2]);
+    clickHandlers[0]?.();
+    clickHandlers[1]?.();
+    clickHandlers[4]?.();
+
+    const popupContents = popup.setOptions.mock.calls.map((c) => String(c?.[0]?.content ?? ''));
+    expect(popupContents.some((content) => content.includes('<img src="https://cdn.example/logo.png"'))).toBe(true);
+    expect(popupContents.some((content) => content.includes('javascript:alert'))).toBe(false);
+    expect(popupContents.some((content) => content.includes('ORAN</div>'))).toBe(true);
+  });
+
+  it('skips marker rendering when no services have valid coordinates', async () => {
+    const map = {
+      markers: {
+        remove: vi.fn(),
+        add: vi.fn(),
+      },
+      events: {
+        add: vi.fn(),
+      },
+      setCamera: vi.fn(),
+    };
+    const effects: Array<() => void | (() => void)> = [];
+    useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
+      effects.push(effect);
+    });
+    queueRefs([
+      { current: { node: true } },
+      { current: map },
+      { current: [] as unknown[] },
+      { current: null },
+    ]);
+    useStateMock
+      .mockImplementationOnce(() => [null, vi.fn()])
+      .mockImplementationOnce(() => [false, vi.fn()]);
+    const { MapContainer } = await loadMapContainer();
+
+    MapContainer({
+      services: [
+        {
+          service: { id: 'bad-1', name: 'No Coordinates' },
+          organization: { name: 'Org' },
+          confidenceScore: { score: 80 },
+          location: { latitude: undefined, longitude: undefined },
+        },
+      ] as never,
+      className: 'h-48',
+    });
+    effects[2]();
+
+    expect(map.markers.add).not.toHaveBeenCalled();
+    expect(map.setCamera).not.toHaveBeenCalled();
+  });
+
+  it('handles keyboard controls when camera center or zoom are missing', async () => {
+    const setCamera = vi.fn();
+    const mapRef = {
+      current: {
+        getCamera: vi.fn(() => ({})),
+        setCamera,
+      },
+    };
+    queueRefs([
+      { current: { node: true } },
+      mapRef,
+      { current: [] },
+      { current: null },
+    ]);
+    useStateMock
+      .mockImplementationOnce(() => [null, vi.fn()])
+      .mockImplementationOnce(() => [false, vi.fn()]);
+
+    const { MapContainer } = await loadMapContainer();
+    const element = MapContainer({ className: 'h-48' }) as React.ReactElement<any, any>;
+    const app = collectElements(
+      element,
+      (child) => child.props.role === 'application',
+    )[0];
+
+    const upPreventDefault = vi.fn();
+    app.props.onKeyDown({ key: 'ArrowUp', preventDefault: upPreventDefault });
+    expect(upPreventDefault).toHaveBeenCalledOnce();
+    expect(setCamera).not.toHaveBeenCalledWith(expect.objectContaining({ center: expect.anything() }));
+
+    const minusPreventDefault = vi.fn();
+    app.props.onKeyDown({ key: '-', preventDefault: minusPreventDefault });
+    expect(minusPreventDefault).toHaveBeenCalledOnce();
+    expect(setCamera).toHaveBeenCalledWith({ zoom: 3 });
+  });
 });

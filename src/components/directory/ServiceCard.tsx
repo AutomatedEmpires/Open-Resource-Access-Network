@@ -126,7 +126,7 @@ export function ServiceCard({ enriched, compact = false, isSaved, onToggleSave, 
 
   return (
     <article
-      className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow p-4"
+      className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow p-4 card-enter"
       aria-label={`Service: ${service.name}`}
     >
       {/* Header: service name + save action */}

@@ -166,3 +166,35 @@ Generated: 2026-03-03T20:15:00Z
 - [x] Eligibility language always hedged: "may qualify", "confirm with provider"
 - [x] No PII displayed without consent
 - [x] Crisis hard gate always accessible
+
+---
+
+## Agent SKY Activation — Task Completion [2026-03-05]
+
+| Task | Title | Status | Notes |
+|------|-------|--------|-------|
+| TASK-01 | axe-core accessibility tests | ✅ Done | Prior session |
+| TASK-02 | Dark mode token layer | ✅ Done | Prior session |
+| TASK-03 | Lazy Azure Maps loader | ✅ Done | Prior session |
+| TASK-04 | Z-index named scale | ✅ Done | Prior session |
+| TASK-05 | Infinite scroll (directory) | ✅ Done | Prior session |
+| TASK-06 | Keyboard navigation (map) | ✅ Done | Prior session |
+| TASK-07 | Command palette | ✅ Done | Prior session |
+| TASK-08 | Visual regression (Playwright) | ✅ Done | Prior session |
+| TASK-09 | a11y CI gate | ✅ Done | Prior session |
+| TASK-10 | Performance budget | ✅ Done | Prior session |
+| TASK-11 | UI telemetry | ✅ Done | Prior session |
+| TASK-12 | Print stylesheet | ✅ Done | Prior session |
+| TASK-13 | ESLint design-token rule | ✅ Done | `eslint-plugin-oran.mjs` (local plugin — `eslint-plugin-tailwindcss` incompatible with Tailwind v4); `oran/no-unapproved-arbitrary` rule at warn; §11 added to `docs/ui/UI_UX_TOKENS.md` |
+| TASK-14 | Reduced-motion micro-interaction layer | ✅ Done | CSS vars `--transition-fast/standard/slow` in `globals.css`; `@media (prefers-reduced-motion: reduce)` zeros all; `card-enter` keyframe on ServiceCard; `page-enter` keyframe on seeker layout; `transition-[var(--transition-fast)]` on Button |
+| TASK-15 | UI consistency drift detector | ✅ Done | `scripts/audit-ui-consistency.mjs`; `npm run audit:ui`; non-blocking CI job appends to `$GITHUB_STEP_SUMMARY` |
+| TASK-16 | Admin surface accessibility audit | ✅ Done | All 12 admin surfaces audited (oran-admin, community-admin, host portals) — all pass h1/label/th-scope/aria-label/main/Dialog checklist |
+| TASK-17 | i18n `lang` attribute fix | ✅ Done | Removed `updateHtmlLang()` from `ProfilePageClient.tsx` (Option C): `lang="es"` with English text harms screen readers; correct fix requires translated string bundles; decision recorded in `docs/solutions/I18N_WORKFLOW.md` |
+
+### Current Quality Metrics (post-SKY)
+- TypeScript strict: 0 errors
+- ESLint: 0 errors (≤45 warnings — all oran/no-unapproved-arbitrary)
+- Unit tests: all passing
+- Lint fix count (this session): 17 pre-existing errors resolved
+- Files modified this sprint: ~20 source + test files, 4 docs files, 2 CI/config files
+

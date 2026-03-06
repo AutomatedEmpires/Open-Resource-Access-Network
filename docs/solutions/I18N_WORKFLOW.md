@@ -4,18 +4,21 @@
 
 ## Implementation Status (Truth Contract)
 
-This doc describes both **Implemented** and **Planned** behavior. When it conflicts with executable behavior, follow docs/SSOT.md.
+This doc describes the **implemented** behavior. Follows docs/SSOT.md for conflicts.
 
-Implemented today:
-- In-code English translation dictionary and helpers in `src/services/i18n/i18n.ts`.
+Implemented:
+- File-based JSON locale bundles under `src/locales/{en,es,zh,ar,vi,fr}.json`.
 - `t()` supports dot-notation keys and `{param}` interpolation.
 - RTL detection helper via `isRTL()`.
+- Server-side locale resolution in `src/lib/locale.ts` (cookie → Accept-Language → default).
+- `<html lang={locale} dir={dir}>` set in `src/app/layout.tsx` from resolved locale.
+- Locale-bound translator via `createTranslator(locale)`.
 - Missing key behavior: throws in `NODE_ENV=development`, otherwise returns the key.
+- Non-English locale files contain English fallback strings — ready for translator hand-off.
 
-Planned:
-- File-based JSON locale bundles (e.g., `src/locales/en.json`) and a locale loader.
-- Locale detection (profile preference → `Accept-Language` → default).
+Planned (not yet implemented):
 - Missing-key reporting integrated with telemetry (no PII).
+- Actual translated string bundles for es / zh / ar / vi / fr (translator hand-off pending).
 
 ---
 
@@ -67,22 +70,23 @@ For Arabic (`ar`) and other RTL languages:
 Note: “never display raw translation keys to end users” is a **design goal**, but is not currently enforced.
 ---
 
-## `<html lang>` Attribute Policy (Decision Record — TASK-17)
+## `<html lang>` Attribute Policy (Phase 8 Resolution)
 
-**Decision (Option C — remove premature mutation):** The `updateHtmlLang()` function that
-directly mutated `document.documentElement.lang` has been removed from
-`src/app/(seeker)/profile/ProfilePageClient.tsx`.
+**Implementation (Phase 8):** `src/app/layout.tsx` calls `resolveLocale()` from
+`src/lib/locale.ts` at render time — an async Server Component — and passes the
+resolved locale to `<html lang={locale} dir={dir}>`.
 
-**Rationale:** Setting `lang="es"` on `<html>` while all UI text is still rendered in
-English is *worse* for screen readers than leaving it at the default `lang="en"` — the
-browser will apply a Spanish pronunciation engine to English words, producing incorrect
-speech output. The lang attribute must only change when the actual translated strings are
-served.
+`resolveLocale()` reads, in order:
+1. `NEXT_LOCALE` cookie (set when user saves language preference in `/profile`)
+2. `Accept-Language` request header (best-match against `SUPPORTED_LOCALES`)
+3. Falls back to `DEFAULT_LOCALE` ('en')
 
-**Path to correct implementation:**
-1. Adopt `next-intl` or similar and serve locale-specific string bundles.
-2. Set `<html lang={locale}>` in `src/app/layout.tsx` at render time based on the resolved
-   locale — not via `document.documentElement.lang` mutation in a client component.
-3. RTL locales additionally need `dir="rtl"`.
+RTL locales (`ar`) additionally set `dir="rtl"` on `<html>`, enabling Tailwind's
+`rtl:` variant prefix for layout mirroring.
 
-Until translated string bundles are available, the `<html lang>` attribute remains `en`.
+**Historical context:** A previous client-side `updateHtmlLang()` was removed
+(TASK-17) because setting `lang="es"` while all UI strings were still in English
+produces incorrect screen-reader speech output. The current resolved approach
+only changes the locale attribute when a locale-specific bundle is active.
+Since non-English bundles currently fall back to English strings, `lang="en"` is
+effectively the runtime value until actual translated bundles are deployed.

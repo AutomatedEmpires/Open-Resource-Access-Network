@@ -122,11 +122,58 @@ ProfilePage
 └── EscapeHatch (→ /chat)
 ```
 
+### `/appeal` — Appeal a Decision ✅
+**Access**: Authenticated seeker
+**Purpose**: Appeal a service record rejection or flag incorrect data
+
+Component hierarchy:
+```
+AppealPage
+├── AppealForm
+│   ├── ServiceReference (read-only service name + org)
+│   ├── AppealReasonSelect
+│   ├── DescriptionTextarea (required)
+│   └── SubmitButton → POST /api/seeker/appeal
+├── SuccessState
+└── ErrorState
+```
+
+### `/notifications` — Notification Preferences ✅
+**Access**: Authenticated seeker
+**Purpose**: Manage notification delivery preferences
+
+Component hierarchy:
+```
+NotificationsPage
+├── NotificationPrefForm
+│   ├── EmailToggle
+│   ├── ServiceUpdateToggle
+│   └── SaveButton → PUT /api/seeker/notifications
+├── SuccessState
+└── ErrorState
+```
+
+### `/report` — Report a Service ✅
+**Access**: Public (anonymous or authenticated)
+**Purpose**: Seeker reports incorrect or misleading service information
+
+Component hierarchy:
+```
+ReportPage
+├── ReportForm
+│   ├── ServiceReference (read-only if ?id= provided)
+│   ├── IssueTypeSelect (incorrect hours / wrong address / offensive content / other)
+│   ├── DescriptionTextarea (required)
+│   └── SubmitButton → POST /api/seeker/report
+├── SuccessState
+└── ErrorState
+```
+
 ---
 
 ## Host Routes (organization management)
 
-### `/claim` — Claim Organization 🔲
+### `/claim` — Claim Organization ✅
 **Access**: Authenticated
 **Purpose**: Submit organization ownership claim for review
 
@@ -346,7 +393,7 @@ CoveragePage
 
 ## ORAN Admin Routes
 
-### `/approvals` — Claim Approvals 🔲
+### `/approvals` — Claim Approvals ✅
 **Access**: oran_admin
 **Purpose**: Approve or deny host organization claims
 
@@ -359,7 +406,7 @@ ApprovalsPage
     └── ClaimDetailDialog
 ```
 
-### `/rules` — Scoring & System Rules 🔲
+### `/rules` — Scoring & System Rules ✅
 **Access**: oran_admin
 **Purpose**: Configure confidence scoring weights, feature flags
 
@@ -372,7 +419,7 @@ RulesPage
     └── ScoringWeightForm
 ```
 
-### `/audit` — Audit Log 🔲
+### `/audit` — Audit Log ✅
 **Access**: oran_admin
 **Purpose**: Full system audit trail
 
@@ -386,7 +433,7 @@ AuditPage
     └── ExportButton
 ```
 
-### `/zone-management` (oran-admin) — Coverage Zone Admin 🔲
+### `/zone-management` (oran-admin) — Coverage Zone Admin ✅
 **Access**: oran_admin
 **Purpose**: Manage all coverage zones and community admin assignments
 
@@ -398,6 +445,41 @@ CoveragePage
     ├── ZoneTable
     │   └── ZoneRow (×N)
     └── AssignAdminDialog
+```
+
+### `/ingestion` (oran-admin) — Ingestion Job Monitor ✅
+**Access**: oran_admin
+**Purpose**: Monitor ingestion pipeline jobs, view extraction status, retry errors
+
+Component hierarchy:
+```
+IngestionPage
+├── JobTable (status, source URL, extracted fields, confidence)
+│   └── JobRow (×N)
+│       ├── StatusBadge (fetching / extracting / verifying / routing / failed)
+│       ├── SourceLink
+│       ├── ConfidenceBadge
+│       └── RetryButton (failed jobs)
+└── JobDetailPanel (on row select)
+    ├── ExtractionResult (all extracted fields)
+    ├── VerificationChecklist (8 checks, pass/fail)
+    └── AuditTrail
+```
+
+### `/scopes` (oran-admin) — Platform Scope Management ✅
+**Access**: oran_admin
+**Purpose**: Manage platform scopes and review scope grant requests
+
+Component hierarchy:
+```
+ScopesPage
+├── ScopeTable
+│   └── ScopeRow (×N): name, description, active grants
+├── GrantRequestTable
+│   └── GrantRequestRow (×N): requestor, scope, justification
+│       ├── ApproveButton (two-person constraint: cannot self-approve)
+│       └── DenyButton
+└── GrantHistoryPanel
 ```
 
 ---

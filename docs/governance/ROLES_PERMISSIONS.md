@@ -42,6 +42,13 @@ Platform governor. Has full access to all resources, can override verifications,
 | scope_grants         | -      | -           | -          | request         | R/W/decide |
 | notification_events  | R(own) | R(own)      | R(own)     | R(own)          | R          |
 | notification_prefs   | R/W(own)| R/W(own)   | R/W(own)   | R/W(own)        | R/W        |
+| ingestion_sources    | -      | -           | -          | -               | R/W        |
+| ingestion_jobs       | -      | -           | -          | R(zone)         | R/W        |
+| ingestion_candidates | -      | -           | -          | R/W(zone)       | R/W        |
+| candidate_assignments| -      | -           | -          | R/W(own)        | R/W        |
+| tag_confirmations    | -      | -           | -          | R/W(zone)       | R/W        |
+| source_registry      | -      | -           | -          | -               | R/W        |
+| evidence_snapshots   | -      | -           | -          | R(zone)         | R          |
 
 **Legend**: R = Read, W = Write, R/W = Read+Write, own = restricted to own records, zone = restricted to assigned coverage zone, submit = can create new entries
 

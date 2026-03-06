@@ -56,3 +56,45 @@ Create a spec or ADR before implementation when changing:
 
 ## Iterate openly
 Contributors and agents are encouraged to propose improvements to governance/templates via focused PRs.
+
+---
+
+## Ingestion & Approval Workflow
+
+### Ingestion pipeline gate
+All records discovered by the ingestion agent must pass through the full
+pipeline before human review:
+`SourceCheck → FetchPage → ExtractHtml → LlmExtract → LlmCategorize →
+Verify → Score → BuildCandidate → RouteToAdmin`
+
+No record may be published to seeker-facing search without explicit human approval.
+The LLM may only assist with extraction and categorization — it never ranks,
+retrieves, or publishes.
+
+### Human approval requirements
+- Community admins review `candidate_assignments` routed to their coverage zone.
+- ORAN admins handle escalated candidates and override decisions.
+- A candidate may be published, rejected with notes, or escalated.
+- Rejection notes are required and visible to the submitting host.
+
+### Two-person rule for scope grants
+Scope grant requests (platform_scopes / scope_grants) enforce a **two-person
+approval constraint**: the user who requested a grant cannot be the same user
+who approves it. This is enforced at the API layer in
+`src/app/api/admin/scopes/`.
+
+### SLA tiers
+| Tier | Assignment target | Escalation trigger |
+|---|---|---|
+| P0 (crisis-related service) | 4 hours | 8 hours unreviewed |
+| P1 (standard) | 24 hours | 72 hours unreviewed |
+| P2 (low-confidence / low-traffic area) | 72 hours | 7 days unreviewed |
+
+`checkSlaBreaches` Azure Function runs on a timer and flags overdue assignments.
+
+### Escalation chain
+1. Community admin assigned → reviews within SLA window
+2. If SLA breached → auto-escalate to ORAN admin queue
+3. ORAN admin resolves or re-routes to another community admin
+4. Persistent failures → alert to platform operators via Application Insights
+

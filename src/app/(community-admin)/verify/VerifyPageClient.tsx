@@ -34,8 +34,6 @@ import {
   DEFAULT_STATUS_STYLE,
 } from '@/domain/status-styles';
 import { formatDateTime } from '@/lib/format';
-import { getConfidenceTier } from '@/domain/confidence';
-import type { ConfidenceTier } from '@/domain/confidence';
 
 // ============================================================
 // CONSTANTS
@@ -45,7 +43,7 @@ const SCORE_TEXT_COLOR: Record<ConfidenceTier, string> = {
   green:  'text-green-700',
   yellow: 'text-yellow-700',
   orange: 'text-orange-600',
-  red:    'text-red-600',
+  red:    'text-error-base',
 };
 
 // ============================================================
@@ -135,13 +133,6 @@ interface QueueDetail {
 
 type Decision = 'approved' | 'denied' | 'escalated';
 
-const SCORE_TEXT_COLOR: Record<ConfidenceTier, string> = {
-  green:  'text-green-700',
-  yellow: 'text-yellow-700',
-  orange: 'text-orange-600',
-  red:    'text-red-600',
-};
-
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -161,7 +152,7 @@ function ScoreMeter({ label, value }: { label: string; value: number }) {
     tier === 'green'  ? 'bg-green-500'  :
     tier === 'yellow' ? 'bg-yellow-500' :
     tier === 'orange' ? 'bg-orange-500' :
-    'bg-red-500';
+    'bg-error-light';
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs text-gray-600">
@@ -265,7 +256,7 @@ export default function VerifyPage() {
         <p className="text-gray-500 font-medium">No entry selected</p>
         <p className="text-gray-400 text-sm mt-1">
           Select an entry from the{' '}
-          <Link href="/queue" className="text-blue-600 hover:underline">
+          <Link href="/queue" className="text-action-base hover:underline">
             verification queue
           </Link>
           {' '}to begin review.
@@ -297,7 +288,7 @@ export default function VerifyPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <AlertTriangle className="h-10 w-10 text-red-400 mb-3" aria-hidden="true" />
+        <AlertTriangle className="h-10 w-10 text-error-pale mb-3" aria-hidden="true" />
         <p className="text-gray-700 font-medium">{error}</p>
         <Button variant="outline" size="sm" className="mt-4" onClick={() => void fetchDetail(entryId)}>
           Try again
@@ -321,7 +312,7 @@ export default function VerifyPage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <ShieldCheck className="h-6 w-6 text-blue-600" aria-hidden="true" />
+              <ShieldCheck className="h-6 w-6 text-action-base" aria-hidden="true" />
               {entry.service_name}
             </h1>
             <p className="mt-1 text-sm text-gray-600">
@@ -360,7 +351,7 @@ export default function VerifyPage() {
                         href={entry.service_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline inline-flex items-center gap-1"
+                        className="text-action-base hover:underline inline-flex items-center gap-1"
                       >
                         {safeHostname(entry.service_url)}
                         <ExternalLink className="h-3 w-3" aria-hidden="true" />
@@ -412,7 +403,7 @@ export default function VerifyPage() {
                         href={entry.organization_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline inline-flex items-center gap-1"
+                        className="text-action-base hover:underline inline-flex items-center gap-1"
                       >
                         {safeHostname(entry.organization_url)}
                         <ExternalLink className="h-3 w-3" aria-hidden="true" />
@@ -494,12 +485,12 @@ export default function VerifyPage() {
                     <p className="text-sm text-gray-800">{e.description}</p>
                     <div className="mt-1 flex flex-wrap gap-2">
                       {e.minimum_age != null && (
-                        <span className="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                        <span className="inline-flex items-center rounded bg-info-subtle px-2 py-0.5 text-xs text-action-strong">
                           Min age: {e.minimum_age}
                         </span>
                       )}
                       {e.maximum_age != null && (
-                        <span className="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                        <span className="inline-flex items-center rounded bg-info-subtle px-2 py-0.5 text-xs text-action-strong">
                           Max age: {e.maximum_age}
                         </span>
                       )}
@@ -539,7 +530,7 @@ export default function VerifyPage() {
                         href={doc.uri}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline text-xs inline-flex items-center gap-1"
+                        className="text-action-base hover:underline text-xs inline-flex items-center gap-1"
                       >
                         View <ExternalLink className="h-3 w-3" aria-hidden="true" />
                       </a>
@@ -692,16 +683,16 @@ export default function VerifyPage() {
                       </div>
                     </label>
 
-                    <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'denied' ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                    <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'denied' ? 'border-error-pale bg-error-subtle' : 'border-gray-200 hover:bg-gray-50'}`}>
                       <input
                         type="radio"
                         name="decision"
                         value="denied"
                         checked={decision === 'denied'}
                         onChange={() => setDecision('denied')}
-                        className="h-4 w-4 text-red-600"
+                        className="h-4 w-4 text-error-base"
                       />
-                      <XCircle className="h-4 w-4 text-red-600" aria-hidden="true" />
+                      <XCircle className="h-4 w-4 text-error-base" aria-hidden="true" />
                       <div>
                         <p className="text-sm font-medium text-gray-900">Reject</p>
                         <p className="text-xs text-gray-500">Record has issues — send back to host</p>
@@ -750,7 +741,7 @@ export default function VerifyPage() {
                         ? 'Describe what needs to be corrected…'
                         : 'Optional notes for this decision…'
                     }
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-action focus:ring-1 focus:ring-action"
                   />
                 </FormField>
 

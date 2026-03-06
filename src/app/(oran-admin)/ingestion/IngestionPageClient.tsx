@@ -82,22 +82,22 @@ type TabKey = (typeof TABS)[number]['key'];
 const TRUST_STYLES: Record<string, string> = {
   allowlisted: 'bg-green-50 text-green-700 border-green-200',
   quarantine: 'bg-amber-50 text-amber-700 border-amber-200',
-  blocked: 'bg-red-50 text-red-700 border-red-200',
+  blocked: 'bg-error-subtle text-error-strong border-error-soft',
 };
 
 const JOB_STATUS_STYLES: Record<string, string> = {
   queued: 'bg-gray-50 text-gray-700 border-gray-200',
-  running: 'bg-blue-50 text-blue-700 border-blue-200',
+  running: 'bg-info-subtle text-action-strong border-action-soft',
   completed: 'bg-green-50 text-green-700 border-green-200',
-  failed: 'bg-red-50 text-red-700 border-red-200',
+  failed: 'bg-error-subtle text-error-strong border-error-soft',
   cancelled: 'bg-gray-50 text-gray-500 border-gray-200',
 };
 
 const CANDIDATE_STATUS_STYLES: Record<string, string> = {
   pending: 'bg-gray-50 text-gray-700 border-gray-200',
-  in_review: 'bg-blue-50 text-blue-700 border-blue-200',
+  in_review: 'bg-info-subtle text-action-strong border-action-soft',
   verified: 'bg-green-50 text-green-700 border-green-200',
-  rejected: 'bg-red-50 text-red-700 border-red-200',
+  rejected: 'bg-error-subtle text-error-strong border-error-soft',
   escalated: 'bg-amber-50 text-amber-700 border-amber-200',
   published: 'bg-purple-50 text-purple-700 border-purple-200',
   archived: 'bg-gray-50 text-gray-500 border-gray-200',
@@ -107,7 +107,7 @@ const TIER_STYLES: Record<string, string> = {
   green: 'bg-green-50 text-green-700 border-green-200',
   yellow: 'bg-yellow-50 text-yellow-700 border-yellow-200',
   orange: 'bg-orange-50 text-orange-700 border-orange-200',
-  red: 'bg-red-50 text-red-700 border-red-200',
+  red: 'bg-error-subtle text-error-strong border-error-soft',
 };
 
 const LIMIT = 20;
@@ -157,10 +157,10 @@ function SourcesTab() {
   if (isLoading) return <SkeletonCard />;
   if (error) {
     return (
-      <div role="alert" className="rounded-md bg-red-50 border border-red-200 p-4">
+      <div role="alert" className="rounded-md bg-error-subtle border border-error-soft p-4">
         <div className="flex items-center gap-2">
-          <XCircle className="h-5 w-5 text-red-500" aria-hidden="true" />
-          <p className="text-sm text-red-700">{error}</p>
+          <XCircle className="h-5 w-5 text-error-light" aria-hidden="true" />
+          <p className="text-sm text-error-strong">{error}</p>
         </div>
         <Button variant="outline" size="sm" className="mt-2" onClick={fetchSources}>Retry</Button>
       </div>
@@ -289,10 +289,10 @@ function JobsTab() {
 
       {isLoading && <SkeletonCard />}
       {error && (
-        <div role="alert" className="rounded-md bg-red-50 border border-red-200 p-4">
+        <div role="alert" className="rounded-md bg-error-subtle border border-error-soft p-4">
           <div className="flex items-center gap-2">
-            <XCircle className="h-5 w-5 text-red-500" aria-hidden="true" />
-            <p className="text-sm text-red-700">{error}</p>
+            <XCircle className="h-5 w-5 text-error-light" aria-hidden="true" />
+            <p className="text-sm text-error-strong">{error}</p>
           </div>
         </div>
       )}
@@ -334,7 +334,7 @@ function JobsTab() {
                     <td className="px-4 py-3 text-gray-600">{job.candidatesExtracted}</td>
                     <td className="px-4 py-3">
                       {job.errorsCount > 0 ? (
-                        <span className="text-red-600 font-medium">{job.errorsCount}</span>
+                        <span className="text-error-base font-medium">{job.errorsCount}</span>
                       ) : (
                         <span className="text-gray-400">0</span>
                       )}
@@ -348,7 +348,7 @@ function JobsTab() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-red-600 border-red-200 hover:bg-red-50"
+                          className="text-error-base border-error-soft hover:bg-error-subtle"
                           disabled={cancellingId === job.id}
                           onClick={() => void handleCancelJob(job.id)}
                         >
@@ -450,10 +450,10 @@ function CandidatesTab() {
 
       {isLoading && <SkeletonCard />}
       {error && (
-        <div role="alert" className="rounded-md bg-red-50 border border-red-200 p-4">
+        <div role="alert" className="rounded-md bg-error-subtle border border-error-soft p-4">
           <div className="flex items-center gap-2">
-            <XCircle className="h-5 w-5 text-red-500" aria-hidden="true" />
-            <p className="text-sm text-red-700">{error}</p>
+            <XCircle className="h-5 w-5 text-error-light" aria-hidden="true" />
+            <p className="text-sm text-error-strong">{error}</p>
           </div>
         </div>
       )}
@@ -620,7 +620,7 @@ function ProcessTab() {
             value={sourceUrl}
             onChange={(e) => setSourceUrl(e.target.value)}
             placeholder="https://example.org/services"
-            className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action focus:border-transparent"
             disabled={isProcessing}
             aria-label="Source URL to process"
           />
@@ -643,7 +643,7 @@ function ProcessTab() {
           value={batchUrls}
           onChange={(e) => setBatchUrls(e.target.value)}
           placeholder={'https://example.org/food\nhttps://example.org/shelter\nhttps://example.org/health'}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono resize-y min-h-[80px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono resize-y min-h-[80px] focus:outline-none focus:ring-2 focus:ring-action focus:border-transparent"
           disabled={isProcessing}
           rows={4}
           aria-label="URLs to batch process"
@@ -676,10 +676,10 @@ function ProcessTab() {
 
       {/* Result / Error */}
       {error && (
-        <div role="alert" className="rounded-md bg-red-50 border border-red-200 p-4">
+        <div role="alert" className="rounded-md bg-error-subtle border border-error-soft p-4">
           <div className="flex items-center gap-2">
-            <XCircle className="h-5 w-5 text-red-500" aria-hidden="true" />
-            <p className="text-sm text-red-700">{error}</p>
+            <XCircle className="h-5 w-5 text-error-light" aria-hidden="true" />
+            <p className="text-sm text-error-strong">{error}</p>
           </div>
         </div>
       )}
@@ -709,8 +709,8 @@ function IngestionPageInner() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start gap-3">
-        <div className="rounded-lg bg-blue-50 p-2.5">
-          <Database className="h-6 w-6 text-blue-600" aria-hidden="true" />
+        <div className="rounded-lg bg-info-subtle p-2.5">
+          <Database className="h-6 w-6 text-action-base" aria-hidden="true" />
         </div>
         <div>
           <h1 className="text-xl font-bold text-gray-900">Ingestion Agent</h1>
@@ -732,7 +732,7 @@ function IngestionPageInner() {
             onClick={() => setActiveTab(key)}
             className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-t-md transition-colors border-b-2 -mb-px ${
               activeTab === key
-                ? 'border-blue-600 text-blue-600 bg-blue-50/50'
+                ? 'border-action-base text-action-base bg-info-subtle/50'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >

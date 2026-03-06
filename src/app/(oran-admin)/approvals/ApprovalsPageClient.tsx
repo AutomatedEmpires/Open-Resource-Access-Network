@@ -151,9 +151,9 @@ function ApprovalsPageInner() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-blue-600" aria-hidden="true" />
+            <ShieldCheck className="h-6 w-6 text-action-base" aria-hidden="true" />
             Claim Approvals
-            <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
+            <span className="ml-2 inline-flex items-center rounded-full bg-info-muted px-2.5 py-0.5 text-xs font-medium text-action-deep">
               ORAN Admin
             </span>
           </h1>
@@ -195,7 +195,7 @@ function ApprovalsPageInner() {
             onClick={() => { setStatusFilter(value); setPage(1); }}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               statusFilter === value
-                ? 'bg-blue-100 text-blue-800'
+                ? 'bg-info-muted text-action-deep'
                 : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
             }`}
           >
@@ -206,7 +206,7 @@ function ApprovalsPageInner() {
 
       {/* Error state */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 mb-4 text-sm text-red-700" role="alert">
+        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 mb-4 text-sm text-error-strong" role="alert">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
           {error}
         </div>
@@ -256,7 +256,7 @@ function ApprovalsPageInner() {
                   const canDecide = ['submitted', 'under_review'].includes(row.status);
                   return (
                     <React.Fragment key={row.id}>
-                      <tr className={`hover:bg-gray-50 ${isDeciding ? 'bg-blue-50/50' : ''}`}>
+                      <tr className={`hover:bg-gray-50 ${isDeciding ? 'bg-info-subtle/50' : ''}`}>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <Building2 className="h-4 w-4 text-gray-400 shrink-0" aria-hidden="true" />
@@ -283,7 +283,7 @@ function ApprovalsPageInner() {
                                 href={row.organization_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-blue-600 hover:underline text-xs inline-flex items-center gap-1"
+                                className="text-action-base hover:underline text-xs inline-flex items-center gap-1"
                               >
                                 <ExternalLink className="h-3 w-3" aria-hidden="true" />
                                 Website
@@ -322,7 +322,7 @@ function ApprovalsPageInner() {
                       {/* Decision panel */}
                       {isDeciding && (
                         <tr>
-                          <td colSpan={5} className="px-4 py-4 bg-blue-50/30 border-t border-blue-100">
+                          <td colSpan={5} className="px-4 py-4 bg-info-subtle/30 border-t border-info-muted">
                             <div className="max-w-xl space-y-3">
                               {row.notes && (
                                 <div className="text-sm">
@@ -341,7 +341,7 @@ function ApprovalsPageInner() {
                                   value={decisionNotes}
                                   onChange={(e) => setDecisionNotes(e.target.value)}
                                   rows={2}
-                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                                   placeholder="Reason for decision..."
                                   maxLength={5000}
                                 />
@@ -365,7 +365,7 @@ function ApprovalsPageInner() {
                                   variant="outline"
                                   onClick={() => void handleDecision(row.id, 'denied')}
                                   disabled={isSubmitting || !decisionNotes.trim()}
-                                  className="gap-1 text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-50"
+                                  className="gap-1 text-error-base border-error-soft hover:bg-error-subtle disabled:opacity-50"
                                   title={!decisionNotes.trim() ? 'Notes are required before denying a claim' : undefined}
                                 >
                                   <XCircle className="h-4 w-4" aria-hidden="true" />

@@ -23,6 +23,8 @@ const NAV_ITEMS = [
   { href: '/audit', label: 'Audit' },
   { href: '/zone-management', label: 'Zones' },
   { href: '/ingestion', label: 'Ingestion' },
+  { href: '/templates', label: 'Templates' },
+  { href: '/triage', label: 'Triage Queue' },
 ] as const;
 
 export default function OranAdminLayoutShell({ children }: { children: React.ReactNode }) {

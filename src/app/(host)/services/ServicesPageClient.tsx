@@ -113,7 +113,7 @@ const LIMIT = 12;
 const STATUS_LABELS: Record<ServiceStatus, { label: string; color: string }> = {
   active:   { label: 'Active',   color: 'bg-green-100 text-green-800' },
   inactive: { label: 'Inactive', color: 'bg-yellow-100 text-yellow-800' },
-  defunct:  { label: 'Defunct',   color: 'bg-red-100 text-red-800' },
+  defunct:  { label: 'Defunct',   color: 'bg-error-muted text-error-deep' },
 };
 
 // ============================================================
@@ -278,7 +278,7 @@ export default function ServicesPage() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Briefcase className="h-6 w-6 text-blue-600" aria-hidden="true" />
+            <Briefcase className="h-6 w-6 text-action-base" aria-hidden="true" />
             Services
           </h1>
           <p className="mt-1 text-sm text-gray-600">
@@ -306,7 +306,7 @@ export default function ServicesPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search services"
-              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
               aria-label="Search services"
             />
           </div>
@@ -354,7 +354,7 @@ export default function ServicesPage() {
             <p className="text-gray-700 font-medium">No services found</p>
             <p className="mt-1 text-sm text-gray-500">
               Add a service to one of your{' '}
-              <Link href="/org" className="text-blue-600 hover:underline">organizations</Link>.
+              <Link href="/org" className="text-action-base hover:underline">organizations</Link>.
             </p>
           </div>
         )}
@@ -382,7 +382,7 @@ export default function ServicesPage() {
                       )}
                       <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
                         {svc.url && (
-                          <a href={svc.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline">
+                          <a href={svc.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-action-base hover:underline">
                             <ExternalLink className="h-3 w-3" aria-hidden="true" />
                             Website
                           </a>
@@ -421,7 +421,7 @@ export default function ServicesPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="gap-1 text-red-600 hover:text-red-700 hover:border-red-300"
+                        className="gap-1 text-error-base hover:text-error-strong hover:border-error-accent"
                         onClick={() => setDeletingId(svc.id)}
                       >
                         <Trash2 className="h-3 w-3" aria-hidden="true" />
@@ -498,7 +498,7 @@ export default function ServicesPage() {
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                   required
                   maxLength={500}
                 />
@@ -510,7 +510,7 @@ export default function ServicesPage() {
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={3}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                   maxLength={5000}
                 />
               </FormField>
@@ -530,7 +530,7 @@ export default function ServicesPage() {
                     value={form.url}
                     onChange={(e) => setForm({ ...form, url: e.target.value })}
                     placeholder="https://…"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                   />
                 </FormField>
                 <FormField id="svc-email" label="Email">
@@ -540,7 +540,7 @@ export default function ServicesPage() {
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                     placeholder="contact@example.org"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                   />
                 </FormField>
               </div>
@@ -570,7 +570,7 @@ export default function ServicesPage() {
                   type="text"
                   value={form.fees}
                   onChange={(e) => setForm({ ...form, fees: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                   maxLength={1000}
                 />
               </FormField>
@@ -581,7 +581,7 @@ export default function ServicesPage() {
                   value={form.applicationProcess}
                   onChange={(e) => setForm({ ...form, applicationProcess: e.target.value })}
                   rows={2}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                   maxLength={2000}
                 />
               </FormField>
@@ -592,7 +592,7 @@ export default function ServicesPage() {
                   type="text"
                   value={form.waitTime}
                   onChange={(e) => setForm({ ...form, waitTime: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                   maxLength={500}
                 />
               </FormField>
@@ -609,7 +609,7 @@ export default function ServicesPage() {
                   value={form.interpretationServices}
                   onChange={(e) => setForm({ ...form, interpretationServices: e.target.value })}
                   rows={2}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                   maxLength={1000}
                 />
               </FormField>
@@ -621,7 +621,7 @@ export default function ServicesPage() {
                     type="text"
                     value={form.accreditations}
                     onChange={(e) => setForm({ ...form, accreditations: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                     maxLength={1000}
                   />
                 </FormField>
@@ -631,7 +631,7 @@ export default function ServicesPage() {
                     type="text"
                     value={form.licenses}
                     onChange={(e) => setForm({ ...form, licenses: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                     maxLength={1000}
                   />
                 </FormField>
@@ -674,7 +674,7 @@ export default function ServicesPage() {
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={closeDeleteDialog} disabled={isDeleting}>Cancel</Button>
-              <Button onClick={() => void handleDelete(deletingId)} disabled={isDeleting} className="bg-red-600 hover:bg-red-700 text-white">
+              <Button onClick={() => void handleDelete(deletingId)} disabled={isDeleting} className="bg-error-base hover:bg-error-strong text-white">
                 {isDeleting ? 'Archiving…' : 'Archive'}
               </Button>
             </DialogFooter>

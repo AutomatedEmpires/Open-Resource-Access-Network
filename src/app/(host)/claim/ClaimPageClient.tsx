@@ -47,10 +47,10 @@ const STEPS: Step[] = [
 // ============================================================
 
 const INPUT_CLASS =
-  'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 min-h-[44px] transition-shadow';
+  'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action focus:border-action-mid min-h-[44px] transition-shadow';
 
 const TEXTAREA_CLASS =
-  'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 transition-shadow';
+  'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action focus:border-action-mid transition-shadow';
 
 // ============================================================
 // COMPONENT
@@ -165,7 +165,7 @@ export default function ClaimPage() {
     <div className="mx-auto max-w-2xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Building2 className="h-6 w-6 text-blue-600" aria-hidden="true" />
+          <Building2 className="h-6 w-6 text-action-base" aria-hidden="true" />
           Claim an Organization
         </h1>
         <p className="mt-1 text-sm text-gray-600">
@@ -191,7 +191,7 @@ export default function ClaimPage() {
           {/* ── Step 1: Organization Identity ── */}
           <StepContent active={step === 0}>
             <div className="space-y-5 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center gap-2 text-sm font-medium text-blue-700 mb-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-action-strong mb-2">
                 <Building2 className="h-4 w-4" aria-hidden="true" />
                 Tell us about your organization
               </div>
@@ -248,7 +248,7 @@ export default function ClaimPage() {
           {/* ── Step 2: Contact & Details ── */}
           <StepContent active={step === 1}>
             <div className="space-y-5 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center gap-2 text-sm font-medium text-blue-700 mb-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-action-strong mb-2">
                 <Globe className="h-4 w-4" aria-hidden="true" />
                 Contact information &amp; verification details
               </div>
@@ -325,7 +325,7 @@ export default function ClaimPage() {
           {/* ── Step 3: Review & Submit ── */}
           <StepContent active={step === 2}>
             <div className="space-y-5 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center gap-2 text-sm font-medium text-blue-700 mb-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-action-strong mb-2">
                 <FileText className="h-4 w-4" aria-hidden="true" />
                 Review your claim
               </div>
@@ -341,11 +341,11 @@ export default function ClaimPage() {
               </div>
 
               {/* What happens next */}
-              <div className="flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
-                <Send className="h-5 w-5 mt-0.5 flex-shrink-0 text-blue-500" aria-hidden="true" />
-                <div className="text-sm text-blue-900">
+              <div className="flex items-start gap-3 rounded-lg border border-info-muted bg-info-subtle/60 p-4">
+                <Send className="h-5 w-5 mt-0.5 flex-shrink-0 text-action" aria-hidden="true" />
+                <div className="text-sm text-action-max">
                   <p className="font-medium">What happens next?</p>
-                  <ol className="mt-1 ml-4 list-decimal space-y-0.5 text-blue-800">
+                  <ol className="mt-1 ml-4 list-decimal space-y-0.5 text-action-deep">
                     <li>Your claim joins the verification queue.</li>
                     <li>A community admin reviews it (typically 1–3 business days).</li>
                     <li>Once approved, you can manage services and locations.</li>

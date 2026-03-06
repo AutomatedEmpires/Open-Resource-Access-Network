@@ -129,7 +129,7 @@ export default function CommunityAdminCoveragePage() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Globe2 className="h-6 w-6 text-blue-600" aria-hidden="true" />
+            <Globe2 className="h-6 w-6 text-action-base" aria-hidden="true" />
             My Coverage Zone
           </h1>
           <p className="mt-1 text-sm text-gray-600">
@@ -180,7 +180,7 @@ export default function CommunityAdminCoveragePage() {
               label="In Review"
               value={data.summary.inReview}
               icon={TrendingUp}
-              color="bg-blue-100 text-blue-600"
+              color="bg-info-muted text-action-base"
               href="/queue?status=in_review"
             />
             <StatCard
@@ -211,14 +211,14 @@ export default function CommunityAdminCoveragePage() {
               label="Rejected"
               value={data.summary.rejected}
               icon={XCircle}
-              color="bg-red-100 text-red-600"
+              color="bg-error-muted text-error-base"
               href="/queue?status=rejected"
             />
             <StatCard
               label="Stale (>14 days)"
               value={data.summary.stale}
               icon={AlarmClock}
-              color={data.summary.stale > 0 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-400'}
+              color={data.summary.stale > 0 ? 'bg-error-muted text-error-base' : 'bg-gray-100 text-gray-400'}
             />
           </div>
 
@@ -239,7 +239,7 @@ export default function CommunityAdminCoveragePage() {
                       <tr className="border-b border-gray-100">
                         <th scope="col" className="text-left py-2 text-xs font-medium text-gray-500">Date</th>
                         <th scope="col" className="text-center py-2 text-xs font-medium text-green-600">Verified</th>
-                        <th scope="col" className="text-center py-2 text-xs font-medium text-red-600">Rejected</th>
+                        <th scope="col" className="text-center py-2 text-xs font-medium text-error-base">Rejected</th>
                         <th scope="col" className="text-center py-2 text-xs font-medium text-purple-600">Escalated</th>
                       </tr>
                     </thead>
@@ -262,7 +262,7 @@ export default function CommunityAdminCoveragePage() {
                           </td>
                           <td className="py-2 text-center">
                             {day.rejected > 0 ? (
-                              <span className="inline-flex items-center justify-center h-6 min-w-[24px] px-1.5 rounded-full bg-red-100 text-red-800 text-xs font-medium">
+                              <span className="inline-flex items-center justify-center h-6 min-w-[24px] px-1.5 rounded-full bg-error-muted text-error-deep text-xs font-medium">
                                 {day.rejected}
                               </span>
                             ) : (

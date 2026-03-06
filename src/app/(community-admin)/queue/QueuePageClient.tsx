@@ -14,7 +14,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   ClipboardList, RefreshCw, ChevronLeft, ChevronRight,
-  UserCheck, Clock, Filter, AlertTriangle,
+  UserCheck, Clock, Filter, AlertTriangle, ArrowUp,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -45,6 +45,10 @@ interface QueueRow {
   organization_name: string;
   sla_deadline: string | null;
   sla_breached: boolean;
+  /** Computed by the API via triage service. */
+  triage_priority: number;
+  triage_tier: 'urgent' | 'high' | 'normal' | 'low';
+  triage_explanations: string[];
 }
 
 interface QueueResponse {
@@ -75,9 +79,30 @@ const SPECIAL_FILTER_ASSIGNED = '__assigned_to_me__';
 // HELPERS
 // ============================================================
 
-// ============================================================
-// COMPONENT
-// ============================================================
+const TRIAGE_TIER_STYLES: Record<'urgent' | 'high' | 'normal' | 'low', string> = {
+  urgent: 'bg-error-muted text-error-deep border border-error-soft',
+  high:   'bg-orange-100 text-orange-800 border border-orange-200',
+  normal: 'bg-info-subtle text-action-strong border border-action-soft',
+  low:    'bg-gray-100 text-gray-600 border border-gray-200',
+};
+
+function TriageBadge({ tier, explanations }: { tier: 'urgent' | 'high' | 'normal' | 'low'; explanations: string[] }) {
+  const tooltip = explanations.length > 0 ? explanations.join(' · ') : 'No priority signals';
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${TRIAGE_TIER_STYLES[tier]}`}
+      title={tooltip}
+      aria-label={`Priority: ${tier}${explanations.length > 0 ? ` — ${tooltip}` : ''}`}
+    >
+      {(tier === 'urgent' || tier === 'high') && (
+        <ArrowUp className="h-3 w-3" aria-hidden="true" />
+      )}
+      {tier}
+    </span>
+  );
+}
+
+
 
 export default function QueuePage() {
   const [data, setData] = useState<QueueResponse | null>(null);
@@ -204,7 +229,7 @@ export default function QueuePage() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <ClipboardList className="h-6 w-6 text-blue-600" aria-hidden="true" />
+            <ClipboardList className="h-6 w-6 text-action-base" aria-hidden="true" />
             Verification Queue
             <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
               Community Admin
@@ -237,7 +262,7 @@ export default function QueuePage() {
             onClick={() => { setStatusFilter(value); setPage(1); }}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               statusFilter === value
-                ? 'bg-blue-100 text-blue-800'
+                ? 'bg-info-muted text-action-deep'
                 : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
             }`}
           >
@@ -261,8 +286,8 @@ export default function QueuePage() {
 
       {/* Bulk action toolbar */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2">
-          <span className="text-sm font-medium text-blue-800">{selectedIds.size} selected</span>
+        <div className="flex items-center gap-3 mb-4 rounded-lg border border-action-soft bg-info-subtle px-4 py-2">
+          <span className="text-sm font-medium text-action-deep">{selectedIds.size} selected</span>
           <div className="flex gap-2 ml-auto">
             <Button
               size="sm"
@@ -276,7 +301,7 @@ export default function QueuePage() {
             <Button
               size="sm"
               variant="outline"
-              className="gap-1 border-red-300 text-red-700 hover:bg-red-50"
+              className="gap-1 border-error-accent text-error-strong hover:bg-error-subtle"
               disabled={isBulkProcessing}
               onClick={() => void handleBulkDecision('denied')}
             >
@@ -341,6 +366,7 @@ export default function QueuePage() {
                   </th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Service</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Organization</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Priority</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Submitted</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">SLA</th>
@@ -371,13 +397,19 @@ export default function QueuePage() {
                       <td className="px-4 py-3">
                         <Link
                           href={`/verify?id=${entry.id}`}
-                          className="font-medium text-blue-600 hover:underline"
+                          className="font-medium text-action-base hover:underline"
                         >
                           {entry.service_name}
                         </Link>
                       </td>
                       <td className="px-4 py-3 text-gray-600">
                         {entry.organization_name}
+                      </td>
+                      <td className="px-4 py-3">
+                        <TriageBadge
+                          tier={entry.triage_tier ?? 'low'}
+                          explanations={entry.triage_explanations ?? []}
+                        />
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={entry.status} />
@@ -395,7 +427,7 @@ export default function QueuePage() {
                       </td>
                       <td className="px-4 py-3">
                         {entry.sla_breached ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800" title="SLA breached">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-error-muted px-2 py-0.5 text-xs font-medium text-error-deep" title="SLA breached">
                             <AlertTriangle className="h-3 w-3" aria-hidden="true" />
                             Breached
                           </span>

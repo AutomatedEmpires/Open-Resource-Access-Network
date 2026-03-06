@@ -72,8 +72,8 @@ const LIMIT = 25;
 
 const ACTION_STYLES: Record<AuditAction, { color: string; label: string }> = {
   create:      { color: 'bg-green-100 text-green-800',  label: 'Create' },
-  update:      { color: 'bg-blue-100 text-blue-800',    label: 'Update' },
-  delete:      { color: 'bg-red-100 text-red-800',      label: 'Delete' },
+  update:      { color: 'bg-info-muted text-action-deep',    label: 'Update' },
+  delete:      { color: 'bg-error-muted text-error-deep',      label: 'Delete' },
   approve:     { color: 'bg-emerald-100 text-emerald-800', label: 'Approve' },
   deny:        { color: 'bg-orange-100 text-orange-800', label: 'Deny' },
   escalate:    { color: 'bg-purple-100 text-purple-800', label: 'Escalate' },
@@ -164,7 +164,7 @@ function AuditPageInner() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <ScrollText className="h-6 w-6 text-blue-600" aria-hidden="true" />
+            <ScrollText className="h-6 w-6 text-action-base" aria-hidden="true" />
             Audit Log
           </h1>
           <p className="mt-1 text-sm text-gray-600">
@@ -192,7 +192,7 @@ function AuditPageInner() {
             id="action-filter"
             value={actionFilter}
             onChange={(e) => { setActionFilter(e.target.value as '' | AuditAction); setPage(1); }}
-            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-action"
           >
             <option value="">All actions</option>
             {AUDIT_ACTIONS.map((a) => (
@@ -210,7 +210,7 @@ function AuditPageInner() {
             value={tableFilter}
             onChange={(e) => { setTableFilter(e.target.value); setPage(1); }}
             placeholder="Filter by table..."
-            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-40"
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-action w-40"
             maxLength={100}
           />
         </div>
@@ -219,7 +219,7 @@ function AuditPageInner() {
           <button
             type="button"
             onClick={() => { setActionFilter(''); setTableFilter(''); setPage(1); }}
-            className="text-xs text-blue-600 hover:underline"
+            className="text-xs text-action-base hover:underline"
           >
             Clear filters
           </button>
@@ -228,7 +228,7 @@ function AuditPageInner() {
 
       {/* Error state */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 mb-4 text-sm text-red-700" role="alert">
+        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 mb-4 text-sm text-error-strong" role="alert">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
           {error}
         </div>
@@ -281,7 +281,7 @@ function AuditPageInner() {
                   return (
                     <React.Fragment key={row.id}>
                       <tr
-                        className={`hover:bg-gray-50 ${hasDetails ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-blue-50/30' : ''}`}
+                        className={`hover:bg-gray-50 ${hasDetails ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-info-subtle/30' : ''}`}
                         onClick={() => hasDetails && setExpandedId(isExpanded ? null : row.id)}
                       >
                         <td className="px-4 py-3">

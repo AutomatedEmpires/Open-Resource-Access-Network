@@ -227,7 +227,7 @@ function ZoneManagementInner() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <MapPin className="h-6 w-6 text-blue-600" aria-hidden="true" />
+            <MapPin className="h-6 w-6 text-action-base" aria-hidden="true" />
             Coverage Zone Administration
           </h1>
           <p className="mt-1 text-sm text-gray-600">
@@ -278,7 +278,7 @@ function ZoneManagementInner() {
             onClick={() => { setStatusFilter(value); setPage(1); }}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               statusFilter === value
-                ? 'bg-blue-100 text-blue-800'
+                ? 'bg-info-muted text-action-deep'
                 : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
             }`}
           >
@@ -289,7 +289,7 @@ function ZoneManagementInner() {
 
       {/* Error state */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 mb-4 text-sm text-red-700" role="alert">
+        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 mb-4 text-sm text-error-strong" role="alert">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
           {error}
         </div>
@@ -337,7 +337,7 @@ function ZoneManagementInner() {
                   const isEditing = editingId === zone.id;
                   return (
                     <React.Fragment key={zone.id}>
-                      <tr className={`hover:bg-gray-50 ${isEditing ? 'bg-blue-50/50' : ''}`}>
+                      <tr className={`hover:bg-gray-50 ${isEditing ? 'bg-info-subtle/50' : ''}`}>
                         <td className="px-4 py-3">
                           <div className="min-w-0">
                             <p className="font-medium text-gray-900 truncate">{zone.name}</p>
@@ -389,7 +389,7 @@ function ZoneManagementInner() {
                                 size="sm"
                                 onClick={() => setDeletingZone(zone)}
                                 aria-label={`Delete ${zone.name}`}
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                className="text-error-base hover:text-error-strong hover:bg-error-subtle"
                               >
                                 <Trash2 className="h-4 w-4" aria-hidden="true" />
                               </Button>
@@ -410,7 +410,7 @@ function ZoneManagementInner() {
                       {/* Edit panel */}
                       {isEditing && (
                         <tr>
-                          <td colSpan={5} className="px-4 py-4 bg-blue-50/30 border-t border-blue-100">
+                          <td colSpan={5} className="px-4 py-4 bg-info-subtle/30 border-t border-info-muted">
                             <form
                               onSubmit={(e) => {
                                 e.preventDefault();
@@ -424,7 +424,7 @@ function ZoneManagementInner() {
                                   type="text"
                                   value={editName}
                                   onChange={(e) => setEditName(e.target.value)}
-                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                                   maxLength={500}
                                 />
                               </FormField>
@@ -434,7 +434,7 @@ function ZoneManagementInner() {
                                   value={editDesc}
                                   onChange={(e) => setEditDesc(e.target.value)}
                                   rows={2}
-                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                                   maxLength={5000}
                                 />
                               </FormField>
@@ -449,7 +449,7 @@ function ZoneManagementInner() {
                                     type="text"
                                     value={editAssigned}
                                     onChange={(e) => setEditAssigned(e.target.value)}
-                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                                     placeholder="Leave empty to unassign"
                                     maxLength={500}
                                   />
@@ -459,7 +459,7 @@ function ZoneManagementInner() {
                                     id={`edit-status-${zone.id}`}
                                     value={editStatus}
                                     onChange={(e) => setEditStatus(e.target.value as ZoneStatus)}
-                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                                   >
                                     <option value="active">Active</option>
                                     <option value="inactive">Inactive</option>
@@ -556,7 +556,7 @@ function ZoneManagementInner() {
                 type="text"
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                 placeholder="e.g. Downtown Portland"
                 maxLength={500}
               />
@@ -567,7 +567,7 @@ function ZoneManagementInner() {
                 value={createDesc}
                 onChange={(e) => setCreateDesc(e.target.value)}
                 rows={2}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                 maxLength={5000}
               />
             </FormField>
@@ -582,7 +582,7 @@ function ZoneManagementInner() {
                   type="text"
                   value={createAssigned}
                   onChange={(e) => setCreateAssigned(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                   placeholder="Optional"
                   maxLength={500}
                 />
@@ -592,7 +592,7 @@ function ZoneManagementInner() {
                   id="create-status"
                   value={createStatus}
                   onChange={(e) => setCreateStatus(e.target.value as ZoneStatus)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                 >
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>

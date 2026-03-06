@@ -70,13 +70,13 @@ const RISK_STYLES: Record<string, { color: string; label: string }> = {
   low:      { color: 'bg-green-100 text-green-800 ring-green-600/20',  label: 'Low' },
   medium:   { color: 'bg-amber-100 text-amber-800 ring-amber-600/20',  label: 'Medium' },
   high:     { color: 'bg-orange-100 text-orange-800 ring-orange-600/20', label: 'High' },
-  critical: { color: 'bg-red-100 text-red-800 ring-red-600/20',        label: 'Critical' },
+  critical: { color: 'bg-error-muted text-error-deep ring-error-base/20',        label: 'Critical' },
 };
 
 const GRANT_STATUS_STYLES: Record<string, { color: string; label: string }> = {
   pending_approval: { color: 'bg-amber-100 text-amber-800 ring-amber-600/20', label: 'Pending' },
   approved:         { color: 'bg-green-100 text-green-800 ring-green-600/20', label: 'Approved' },
-  denied:           { color: 'bg-red-100 text-red-800 ring-red-600/20',       label: 'Denied' },
+  denied:           { color: 'bg-error-muted text-error-deep ring-error-base/20',       label: 'Denied' },
   revoked:          { color: 'bg-gray-100 text-gray-800 ring-gray-600/20',    label: 'Revoked' },
 };
 
@@ -190,7 +190,7 @@ function ScopesTab() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="e.g. admin.manage_users"
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
               />
             </FormField>
             <div className="flex gap-3">
@@ -198,7 +198,7 @@ function ScopesTab() {
                 <select
                   value={newRisk}
                   onChange={(e) => setNewRisk(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                 >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -224,7 +224,7 @@ function ScopesTab() {
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
               rows={2}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
               placeholder="What this scope controls..."
               maxLength={2000}
             />
@@ -240,7 +240,7 @@ function ScopesTab() {
       )}
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 text-sm text-error-strong" role="alert">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
           {error}
         </div>
@@ -380,7 +380,7 @@ function GrantsTab() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 text-sm text-error-strong" role="alert">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" /> {error}
         </div>
       )}
@@ -459,7 +459,7 @@ function GrantsTab() {
                                 {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
                                 Approve
                               </Button>
-                              <Button size="sm" variant="outline" onClick={() => void handleDecision(g.id, 'denied')} disabled={isSubmitting || !decisionReason.trim()} className="gap-1 text-red-600 border-red-200 hover:bg-red-50">
+                              <Button size="sm" variant="outline" onClick={() => void handleDecision(g.id, 'denied')} disabled={isSubmitting || !decisionReason.trim()} className="gap-1 text-error-base border-error-soft hover:bg-error-subtle">
                                 <XCircle className="h-4 w-4" aria-hidden="true" />
                                 Deny
                               </Button>
@@ -520,7 +520,7 @@ function AuditTab() {
   return (
     <div className="space-y-4">
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 text-sm text-error-strong" role="alert">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" /> {error}
         </div>
       )}

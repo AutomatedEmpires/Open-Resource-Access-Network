@@ -78,7 +78,7 @@ function formatType(type: string | null): string {
 
 function PriorityBadge({ priority }: { priority: number }) {
   if (priority <= 0) return null;
-  const colors = priority >= 2 ? 'bg-red-50 text-red-700' : 'bg-orange-50 text-orange-700';
+  const colors = priority >= 2 ? 'bg-error-subtle text-error-strong' : 'bg-orange-50 text-orange-700';
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${colors}`}>
       P{priority}
@@ -223,7 +223,7 @@ function AppealsPageInner() {
 
       {/* Error state */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 mb-4 text-sm text-red-700" role="alert">
+        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 mb-4 text-sm text-error-strong" role="alert">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
           {error}
         </div>
@@ -386,7 +386,7 @@ function AppealsPageInner() {
                                   variant="outline"
                                   onClick={() => void handleDecision(row.id, 'denied')}
                                   disabled={isSubmitting || !decisionNotes.trim()}
-                                  className="gap-1 text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-50"
+                                  className="gap-1 text-error-base border-error-soft hover:bg-error-subtle disabled:opacity-50"
                                   title={!decisionNotes.trim() ? 'Notes are required before denying an appeal' : undefined}
                                 >
                                   <XCircle className="h-4 w-4" aria-hidden="true" />

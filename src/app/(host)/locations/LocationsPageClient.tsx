@@ -284,7 +284,7 @@ export default function LocationsPage() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <MapPin className="h-6 w-6 text-blue-600" aria-hidden="true" />
+            <MapPin className="h-6 w-6 text-action-base" aria-hidden="true" />
             Locations
           </h1>
           <p className="mt-1 text-sm text-gray-600">
@@ -346,7 +346,7 @@ export default function LocationsPage() {
             <p className="text-gray-700 font-medium">No locations found</p>
             <p className="mt-1 text-sm text-gray-500">
               Add a location to one of your{' '}
-              <Link href="/org" className="text-blue-600 hover:underline">organizations</Link>.
+              <Link href="/org" className="text-action-base hover:underline">organizations</Link>.
             </p>
           </div>
         )}
@@ -406,7 +406,7 @@ export default function LocationsPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="gap-1 text-red-600 hover:text-red-700 hover:border-red-300"
+                        className="gap-1 text-error-base hover:text-error-strong hover:border-error-accent"
                         onClick={() => setDeletingId(loc.id)}
                       >
                         <Trash2 className="h-3 w-3" aria-hidden="true" />
@@ -482,7 +482,7 @@ export default function LocationsPage() {
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                   required
                   maxLength={500}
                 />
@@ -494,7 +494,7 @@ export default function LocationsPage() {
                   type="text"
                   value={form.alternateName}
                   onChange={(e) => setForm({ ...form, alternateName: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                   maxLength={500}
                 />
               </FormField>
@@ -505,7 +505,7 @@ export default function LocationsPage() {
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={2}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                   maxLength={5000}
                 />
               </FormField>
@@ -525,7 +525,7 @@ export default function LocationsPage() {
                     type="text"
                     value={form.address1}
                     onChange={(e) => setForm({ ...form, address1: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                     maxLength={500}
                   />
                 </FormField>
@@ -535,7 +535,7 @@ export default function LocationsPage() {
                     type="text"
                     value={form.address2}
                     onChange={(e) => setForm({ ...form, address2: e.target.value })}
-                    className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                     maxLength={500}
                   />
                 </FormField>
@@ -546,7 +546,7 @@ export default function LocationsPage() {
                       type="text"
                       value={form.city}
                       onChange={(e) => setForm({ ...form, city: e.target.value })}
-                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                       maxLength={200}
                     />
                   </FormField>
@@ -556,7 +556,7 @@ export default function LocationsPage() {
                       type="text"
                       value={form.stateProvince}
                       onChange={(e) => setForm({ ...form, stateProvince: e.target.value })}
-                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                       maxLength={200}
                     />
                   </FormField>
@@ -566,7 +566,7 @@ export default function LocationsPage() {
                       type="text"
                       value={form.postalCode}
                       onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
-                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                       maxLength={20}
                     />
                   </FormField>
@@ -586,7 +586,7 @@ export default function LocationsPage() {
                       max="90"
                       value={form.latitude}
                       onChange={(e) => setForm({ ...form, latitude: e.target.value })}
-                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                     />
                   </FormField>
                   <FormField id="loc-lng" label="Longitude" hint="-180 to 180">
@@ -598,7 +598,7 @@ export default function LocationsPage() {
                       max="180"
                       value={form.longitude}
                       onChange={(e) => setForm({ ...form, longitude: e.target.value })}
-                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                     />
                   </FormField>
                 </div>
@@ -617,7 +617,7 @@ export default function LocationsPage() {
                   type="text"
                   value={form.transportation}
                   onChange={(e) => setForm({ ...form, transportation: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                   maxLength={1000}
                 />
               </FormField>
@@ -657,7 +657,7 @@ export default function LocationsPage() {
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={closeDeleteDialog} disabled={isDeleting}>Cancel</Button>
-              <Button onClick={() => void handleDelete(deletingId)} disabled={isDeleting} className="bg-red-600 hover:bg-red-700 text-white">
+              <Button onClick={() => void handleDelete(deletingId)} disabled={isDeleting} className="bg-error-base hover:bg-error-strong text-white">
                 {isDeleting ? 'Deleting…' : 'Delete'}
               </Button>
             </DialogFooter>

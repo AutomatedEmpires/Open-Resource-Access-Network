@@ -181,12 +181,12 @@ export default function OrgDashboardPage() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Building2 className="h-6 w-6 text-blue-600" aria-hidden="true" />
+            <Building2 className="h-6 w-6 text-action-base" aria-hidden="true" />
             Organizations
           </h1>
           <p className="mt-1 text-sm text-gray-600">
             Manage your organizations.{' '}
-            <Link href="/claim" className="text-blue-600 hover:underline">
+            <Link href="/claim" className="text-action-base hover:underline">
               Claim a new organization
             </Link>
           </p>
@@ -209,7 +209,7 @@ export default function OrgDashboardPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search organizations"
-              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
               aria-label="Search organizations"
             />
           </div>
@@ -244,7 +244,7 @@ export default function OrgDashboardPage() {
           <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
             <p className="text-gray-700 font-medium">No organizations found</p>
             <p className="mt-1 text-sm text-gray-500">
-              <Link href="/claim" className="text-blue-600 hover:underline">
+              <Link href="/claim" className="text-action-base hover:underline">
                 Claim an organization
               </Link>{' '}
               to get started.
@@ -272,7 +272,7 @@ export default function OrgDashboardPage() {
                           href={org.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                          className="inline-flex items-center gap-1 text-action-base hover:underline"
                         >
                           <ExternalLink className="h-3 w-3" aria-hidden="true" />
                           Website
@@ -309,7 +309,7 @@ export default function OrgDashboardPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-1 text-red-600 hover:text-red-700 hover:border-red-300"
+                      className="gap-1 text-error-base hover:text-error-strong hover:border-error-accent"
                       onClick={() => setDeletingId(org.id)}
                     >
                       <Trash2 className="h-3 w-3" aria-hidden="true" />
@@ -383,7 +383,7 @@ export default function OrgDashboardPage() {
                   type="text"
                   value={editing.name}
                   onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                   required
                   maxLength={500}
                 />
@@ -395,7 +395,7 @@ export default function OrgDashboardPage() {
                   value={editing.description ?? ''}
                   onChange={(e) => setEditing({ ...editing, description: e.target.value })}
                   rows={3}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                   maxLength={5000}
                 />
               </FormField>
@@ -408,7 +408,7 @@ export default function OrgDashboardPage() {
                     value={editing.url ?? ''}
                     onChange={(e) => setEditing({ ...editing, url: e.target.value })}
                     placeholder="https://…"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                   />
                 </FormField>
                 <FormField id="edit-email" label="Email">
@@ -418,7 +418,7 @@ export default function OrgDashboardPage() {
                     value={editing.email ?? ''}
                     onChange={(e) => setEditing({ ...editing, email: e.target.value })}
                     placeholder="contact@example.org"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                   />
                 </FormField>
               </div>
@@ -434,7 +434,7 @@ export default function OrgDashboardPage() {
                       value={editing.taxStatus}
                       onChange={(e) => setEditing({ ...editing, taxStatus: e.target.value })}
                       placeholder="501(c)(3)"
-                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                       maxLength={200}
                     />
                   </FormField>
@@ -445,7 +445,7 @@ export default function OrgDashboardPage() {
                       value={editing.taxId}
                       onChange={(e) => setEditing({ ...editing, taxId: e.target.value })}
                       placeholder="XX-XXXXXXX"
-                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                       maxLength={20}
                     />
                   </FormField>
@@ -460,7 +460,7 @@ export default function OrgDashboardPage() {
                       value={editing.yearIncorporated}
                       onChange={(e) => setEditing({ ...editing, yearIncorporated: e.target.value })}
                       placeholder="2005"
-                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                      className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                     />
                   </FormField>
                   <FormField id="edit-legal-status" label="Legal Status" hint="e.g., Nonprofit, Government, LLC">
@@ -523,7 +523,7 @@ export default function OrgDashboardPage() {
               <Button
                 onClick={() => void handleDelete(deletingId)}
                 disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-700 text-white"
+                className="bg-error-base hover:bg-error-strong text-white"
               >
                 {isDeleting ? 'Archiving…' : 'Archive'}
               </Button>

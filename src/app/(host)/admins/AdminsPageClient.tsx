@@ -292,7 +292,7 @@ export default function AdminsPage() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Users className="h-6 w-6 text-blue-600" aria-hidden="true" />
+            <Users className="h-6 w-6 text-action-base" aria-hidden="true" />
             Team Management
           </h1>
           <p className="mt-1 text-sm text-gray-600">
@@ -338,7 +338,7 @@ export default function AdminsPage() {
         {/* Invite form */}
         <div className="rounded-lg border border-gray-200 bg-white p-6 mb-6">
           <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2 mb-4">
-            <UserPlus className="h-5 w-5 text-blue-600" aria-hidden="true" />
+            <UserPlus className="h-5 w-5 text-action-base" aria-hidden="true" />
             Add Team Member
           </h2>
 
@@ -351,14 +351,14 @@ export default function AdminsPage() {
             <button
               type="button"
               onClick={() => setInviteInputMode('email')}
-              className={`px-3 py-1 text-sm rounded-full ${inviteInputMode === 'email' ? 'bg-blue-100 text-blue-800 font-medium' : 'bg-gray-100 text-gray-600'}`}
+              className={`px-3 py-1 text-sm rounded-full ${inviteInputMode === 'email' ? 'bg-info-muted text-action-deep font-medium' : 'bg-gray-100 text-gray-600'}`}
             >
               Email
             </button>
             <button
               type="button"
               onClick={() => setInviteInputMode('uuid')}
-              className={`px-3 py-1 text-sm rounded-full ${inviteInputMode === 'uuid' ? 'bg-blue-100 text-blue-800 font-medium' : 'bg-gray-100 text-gray-600'}`}
+              className={`px-3 py-1 text-sm rounded-full ${inviteInputMode === 'uuid' ? 'bg-info-muted text-action-deep font-medium' : 'bg-gray-100 text-gray-600'}`}
             >
               User ID
             </button>
@@ -386,7 +386,7 @@ export default function AdminsPage() {
                       value={inviteEmail}
                       onChange={(e) => setInviteEmail(e.target.value)}
                       placeholder="user@example.com"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                     />
                   </FormField>
                 ) : (
@@ -402,7 +402,7 @@ export default function AdminsPage() {
                       value={inviteUserId}
                       onChange={(e) => setInviteUserId(e.target.value)}
                       placeholder="00000000-0000-0000-0000-000000000000"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                       inputMode="text"
                     />
                   </FormField>
@@ -498,7 +498,7 @@ export default function AdminsPage() {
               {members.map((m) => (
                 <li key={m.id} className="flex items-center justify-between px-6 py-3">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-info-muted text-action-strong text-xs font-medium">
                       {m.userId.charAt(0).toUpperCase()}
                     </div>
                     <div>
@@ -528,7 +528,7 @@ export default function AdminsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-red-700 border-red-200 hover:bg-red-50"
+                      className="text-error-strong border-error-soft hover:bg-error-subtle"
                       onClick={() => setPendingRemove({ memberId: m.id, userId: m.userId })}
                       disabled={memberAction?.memberId === m.id}
                     >
@@ -544,13 +544,13 @@ export default function AdminsPage() {
         {/* Role reference */}
         <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6">
           <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2 mb-3">
-            <Shield className="h-5 w-5 text-blue-600" aria-hidden="true" />
+            <Shield className="h-5 w-5 text-action-base" aria-hidden="true" />
             Role Reference
           </h2>
           <div className="space-y-3">
             {availableRoles.map((r) => (
               <div key={r.key} className="flex items-start gap-3">
-                <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 mt-0.5">
+                <span className="inline-flex items-center rounded-full bg-info-muted px-2 py-0.5 text-xs font-medium text-action-strong mt-0.5">
                   {r.label}
                 </span>
                 <p className="text-sm text-gray-600">{r.description}</p>
@@ -600,7 +600,7 @@ export default function AdminsPage() {
             <DialogFooter>
               <Button variant="outline" onClick={() => setPendingRemove(null)}>Cancel</Button>
               <Button
-                className="bg-red-600 hover:bg-red-700 text-white"
+                className="bg-error-base hover:bg-error-strong text-white"
                 onClick={() => {
                   void handleRemoveMember(pendingRemove.memberId);
                   setPendingRemove(null);

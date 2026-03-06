@@ -115,7 +115,7 @@ function RulesPageInner() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Settings className="h-6 w-6 text-blue-600" aria-hidden="true" />
+            <Settings className="h-6 w-6 text-action-base" aria-hidden="true" />
             System Rules &amp; Feature Flags
           </h1>
           <p className="mt-1 text-sm text-gray-600">
@@ -141,7 +141,7 @@ function RulesPageInner() {
           className={`mb-4 flex items-center gap-2 rounded-lg border p-3 text-sm ${
             saveResult.success
               ? 'bg-green-50 border-green-200 text-green-800'
-              : 'bg-red-50 border-red-200 text-red-800'
+              : 'bg-error-subtle border-error-soft text-error-deep'
           }`}
         >
           {saveResult.success
@@ -153,7 +153,7 @@ function RulesPageInner() {
 
       {/* Error state */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 mb-4 text-sm text-red-700" role="alert">
+        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 mb-4 text-sm text-error-strong" role="alert">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
           {error}
         </div>
@@ -188,7 +188,7 @@ function RulesPageInner() {
               <div
                 key={flag.name}
                 className={`bg-white rounded-lg border p-4 transition-colors ${
-                  isEditing ? 'border-blue-300 ring-1 ring-blue-100' : 'border-gray-200'
+                  isEditing ? 'border-action-pale ring-1 ring-info-muted' : 'border-gray-200'
                 }`}
               >
                 <div className="flex items-center justify-between gap-4">
@@ -236,8 +236,8 @@ function RulesPageInner() {
                         aria-checked={draftEnabled}
                         aria-label={`Toggle ${flag.name}`}
                         onClick={() => setDraftEnabled(!draftEnabled)}
-                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-                          draftEnabled ? 'bg-blue-600' : 'bg-gray-200'
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action focus-visible:ring-offset-2 ${
+                          draftEnabled ? 'bg-action-base' : 'bg-gray-200'
                         }`}
                       >
                         <span
@@ -315,7 +315,7 @@ function RulesPageInner() {
             <span className="font-medium">{draftEnabled ? 'enabled' : 'disabled'}</span> at{' '}
             <span className="font-medium">{draftRollout}%</span> rollout.
           </p>
-          <p className="text-sm text-red-700 font-medium mt-1">
+          <p className="text-sm text-error-strong font-medium mt-1">
             This change takes effect in production immediately.
           </p>
           <DialogFooter className="mt-4">

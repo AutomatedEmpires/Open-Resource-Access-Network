@@ -253,6 +253,22 @@ describe('host locations page', () => {
     });
   });
 
+  it('falls back to generic list-load error when response body is not JSON', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => {
+          throw new Error('bad json');
+        },
+      });
+
+    render(<LocationsPage />);
+
+    await screen.findByRole('alert');
+    expect(screen.getByText('Failed to load locations')).toBeInTheDocument();
+  });
+
   it('handles org-list failures non-fatally and renders unnamed/no-address rows', async () => {
     fetchMock
       .mockRejectedValueOnce(new Error('orgs unavailable'))
@@ -284,6 +300,119 @@ describe('host locations page', () => {
     await screen.findByText('Unnamed Location');
     expect(screen.getByRole('button', { name: 'Add Location' })).toBeDisabled();
     expect(screen.queryByText(/Seattle|WA|98101/)).not.toBeInTheDocument();
+  });
+
+  it('falls back to generic list-load error when fetch throws non-Error values', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
+      .mockRejectedValueOnce('network down');
+
+    render(<LocationsPage />);
+
+    await screen.findByRole('alert');
+    expect(screen.getByText('Failed to load locations')).toBeInTheDocument();
+  });
+
+  it('supports canceling create and delete dialogs', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
+      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() });
+
+    render(<LocationsPage />);
+    await screen.findByText('Downtown Office');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
+    expect(screen.getByRole('button', { name: 'Create' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Create' })).toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(screen.getAllByRole('button', { name: 'Cancel' }).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Cancel' }).at(-1)!);
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Delete location?' })).toBeNull();
+    });
+  });
+
+  it('creates with optional fields, phone editor, and schedule editor values', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
+      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse({ results: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'loc-2' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() });
+
+    render(<LocationsPage />);
+    await screen.findByText('No locations found');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
+    fireEvent.change(screen.getByLabelText(/^Organization/i), {
+      target: { value: 'org-1' },
+    });
+    fireEvent.change(screen.getByLabelText(/Location Name/i), {
+      target: { value: 'North Office' },
+    });
+    fireEvent.change(screen.getByLabelText('Alternate Name'), {
+      target: { value: 'Satellite Office' },
+    });
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: 'Open weekdays' },
+    });
+    fireEvent.change(screen.getByLabelText('Street Address'), {
+      target: { value: '99 Pine St' },
+    });
+    fireEvent.change(screen.getByLabelText('Address Line 2'), {
+      target: { value: 'Suite 10' },
+    });
+    fireEvent.change(screen.getByLabelText('City'), {
+      target: { value: 'Seattle' },
+    });
+    fireEvent.change(screen.getByLabelText('State'), {
+      target: { value: 'WA' },
+    });
+    fireEvent.change(screen.getByLabelText('Postal Code'), {
+      target: { value: '98104' },
+    });
+    fireEvent.change(screen.getByLabelText('Latitude'), {
+      target: { value: '47.61' },
+    });
+    fireEvent.change(screen.getByLabelText('Longitude'), {
+      target: { value: '-122.33' },
+    });
+    fireEvent.change(screen.getByLabelText('Transportation Notes'), {
+      target: { value: 'Light rail nearby' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Phone' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset to 9–5' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => {
+      const createCall = fetchMock.mock.calls.find(
+        (call) => String(call[0]) === '/api/host/locations'
+      );
+      expect(createCall).toBeTruthy();
+      const body = JSON.parse((createCall?.[1] as { body: string }).body);
+      expect(body).toEqual(
+        expect.objectContaining({
+          name: 'North Office',
+          organizationId: 'org-1',
+          alternateName: 'Satellite Office',
+          description: 'Open weekdays',
+          transportation: 'Light rail nearby',
+          latitude: 47.61,
+          longitude: -122.33,
+          address1: '99 Pine St',
+          address2: 'Suite 10',
+          city: 'Seattle',
+          stateProvince: 'WA',
+          postalCode: '98104',
+          country: 'US',
+        })
+      );
+      expect(body.phones).toBeUndefined();
+      expect(body.schedule).toBeUndefined();
+    });
   });
 
   it('validates longitude client-side before saving', async () => {
@@ -338,4 +467,5 @@ describe('host locations page', () => {
       expect(body.organizationId).toBeUndefined();
     });
   });
+
 });

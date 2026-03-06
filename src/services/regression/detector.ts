@@ -15,7 +15,6 @@
  *   4. score_degraded — active service in RED tier (score < 40)
  */
 
-import type { PoolClient } from 'pg';
 import { getConfidenceBand } from '@/domain/confidence';
 import type { ConfidenceBand } from '@/domain/confidence';
 

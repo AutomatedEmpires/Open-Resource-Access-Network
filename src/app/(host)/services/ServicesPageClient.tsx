@@ -13,7 +13,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  Briefcase, Plus, Pencil, Trash2, Search, AlertTriangle,
+  Briefcase, Plus, Pencil, Trash2, Search,
   ArrowLeft, ArrowRight, Check, ExternalLink, Loader2,
 } from 'lucide-react';
 
@@ -251,7 +251,7 @@ export default function ServicesPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [form, page, query, orgFilter, fetchServices]);
+  }, [form, page, query, orgFilter, fetchServices, toast]);
 
   // ── Delete ──
   const handleDelete = useCallback(async (id: string) => {

@@ -9,6 +9,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { ArrowLeft } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -153,10 +154,13 @@ export default function OrgProfileClient({ orgId }: OrgProfileClientProps) {
             <TrustBadge level={trustLevel} lastVerifiedAt={org.updated_at} className="mt-2" />
           </div>
           {org.logo_url && (
-            <img
+            <Image
               src={org.logo_url}
               alt={`${org.name} logo`}
+              width={64}
+              height={64}
               className="h-16 w-16 rounded-lg object-contain"
+              unoptimized
             />
           )}
         </div>

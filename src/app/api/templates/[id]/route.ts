@@ -6,35 +6,22 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import {
   getTemplate,
-  recordTemplateUsage,
-  getTemplateUsageSummary,
 } from '@/services/templates/templates';
 import {
   TEMPLATE_VISIBLE_SCOPES,
-  TEMPLATE_USAGE_ACTIONS,
   TemplateRoleScope,
 } from '@/domain/templates';
 import { OranRole } from '@/domain/types';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
-  HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
-
-// ============================================================
-// SCHEMAS
-// ============================================================
-
-const RecordUsageSchema = z.object({
-  action: z.enum(TEMPLATE_USAGE_ACTIONS),
-});
 
 // ============================================================
 // HELPERS

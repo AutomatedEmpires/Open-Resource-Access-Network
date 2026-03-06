@@ -124,7 +124,7 @@ function ReportPageInner() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [serviceId, reason, details, contactEmail]);
+  }, [serviceId, reason, details, contactEmail, fetchMyReports]);
 
   const canSubmit = serviceId.trim().length > 0 && reason.length > 0 && details.trim().length >= 5;
 

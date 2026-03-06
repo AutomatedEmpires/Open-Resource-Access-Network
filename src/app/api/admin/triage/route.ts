@@ -40,14 +40,6 @@ const GetTriageSchema = z.object({
 });
 
 // ============================================================
-// HELPERS
-// ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
-// ============================================================
 // GET — List triage queue
 // ============================================================
 
@@ -109,7 +101,7 @@ export async function GET(req: NextRequest) {
 // POST — Trigger re-scoring for all pending submissions
 // ============================================================
 
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }

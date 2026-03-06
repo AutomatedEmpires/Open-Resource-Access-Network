@@ -12,7 +12,6 @@
 
 import {
   executeQuery,
-  withTransaction,
 } from '@/services/db/postgres';
 import {
   ContentTemplate,

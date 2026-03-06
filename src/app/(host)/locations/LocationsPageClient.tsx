@@ -13,7 +13,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  MapPin, Plus, Pencil, Trash2, AlertTriangle,
+  MapPin, Plus, Pencil, Trash2,
   ArrowLeft, ArrowRight, Check, Loader2,
 } from 'lucide-react';
 
@@ -251,7 +251,7 @@ export default function LocationsPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [form, page, orgFilter, fetchLocations]);
+  }, [form, page, orgFilter, fetchLocations, toast]);
 
   // ── Delete ──
   const handleDelete = useCallback(async (id: string) => {

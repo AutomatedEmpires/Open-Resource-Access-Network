@@ -16,7 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
-import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
+import { isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { captureException } from '@/services/telemetry/sentry';
 import { applySla } from '@/services/workflow/engine';
 

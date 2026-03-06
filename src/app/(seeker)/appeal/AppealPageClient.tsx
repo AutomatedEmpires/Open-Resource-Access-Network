@@ -9,7 +9,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Scale, Send, Loader2, CheckCircle2, ArrowLeft, Clock, FileText, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
@@ -75,7 +75,6 @@ const STATUS_STYLES: Record<string, { color: string; label: string }> = {
 
 function AppealPageInner() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
   const prefilledId = searchParams.get('submissionId') ?? '';
 
@@ -88,7 +87,7 @@ function AppealPageInner() {
 
   // Denied submissions picker
   const [deniedSubmissions, setDeniedSubmissions] = useState<DeniedSubmission[]>([]);
-  const [isLoadingDenied, setIsLoadingDenied] = useState(false);
+  const [, setIsLoadingDenied] = useState(false);
 
   // My appeals list
   const [myAppeals, setMyAppeals] = useState<AppealEntry[]>([]);

@@ -14,7 +14,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   BookOpen, RefreshCw, Plus, Pencil, Trash2,
   Eye, EyeOff, ChevronLeft, ChevronRight, Filter,
-  Loader2, AlertTriangle, Copy,
+  Loader2,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -323,7 +323,7 @@ function TemplatesPageInner() {
     void fetchTemplates(1, categoryFilter);
   }, [fetchTemplates, categoryFilter]);
 
-  const handleFormSave = (tpl: ContentTemplate) => {
+  const handleFormSave = () => {
     setShowForm(false);
     setEditingTemplate(null);
     void fetchTemplates(page, categoryFilter);

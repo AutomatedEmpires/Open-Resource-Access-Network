@@ -19,7 +19,6 @@ import {
   SLA_WARNING_THRESHOLD,
   DEFAULT_ADMIN_NOTIFICATION_EVENTS,
 } from '@/domain/constants';
-import type { NotificationEventType } from '@/domain/types';
 
 // ============================================================
 // TYPES

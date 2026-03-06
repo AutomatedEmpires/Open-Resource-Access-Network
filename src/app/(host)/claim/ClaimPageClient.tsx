@@ -120,7 +120,7 @@ export default function ClaimPage() {
       setErrorMsg(err instanceof Error ? err.message : 'Claim submission failed');
       setState('error');
     }
-  }, [canSubmit, orgName, description, url, email, claimNotes]);
+  }, [canSubmit, orgName, description, url, email, phone, claimNotes]);
 
   // ── Reset ──
   const resetForm = useCallback(() => {

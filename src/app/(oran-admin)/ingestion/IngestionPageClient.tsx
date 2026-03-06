@@ -16,8 +16,6 @@ import {
   Globe,
   CheckCircle2,
   XCircle,
-  Clock,
-  AlertTriangle,
   Loader2,
   ChevronLeft,
   ChevronRight,

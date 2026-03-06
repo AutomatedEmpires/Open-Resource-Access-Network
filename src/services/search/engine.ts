@@ -543,7 +543,7 @@ export class ServiceSearchEngine {
     const reranked = reRankWithVectorSimilarity(withIds, similarityMap, vectorAlpha);
 
     // Strip the ephemeral fields added above before returning to callers.
-    const stripHelpers = ({ id: _, confidenceScore: __, ...rest }: typeof withIds[number]) =>
+    const stripHelpers = ({ id: _id, confidenceScore: _score, ...rest }: typeof withIds[number]) =>
       rest as SearchResult;
 
     return {

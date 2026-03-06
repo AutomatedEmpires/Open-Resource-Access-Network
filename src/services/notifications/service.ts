@@ -12,7 +12,6 @@ import { sendEmail, isEmailConfigured } from '@/services/email/azureEmail';
 import type {
   NotificationChannel,
   NotificationEventType,
-  NotificationStatus,
 } from '@/domain/types';
 
 // ============================================================

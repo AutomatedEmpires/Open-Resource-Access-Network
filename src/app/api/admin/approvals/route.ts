@@ -245,18 +245,57 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // If approved, activate the service (org claim side-effect)
+    // If approved, activate the service + promote user + create org membership
     if (decision === 'approved') {
       await withTransaction(async (client) => {
-        const serviceRows = await client.query<{ service_id: string }>(
-          `SELECT service_id FROM submissions WHERE id = $1 AND service_id IS NOT NULL`,
+        // Look up both the service and the submitter for this claim
+        const subRows = await client.query<{
+          service_id: string | null;
+          target_id: string | null;
+          submitted_by_user_id: string;
+        }>(
+          `SELECT service_id, target_id, submitted_by_user_id
+           FROM submissions WHERE id = $1`,
           [submissionId],
         );
-        if (serviceRows.rows.length > 0) {
+        const sub = subRows.rows[0];
+        if (!sub) return;
+
+        // Activate the placeholder service
+        if (sub.service_id) {
           await client.query(
             `UPDATE services SET status = 'active', updated_at = NOW()
              WHERE id = $1`,
-            [serviceRows.rows[0].service_id],
+            [sub.service_id],
+          );
+        }
+
+        // Create org membership for the submitter (host_admin of the claimed org)
+        if (sub.target_id && sub.submitted_by_user_id) {
+          await client.query(
+            `INSERT INTO organization_members (organization_id, user_id, role, status)
+             VALUES ($1, $2, 'host_admin', 'active')
+             ON CONFLICT (organization_id, user_id) DO UPDATE
+               SET role = 'host_admin', status = 'active', updated_at = NOW()`,
+            [sub.target_id, sub.submitted_by_user_id],
+          );
+
+          // Promote user role to host_admin if currently lower
+          // Role hierarchy: seeker(0) < host_member(1) < host_admin(2)
+          await client.query(
+            `UPDATE user_profiles
+             SET role = 'host_admin', updated_at = NOW()
+             WHERE user_id = $1
+               AND role IN ('seeker', 'host_member')`,
+            [sub.submitted_by_user_id],
+          );
+
+          // Ensure user_profiles row exists (upsert for OAuth users who haven't visited /profile yet)
+          await client.query(
+            `INSERT INTO user_profiles (user_id, role)
+             VALUES ($1, 'host_admin')
+             ON CONFLICT (user_id) DO NOTHING`,
+            [sub.submitted_by_user_id],
           );
         }
       });

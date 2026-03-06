@@ -19,7 +19,7 @@ import {
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }

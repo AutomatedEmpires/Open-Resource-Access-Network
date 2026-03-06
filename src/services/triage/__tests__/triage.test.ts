@@ -3,7 +3,7 @@
  * and src/services/triage/triage.ts (DB layer).
  */
 
-import { describe, it, expect, vi, beforeEach, type MockedFunction } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   computeTriagePriority,
   buildTriageExplanations,

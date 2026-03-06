@@ -21,13 +21,12 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   Shield, RefreshCw, AlertTriangle, Plus,
   ChevronLeft, ChevronRight, CheckCircle2, XCircle,
-  Clock, Loader2, Key, UserCheck, ScrollText,
+  Loader2, Key, UserCheck, ScrollText,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormField } from '@/components/ui/form-field';
-import { FormAlert } from '@/components/ui/form-alert';
 import { useToast } from '@/components/ui/toast';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { formatDate } from '@/lib/format';

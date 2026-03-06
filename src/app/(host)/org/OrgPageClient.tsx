@@ -13,7 +13,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  Building2, Pencil, Trash2, Plus, Search, AlertTriangle,
+  Building2, Pencil, Trash2, Plus, Search,
   ExternalLink, Mail, ArrowLeft, ArrowRight, Check, Loader2,
 } from 'lucide-react';
 
@@ -154,7 +154,7 @@ export default function OrgDashboardPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [editing, page, query, fetchOrgs]);
+  }, [editing, page, query, fetchOrgs, toast]);
 
   // ── Delete ──
   const handleDelete = useCallback(async (id: string) => {

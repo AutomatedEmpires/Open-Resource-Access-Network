@@ -43,6 +43,10 @@ vi.mock('next-auth/react', () => ({
 vi.mock('applicationinsights', () => ({
   useAzureMonitor: useAzureMonitorMock,
 }));
+vi.mock('next/headers', () => ({
+  cookies: vi.fn().mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) }),
+  headers: vi.fn().mockResolvedValue({ get: vi.fn().mockReturnValue(null) }),
+}));
 
 async function loadRootLayout() {
   return import('@/app/layout');
@@ -93,7 +97,7 @@ describe('platform shell', () => {
   it('builds the root layout with skip link and metadata exports', async () => {
     const { default: RootLayout, metadata, viewport } = await loadRootLayout();
 
-    const layout = RootLayout({ children: 'Child' }) as React.ReactElement<any, any>;
+    const layout = await RootLayout({ children: 'Child' }) as React.ReactElement<any, any>;
     const body = React.Children.only(layout.props.children) as React.ReactElement<any, any>;
     const bodyChildren = React.Children.toArray(body.props.children) as React.ReactElement<any, any>[];
     const skipLink = bodyChildren.find((child) => child?.props?.href === '#main-content');

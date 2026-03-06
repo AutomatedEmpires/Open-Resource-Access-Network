@@ -9,6 +9,7 @@
 
 import { useEffect } from 'react';
 import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 
 export default function Error({
   error,
@@ -29,9 +30,9 @@ export default function Error({
       role="alert"
       className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center"
     >
-      <div className="rounded-full bg-red-100 p-4 mb-6">
+      <div className="rounded-full bg-error-muted p-4 mb-6">
         <svg
-          className="h-10 w-10 text-red-600"
+          className="h-10 w-10 text-error-base"
           fill="none"
           viewBox="0 0 24 24"
           strokeWidth={1.5}
@@ -61,12 +62,7 @@ export default function Error({
       )}
 
       <div className="flex gap-3">
-        <button
-          onClick={reset}
-          className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 transition-colors"
-        >
-          Try again
-        </button>
+        <Button onClick={reset}>Try again</Button>
         <Link
           href="/"
           className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"

@@ -22,6 +22,19 @@
   --text-primary: #111827;
   --text-secondary: #4b5563;
   --text-muted: #6b7280;
+
+  /* Motion tokens — zero-out under prefers-reduced-motion */
+  --transition-fast:     150ms ease;
+  --transition-standard: 250ms ease;
+  --transition-slow:     400ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast:     0ms;
+    --transition-standard: 0ms;
+    --transition-slow:     0ms;
+  }
 }
 
 /* Dark mode token overrides — applied when .dark is on <html> */
@@ -40,6 +53,35 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-ring: #2563eb;
+
+  /* ── Semantic status colour tokens ───────────────────────────────────────
+   * Use these instead of raw Tailwind palette classes (bg-red-50, bg-blue-600).
+   * Keeps the design system expressive and easy to retheme.
+   * ─────────────────────────────────────────────────────────────────────── */
+
+  /* Error / danger (red scale) */
+  --color-error-subtle:  #fef2f2;   /* = red-50  — subtle alert background    */
+  --color-error-muted:   #fee2e2;   /* = red-100 — icon circle, muted alert   */
+  --color-error-soft:    #fecaca;   /* = red-200 — error borders, outlines    */
+  --color-error-accent:  #fca5a5;   /* = red-300 — error ring / focus borders */
+  --color-error-pale:    #f87171;   /* = red-400 — pale error tint            */
+  --color-error-light:   #ef4444;   /* = red-500 — light error emphasis text  */
+  --color-error-base:    #dc2626;   /* = red-600 — standard error/delete bg   */
+  --color-error-strong:  #b91c1c;   /* = red-700 — delete/danger action bg    */
+  --color-error-deep:    #991b1b;   /* = red-800 — dark error / hover bg      */
+
+  /* Info / primary / action (blue scale) */
+  --color-info-subtle:   #eff6ff;   /* = blue-50  — active nav, info bg       */
+  --color-info-muted:    #dbeafe;   /* = blue-100 — count badge, info muted   */
+  --color-action:        #3b82f6;   /* = blue-500 — bright accent             */
+  --color-action-base:   #2563eb;   /* = blue-600 — primary action, nav       */
+  --color-action-strong: #1d4ed8;   /* = blue-700 — hover / dark action       */
+  --color-action-soft:   #bfdbfe;   /* = blue-200 — action borders, outlines  */
+  --color-action-pale:   #93c5fd;   /* = blue-300 — pale action border        */
+  --color-action-mid:    #60a5fa;   /* = blue-400 — mid action accent         */
+  --color-action-deep:   #1e40af;   /* = blue-800 — dark action emphasis text */
+  --color-action-max:    #1e3a8a;   /* = blue-900 — deepest action / pressed  */
+
   /* --font-sans is injected as a CSS variable by next/font Inter (layout.tsx) */
   --font-sans: var(--font-sans, system-ui, Arial, Helvetica, sans-serif);
   --font-mono: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -55,6 +97,22 @@ body {
 :focus-visible {
   outline: 2px solid #2563eb;
   outline-offset: 2px;
+}
+
+/* Card entrance animation (respects reduced-motion via --transition-standard) */
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.card-enter {
+  animation: card-enter var(--transition-standard) both;
+}
+
+/* Seeker page fade-in (respects reduced-motion via --transition-standard) */
+@keyframes page-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 /* Toast slide-up enter animation */

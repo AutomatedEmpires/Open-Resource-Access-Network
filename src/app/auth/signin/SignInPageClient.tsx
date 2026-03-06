@@ -23,8 +23,8 @@ function SignInContent() {
       <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
         {/* Header */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 mb-3">
-            <Shield className="h-6 w-6 text-blue-600" aria-hidden="true" />
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-info-muted mb-3">
+            <Shield className="h-6 w-6 text-action-base" aria-hidden="true" />
           </div>
           <h1 className="text-xl font-bold text-gray-900">Sign in to ORAN</h1>
           <p className="mt-1 text-sm text-gray-600">
@@ -36,7 +36,7 @@ function SignInContent() {
         {error && (
           <div
             role="alert"
-            className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+            className="mb-4 rounded-lg border border-error-soft bg-error-subtle p-3 text-sm text-error-deep"
           >
             {error === 'OAuthSignin' && 'Could not start the sign-in process. Please try again.'}
             {error === 'OAuthCallback' && 'There was an error during sign-in. Please try again.'}

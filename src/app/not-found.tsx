@@ -19,9 +19,9 @@ export default function NotFound() {
       id="main-content"
       className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center"
     >
-      <div className="rounded-full bg-blue-100 p-4 mb-6">
+      <div className="rounded-full bg-info-muted p-4 mb-6">
         <svg
-          className="h-10 w-10 text-blue-600"
+          className="h-10 w-10 text-action-base"
           fill="none"
           viewBox="0 0 24 24"
           strokeWidth={1.5}
@@ -47,7 +47,7 @@ export default function NotFound() {
       <div className="flex flex-col sm:flex-row gap-3">
         <Link
           href="/"
-          className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 transition-colors"
+          className="px-5 py-2.5 text-sm font-medium text-white bg-action-base rounded-md hover:bg-action-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-base transition-colors"
         >
           Go home
         </Link>

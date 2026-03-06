@@ -67,7 +67,7 @@ const CAPACITY_LABELS: Record<string, { label: string; color: string }> = {
   available: { label: 'Available', color: 'text-green-700' },
   limited: { label: 'Limited', color: 'text-yellow-700' },
   waitlist: { label: 'Waitlist', color: 'text-orange-700' },
-  closed: { label: 'Closed', color: 'text-red-700' },
+  closed: { label: 'Closed', color: 'text-error-strong' },
 };
 
 // ============================================================
@@ -125,7 +125,7 @@ export default function OrgProfileClient({ orgId }: OrgProfileClientProps) {
       <div className="mx-auto max-w-3xl px-4 py-8 text-center">
         <h1 className="text-xl font-semibold text-gray-900">Organization Not Found</h1>
         <p className="mt-2 text-gray-600">{error ?? 'This organization could not be loaded.'}</p>
-        <Link href="/directory" className="mt-4 inline-block text-blue-600 hover:underline">
+        <Link href="/directory" className="mt-4 inline-block text-action-base hover:underline">
           ← Back to directory
         </Link>
       </div>
@@ -173,7 +173,7 @@ export default function OrgProfileClient({ orgId }: OrgProfileClientProps) {
                 href={org.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 hover:underline"
+                className="text-action-base hover:underline"
               >
                 {org.url}
               </a>

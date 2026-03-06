@@ -6,7 +6,7 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 15_000,
     setupFiles: ['./vitest.setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}', 'src/**/__tests__/**/*.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'src/**/__tests__/**/*.{ts,tsx}', 'functions/**/__tests__/**/*.{ts,tsx}'],
     exclude: ['e2e/**'],
     coverage: {
       provider: 'v8',

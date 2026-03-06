@@ -54,7 +54,7 @@ export default function Home() {
       <div
         role="alert"
         aria-label="Emergency resources"
-        className="bg-red-700 text-white px-4 py-3 text-sm"
+        className="bg-error-strong text-white px-4 py-3 text-sm"
       >
         <div className="container mx-auto max-w-6xl flex flex-wrap items-center justify-between gap-2">
           <span className="font-semibold">In immediate danger or crisis?</span>
@@ -129,17 +129,17 @@ export default function Home() {
         {/* ── Trust indicators ───────────────────────────── */}
         <div className="mt-16 grid grid-cols-1 gap-6 sm:grid-cols-3 max-w-3xl w-full">
           <TrustCard
-            icon={<Shield className="h-6 w-6 text-blue-600" aria-hidden="true" />}
+            icon={<Shield className="h-6 w-6 text-action-base" aria-hidden="true" />}
             title="Verified records"
             description="Every listing is sourced from government and nonprofit databases, not generated."
           />
           <TrustCard
-            icon={<MessageCircle className="h-6 w-6 text-blue-600" aria-hidden="true" />}
+            icon={<MessageCircle className="h-6 w-6 text-action-base" aria-hidden="true" />}
             title="Search naturally"
             description="Ask in your own words. ORAN matches you with real services — no hallucinated results."
           />
           <TrustCard
-            icon={<MapPin className="h-6 w-6 text-blue-600" aria-hidden="true" />}
+            icon={<MapPin className="h-6 w-6 text-action-base" aria-hidden="true" />}
             title="Location-aware"
             description="Results are ranked by proximity. Your approximate location is never stored without consent."
           />

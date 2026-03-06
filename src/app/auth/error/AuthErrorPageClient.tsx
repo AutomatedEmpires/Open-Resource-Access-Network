@@ -27,8 +27,8 @@ function ErrorContent() {
   return (
     <main className="container mx-auto max-w-md px-4 py-16">
       <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm text-center">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-3">
-          <AlertTriangle className="h-6 w-6 text-red-600" aria-hidden="true" />
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-error-muted mb-3">
+          <AlertTriangle className="h-6 w-6 text-error-base" aria-hidden="true" />
         </div>
         <h1 className="text-xl font-bold text-gray-900 mb-2">Authentication Error</h1>
         <p className="text-sm text-gray-600 mb-6">{message}</p>

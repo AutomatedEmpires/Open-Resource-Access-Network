@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { resolveLocale } from "@/lib/locale";
+import { isRTL } from "@/services/i18n/i18n";
 
 // ============================================================
 // FONTS
@@ -61,13 +63,16 @@ export const viewport: Viewport = {
 // LAYOUT
 // ============================================================
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await resolveLocale();
+  const dir = isRTL(locale) ? 'rtl' : 'ltr';
+
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang={locale} dir={dir} className={inter.variable} suppressHydrationWarning>
       <body className="antialiased font-sans">
         {/* Theme init — runs synchronously before paint to avoid flash.
              Reads oran-theme from localStorage; falls back to OS preference. */}
@@ -81,7 +86,7 @@ export default function RootLayout({
         {/* Skip to main content — WCAG 2.4.1: must be first focusable element */}
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:fixed focus:z-[var(--z-skip-link)] focus:top-2 focus:left-2 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-md focus:text-sm focus:font-medium focus:shadow-lg"
+          className="sr-only focus:not-sr-only focus:fixed focus:z-[var(--z-skip-link)] focus:top-2 focus:left-2 focus:bg-action-base focus:text-white focus:px-4 focus:py-2 focus:rounded-md focus:text-sm focus:font-medium focus:shadow-lg"
         >
           Skip to main content
         </a>

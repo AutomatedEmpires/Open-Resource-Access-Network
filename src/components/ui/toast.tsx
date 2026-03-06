@@ -55,8 +55,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   // Cancel all pending timers on unmount to prevent stale setState calls.
   useEffect(() => {
+    const timers = timersRef.current;
     return () => {
-      timersRef.current.forEach(clearTimeout);
+      timers.forEach(clearTimeout);
     };
   }, []);
 

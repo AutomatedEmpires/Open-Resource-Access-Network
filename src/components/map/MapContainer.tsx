@@ -392,7 +392,6 @@ export function MapContainer({
     <>
       <div
         ref={containerRef}
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- keyboard nav requires focus; role="application" signals interactive widget
         tabIndex={0}
         onKeyDown={handleKeyDown}
         className={`rounded-lg border border-gray-200 overflow-hidden bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${className}`}

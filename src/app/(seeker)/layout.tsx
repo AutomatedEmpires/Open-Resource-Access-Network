@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { MessageCircle, List, MapPin, Bookmark, User } from 'lucide-react';
 import { CommandPalette } from '@/components/command/CommandPalette';
+import { AppFooter } from '@/components/footer';
 
 // ============================================================
 // CONSTANTS
@@ -142,6 +143,11 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
       {/* pb-14 on mobile clears the fixed bottom nav (h-14 = 56px) */}
       <div id="main-content" className="flex-1 pb-14 md:pb-0 animate-[page-enter_var(--transition-standard)_both]">
         {children}
+      </div>
+
+      {/* Footer — extra bottom padding on mobile keeps it above the fixed nav */}
+      <div className="pb-14 md:pb-0">
+        <AppFooter />
       </div>
 
       {/* ── Bottom nav (mobile only) ────────────────────── */}

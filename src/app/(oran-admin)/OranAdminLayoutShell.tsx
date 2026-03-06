@@ -14,6 +14,7 @@ import { useSession } from 'next-auth/react';
 import { isRoleAtLeast } from '@/services/auth/roles';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AppFooter } from '@/components/footer';
 
 const NAV_ITEMS = [
   { href: '/approvals', label: 'Approvals' },
@@ -77,6 +78,7 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
       </header>
 
       <main id="main-content" className="container mx-auto max-w-7xl px-4 py-6">{children}</main>
+      <AppFooter />
     </div>
   );
 }

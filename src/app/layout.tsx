@@ -76,7 +76,6 @@ export default async function RootLayout({
       <body className="antialiased font-sans">
         {/* Theme init — runs synchronously before paint to avoid flash.
              Reads oran-theme from localStorage; falls back to OS preference. */}
-        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script
           dangerouslySetInnerHTML={{
             // biome-ignore lint: intentionally using dangerouslySetInnerHTML for blocking init

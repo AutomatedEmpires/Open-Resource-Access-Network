@@ -15,6 +15,7 @@ import { Building2, Wrench, MapPin, Users, Tag } from 'lucide-react';
 import { isRoleAtLeast } from '@/services/auth/roles';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AppFooter } from '@/components/footer';
 
 const NAV_ITEMS = [
   { href: '/org', label: 'Organization', icon: Building2 },
@@ -75,6 +76,7 @@ export default function HostLayoutShell({ children }: { children: React.ReactNod
       </header>
 
       <main id="main-content" className="container mx-auto max-w-7xl px-4 py-6">{children}</main>
+      <AppFooter />
     </div>
   );
 }

@@ -1,0 +1,164 @@
+import type { Metadata } from 'next';
+
+const LAST_UPDATED_ISO = '2026-03-06';
+const LAST_UPDATED_DISPLAY = 'March 6, 2026';
+
+export const metadata: Metadata = {
+  title: 'System Status',
+  description: 'Operational status for ORAN platform services.',
+};
+
+type ComponentStatus = 'operational' | 'degraded' | 'outage' | 'maintenance';
+
+interface StatusComponent {
+  name: string;
+  status: ComponentStatus;
+  uptime: string;
+}
+
+const COMPONENTS: StatusComponent[] = [
+  { name: 'Web Application', status: 'operational', uptime: '99.9%' },
+  { name: 'Search API', status: 'operational', uptime: '99.8%' },
+  { name: 'Chat API', status: 'operational', uptime: '99.7%' },
+  { name: 'Authentication', status: 'operational', uptime: '100%' },
+  { name: 'Data Ingestion', status: 'operational', uptime: '99.5%' },
+  { name: 'Maps', status: 'operational', uptime: '99.9%' },
+];
+
+const STATUS_STYLE: Record<
+  ComponentStatus,
+  { label: string; dot: string; text: string }
+> = {
+  operational: { label: 'Operational', dot: 'bg-green-500', text: 'text-green-700' },
+  degraded: { label: 'Degraded', dot: 'bg-amber-500', text: 'text-amber-700' },
+  outage: { label: 'Outage', dot: 'bg-red-500', text: 'text-red-700' },
+  maintenance: { label: 'Maintenance', dot: 'bg-blue-500', text: 'text-blue-700' },
+};
+
+export default function StatusPage() {
+  const allOperational = COMPONENTS.every((c) => c.status === 'operational');
+
+  return (
+    <div className="container mx-auto max-w-3xl px-4 py-12">
+      {/* Page header */}
+      <div className="mb-10">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-50">
+          <span className="text-xl" aria-hidden="true">📡</span>
+        </div>
+        <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">
+          System Status
+        </h1>
+        <p className="text-sm text-gray-500">
+          Last updated: <time dateTime={LAST_UPDATED_ISO}>{LAST_UPDATED_DISPLAY}</time>
+        </p>
+      </div>
+
+      {/* Overall status banner */}
+      <div
+        className={`mb-10 flex items-center gap-4 rounded-xl border px-6 py-5 ${
+          allOperational
+            ? 'border-green-200 bg-green-50'
+            : 'border-amber-200 bg-amber-50'
+        }`}
+      >
+        <span
+          className={`inline-block h-4 w-4 rounded-full ${
+            allOperational ? 'bg-green-500' : 'bg-amber-500'
+          }`}
+          aria-hidden="true"
+        />
+        <div>
+          <p
+            className={`font-semibold ${
+              allOperational ? 'text-green-800' : 'text-amber-800'
+            }`}
+          >
+            {allOperational ? 'All systems operational' : 'Service disruption in progress'}
+          </p>
+          <p
+            className={`mt-0.5 text-sm ${
+              allOperational ? 'text-green-700' : 'text-amber-700'
+            }`}
+          >
+            {allOperational
+              ? 'No incidents reported in the last 90 days.'
+              : 'See active incidents below for details.'}
+          </p>
+        </div>
+      </div>
+
+      {/* Component table */}
+      <section className="mb-10">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Components</h2>
+        <div className="overflow-hidden rounded-lg border border-gray-200">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50">
+                <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  Component
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500">
+                  Uptime (90d)
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {COMPONENTS.map(({ name, status, uptime }) => {
+                const cfg = STATUS_STYLE[status];
+                return (
+                  <tr key={name}>
+                    <td className="px-4 py-3 font-medium text-gray-900">{name}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center gap-1.5 ${cfg.text}`}>
+                        <span
+                          className={`h-2 w-2 rounded-full ${cfg.dot}`}
+                          aria-hidden="true"
+                        />
+                        {cfg.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-600">{uptime}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Active incidents */}
+      <section className="mb-10">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Active incidents</h2>
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-5 py-8 text-center">
+          <p className="text-sm font-medium text-gray-500">No active incidents.</p>
+        </div>
+      </section>
+
+      {/* Incident history */}
+      <section className="mb-10">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Incident history (90 days)</h2>
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-5 py-8 text-center">
+          <p className="text-sm text-gray-500">No incidents in the last 90 days.</p>
+        </div>
+      </section>
+
+      {/* Footer note */}
+      <div className="border-t border-gray-200 pt-6 text-xs text-gray-400">
+        Status is maintained statically and updated during incidents. For urgent production
+        issues, open an issue on{' '}
+        <a
+          href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/issues"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gray-500 underline hover:text-gray-700"
+        >
+          GitHub
+        </a>
+        .
+      </div>
+    </div>
+  );
+}

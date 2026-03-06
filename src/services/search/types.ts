@@ -24,6 +24,14 @@ export const SearchFiltersSchema = z.object({
   /** Only return records with a confidence band at or above this level */
   minConfidenceBand: z.enum(['HIGH', 'LIKELY', 'POSSIBLE']).optional(),
   organizationId: z.string().uuid().optional(),
+  /**
+   * Attribute tag filters — e.g. { delivery: ['virtual','phone'], cost: ['free'] }.
+   * Only returns services that have ALL specified tags in their respective taxonomies.
+   */
+  attributeFilters: z.record(
+    z.string().max(50),
+    z.array(z.string().max(100)).min(1),
+  ).optional(),
 });
 
 export type SearchFilters = z.infer<typeof SearchFiltersSchema>;

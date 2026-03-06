@@ -19,7 +19,6 @@ import type {
 } from './types';
 import type { SearchFilters } from './types';
 import { CONFIDENCE_BANDS } from '@/domain/constants';
-import { buildVectorSimilarityQuery, reRankWithVectorSimilarity } from './vectorSearch';
 
 // ============================================================
 // WHERE CLAUSE BUILDERS
@@ -95,6 +94,22 @@ export function buildFiltersWhereClause(
   if (filters.organizationId) {
     conditions.push(`s.organization_id = $${idx++}`);
     params.push(filters.organizationId);
+  }
+
+  // Service attribute filters (e.g. { delivery: ['virtual'], cost: ['free'] })
+  if (filters.attributeFilters) {
+    for (const [taxonomy, tags] of Object.entries(filters.attributeFilters)) {
+      if (!tags || tags.length === 0) continue;
+      const placeholders = tags.map(() => `$${idx++}`).join(', ');
+      conditions.push(`EXISTS (
+        SELECT 1 FROM service_attributes sa
+        WHERE sa.service_id = s.id
+          AND sa.taxonomy = $${idx++}
+          AND sa.tag IN (${placeholders})
+      )`);
+      // Push tags first, then taxonomy (matching placeholder order)
+      params.push(...tags, taxonomy);
+    }
   }
 
   return {
@@ -344,69 +359,6 @@ export class ServiceSearchEngine {
       page: query.pagination.page,
       limit: query.pagination.limit,
       hasMore: total > query.pagination.page * query.pagination.limit,
-    };
-  }
-
-  /**
-   * Hybrid search: run the standard SQL search, then (optionally) re-rank the
-   * SQL candidates using pgvector cosine similarity. This NEVER introduces new
-   * services — it only re-orders already retrieved rows.
-   */
-  async hybridSearch(
-    query: SearchQuery,
-    queryEmbedding: number[] | null,
-    alpha?: number,
-  ): Promise<SearchResponse> {
-    const sqlResponse = await this.search(query);
-
-    if (!queryEmbedding) {
-      return sqlResponse;
-    }
-
-    if (sqlResponse.results.length === 0) {
-      return sqlResponse;
-    }
-
-    const candidateIds = sqlResponse.results.map((r) => r.service.service.id);
-    if (candidateIds.length === 0) {
-      return sqlResponse;
-    }
-
-    const vectorQuery = buildVectorSimilarityQuery(queryEmbedding, candidateIds, candidateIds.length);
-    const vectorRows = await this.deps.executeQuery<{ id: string; similarity: number }>(
-      vectorQuery.sql,
-      vectorQuery.params,
-    );
-
-    if (!Array.isArray(vectorRows) || vectorRows.length === 0) {
-      return sqlResponse;
-    }
-
-    const similarityMap = new Map<string, number>();
-    for (const row of vectorRows) {
-      if (row?.id && typeof row.similarity === 'number') {
-        similarityMap.set(row.id, row.similarity);
-      }
-    }
-
-    if (similarityMap.size === 0) {
-      return sqlResponse;
-    }
-
-    const items = sqlResponse.results.map((result) => ({
-      id: result.service.service.id,
-      confidenceScore:
-        result.service.confidenceScore?.verificationConfidence ??
-        result.service.confidenceScore?.score ??
-        null,
-      result,
-    }));
-
-    const reranked = reRankWithVectorSimilarity(items, similarityMap, alpha);
-
-    return {
-      ...sqlResponse,
-      results: reranked.map((i) => i.result),
     };
   }
 

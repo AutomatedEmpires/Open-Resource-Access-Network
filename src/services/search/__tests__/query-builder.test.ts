@@ -126,6 +126,46 @@ describe('buildFiltersWhereClause', () => {
     const clause = buildFiltersWhereClause({ status: 'active' });
     expect(clause.sql).not.toContain('service_taxonomy');
   });
+
+  it('includes attribute filter for a single taxonomy dimension', () => {
+    const clause = buildFiltersWhereClause({
+      status: 'active',
+      attributeFilters: { delivery: ['virtual'] },
+    });
+    expect(clause.sql).toContain('service_attributes');
+    expect(clause.sql).toContain('sa.taxonomy');
+    expect(clause.sql).toContain('sa.tag IN');
+    expect(clause.params).toContain('virtual');
+    expect(clause.params).toContain('delivery');
+  });
+
+  it('generates separate EXISTS subquery per taxonomy dimension', () => {
+    const clause = buildFiltersWhereClause({
+      status: 'active',
+      attributeFilters: { delivery: ['virtual', 'phone'], cost: ['free'] },
+    });
+    // Two EXISTS subqueries
+    const existsCount = (clause.sql.match(/EXISTS/g) || []).length;
+    expect(existsCount).toBe(2);
+    expect(clause.params).toContain('virtual');
+    expect(clause.params).toContain('phone');
+    expect(clause.params).toContain('delivery');
+    expect(clause.params).toContain('free');
+    expect(clause.params).toContain('cost');
+  });
+
+  it('skips empty tag arrays in attribute filters', () => {
+    const clause = buildFiltersWhereClause({
+      status: 'active',
+      attributeFilters: { delivery: [] },
+    });
+    expect(clause.sql).not.toContain('service_attributes');
+  });
+
+  it('does not include attribute filters when undefined', () => {
+    const clause = buildFiltersWhereClause({ status: 'active' });
+    expect(clause.sql).not.toContain('service_attributes');
+  });
 });
 
 // ============================================================

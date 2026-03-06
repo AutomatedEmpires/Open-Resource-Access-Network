@@ -6,6 +6,10 @@ const providerMock = vi.hoisted(() =>
 const credentialsProviderMock = vi.hoisted(() =>
   vi.fn((config: Record<string, unknown>) => config),
 );
+const googleProviderMock = vi.hoisted(() =>
+  vi.fn((config: Record<string, unknown>) => config),
+);
+const mockPoolQuery = vi.hoisted(() => vi.fn());
 
 vi.mock('next-auth/providers/azure-ad', () => ({
   default: providerMock,
@@ -13,11 +17,22 @@ vi.mock('next-auth/providers/azure-ad', () => ({
 vi.mock('next-auth/providers/credentials', () => ({
   default: credentialsProviderMock,
 }));
+vi.mock('next-auth/providers/google', () => ({
+  default: googleProviderMock,
+}));
+vi.mock('bcryptjs', () => ({
+  default: { compare: vi.fn(), hash: vi.fn() },
+}));
+vi.mock('@/services/db/postgres', () => ({
+  getPgPool: () => ({ query: mockPoolQuery }),
+}));
 
 const originalEnv = {
   clientId: process.env.AZURE_AD_CLIENT_ID,
   clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
   tenantId: process.env.AZURE_AD_TENANT_ID,
+  googleClientId: process.env.GOOGLE_CLIENT_ID,
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
   testAuthEnabled: process.env.ORAN_TEST_AUTH_ENABLED,
   nodeEnv: process.env.NODE_ENV,
 };
@@ -39,8 +54,12 @@ beforeEach(() => {
   delete mutableEnv.AZURE_AD_CLIENT_ID;
   delete mutableEnv.AZURE_AD_CLIENT_SECRET;
   delete mutableEnv.AZURE_AD_TENANT_ID;
+  delete mutableEnv.GOOGLE_CLIENT_ID;
+  delete mutableEnv.GOOGLE_CLIENT_SECRET;
   delete mutableEnv.ORAN_TEST_AUTH_ENABLED;
   delete mutableEnv.NODE_ENV;
+  // Default: DB returns no role (null result)
+  mockPoolQuery.mockResolvedValue({ rows: [] });
 });
 
 afterEach(() => {
@@ -60,6 +79,18 @@ afterEach(() => {
     delete mutableEnv.AZURE_AD_TENANT_ID;
   } else {
     mutableEnv.AZURE_AD_TENANT_ID = originalEnv.tenantId;
+  }
+
+  if (originalEnv.googleClientId === undefined) {
+    delete mutableEnv.GOOGLE_CLIENT_ID;
+  } else {
+    mutableEnv.GOOGLE_CLIENT_ID = originalEnv.googleClientId;
+  }
+
+  if (originalEnv.googleClientSecret === undefined) {
+    delete mutableEnv.GOOGLE_CLIENT_SECRET;
+  } else {
+    mutableEnv.GOOGLE_CLIENT_SECRET = originalEnv.googleClientSecret;
   }
 
   if (originalEnv.testAuthEnabled === undefined) {
@@ -94,11 +125,14 @@ describe('resolveOranRole', () => {
 });
 
 describe('authOptions', () => {
-  it('has no providers when Azure AD is not configured', async () => {
+  it('has only the credentials provider when Azure AD and Google are not configured', async () => {
     const { authOptions } = await loadAuthModule();
 
-    expect(authOptions.providers).toEqual([]);
+    // Email/password credentials provider is always present
+    expect(authOptions.providers).toHaveLength(1);
+    expect(credentialsProviderMock).toHaveBeenCalledOnce();
     expect(providerMock).not.toHaveBeenCalled();
+    expect(googleProviderMock).not.toHaveBeenCalled();
   });
 
   it('configures the Azure AD provider when env vars are present', async () => {
@@ -108,7 +142,8 @@ describe('authOptions', () => {
     const { authOptions } = await loadAuthModule();
 
     expect(providerMock).toHaveBeenCalledOnce();
-    const providerConfig = authOptions.providers[0] as unknown as {
+    // Azure AD + credentials (email/password)
+    const azureAdProvider = authOptions.providers[0] as unknown as {
       clientId: string;
       clientSecret: string;
       tenantId: string;
@@ -116,13 +151,13 @@ describe('authOptions', () => {
       profile: (profile: Record<string, unknown>) => Record<string, unknown>;
     };
 
-    expect(providerConfig.clientId).toBe('client-id');
-    expect(providerConfig.clientSecret).toBe('client-secret');
-    expect(providerConfig.tenantId).toBe('tenant-id');
-    expect(providerConfig.authorization.params.scope).toBe('openid profile email');
+    expect(azureAdProvider.clientId).toBe('client-id');
+    expect(azureAdProvider.clientSecret).toBe('client-secret');
+    expect(azureAdProvider.tenantId).toBe('tenant-id');
+    expect(azureAdProvider.authorization.params.scope).toBe('openid profile email');
 
     expect(
-      providerConfig.profile({
+      azureAdProvider.profile({
         oid: 'fallback-oid',
         name: 'A User',
         email: 'user@example.com',
@@ -136,7 +171,8 @@ describe('authOptions', () => {
     });
   });
 
-  it('jwt callback seeds token state from the user and id token roles', async () => {
+  it('jwt callback seeds token state from the user (DB returns no role)', async () => {
+    mockPoolQuery.mockResolvedValue({ rows: [] });
     const { authOptions } = await loadAuthModule();
     const jwt = authOptions.callbacks?.jwt;
 
@@ -148,9 +184,28 @@ describe('authOptions', () => {
       },
     } as never);
 
+    // DB had no role → uses user.role ('seeker')
+    // id_token Entra roles are not checked when token.role is already set
     expect(token).toMatchObject({
       sub: 'user-1',
-      role: 'community_admin',
+      role: 'seeker',
+    });
+  });
+
+  it('jwt callback uses DB role when available', async () => {
+    mockPoolQuery.mockResolvedValue({ rows: [{ role: 'host_admin' }] });
+    const { authOptions } = await loadAuthModule();
+    const jwt = authOptions.callbacks?.jwt;
+
+    const token = await jwt?.({
+      token: {},
+      user: { id: 'user-1', role: 'seeker' },
+      account: null,
+    } as never);
+
+    expect(token).toMatchObject({
+      sub: 'user-1',
+      role: 'host_admin',
     });
   });
 
@@ -194,8 +249,9 @@ describe('authOptions', () => {
     mutableEnv.NODE_ENV = 'test';
     const { authOptions } = await loadAuthModule();
 
-    expect(credentialsProviderMock).toHaveBeenCalledOnce();
-    expect(authOptions.providers).toHaveLength(1);
+    // test provider + email/password provider
+    expect(credentialsProviderMock).toHaveBeenCalledTimes(2);
+    expect(authOptions.providers).toHaveLength(2);
 
     const providerConfig = authOptions.providers[0] as unknown as {
       authorize: (credentials?: { userId?: string; role?: string }) => Promise<unknown>;
@@ -215,8 +271,9 @@ describe('authOptions', () => {
     mutableEnv.NODE_ENV = 'production';
 
     const { authOptions } = await loadAuthModule();
-    expect(authOptions.providers).toEqual([]);
-    expect(credentialsProviderMock).not.toHaveBeenCalled();
+    // Only the email/password credentials provider (no test provider)
+    expect(authOptions.providers).toHaveLength(1);
+    expect(credentialsProviderMock).toHaveBeenCalledOnce();
   });
 
   it('jwt and session callbacks preserve defaults without optional fields', async () => {

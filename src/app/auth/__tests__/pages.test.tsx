@@ -37,6 +37,7 @@ vi.mock('lucide-react', () => ({
   Search: (props: Record<string, unknown>) => React.createElement('svg', props),
   Building2: (props: Record<string, unknown>) => React.createElement('svg', props),
   ShieldCheck: (props: Record<string, unknown>) => React.createElement('svg', props),
+  Mail: (props: Record<string, unknown>) => React.createElement('svg', props),
 }));
 vi.mock('@/components/ui/button', () => ({
   Button: ({ children, onClick, ...props }: { children: React.ReactNode; onClick?: () => void }) =>
@@ -107,7 +108,11 @@ describe('auth pages', () => {
     const dynamicArea = cardChildren[2] as React.ReactElement<any, any>;
     const dynamicChildren = React.Children.toArray(dynamicArea.props.children) as React.ReactElement<any, any>[];
     const errorAlert = dynamicChildren.find((c: any) => c?.props?.role === 'alert') as React.ReactElement<any, any>;
-    const signInButton = dynamicChildren.find((c: any) => c?.props?.onClick) as React.ReactElement<any, any>;
+
+    // OAuth buttons are now inside a wrapper div (space-y-3)
+    const oauthGroup = dynamicChildren.find((c: any) => c?.props?.className?.includes('space-y-3')) as React.ReactElement<any, any>;
+    const oauthChildren = React.Children.toArray(oauthGroup.props.children) as React.ReactElement<any, any>[];
+    const signInButton = oauthChildren.find((c: any) => c?.props?.onClick) as React.ReactElement<any, any>;
 
     expect(errorAlert).toBeDefined();
     expect(React.Children.toArray(errorAlert.props.children)).toContain(
@@ -132,15 +137,17 @@ describe('auth pages', () => {
     const card = contentChildren[0] as React.ReactElement<any, any>;
     const cardChildren = React.Children.toArray(card.props.children) as React.ReactElement<any, any>[];
 
-    // Dynamic content area contains the error + button + guest link
+    // Dynamic content area contains the error + OAuth group + guest link
     const dynamicArea = cardChildren[2] as React.ReactElement<any, any>;
     const dynamicChildren = React.Children.toArray(dynamicArea.props.children) as React.ReactElement<any, any>[];
     const errorAlert = dynamicChildren.find((c: any) => c?.props?.role === 'alert') as React.ReactElement<any, any>;
-    const guestSection = dynamicChildren.find((c: any) => c?.props?.className?.includes('border-t')) as React.ReactElement<any, any>;
 
     expect(React.Children.toArray(errorAlert.props.children)).toContain(
       'An unexpected error occurred. Please try again.',
     );
+
+    // Guest link is in its own border-t section
+    const guestSection = dynamicChildren.find((c: any) => c?.props?.className?.includes('border-t')) as React.ReactElement<any, any>;
     // Guest link defaults to /chat for seeker path
     const guestLink = React.Children.only(guestSection.props.children) as React.ReactElement<any, any>;
     expect(guestLink.props.href).toBe('/chat');
@@ -177,5 +184,30 @@ describe('auth pages', () => {
     // Should have 3 paths defined
     expect(PATHS).toHaveLength(3);
     expect(PATHS.map((p: any) => p.id)).toEqual(['seeker', 'organization', 'admin']);
+  });
+
+  it('renders Google and Email sign-in buttons alongside Microsoft', async () => {
+    const { default: SignInPage } = await loadSignInPage();
+    const suspense = SignInPage() as React.ReactElement<any, any>;
+    const content = (suspense.props.children as React.ReactElement<any, any>).type() as React.ReactElement<any, any>;
+    const contentChildren = React.Children.toArray(content.props.children) as React.ReactElement<any, any>[];
+    const card = contentChildren[0] as React.ReactElement<any, any>;
+    const cardChildren = React.Children.toArray(card.props.children) as React.ReactElement<any, any>[];
+
+    const dynamicArea = cardChildren[2] as React.ReactElement<any, any>;
+    const dynamicChildren = React.Children.toArray(dynamicArea.props.children) as React.ReactElement<any, any>[];
+
+    // Find the OAuth buttons group
+    const oauthGroup = dynamicChildren.find((c: any) => c?.props?.className?.includes('space-y-3')) as React.ReactElement<any, any>;
+    expect(oauthGroup).toBeDefined();
+
+    const oauthButtons = React.Children.toArray(oauthGroup.props.children) as React.ReactElement<any, any>[];
+    const buttonsWithClick = oauthButtons.filter((c: any) => c?.props?.onClick);
+    // Microsoft, Google, and Email buttons
+    expect(buttonsWithClick.length).toBe(3);
+
+    // Click Google button
+    buttonsWithClick[1].props.onClick();
+    expect(signInMock).toHaveBeenCalledWith('google', { callbackUrl: '/chat' });
   });
 });

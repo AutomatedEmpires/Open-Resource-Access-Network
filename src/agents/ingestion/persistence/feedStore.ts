@@ -3,7 +3,7 @@
  *
  * Maps FeedSubscription domain objects to the feed_subscriptions table.
  */
-import { eq, and, lte, sql } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { feedSubscriptions } from '@/db/schema';

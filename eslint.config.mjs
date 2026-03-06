@@ -13,7 +13,24 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Build / generated output:
+    "dist/**",
+    "coverage/**",
+    "playwright-report/**",
+    "test-results/**",
   ]),
+
+  // Allow _-prefixed args/vars to signal intentionally unused parameters
+  // (e.g. required positional params in route handlers, destructured rest).
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": ["error", {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "destructuredArrayIgnorePattern": "^_",
+      }],
+    },
+  },
 
   // Type augmentation files often require `any` to match upstream generics.
   {
@@ -23,13 +40,11 @@ const eslintConfig = defineConfig([
     },
   },
 
-  // Tests often need flexible mocking/types; allow `any` there
-  // and ignore _-prefixed args used only for documentation clarity.
+  // Tests often need flexible mocking/types; allow `any` there.
   {
     files: ["**/__tests__/**/*.{ts,tsx}", "**/*.test.{ts,tsx}"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
     },
   },
 

@@ -54,7 +54,7 @@ async function sendRequest() {
     } else {
       results.errors++;
     }
-  } catch (err) {
+  } catch {
     const elapsed = Date.now() - start;
     results.total++;
     results.errors++;

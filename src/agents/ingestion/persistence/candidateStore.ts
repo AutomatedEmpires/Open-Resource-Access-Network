@@ -3,11 +3,11 @@
  *
  * Handles persistence of extracted candidates awaiting review.
  */
-import { eq, desc, and, lt, isNull, or, sql } from 'drizzle-orm';
+import { eq, desc, and, lt, isNull, or } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import type { ExtractedCandidate, ReviewStatus } from '../contracts';
-import type { CandidateStore, CandidateFilters, CandidateReviewStatus } from '../stores';
+import type { CandidateStore } from '../stores';
 import {
   extractedCandidates,
   ingestionAuditEvents,

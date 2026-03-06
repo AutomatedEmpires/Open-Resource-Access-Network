@@ -4,7 +4,7 @@
  * Maps CandidatePublishReadiness domain objects to the candidate_readiness table.
  * Also queries extracted_candidates + related tables for aggregated readiness info.
  */
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { candidateReadiness, extractedCandidates } from '@/db/schema';

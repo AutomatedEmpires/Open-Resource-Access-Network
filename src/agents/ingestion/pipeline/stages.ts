@@ -11,7 +11,7 @@ import {
   computeExtractKeySha256,
 } from '../fetcher';
 import { buildDefaultChecklist } from '../checklist';
-import type { VerificationChecklist, ChecklistItemKey } from '../checklist';
+import type { ChecklistItemKey } from '../checklist';
 
 import type { LLMClient } from '../llm';
 import { createLLMClient, getLLMConfigFromEnv } from '../llm';

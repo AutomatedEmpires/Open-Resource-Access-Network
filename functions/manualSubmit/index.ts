@@ -64,7 +64,7 @@ export interface FetchQueueMessage {
  *   POST /api/admin/ingestion/process (Next.js API route)
  */
 export async function manualSubmit(
-  req: HttpRequest
+  _req: HttpRequest
 ): Promise<{ response: HttpResponse; queueMessage: FetchQueueMessage | null }> {
   // TODO: Wire to actual pipeline
   //

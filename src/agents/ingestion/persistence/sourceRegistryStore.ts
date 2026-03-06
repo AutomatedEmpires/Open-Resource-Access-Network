@@ -3,7 +3,7 @@
  *
  * Maps SourceRegistryEntry domain objects to the ingestion_sources table.
  */
-import { eq, and, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { ingestionSources } from '@/db/schema';

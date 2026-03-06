@@ -3,7 +3,7 @@
  *
  * Maps PublishThreshold domain objects to the publish_criteria table.
  */
-import { eq, and, desc, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { publishCriteria } from '@/db/schema';

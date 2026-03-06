@@ -22,7 +22,6 @@ import {
   getValidAdaptationTags,
   getValidDietaryTypes,
   getValidTransitTags,
-  isValidTag,
 } from '@/domain/taxonomy';
 
 // ============================================================

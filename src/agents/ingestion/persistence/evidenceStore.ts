@@ -3,7 +3,7 @@
  *
  * Handles persistence of evidence snapshots (fetched page content).
  */
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import type { EvidenceSnapshot } from '../contracts';

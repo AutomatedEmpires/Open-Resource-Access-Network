@@ -39,6 +39,10 @@
   "exclude": [
     "node_modules",
     ".next",
-    ".next/dev/**"
+    ".next/dev/**",
+    "dist",
+    "coverage",
+    "playwright-report",
+    "test-results"
   ]
 }

@@ -28,7 +28,7 @@ const APPROVED_ARBITRARY = new Set([
   'h-[calc(100dvh-13rem)]', 'h-[calc(100vh-16rem)]', 'max-h-[calc(100vh-16rem)]',
 
   // ── Truncation constraints ────────────────────────────────────────────────
-  'max-w-[120px]', 'max-w-[180px]', 'max-w-[200px]', 'max-w-[18rem]', 'max-w-[85%]',
+  'max-w-[120px]', 'max-w-[180px]', 'max-w-[200px]', 'max-w-[220px]', 'max-w-[18rem]', 'max-w-[85%]',
   'max-h-[120px]', 'max-h-[420px]',
 
   // ── Grid template columns ─────────────────────────────────────────────────
@@ -42,6 +42,9 @@ const APPROVED_ARBITRARY = new Set([
 
   // ── Animation delays (inline chat loading dots) ───────────────────────────
   '[animation-delay:-0.3s]', '[animation-delay:-0.15s]',
+
+  // ── Page transition animation ─────────────────────────────────────────────
+  'animate-[page-enter_var(--transition-standard)_both]',
 ]);
 
 /** CSS custom-property references: always approved (`z-[var(--z-nav)]` etc.). */
@@ -116,9 +119,11 @@ const noUnapprovedArbitrary = {
   },
 };
 
-export default {
+const plugin = {
   meta: { name: 'eslint-plugin-oran' },
   rules: {
     'no-unapproved-arbitrary': noUnapprovedArbitrary,
   },
 };
+
+export default plugin;

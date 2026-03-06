@@ -1,9 +1,22 @@
 /**
  * ORAN i18n Service
- * Simple in-code translation dictionary with t() helper.
  *
- * Note: file-based JSON locales are planned but not implemented yet.
+ * Loads translations from file-based JSON locale bundles under src/locales/.
+ * All bundles are statically imported at module load time so they are bundled
+ * with the app and require no runtime file I/O.
+ *
+ * Public API (backward-compatible):
+ *   t(key, params?, locale?)  — translate a dot-notation key
+ *   isRTL(locale)             — true for rtl locales (ar)
+ *   createTranslator(locale)  — locale-bound t() shorthand
  */
+
+import enStrings from '@/locales/en.json';
+import esStrings from '@/locales/es.json';
+import zhStrings from '@/locales/zh.json';
+import arStrings from '@/locales/ar.json';
+import viStrings from '@/locales/vi.json';
+import frStrings from '@/locales/fr.json';
 
 // ============================================================
 // TYPES
@@ -19,66 +32,21 @@ export const RTL_LOCALES: readonly LocaleCode[] = ['ar'];
 export type TranslationDict = Record<string, string | Record<string, unknown>>;
 
 // ============================================================
-// BUILT-IN ENGLISH TRANSLATIONS
+// BUILT-IN TRANSLATIONS (loaded from locale JSON files)
 // ============================================================
 
-const en: TranslationDict = {
-  chat: {
-    crisis: {
-      title: 'It sounds like you may be in crisis. Please reach out for help immediately.',
-      emergency: 'Emergency: Call 911',
-      crisis_line: 'Crisis Line: Call or text 988',
-      community_line: 'Community Resources: Call 211',
-    },
-    disclaimer: {
-      eligibility:
-        'Results shown are from verified records. Eligibility is determined by each service provider — ORAN does not guarantee qualification. Always confirm with the provider.',
-    },
-    input: {
-      placeholder: 'Describe what you need help with...',
-      send: 'Send',
-    },
-    quota: {
-      exceeded: "You've reached the message limit for this session. Please start a new conversation.",
-    },
-  },
-  service: {
-    confidence: {
-      high: 'High confidence',
-      medium: 'Medium confidence — information may have changed',
-      low: 'Low confidence — please verify before visiting',
-      unverified: 'Unverified record',
-    },
-    eligibility_hint: 'You may qualify for this service. Confirm eligibility with the provider.',
-  },
-  common: {
-    loading: 'Loading...',
-    error: {
-      generic: 'Something went wrong. Please try again.',
-      not_found: 'Not found.',
-    },
-    button: {
-      save: 'Save',
-      cancel: 'Cancel',
-      submit: 'Submit',
-      close: 'Close',
-    },
-  },
-  nav: {
-    chat: 'Find Services',
-    map: 'Map',
-    directory: 'Directory',
-    saved: 'Saved',
-    profile: 'Profile',
-  },
-} as const;
-
 // ============================================================
-// TRANSLATION CACHE
+// TRANSLATION CACHE — pre-populated from static JSON imports
 // ============================================================
 
-const localeCache = new Map<LocaleCode, TranslationDict>();
-localeCache.set('en', en);
+const localeCache = new Map<LocaleCode, TranslationDict>([
+  ['en', enStrings as TranslationDict],
+  ['es', esStrings as TranslationDict],
+  ['zh', zhStrings as TranslationDict],
+  ['ar', arStrings as TranslationDict],
+  ['vi', viStrings as TranslationDict],
+  ['fr', frStrings as TranslationDict],
+]);
 
 // ============================================================
 // UTILITIES

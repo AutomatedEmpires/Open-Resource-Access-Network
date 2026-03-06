@@ -9,12 +9,13 @@ kanban
   title ORAN Roadmap
   section Now
     Docs and onboarding experience uplift
+    Hackathon onboarding and ownership matrix
     Contracts hub and governance hardening
     Runbook system categorization and audit
   section Next
-    Runbook staleness CI enforcement
     Investor brief and trust evidence pack
     Developer golden-path automation
+    Area-level contributor scorecards
   section Later
     Public KPI dashboard integration
     Contributor journey analytics
@@ -24,15 +25,17 @@ kanban
 ## Now
 
 - [x] Role-based START_HERE onboarding.
+- [x] Hackathon onboarding command center and ownership matrix.
 - [x] Interactive repository map.
 - [x] Contracts hub and baseline contract set.
 - [x] Ops runbook taxonomy and readiness matrix expansion.
+- [x] CI guard for runbook review-date staleness.
 
 ## Next
 
-- [ ] CI guard for runbook review-date staleness.
 - [ ] Public-facing investor brief with proof links.
 - [ ] Unified command palette doc for dev + ops workflows.
+- [ ] Area-level contributor scorecards and review dashboards.
 
 ## Later
 

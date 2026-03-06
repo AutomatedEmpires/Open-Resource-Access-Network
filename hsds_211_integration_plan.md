@@ -2,8 +2,9 @@
 
 # ORAN HSDS / 211 Concrete Integration Plan
 
-Status: Draft execution plan
+Status: Phase 1 implemented
 Date: 2026-03-06
+Updated: 2026-03-07 — Phase 1 source assertion layer code complete
 Depends on: `hsds_211_unify.md`
 
 ## Purpose
@@ -382,6 +383,17 @@ Add a migration introducing:
 - extend `src/agents/ingestion/contracts.ts`
 - extend `src/db/schema.ts`
 - add persistence under `src/agents/ingestion/persistence/**`
+
+### Phase 1 implementation status — COMPLETE
+
+Delivered:
+
+- **Migration**: `db/migrations/0032_source_assertion_layer.sql` — 7 tables (`source_systems`, `source_feeds`, `source_records`, `source_record_taxonomy`, `entity_identifiers`, `hsds_export_snapshots`, `lifecycle_events`) plus data migration from `ingestion_sources` → `source_systems` with trust-tier mapping, default feeds per system, FK backfill on `ingestion_jobs`.
+- **Drizzle schema**: `src/db/schema.ts` extended with all 7 table definitions, type exports, and relation declarations. `sourceSystemId` FK added to `ingestionJobs`.
+- **Contracts**: `src/agents/ingestion/contracts.ts` expanded with `SourceSystemFamilySchema`, `TrustTierSchema`, and 5 new `SourceKindSchema` values (`hsds_api`, `hsds_tabular`, `partner_api`, `partner_export`, `government_open_data`).
+- **Store interfaces**: `src/agents/ingestion/stores.ts` extended with `SourceSystemStore`, `SourceFeedStore`, `SourceRecordStore`, `EntityIdentifierStore`, `HsdsExportSnapshotStore`, `LifecycleEventStore` interfaces and added to `IngestionStores` composite.
+- **Persistence implementations**: 6 new Drizzle store files under `src/agents/ingestion/persistence/` (`sourceSystemStore.ts`, `sourceFeedStore.ts`, `sourceRecordStore.ts`, `entityIdentifierStore.ts`, `hsdsExportSnapshotStore.ts`, `lifecycleEventStore.ts`).
+- **Factory + exports**: `storeFactory.ts` and `persistence/index.ts` updated to compose and export all new stores.
 
 ## Phase 2: Canonical Federation Layer
 

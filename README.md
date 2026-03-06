@@ -12,7 +12,9 @@ ORAN is a civic-grade, safety-critical platform for finding government, state, c
 
 | Need | Go To |
 | --- | --- |
+| Hackathon command center | [docs/HACKATHON_ONBOARDING.md](docs/HACKATHON_ONBOARDING.md) |
 | Role-based onboarding | [START_HERE.md](START_HERE.md) |
+| Ownership and skills matrix | [docs/OWNERSHIP_SKILLS_MATRIX.md](docs/OWNERSHIP_SKILLS_MATRIX.md) |
 | Live proof and assurance panel | [docs/EVIDENCE_DASHBOARD.md](docs/EVIDENCE_DASHBOARD.md) |
 | Verified dev setup and command paths | [docs/DEVELOPER_GOLDEN_PATH.md](docs/DEVELOPER_GOLDEN_PATH.md) |
 | Visual architecture and change map | [docs/REPO_MAP.md](docs/REPO_MAP.md) |
@@ -39,6 +41,38 @@ ORAN is a civic-grade, safety-critical platform for finding government, state, c
 | Engineering discipline | Strict TypeScript, CI quality gates, security scanning | `.github/workflows/ci.yml`, `.github/workflows/codeql.yml` |
 | Governance | SSOT hierarchy plus operating model and ADRs | `docs/SSOT.md`, `docs/governance/OPERATING_MODEL.md`, `docs/DECISIONS/` |
 | Deployment posture | Azure-first production architecture and runbooks | `docs/platform/DEPLOYMENT_AZURE.md`, `infra/README.md` |
+
+## Hackathon Command Center
+
+If you are onboarding contributors quickly, use this sequence:
+
+1. Read [START_HERE.md](START_HERE.md) for role-based entry.
+2. Put developers into repo lanes using [docs/OWNERSHIP_SKILLS_MATRIX.md](docs/OWNERSHIP_SKILLS_MATRIX.md).
+3. Run team setup from [docs/HACKATHON_ONBOARDING.md](docs/HACKATHON_ONBOARDING.md).
+4. Keep architecture and contract changes anchored to [docs/REPO_MAP.md](docs/REPO_MAP.md) and [docs/contracts/README.md](docs/contracts/README.md).
+5. Route production and operational questions to [docs/ops/README.md](docs/ops/README.md).
+
+## Who Does What
+
+| Workstream | Best-Fit Contributors | Primary Areas | Canonical Docs |
+| --- | --- | --- | --- |
+| Seeker and public experience | Frontend engineers, UX designers, accessibility reviewers | `src/app/(seeker)/**`, `src/app/(public)/**`, `src/components/**` | `docs/ui/**`, `src/app/(seeker)/README.md` |
+| Host and organization workflows | Full-stack product engineers | `src/app/(host)/**`, `src/app/api/**`, `src/services/organizations/**` | `docs/REPO_MAP.md`, `src/app/(host)/README.md` |
+| ORAN admin and moderation | Workflow engineers, operations-minded full-stack engineers | `src/app/(oran-admin)/**`, `src/app/api/admin/**`, `src/services/triage/**` | `docs/ops/README.md`, `src/app/(oran-admin)/README.md` |
+| Search, chat, scoring | Backend engineers, applied AI engineers working within strict retrieval constraints | `src/services/chat/**`, `src/services/search/**`, `src/services/scoring/**` | `docs/CHAT_ARCHITECTURE.md`, `docs/SCORING_MODEL.md`, `docs/contracts/**` |
+| Ingestion and verification agents | Data engineers, AI engineers, queue/workflow engineers | `src/agents/ingestion/**`, `functions/**`, `src/services/ingestion/**` | `docs/agents/**`, `docs/ops/services/RUNBOOK_INGESTION.md` |
+| Platform, CI/CD, Azure operations | DevOps, platform engineers, security engineers | `.github/workflows/**`, `infra/**`, `docs/platform/**`, `docs/ops/**` | `docs/platform/DEPLOYMENT_AZURE.md`, `docs/ops/README.md` |
+| Data model and persistence | Database engineers, backend engineers | `db/**`, `src/db/**`, `src/domain/**` | `docs/DATA_MODEL.md`, `docs/DECISIONS/` |
+
+## Vision In One Page
+
+ORAN exists to help people find real services fast, without fabricated results, unsafe shortcuts, or opaque operations. The product standard is not “helpful enough.” The standard is retrieval-backed, safety-governed, and operationally defensible.
+
+For hackathon contributors, that means:
+
+- Ship features that improve verified access to services.
+- Do not weaken crisis routing, privacy posture, or retrieval-first constraints.
+- Keep changes attached to contracts, tests, and runbooks so the platform stays operable after the event.
 
 ## Platform Status
 

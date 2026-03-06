@@ -5,6 +5,8 @@ Start here if you’re new to the repo.
 ## Guided experiences
 
 - Start-here role lanes: [START_HERE.md](../START_HERE.md)
+- Hackathon onboarding command center: [docs/HACKATHON_ONBOARDING.md](HACKATHON_ONBOARDING.md)
+- Ownership and skills matrix: [docs/OWNERSHIP_SKILLS_MATRIX.md](OWNERSHIP_SKILLS_MATRIX.md)
 - Live evidence dashboard: [docs/EVIDENCE_DASHBOARD.md](EVIDENCE_DASHBOARD.md)
 - Developer golden path: [docs/DEVELOPER_GOLDEN_PATH.md](DEVELOPER_GOLDEN_PATH.md)
 - Visual repository map: [docs/REPO_MAP.md](REPO_MAP.md)

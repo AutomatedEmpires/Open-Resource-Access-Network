@@ -8,6 +8,7 @@ This page is the fastest way to onboard as an investor, developer, operator, or 
 | --- | --- | --- | --- |
 | Investor / Executive | [Investor lane](#investor-lane) | 10 min | Mission, risk controls, delivery proof |
 | Developer | [Developer lane](#developer-lane) | 15 min | Local run, architecture map, first change |
+| Hackathon lead / team organizer | [Hackathon lead lane](#hackathon-lead-lane) | 12 min | Team assignment, ownership map, onboarding flow |
 | Operator / On-call | [Operator lane](#operator-lane) | 12 min | Incident flow, runbooks, recovery drills |
 | Contributor | [Contributor lane](#contributor-lane) | 10 min | Contribution workflow and quality gates |
 
@@ -71,6 +72,14 @@ npm run test
 
 </details>
 
+## Hackathon Lead Lane
+
+- Read [docs/HACKATHON_ONBOARDING.md](docs/HACKATHON_ONBOARDING.md).
+- Assign contributors using [docs/OWNERSHIP_SKILLS_MATRIX.md](docs/OWNERSHIP_SKILLS_MATRIX.md).
+- Use [docs/REPO_MAP.md](docs/REPO_MAP.md) to route people to the correct directories.
+- Use [docs/ops/README.md](docs/ops/README.md) to confirm runbooks and incident coverage are in place.
+- Use [docs/EVIDENCE_DASHBOARD.md](docs/EVIDENCE_DASHBOARD.md) and [docs/ROADMAP_PUBLIC.md](docs/ROADMAP_PUBLIC.md) for proof and direction.
+
 ## Operator Lane
 
 - Start at `docs/ops/README.md`.
@@ -102,3 +111,5 @@ npm run test
 - Public roadmap: `docs/ROADMAP_PUBLIC.md`
 - Contracts hub: `docs/contracts/README.md`
 - Repo map: `docs/REPO_MAP.md`
+- Hackathon onboarding: `docs/HACKATHON_ONBOARDING.md`
+- Ownership matrix: `docs/OWNERSHIP_SKILLS_MATRIX.md`

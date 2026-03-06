@@ -292,14 +292,30 @@ export type EscalationAction = typeof ESCALATION_TIERS[number]['action'];
  */
 export const DEFAULT_ADMIN_NOTIFICATION_EVENTS: readonly NotificationEventType[] = [
   'submission_assigned',
+  'submission_status_changed',
   'submission_sla_warning',
   'submission_sla_breach',
-  'submission_escalation_warning',
+  'two_person_approval_needed',
+  'system_alert',
 ] as const;
 
 // ============================================================
 // ROLES
 // ============================================================
+
+/**
+ * Role-based admin capacity defaults.
+ * ORAN admins handle escalations so they get higher limits.
+ * Host admins only manage their own org so they get lower limits.
+ */
+export const ROLE_CAPACITY_DEFAULTS: Record<
+  'oran_admin' | 'community_admin' | 'host_admin',
+  { maxPending: number; maxInReview: number }
+> = {
+  oran_admin:       { maxPending: 50, maxInReview: 20 },
+  community_admin:  { maxPending: 10, maxInReview: 5 },
+  host_admin:       { maxPending: 5,  maxInReview: 3 },
+} as const;
 
 export const ROLES: readonly OranRole[] = [
   'seeker',
@@ -461,10 +477,6 @@ export const CRISIS_RESOURCES = {
 
 export const FEATURE_FLAGS = {
   LLM_SUMMARIZE:         'llm_summarize',
-  /** Enables admin-only LLM assist for candidate review (advisory only). */
-  LLM_ADMIN_ASSIST:      'llm_admin_assist',
-  /** Enables text-to-speech summaries for seeker/admin surfaces where supported. */
-  TTS_SUMMARIES:         'tts_summaries',
   MAP_ENABLED:           'map_enabled',
   FEEDBACK_FORM:         'feedback_form',
   HOST_CLAIMS:           'host_claims',
@@ -534,37 +546,6 @@ export const FEATURE_FLAGS = {
    */
   TELEMETRY_INTERACTIONS: 'telemetry_interactions',
 } as const;
-
-// ============================================================
-// SLA ESCALATION DEFAULTS
-// ============================================================
-
-/** Fraction of SLA window elapsed before sending a warning (e.g., 0.75 = 75%). */
-export const SLA_WARNING_THRESHOLD = 0.75;
-
-export const ESCALATION_TIERS: Array<{
-  hoursAfterBreach: number;
-  action:
-    | 'notify_assignee'
-    | 'renotify_and_alert_org'
-    | 'reassign_to_next_admin'
-    | 'escalate_to_oran_admin';
-}> = [
-  { hoursAfterBreach: 0, action: 'notify_assignee' },
-  { hoursAfterBreach: 12, action: 'renotify_and_alert_org' },
-  { hoursAfterBreach: 24, action: 'reassign_to_next_admin' },
-  { hoursAfterBreach: 48, action: 'escalate_to_oran_admin' },
-];
-
-/** Critical admin notification event types enabled by default (in-app). */
-export const DEFAULT_ADMIN_NOTIFICATION_EVENTS: readonly NotificationEventType[] = [
-  'submission_assigned',
-  'submission_status_changed',
-  'submission_sla_warning',
-  'submission_sla_breach',
-  'two_person_approval_needed',
-  'system_alert',
-];
 
 // ============================================================
 // SEARCH DEFAULTS

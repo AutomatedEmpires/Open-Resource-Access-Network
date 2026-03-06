@@ -250,7 +250,7 @@ export default function SavedPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowClearConfirm(true)}
-                className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
+                className="gap-1.5 text-error-base border-error-soft hover:bg-error-subtle"
               >
                 <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                 Clear all
@@ -261,7 +261,7 @@ export default function SavedPage() {
                   type="button"
                   size="sm"
                   onClick={clearAll}
-                  className="bg-red-600 hover:bg-red-700 text-white gap-1.5"
+                  className="bg-error-base hover:bg-error-strong text-white gap-1.5"
                 >
                   Confirm
                 </Button>
@@ -284,7 +284,7 @@ export default function SavedPage() {
         {error && (
           <div
             role="alert"
-            className="mb-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+            className="mb-6 flex items-start gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 text-sm text-error-deep"
           >
             <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
             <p>{error}</p>

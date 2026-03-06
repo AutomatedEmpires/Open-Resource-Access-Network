@@ -177,7 +177,7 @@ function ReportPageInner() {
           <p className="text-sm text-gray-500 mt-1">Our team will review it and take appropriate action.</p>
           <Link
             href="/directory"
-            className="inline-block mt-4 text-sm text-blue-600 hover:underline"
+            className="inline-block mt-4 text-sm text-action-base hover:underline"
           >
             Return to directory
           </Link>
@@ -201,7 +201,7 @@ function ReportPageInner() {
               id="reason"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
             >
               <option value="">Select a reason…</option>
               {REPORT_REASONS.map(({ value, label }) => (
@@ -223,7 +223,7 @@ function ReportPageInner() {
               value={details}
               onChange={(e) => setDetails(e.target.value)}
               rows={4}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
               placeholder="What is wrong with this listing?"
               maxLength={2000}
             />
@@ -236,7 +236,7 @@ function ReportPageInner() {
               type="email"
               value={contactEmail}
               onChange={(e) => setContactEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
               placeholder="your@email.com"
             />
           </FormField>
@@ -265,7 +265,7 @@ function ReportPageInner() {
       {myReports.length > 0 && (
         <section className="mt-10">
           <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <Flag className="h-5 w-5 text-blue-500" aria-hidden="true" />
+            <Flag className="h-5 w-5 text-action" aria-hidden="true" />
             My Reports
           </h2>
           <div className="space-y-3">

@@ -51,9 +51,9 @@ export default function ChatPage() {
         subtitle={
           <>
             Prefer browsing?{' '}
-            <Link href="/directory" className="text-blue-600 hover:underline">Directory</Link>
+            <Link href="/directory" className="text-action-base hover:underline">Directory</Link>
             {' '}or{' '}
-            <Link href="/map" className="text-blue-600 hover:underline">Map</Link>.
+            <Link href="/map" className="text-action-base hover:underline">Map</Link>.
           </>
         }
       />

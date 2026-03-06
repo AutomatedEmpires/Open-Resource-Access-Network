@@ -368,9 +368,9 @@ export default function MapPage() {
         subtitle={
           <>
             Search verified service locations. Prefer browsing?{' '}
-            <Link href="/directory" className="text-blue-600 hover:underline">Directory</Link>
+            <Link href="/directory" className="text-action-base hover:underline">Directory</Link>
             {' '}or{' '}
-            <Link href="/chat" className="text-blue-600 hover:underline">Chat</Link>.
+            <Link href="/chat" className="text-action-base hover:underline">Chat</Link>.
           </>
         }
       />
@@ -385,14 +385,14 @@ export default function MapPage() {
               onChange={(e) => setQuery(e.target.value)}
               type="search"
               placeholder="Search for services (e.g., food bank, shelter)"
-              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
               aria-label="Search services to plot"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-action"
                 aria-label="Clear search"
               >
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -454,7 +454,7 @@ export default function MapPage() {
                       onChange={(e) => setTaxonomySearch(e.target.value)}
                       type="search"
                       placeholder="Search tags…"
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                       aria-label="Search service tags"
                     />
                     {selectedTaxonomyIds.length > 0 && (
@@ -469,7 +469,7 @@ export default function MapPage() {
                   </div>
 
                   {taxonomyError && (
-                    <p className="text-sm text-red-700" role="alert">{taxonomyError}</p>
+                    <p className="text-sm text-error-strong" role="alert">{taxonomyError}</p>
                   )}
 
                   {isLoadingTaxonomy ? (
@@ -520,7 +520,7 @@ export default function MapPage() {
             onClick={() => setMobileView('map')}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
               mobileView === 'map'
-                ? 'bg-blue-600 text-white'
+                ? 'bg-action-base text-white'
                 : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
             }`}
           >
@@ -532,7 +532,7 @@ export default function MapPage() {
             onClick={() => setMobileView('list')}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
               mobileView === 'list'
-                ? 'bg-blue-600 text-white'
+                ? 'bg-action-base text-white'
                 : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
             }`}
           >
@@ -545,7 +545,7 @@ export default function MapPage() {
         {error && (
           <div
             role="alert"
-            className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+            className="mb-4 flex items-start gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 text-sm text-error-deep"
           >
             <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
             <div>

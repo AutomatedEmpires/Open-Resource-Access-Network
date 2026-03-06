@@ -201,7 +201,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
         {error && !isLoading && (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+            className="flex items-start gap-2 rounded-lg border border-error-soft bg-error-subtle p-4 text-sm text-error-deep"
           >
             <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
             <div>
@@ -210,7 +210,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="mt-2 text-red-700 hover:underline"
+                className="mt-2 text-error-strong hover:underline"
               >
                 Try again
               </button>

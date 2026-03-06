@@ -7,8 +7,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 const fetchMock = vi.hoisted(() => vi.fn());
 const searchParamGetMock = vi.hoisted(() => vi.fn());
 const sessionState = vi.hoisted(() => ({
-  data: { user: { name: 'Test', email: 'test@example.com' } },
-  status: 'authenticated',
+  data: { user: { name: 'Test', email: 'test@example.com' } } as { user: { name: string; email: string } } | null,
+  status: 'authenticated' as string,
 }));
 
 vi.mock('next/navigation', () => ({

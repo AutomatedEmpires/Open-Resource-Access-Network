@@ -154,7 +154,7 @@ export default function NotificationsPageClient() {
             onClick={() => setFilter('all')}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
               filter === 'all'
-                ? 'bg-blue-50 text-blue-700'
+                ? 'bg-info-subtle text-action-strong'
                 : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
@@ -165,7 +165,7 @@ export default function NotificationsPageClient() {
             onClick={() => setFilter('unread')}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
               filter === 'unread'
-                ? 'bg-blue-50 text-blue-700'
+                ? 'bg-info-subtle text-action-strong'
                 : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
@@ -176,7 +176,7 @@ export default function NotificationsPageClient() {
           <button
             type="button"
             onClick={markAllRead}
-            className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium"
+            className="inline-flex items-center gap-1.5 text-xs text-action-base hover:text-action-deep font-medium"
           >
             <CheckCheck className="h-3.5 w-3.5" />
             Mark all read
@@ -200,13 +200,13 @@ export default function NotificationsPageClient() {
             <div
               key={n.id}
               className={`px-4 py-3 flex items-start gap-3 transition-colors ${
-                !n.read_at ? 'bg-blue-50/30' : ''
+                !n.read_at ? 'bg-info-subtle/30' : ''
               }`}
             >
               {/* Unread dot */}
               <div className="mt-1.5 flex-shrink-0">
                 {!n.read_at ? (
-                  <span className="block h-2 w-2 rounded-full bg-blue-500" aria-label="Unread" />
+                  <span className="block h-2 w-2 rounded-full bg-action" aria-label="Unread" />
                 ) : (
                   <span className="block h-2 w-2" />
                 )}

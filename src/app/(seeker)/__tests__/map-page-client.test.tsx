@@ -102,8 +102,22 @@ vi.mock('@/components/ui/dialog', () => {
 });
 
 vi.mock('@/components/directory/ServiceCard', () => ({
-  ServiceCard: ({ enriched }: { enriched: { service: { id: string; name: string } } }) => (
-    <div data-testid={`map-service-card-${enriched.service.id}`}>{enriched.service.name}</div>
+  ServiceCard: ({
+    enriched,
+    isSaved,
+    onToggleSave,
+  }: {
+    enriched: { service: { id: string; name: string } };
+    isSaved?: boolean;
+    onToggleSave?: (id: string) => void;
+  }) => (
+    <div data-testid={`map-service-card-${enriched.service.id}`}>
+      <span>{enriched.service.name}</span>
+      <span>{isSaved ? 'saved' : 'not-saved'}</span>
+      <button type="button" onClick={() => onToggleSave?.(enriched.service.id)}>
+        toggle-{enriched.service.id}
+      </button>
+    </div>
   ),
 }));
 
@@ -362,6 +376,55 @@ describe('MapPageClient', () => {
     });
   });
 
+  it('surfaces geolocation timeout and generic unavailable errors', async () => {
+    const geolocation = {
+      getCurrentPosition: vi.fn(
+        (
+          _onSuccess: (pos: { coords: { latitude: number; longitude: number } }) => void,
+          onError: (err: { code: number; PERMISSION_DENIED: number; TIMEOUT: number }) => void,
+        ) => {
+          onError({ code: 3, PERMISSION_DENIED: 1, TIMEOUT: 3 });
+          onError({ code: 2, PERMISSION_DENIED: 1, TIMEOUT: 3 });
+        },
+      ),
+    };
+    Object.defineProperty(global.navigator, 'geolocation', {
+      value: geolocation,
+      configurable: true,
+    });
+
+    renderWithToast(<MapPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith('Location request timed out.');
+      expect(toastErrorMock).toHaveBeenCalledWith('Location unavailable.');
+    });
+  });
+
+  it('hydrates saved ids and persists toggle save/unsave state', async () => {
+    localStorage.setItem('oran:saved-service-ids', '["svc-1",5]');
+    mockApi([{ ok: true, body: makeSearchResponse() }]);
+
+    renderWithToast(<MapPage />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+      target: { value: 'shelter' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await screen.findByText('Shelter');
+
+    expect(screen.getAllByText('saved').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'toggle-svc-1' }));
+    expect(localStorage.getItem('oran:saved-service-ids')).toBe('[]');
+    expect(toastSuccessMock).toHaveBeenCalledWith('Removed from saved');
+
+    fireEvent.click(screen.getByRole('button', { name: 'toggle-svc-1' }));
+    expect(localStorage.getItem('oran:saved-service-ids')).toBe('["svc-1"]');
+    expect(toastSuccessMock).toHaveBeenCalledWith('Saved');
+  });
+
   it('centers map from opted-in geolocation and shows mobile search-area CTA', async () => {
     setMatchMedia(true);
 
@@ -389,6 +452,85 @@ describe('MapPageClient', () => {
     expect(map).toHaveAttribute('data-center-lat', '47.62');
     expect(map).toHaveAttribute('data-center-lng', '-122.33');
     expect(map).toHaveAttribute('data-zoom', '12');
+  });
+
+  it('shows taxonomy and search fallback errors when response bodies are not JSON', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/taxonomy/terms')) {
+        return {
+          ok: false,
+          json: async () => {
+            throw new Error('bad taxonomy body');
+          },
+        } as Response;
+      }
+      if (url.includes('/api/search?')) {
+        return {
+          ok: false,
+          json: async () => {
+            throw new Error('bad search body');
+          },
+        } as Response;
+      }
+      return {
+        ok: false,
+        json: async () => ({ error: `Unexpected request: ${url}` }),
+      } as Response;
+    });
+
+    renderWithToast(<MapPage />);
+    await screen.findByText('Filters unavailable');
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+      target: { value: 'fallback' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    expect((await screen.findAllByText('Search failed')).length).toBeGreaterThan(0);
+  });
+
+  it('does not run taxonomy or bbox searches when query and bounds are absent', async () => {
+    const taxonomyId = 'a1000000-0000-0000-0000-000000000001';
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/taxonomy/terms')) {
+        return {
+          ok: true,
+          json: async () => ({
+            terms: [
+              {
+                id: taxonomyId,
+                term: 'Food Assistance',
+                description: null,
+                parentId: null,
+                taxonomy: 'demo',
+                serviceCount: 3,
+              },
+            ],
+          }),
+        } as Response;
+      }
+      if (url.includes('/api/search?')) {
+        return {
+          ok: true,
+          json: async () => makeSearchResponse(),
+        } as Response;
+      }
+      return {
+        ok: false,
+        json: async () => ({ error: `Unexpected request: ${url}` }),
+      } as Response;
+    });
+
+    renderWithToast(<MapPage />);
+    await screen.findByRole('button', { name: 'Food Assistance' });
+
+    const initialSearchCalls = getSearchCalls().length;
+    fireEvent.submit(screen.getByRole('searchbox', { name: 'Search services to plot' }).closest('form')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Food Assistance' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Search this area' }));
+
+    expect(getSearchCalls().length).toBe(initialSearchCalls);
   });
 
   it('supports taxonomy dialog filtering, applying terms, and clearing applied terms', async () => {

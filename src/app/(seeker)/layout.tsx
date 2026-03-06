@@ -4,7 +4,7 @@
  * Navigation chrome for all seeker-facing pages.
  *
  * Design system contracts:
- * - Active nav item: bg-blue-50 text-blue-700 (desktop) / text-blue-600 (mobile)
+ * - Active nav item: bg-info-subtle text-action-strong (desktop) / text-action-base (mobile)
  * - Saved count badge: refreshes on every route transition
  * - All interactive elements meet min-h-[44px] / min-w-[44px] touch targets
  * - No admin or host links on public surfaces
@@ -98,7 +98,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
           {/* Brand */}
           <Link
             href="/"
-            className="flex items-center gap-2 font-bold text-gray-900 text-lg tracking-tight hover:text-blue-600 transition-colors"
+            className="flex items-center gap-2 font-bold text-gray-900 text-lg tracking-tight hover:text-action-base transition-colors"
           >
             ORAN
           </Link>
@@ -114,7 +114,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
                   href={href}
                   className={`relative flex items-center gap-1.5 px-3 py-2 rounded-md text-sm transition-colors min-h-[44px] ${
                     active
-                      ? 'bg-blue-50 text-blue-700 font-semibold'
+                      ? 'bg-info-subtle text-action-strong font-semibold'
                       : 'font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                   }`}
                   aria-current={active ? 'page' : undefined}
@@ -124,7 +124,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
                   {isSavedItem && savedCount > 0 && (
                     <span
                       className={`ml-0.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold min-w-[16px] h-4 px-1 leading-none ${
-                        active ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                        active ? 'bg-action-base text-white' : 'bg-gray-200 text-gray-700'
                       }`}
                       aria-label={`${savedCount} saved`}
                     >
@@ -140,7 +140,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
 
       {/* ── Main content ────────────────────────────────── */}
       {/* pb-14 on mobile clears the fixed bottom nav (h-14 = 56px) */}
-      <div id="main-content" className="flex-1 pb-14 md:pb-0">
+      <div id="main-content" className="flex-1 pb-14 md:pb-0 animate-[page-enter_var(--transition-standard)_both]">
         {children}
       </div>
 
@@ -165,18 +165,18 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
                 key={href}
                 href={href}
                 className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-xs font-medium transition-colors ${
-                  active ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'
+                  active ? 'text-action-base' : 'text-gray-400 hover:text-gray-600'
                 }`}
                 aria-current={active ? 'page' : undefined}
               >
                 {/* Active pill capsule behind icon */}
                 <span className={`relative flex items-center justify-center rounded-full transition-colors ${
-                  active ? 'bg-blue-50 px-3 py-1' : 'px-3 py-1'
+                  active ? 'bg-info-subtle px-3 py-1' : 'px-3 py-1'
                 }`}>
                   <Icon className="h-5 w-5" aria-hidden="true" />
                   {isSavedItem && savedCount > 0 && (
                     <span
-                      className="absolute -top-1.5 -right-2 inline-flex items-center justify-center rounded-full bg-blue-600 text-white text-[9px] font-bold min-w-[14px] h-3.5 px-0.5 leading-none"
+                      className="absolute -top-1.5 -right-2 inline-flex items-center justify-center rounded-full bg-action-base text-white text-[9px] font-bold min-w-[14px] h-3.5 px-0.5 leading-none"
                       aria-hidden="true"
                     >
                       {savedCount > 99 ? '99+' : savedCount}

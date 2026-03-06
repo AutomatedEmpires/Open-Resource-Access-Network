@@ -3,9 +3,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, X, AlertTriangle, ArrowLeft, ArrowRight, MapPin } from 'lucide-react';
+import { Search, X, AlertTriangle, ArrowLeft, ArrowRight, MapPin, ChevronDown, ChevronUp } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { SERVICE_ATTRIBUTES_TAXONOMY } from '@/domain/taxonomy';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
@@ -45,6 +46,33 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 ];
 
 /** Quick category chips for common service needs */
+
+/** Seeker-facing attribute dimensions — show common tags as quick filter chips */
+const SEEKER_ATTRIBUTE_DIMENSIONS = ['delivery', 'cost', 'access'] as const;
+
+const ATTRIBUTE_CHIP_LABELS: Record<string, string> = {
+  // Delivery
+  in_person: 'In-Person',
+  virtual: 'Virtual',
+  phone: 'By Phone',
+  home_delivery: 'Home Delivery',
+  // Cost
+  free: 'Free',
+  sliding_scale: 'Sliding Scale',
+  medicaid: 'Medicaid',
+  medicare: 'Medicare',
+  no_insurance_required: 'No Insurance Needed',
+  ebt_snap: 'EBT/SNAP',
+  // Access
+  walk_in: 'Walk-In',
+  no_id_required: 'No ID Required',
+  no_referral_needed: 'No Referral',
+  drop_in: 'Drop-In',
+  accepting_new_clients: 'Accepting New Clients',
+  weekend_hours: 'Weekend Hours',
+  evening_hours: 'Evening Hours',
+};
+
 const CATEGORY_CHIPS: { value: string; label: string }[] = [
   { value: 'food', label: 'Food' },
   { value: 'housing', label: 'Housing' },
@@ -113,6 +141,26 @@ export default function DirectoryPage() {
   const hasLoadedTaxonomyRef = useRef(false);
   const taxonomyLoadInFlightRef = useRef(false);
 
+  // Service attribute dimension filters (delivery, cost, access)
+  const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string[]>>(() => {
+    const raw = searchParams.get('attributes');
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const result: Record<string, string[]> = {};
+        for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+          if (Array.isArray(value) && value.every((v) => typeof v === 'string')) {
+            result[key] = value as string[];
+          }
+        }
+        return result;
+      }
+    } catch { /* ignore invalid JSON */ }
+    return {};
+  });
+  const [attributeSectionOpen, setAttributeSectionOpen] = useState(false);
+
   // Opt-in device geolocation (in-session only; never stored; not reflected in URL)
   const [isLocating, setIsLocating] = useState(false);
   const [deviceLocation, setDeviceLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -139,6 +187,7 @@ export default function DirectoryPage() {
     category: string | null,
     taxonomyIds: string[],
     p: number,
+    attributes?: Record<string, string[]>,
   ) => {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
@@ -146,10 +195,12 @@ export default function DirectoryPage() {
     if (sort !== 'relevance') params.set('sort', sort);
     if (category) params.set('category', category);
     if (taxonomyIds.length > 0) params.set('taxonomyIds', taxonomyIds.join(','));
+    const attrs = attributes ?? selectedAttributes;
+    if (Object.keys(attrs).length > 0) params.set('attributes', JSON.stringify(attrs));
     if (p > 1) params.set('page', String(p));
     const qs = params.toString();
     router.replace(qs ? `/directory?${qs}` : '/directory', { scroll: false });
-  }, [router]);
+  }, [router, selectedAttributes]);
 
   // Load saved IDs from localStorage on mount
   useEffect(() => {
@@ -185,8 +236,8 @@ export default function DirectoryPage() {
   }, [success]);
 
   const canSearch = useMemo(() => {
-    return query.trim().length > 0 || deviceLocation != null || selectedTaxonomyIds.length > 0;
-  }, [query, deviceLocation, selectedTaxonomyIds.length]);
+    return query.trim().length > 0 || deviceLocation != null || selectedTaxonomyIds.length > 0 || Object.keys(selectedAttributes).length > 0;
+  }, [query, deviceLocation, selectedTaxonomyIds.length, selectedAttributes]);
 
   const resetResultsToEmpty = useCallback(() => {
     setData(null);
@@ -210,12 +261,14 @@ export default function DirectoryPage() {
     locationOverride?: { lat: number; lng: number } | null,
     taxonomyOverride?: string[],
     append = false,
+    attributesOverride?: Record<string, string[]>,
   ) => {
     const trimmed = (searchText ?? query).trim();
 
     const effectiveLocation = locationOverride !== undefined ? locationOverride : deviceLocation;
     const effectiveTaxonomyIds = taxonomyOverride !== undefined ? taxonomyOverride : selectedTaxonomyIds;
-    if (!trimmed && !effectiveLocation && effectiveTaxonomyIds.length === 0) return;
+    const effectiveAttributes = attributesOverride !== undefined ? attributesOverride : selectedAttributes;
+    if (!trimmed && !effectiveLocation && effectiveTaxonomyIds.length === 0 && Object.keys(effectiveAttributes).length === 0) return;
 
     const effectiveCategory = category !== undefined ? category : activeCategory;
 
@@ -245,6 +298,10 @@ export default function DirectoryPage() {
 
       if (effectiveTaxonomyIds.length > 0) {
         params.set('taxonomyIds', effectiveTaxonomyIds.join(','));
+      }
+
+      if (Object.keys(effectiveAttributes).length > 0) {
+        params.set('attributes', JSON.stringify(effectiveAttributes));
       }
 
       if (sort !== 'relevance') {
@@ -285,7 +342,7 @@ export default function DirectoryPage() {
         });
       }
       // Sync filter state to URL so results are shareable
-      pushUrlState(trimmed, confidence, sort, effectiveCategory, effectiveTaxonomyIds, nextPage);
+      pushUrlState(trimmed, confidence, sort, effectiveCategory, effectiveTaxonomyIds, nextPage, effectiveAttributes);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') {
         return;
@@ -299,7 +356,7 @@ export default function DirectoryPage() {
         setIsLoading(false);
       }
     }
-  }, [query, confidenceFilter, sortBy, activeCategory, deviceLocation, pushUrlState, selectedTaxonomyIds]);
+  }, [query, confidenceFilter, sortBy, activeCategory, deviceLocation, pushUrlState, selectedTaxonomyIds, selectedAttributes]);
 
   // Keep ref current so the IntersectionObserver callback always sees the latest state.
   loadMoreRef.current = () => {
@@ -372,7 +429,7 @@ export default function DirectoryPage() {
       setSelectedTaxonomyIds(parsedTaxonomyIds);
     }
 
-    if (urlQuery?.trim() || parsedTaxonomyIds.length > 0) {
+    if (urlQuery?.trim() || parsedTaxonomyIds.length > 0 || Object.keys(selectedAttributes).length > 0) {
       didAutoRun.current = true;
       void runSearch(page, confidenceFilter, sortBy, urlQuery?.trim() ?? '', activeCategory, undefined, parsedTaxonomyIds);
     }
@@ -513,6 +570,33 @@ export default function DirectoryPage() {
     void runSearch(1, confidenceFilter, sortBy, undefined, undefined, undefined, []);
   }, [confidenceFilter, deviceLocation, query, resetResultsToEmpty, runSearch, sortBy]);
 
+  const toggleAttribute = useCallback((dimension: string, tag: string) => {
+    setSelectedAttributes((prev) => {
+      const current = prev[dimension] ?? [];
+      const hasTag = current.includes(tag);
+      const nextTags = hasTag ? current.filter((t) => t !== tag) : [...current, tag];
+      const next = { ...prev };
+      if (nextTags.length === 0) {
+        delete next[dimension];
+      } else {
+        next[dimension] = nextTags;
+      }
+      void runSearch(1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, false, next);
+      return next;
+    });
+  }, [confidenceFilter, runSearch, sortBy]);
+
+  const clearAttributes = useCallback(() => {
+    setSelectedAttributes({});
+    if (!query.trim() && !deviceLocation && selectedTaxonomyIds.length === 0) {
+      resetResultsToEmpty();
+      return;
+    }
+    void runSearch(1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, false, {});
+  }, [confidenceFilter, deviceLocation, query, resetResultsToEmpty, runSearch, selectedTaxonomyIds.length, sortBy]);
+
+  const hasActiveAttributes = useMemo(() => Object.keys(selectedAttributes).length > 0, [selectedAttributes]);
+
   const clearCategory = useCallback(() => {
     setActiveCategory(null);
     if (!query.trim() && !deviceLocation && selectedTaxonomyIds.length === 0) {
@@ -545,6 +629,7 @@ export default function DirectoryPage() {
     setSortBy('relevance');
     setActiveCategory(null);
     setSelectedTaxonomyIds([]);
+    setSelectedAttributes({});
     setTaxonomySearch('');
     setDeviceLocation(null);
 
@@ -554,7 +639,7 @@ export default function DirectoryPage() {
       return;
     }
     setQuery(nextQuery);
-    void runSearch(1, 'all', 'relevance', nextQuery, null, null, []);
+    void runSearch(1, 'all', 'relevance', nextQuery, null, null, [], false, {});
   }, [activeCategory, query, resetResultsToEmpty, runSearch]);
 
   // Focus results container after search completes with results
@@ -610,7 +695,8 @@ export default function DirectoryPage() {
     setPage(1);
     setActiveCategory(null);
     setSelectedTaxonomyIds([]);
-    pushUrlState('', confidenceFilter, sortBy, null, [], 1);
+    setSelectedAttributes({});
+    pushUrlState('', confidenceFilter, sortBy, null, [], 1, {});
   }, [confidenceFilter, sortBy, pushUrlState]);
 
   const clearDeviceLocation = useCallback(() => {
@@ -629,9 +715,9 @@ export default function DirectoryPage() {
         subtitle={
           <>
             Search verified listings. Also try{' '}
-            <Link href="/chat" className="text-blue-600 hover:underline">Chat</Link>
+            <Link href="/chat" className="text-action-base hover:underline">Chat</Link>
             {' '}or{' '}
-            <Link href="/map" className="text-blue-600 hover:underline">Map view</Link>.
+            <Link href="/map" className="text-action-base hover:underline">Map view</Link>.
           </>
         }
       />
@@ -646,14 +732,14 @@ export default function DirectoryPage() {
               onChange={(e) => setQuery(e.target.value)}
               type="search"
               placeholder="Search for services (e.g., rent help, food pantry, job training)"
-              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
               aria-label="Search services"
             />
             {query && (
               <button
                 type="button"
                 onClick={handleClearSearch}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-action"
                 aria-label="Clear search"
               >
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -705,7 +791,7 @@ export default function DirectoryPage() {
               onClick={() => handleCategoryClick(cat.value)}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 activeCategory === cat.value
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-action-base text-white'
                   : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
               }`}
               aria-pressed={activeCategory === cat.value}
@@ -720,7 +806,7 @@ export default function DirectoryPage() {
           <span className="text-xs font-medium text-gray-500">Tags:</span>
 
           {taxonomyError && taxonomyTerms.length === 0 && (
-            <span className="text-xs text-red-700" role="status">Filters unavailable</span>
+            <span className="text-xs text-error-strong" role="status">Filters unavailable</span>
           )}
 
           {!taxonomyError && !isLoadingTaxonomy && topTaxonomyTerms.length > 0 && (
@@ -734,7 +820,7 @@ export default function DirectoryPage() {
                     onClick={() => toggleTaxonomyId(t.id)}
                     className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                       selected
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-action-base text-white'
                         : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
                     }`}
                     aria-pressed={selected}
@@ -768,7 +854,7 @@ export default function DirectoryPage() {
                     onChange={(e) => setTaxonomySearch(e.target.value)}
                     type="search"
                     placeholder="Search tags…"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                     aria-label="Search service tags"
                   />
                   {selectedTaxonomyIds.length > 0 && (
@@ -779,7 +865,7 @@ export default function DirectoryPage() {
                 </div>
 
                 {taxonomyError && (
-                  <p className="text-sm text-red-700" role="alert">{taxonomyError}</p>
+                  <p className="text-sm text-error-strong" role="alert">{taxonomyError}</p>
                 )}
 
                 {isLoadingTaxonomy ? (
@@ -817,10 +903,76 @@ export default function DirectoryPage() {
             <button
               type="button"
               onClick={clearTaxonomyFilters}
-              className="text-xs text-blue-700 hover:underline"
+              className="text-xs text-action-strong hover:underline"
             >
               Clear tags
             </button>
+          )}
+        </div>
+
+        {/* Service attribute dimension filters (delivery, cost, access) */}
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => setAttributeSectionOpen((v) => !v)}
+            className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 mb-2"
+            aria-expanded={attributeSectionOpen || hasActiveAttributes}
+          >
+            Service type filters
+            {hasActiveAttributes && (
+              <span className="ml-1 rounded-full bg-info-muted text-action-strong px-1.5 py-0.5 text-[10px] font-semibold">
+                {Object.values(selectedAttributes).flat().length}
+              </span>
+            )}
+            {attributeSectionOpen ? (
+              <ChevronUp className="h-3 w-3" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-3 w-3" aria-hidden="true" />
+            )}
+          </button>
+
+          {(attributeSectionOpen || hasActiveAttributes) && (
+            <div className="space-y-2">
+              {SEEKER_ATTRIBUTE_DIMENSIONS.map((dim) => {
+                const def = SERVICE_ATTRIBUTES_TAXONOMY[dim];
+                if (!def) return null;
+                const commonTags = def.tags.filter((t) => t.common);
+                const activeTags = selectedAttributes[dim] ?? [];
+                return (
+                  <div key={dim} className="flex flex-wrap items-center gap-2" role="group" aria-label={def.name}>
+                    <span className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">{def.name}:</span>
+                    {commonTags.map((t) => {
+                      const isActive = activeTags.includes(t.tag);
+                      return (
+                        <button
+                          key={t.tag}
+                          type="button"
+                          onClick={() => toggleAttribute(dim, t.tag)}
+                          className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                            isActive
+                              ? 'bg-action-base text-white'
+                              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                          }`}
+                          aria-pressed={isActive}
+                          title={t.description}
+                        >
+                          {ATTRIBUTE_CHIP_LABELS[t.tag] ?? t.tag.replace(/_/g, ' ')}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              {hasActiveAttributes && (
+                <button
+                  type="button"
+                  onClick={clearAttributes}
+                  className="text-xs text-action-strong hover:underline"
+                >
+                  Clear service type filters
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -835,7 +987,7 @@ export default function DirectoryPage() {
                 onClick={() => handleConfidenceChange(opt.value)}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   confidenceFilter === opt.value
-                    ? 'bg-blue-600 text-white'
+                    ? 'bg-action-base text-white'
                     : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
                 }`}
                 aria-pressed={confidenceFilter === opt.value}
@@ -852,7 +1004,7 @@ export default function DirectoryPage() {
               id="sort-select"
               value={sortBy}
               onChange={handleSortChange}
-              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[32px]"
+              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[32px]"
             >
               {SORT_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -863,7 +1015,7 @@ export default function DirectoryPage() {
           </div>
         </div>
 
-        {(deviceLocation || activeCategory || selectedTaxonomyIds.length > 0 || confidenceFilter !== 'all' || sortBy !== 'relevance') && (
+        {(deviceLocation || activeCategory || selectedTaxonomyIds.length > 0 || hasActiveAttributes || confidenceFilter !== 'all' || sortBy !== 'relevance') && (
           <div
             className="mb-4 flex flex-nowrap items-center gap-2 overflow-x-auto md:flex-wrap md:overflow-visible"
             aria-label="Applied filters"
@@ -936,6 +1088,18 @@ export default function DirectoryPage() {
               </>
             )}
 
+            {hasActiveAttributes && (
+              <button
+                type="button"
+                onClick={clearAttributes}
+                className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                aria-label="Clear service type filters"
+              >
+                Service type ({Object.values(selectedAttributes).flat().length})
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            )}
+
             {confidenceFilter !== 'all' && (
               <button
                 type="button"
@@ -963,7 +1127,7 @@ export default function DirectoryPage() {
             <button
               type="button"
               onClick={clearAllFilters}
-              className="ml-auto text-xs text-blue-700 hover:underline"
+              className="ml-auto text-xs text-action-strong hover:underline"
             >
               Clear all
             </button>
@@ -973,7 +1137,7 @@ export default function DirectoryPage() {
         {error && (
           <div
             role="alert"
-            className="mb-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+            className="mb-6 flex items-start gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 text-sm text-error-deep"
           >
             <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
             <div>
@@ -1058,6 +1222,11 @@ export default function DirectoryPage() {
                   {selectedTaxonomyIds.length > 0 && (
                     <Button type="button" variant="outline" size="sm" onClick={clearTaxonomyFilters}>
                       Clear tags
+                    </Button>
+                  )}
+                  {hasActiveAttributes && (
+                    <Button type="button" variant="outline" size="sm" onClick={clearAttributes}>
+                      Clear service type filters
                     </Button>
                   )}
                   {confidenceFilter !== 'all' && (

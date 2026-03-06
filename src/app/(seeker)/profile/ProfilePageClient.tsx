@@ -212,7 +212,7 @@ function NotificationPreferencesSection() {
                   checked={isEnabled(et, 'in_app')}
                   onChange={(e) => void toggle(et, 'in_app', e.target.checked)}
                   disabled={isSaving}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-gray-300 text-action-base focus:ring-action"
                   aria-label={`${EVENT_TYPE_LABELS[et]} in-app notifications`}
                 />
               </div>
@@ -222,7 +222,7 @@ function NotificationPreferencesSection() {
                   checked={isEnabled(et, 'email')}
                   onChange={(e) => void toggle(et, 'email', e.target.checked)}
                   disabled={isSaving}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-gray-300 text-action-base focus:ring-action"
                   aria-label={`${EVENT_TYPE_LABELS[et]} email notifications`}
                 />
               </div>
@@ -389,7 +389,7 @@ export default function ProfilePage() {
                 onClick={() => toggleTheme(false)}
                 className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm min-h-[44px] transition-colors ${
                   !isDark
-                    ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
+                    ? 'border-action bg-info-subtle text-action-strong font-medium'
                     : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                 }`}
                 aria-pressed={!isDark}
@@ -402,7 +402,7 @@ export default function ProfilePage() {
                 onClick={() => toggleTheme(true)}
                 className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm min-h-[44px] transition-colors ${
                   isDark
-                    ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
+                    ? 'border-action bg-info-subtle text-action-strong font-medium'
                     : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                 }`}
                 aria-pressed={isDark}
@@ -430,7 +430,7 @@ export default function ProfilePage() {
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
                   placeholder="e.g., Austin, TX"
-                  className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
                 />
               </FormField>
               <Button type="submit" size="sm">
@@ -458,14 +458,14 @@ export default function ProfilePage() {
                 id="pref-language"
                 value={language}
                 onChange={(e) => saveLanguage(e.target.value)}
-                className="w-full sm:w-64 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                className="w-full sm:w-64 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
               >
                 {LANGUAGE_OPTIONS.map((opt) => (
                   <option key={opt.code} value={opt.code}>{opt.label}</option>
                 ))}
               </select>
             </FormField>
-            <p className="mt-2 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded px-2 py-1 inline-block">
+            <p className="mt-2 text-xs text-action-strong bg-info-subtle border border-info-muted rounded px-2 py-1 inline-block">
               Display language only — full UI translation coming soon.
             </p>
           </section>
@@ -484,7 +484,7 @@ export default function ProfilePage() {
             {savedCount > 0 && (
               <Link
                 href="/saved"
-                className="inline-block mt-2 text-sm text-blue-600 hover:underline"
+                className="inline-block mt-2 text-sm text-action-base hover:underline"
               >
                 View saved services →
               </Link>
@@ -533,7 +533,7 @@ export default function ProfilePage() {
                 </p>
                 <Link
                   href="/api/auth/signout"
-                  className="inline-flex items-center gap-1.5 text-sm text-red-600 hover:underline"
+                  className="inline-flex items-center gap-1.5 text-sm text-error-base hover:underline"
                 >
                   <LogOut className="h-4 w-4" aria-hidden="true" />
                   Sign out
@@ -556,9 +556,9 @@ export default function ProfilePage() {
           </section>
 
           {/* ── Delete data ───────────────────────────────── */}
-          <section className="rounded-lg border border-red-100 bg-red-50/50 p-5">
+          <section className="rounded-lg border border-error-muted bg-error-subtle/50 p-5">
             <div className="flex items-center gap-2 mb-3">
-              <Trash2 className="h-4 w-4 text-red-500" aria-hidden="true" />
+              <Trash2 className="h-4 w-4 text-error-light" aria-hidden="true" />
               <h2 className="text-sm font-semibold text-gray-900">Delete all data</h2>
             </div>
             <p className="text-sm text-gray-600 mb-3">
@@ -604,7 +604,7 @@ export default function ProfilePage() {
                 variant="outline"
                 size="sm"
                 onClick={openDeleteConfirm}
-                className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
+                className="gap-1.5 text-error-base border-error-soft hover:bg-error-subtle"
               >
                 <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                 Delete my data
@@ -616,7 +616,7 @@ export default function ProfilePage() {
                   size="sm"
                   ref={confirmBtnRef}
                   onClick={deleteAllData}
-                  className="bg-red-600 hover:bg-red-700 text-white gap-1.5"
+                  className="bg-error-base hover:bg-error-strong text-white gap-1.5"
                 >
                   Confirm delete
                 </Button>

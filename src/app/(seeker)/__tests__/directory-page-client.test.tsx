@@ -168,6 +168,7 @@ function setupFetchRoutes(options?: {
 
 beforeEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
   fetchMock.mockReset();
   localStorage.clear();
@@ -176,6 +177,26 @@ beforeEach(() => {
 });
 
 describe('DirectoryPageClient', () => {
+  it('hydrates saved IDs from localStorage and supports removing an already-saved item', async () => {
+    localStorage.setItem('oran:saved-service-ids', '["svc-1",123,true]');
+    setupFetchRoutes({
+      searchResponses: [ok(makeSearchResponse())],
+    });
+
+    renderWithToast(<DirectoryPage />);
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services' }), {
+      target: { value: 'food' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    await screen.findByText('saved');
+
+    fireEvent.click(screen.getByRole('button', { name: 'toggle-svc-1' }));
+    await screen.findByText('not-saved');
+    expect(localStorage.getItem('oran:saved-service-ids')).toBe('[]');
+  });
+
   it('shows initial empty state before any search', async () => {
     setupFetchRoutes();
 
@@ -718,5 +739,121 @@ describe('DirectoryPageClient', () => {
       .map((c) => String(c?.[0]))
       .filter((u) => u.includes('/api/search?'));
     expect(searchCalls).toHaveLength(0);
+  });
+
+  it('shows a browser-unavailable message when navigator is unavailable', async () => {
+    setupFetchRoutes();
+    vi.stubGlobal('navigator', undefined as unknown as Navigator);
+
+    renderWithToast(<DirectoryPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
+
+    await screen.findByText('Device location is not available in this browser.');
+    const searchCalls = fetchMock.mock.calls
+      .map((c) => String(c?.[0]))
+      .filter((u) => u.includes('/api/search?'));
+    expect(searchCalls).toHaveLength(0);
+  });
+
+  it('swallows aborted searches and keeps the empty state visible', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/api/taxonomy/terms')) {
+        return ok({ terms: [] });
+      }
+      if (url.includes('/api/search?')) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderWithToast(<DirectoryPage />);
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services' }), {
+      target: { value: 'rent help' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Start with a search')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+  });
+
+  it('de-dupes repeated service IDs when appending additional pages', async () => {
+    setupFetchRoutes({
+      searchResponses: [
+        ok(makeSearchResponse({
+          hasMore: true,
+          total: 2,
+          results: [
+            {
+              service: {
+                service: { id: 'svc-1', name: 'Food Pantry' },
+              },
+            },
+          ],
+        })),
+        ok(makeSearchResponse({
+          hasMore: false,
+          page: 2,
+          total: 2,
+          results: [
+            {
+              service: {
+                service: { id: 'svc-1', name: 'Food Pantry' },
+              },
+            },
+            {
+              service: {
+                service: { id: 'svc-2', name: 'Housing Hotline' },
+              },
+            },
+          ],
+        })),
+      ],
+    });
+
+    renderWithToast(<DirectoryPage />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services' }), {
+      target: { value: 'housing' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await screen.findByText('Food Pantry');
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Next' })[0]);
+    await screen.findByText('Housing Hotline');
+
+    const searchCalls = fetchMock.mock.calls
+      .map((c) => String(c?.[0]))
+      .filter((u) => u.includes('/api/search?'));
+    expect(searchCalls).toHaveLength(2);
+    expect(searchCalls[1]).toContain('page=2');
+    expect(screen.getAllByText('Food Pantry')).toHaveLength(1);
+  });
+
+  it('clears selected tags from no-match state back to the initial empty state', async () => {
+    setupFetchRoutes({
+      taxonomyTerms: [
+        {
+          id: 'a1000000-0000-0000-0000-000000000001',
+          term: 'Food Assistance',
+          description: null,
+          parentId: null,
+          taxonomy: 'demo',
+          serviceCount: 12,
+        },
+      ],
+      searchResponses: [ok(makeSearchResponse({ results: [], total: 0, hasMore: false }))],
+    });
+
+    renderWithToast(<DirectoryPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
+    await screen.findByText('No matches');
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Clear tags' })[1]);
+    await screen.findByText('Start with a search');
+    expect(replaceMock).toHaveBeenCalledWith('/directory', { scroll: false });
   });
 });

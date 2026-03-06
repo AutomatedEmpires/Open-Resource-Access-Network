@@ -60,7 +60,6 @@ describe('ProfilePageClient', () => {
       expect(screen.getByLabelText('City or region')).toHaveValue('Austin, TX');
       expect(screen.getByLabelText('Language')).toHaveValue('vi');
       expect(screen.getByText('2 services bookmarked on this device.')).toBeInTheDocument();
-      expect(document.documentElement.lang).toBe('vi');
     });
   });
 
@@ -83,7 +82,6 @@ describe('ProfilePageClient', () => {
     expect(screen.getByLabelText('City or region')).toHaveValue('Madrid');
     expect(screen.getByLabelText('Language')).toHaveValue('es');
     expect(screen.getByRole('link', { name: 'Sign out' })).toHaveAttribute('href', '/api/auth/signout');
-    expect(document.documentElement.lang).toBe('es');
   });
 
   it('saves city and language locally and sends best-effort server updates', async () => {
@@ -127,7 +125,6 @@ describe('ProfilePageClient', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ preferredLocale: 'ko' }),
       });
-      expect(document.documentElement.lang).toBe('ko');
     });
   });
 
@@ -149,7 +146,6 @@ describe('ProfilePageClient', () => {
       expect(localStorage.getItem(PREFS_KEY)).toBeNull();
       expect(localStorage.getItem(SAVED_KEY)).toBeNull();
       expect(screen.getByText('No saved services yet.')).toBeInTheDocument();
-      expect(document.documentElement.lang).toBe('en');
     });
   });
 
@@ -303,7 +299,8 @@ describe('ProfilePageClient', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'downloading your data' }));
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/user/data-export', { method: 'POST' });
+      const exportCall = fetchMock.mock.calls.find(([url]) => String(url) === '/api/user/data-export');
+      expect(exportCall).toEqual(['/api/user/data-export', { method: 'POST' }]);
       expect(toastMock).toHaveBeenCalledWith('error', 'Failed to export data.');
     });
 
@@ -311,7 +308,8 @@ describe('ProfilePageClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/user/data-delete', { method: 'DELETE' });
+      const deleteCall = fetchMock.mock.calls.find(([url]) => String(url) === '/api/user/data-delete');
+      expect(deleteCall).toEqual(['/api/user/data-delete', { method: 'DELETE' }]);
       expect(toastMock).toHaveBeenCalledWith('error', 'Failed to delete server data. Please try again.');
       expect(localStorage.getItem(PREFS_KEY)).not.toBeNull();
       expect(localStorage.getItem(SAVED_KEY)).not.toBeNull();

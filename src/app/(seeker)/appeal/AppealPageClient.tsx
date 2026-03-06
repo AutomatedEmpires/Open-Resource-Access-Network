@@ -57,10 +57,10 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 const STATUS_STYLES: Record<string, { color: string; label: string }> = {
   submitted:              { color: 'bg-amber-100 text-amber-800',   label: 'Submitted' },
-  under_review:           { color: 'bg-blue-100 text-blue-800',     label: 'Under Review' },
-  needs_review:           { color: 'bg-blue-100 text-blue-800',     label: 'Needs Review' },
+  under_review:           { color: 'bg-info-muted text-action-deep',     label: 'Under Review' },
+  needs_review:           { color: 'bg-info-muted text-action-deep',     label: 'Needs Review' },
   approved:               { color: 'bg-green-100 text-green-800',   label: 'Approved' },
-  denied:                 { color: 'bg-red-100 text-red-800',       label: 'Denied' },
+  denied:                 { color: 'bg-error-muted text-error-deep',       label: 'Denied' },
   returned:               { color: 'bg-orange-100 text-orange-800', label: 'Returned' },
   escalated:              { color: 'bg-purple-100 text-purple-800', label: 'Escalated' },
   pending_second_approval:{ color: 'bg-indigo-100 text-indigo-800', label: 'Pending 2nd Approval' },
@@ -195,7 +195,7 @@ function AppealPageInner() {
           </p>
           <Link
             href="/api/auth/signin"
-            className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className="inline-flex items-center gap-1.5 rounded-md bg-action-base px-4 py-2 text-sm font-medium text-white hover:bg-action-strong"
           >
             Sign in
           </Link>
@@ -263,11 +263,11 @@ function AppealPageInner() {
               disabled={!!prefilledId}
               className={`w-full rounded-lg border px-3 py-2 text-sm ${
                 prefilledId ? 'border-gray-300 bg-gray-50 text-gray-500' : 'border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500'
-              } ${!isValidUuid && submissionId.trim().length > 0 ? 'border-red-300 ring-1 ring-red-300' : ''}`}
+              } ${!isValidUuid && submissionId.trim().length > 0 ? 'border-error-accent ring-1 ring-error-accent' : ''}`}
               placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
             />
             {!isValidUuid && submissionId.trim().length > 0 && (
-              <p className="text-xs text-red-600 mt-1">Please enter a valid UUID format</p>
+              <p className="text-xs text-error-base mt-1">Please enter a valid UUID format</p>
             )}
           </FormField>
 
@@ -312,7 +312,7 @@ function AppealPageInner() {
                   <button
                     type="button"
                     onClick={() => removeEvidenceItem(idx)}
-                    className="text-gray-400 hover:text-red-500"
+                    className="text-gray-400 hover:text-error-light"
                     aria-label={`Remove evidence ${idx + 1}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />

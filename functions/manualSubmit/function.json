@@ -1,0 +1,26 @@
+{
+  "bindings": [
+    {
+      "name": "req",
+      "type": "httpTrigger",
+      "direction": "in",
+      "methods": ["post"],
+      "route": "ingestion/submit",
+      "authLevel": "function"
+    },
+    {
+      "name": "$return",
+      "type": "http",
+      "direction": "out"
+    },
+    {
+      "name": "outputQueue",
+      "type": "queue",
+      "direction": "out",
+      "queueName": "ingestion-fetch",
+      "connection": "AzureWebJobsStorage"
+    }
+  ],
+  "scriptFile": "../dist/functions/manualSubmit/index.js",
+  "entryPoint": "manualSubmit"
+}

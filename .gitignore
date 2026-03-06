@@ -48,3 +48,6 @@ docs/OWNER_INFO.local.md
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Azure Functions build output
+dist/

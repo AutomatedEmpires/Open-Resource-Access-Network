@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'functions/**'
+      - 'scripts/build-functions.mjs'
 
 permissions:
   contents: read
@@ -34,8 +35,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Typecheck
+        run: npx tsc --noEmit
+
       - name: Build functions
-        run: npx tsc --project tsconfig.json --noEmit
+        run: node scripts/build-functions.mjs
 
       - name: Login to Azure (OIDC)
         uses: azure/login@v2
@@ -48,7 +52,7 @@ jobs:
         uses: azure/functions-action@v1
         with:
           app-name: ${{ vars.AZURE_FUNC_APP_NAME }}
-          package: functions
+          package: dist
 
       - name: Verify deployment
         run: |

@@ -2,9 +2,19 @@
 
 ORAN is a civic-grade, safety-critical platform for finding government, state, county, nonprofit, and community services quickly and safely.
 
-## Project Status
+## Executive Snapshot
 
-### Quality and Assurance
+| Dimension | Position | Evidence |
+| --- | --- | --- |
+| Safety model | Retrieval-first with crisis hard-gate behavior | `docs/CHAT_ARCHITECTURE.md`, `docs/VISION.md` |
+| Data trust | Import-first and verification-first publication model | `docs/solutions/IMPORT_PIPELINE.md`, `db/import/README.md` |
+| Engineering discipline | Strict TypeScript, CI quality gates, security scanning | `.github/workflows/ci.yml`, `.github/workflows/codeql.yml` |
+| Governance | SSOT hierarchy plus operating model and ADRs | `docs/SSOT.md`, `docs/governance/OPERATING_MODEL.md`, `docs/DECISIONS/` |
+| Deployment posture | Azure-first production architecture and runbooks | `docs/platform/DEPLOYMENT_AZURE.md`, `infra/README.md` |
+
+## Platform Status
+
+### Quality And Assurance
 
 [![CI](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/ci.yml)
 [![Accessibility Gate](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/a11y.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/a11y.yml)
@@ -21,7 +31,16 @@ ORAN is a civic-grade, safety-critical platform for finding government, state, c
 [![Deploy App Service](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-appservice.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-appservice.yml)
 [![Deploy Functions](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-functions.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-functions.yml)
 
-## Release Readiness
+## Production Deployment Path
+
+1. Review deployment architecture and prerequisites in `docs/platform/DEPLOYMENT_AZURE.md`.
+2. Validate infrastructure definitions in `infra/main.bicep` and environment parameters.
+3. Deploy infrastructure with `.github/workflows/deploy-infra.yml`.
+4. Deploy application workloads with `.github/workflows/deploy-azure-appservice.yml` and `.github/workflows/deploy-azure-functions.yml`.
+5. Apply database migrations using `db/migrations/` and `npx drizzle-kit migrate`.
+6. Confirm release health in Actions and security dashboards.
+
+Release operations links:
 
 - Actions dashboard: <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions>
 - Open pull requests: <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/pulls>
@@ -39,26 +58,21 @@ ORAN is a civic-grade, safety-critical platform for finding government, state, c
 ## Getting Started In 5 Minutes
 
 1. Read `docs/SSOT.md` and `docs/governance/OPERATING_MODEL.md` to understand authoritative behavior and safety guardrails.
-2. Run the app locally:
+2. Start locally:
 
-	```bash
-	npm install
-	npm run dev
-	```
+```bash
+npm install
+npm run dev
+```
 
-	Open `http://localhost:3000`.
-3. Optionally start local data services with `docker compose -f db/docker-compose.yml up -d`.
-4. Validate changes with `npm run lint`, `npx tsc --noEmit`, and `npm run test`.
-5. Open a focused PR using `.github/PULL_REQUEST_TEMPLATE.md` and link any SSOT/ADR updates.
+3. Open `http://localhost:3000`.
+4. Optional local database:
 
-## Quick Navigation
+```bash
+docker compose -f db/docker-compose.yml up -d
+```
 
-- Product and architecture: `docs/README.md`
-- Chat pipeline and safety behavior: `docs/CHAT_ARCHITECTURE.md`
-- SSOT hierarchy: `docs/SSOT.md`
-- Security and privacy model: `docs/SECURITY_PRIVACY.md`
-- Contributing guide: `CONTRIBUTING.md`
-- Support and triage path: `SUPPORT.md`
+5. Validate changes with `npm run lint`, `npx tsc --noEmit`, and `npm run test`.
 
 ## Why ORAN
 
@@ -68,7 +82,7 @@ ORAN is a civic-grade, safety-critical platform for finding government, state, c
 - Deterministic scoring and confidence contracts.
 - Enterprise-grade quality gates in CI/CD and security scanning.
 
-## Non-negotiables
+## Non-Negotiables
 
 - **Retrieval-first**: recommendations must come from stored records only.
 - **No hallucinated facts**: never invent services, phone numbers, addresses, hours, eligibility, or URLs.
@@ -108,25 +122,17 @@ flowchart LR
 	G -.guides.-> S
 ```
 
-## Import-first Posture (Default)
+## Data Lifecycle (Import-First)
 
-ORAN is designed to start with an empty directory and populate services through imports plus verification.
+ORAN is designed to start with an empty directory and populate services through imports and verification.
 
 1. Import HSDS CSV/JSON into staging.
 2. Mark imported records as `unverified`.
-3. Review via moderation queue.
+3. Review through moderation queues.
 4. Verify and publish records.
 5. Recompute confidence scores.
 
-`db/seed/demo.sql` is optional and for demo-only fictional data.
-
-## Azure-first Deployment
-
-ORAN is Azure-first for hosting and production operations.
-
-- Deployment guide: `docs/platform/DEPLOYMENT_AZURE.md`
-- Platform blueprint: `docs/platform/PLATFORM_AZURE.md`
-- Integration contracts: `docs/platform/INTEGRATIONS.md`
+`db/seed/demo.sql` is optional and demo-only with fictional data.
 
 ## Trust, Security, And Governance
 

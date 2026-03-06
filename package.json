@@ -17,7 +17,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "check:bundle": "node scripts/check-bundle-sizes.js",
-    "audit:ui": "node scripts/audit-ui-consistency.mjs"
+    "audit:ui": "node scripts/audit-ui-consistency.mjs",
+    "build:functions": "node scripts/build-functions.mjs"
   },
   "dependencies": {
     "@azure/communication-email": "^1.1.0",

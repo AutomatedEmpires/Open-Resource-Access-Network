@@ -7,5 +7,6 @@
       "schedule": "0 0 * * * *"
     }
   ],
-  "scriptFile": "../dist/checkSlaBreaches/index.js"
+  "scriptFile": "../dist/functions/checkSlaBreaches/index.js",
+  "entryPoint": "checkSlaBreaches"
 }

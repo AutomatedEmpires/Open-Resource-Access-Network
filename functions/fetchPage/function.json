@@ -1,0 +1,20 @@
+{
+  "bindings": [
+    {
+      "name": "message",
+      "type": "queueTrigger",
+      "direction": "in",
+      "queueName": "ingestion-fetch",
+      "connection": "AzureWebJobsStorage"
+    },
+    {
+      "name": "$return",
+      "type": "queue",
+      "direction": "out",
+      "queueName": "ingestion-extract",
+      "connection": "AzureWebJobsStorage"
+    }
+  ],
+  "scriptFile": "../dist/functions/fetchPage/index.js",
+  "entryPoint": "fetchPage"
+}

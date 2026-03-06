@@ -1,0 +1,20 @@
+{
+  "bindings": [
+    {
+      "name": "message",
+      "type": "queueTrigger",
+      "direction": "in",
+      "queueName": "ingestion-extract",
+      "connection": "AzureWebJobsStorage"
+    },
+    {
+      "name": "$return",
+      "type": "queue",
+      "direction": "out",
+      "queueName": "ingestion-verify",
+      "connection": "AzureWebJobsStorage"
+    }
+  ],
+  "scriptFile": "../dist/functions/extractService/index.js",
+  "entryPoint": "extractService"
+}

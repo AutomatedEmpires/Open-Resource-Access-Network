@@ -1,0 +1,13 @@
+{
+  "bindings": [
+    {
+      "name": "message",
+      "type": "queueTrigger",
+      "direction": "in",
+      "queueName": "ingestion-route",
+      "connection": "AzureWebJobsStorage"
+    }
+  ],
+  "scriptFile": "../dist/functions/routeToAdmin/index.js",
+  "entryPoint": "routeToAdmin"
+}

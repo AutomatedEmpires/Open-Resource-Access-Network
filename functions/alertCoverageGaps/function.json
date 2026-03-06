@@ -7,5 +7,6 @@
       "schedule": "0 0 8 * * *"
     }
   ],
-  "scriptFile": "../dist/alertCoverageGaps/index.js"
+  "scriptFile": "../dist/functions/alertCoverageGaps/index.js",
+  "entryPoint": "alertCoverageGaps"
 }

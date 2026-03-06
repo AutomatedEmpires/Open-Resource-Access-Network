@@ -7,5 +7,6 @@
       "schedule": "0 0 */6 * * *"
     }
   ],
-  "scriptFile": "../dist/scanConfidenceRegressions/index.js"
+  "scriptFile": "../dist/functions/scanConfidenceRegressions/index.js",
+  "entryPoint": "scanConfidenceRegressions"
 }

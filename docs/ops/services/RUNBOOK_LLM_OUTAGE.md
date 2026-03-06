@@ -2,6 +2,14 @@
 
 Procedures for when Azure OpenAI is unavailable or degraded.
 
+## Metadata
+
+- Owner role: Ingestion Operations Lead
+- Reviewers: Data Platform Lead, Platform On-Call Lead
+- Last reviewed (UTC): 2026-03-06
+- Next review due (UTC): 2026-06-06
+- Severity scope: SEV-2 to SEV-3
+
 ---
 
 ## Impact Assessment
@@ -47,6 +55,16 @@ az rest --method get \
 ---
 
 ## Immediate Response
+
+### Outage Mode Decision Table
+
+| Condition | Action |
+| --- | --- |
+| Fail rate < 10% and stable queue | Continue with close monitoring |
+| Fail rate 10-40% for > 30 min | Reduce crawl pressure and monitor backlog |
+| Fail rate > 40% or sustained 429/5xx | Pause scheduled crawl and protect queue health |
+
+Always preserve ingestion queue integrity and avoid destructive message handling.
 
 ### 1. Confirm the outage scope
 
@@ -105,7 +123,7 @@ az storage queue show --name ingestion-extract-poison --account-name <storage> -
    # Peek to confirm they are LLM-timeout failures
    az storage message peek --queue-name ingestion-extract-poison --account-name <storage> --num-messages 5
 
-   # If appropriate, move them back (see RUNBOOK_INGESTION.md for procedure)
+   # If appropriate, move them back (see docs/ops/services/RUNBOOK_INGESTION.md for procedure)
    ```
 
 4. Verify extraction is succeeding:
@@ -115,6 +133,11 @@ az storage queue show --name ingestion-extract-poison --account-name <storage> -
    | where message has "[extractService]"
    | summarize count() by success = message has "Completed"
    ```
+
+5. Validate end-to-end progression resumes:
+  - `ingestion-extract` depth declines
+  - `ingestion-verify` receives new messages
+  - `ingestion-route` receives new messages
 
 ---
 

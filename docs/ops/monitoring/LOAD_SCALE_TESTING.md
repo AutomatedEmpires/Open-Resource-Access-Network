@@ -27,7 +27,7 @@ Baseline targets and configuration for the ORAN ingestion pipeline and search AP
 
 **Rationale:**
 - `batchSize: 4` — each pipeline stage (fetch → extract → verify → route) calls an external service (HTTP fetch, Azure OpenAI, DB write). Keeping concurrency at 4 prevents overwhelming downstream dependencies while still processing in parallel.
-- `maxDequeueCount: 3` — three attempts before moving to poison queue. Aligns with the `RUNBOOK_INGESTION.md` poison-queue recovery procedure.
+- `maxDequeueCount: 3` — three attempts before moving to poison queue. Aligns with the `docs/ops/services/RUNBOOK_INGESTION.md` poison-queue recovery procedure.
 - `visibilityTimeout: 5 min` — allows time for Azure OpenAI extraction (p99 ~4 s) plus retry back-off.
 
 ## Database Connection Pool Sizing

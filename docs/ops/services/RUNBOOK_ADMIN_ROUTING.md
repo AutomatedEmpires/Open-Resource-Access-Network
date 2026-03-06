@@ -2,6 +2,14 @@
 
 Procedures for when candidate submissions cannot be routed to admin reviewers.
 
+## Metadata
+
+- Owner role: Ingestion Operations Lead
+- Reviewers: Platform On-Call Lead, Data Platform Lead
+- Last reviewed (UTC): 2026-03-06
+- Next review due (UTC): 2026-06-06
+- Severity scope: SEV-2 to SEV-3
+
 ---
 
 ## How Routing Works
@@ -11,6 +19,25 @@ Procedures for when candidate submissions cannot be routed to admin reviewers.
 3. Creates assignments in `candidate_admin_assignments` (up to 5 nearest admins)
 4. If no community admins have capacity → falls back to ORAN admins
 5. If no ORAN admins available → writes `system_alert` notification and logs `unrouted_candidate`
+
+## Routing Thresholds
+
+| Signal | Warning | Critical |
+| --- | --- | --- |
+| Unassigned pending candidates | > 20 for 4 hours | > 50 for 8 hours |
+| SLA breaches per 24h | > 10 | > 25 |
+| ORAN admins accepting new | < 2 | 0 |
+
+Critical conditions should trigger SEV-2 triage and incident command activation.
+
+## Decision Matrix
+
+| Condition | Immediate action |
+| --- | --- |
+| No coverage in area | Manual ORAN assignment + coverage gap escalation |
+| Capacity exhausted | Temporarily increase `max_pending` for approved admins |
+| Auto-pause saturation | Verify resume threshold and manually re-enable if safe |
+| Systemic SLA breach growth | Trigger incident triage and pause new ingestion if needed |
 
 ---
 

@@ -2,6 +2,14 @@
 
 Procedures for operating and troubleshooting the ingestion pipeline.
 
+## Metadata
+
+- Owner role: Ingestion Operations Lead
+- Reviewers: Data Platform Lead, Platform On-Call Lead
+- Last reviewed (UTC): 2026-03-06
+- Next review due (UTC): 2026-06-06
+- Severity scope: SEV-2 to SEV-3
+
 ---
 
 ## Architecture Overview
@@ -12,6 +20,14 @@ Timer (scheduledCrawl) → ingestion-fetch → fetchPage → ingestion-extract
 ```
 
 All functions are Azure Functions (Consumption plan) triggered by Azure Storage Queues.
+
+Queue and timer bindings are defined under `functions/*/function.json`.
+
+Timer schedules (UTC):
+- `scheduledCrawl`: `0 0 6 * * *` (daily at 06:00)
+- `checkSlaBreaches`: `0 0 * * * *` (hourly)
+- `alertCoverageGaps`: `0 0 8 * * *` (daily at 08:00)
+- `scanConfidenceRegressions`: `0 0 */6 * * *` (every 6 hours)
 
 ---
 
@@ -25,12 +41,32 @@ All functions are Azure Functions (Consumption plan) triggered by Azure Storage 
 
 ### Weekly
 
-1. Review SLA breach trend (KQL: `docs/ops/MONITORING_QUERIES.md` §2)
+1. Review SLA breach trend (KQL: `docs/ops/monitoring/MONITORING_QUERIES.md` §2)
 2. Check queue poison message counts:
    ```bash
    az storage queue list --account-name <storage> --query "[?contains(name,'poison')]" -o table
    ```
 3. Review confidence regression scan output
+
+### Runtime Queue Settings (from `functions/host.json`)
+
+- `batchSize`: 4
+- `maxDequeueCount`: 3
+- `visibilityTimeout`: `00:05:00`
+- `maxPollingInterval`: `00:00:30`
+
+### Queue Depth Escalation Thresholds
+
+Use queue depth trends over at least 3 consecutive checks (not one-off spikes):
+
+| Signal | Warning | Critical |
+| --- | --- | --- |
+| `ingestion-fetch` depth | > 500 for 15 min | > 2000 for 30 min |
+| `ingestion-extract` depth | > 300 for 15 min | > 1200 for 30 min |
+| `ingestion-verify` depth | > 300 for 15 min | > 1200 for 30 min |
+| Any `*-poison` queue | > 10 messages | > 50 messages |
+
+At critical level, declare at least SEV-2 and follow `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md`.
 
 ---
 
@@ -108,11 +144,26 @@ traces
 
 ### Trigger a manual crawl
 
+Use the ORAN admin ingestion API (implemented path):
+
 ```bash
-# Submit a single URL for processing
-curl -X POST "https://<func-app>.azurewebsites.net/api/manualSubmit" \
+curl -X POST "https://<web-app>.azurewebsites.net/api/admin/ingestion/process" \
+   -H "Authorization: Bearer <admin-session-token>" \
+   -H "Content-Type: application/json" \
+   -d '{"sourceUrl":"https://example.org/services","forceReprocess":false}'
+```
+
+Notes:
+- This endpoint requires authenticated `oran_admin` role.
+- The Azure Function `manualSubmit` currently returns 501 (stub).
+
+### Trigger function endpoint directly (only if implemented in your environment)
+
+```bash
+# Route binding is /api/ingestion/submit with function auth level
+curl -X POST "https://<func-app>.azurewebsites.net/api/ingestion/submit?code=<function-key>" \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://example.org/services", "submittedByUserId": "<user-id>"}'
+   -d '{"sourceUrl":"https://example.org/services","sourceId":"manual","priority":5}'
 ```
 
 ### Force SLA check
@@ -132,10 +183,28 @@ curl -X POST "https://<web-app>.azurewebsites.net/api/internal/coverage-gaps" \
   -d '{"thresholdHours": 24}'
 ```
 
+### Force confidence regression scan
+
+```bash
+curl -X POST "https://<web-app>.azurewebsites.net/api/internal/confidence-regression-scan" \
+   -H "Authorization: Bearer <INTERNAL_API_KEY>" \
+   -H "Content-Type: application/json" \
+   -d '{"limit": 100}'
+```
+
 ### Restart function app
 
 ```bash
 az functionapp restart --resource-group <rg> --name <func-app>
+```
+
+### Re-enable scheduled crawl after pause
+
+```bash
+az functionapp config appsettings delete \
+   --resource-group <rg> \
+   --name <func-app> \
+   --setting-names "AzureWebJobs.scheduledCrawl.Disabled"
 ```
 
 ---
@@ -144,6 +213,6 @@ az functionapp restart --resource-group <rg> --name <func-app>
 
 If an issue cannot be resolved with this runbook:
 
-1. Check `docs/ops/RUNBOOK_LLM_OUTAGE.md` for LLM-specific issues
-2. Check `docs/ops/RUNBOOK_ADMIN_ROUTING.md` for admin assignment problems
+1. Check `docs/ops/services/RUNBOOK_LLM_OUTAGE.md` for LLM-specific issues
+2. Check `docs/ops/services/RUNBOOK_ADMIN_ROUTING.md` for admin assignment problems
 3. File a GitHub Issue with the `ops` label and include relevant KQL query output

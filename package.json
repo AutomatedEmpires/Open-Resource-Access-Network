@@ -41,7 +41,7 @@
     "drizzle-orm": "^0.45.1",
     "ioredis": "^5.10.0",
     "leaflet": "^1.9.4",
-    "lucide-react": "^0.575.0",
+    "lucide-react": "^0.577.0",
     "next": "16.1.6",
     "next-auth": "^4.24.13",
     "openai": "^6.25.0",

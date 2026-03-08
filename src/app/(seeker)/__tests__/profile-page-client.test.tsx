@@ -34,6 +34,7 @@ import ProfilePage from '@/app/(seeker)/profile/ProfilePageClient';
 
 const PREFS_KEY = 'oran:preferences';
 const SAVED_KEY = 'oran:saved-service-ids';
+const SEEKER_KEY = 'oran:seeker-context';
 
 beforeEach(() => {
   cleanup();
@@ -81,7 +82,10 @@ describe('ProfilePageClient', () => {
     await screen.findByText('You are signed in. Your preferences are syncing across devices.');
     expect(screen.getByLabelText('City or region')).toHaveValue('Madrid');
     expect(screen.getByLabelText('Language')).toHaveValue('es');
-    expect(screen.getByRole('link', { name: 'Sign out' })).toHaveAttribute('href', '/api/auth/signout');
+    // Sign out appears in both the auth banner and the privacy section — verify at least one
+    const signOutLinks = screen.getAllByRole('link', { name: /sign out/i });
+    expect(signOutLinks.length).toBeGreaterThanOrEqual(1);
+    expect(signOutLinks[0]).toHaveAttribute('href', '/api/auth/signout');
   });
 
   it('saves city and language locally and sends best-effort server updates', async () => {
@@ -265,6 +269,30 @@ describe('ProfilePageClient', () => {
     expect(screen.queryByRole('button', { name: 'Confirm delete' })).not.toBeInTheDocument();
   });
 
+  it('hydrates and persists Phase 1 constraint selections locally', async () => {
+    fetchMock.mockResolvedValueOnce({
+      status: 401,
+      ok: false,
+    });
+
+    render(<ProfilePage />);
+    await screen.findByText('Profile');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Transportation is a barrier' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Need help today' }));
+    fireEvent.click(screen.getByRole('button', { name: 'No ID available' }));
+
+    await waitFor(() => {
+      expect(JSON.parse(localStorage.getItem(SEEKER_KEY) ?? '{}')).toEqual(
+        expect.objectContaining({
+          transportationBarrier: true,
+          urgencyWindow: 'same_day',
+          documentationBarriers: ['no_id'],
+        }),
+      );
+    });
+  });
+
   it('shows export and delete failures for authenticated users without clearing local data', async () => {
     localStorage.setItem(PREFS_KEY, JSON.stringify({ approximateCity: 'Dallas', language: 'en' }));
     localStorage.setItem(SAVED_KEY, JSON.stringify(['svc-1']));
@@ -297,7 +325,7 @@ describe('ProfilePageClient', () => {
     render(<ProfilePage />);
     await screen.findByText('You are signed in. Your preferences are syncing across devices.');
 
-    fireEvent.click(screen.getByRole('button', { name: 'downloading your data' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Export my data' }));
     await waitFor(() => {
       const exportCall = fetchMock.mock.calls.find(([url]) => String(url) === '/api/user/data-export');
       expect(exportCall).toEqual(['/api/user/data-export', { method: 'POST' }]);

@@ -36,9 +36,50 @@ const MapContainer = dynamic(
   }
 );
 
-const DEFAULT_LIMIT = 50;
+const DEFAULT_LIMIT = 12;
 const DEBOUNCE_MS = 600;
 const SAVED_KEY = 'oran:saved-service-ids';
+
+/** Trust filter options — 'all' shows everything */
+type ConfidenceFilter = 'all' | 'HIGH' | 'LIKELY';
+
+const CONFIDENCE_OPTIONS: { value: ConfidenceFilter; label: string; minScore?: number }[] = [
+  { value: 'all', label: 'All results' },
+  { value: 'LIKELY', label: 'Likely or higher', minScore: 60 },
+  { value: 'HIGH', label: 'High confidence only', minScore: 80 },
+];
+
+/** Sort options */
+type SortOption = 'relevance' | 'trust' | 'name_asc' | 'name_desc';
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'relevance', label: 'Relevance' },
+  { value: 'trust', label: 'Trust (highest)' },
+  { value: 'name_asc', label: 'Name (A–Z)' },
+  { value: 'name_desc', label: 'Name (Z–A)' },
+];
+
+/** Quick category chips for common service needs */
+const CATEGORY_CHIPS: { value: string; label: string }[] = [
+  { value: 'food', label: 'Food' },
+  { value: 'housing', label: 'Housing' },
+  { value: 'healthcare', label: 'Healthcare' },
+  { value: 'mental health', label: 'Mental Health' },
+  { value: 'employment', label: 'Employment' },
+  { value: 'legal aid', label: 'Legal Aid' },
+  { value: 'childcare', label: 'Childcare' },
+  { value: 'transportation', label: 'Transportation' },
+];
+
+/** Human-readable labels for taxonomy dimension keys */
+const DIMENSION_LABELS: Record<string, string> = {
+  delivery: 'Delivery Method',
+  cost: 'Cost & Payment',
+  access: 'Access',
+  eligibility: 'Eligibility',
+  languages: 'Languages',
+  temporal: 'Schedule',
+};
 
 interface Bounds {
   minLat: number;
@@ -86,6 +127,9 @@ export default function MapPage() {
   const resultsContainerRef = useRef<HTMLDivElement>(null);
   /** Mobile-only toggle between map and list view */
   const [mobileView, setMobileView] = useState<'map' | 'list'>('map');
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter>('all');
+  const [sortBy, setSortBy] = useState<SortOption>('relevance');
   const { success, error: toastError, info } = useToast();
 
   useEffect(() => {
@@ -214,13 +258,28 @@ export default function MapPage() {
     return selectedTaxonomyIds.length > 0 ? selectedTaxonomyIds.join(',') : '';
   }, [selectedTaxonomyIds]);
 
-  const quickTaxonomyTerms = useMemo(() => taxonomyTerms.slice(0, 6), [taxonomyTerms]);
+  // Sort by service count so the most-used tags surface first (H3)
+  const quickTaxonomyTerms = useMemo(
+    () => [...taxonomyTerms].sort((a, b) => b.serviceCount - a.serviceCount).slice(0, 6),
+    [taxonomyTerms],
+  );
 
   const visibleTaxonomyTerms = useMemo(() => {
     const trimmed = taxonomySearch.trim().toLowerCase();
     if (!trimmed) return taxonomyTerms;
     return taxonomyTerms.filter((t) => t.term.toLowerCase().includes(trimmed));
   }, [taxonomySearch, taxonomyTerms]);
+
+  /** Terms grouped by taxonomy dimension — used in the "More filters" dialog */
+  const groupedTaxonomyTerms = useMemo(() => {
+    const groups: Record<string, TaxonomyTermDTO[]> = {};
+    for (const t of visibleTaxonomyTerms) {
+      const key = t.taxonomy ?? 'other';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t);
+    }
+    return groups;
+  }, [visibleTaxonomyTerms]);
 
   const services: EnrichedService[] = useMemo(() => {
     return data?.results?.map((r) => r.service) ?? [];
@@ -233,13 +292,18 @@ export default function MapPage() {
 
   // ── fetch services (text OR bbox) ─────────────────────────
   const runSearch = useCallback(
-    async (opts?: { bbox?: Bounds; taxonomyIds?: string }) => {
+    async (opts?: { bbox?: Bounds; taxonomyIds?: string; confidence?: ConfidenceFilter; sort?: SortOption; category?: string | null }) => {
       const trimmed = query.trim();
       const bbox = opts?.bbox;
       const taxonomyIds = opts?.taxonomyIds;
+      const effectiveConfidence = opts?.confidence !== undefined ? opts.confidence : confidenceFilter;
+      const effectiveSort = opts?.sort !== undefined ? opts.sort : sortBy;
+      // category is passed explicitly when a chip is toggled so the state update
+      // and the fetch are always in sync
+      const effectiveCategory = opts?.category !== undefined ? opts.category : activeCategory;
 
-      // Need either text or bbox
-      if (!trimmed && !bbox) return;
+      // Need either text, category, or bbox
+      if (!trimmed && !effectiveCategory && !bbox) return;
 
       setIsLoading(true);
       setError(null);
@@ -247,7 +311,8 @@ export default function MapPage() {
       try {
         const params = new URLSearchParams({ status: 'active', limit: String(DEFAULT_LIMIT), page: '1' });
 
-        if (trimmed) params.set('q', trimmed);
+        const searchText = trimmed || effectiveCategory || '';
+        if (searchText) params.set('q', searchText);
 
         if (bbox) {
           params.set('minLat', String(bbox.minLat));
@@ -260,6 +325,11 @@ export default function MapPage() {
         if (effectiveTaxonomyIds) {
           params.set('taxonomyIds', effectiveTaxonomyIds);
         }
+
+        const minScore = CONFIDENCE_OPTIONS.find(c => c.value === effectiveConfidence)?.minScore;
+        if (minScore !== undefined) params.set('minConfidenceScore', String(minScore));
+
+        if (effectiveSort !== 'relevance') params.set('sortBy', effectiveSort);
 
         const res = await fetch(`/api/search?${params.toString()}`, {
           method: 'GET',
@@ -281,7 +351,7 @@ export default function MapPage() {
         setIsLoading(false);
       }
     },
-    [query, taxonomyIdsParam],
+    [query, taxonomyIdsParam, confidenceFilter, sortBy, activeCategory],
   );
 
   const toggleTaxonomyId = useCallback((id: string) => {
@@ -308,6 +378,17 @@ export default function MapPage() {
       void runSearch({ taxonomyIds: '' });
     }
   }, [query, runSearch]);
+
+  const handleCategoryClick = useCallback((category: string) => {
+    const next = activeCategory === category ? null : category;
+    setActiveCategory(next);
+    setQuery('');
+    if (boundsRef.current) {
+      void runSearch({ bbox: boundsRef.current, category: next });
+    } else {
+      void runSearch({ category: next });
+    }
+  }, [activeCategory, runSearch]);
 
   // ── text search submit ────────────────────────────────────
   const handleSubmit = (e: React.FormEvent) => {
@@ -377,7 +458,7 @@ export default function MapPage() {
 
       <ErrorBoundary>
         {/* Search bar */}
-        <form onSubmit={handleSubmit} className="flex gap-2 items-center mb-3">
+        <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-center mb-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
             <input
@@ -392,7 +473,7 @@ export default function MapPage() {
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-action"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-action"
                 aria-label="Clear search"
               >
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -412,6 +493,67 @@ export default function MapPage() {
             {isLocating ? 'Locating…' : 'Use my location'}
           </Button>
         </form>
+
+        {/* Category chips */}
+        <div className="mb-2 flex overflow-x-auto gap-1.5 pb-1" role="group" aria-label="Filter by service category">
+          {CATEGORY_CHIPS.map((chip) => (
+            <button
+              key={chip.value}
+              type="button"
+              onClick={() => handleCategoryClick(chip.value)}
+              aria-pressed={activeCategory === chip.value}
+              className={`inline-flex items-center justify-center rounded-full border px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
+                activeCategory === chip.value
+                  ? 'border-action bg-action text-white'
+                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Confidence + sort controls */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <label htmlFor="map-confidence" className="text-xs text-gray-500 whitespace-nowrap">Trust:</label>
+          <select
+            id="map-confidence"
+            value={confidenceFilter}
+            onChange={(e) => {
+              const next = e.target.value as ConfidenceFilter;
+              setConfidenceFilter(next);
+              if (boundsRef.current) {
+                void runSearch({ bbox: boundsRef.current, confidence: next });
+              } else if (query.trim() || activeCategory) {
+                void runSearch({ confidence: next });
+              }
+            }}
+            className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+          >
+            {CONFIDENCE_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <label htmlFor="map-sort" className="text-xs text-gray-500 whitespace-nowrap">Sort:</label>
+          <select
+            id="map-sort"
+            value={sortBy}
+            onChange={(e) => {
+              const next = e.target.value as SortOption;
+              setSortBy(next);
+              if (boundsRef.current) {
+                void runSearch({ bbox: boundsRef.current, sort: next });
+              } else if (query.trim() || activeCategory) {
+                void runSearch({ sort: next });
+              }
+            }}
+            className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+          >
+            {SORT_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
 
         {/* Quick filters + full taxonomy dialog */}
         {(isLoadingTaxonomy || taxonomyError || taxonomyTerms.length > 0) && (
@@ -475,28 +617,35 @@ export default function MapPage() {
                   {isLoadingTaxonomy ? (
                     <p className="text-sm text-gray-600">Loading tags…</p>
                   ) : (
-                    <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 p-2">
-                      <div className="flex flex-wrap gap-2">
-                        {visibleTaxonomyTerms.map((t) => {
-                          const selected = selectedTaxonomyIds.includes(t.id);
-                          return (
-                            <Button
-                              key={t.id}
-                              type="button"
-                              size="sm"
-                              variant={selected ? 'secondary' : 'outline'}
-                              onClick={() => toggleTaxonomyId(t.id)}
-                              title={t.description ?? undefined}
-                              className="text-xs"
-                            >
-                              {t.term}
-                            </Button>
-                          );
-                        })}
-                        {visibleTaxonomyTerms.length === 0 && (
-                          <p className="text-sm text-gray-600 p-2">No matching tags.</p>
-                        )}
-                      </div>
+                    <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 p-3 space-y-4">
+                      {visibleTaxonomyTerms.length === 0 && (
+                        <p className="text-sm text-gray-600">No matching tags.</p>
+                      )}
+                      {Object.entries(groupedTaxonomyTerms).map(([dim, terms]) => (
+                        <div key={dim}>
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                            {DIMENSION_LABELS[dim] ?? dim}
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {terms.map((t) => {
+                              const selected = selectedTaxonomyIds.includes(t.id);
+                              return (
+                                <Button
+                                  key={t.id}
+                                  type="button"
+                                  size="sm"
+                                  variant={selected ? 'secondary' : 'outline'}
+                                  onClick={() => toggleTaxonomyId(t.id)}
+                                  title={t.description ?? undefined}
+                                  className="text-xs"
+                                >
+                                  {t.term}
+                                </Button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -518,7 +667,7 @@ export default function MapPage() {
           <button
             type="button"
             onClick={() => setMobileView('map')}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
+            className={`flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
               mobileView === 'map'
                 ? 'bg-action-base text-white'
                 : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -530,7 +679,7 @@ export default function MapPage() {
           <button
             type="button"
             onClick={() => setMobileView('list')}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
+            className={`flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
               mobileView === 'list'
                 ? 'bg-action-base text-white'
                 : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -630,9 +779,9 @@ export default function MapPage() {
             {!isLoading && !data && !error && (
               <div className="rounded-lg border border-gray-200 bg-white p-6 text-center">
                 <MapPin className="h-8 w-8 text-gray-300 mx-auto mb-2" aria-hidden="true" />
-                <p className="text-gray-700 font-medium text-sm">Pan/zoom to explore services</p>
+                <p className="text-gray-700 font-medium text-sm">Ready to search</p>
                 <p className="mt-1 text-xs text-gray-500">
-                  Verified records only. Use keywords to narrow results.
+                  Type a keyword above, tap a category chip, or pan the map and tap <strong>Search this area</strong>.
                 </p>
               </div>
             )}
@@ -649,8 +798,8 @@ export default function MapPage() {
                 </p>
                 {data.results.length === 0 ? (
                   <div className="rounded-lg border border-gray-200 bg-white p-6 text-center">
-                    <p className="text-gray-700 font-medium text-sm">No matches</p>
-                    <p className="mt-1 text-xs text-gray-500">Try different keywords or pan to a new area.</p>
+                    <p className="text-gray-700 font-medium text-sm">No matches in this area</p>
+                    <p className="mt-1 text-xs text-gray-500">Try different keywords, a broader category, or pan to a new area.</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -701,8 +850,8 @@ function ConfidenceRing({ enriched }: { enriched: EnrichedService }) {
   return (
     <div
       className="flex-shrink-0 w-10"
-      aria-label={score == null ? 'Confidence unknown' : `Confidence ${Math.round(value)} percent`}
-      title={score == null ? 'Confidence unknown' : `Confidence: ${Math.round(value)}%`}
+      aria-label={score == null ? 'Trust score unknown' : `Trust ${Math.round(value)} percent`}
+      title={score == null ? 'Trust score unknown' : `Trust: ${Math.round(value)}%`}
     >
       <svg width="40" height="40" viewBox="0 0 40 40" role="img" aria-hidden="true">
         <circle

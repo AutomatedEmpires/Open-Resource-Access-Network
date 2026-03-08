@@ -161,7 +161,7 @@ export default function SavedPage() {
           const localOnly = localIds.filter((id) => !serverIds.includes(id));
           for (const id of localOnly) {
             try {
-              await fetch('/api/user/saved', {
+              await fetch('/api/saved', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ serviceId: id }),

@@ -14,7 +14,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { MapPin, Phone, Clock, ExternalLink, Bookmark, BookmarkCheck, MessageSquare } from 'lucide-react';
+import { MapPin, Phone, Clock, ExternalLink, Bookmark, BookmarkCheck, MessageSquare, Flag } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { FeedbackForm } from '@/components/feedback/FeedbackForm';
 import type { ServiceCard } from '@/services/chat/types';
@@ -58,7 +58,7 @@ export function ChatServiceCard({ card, isSaved, onToggleSave }: ChatServiceCard
     <div className="border border-gray-200 rounded-lg p-3 bg-white shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h4 className="font-semibold text-gray-900 text-sm leading-tight truncate">
+          <h4 className="font-semibold text-gray-900 text-sm leading-tight">
             <Link
               href={`/service/${card.serviceId}`}
               className="hover:underline text-blue-600"
@@ -135,7 +135,7 @@ export function ChatServiceCard({ card, isSaved, onToggleSave }: ChatServiceCard
               href={link.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700 hover:bg-blue-100 transition-colors"
+              className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-2 text-xs text-blue-700 hover:bg-blue-100 transition-colors min-h-[44px]"
             >
               <ExternalLink className="h-3 w-3" aria-hidden="true" />
               {link.label}
@@ -146,17 +146,28 @@ export function ChatServiceCard({ card, isSaved, onToggleSave }: ChatServiceCard
 
       <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2">{card.eligibilityHint}</p>
 
-      {/* Feedback button */}
-      {!showFeedback && (
-        <button
-          type="button"
-          onClick={() => setShowFeedback(true)}
-          className="mt-2 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 transition-colors"
+      {/* Feedback + report actions */}
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        {!showFeedback && (
+          <button
+            type="button"
+            onClick={() => setShowFeedback(true)}
+            className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 transition-colors min-h-[44px]"
+            title="Rate this result — did it match what you needed?"
+          >
+            <MessageSquare className="h-3 w-3" aria-hidden="true" />
+            Rate result
+          </button>
+        )}
+        <Link
+          href={`/report?serviceId=${encodeURIComponent(card.serviceId)}`}
+          className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 transition-colors min-h-[44px]"
+          title="Report incorrect information — wrong address, closed, or other data issue"
         >
-          <MessageSquare className="h-3 w-3" aria-hidden="true" />
-          Feedback
-        </button>
-      )}
+          <Flag className="h-3 w-3" aria-hidden="true" />
+          Report data issue
+        </Link>
+      </div>
 
       {/* Feedback form */}
       {showFeedback && (

@@ -409,7 +409,7 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
                   key={opt.value}
                   type="button"
                   onClick={() => setTrustFilter(opt.value)}
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[32px] ${
+                  className={`inline-flex items-center justify-center rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
                     selected
                       ? 'bg-blue-600 text-white'
                       : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
@@ -525,7 +525,7 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
                   type="button"
                   onClick={() => handleChipClick(chip.prompt)}
                   disabled={isLoading || quotaRemaining === 0}
-                  className="text-xs px-3 py-2 rounded-full border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 active:bg-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[36px]"
+                  className="text-xs px-3 py-2 rounded-full border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 active:bg-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
                 >
                   {chip.label}
                 </button>

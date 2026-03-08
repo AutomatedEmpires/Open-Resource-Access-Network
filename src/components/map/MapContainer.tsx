@@ -18,6 +18,7 @@ import { AlertTriangle, Loader2 } from 'lucide-react';
 
 import type { EnrichedService } from '@/domain/types';
 import { getConfidenceTier } from '@/domain/confidence';
+import { LeafletFallback } from './LeafletFallback';
 
 // ============================================================
 // TYPES
@@ -125,6 +126,7 @@ export function MapContainer({
   const popupRef = useRef<atlas.Popup | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [useLeafletFallback, setUseLeafletFallback] = useState(false);
 
   // If the parent provides a new center/zoom (e.g. after opt-in geolocation),
   // re-center the map. This component never requests device location itself.
@@ -178,7 +180,7 @@ export function MapContainer({
       if (cancelled) return;
 
       if (!key) {
-        setMapError('Azure Maps is not configured. Contact your administrator.');
+        setUseLeafletFallback(true);
         setIsLoading(false);
         return;
       }
@@ -368,6 +370,20 @@ export function MapContainer({
           <p className="text-sm text-gray-500">Loading map…</p>
         </div>
       </div>
+    );
+  }
+
+  // ── OpenStreetMap fallback (no Azure Maps key configured) ─
+  if (useLeafletFallback) {
+    return (
+      <LeafletFallback
+        centerLat={centerLat}
+        centerLng={centerLng}
+        zoom={zoom}
+        services={services}
+        onBoundsChange={onBoundsChange}
+        className={className}
+      />
     );
   }
 

@@ -241,7 +241,7 @@ function AppealPageInner() {
                 id="denied-picker"
                 value={submissionId}
                 onChange={(e) => setSubmissionId(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[44px]"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
               >
                 <option value="">Select a submission…</option>
                 {deniedSubmissions.map((s) => (
@@ -261,7 +261,7 @@ function AppealPageInner() {
               onChange={(e) => setSubmissionId(e.target.value)}
               disabled={!!prefilledId}
               className={`w-full rounded-lg border px-3 py-2 text-sm ${
-                prefilledId ? 'border-gray-300 bg-gray-50 text-gray-500' : 'border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500'
+                  prefilledId ? 'border-gray-300 bg-gray-50 text-gray-500' : 'border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-action'
               } ${!isValidUuid && submissionId.trim().length > 0 ? 'border-error-accent ring-1 ring-error-accent' : ''}`}
               placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
             />
@@ -282,7 +282,7 @@ function AppealPageInner() {
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={4}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
               placeholder="Provide details about why this submission should be reconsidered..."
               maxLength={2000}
             />
@@ -321,14 +321,14 @@ function AppealPageInner() {
                   type="text"
                   value={item.description}
                   onChange={(e) => updateEvidenceItem(idx, 'description', e.target.value)}
-                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-action"
                   placeholder="Description of this evidence"
                 />
                 <input
                   type="url"
                   value={item.fileUrl}
                   onChange={(e) => updateEvidenceItem(idx, 'fileUrl', e.target.value)}
-                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-action"
                   placeholder="URL to document or screenshot (https://...)"
                 />
               </div>

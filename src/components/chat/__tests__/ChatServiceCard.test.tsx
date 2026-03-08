@@ -27,6 +27,7 @@ vi.mock('lucide-react', () => ({
   Bookmark: 'svg',
   BookmarkCheck: 'svg',
   MessageSquare: 'svg',
+  Flag: 'svg',
 }));
 
 async function loadChatServiceCard() {

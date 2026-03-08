@@ -347,8 +347,9 @@ describe('MapPageClient', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
 
-    expect(await screen.findAllByText('No matches')).toHaveLength(2);
-    expect(await screen.findByText('Try different keywords or pan to a new area.')).toBeInTheDocument();
+    expect(await screen.findByText('No matches')).toBeInTheDocument();
+    expect(await screen.findByText('No matches in this area')).toBeInTheDocument();
+    expect(await screen.findByText('Try different keywords, a broader category, or pan to a new area.')).toBeInTheDocument();
   });
 
   it('surfaces permission-denied geolocation errors', async () => {
@@ -679,9 +680,9 @@ describe('MapPageClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
 
     await screen.findByText('High Confidence');
-    expect(screen.getByLabelText('Confidence 90 percent')).toBeInTheDocument();
-    expect(screen.getByLabelText('Confidence 65 percent')).toBeInTheDocument();
-    expect(screen.getByLabelText('Confidence 20 percent')).toBeInTheDocument();
-    expect(screen.getByLabelText('Confidence unknown')).toBeInTheDocument();
+    expect(screen.getByLabelText('Trust 90 percent')).toBeInTheDocument();
+    expect(screen.getByLabelText('Trust 65 percent')).toBeInTheDocument();
+    expect(screen.getByLabelText('Trust 20 percent')).toBeInTheDocument();
+    expect(screen.getByLabelText('Trust score unknown')).toBeInTheDocument();
   });
 });

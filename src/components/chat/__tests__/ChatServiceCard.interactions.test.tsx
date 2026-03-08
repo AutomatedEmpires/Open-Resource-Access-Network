@@ -104,14 +104,14 @@ describe('ChatServiceCard interactions', () => {
 
     render(<ChatServiceCard card={cardFixture} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rate result' }));
     expect(screen.getByTestId('feedback-form')).toBeInTheDocument();
     expect(screen.getByText('service:svc-1')).toBeInTheDocument();
     expect(screen.getByText('session:existing-session')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Close feedback' }));
     expect(screen.queryByTestId('feedback-form')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Feedback' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Rate result' })).toBeInTheDocument();
   });
 
   it('creates and stores a session id when none exists', () => {
@@ -120,7 +120,7 @@ describe('ChatServiceCard interactions', () => {
       .mockReturnValue('generated-session-id');
 
     render(<ChatServiceCard card={{ ...cardFixture, confidenceBand: 'LIKELY' }} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rate result' }));
 
     expect(screen.getByText('session:generated-session-id')).toBeInTheDocument();
     expect(sessionStorage.getItem('oran_chat_session_id')).toBe('generated-session-id');

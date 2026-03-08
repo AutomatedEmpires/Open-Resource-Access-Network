@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { ServiceCard } from '@/components/directory/ServiceCard';
 import { SkeletonCard } from '@/components/ui/skeleton';
+import { useToast } from '@/components/ui/toast';
 import type { EnrichedService } from '@/domain/types';
 
 const SAVED_KEY = 'oran:saved-service-ids';
@@ -111,6 +112,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const { success } = useToast();
 
   // Load saved IDs from localStorage on mount
   useEffect(() => {
@@ -163,14 +165,16 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
       if (next.has(id)) {
         next.delete(id);
         void removeServerSaved(id);
+        success('Removed from saved');
       } else {
         next.add(id);
         void addServerSaved(id);
+        success('Saved');
       }
       writeSavedIds([...next]);
       return next;
     });
-  }, []);
+  }, [success]);
 
   return (
     <main className="container mx-auto max-w-2xl px-4 py-8">

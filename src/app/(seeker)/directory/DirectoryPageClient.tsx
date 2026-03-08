@@ -84,6 +84,16 @@ const CATEGORY_CHIPS: { value: string; label: string }[] = [
   { value: 'transportation', label: 'Transportation' },
 ];
 
+/** Human-readable labels for taxonomy dimension keys */
+const DIMENSION_LABELS: Record<string, string> = {
+  delivery: 'Delivery Method',
+  cost: 'Cost & Payment',
+  access: 'Access',
+  eligibility: 'Eligibility',
+  languages: 'Languages',
+  temporal: 'Schedule',
+};
+
 type TaxonomyTermDTO = {
   id: string;
   term: string;
@@ -498,6 +508,17 @@ export default function DirectoryPage() {
     });
   }, [selectedTaxonomyIds, visibleTaxonomyTerms]);
 
+  /** Terms grouped by taxonomy dimension — used in the "More filters" dialog */
+  const groupedTaxonomyTerms = useMemo(() => {
+    const groups: Record<string, TaxonomyTermDTO[]> = {};
+    for (const t of visibleTaxonomyTermsSorted) {
+      const key = t.taxonomy ?? 'other';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t);
+    }
+    return groups;
+  }, [visibleTaxonomyTermsSorted]);
+
   const topTaxonomyTerms = useMemo(() => {
     if (taxonomyTerms.length === 0) return [] as TaxonomyTermDTO[];
     return [...taxonomyTerms]
@@ -724,12 +745,19 @@ export default function DirectoryPage() {
 
       <ErrorBoundary>
         {/* Search + filters */}
-        <form onSubmit={handleSubmit} className="flex gap-2 items-center mb-3">
+        <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-center mb-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+              setQuery(e.target.value);
+              // Clear the active category chip when the user manually edits the
+              // query so the highlighted chip doesn't go stale.
+              if (activeCategory && e.target.value.trim().toLowerCase() !== activeCategory.toLowerCase()) {
+                setActiveCategory(null);
+              }
+            }}
               type="search"
               placeholder="Search for services (e.g., rent help, food pantry, job training)"
               className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
@@ -739,7 +767,7 @@ export default function DirectoryPage() {
               <button
                 type="button"
                 onClick={handleClearSearch}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-action"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-action"
                 aria-label="Clear search"
               >
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -789,7 +817,7 @@ export default function DirectoryPage() {
               key={cat.value}
               type="button"
               onClick={() => handleCategoryClick(cat.value)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
                 activeCategory === cat.value
                   ? 'bg-action-base text-white'
                   : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
@@ -810,7 +838,7 @@ export default function DirectoryPage() {
           )}
 
           {!taxonomyError && !isLoadingTaxonomy && topTaxonomyTerms.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Top tags">
+            <div className="flex overflow-x-auto items-center gap-2 pb-1" role="group" aria-label="Top tags">
               {topTaxonomyTerms.map((t) => {
                 const selected = selectedTaxonomyIds.includes(t.id);
                 return (
@@ -818,7 +846,7 @@ export default function DirectoryPage() {
                     key={t.id}
                     type="button"
                     onClick={() => toggleTaxonomyId(t.id)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
                       selected
                         ? 'bg-action-base text-white'
                         : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
@@ -871,28 +899,35 @@ export default function DirectoryPage() {
                 {isLoadingTaxonomy ? (
                   <p className="text-sm text-gray-600">Loading tags…</p>
                 ) : (
-                  <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 p-2">
-                    <div className="flex flex-wrap gap-2">
-                      {visibleTaxonomyTermsSorted.map((t) => {
-                        const selected = selectedTaxonomyIds.includes(t.id);
-                        return (
-                          <Button
-                            key={t.id}
-                            type="button"
-                            size="sm"
-                            variant={selected ? 'secondary' : 'outline'}
-                            onClick={() => toggleTaxonomyId(t.id)}
-                            title={t.description ?? undefined}
-                            className="text-xs"
-                          >
-                            {t.term}
-                          </Button>
-                        );
-                      })}
-                      {visibleTaxonomyTerms.length === 0 && (
-                        <p className="text-sm text-gray-600 p-2">No matching tags.</p>
-                      )}
-                    </div>
+                  <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 p-3 space-y-4">
+                    {visibleTaxonomyTerms.length === 0 && (
+                      <p className="text-sm text-gray-600 p-2">No matching tags.</p>
+                    )}
+                    {Object.entries(groupedTaxonomyTerms).map(([dim, terms]) => (
+                      <div key={dim}>
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                          {DIMENSION_LABELS[dim] ?? dim}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {terms.map((t) => {
+                            const selected = selectedTaxonomyIds.includes(t.id);
+                            return (
+                              <Button
+                                key={t.id}
+                                type="button"
+                                size="sm"
+                                variant={selected ? 'secondary' : 'outline'}
+                                onClick={() => toggleTaxonomyId(t.id)}
+                                title={t.description ?? undefined}
+                                className="text-xs"
+                              >
+                                {t.term}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -948,7 +983,7 @@ export default function DirectoryPage() {
                           key={t.tag}
                           type="button"
                           onClick={() => toggleAttribute(dim, t.tag)}
-                          className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                          className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
                             isActive
                               ? 'bg-action-base text-white'
                               : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
@@ -985,7 +1020,7 @@ export default function DirectoryPage() {
                 key={opt.value}
                 type="button"
                 onClick={() => handleConfidenceChange(opt.value)}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
                   confidenceFilter === opt.value
                     ? 'bg-action-base text-white'
                     : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
@@ -1004,7 +1039,7 @@ export default function DirectoryPage() {
               id="sort-select"
               value={sortBy}
               onChange={handleSortChange}
-              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[32px]"
+              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
             >
               {SORT_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>

@@ -1,8 +1,9 @@
 # ORAN Feature Flags
 
-Lightweight in-memory feature flag service. The `feature_flags` table exists in the DB
-schema (migration `0000_initial_schema.sql`) and is seeded by the migration itself.
-Runtime flag evaluation currently uses `InMemoryFlagService`; DB-backed reads are planned.
+Hybrid feature flag service with a DB-backed authoritative catalog when `DATABASE_URL`
+is configured, plus an in-memory fallback for local development and runtime recovery.
+The `feature_flags` table exists in the DB schema (migration `0000_initial_schema.sql`)
+and the expanded catalog is maintained by `db/migrations/0035_feature_flag_catalog.sql`.
 
 ## Flag Registry
 
@@ -24,22 +25,27 @@ import { FEATURE_FLAGS } from '@/domain/constants';
 const enabled = await flagService.isEnabled(FEATURE_FLAGS.LLM_SUMMARIZE);
 ```
 
-## Fail-Closed Semantics
+## Runtime Semantics
 
-The `InMemoryFlagService.isEnabled()` method returns `false` for any unknown flag name.
-Combined with the `llm_summarize` default of `false` / 0 % rollout, LLM summarization
-is **guaranteed off** unless explicitly enabled.
+The flag service preserves a few hard guarantees:
+- Unknown flag name -> `false`
+- Partial rollout without a subject key -> `false`
+- `llm_summarize` defaults to `false` / 0 %
+- Writes only persist to the DB when the DB is configured; in-memory writes are local-only
 
-If a DB-backed flag service is wired in the future, it must preserve this contract:
-- Unknown flag → `false`
-- DB unreachable → `false` (fail-closed)
-- `llm_summarize` must never default to `true`
+When the DB is configured, reads use the stored catalog and merge any missing defaults from
+code. If a later DB read fails, the service reuses the last known good DB snapshot before
+falling back to the local in-memory catalog. Safety-critical AI flags still default off.
+
+Admin updates written through the DB-backed path also emit a best-effort `audit_logs`
+record so feature flag changes become attributable.
 
 ## Seed Data
 
-Flags are seeded in two places:
+Flags are seeded in three places:
 1. **Migration** (`db/migrations/0000_initial_schema.sql`): `INSERT INTO feature_flags ... ON CONFLICT DO NOTHING`
-2. **Demo seed** (`db/seed/demo.sql`): Same values for local development
+2. **Catalog migration** (`db/migrations/0035_feature_flag_catalog.sql`): expands descriptions and backfills the enterprise catalog
+3. **Demo seed** (`db/seed/demo.sql`): Same baseline values for local development
 
 ## Adding a New Flag
 

@@ -41,6 +41,8 @@ export type RegressionSignalType =
   | 'score_staleness'
   | 'score_degraded';
 
+export type RegressionRecommendedAction = 'monitor' | 'reverify' | 'suppress';
+
 export interface RegressionCandidate {
   serviceId: string;
   serviceName: string;
@@ -48,6 +50,8 @@ export interface RegressionCandidate {
   currentScore: number;
   currentBand: ConfidenceBand;
   reasons: string[];
+  recommendedAction: RegressionRecommendedAction;
+  actionReason: string;
   /** Time-windowed dedup key; same key = same (service, signal) within 72 hours. */
   dedupeKey: string;
   /** Human-readable notes for the admin submission record. */
@@ -63,12 +67,21 @@ const SIGNAL_COUNT = 4;
 
 /** Days after which a confidence score is considered stale. */
 const STALENESS_DAYS = 90;
+const STALENESS_SUPPRESSION_DAYS = 180;
 
 /** Minimum negative feedback count (in 30 days) to trigger a regression. */
 const FEEDBACK_SEVERITY_THRESHOLD = 3;
 
 /** Rolling window (days) for the feedback severity signal. */
 const FEEDBACK_WINDOW_DAYS = 30;
+
+/** High-risk fraud reports should immediately suppress visibility. */
+const FRAUD_REPORT_THRESHOLD = 1;
+const FRAUD_WINDOW_DAYS = 14;
+
+/** Repeated closure reports should suppress visibility until reverification. */
+const CLOSURE_REPORT_THRESHOLD = 2;
+const CLOSURE_WINDOW_DAYS = 14;
 
 /** Dedup window in milliseconds (72 hours). */
 const DEDUPE_WINDOW_MS = 72 * 60 * 60 * 1_000;
@@ -136,6 +149,8 @@ export async function detectServiceUpdated(
       currentScore: score,
       currentBand: getConfidenceBand(score),
       reasons: ['Service record was updated after the confidence score was last computed'],
+      recommendedAction: 'reverify',
+      actionReason: 'Published service changed after last verification snapshot',
       dedupeKey: makeDedupeKey(row.service_id, 'service_updated_after_verification'),
       notesText:
         'Auto-flagged: service record changed after last confidence computation; re-review suggested.',
@@ -144,10 +159,10 @@ export async function detectServiceUpdated(
 }
 
 /**
- * Signal 2: 3+ verified negative feedback signals in the last 30 days.
+ * Signal 2: repeated negative seeker feedback or community reports.
  *
- * Actionable triage categories: service_closed, incorrect_phone,
- * incorrect_address, incorrect_hours.
+ * High-risk reports can suppress a listing even below the general count
+ * threshold so seekers stop seeing likely-closed or suspected-fraud entries.
  */
 export async function detectFeedbackSeverity(
   client: Queryable,
@@ -158,41 +173,115 @@ export async function detectFeedbackSeverity(
     service_name: string;
     score: string;
     neg_count: string;
+    fraud_count: string;
+    closure_count: string;
     categories: string;
   }>(
-    `SELECT
-       sf.service_id,
+    `WITH report_signals AS (
+       SELECT
+         sf.service_id,
+         sf.triage_category AS issue_type,
+         sf.created_at
+       FROM seeker_feedback sf
+       WHERE sf.triage_category IN ('service_closed', 'incorrect_phone', 'incorrect_address', 'incorrect_hours')
+         AND sf.created_at > NOW() - INTERVAL '30 days'
+
+       UNION ALL
+
+       SELECT
+         sub.service_id,
+         COALESCE(sub.payload->>'reason', '') AS issue_type,
+         sub.created_at
+       FROM submissions sub
+       WHERE sub.submission_type = 'community_report'
+         AND sub.service_id IS NOT NULL
+         AND sub.status NOT IN ('denied', 'withdrawn', 'archived')
+         AND COALESCE(sub.payload->>'reason', '') IN (
+           'incorrect_info',
+           'permanently_closed',
+           'temporarily_closed',
+           'wrong_location',
+           'wrong_phone',
+           'wrong_hours',
+           'wrong_eligibility',
+           'suspected_fraud'
+         )
+         AND sub.created_at > NOW() - INTERVAL '30 days'
+     )
+     SELECT
+       rs.service_id,
        s.name AS service_name,
        COALESCE(cs.score, 0)::text AS score,
-       COUNT(sf.id)::text AS neg_count,
-       array_to_string(array_agg(DISTINCT sf.triage_category), ', ') AS categories
-     FROM seeker_feedback sf
-     JOIN services s ON s.id = sf.service_id
-     LEFT JOIN confidence_scores cs ON cs.service_id = sf.service_id
-     WHERE sf.triage_category IN ('service_closed', 'incorrect_phone', 'incorrect_address', 'incorrect_hours')
-       AND sf.created_at > NOW() - INTERVAL '30 days'
-       AND s.status = 'active'
-     GROUP BY sf.service_id, s.name, cs.score
-     HAVING COUNT(sf.id) >= $2
-     ORDER BY COUNT(sf.id) DESC
+       COUNT(*)::text AS neg_count,
+       COUNT(*) FILTER (
+         WHERE rs.issue_type = 'suspected_fraud'
+           AND rs.created_at > NOW() - INTERVAL '14 days'
+       )::text AS fraud_count,
+       COUNT(*) FILTER (
+         WHERE rs.issue_type IN ('service_closed', 'permanently_closed', 'temporarily_closed')
+           AND rs.created_at > NOW() - INTERVAL '14 days'
+       )::text AS closure_count,
+       string_agg(DISTINCT rs.issue_type, ', ' ORDER BY rs.issue_type) AS categories
+     FROM report_signals rs
+     JOIN services s ON s.id = rs.service_id
+     LEFT JOIN confidence_scores cs ON cs.service_id = rs.service_id
+     WHERE s.status = 'active'
+     GROUP BY rs.service_id, s.name, cs.score
+     HAVING COUNT(*) >= $2
+         OR COUNT(*) FILTER (
+           WHERE rs.issue_type = 'suspected_fraud'
+             AND rs.created_at > NOW() - INTERVAL '14 days'
+         ) >= $3
+         OR COUNT(*) FILTER (
+           WHERE rs.issue_type IN ('service_closed', 'permanently_closed', 'temporarily_closed')
+             AND rs.created_at > NOW() - INTERVAL '14 days'
+         ) >= $4
+     ORDER BY COUNT(*) DESC
      LIMIT $1`,
-    [limit, FEEDBACK_SEVERITY_THRESHOLD],
+    [
+      limit,
+      FEEDBACK_SEVERITY_THRESHOLD,
+      FRAUD_REPORT_THRESHOLD,
+      CLOSURE_REPORT_THRESHOLD,
+    ],
   );
 
   return result.rows.map((row) => {
     const score = Number(row.score);
+    const negCount = Number(row.neg_count);
+    const fraudCount = Number(row.fraud_count);
+    const closureCount = Number(row.closure_count);
+    const reasons = [
+      `${negCount} negative feedback or community reports in the last ${FEEDBACK_WINDOW_DAYS} days`,
+      `Issue categories: ${row.categories}`,
+    ];
+
+    if (fraudCount >= FRAUD_REPORT_THRESHOLD) {
+      reasons.unshift(
+        `${fraudCount} suspected fraud report in the last ${FRAUD_WINDOW_DAYS} days`,
+      );
+    } else if (closureCount >= CLOSURE_REPORT_THRESHOLD) {
+      reasons.unshift(
+        `${closureCount} closure reports in the last ${CLOSURE_WINDOW_DAYS} days`,
+      );
+    }
+
     return {
       serviceId: row.service_id,
       serviceName: row.service_name,
       signalType: 'feedback_severity',
       currentScore: score,
       currentBand: getConfidenceBand(score),
-      reasons: [
-        `${row.neg_count} negative feedback reports in the last ${FEEDBACK_WINDOW_DAYS} days`,
-        `Issue categories: ${row.categories}`,
-      ],
+      reasons,
+      recommendedAction: 'suppress',
+      actionReason:
+        fraudCount >= FRAUD_REPORT_THRESHOLD
+          ? 'Suspected fraud report threshold reached'
+          : closureCount >= CLOSURE_REPORT_THRESHOLD
+            ? 'Closure report threshold reached'
+            : 'Repeated negative reports require reverification',
       dedupeKey: makeDedupeKey(row.service_id, 'feedback_severity'),
-      notesText: `Auto-flagged: ${row.neg_count} negative feedback items in last ${FEEDBACK_WINDOW_DAYS} days (${row.categories}).`,
+      notesText: `Auto-flagged: ${negCount} negative reports in last ${FEEDBACK_WINDOW_DAYS} days (${row.categories}); seeker visibility should be suspended pending reverification.`,
     };
   });
 }
@@ -201,6 +290,7 @@ export async function detectFeedbackSeverity(
  * Signal 3: confidence score not recomputed in 90+ days.
  *
  * Indicates the trust score may be stale and should be re-evaluated.
+ * Very stale listings (180+ days) are suppressed until reverification.
  * Only flags active services in ORANGE (≥40) or higher tier — RED-tier
  * services are caught by `detectScoreDegraded`.
  */
@@ -238,6 +328,7 @@ export async function detectStaleness(
   return result.rows.map((row) => {
     const score = Number(row.score);
     const days = Number(row.days_stale);
+    const recommendedAction = days >= STALENESS_SUPPRESSION_DAYS ? 'suppress' : 'reverify';
     return {
       serviceId: row.service_id,
       serviceName: row.service_name,
@@ -247,8 +338,16 @@ export async function detectStaleness(
       reasons: [
         `Confidence score not recomputed in ${days} days (threshold: ${STALENESS_DAYS} days)`,
       ],
+      recommendedAction,
+      actionReason:
+        recommendedAction === 'suppress'
+          ? `Confidence score stale beyond ${STALENESS_SUPPRESSION_DAYS} days`
+          : 'Confidence score is stale and requires reverification',
       dedupeKey: makeDedupeKey(row.service_id, 'score_staleness'),
-      notesText: `Auto-flagged: confidence score is ${days} days stale; re-scoring recommended.`,
+      notesText:
+        recommendedAction === 'suppress'
+          ? `Auto-flagged: confidence score is ${days} days stale; seeker visibility should be suspended pending reverification.`
+          : `Auto-flagged: confidence score is ${days} days stale; re-scoring recommended.`,
     };
   });
 }
@@ -295,6 +394,8 @@ export async function detectScoreDegraded(
       reasons: [
         `Score ${score} is below RED tier threshold (40); active service needs verification`,
       ],
+      recommendedAction: 'suppress',
+      actionReason: 'Confidence score is below minimum seeker-visible threshold',
       dedupeKey: makeDedupeKey(row.service_id, 'score_degraded'),
       notesText: `Auto-flagged: active service has critically low confidence score (${score}/100); verification required.`,
     };

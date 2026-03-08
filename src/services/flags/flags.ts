@@ -1,30 +1,50 @@
 /**
  * ORAN Feature Flags Service
- * Lightweight in-memory implementation.
  *
- * Note: the `feature_flags` table exists in the DB schema, but runtime wiring is not
- * implemented yet.
+ * Enterprise behavior:
+ * - Database is authoritative when available.
+ * - In-memory fallback preserves local/dev usability when DATABASE_URL is absent.
+ * - Unknown flags fail closed.
+ * - Partial rollouts are deterministic when a subject key is provided.
  */
 
 import type { FeatureFlag } from '@/domain/types';
 import { FEATURE_FLAGS } from '@/domain/constants';
+import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 
-// ============================================================
-// INTERFACE
-// ============================================================
+export type FlagServiceImplementation = 'database' | 'in_memory';
+
+export interface FlagUpdateOptions {
+  actorUserId?: string;
+  actorRole?: string;
+  reason?: string;
+}
 
 export interface FlagService {
-  isEnabled(flagName: string): Promise<boolean>;
+  isEnabled(flagName: string, subjectKey?: string): Promise<boolean>;
   getFlag(flagName: string): Promise<FeatureFlag | null>;
-  setFlag(flagName: string, enabled: boolean, rolloutPct?: number): Promise<void>;
+  setFlag(
+    flagName: string,
+    enabled: boolean,
+    rolloutPct?: number,
+    options?: FlagUpdateOptions,
+  ): Promise<void>;
   getAllFlags(): Promise<FeatureFlag[]>;
 }
 
-// ============================================================
-// IN-MEMORY IMPLEMENTATION
-// ============================================================
+interface FeatureFlagRow {
+  id: string;
+  name: string;
+  enabled: boolean;
+  rollout_pct: number;
+  description: string | null;
+  created_by_user_id: string | null;
+  updated_by_user_id: string | null;
+  created_at: string | Date;
+  updated_at: string | Date;
+}
 
-type FlagStore = Map<string, FeatureFlag>;
+const FLAG_CACHE_TTL_MS = 5_000;
 
 function normalizeRolloutPct(rolloutPct: number | undefined): number {
   if (typeof rolloutPct !== 'number' || Number.isNaN(rolloutPct)) return 0;
@@ -40,62 +60,117 @@ function cloneFlag(flag: FeatureFlag): FeatureFlag {
   };
 }
 
-function makeFlag(name: string, enabled: boolean, rolloutPct = 0): FeatureFlag {
+function makeFlag(
+  name: string,
+  enabled: boolean,
+  rolloutPct = 0,
+  description?: string | null,
+): FeatureFlag {
   const now = new Date();
   return {
     id: `flag-${name}`,
     name,
     enabled,
     rolloutPct: normalizeRolloutPct(rolloutPct),
+    description: description ?? null,
+    createdByUserId: null,
+    updatedByUserId: null,
     createdAt: now,
     updatedAt: now,
   };
 }
 
-/**
- * Default flags for local/test environments.
- * Runtime DB-backed flags are planned, but not yet wired.
- */
 const DEFAULT_FLAGS: FeatureFlag[] = [
-  // gpt-4o-mini on oranhf57ir-prod-oai (eastus) — provisioned 2026-03-05
-  makeFlag(FEATURE_FLAGS.LLM_SUMMARIZE, true, 100),
-  makeFlag(FEATURE_FLAGS.MAP_ENABLED, true, 100),
-  makeFlag(FEATURE_FLAGS.FEEDBACK_FORM, true, 100),
-  makeFlag(FEATURE_FLAGS.HOST_CLAIMS, true, 100),
-  // Azure AI Content Safety on ORAN-FOUNDRY-resource (AIServices/S0) — provisioned 2026-03-05
-  makeFlag(FEATURE_FLAGS.CONTENT_SAFETY_CRISIS, true, 100),
-  // Cohere-embed-v3-multilingual on ORAN-FOUNDRY-resource — Phase 3 (off until 0026 migration applied)
-  makeFlag(FEATURE_FLAGS.VECTOR_SEARCH, false, 0),
-  // Phase 4 flags — off by default, require external env vars
-  makeFlag(FEATURE_FLAGS.LLM_INTENT_ENRICH, false, 0),
-  makeFlag(FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS, false, 0),
-  makeFlag(FEATURE_FLAGS.TTS_SUMMARIES, false, 0),
-  // Phase 5 flags — off by default, require external env vars
-  makeFlag(FEATURE_FLAGS.LLM_ADMIN_ASSIST, false, 0),
-  makeFlag(FEATURE_FLAGS.LLM_FEEDBACK_TRIAGE, false, 0),
-  makeFlag(FEATURE_FLAGS.DOC_INTELLIGENCE_INTAKE, false, 0),
-  // Privacy-safe UI interaction telemetry (breadcrumbs only — no PII). Off by default.
-  makeFlag(FEATURE_FLAGS.TELEMETRY_INTERACTIONS, false, 0),
+  makeFlag(
+    FEATURE_FLAGS.LLM_SUMMARIZE,
+    false,
+    0,
+    'Enable LLM post-retrieval summarization using stored records only.',
+  ),
+  makeFlag(FEATURE_FLAGS.MAP_ENABLED, true, 100, 'Expose the seeker map and geospatial discovery features.'),
+  makeFlag(FEATURE_FLAGS.FEEDBACK_FORM, true, 100, 'Allow seeker feedback/report submission flows.'),
+  makeFlag(FEATURE_FLAGS.HOST_CLAIMS, true, 100, 'Allow organizations to submit host claims.'),
+  makeFlag(FEATURE_FLAGS.TWO_PERSON_APPROVAL, false, 0, 'Require distinct reviewers for high-risk approval flows.'),
+  makeFlag(FEATURE_FLAGS.SLA_ENFORCEMENT, false, 0, 'Enable workflow SLA enforcement side effects.'),
+  makeFlag(FEATURE_FLAGS.AUTO_CHECK_GATE, false, 0, 'Allow automated gate checks to advance submissions.'),
+  makeFlag(FEATURE_FLAGS.NOTIFICATIONS_IN_APP, true, 100, 'Enable in-app notification surfaces and events.'),
+  makeFlag(
+    FEATURE_FLAGS.CONTENT_SAFETY_CRISIS,
+    true,
+    100,
+    'Run Azure AI Content Safety as a second-layer crisis gate after keyword checks.',
+  ),
+  makeFlag(FEATURE_FLAGS.VECTOR_SEARCH, false, 0, 'Enable pgvector-backed semantic search and re-ranking.'),
+  makeFlag(FEATURE_FLAGS.LLM_INTENT_ENRICH, false, 0, 'Enable LLM-based intent enrichment for ambiguous chat queries.'),
+  makeFlag(FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS, false, 0, 'Enable translated service descriptions post-retrieval.'),
+  makeFlag(FEATURE_FLAGS.TTS_SUMMARIES, false, 0, 'Enable spoken service summaries via Azure Speech.'),
+  makeFlag(FEATURE_FLAGS.LLM_ADMIN_ASSIST, false, 0, 'Enable LLM-assisted admin review suggestions.'),
+  makeFlag(FEATURE_FLAGS.LLM_FEEDBACK_TRIAGE, false, 0, 'Enable LLM classification of submitted feedback comments.'),
+  makeFlag(FEATURE_FLAGS.DOC_INTELLIGENCE_INTAKE, false, 0, 'Enable Azure Document Intelligence for PDF intake parsing.'),
+  makeFlag(FEATURE_FLAGS.TELEMETRY_INTERACTIONS, false, 0, 'Enable privacy-safe UI breadcrumb telemetry.'),
 ];
 
-export class InMemoryFlagService implements FlagService {
-  private readonly store: FlagStore;
+function getDefaultFlag(flagName: string): FeatureFlag | null {
+  const match = DEFAULT_FLAGS.find((flag) => flag.name === flagName);
+  return match ? cloneFlag(match) : null;
+}
 
-  constructor(initialFlags?: FeatureFlag[]) {
-    this.store = new Map();
-    const flags = initialFlags ?? DEFAULT_FLAGS;
-    for (const flag of flags) {
-      this.store.set(flag.name, cloneFlag(flag));
-    }
+function createFlagMap(flags: FeatureFlag[]): Map<string, FeatureFlag> {
+  return new Map(flags.map((flag) => [flag.name, cloneFlag(flag)]));
+}
+
+function mapRowToFeatureFlag(row: FeatureFlagRow): FeatureFlag {
+  return {
+    id: row.id,
+    name: row.name,
+    enabled: row.enabled,
+    rolloutPct: normalizeRolloutPct(row.rollout_pct),
+    description: row.description,
+    createdByUserId: row.created_by_user_id,
+    updatedByUserId: row.updated_by_user_id,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+}
+
+function mergeWithDefaultCatalog(rows: FeatureFlagRow[]): FeatureFlag[] {
+  const flags = createFlagMap(DEFAULT_FLAGS);
+  for (const row of rows) {
+    flags.set(row.name, mapRowToFeatureFlag(row));
   }
 
-  async isEnabled(flagName: string): Promise<boolean> {
+  return Array.from(flags.values()).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function hashBucket(subjectKey: string, flagName: string): number {
+  const input = `${flagName}:${subjectKey}`;
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return Math.abs(hash >>> 0) % 100;
+}
+
+function evaluateFlag(flag: FeatureFlag | null, subjectKey?: string): boolean {
+  if (!flag || !flag.enabled) return false;
+  if (flag.rolloutPct <= 0) return false;
+  if (flag.rolloutPct >= 100) return true;
+  if (!subjectKey) return false;
+  return hashBucket(subjectKey, flag.name) < flag.rolloutPct;
+}
+
+export class InMemoryFlagService implements FlagService {
+  private readonly store: Map<string, FeatureFlag>;
+
+  constructor(initialFlags?: FeatureFlag[]) {
+    this.store = createFlagMap(initialFlags ?? DEFAULT_FLAGS);
+  }
+
+  async isEnabled(flagName: string, subjectKey?: string): Promise<boolean> {
     const flag = this.store.get(flagName);
-    if (!flag) return false;
-    if (!flag.enabled) return false;
-    // Rollout percentage is only supported as 0% or 100% until a deterministic
-    // subject-hash rollout mechanism is implemented.
-    return normalizeRolloutPct(flag.rolloutPct) >= 100;
+    return evaluateFlag(flag ? cloneFlag(flag) : null, subjectKey);
   }
 
   async getFlag(flagName: string): Promise<FeatureFlag | null> {
@@ -103,23 +178,202 @@ export class InMemoryFlagService implements FlagService {
     return flag ? cloneFlag(flag) : null;
   }
 
-  async setFlag(flagName: string, enabled: boolean, rolloutPct = 100): Promise<void> {
+  async setFlag(
+    flagName: string,
+    enabled: boolean,
+    rolloutPct = 100,
+    options: FlagUpdateOptions = {},
+  ): Promise<void> {
     const existing = this.store.get(flagName);
+    const defaultFlag = getDefaultFlag(flagName);
     const now = new Date();
+    const actorUserId = options.actorUserId ?? null;
     this.store.set(flagName, {
-      id: existing?.id ?? `flag-${flagName}`,
+      id: existing?.id ?? defaultFlag?.id ?? `flag-${flagName}`,
       name: flagName,
       enabled,
       rolloutPct: normalizeRolloutPct(rolloutPct),
-      createdAt: existing?.createdAt ?? now,
+      description: existing?.description ?? defaultFlag?.description ?? null,
+      createdByUserId: existing?.createdByUserId ?? defaultFlag?.createdByUserId ?? actorUserId,
+      updatedByUserId: actorUserId ?? existing?.updatedByUserId ?? defaultFlag?.updatedByUserId ?? null,
+      createdAt: existing?.createdAt ?? defaultFlag?.createdAt ?? now,
       updatedAt: now,
     });
   }
 
   async getAllFlags(): Promise<FeatureFlag[]> {
-    return Array.from(this.store.values(), cloneFlag);
+    return Array.from(this.store.values(), cloneFlag).sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  replaceAll(flags: FeatureFlag[]): void {
+    this.store.clear();
+    for (const flag of flags) {
+      this.store.set(flag.name, cloneFlag(flag));
+    }
   }
 }
 
-// Singleton for server-side use
-export const flagService: FlagService = new InMemoryFlagService();
+export class HybridFlagService implements FlagService {
+  private readonly fallback: InMemoryFlagService;
+  private cache:
+    | { implementation: FlagServiceImplementation; flags: FeatureFlag[]; expiresAt: number }
+    | null = null;
+
+  constructor(fallback?: InMemoryFlagService) {
+    this.fallback = fallback ?? new InMemoryFlagService();
+  }
+
+  private invalidateCache(): void {
+    this.cache = null;
+  }
+
+  private async readFlagsFromSource(force = false): Promise<{
+    implementation: FlagServiceImplementation;
+    flags: FeatureFlag[];
+  }> {
+    if (!force && this.cache && this.cache.expiresAt > Date.now()) {
+      return {
+        implementation: this.cache.implementation,
+        flags: this.cache.flags.map(cloneFlag),
+      };
+    }
+
+    if (!isDatabaseConfigured()) {
+      const flags = await this.fallback.getAllFlags();
+      this.cache = {
+        implementation: 'in_memory',
+        flags: flags.map(cloneFlag),
+        expiresAt: Date.now() + FLAG_CACHE_TTL_MS,
+      };
+      return { implementation: 'in_memory', flags };
+    }
+
+    try {
+      const rows = await executeQuery<FeatureFlagRow>(
+        `SELECT id, name, enabled, rollout_pct, description, created_by_user_id,
+                updated_by_user_id, created_at, updated_at
+         FROM feature_flags`,
+        [],
+      );
+      const flags = mergeWithDefaultCatalog(rows);
+      this.fallback.replaceAll(flags);
+      this.cache = {
+        implementation: 'database',
+        flags: flags.map(cloneFlag),
+        expiresAt: Date.now() + FLAG_CACHE_TTL_MS,
+      };
+      return { implementation: 'database', flags };
+    } catch {
+      if (this.cache?.implementation === 'database') {
+        this.cache = {
+          implementation: 'database',
+          flags: this.cache.flags.map(cloneFlag),
+          expiresAt: Date.now() + FLAG_CACHE_TTL_MS,
+        };
+        return {
+          implementation: 'database',
+          flags: this.cache.flags.map(cloneFlag),
+        };
+      }
+
+      const flags = await this.fallback.getAllFlags();
+      this.cache = {
+        implementation: 'in_memory',
+        flags: flags.map(cloneFlag),
+        expiresAt: Date.now() + FLAG_CACHE_TTL_MS,
+      };
+      return { implementation: 'in_memory', flags };
+    }
+  }
+
+  async getImplementation(): Promise<FlagServiceImplementation> {
+    const { implementation } = await this.readFlagsFromSource();
+    return implementation;
+  }
+
+  async isEnabled(flagName: string, subjectKey?: string): Promise<boolean> {
+    const flag = await this.getFlag(flagName);
+    return evaluateFlag(flag, subjectKey);
+  }
+
+  async getFlag(flagName: string): Promise<FeatureFlag | null> {
+    const { flags } = await this.readFlagsFromSource();
+    const match = flags.find((flag) => flag.name === flagName);
+    return match ? cloneFlag(match) : null;
+  }
+
+  async setFlag(
+    flagName: string,
+    enabled: boolean,
+    rolloutPct = 100,
+    options: FlagUpdateOptions = {},
+  ): Promise<void> {
+    const normalizedRolloutPct = normalizeRolloutPct(rolloutPct);
+
+    if (!isDatabaseConfigured()) {
+      await this.fallback.setFlag(flagName, enabled, normalizedRolloutPct, options);
+      this.invalidateCache();
+      return;
+    }
+
+    const before = await this.getFlag(flagName);
+    const defaultFlag = getDefaultFlag(flagName);
+    const description = before?.description ?? defaultFlag?.description ?? null;
+    const actorUserId = options.actorUserId ?? null;
+    const actorRole = options.actorRole ?? 'oran_admin';
+
+    const rows = await executeQuery<FeatureFlagRow>(
+      `INSERT INTO feature_flags
+         (name, enabled, rollout_pct, description, created_by_user_id, updated_by_user_id)
+       VALUES ($1, $2, $3, $4, $5, $5)
+       ON CONFLICT (name) DO UPDATE
+       SET enabled = EXCLUDED.enabled,
+           rollout_pct = EXCLUDED.rollout_pct,
+           description = COALESCE(feature_flags.description, EXCLUDED.description),
+           updated_by_user_id = EXCLUDED.updated_by_user_id,
+           updated_at = now()
+       RETURNING id, name, enabled, rollout_pct, description, created_by_user_id,
+                 updated_by_user_id, created_at, updated_at`,
+      [flagName, enabled, normalizedRolloutPct, description, actorUserId],
+    );
+
+    const after = rows[0] ? mapRowToFeatureFlag(rows[0]) : null;
+
+    if (after) {
+      await this.fallback.setFlag(flagName, enabled, normalizedRolloutPct, options);
+      try {
+        await executeQuery(
+          `INSERT INTO audit_logs
+             (actor_user_id, actor_role, action, resource_type, resource_id, before, after)
+           VALUES ($1, $2, 'feature_flag.updated', 'feature_flag', $3, $4::jsonb, $5::jsonb)`,
+          [
+            actorUserId,
+            actorRole,
+            after.id,
+            JSON.stringify(before ?? null),
+            JSON.stringify({
+              ...after,
+              change_reason: options.reason ?? null,
+            }),
+          ],
+        );
+      } catch {
+        // The primary write already succeeded; audit insertion is best-effort for
+        // environments where the audit table is not yet migrated.
+      }
+    }
+
+    this.invalidateCache();
+  }
+
+  async getAllFlags(): Promise<FeatureFlag[]> {
+    const { flags } = await this.readFlagsFromSource();
+    return flags.map(cloneFlag);
+  }
+}
+
+export const flagService = new HybridFlagService();
+
+export async function getFlagServiceImplementation(): Promise<FlagServiceImplementation> {
+  return flagService.getImplementation();
+}

@@ -98,7 +98,9 @@ describe('detectServiceUpdated', () => {
       signalType: 'service_updated_after_verification',
       currentScore: 75,
       currentBand: 'LIKELY',
+      recommendedAction: 'reverify',
     });
+    expect(candidate!.actionReason).toContain('last verification');
     expect(candidate!.dedupeKey).toContain('svc-1');
     expect(candidate!.dedupeKey).toContain('service_updated_after_verification');
     expect(candidate!.reasons).toHaveLength(1);
@@ -141,6 +143,8 @@ describe('detectFeedbackSeverity', () => {
           service_name: 'Shelter',
           score: '55',
           neg_count: '5',
+          fraud_count: '0',
+          closure_count: '1',
           categories: 'incorrect_hours, service_closed',
         },
       ],
@@ -154,19 +158,65 @@ describe('detectFeedbackSeverity', () => {
       signalType: 'feedback_severity',
       currentScore: 55,
       currentBand: 'POSSIBLE',
+      recommendedAction: 'suppress',
     });
     expect(candidate!.reasons).toEqual(
-      expect.arrayContaining([expect.stringContaining('5 negative feedback')]),
+      expect.arrayContaining([expect.stringContaining('5 negative feedback or community reports')]),
     );
     expect(candidate!.reasons).toEqual(
       expect.arrayContaining([expect.stringContaining('incorrect_hours, service_closed')]),
     );
+    expect(candidate!.actionReason).toContain('Repeated negative reports');
   });
 
-  it('passes limit (param $1) and threshold (param $2) to the query', async () => {
+  it('passes limit and all report thresholds to the query', async () => {
     const client = makeClient([[]]);
     await detectFeedbackSeverity(client as never, 20);
-    expect(client.query).toHaveBeenCalledWith(expect.any(String), [20, 3]);
+    expect(client.query).toHaveBeenCalledWith(expect.any(String), [20, 3, 1, 2]);
+  });
+
+  it('escalates a suspected fraud report to immediate suppression', async () => {
+    const client = makeClient([
+      [
+        {
+          service_id: 'svc-9',
+          service_name: 'Transit Aid',
+          score: '82',
+          neg_count: '1',
+          fraud_count: '1',
+          closure_count: '0',
+          categories: 'suspected_fraud',
+        },
+      ],
+    ]);
+
+    const [candidate] = await detectFeedbackSeverity(client as never, 20);
+
+    expect(candidate!.recommendedAction).toBe('suppress');
+    expect(candidate!.actionReason).toContain('fraud');
+    expect(candidate!.reasons[0]).toContain('suspected fraud report');
+  });
+
+  it('escalates repeated closure reports to suppression', async () => {
+    const client = makeClient([
+      [
+        {
+          service_id: 'svc-10',
+          service_name: 'Family Center',
+          score: '67',
+          neg_count: '2',
+          fraud_count: '0',
+          closure_count: '2',
+          categories: 'permanently_closed, temporarily_closed',
+        },
+      ],
+    ]);
+
+    const [candidate] = await detectFeedbackSeverity(client as never, 20);
+
+    expect(candidate!.recommendedAction).toBe('suppress');
+    expect(candidate!.actionReason).toContain('Closure report threshold');
+    expect(candidate!.reasons[0]).toContain('closure reports');
   });
 });
 
@@ -194,9 +244,22 @@ describe('detectStaleness', () => {
       signalType: 'score_staleness',
       currentScore: 65,
       currentBand: 'LIKELY',
+      recommendedAction: 'reverify',
     });
     expect(candidate!.reasons[0]).toContain('120 days');
     expect(candidate!.notesText).toContain('120 days');
+  });
+
+  it('suppresses listings with severely stale scores', async () => {
+    const client = makeClient([
+      [{ service_id: 'svc-7', service_name: 'Food Shelf', score: '71', days_stale: '220' }],
+    ]);
+
+    const [candidate] = await detectStaleness(client as never, 25);
+
+    expect(candidate!.recommendedAction).toBe('suppress');
+    expect(candidate!.actionReason).toContain('180');
+    expect(candidate!.notesText).toContain('suspended');
   });
 
   it('passes only the limit as a SQL parameter', async () => {
@@ -240,8 +303,10 @@ describe('detectScoreDegraded', () => {
       signalType: 'score_degraded',
       currentScore: 25,
       currentBand: 'POSSIBLE',
+      recommendedAction: 'suppress',
     });
     expect(candidate!.reasons[0]).toContain('25');
+    expect(candidate!.actionReason).toContain('minimum seeker-visible threshold');
   });
 
   it('assigns the correct band for a score at the RED boundary', async () => {

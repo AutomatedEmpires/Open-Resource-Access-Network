@@ -115,6 +115,27 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: '1'
 
+  functions-build:
+    name: Build Functions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Azure Functions package
+        run: npm run build:functions
+
   audit:
     name: Security Audit
     runs-on: ubuntu-latest

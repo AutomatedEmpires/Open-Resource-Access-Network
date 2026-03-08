@@ -33,6 +33,25 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Login to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate App Service settings contract
+        run: |
+          az webapp config appsettings list \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+            --query "[?value && value!=''].name" -o tsv > /tmp/oran-webapp-settings.txt
+          node scripts/validate-runtime-env.mjs \
+            --target webapp \
+            --names-file /tmp/oran-webapp-settings.txt \
+            --node-env production \
+            --format github
+
       - name: Run tests
         run: npm run test
 
@@ -43,13 +62,6 @@ jobs:
         run: |
           cp -r .next/static .next/standalone/.next/static
           cp -r public .next/standalone/public 2>/dev/null || true
-
-      - name: Login to Azure (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Configure App Service for Run From Package
         run: |
@@ -108,15 +120,44 @@ jobs:
             --name "${{ vars.AZURE_WEBAPP_NAME }}"
           echo "Waiting for cold start (B1 takes ~60s)..."
           sleep 60
-          url="https://${{ vars.AZURE_WEBAPP_NAME }}.azurewebsites.net"
-          for i in 1 2 3 4; do
-            status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 45 "$url" || true)
-            echo "Attempt $i: HTTP $status"
-            if [ -n "$status" ] && [ "$status" -ge 200 ] && [ "$status" -lt 500 ]; then
-              echo "Deployment verified successfully"
-              exit 0
+          base_url="https://${{ vars.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+          health_url="$base_url/api/health"
+          body_file="$(mktemp)"
+          status=""
+          for i in 1 2 3 4 5; do
+            status=$(curl -sS -o "$body_file" -w "%{http_code}" --max-time 45 "$health_url" || true)
+            echo "Readiness attempt $i: HTTP $status"
+            if [ "$status" = "200" ]; then
+              echo "Health endpoint is ready"
+              break
             fi
-            echo "Retrying in 20s..."
-            sleep 20
+            if [ -s "$body_file" ]; then
+              echo "Latest readiness response:"
+              cat "$body_file"
+            fi
+            if [ "$i" -lt 5 ]; then
+              echo "Retrying in 20s..."
+              sleep 20
+            fi
           done
-          echo "::warning::Health check did not get a healthy response, but deploy succeeded. Check the app manually."
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Deployment failed readiness verification."
+            exit 1
+          fi
+
+          headers_file="$(mktemp)"
+          curl -sS -D "$headers_file" -o /dev/null --max-time 45 "$base_url/"
+          grep -qi '^content-security-policy:' "$headers_file" || {
+            echo "::error::Missing Content-Security-Policy header on deployed app."
+            exit 1
+          }
+          grep -qi '^x-frame-options:[[:space:]]*DENY' "$headers_file" || {
+            echo "::error::Missing X-Frame-Options: DENY header on deployed app."
+            exit 1
+          }
+          grep -qi '^x-content-type-options:[[:space:]]*nosniff' "$headers_file" || {
+            echo "::error::Missing X-Content-Type-Options: nosniff header on deployed app."
+            exit 1
+          }
+          echo "Deployment verified successfully"

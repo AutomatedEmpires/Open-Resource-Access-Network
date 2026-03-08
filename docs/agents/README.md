@@ -5,6 +5,7 @@ This folder contains agent-facing docs: activation context, status snapshots, pr
 ## Key docs
 
 - `AGENTS_OVERVIEW.md` — what the agents are and where they operate
+- `AGENT_CONTROL_PLANE.md` — enterprise operator model and live control-plane contract
 - `ROADMAP.md` — build plan / roadmap
 
 ## Subfolders

@@ -21,12 +21,14 @@ Platform direction:
 
 Implemented (recently):
 - Full RBAC enforcement (middleware + API route guards + `shouldEnforceAuth()` production fail-closed).
-- In-memory feature flags with typed constants and fail-closed semantics (DB-backed reads/writes planned).
+- Hybrid feature flags with a DB-backed authoritative catalog when `DATABASE_URL` is configured, plus an in-memory fallback for local development and runtime recovery.
 - Content Security Policy (see ADR-0005).
 - Rate limiting on all API routes with Retry-After headers.
 - Azure Communication Services — transactional email dispatch for notification channel='email' (`src/services/email/azureEmail.ts`).
 - Azure Cache for Redis — search result caching with 5-min TTL (`src/services/cache/redis.ts`, `src/services/search/cache.ts`).
 - Azure Functions Timer Trigger — hourly SLA breach checker (`functions/checkSlaBreaches/`, `src/app/api/internal/sla-check/route.ts`).
+- Azure OpenAI — post-retrieval summarization and guarded intent-enrichment hooks (`src/services/chat/llm.ts`, `src/services/chat/intentEnrich.ts`).
+- Azure Speech — authenticated TTS summary endpoint behind `tts_summaries` (`src/services/tts/azureSpeech.ts`, `src/app/api/tts/summary/route.ts`).
 
 Planned:
 - Any external 211 API integration.
@@ -44,8 +46,9 @@ ORAN uses [Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity/
   - `NEXTAUTH_SECRET` (random secret for JWT encryption)
 
 ### Implementation
-- `src/middleware.ts`: JWT extraction via `getToken()` + role enforcement via `isRoleAtLeast()` for protected page routes.
+- `src/proxy.ts`: JWT extraction via `getToken()` + role enforcement via `isRoleAtLeast()` for protected page routes.
 - `src/app/api/auth/[...nextauth]/route.ts`: NextAuth.js handler with Azure AD provider. Rate-limited per IP.
+- `src/app/providers.tsx`: client-side `SessionProvider` boundary for authenticated UI surfaces.
 - `src/services/auth/guards.ts`: `isRoleAtLeast()`, `requireMinRole()`, `requireOrgAccess()`, `requireOrgRole()`.
 - `src/services/auth/session.ts`: `getAuthContext()` for server-side session extraction; `shouldEnforceAuth()` for production fail-closed behavior.
 - Roles: currently derived from org memberships via `organization_members` table. Entra ID app roles planned.
@@ -102,24 +105,36 @@ Status: Raw SQL migrations are the source of truth today.
 
 ## Feature Flags
 
-ORAN uses a lightweight in-house feature flag interface. The database table `feature_flags` exists, but runtime usage is currently in-memory unless wired up.
+ORAN uses a hybrid in-house feature flag service. When `DATABASE_URL` is configured, the `feature_flags` table is the authoritative catalog; otherwise the service falls back to an in-memory baseline and last-known-good cache.
 
 ### Interface (`src/services/flags/flags.ts`)
 ```typescript
 interface FlagService {
-  isEnabled(flagName: string): Promise<boolean>;
+  isEnabled(flagName: string, subjectKey?: string): Promise<boolean>;
   getFlag(flagName: string): Promise<FeatureFlag | null>;
   setFlag(flagName: string, enabled: boolean, rolloutPct?: number): Promise<void>;
 }
 ```
 
-### Active Flags
+Current implementation notes:
+- The expanded catalog is maintained in `db/migrations/0035_feature_flag_catalog.sql`.
+- DB-backed writes record best-effort audit metadata and keep the in-memory fallback synchronized.
+- Safety-critical AI flags default off unless explicitly enabled.
+
+### Representative Flags
 | Flag Name       | Default | Description |
 |-----------------|---------|-------------|
 | `llm_summarize` | false   | Enable LLM post-retrieval summarization |
+| `content_safety_crisis` | true | Run Azure AI Content Safety as the second-layer crisis gate |
+| `vector_search` | false | Enable pgvector-backed semantic search and re-ranking |
+| `llm_intent_enrich` | false | Enable LLM-based intent enrichment for ambiguous chat queries |
+| `multilingual_descriptions` | false | Enable translated service descriptions post-retrieval |
+| `tts_summaries` | false | Enable spoken service summaries via Azure Speech |
 | `map_enabled`   | true    | Show map surface in nav |
 | `feedback_form` | true    | Allow seeker feedback submission |
 | `host_claims`   | true    | Allow new host claims |
+
+For the full registry, see `src/services/flags/README.md` and `src/services/flags/flags.ts`.
 
 ---
 
@@ -248,17 +263,19 @@ interface TwoOneOneService {
 
 ---
 
-## Future Integrations (Planned)
+## Integration Snapshot
 
 | Integration | Purpose | Status |
 |-------------|---------|--------|
 | Azure Application Insights | Production observability + telemetry | **Implemented** |
 | Azure Maps | Geocoding (forward + reverse) | **Implemented** |
 | Azure AI Translator | Dynamic content translation (F0 free tier) | **Implemented** |
-| Redis (Azure Cache for Redis) | Rate limiting, session quota, cache | Planned |
+| Azure Cache for Redis | Search result caching and shared cache infrastructure | **Implemented** |
 | Azure Blob Storage | Evidence file storage for verification | Planned |
-| Azure OpenAI | LLM summarization (gated by flag; summarize retrieved records only) | Planned |
-| Azure Communication Services (Email) | Email notifications to hosts (Azure-first) | Planned |
+| Azure OpenAI | LLM summarization and intent enrichment hooks (both flag-gated) | **Implemented** |
+| Azure Communication Services (Email) | Email notifications to hosts (Azure-first) | **Implemented** |
+| Azure Functions | Queue and timer workloads for ingestion and operational workflows | **Implemented** |
+| Azure Speech | Optional spoken summaries behind `tts_summaries` | **Implemented** |
 | Codecov | Test coverage reporting in CI | Configured |
 
 ---

@@ -139,10 +139,23 @@ Intent also extracts:
 ### Stage 5: Profile Hydration
 
 For authenticated users (Entra ID / NextAuth.js session present):
-- Load saved location preference
-- Load saved service category preferences
-- Load accessibility requirements
-- Merge with current message context
+- Load saved approximate city from `user_profiles`
+- Load saved seeker context from `seeker_profiles`
+- Hydrate only schema-backed fields into chat context:
+     - `serviceInterests`
+     - `selfIdentifiers`
+     - `currentServices`
+     - `accessibilityNeeds`
+     - `ageGroup`
+     - `householdType`
+     - `housingSituation`
+     - `transportationBarrier`
+     - `preferredDeliveryModes`
+     - `urgencyWindow`
+     - `documentationBarriers`
+     - `digitalAccessBarrier`
+- Fail open: if hydration fails, chat continues with the request-only context
+- Request-time locale remains authoritative for the active turn. Saved locale may guide UI defaults, but must not silently override an in-flight chat request.
 
 For anonymous users:
 - Use geo from request (IP-based approximate location) if explicitly allowed
@@ -154,9 +167,55 @@ Pure SQL query against PostgreSQL/PostGIS:
 - Filter by intent category (taxonomy join)
 - Filter by geographic radius (PostGIS `ST_DWithin`) or bbox
 - Filter by status = 'active'
-- Order by: confidence_score DESC, distance ASC
+- Apply authenticated approximate-city soft sorting via `cityBias` when no explicit geo query is present
+- For authenticated users, optionally append up to 3 normalized `serviceInterests` hints to the text query only when the intent classifier falls back to `general`
+- For authenticated users, optionally compute deterministic profile-match signals from canonical taxonomies only:
+     - `population`
+     - `situation`
+     - `access`
+     - `delivery`
+     - `culture`
+- Profile-match signals only re-order already eligible results; they do not widen retrieval and do not bypass trust filters
+- Personalized chat retrieval skips the shared search cache
+- Order by: verification confidence DESC, profile match DESC, stored score DESC, distance ASC
 - Limit: 5 results by default
 - **No LLM involvement. No vector similarity. No reranking beyond SQL ORDER BY.**
+
+Current schema-backed mappings:
+
+- approximate city → `cityBias`
+- non-English request locale or explicit language-interpretation need → `language_barrier`
+- explicit language-interpretation need → `interpreter_on_site`
+- non-English request locale or explicit language-interpretation need → `bilingual_services`
+- `virtual_option` → `virtual`, `phone`, `hybrid`
+- `evening_hours` → `evening_hours`, `weekend_hours`, `after_hours`
+- `child_friendly` → `childcare_available`
+- `transportationBarrier` → `transportation_barrier` and `transportation_provided`
+- `preferredDeliveryModes` → exact `delivery` tags (`in_person`, `virtual`, `phone`, `hybrid`)
+- `urgencyWindow=same_day` → `same_day`
+- `urgencyWindow=next_day` → `same_day`, `next_day`
+- `documentationBarriers` → `no_id_required`, `no_documentation_required`, `no_ssn_required`
+- `digitalAccessBarrier` → `digital_barrier`
+- `pregnant`, `new_parent`, `caregiver`, `dv_survivor`, `reentry`, `undocumented_friendly`, `refugee` → exact `population` tags
+- `single_parent` household → exact `population` tag
+- `unhoused`, `shelter`, `couch_surfing` → `no_fixed_address`
+- `lgbtq` → `lgbtq_affirming`
+
+Service-interest normalization rules:
+
+- `serviceInterests` are a closed seeker-profile vocabulary, not free text
+- only recognized service-interest IDs may influence retrieval shaping
+- directory/map explicit filters remain authoritative and are never overridden by chat hydration
+
+Deliberate non-mappings in the current phase:
+
+- free-text `additionalContext`
+- exact language availability matching
+- transit access and physical accessibility ranking
+- service-interest hard filters
+- urgency windows beyond same-day / next-day metadata currently present in the live catalog
+
+These stay out of retrieval until the underlying service metadata is queryable in the live search engine without heuristics.
 
 ### Stage 7: Response Assembly
 

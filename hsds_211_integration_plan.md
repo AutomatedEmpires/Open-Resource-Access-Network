@@ -395,7 +395,20 @@ Delivered:
 - **Persistence implementations**: 6 new Drizzle store files under `src/agents/ingestion/persistence/` (`sourceSystemStore.ts`, `sourceFeedStore.ts`, `sourceRecordStore.ts`, `entityIdentifierStore.ts`, `hsdsExportSnapshotStore.ts`, `lifecycleEventStore.ts`).
 - **Factory + exports**: `storeFactory.ts` and `persistence/index.ts` updated to compose and export all new stores.
 
-## Phase 2: Canonical Federation Layer
+## Phase 2: Canonical Federation Layer ✅ COMPLETE
+
+### Phase 2 status
+
+**Completed** — all deliverables implemented, audited, and validated.
+
+- **Migration**: `db/migrations/0033_canonical_federation_layer.sql` — 5 tables with CHECK constraints, FK cascades, PostGIS geom auto-sync trigger, GiST/GIN/partial indexes, idempotent trigger guards, `updated_at` triggers.
+- **Drizzle schema**: 5 table definitions, 10 type exports (Row + NewRow), 5 relation definitions in `src/db/schema.ts`.
+- **Store interfaces**: 5 new store interfaces added to `src/agents/ingestion/stores.ts` + `IngestionStores` composite updated (now 27 stores).
+- **Persistence**: 5 new Drizzle store files (`canonicalOrganizationStore.ts`, `canonicalServiceStore.ts`, `canonicalLocationStore.ts`, `canonicalServiceLocationStore.ts`, `canonicalProvenanceStore.ts`).
+- **Factory + exports**: `storeFactory.ts` and `persistence/index.ts` updated.
+- **Tests**: 32 new unit tests across 5 test files + storeFactory test updated (33 total new tests).
+- **Audit**: 3 medium findings fixed (trigger idempotency, missing reverse-lookup index, missing publication_status index). 2 low findings accepted.
+- **Design decision**: `canonical_identifiers` table NOT created — reuses existing `entity_identifiers` (Phase 1) with the same `entity_type` values (`'organization'`, `'service'`, `'location'`). Canonical vs live entities are distinguished by `entity_id` (UUIDs are globally unique across both canonical and live tables). Use `identifier_scheme` (e.g. `'hsds'`, `'211_la'`) to identify cross-system links.
 
 ### Phase 2 goal
 

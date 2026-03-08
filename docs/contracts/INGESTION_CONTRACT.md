@@ -15,6 +15,8 @@ Defines the intake pipeline from source submission through verification and admi
 - Intake pipeline preserves record provenance and reviewability.
 - Unverified data is not published as trusted service content.
 - Routing/escalation respects SLA and role boundaries.
+- Published listings that become stale, degraded, or repeatedly flagged are removed from seeker-facing service until reverification completes.
+- Dedupe must preserve both ORAN-native fields and export-ready source snapshots for HSDS/export workflows.
 
 ## Failure Modes
 
@@ -25,6 +27,7 @@ Defines the intake pipeline from source submission through verification and admi
 
 - Pipeline stage health checks and queue monitoring.
 - SLA breach escalation tests and operational drills.
+- Regression scans must prove that high-risk listings are suppressed from seeker search and routed back into review.
 
 ## References
 

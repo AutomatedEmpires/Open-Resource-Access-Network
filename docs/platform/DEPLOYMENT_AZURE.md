@@ -70,6 +70,11 @@ Note: the bootstrap script sets `DATABASE_URL` as a **Key Vault reference** usin
 
 This repo includes a deploy workflow: `.github/workflows/deploy-azure-appservice.yml`.
 
+The workflow now performs two pre/postflight checks automatically:
+
+- validates the Azure App Service app-settings contract before rollout
+- verifies `/api/health` plus core security headers after rollout
+
 You must create an Azure AD app registration / service principal, then add a **federated credential** for GitHub Actions.
 
 If you want a scripted setup, use:
@@ -107,6 +112,8 @@ Codespaces note:
 ## 4) Run the deployment
 
 - Push to `main`, or run the workflow manually (Actions → Deploy).
+
+For Functions, `.github/workflows/deploy-azure-functions.yml` now validates required Function App settings before deployment and still lists deployed functions after publish.
 
 ## Notes
 

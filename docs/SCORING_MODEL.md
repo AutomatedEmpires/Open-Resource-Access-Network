@@ -76,6 +76,20 @@ Actionability now, using structured fields only:
 
 Unknown constraint inputs should not be treated as hard failures until clarified.
 
+## Chat retrieval shaping
+
+Authenticated chat may apply deterministic profile-derived ordering hints during retrieval.
+These hints are not a fourth public score and are not shown to seekers as a trust label.
+
+Rules:
+
+- Trust remains primary in ordering (`verification_confidence` first).
+- Profile match is a secondary sort only.
+- Only exact, schema-backed taxonomy mappings may contribute to profile match.
+- Profile match may never override crisis routing, trust filtering, or the eligibility disclaimer.
+- Free-text seeker context is not used for retrieval ranking in the current phase.
+- Explicit directory/map/search filters remain authoritative; chat hydration is a soft ordering aid only.
+
 ---
 
 ## Trust bands and messaging

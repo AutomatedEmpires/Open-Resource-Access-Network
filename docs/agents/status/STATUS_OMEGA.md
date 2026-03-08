@@ -83,7 +83,7 @@ Generated: 2026-03-03T20:15:00Z
 - [x] `lang="en"` on `<html>`
 
 ### Landing Page
-- [x] Crisis callout (911/988/211) above the fold on mobile
+- [x] Crisis Help FAB (bottom-right, every page) — opens full CrisisModal with 13+ categories
 - [x] Primary CTA: "Find services" → /chat
 - [x] Alternative entry points: Directory, Map
 - [x] No sign-in required to start

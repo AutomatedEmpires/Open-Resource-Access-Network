@@ -2,6 +2,7 @@
 
 Update note:
 - `next.config.mjs` now configures baseline security headers (e.g., `X-Frame-Options`, `Permissions-Policy`). Treat this audit as point-in-time; if you change enforcement, update the audit summary sections accordingly.
+- 2026-03-08 status note: this audit remains the historical baseline created on 2026-02-28. Several findings recorded below have since been resolved in code, including proxy-layer RBAC enforcement, SessionProvider wiring, JSON-locale i18n bundles, hybrid DB-backed feature flags, and Azure integrations for Redis, OpenAI, ACS email, Application Insights, and multiple Functions workloads. Use `docs/ENGINEERING_LOG.md` plus current implementation docs for present-day status, not this baseline alone.
 
 Scope: This report audits the repository *as it exists right now* in the `codespace` branch. It is an alignment and compliance audit only; no product features were implemented as part of this work.
 

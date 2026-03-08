@@ -80,6 +80,7 @@ Current chatmodes:
 - Ingestion pipeline spec: `docs/agents/AGENTS_INGESTION_PIPELINE.md`
 - Ingestion roadmap + status: `docs/agents/ROADMAP.md`
 - Source Registry spec: `docs/agents/AGENTS_SOURCE_REGISTRY.md`
+- Control plane model: `docs/agents/AGENT_CONTROL_PLANE.md`
 - Scoring SSOT: `docs/SCORING_MODEL.md`
 - Safety contract: `docs/SSOT.md`
 

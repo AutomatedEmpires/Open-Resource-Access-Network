@@ -24,9 +24,20 @@ npm run lint
 npx tsc --noEmit
 npm run test:coverage
 npm run build
+npm run build:functions
 ```
 
 These commands are defined in `package.json` and mirrored in `.github/workflows/ci.yml`.
+
+Before release validation against deployed Azure targets, also run:
+
+```bash
+npm run validate:runtime
+npm run validate:runtime:functions
+```
+
+These commands validate the runtime env contract from your current shell. The deploy workflows
+also validate Azure app settings directly before rollout.
 
 ## 3) Focused Test Loops
 

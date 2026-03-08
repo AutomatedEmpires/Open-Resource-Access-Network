@@ -239,6 +239,34 @@ Recommended keys:
 - `fetchKey = sha256(canonicalUrl)`
 - `extractKey = sha256(canonicalUrl + "|" + contentHash)`
 
+Operational follow-through:
+
+- Ingestion dedupe prevents re-processing the same evidence snapshot.
+- Published-listing dedupe is a separate concern:
+  - suspected duplicates are surfaced through embeddings-based duplicate review
+  - merges remain human-approved so ORAN-native fields and HSDS export mappings are not silently collapsed
+
+## Published listing hygiene (staleness, flags, and suppression)
+
+Published listings must not remain seeker-visible when trust signals degrade.
+
+Current enforcement policy:
+
+- `service_updated_after_verification` -> keep listed, route to `reverify`
+- `score_staleness` at 90-179 days -> keep listed, route to `reverify`
+- `score_staleness` at 180+ days -> suppress from seeker service until reverification
+- `score_degraded` below 40 -> suppress from seeker service until reverification
+- `feedback_severity` -> suppress from seeker service until reverification when any of these hold:
+  - 3+ negative feedback/community reports in 30 days
+  - 1 suspected fraud report in 14 days
+  - 2 closure reports in 14 days
+
+Implementation notes:
+
+- Suppression means `services.status = 'inactive'`; seeker search already excludes inactive listings.
+- Suppression does not delete the record. It creates/maintains an admin review trail and keeps the listing recoverable after reverification.
+- `duplicate_listing` reports should route into merge review, not automatic suppression of both records.
+
 ## Audit log requirements
 
 Every step emits an audit event with:

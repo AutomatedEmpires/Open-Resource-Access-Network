@@ -10,6 +10,7 @@ Implemented today:
 - Zod validation at API boundaries for all endpoints (all 34+ API routes).
 - Chat pipeline includes crisis-first gate (before quota and rate limiting), quota/rate limiting logic.
 - Rate limiting on all API routes, including auth endpoints, with `Retry-After` headers on 429 responses.
+- Same-origin protection for authenticated, cookie-based write APIs enforced centrally in `src/proxy.ts` for `/api/profile`, `/api/saved`, `/api/user/**`, `/api/host/**`, `/api/community/**`, `/api/admin/**`, `/api/templates/**`, and `/api/submissions/appeal`.
 - Protected route authentication gating via middleware (JWT extraction + role enforcement via `isRoleAtLeast()`).
 - All protected API routes enforce auth server-side via `getAuthContext()` + role guards.
 - Host API routes fail-closed in production—return 401 even if Entra ID is not configured.
@@ -171,8 +172,9 @@ Status: Implemented.
 - Implemented: write endpoints require valid Entra ID / NextAuth.js session via `getAuthContext()`.
 - Implemented: role-based access control via `isRoleAtLeast()`, `requireMinRole()`, `requireOrgRole()`.
 - Implemented: scope-based access control via `platform_scopes`, `user_scope_grants`, and two-person approval workflow.
+- Implemented: same-origin write enforcement for authenticated cookie-based APIs; cross-site state-changing requests are rejected before route handlers execute.
 - Implemented: error boundary hierarchy — root `global-error.tsx`, app-level `error.tsx`, per-route-group boundaries (`(seeker)`, `(host)`, `(community-admin)`, `(oran-admin)`), and custom `not-found.tsx`.
-- Planned: CSRF protection considerations per endpoint.
+- Planned: extend same-origin/CSRF-style protection to any future authenticated write routes that fall outside the current protected prefixes.
 
 ### Sensitive Data Exposure
 - All API responses exclude internal scoring detail from seeker-facing endpoints

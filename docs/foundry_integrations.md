@@ -105,14 +105,13 @@ This document is the single source of truth for every Azure AI / Foundry integra
 |---|---|
 | **Status** | ✅ **Live** — activated 2026-03-07 |
 | **Bucket** | B — Watch |
-| **Feature flag** | None yet — will use `auto_check_gate` or new flag when wired |
+| **Feature flag** | None — function runs when the ingestion queue is active |
 | **Why** | ORAN's ingestion pipeline fetches raw web pages and PDF snapshots. Converting unstructured HTML/text into HSDS-structured service records by hand is not scalable. Phi-4-mini-instruct is a compact, fast, cost-efficient model well suited to structured extraction tasks. |
 | **What** | The `extractService` Azure Function reads a fetched page snapshot, calls Phi-4-mini-instruct to extract HSDS fields (service name, org, phones, eligibility, hours, address, URL), creates a candidate record, and enqueues to `ingestion-verify`. |
-| **Where** | `functions/extractService/index.ts` — stub with full implementation outline · `src/agents/ingestion/pipeline/stages/llmExtract.ts` · `src/agents/ingestion/pipeline/stages/llmCategorize.ts` |
-| **How** | Function app already has queue bindings (`ingestion-extract` → `ingestion-verify`). Wire `llmExtractStage.execute()` using the ORAN-FOUNDRY-resource endpoint. Model is chat-completion format. Structured output (JSON mode) to match HSDS field schema. |
-| **Next step** | Wire `extractService` to `llmExtractStage` in `src/agents/ingestion/pipeline/`. Add env vars to Function App. |
-| **Env vars needed** | `AZURE_FOUNDRY_ENDPOINT` (= ORAN-FOUNDRY-resource endpoint) · `AZURE_FOUNDRY_KEY` · `FOUNDRY_EXTRACT_DEPLOYMENT=phi-4-mini-instruct` |
-| **Docs** | `functions/extractService/index.ts` (inline outline) · `docs/agents/AGENTS_INGESTION_PIPELINE.md` |
+| **Where** | `functions/extractService/index.ts` · `src/agents/ingestion/pipeline/stages.ts` |
+| **How** | The queue function builds a minimal pipeline context from the fetched snapshot, runs stages 5–9 (`LlmExtractStage`, `LlmCategorizeStage`, `VerifyStage`, `ScoreStage`, `BuildCandidateStage`), persists a candidate record, and emits an `ingestion-verify` queue message. |
+| **Env vars** | `FOUNDRY_ENDPOINT` · `FOUNDRY_KEY` · `FOUNDRY_EXTRACT_DEPLOYMENT=phi-4-mini-instruct` |
+| **Docs** | `functions/extractService/index.ts` · `docs/agents/AGENTS_INGESTION_PIPELINE.md` |
 
 ---
 
@@ -122,13 +121,12 @@ This document is the single source of truth for every Azure AI / Foundry integra
 |---|---|
 | **Status** | ✅ **Live** — activated 2026-03-07 |
 | **Bucket** | B — Watch |
-| **Feature flag** | `auto_check_gate` (exists, currently off) |
+| **Feature flag** | None — runs when Foundry credentials are configured |
 | **Why** | Admin reviewers manually compare candidate fields against original source pages. Phi-4-mini can pre-score confidence, flag suspicious fields, and suggest corrections — reducing reviewer burden and accelerating verification. |
 | **What** | The `verifyCandidate` Azure Function re-fetches the source, compares extracted fields against live page content, and uses Phi-4 to produce a discrepancy report and adjusted confidence score before the record reaches admin review. |
-| **Where** | `functions/verifyCandidate/index.ts` — stub |
-| **How** | Queue-triggered on `ingestion-verify`. Model prompt: "Given the extracted service record [JSON] and the following source page content [text], identify any fields that appear inconsistent or missing. Return a JSON discrepancy report." |
-| **Next step** | Wire verification comparison logic and Phi-4 API call inside the stub. |
-| **Env vars needed** | `AZURE_FOUNDRY_ENDPOINT` · `AZURE_FOUNDRY_KEY` · `FOUNDRY_EXTRACT_DEPLOYMENT=phi-4-mini-instruct` (reuse) |
+| **Where** | `functions/verifyCandidate/index.ts` |
+| **How** | Queue-triggered on `ingestion-verify`. The function reloads the candidate, re-fetches the live page, asks Phi-4 for a JSON discrepancy verdict, blends that penalty with embedding similarity calibration, updates the candidate confidence score, and emits an `ingestion-route` queue message. |
+| **Env vars** | `FOUNDRY_ENDPOINT` · `FOUNDRY_KEY` · `FOUNDRY_EXTRACT_DEPLOYMENT=phi-4-mini-instruct` |
 
 ---
 
@@ -171,7 +169,7 @@ This document is the single source of truth for every Azure AI / Foundry integra
 |---|---|
 | **Status** | ✅ **Live** — activated 2026-03-07 |
 | **Bucket** | C — Selective (only used during admin review, not on critical path) |
-| **Feature flag** | New flag needed: `llm_admin_assist` |
+| **Feature flag** | `llm_admin_assist` = `false`, 0% by default |
 | **Why** | Admin reviewers currently read raw candidate records and decide approve/reject/request-changes with no AI support. gpt-4o-mini can pre-check completeness, flag likely errors, suggest missing fields, and highlight policy conflicts — saving reviewer time without removing human decision authority. |
 | **What** | During admin review of a candidate, an async "AI check" panel surfaces: field completeness score, suggested corrections, detected inconsistencies between fields, confidence in address/phone format validity. Human reviewer retains full approve/reject authority. |
 | **Where** | New: `src/services/admin/reviewAssist.ts` · Admin review page |
@@ -184,12 +182,12 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🟡 **Service module scaffolded; not fully integrated** |
+| **Status** | ✅ **Live** — activated 2026-03-06 |
 | **Bucket** | B — Watch |
-| **Feature flag** | New flag needed: `multilingual_descriptions` |
+| **Feature flag** | `multilingual_descriptions` = `false`, 0% by default |
 | **Why** | ORAN serves communities where English is not the primary language. Service descriptions are stored in English. Machine translation allows seekers to read descriptions in their preferred language without requiring providers to submit translations. |
 | **What** | Service descriptions, eligibility text, and hours descriptions are translated on-demand (or cached) to the user's locale. Translation is applied at response assembly time, only for the returned records. |
-| **Where** | `src/services/i18n/translator.ts` (existing scaffold) · Response assembly stage |
+| **Where** | `src/services/i18n/translator.ts` · `src/app/api/chat/route.ts` |
 | **How** | Azure AI Translator REST API. Cache translations in Redis by `(serviceId, locale)` key to avoid re-translating unchanged records. Never translate stored records — only the response payload. |
 | **Env vars needed** | `AZURE_TRANSLATOR_ENDPOINT` · `AZURE_TRANSLATOR_KEY` · `AZURE_TRANSLATOR_REGION` |
 | **Cost note** | Azure Translator F0: 2M chars/month free. At ~500 chars/service × 5 results × estimated daily queries — will remain in free tier for a long time. |
@@ -200,7 +198,7 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🟡 **Service scaffolded; partial integration** |
+| **Status** | ✅ **Live** — activated 2026-03-06 |
 | **Bucket** | A — Free (Azure Maps Gen2 free tier: 5K requests/month) |
 | **Feature flag** | `map_enabled` = `true`, 100% rollout |
 | **Why** | Seekers need to know how far services are from them. Address strings must be converted to coordinates for distance sorting and map display. Batch geocoding at import time avoids per-query geocoding cost. |
@@ -216,13 +214,13 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🔲 **Planned** |
+| **Status** | ✅ **Live** — activated 2026-03-06 |
 | **Bucket** | C — Selective (per-query LLM call on hot path is expensive at scale) |
-| **Feature flag** | New flag needed: `llm_intent_enrich` |
+| **Feature flag** | `llm_intent_enrich` = `false`, 0% by default |
 | **Why** | Current Stage 4 intent detection is schema-based keyword matching. It handles well-formed queries but may misclassify ambiguous or complex messages ("I just got out of the hospital and can't afford food and my landlord says I have 3 days"). An LLM classifier could detect multi-intent queries and weighted category assignments. |
 | **What** | Optional replacement or supplement to keyword intent detection. gpt-4o-mini classifies message into one or more `IntentCategory` values with confidence weights. Only activated for messages that the keyword classifier rates as `general` (fallback) or that contain multiple potential categories. |
 | **Where** | `src/services/chat/intentEnrich.ts` (new) · Stage 4 in orchestrator |
-| **How** | Constrained generation: LLM prompt returns JSON `{categories: [{category, weight}], urgency}`. Output validated with Zod before use. Fallback to keyword intent on error. |
+| **How** | `enrichIntent()` is called only when the deterministic classifier returns `general`. It performs a constrained single-label classification against the existing intent enum and fails open to the original intent on any error. |
 | **Constraint** | Never runs for messages that already trigger crisis routing. |
 | **Cost concern** | One extra LLM call per general-fallback query. At S0 pricing this is ~$0.003/1K tokens. Volume-dependent — gate behind flag and monitor. |
 
@@ -235,9 +233,9 @@ This document is the single source of truth for every Azure AI / Foundry integra
 | **Status** | ✅ **Live** — activated 2026-03-07 |
 | **Bucket** | B — Watch |
 | **Feature flag** | None — background process |
-| **Why** | ORAN's data freshness depends on regular re-crawling of provider website sources. The `scheduledCrawl` Azure Function currently runs daily but is a no-op stub. Phi-4-mini can extract structured updates from re-crawled HTML without human intervention. |
+| **Why** | ORAN's data freshness depends on regular re-crawling of provider website sources. A daily timer-driven crawl keeps known sources moving back through the ingestion pipeline so refreshed content can be re-evaluated and reviewed. |
 | **What** | Daily timer trigger: crawl all known source URLs, run Phi-4-mini extraction on changed pages (compare content hash), queue candidates with `source: 'scheduled_crawl'` and lower initial confidence for admin review. |
-| **Where** | `functions/scheduledCrawl/index.ts` — stub (timer trigger, daily 06:00 UTC) · `functions/fetchPage/index.ts` — fetches raw HTML |
+| **Where** | `functions/scheduledCrawl/index.ts` · `functions/fetchPage/index.ts` |
 | **How** | `scheduledCrawl` → enqueue source URLs → `fetchPage` fetches and hashes → `extractService` runs Phi-4 extraction → `verifyCandidate` runs AI verification → `routeToAdmin` queues for human review. |
 | **Shape** | Full ingestion pipeline (Ideas 3, 4, 11 together form the complete cycle). |
 
@@ -263,11 +261,11 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | ✅ **Live** — activated 2026-03-07 |
+| **Status** | 🟡 **Partial** — service live, manual-submit plumbing still outlined |
 | **Bucket** | C — Selective (per-document billing; only on demand) |
-| **Feature flag** | New flag needed: `doc_intelligence_intake` |
+| **Feature flag** | `doc_intelligence_intake` = `false`, 0% by default |
 | **Why** | Many service providers submit updates via PDFs or scanned intake forms. Current ingestion only handles HTML. Azure Document Intelligence's prebuilt layout and key-value models can extract structured data from PDFs, scanned documents, and forms. |
-| **What** | When a provider submits a PDF evidence document via `manualSubmit`, route it through Document Intelligence before running Phi-4 extraction. Parse tables, key-value pairs, and layout sections into clean text. |
+| **What** | The repo includes a production-ready `analyzeDocument()` helper for PDF extraction. The `manualSubmit` Azure Function documents how to call it before enqueueing the URL, but that HTTP function is still a stub. |
 | **Where** | `functions/manualSubmit/index.ts` — PDF ingestion path · New: `src/services/ingestion/docIntelligence.ts` |
 | **How** | Azure Document Intelligence `prebuilt-layout` model. Returns page layout + key-value pairs as JSON. Feed cleaned JSON to Phi-4 for final HSDS structuring. |
 | **Env vars needed** | `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` · `AZURE_DOCUMENT_INTELLIGENCE_KEY` |
@@ -281,9 +279,9 @@ This document is the single source of truth for every Azure AI / Foundry integra
 |---|---|
 | **Status** | ✅ **Live** — activated 2026-03-07 |
 | **Bucket** | C — Selective |
-| **Feature flag** | `feedback_form` = `true` (flag exists); triage LLM sub-flag: new `llm_feedback_triage` |
+| **Feature flag** | `llm_feedback_triage` = `false`, 0% by default |
 | **Why** | Seekers submit free-text feedback about service quality, outdated information, or closures. Triaging these manually is slow. An LLM can classify feedback into: `record_outdated`, `service_closed`, `incorrect_phone`, `positive`, `out_of_scope`, etc., and route actionable reports automatically to the review queue. |
-| **What** | On feedback submission: gpt-4o-mini classifies into a `FeedbackCategory` enum, extracts the specific field(s) referenced (if any), assigns urgency, and optionally creates a "suspected outdated" flag on the service record for admin review. |
+| **What** | On feedback submission, the API can fire-and-forget an LLM classification pass that assigns a triage category, urgency, and referenced fields without delaying the seeker response. |
 | **Where** | New: `src/services/feedback/triage.ts` · Feedback submission API route |
 | **Constraint** | Free-text feedback may contain seeker PII. Strip user-identifying context before sending to LLM. Only the problem description (not the submitter identity) is sent. |
 
@@ -293,12 +291,12 @@ This document is the single source of truth for every Azure AI / Foundry integra
 
 | | |
 |---|---|
-| **Status** | 🔲 **Planned** |
+| **Status** | ✅ **Live** — activated 2026-03-06 |
 | **Bucket** | C — Selective (per-character billing; only on user request) |
-| **Feature flag** | New flag needed: `tts_summaries` |
+| **Feature flag** | `tts_summaries` = `false`, 0% by default |
 | **Why** | Seekers with visual impairments or low-literacy may benefit from audio versions of service summaries. Azure Neural TTS produces natural-sounding speech that integrates with the existing chat UI. |
 | **What** | After chat response assembly (Stage 7/8), an optional "Listen" button triggers a TTS API call that returns an audio blob of the LLM-generated or assembled summary. Streamed back to the client. |
-| **Where** | New: `src/services/tts/azureSpeech.ts` · Chat UI component |
+| **Where** | `src/services/tts/azureSpeech.ts` · `src/app/api/tts/summary/route.ts` |
 | **How** | Azure Speech Service REST TTS endpoint. SSML input from the assembled summary. `en-US-JennyNeural` or locale-matched voice. Cache audio by `(messageHash, locale)` in Azure Blob Storage to avoid regenerating for repeated queries. |
 | **Env vars needed** | `AZURE_SPEECH_KEY` · `AZURE_SPEECH_REGION` |
 | **Cost note** | Azure Speech F0: 5 hours/month free. Neural HD: $16/1M chars at S0. Compress TTS to on-demand only, cache aggressively. |
@@ -327,18 +325,18 @@ This document is the single source of truth for every Azure AI / Foundry integra
 |---|---|---|---|---|---|
 | 1 | Chat LLM summarization (gpt-4o-mini) | ✅ Live | B | `llm_summarize` = on | `oranhf57ir-prod-oai` |
 | 2 | Content Safety crisis gate | ✅ Live | A | `content_safety_crisis` = on | `ORAN-FOUNDRY-resource` |
-| 3 | Phi-4 ingestion extraction | 🟡 Stub | B | `auto_check_gate` (off) | `ORAN-FOUNDRY-resource` |
-| 4 | Phi-4 verification assist | 🟡 Stub | B | `auto_check_gate` (off) | `ORAN-FOUNDRY-resource` |
+| 3 | Phi-4 ingestion extraction | ✅ Live | B | none | `ORAN-FOUNDRY-resource` |
+| 4 | Phi-4 verification assist | ✅ Live | B | none | `ORAN-FOUNDRY-resource` |
 | 5 | Cohere vector semantic search | ✅ Live | B | `vector_search` = off | `ORAN-FOUNDRY-resource` |
 | 6 | Cohere service deduplication | ✅ Live | B | none (admin job) | `ORAN-FOUNDRY-resource` |
-| 7 | gpt-4o-mini admin review assist | 🔲 Planned | C | `llm_admin_assist` (new) | `oranhf57ir-prod-oai` |
+| 7 | gpt-4o-mini admin review assist | ✅ Live | C | `llm_admin_assist` = off | `oranhf57ir-prod-oai` |
 | 8 | Azure AI Translator multilingual | ✅ Live | B | `multilingual_descriptions` = off | separate resource |
 | 9 | Azure Maps enhanced geocoding | ✅ Live | A | `map_enabled` = on | separate resource |
 | 10 | gpt-4o-mini intent enrichment | ✅ Live | C | `llm_intent_enrich` = off | `oranhf57ir-prod-oai` |
-| 11 | Phi-4 scheduled crawl extraction | 🟡 Stub | B | none (background) | `ORAN-FOUNDRY-resource` |
+| 11 | Phi-4 scheduled crawl extraction | ✅ Live | B | none | `ORAN-FOUNDRY-resource` |
 | 12 | Cohere confidence calibration | ✅ Live | B | none (scoring signal) | `ORAN-FOUNDRY-resource` |
-| 13 | Document Intelligence intake parsing | 🔲 Planned | C | `doc_intelligence_intake` (new) | separate resource |
-| 14 | gpt-4o-mini feedback triage | 🔲 Planned | C | `llm_feedback_triage` (new) | `oranhf57ir-prod-oai` |
+| 13 | Document Intelligence intake parsing | 🟡 Partial | C | `doc_intelligence_intake` = off | separate resource |
+| 14 | gpt-4o-mini feedback triage | ✅ Live | C | `llm_feedback_triage` = off | `oranhf57ir-prod-oai` |
 | 15 | Azure Speech TTS summaries | ✅ Live | C | `tts_summaries` = off | separate resource |
 | 16 | App Insights AI observability | ✅ Live | A | always-on | existing App Insights |
 

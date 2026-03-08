@@ -2,13 +2,13 @@ import { test, expect } from '@playwright/test';
 import { isDbConfigured } from './helpers/db';
 
 test.describe('Seeker flows (public)', () => {
-  test('landing page shows emergency resources and can reach chat', async ({ page }) => {
+  test('landing page shows crisis FAB and can reach chat', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('alert', { name: 'Emergency resources' })).toBeVisible();
-    await expect(page.getByRole('link', { name: /^911$/ })).toBeVisible();
-    await expect(page.getByRole('link', { name: '988 Crisis' })).toBeVisible();
-    await expect(page.getByRole('link', { name: '211 Resources' })).toBeVisible();
+    // Persistent floating crisis help button — present on every page
+    await expect(
+      page.getByRole('button', { name: /open crisis resources/i }),
+    ).toBeVisible();
 
     await page.getByRole('link', { name: 'Find services' }).click();
     await expect(page).toHaveURL(/\/chat$/);

@@ -16,9 +16,36 @@ async function loadMiddlewareModule() {
 }
 
 function makeRequest(pathname: string) {
+  return makeRequestWithOptions(pathname);
+}
+
+function makeRequestWithOptions(
+  pathname: string,
+  options: {
+    method?: string;
+    origin?: string;
+    fetchSite?: string;
+    authorization?: string;
+  } = {},
+) {
+  const url = new URL(`https://oran.test${pathname}`);
+  const headers = new Headers();
+
+  if (options.origin) {
+    headers.set('origin', options.origin);
+  }
+  if (options.fetchSite) {
+    headers.set('sec-fetch-site', options.fetchSite);
+  }
+  if (options.authorization) {
+    headers.set('authorization', options.authorization);
+  }
+
   return {
-    nextUrl: { pathname },
-    url: `https://oran.test${pathname}`,
+    method: options.method ?? 'GET',
+    headers,
+    nextUrl: url,
+    url: url.toString(),
   } as never;
 }
 
@@ -135,6 +162,67 @@ describe('middleware', () => {
     const { proxy: middleware } = await loadMiddlewareModule();
 
     const response = await middleware(makeRequest('/saved'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('blocks cross-site writes to protected API routes in production', async () => {
+    mutableEnv.NODE_ENV = 'production';
+    const { proxy: middleware } = await loadMiddlewareModule();
+
+    const response = await middleware(
+      makeRequestWithOptions('/api/profile', {
+        method: 'PUT',
+        origin: 'https://evil.test',
+      }),
+    );
+
+    expect(getTokenMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(403);
+    await expect(response.text()).resolves.toContain('Cross-site');
+  });
+
+  it('allows same-origin writes to protected API routes', async () => {
+    mutableEnv.NODE_ENV = 'production';
+    const { proxy: middleware } = await loadMiddlewareModule();
+
+    const response = await middleware(
+      makeRequestWithOptions('/api/profile', {
+        method: 'PUT',
+        origin: 'https://oran.test',
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('allows same-origin writes via fetch metadata fallback', async () => {
+    mutableEnv.NODE_ENV = 'production';
+    const { proxy: middleware } = await loadMiddlewareModule();
+
+    const response = await middleware(
+      makeRequestWithOptions('/api/saved', {
+        method: 'POST',
+        fetchSite: 'same-origin',
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('does not apply the same-origin write guard to internal bearer routes', async () => {
+    mutableEnv.NODE_ENV = 'production';
+    const { proxy: middleware } = await loadMiddlewareModule();
+
+    const response = await middleware(
+      makeRequestWithOptions('/api/internal/sla-check', {
+        method: 'POST',
+        authorization: 'Bearer test-secret',
+      }),
+    );
 
     expect(response.status).toBe(200);
     expect(response.headers.get('x-middleware-next')).toBe('1');

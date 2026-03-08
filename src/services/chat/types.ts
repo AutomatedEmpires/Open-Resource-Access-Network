@@ -86,6 +86,17 @@ export interface UserProfile {
   accessibilityNeeds?: string[];
   /** Self-identified tags (e.g., "veteran"). Do not persist without explicit consent. */
   audienceTags?: string[];
+  serviceInterests?: string[];
+  currentServices?: string[];
+  selfIdentifiers?: string[];
+  ageGroup?: string;
+  householdType?: string;
+  housingSituation?: string;
+  transportationBarrier?: boolean;
+  preferredDeliveryModes?: string[];
+  urgencyWindow?: string;
+  documentationBarriers?: string[];
+  digitalAccessBarrier?: boolean;
 }
 
 export interface ChatContext {

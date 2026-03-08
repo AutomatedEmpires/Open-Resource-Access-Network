@@ -20,6 +20,29 @@ import { z } from 'zod';
 const UpdateProfileSchema = z.object({
   approximateCity: z.string().max(100).optional(),
   preferredLocale: z.string().max(10).optional(),
+  displayName: z.string().min(1).max(100).optional(),
+  phone: z.string().max(20).optional(),
+  seekerProfile: z.object({
+    serviceInterests: z.array(z.string().min(1).max(100)).max(32).default([]),
+    ageGroup: z.string().max(50).default(''),
+    householdType: z.string().max(50).default(''),
+    housingSituation: z.string().max(50).default(''),
+    selfIdentifiers: z.array(z.string().min(1).max(100)).max(32).default([]),
+    currentServices: z.array(z.string().min(1).max(100)).max(32).default([]),
+    accessibilityNeeds: z.array(z.string().min(1).max(100)).max(32).default([]),
+    transportationBarrier: z.boolean().default(false),
+    preferredDeliveryModes: z.array(z.enum(['in_person', 'virtual', 'phone', 'hybrid'])).max(4).default([]),
+    urgencyWindow: z.enum(['same_day', 'next_day', 'flexible']).or(z.literal('')).default(''),
+    documentationBarriers: z.array(z.enum(['no_id', 'no_documents', 'no_ssn'])).max(3).default([]),
+    digitalAccessBarrier: z.boolean().default(false),
+    pronouns: z.string().max(50).default(''),
+    profileHeadline: z.string().max(120).default(''),
+    avatarEmoji: z.string().max(8).default(''),
+    accentTheme: z.enum(['ocean', 'blossom', 'forest', 'sunset', 'midnight']).default('ocean'),
+    contactPhone: z.string().max(50).default(''),
+    contactEmail: z.string().max(254).default(''),
+    additionalContext: z.string().max(500).default(''),
+  }).optional(),
 });
 
 const PROFILE_RATE_LIMIT_MAX = 20;
@@ -71,6 +94,45 @@ describe('UpdateProfileSchema', () => {
     expect(result.data?.preferredLocale).toBe('es');
   });
 
+  it('accepts a valid seekerProfile payload', () => {
+    const result = UpdateProfileSchema.safeParse({
+      seekerProfile: {
+        serviceInterests: ['housing', 'food_assistance'],
+        ageGroup: '25_54',
+        householdType: 'single_parent',
+        housingSituation: 'at_risk',
+        selfIdentifiers: ['disability'],
+        currentServices: ['snap'],
+        accessibilityNeeds: ['wheelchair_access'],
+        transportationBarrier: true,
+        preferredDeliveryModes: ['phone', 'in_person'],
+        urgencyWindow: 'same_day',
+        documentationBarriers: ['no_id'],
+        digitalAccessBarrier: true,
+        pronouns: 'she/her',
+        profileHeadline: 'Looking for family-friendly support',
+        avatarEmoji: '🌟',
+        accentTheme: 'blossom',
+        contactPhone: '(555) 000-0000',
+        contactEmail: 'person@example.com',
+        additionalContext: 'Needs evening appointments only.',
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.seekerProfile?.serviceInterests).toEqual(['housing', 'food_assistance']);
+  });
+
+  it('rejects seekerProfile.additionalContext longer than 500 characters', () => {
+    const result = UpdateProfileSchema.safeParse({
+      seekerProfile: {
+        additionalContext: 'A'.repeat(501),
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('rejects approximateCity longer than 100 characters', () => {
     const result = UpdateProfileSchema.safeParse({
       approximateCity: 'A'.repeat(101),
@@ -113,13 +175,13 @@ describe('UpdateProfileSchema', () => {
     const result = UpdateProfileSchema.safeParse({
       approximateCity: 'Portland',
       role: 'oran_admin', // should NOT be settable via this endpoint
-      displayName: 'Hacker',
+      unknownField: 'extra',
     });
     expect(result.success).toBe(true);
     expect(result.data).toEqual({ approximateCity: 'Portland' });
-    // role and displayName must NOT appear in parsed data
+    // role and unknownField must NOT appear in parsed data
     expect((result.data as Record<string, unknown>)['role']).toBeUndefined();
-    expect((result.data as Record<string, unknown>)['displayName']).toBeUndefined();
+    expect((result.data as Record<string, unknown>)['unknownField']).toBeUndefined();
   });
 
   it('accepts empty strings (city could be cleared)', () => {
@@ -138,27 +200,63 @@ describe('UpdateProfileSchema', () => {
 describe('ProfileResponse contract', () => {
   interface ProfileResponse {
     userId: string;
+    displayName: string | null;
+    email: string | null;
+    phone: string | null;
+    authProvider: string | null;
     preferredLocale: string | null;
     approximateCity: string | null;
+    seekerProfile: {
+      serviceInterests: string[];
+      ageGroup: string;
+      householdType: string;
+      housingSituation: string;
+      selfIdentifiers: string[];
+      currentServices: string[];
+      accessibilityNeeds: string[];
+      transportationBarrier: boolean;
+      preferredDeliveryModes: string[];
+      urgencyWindow: '' | 'same_day' | 'next_day' | 'flexible';
+      documentationBarriers: string[];
+      digitalAccessBarrier: boolean;
+      pronouns: string;
+      profileHeadline: string;
+      avatarEmoji: string;
+      accentTheme: 'ocean' | 'blossom' | 'forest' | 'sunset' | 'midnight';
+      contactPhone: string;
+      contactEmail: string;
+      additionalContext: string;
+    } | null;
   }
 
   it('has the expected shape', () => {
     const profile: ProfileResponse = {
       userId: 'user-123',
+      displayName: null,
+      email: null,
+      phone: null,
+      authProvider: null,
       preferredLocale: 'en',
       approximateCity: 'Portland',
+      seekerProfile: null,
     };
 
     expect(profile).toHaveProperty('userId');
     expect(profile).toHaveProperty('preferredLocale');
     expect(profile).toHaveProperty('approximateCity');
+    expect(profile).toHaveProperty('seekerProfile');
   });
 
   it('allows null for optional fields', () => {
     const profile: ProfileResponse = {
       userId: 'user-456',
+      displayName: null,
+      email: null,
+      phone: null,
+      authProvider: null,
       preferredLocale: null,
       approximateCity: null,
+      seekerProfile: null,
     };
 
     expect(profile.preferredLocale).toBeNull();
@@ -181,8 +279,13 @@ describe('Profile API contract expectations', () => {
     const profileResponse = {
       profile: {
         userId: 'user-1',
+        displayName: null,
+        email: null,
+        phone: null,
+        authProvider: null,
         preferredLocale: 'en',
         approximateCity: 'Portland',
+        seekerProfile: null,
       },
     };
     expect(profileResponse.profile).toBeDefined();
@@ -194,8 +297,28 @@ describe('Profile API contract expectations', () => {
     const putResponse = {
       profile: {
         userId: 'user-1',
+        displayName: 'Taylor',
+        email: 'taylor@example.com',
+        phone: '555-000-0000',
+        authProvider: 'credentials',
         preferredLocale: 'en',
         approximateCity: 'Seattle',
+        seekerProfile: {
+          serviceInterests: ['housing'],
+          ageGroup: '25_54',
+          householdType: '',
+          housingSituation: '',
+          selfIdentifiers: [],
+          currentServices: [],
+          accessibilityNeeds: [],
+          pronouns: '',
+          profileHeadline: '',
+          avatarEmoji: '',
+          accentTheme: 'ocean',
+          contactPhone: '',
+          contactEmail: '',
+          additionalContext: '',
+        },
       },
     };
     expect(putResponse.profile).toBeDefined();

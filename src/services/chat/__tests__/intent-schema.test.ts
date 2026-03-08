@@ -210,6 +210,48 @@ describe('orchestrateChat', () => {
     expect(response.services).toHaveLength(1);
   });
 
+  it('hydrates authenticated context before retrieval', async () => {
+    const hydrateContext = vi.fn().mockResolvedValue({
+      ...mockContext,
+      userId: 'user-123',
+      locale: 'es',
+      approximateLocation: { city: 'Seattle' },
+      userProfile: {
+        userId: 'user-123',
+        serviceInterests: ['housing'],
+      },
+    });
+    const retrieveServices = vi.fn().mockResolvedValue([]);
+
+    await orchestrateChat(
+      'I need help',
+      '00000000-0000-0000-0000-000000000094',
+      'user-123',
+      'en',
+      'chat:test:hydrate',
+      {
+        retrieveServices,
+        isFlagEnabled: async () => false,
+        hydrateContext,
+      },
+    );
+
+    expect(hydrateContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: '00000000-0000-0000-0000-000000000094',
+        userId: 'user-123',
+        locale: 'en',
+      })
+    );
+    expect(retrieveServices).toHaveBeenCalledWith(
+      expect.objectContaining({ rawQuery: 'I need help' }),
+      expect.objectContaining({
+        locale: 'es',
+        approximateLocation: { city: 'Seattle' },
+      })
+    );
+  });
+
   it('returns a quota-exceeded response before retrieval when the session is exhausted', async () => {
     const sessionId = '00000000-0000-0000-0000-000000000097';
     for (let index = 0; index < MAX_CHAT_QUOTA; index++) {

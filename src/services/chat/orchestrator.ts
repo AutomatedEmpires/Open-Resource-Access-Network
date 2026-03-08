@@ -208,8 +208,10 @@ export function assembleContext(sessionId: string, userId?: string): ChatContext
     userId,
     locale: 'en',
     messageCount: quota.messageCount,
-    // Profile hydration would load from DB for authenticated users
-    // For now, return minimal context
+    // Profile hydration runs in route.ts via the hydrateContext dependency
+    // (chatHydration.ts queries user_profiles + seeker_profiles and merges all
+    // preference signals before orchestrateChat is called — this minimal context
+    // is a fallback baseline only for unauthenticated sessions)
     userProfile: userId
       ? { userId }
       : undefined,
@@ -284,6 +286,8 @@ export interface OrchestratorDeps {
   retrieveServices: (intent: Intent, context: ChatContext) => Promise<EnrichedService[]>;
   /** Check if a feature flag is enabled */
   isFlagEnabled: (flagName: string) => Promise<boolean>;
+  /** Optional: server-side profile hydration for authenticated users. Must fail open. */
+  hydrateContext?: (context: ChatContext) => Promise<ChatContext>;
   /** Optional: LLM summarization — only called if flag enabled, only summarizes retrieved records */
   summarizeWithLLM?: (services: EnrichedService[], intent: Intent) => Promise<string>;
   /** Optional: LLM intent enrichment — only called for 'general' fallback queries, if flag enabled */
@@ -360,7 +364,10 @@ export async function orchestrateChat(
   }
 
   // Stage 5: Context assembly (profile hydration)
-  const context = { ...assembleContext(sessionId, userId), locale };
+  let context = { ...assembleContext(sessionId, userId), locale };
+  if (deps.hydrateContext) {
+    context = await deps.hydrateContext(context);
+  }
 
   // Stage 6: Retrieval — pure SQL, no LLM
   const services = await deps.retrieveServices(intent, context);

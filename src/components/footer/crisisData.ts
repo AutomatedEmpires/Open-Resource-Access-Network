@@ -25,7 +25,8 @@ export type CrisisCategory =
   | 'runaway'
   | 'disaster'
   | 'poison'
-  | 'gambling';
+  | 'gambling'
+  | 'trafficking';
 
 export interface CrisisResource {
   id: string;
@@ -67,6 +68,7 @@ export const CRISIS_CATEGORY_LABELS: Record<CrisisCategory, string> = {
   disaster:         'Disaster Relief',
   poison:           'Poison Control',
   gambling:         'Gambling',
+  trafficking:      'Human Trafficking',
 };
 
 export const CRISIS_CATEGORY_COLORS: Record<
@@ -86,6 +88,7 @@ export const CRISIS_CATEGORY_COLORS: Record<
   disaster:         { bg: 'bg-gray-100',    text: 'text-gray-600',    border: 'border-gray-200' },
   poison:           { bg: 'bg-amber-50',    text: 'text-amber-700',   border: 'border-amber-200' },
   gambling:         { bg: 'bg-emerald-50',  text: 'text-emerald-700', border: 'border-emerald-200' },
+  trafficking:      { bg: 'bg-rose-50',     text: 'text-rose-700',    border: 'border-rose-200' },
 };
 
 // ============================================================
@@ -102,6 +105,17 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     phone: '911',
     phoneDisplay: '911',
     available: '24/7',
+    category: 'emergency',
+  },
+  {
+    id: 'community-211',
+    name: '211 Community Helpline',
+    description:
+      'Free, confidential community resource referrals for food, shelter, utilities, healthcare, childcare, and more. The social services equivalent of 911.',
+    phone: '211',
+    phoneDisplay: '211',
+    chatAvailable: true,
+    available: '24/7 in most areas',
     category: 'emergency',
   },
 
@@ -141,6 +155,28 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     available: 'Mon–Fri 10am–10pm ET',
     category: 'mentalHealth',
   },
+  {
+    id: '988-espanol',
+    name: '988 Línea de Crisis en Español',
+    description:
+      'Apoyo confidencial en español para personas en crisis suicida o de salud mental. Marca 988 y elige la opción en español.',
+    phone: '18886289454',
+    phoneDisplay: '1-888-628-9454',
+    chatAvailable: true,
+    available: '24/7',
+    category: 'mentalHealth',
+  },
+  {
+    id: 'postpartum-psi',
+    name: 'Postpartum Support International Helpline',
+    description:
+      'Support and referrals for postpartum depression, anxiety, and perinatal mental health for new parents and families.',
+    phone: '18009444773',
+    phoneDisplay: '1-800-944-4773',
+    textOption: 'Text 503-894-9453',
+    available: '24/7',
+    category: 'mentalHealth',
+  },
 
   // ── Safety & Abuse ───────────────────────────────────────
   {
@@ -162,6 +198,29 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
       'Confidential support from trained staff and local providers for survivors of sexual violence.',
     phone: '18006564673',
     phoneDisplay: '1-800-656-4673',
+    chatAvailable: true,
+    available: '24/7',
+    category: 'domesticViolence',
+  },
+  {
+    id: 'loveisrespect',
+    name: 'loveisrespect — Teen Dating Violence',
+    description:
+      'Specialized support for young people aged 13–26 experiencing dating abuse, unhealthy relationships, or sexual violence.',
+    phone: '18663319474',
+    phoneDisplay: '1-866-331-9474',
+    textOption: 'Text LOVEIS to 22522',
+    chatAvailable: true,
+    available: '24/7',
+    category: 'domesticViolence',
+  },
+  {
+    id: 'stronghearts',
+    name: 'StrongHearts Native Helpline',
+    description:
+      'Culturally appropriate support for Native Americans and Alaska Natives experiencing domestic violence, dating violence, or sexual assault.',
+    phone: '18447628483',
+    phoneDisplay: '1-844-762-8483',
     chatAvailable: true,
     available: '24/7',
     category: 'domesticViolence',
@@ -199,6 +258,16 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     phone: '18004224453',
     phoneDisplay: '1-800-422-4453',
     available: '24/7',
+    category: 'children',
+  },
+  {
+    id: 'national-parent-helpline',
+    name: 'National Parent Helpline',
+    description:
+      'Emotional support and resources for parents and caregivers under stress, struggling with parenting challenges, or at risk of harming their child.',
+    phone: '18554272736',
+    phoneDisplay: '1-855-427-2736',
+    available: 'Mon–Fri 10am–7pm PT',
     category: 'children',
   },
   {
@@ -285,6 +354,20 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     phoneDisplay: '1-800-222-1222',
     available: '24/7',
     category: 'poison',
+  },
+
+  // ── Human Trafficking ────────────────────────────────────
+  {
+    id: 'human-trafficking',
+    name: 'National Human Trafficking Hotline',
+    description:
+      'Confidential support, crisis intervention, and referrals for survivors of human trafficking and those who suspect trafficking activity.',
+    phone: '18883737888',
+    phoneDisplay: '1-888-373-7888',
+    textOption: 'Text BeFree to 233733',
+    chatAvailable: true,
+    available: '24/7',
+    category: 'trafficking',
   },
 
   // ── Eating Disorders ─────────────────────────────────────

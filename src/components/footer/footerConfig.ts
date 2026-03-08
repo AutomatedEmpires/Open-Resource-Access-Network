@@ -55,15 +55,17 @@ const PUBLIC_COLUMNS: FooterColumn[] = [
     title: 'Get Involved',
     links: [
       { label: 'List Your Organization', href: '/partnerships' },
-      { label: 'Partnerships',           href: '/partnerships' },
-      { label: 'Donate',                 href: '/partnerships' },
-      { label: 'Volunteer',              href: '/partnerships' },
+      { label: 'Donate',                 href: '/partnerships#donate' },
+      { label: 'Volunteer',              href: '/partnerships#volunteer' },
     ],
   },
   {
     title: 'Company',
     links: [
       { label: 'About ORAN', href: '/about' },
+      { label: 'Team',       href: '/about/team' },
+      { label: 'Press',      href: '/about/press' },
+      { label: 'Changelog',  href: '/changelog' },
       { label: 'Contact',    href: '/contact' },
       { label: 'Status',     href: '/status' },
       {
@@ -98,6 +100,7 @@ const HOST_COLUMNS: FooterColumn[] = [
     title: 'Company',
     links: [
       { label: 'About ORAN',    href: '/about' },
+      { label: 'Changelog',     href: '/changelog' },
       { label: 'Accessibility', href: '/accessibility' },
       {
         label: 'GitHub',
@@ -112,9 +115,10 @@ const COMMUNITY_ADMIN_COLUMNS: FooterColumn[] = [
   {
     title: 'My Work',
     links: [
-      { label: 'Review Queue',   href: '/queue' },
+      { label: 'Dashboard',       href: '/dashboard' },
+      { label: 'Review Queue',    href: '/queue' },
       { label: 'Verify Services', href: '/verify' },
-      { label: 'Coverage Map',   href: '/coverage' },
+      { label: 'Coverage',        href: '/coverage' },
     ],
   },
   {
@@ -129,6 +133,7 @@ const COMMUNITY_ADMIN_COLUMNS: FooterColumn[] = [
     title: 'Company',
     links: [
       { label: 'About ORAN',    href: '/about' },
+      { label: 'Changelog',     href: '/changelog' },
       { label: 'Accessibility', href: '/accessibility' },
       {
         label: 'GitHub',
@@ -162,9 +167,10 @@ const ORAN_ADMIN_COLUMNS: FooterColumn[] = [
   {
     title: 'Platform',
     links: [
-      { label: 'About ORAN',     href: '/about' },
-      { label: 'System Status',  href: '/status' },
+      { label: 'About ORAN',      href: '/about' },
+      { label: 'System Status',   href: '/status' },
       { label: 'Security Policy', href: '/security' },
+      { label: 'Changelog',       href: '/changelog' },
       {
         label: 'GitHub',
         href: 'https://github.com/AutomatedEmpires/Open-Resource-Access-Network',

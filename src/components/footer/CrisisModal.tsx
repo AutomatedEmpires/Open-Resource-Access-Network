@@ -210,6 +210,7 @@ export function CrisisModal({ open, onClose }: CrisisModalProps) {
             <button
               type="button"
               onClick={() => setActiveFilter(ALL_FILTER)}
+              aria-pressed={activeFilter === ALL_FILTER}
               className={cn(
                 'flex-shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors whitespace-nowrap',
                 activeFilter === ALL_FILTER
@@ -228,6 +229,7 @@ export function CrisisModal({ open, onClose }: CrisisModalProps) {
                   key={cat}
                   type="button"
                   onClick={() => setActiveFilter(cat)}
+                  aria-pressed={isActive}
                   className={cn(
                     'flex-shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors whitespace-nowrap',
                     isActive

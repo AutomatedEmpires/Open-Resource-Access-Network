@@ -12,7 +12,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { ExternalLink, AlertTriangle } from 'lucide-react';
@@ -24,7 +24,7 @@ import {
   getFooterVariant,
   type FooterColumn,
 } from './footerConfig';
-import { CrisisModal } from './CrisisModal';
+import { useCrisisModal } from '@/components/crisis/CrisisContext';
 
 // ============================================================
 // CONSTANTS
@@ -43,7 +43,7 @@ interface AppFooterProps {
 
 export function AppFooter({ className }: AppFooterProps) {
   const { data: session } = useSession();
-  const [crisisOpen, setCrisisOpen] = useState(false);
+  const { openCrisis } = useCrisisModal();
 
   const role = session?.user?.role as OranRole | undefined;
   const variant = getFooterVariant(role);
@@ -51,8 +51,6 @@ export function AppFooter({ className }: AppFooterProps) {
 
   return (
     <>
-      <CrisisModal open={crisisOpen} onClose={() => setCrisisOpen(false)} />
-
       <footer
         className={cn('border-t border-[var(--border)] bg-[var(--bg-surface)]', className)}
         aria-label="Site footer"
@@ -73,11 +71,11 @@ export function AppFooter({ className }: AppFooterProps) {
                 Connecting people to verified services — real help, real fast.
               </p>
 
-              {/* Crisis help button */}
+              {/* Crisis help button — opens shared CrisisModal via context */}
               <button
                 type="button"
-                onClick={() => setCrisisOpen(true)}
-                className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                onClick={openCrisis}
+                className="mt-5 inline-flex min-h-[44px] items-center gap-2 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
                 aria-haspopup="dialog"
                 aria-label="Open crisis resources and hotlines"
               >
@@ -134,14 +132,14 @@ export function AppFooter({ className }: AppFooterProps) {
             </p>
 
             <nav
-              className="order-1 flex flex-wrap gap-x-4 gap-y-1 sm:order-2"
+              className="order-1 flex flex-wrap gap-x-4 gap-y-2 sm:order-2"
               aria-label="Legal links"
             >
               {LEGAL_LINKS.map(({ label, href }) => (
                 <Link
                   key={href}
                   href={href}
-                  className="text-xs text-gray-400 transition-colors hover:text-gray-600"
+                  className="inline-flex items-center min-h-[44px] text-xs text-gray-400 transition-colors hover:text-gray-600"
                 >
                   {label}
                 </Link>
@@ -153,3 +151,4 @@ export function AppFooter({ className }: AppFooterProps) {
     </>
   );
 }
+

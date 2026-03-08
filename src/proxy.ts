@@ -13,16 +13,66 @@ import { isRoleAtLeast } from '@/services/auth/roles';
 
 // Protected route patterns by minimum role
 const PROTECTED_ROUTES: { pattern: RegExp; minRole: OranRole }[] = [
-  { pattern: /^\/(saved|profile)/, minRole: 'seeker' },
+  { pattern: /^\/(saved|profile|appeal|notifications)/, minRole: 'seeker' },
   { pattern: /^\/(claim|org|locations|services|admins)/, minRole: 'host_member' },
-  { pattern: /^\/(queue|verify|coverage)/, minRole: 'community_admin' },
-  { pattern: /^\/(approvals|rules|audit|zone-management|ingestion)/, minRole: 'oran_admin' },
+  { pattern: /^\/(queue|verify|coverage|dashboard)/, minRole: 'community_admin' },
+  { pattern: /^\/(approvals|rules|audit|zone-management|ingestion|appeals|scopes|triage|templates)/, minRole: 'oran_admin' },
 ];
+
+const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const CSRF_PROTECTED_API_PREFIXES = [
+  '/api/profile',
+  '/api/saved',
+  '/api/user',
+  '/api/host',
+  '/api/community',
+  '/api/admin',
+  '/api/templates',
+  '/api/submissions',
+  '/api/feedback',
+  '/api/chat',
+  '/api/tts',
+  '/api/reports',
+] as const;
 
 const ENTRA_CLIENT_ID = process.env.AZURE_AD_CLIENT_ID;
 
+function isProtectedApiWrite(request: NextRequest): boolean {
+  const method = request.method?.toUpperCase() ?? 'GET';
+  if (!STATE_CHANGING_METHODS.has(method)) {
+    return false;
+  }
+
+  const { pathname } = request.nextUrl;
+  return CSRF_PROTECTED_API_PREFIXES.some((prefix) =>
+    pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
+function isSameOriginWriteAllowed(request: NextRequest): boolean {
+  if (request.headers.get('authorization')) {
+    return true;
+  }
+
+  const origin = request.headers.get('origin')?.trim();
+  if (origin) {
+    return origin === request.nextUrl.origin;
+  }
+
+  const fetchSite = request.headers.get('sec-fetch-site')?.trim().toLowerCase();
+  if (fetchSite === 'same-origin' || fetchSite === 'same-site') {
+    return true;
+  }
+
+  return process.env.NODE_ENV !== 'production';
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (isProtectedApiWrite(request) && !isSameOriginWriteAllowed(request)) {
+    return new NextResponse('Cross-site state-changing requests are forbidden', { status: 403 });
+  }
 
   // Check if route requires authentication
   const protectedRoute = PROTECTED_ROUTES.find((r) => r.pattern.test(pathname));

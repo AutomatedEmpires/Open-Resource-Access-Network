@@ -668,9 +668,35 @@ export interface UserProfile {
   id: string;
   userId: string;
   displayName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  authProvider?: string | null;
   preferredLocale?: string | null;
   approximateCity?: string | null;
   role: OranRole;
+  createdByUserId?: string | null;
+  updatedByUserId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SeekerProfile {
+  id: string;
+  userId: string;
+  serviceInterests: string[];
+  ageGroup?: string | null;
+  householdType?: string | null;
+  housingSituation?: string | null;
+  selfIdentifiers: string[];
+  currentServices: string[];
+  accessibilityNeeds: string[];
+  pronouns?: string | null;
+  profileHeadline?: string | null;
+  avatarEmoji?: string | null;
+  accentTheme?: 'ocean' | 'blossom' | 'forest' | 'sunset' | 'midnight' | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  additionalContext?: string | null;
   createdByUserId?: string | null;
   updatedByUserId?: string | null;
   createdAt: Date;

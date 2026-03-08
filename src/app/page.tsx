@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { MessageCircle, List, MapPin, Shield, Phone } from 'lucide-react';
+import { MessageCircle, List, MapPin, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppNav } from '@/components/nav/AppNav';
+import { AppFooter } from '@/components/footer';
 
 const BASE_URL = 'https://openresourceaccessnetwork.com';
 
@@ -49,40 +50,6 @@ export default function Home() {
       />
 
       <AppNav />
-
-      {/* ── Emergency callout — above the fold on mobile ── */}
-      <div
-        role="alert"
-        aria-label="Emergency resources"
-        className="bg-error-strong text-white px-4 py-3 text-sm"
-      >
-        <div className="container mx-auto max-w-6xl flex flex-wrap items-center justify-between gap-2">
-          <span className="font-semibold">In immediate danger or crisis?</span>
-          <div className="flex flex-wrap gap-3 text-sm font-bold">
-            <a
-              href="tel:911"
-              className="flex items-center gap-1 underline underline-offset-2 hover:no-underline min-h-[44px] px-1"
-            >
-              <Phone className="h-3.5 w-3.5" aria-hidden="true" />
-              911
-            </a>
-            <a
-              href="tel:988"
-              className="flex items-center gap-1 underline underline-offset-2 hover:no-underline min-h-[44px] px-1"
-            >
-              <Phone className="h-3.5 w-3.5" aria-hidden="true" />
-              988 Crisis
-            </a>
-            <a
-              href="tel:211"
-              className="flex items-center gap-1 underline underline-offset-2 hover:no-underline min-h-[44px] px-1"
-            >
-              <Phone className="h-3.5 w-3.5" aria-hidden="true" />
-              211 Resources
-            </a>
-          </div>
-        </div>
-      </div>
 
       {/* ── Hero ─────────────────────────────────────────── */}
       <main id="main-content" tabIndex={-1} className="flex-1 flex flex-col items-center justify-center px-4 py-16 text-center">
@@ -146,13 +113,7 @@ export default function Home() {
         </div>
       </main>
 
-      {/* ── Footer ───────────────────────────────────────── */}
-      <footer className="border-t border-gray-200 bg-white py-6 text-center text-xs text-gray-500">
-        <p>
-          Open Resource Access Network · Services may have eligibility
-          requirements — confirm with provider
-        </p>
-      </footer>
+      <AppFooter />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { CrisisFloatingButton } from "@/components/crisis/CrisisFloatingButton";
 import { resolveLocale } from "@/lib/locale";
 import { isRTL } from "@/services/i18n/i18n";
 
@@ -89,7 +90,11 @@ export default async function RootLayout({
         >
           Skip to main content
         </a>
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+          {/* Persistent crisis help FAB — available on every page */}
+          <CrisisFloatingButton />
+        </Providers>
       </body>
     </html>
   );

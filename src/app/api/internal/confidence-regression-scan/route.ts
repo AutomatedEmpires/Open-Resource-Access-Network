@@ -4,7 +4,7 @@
  * Internal endpoint called by an Azure Functions timer trigger every 6 hours.
  * Detects trust-signal regressions across four signals:
  *   1. service_updated_after_verification — service data changed after score computed
- *   2. feedback_severity — 3+ negative user feedback items in 30 days
+ *   2. feedback_severity — repeated negative seeker feedback or community reports
  *   3. score_staleness — confidence score not recomputed in 90+ days
  *   4. score_degraded — active service has RED-tier score (< 40)
  *
@@ -12,12 +12,16 @@
  *   - A `confidence_regressions` audit row (72-hour dedup + open-submission guard)
  *   - A `confidence_regression` submission routed into the admin pipeline
  *   - In-app notifications for all community_admin / oran_admin users
+ *   - Visibility suppression (`services.status = 'inactive'`) for candidates
+ *     whose policy action is `suppress`
  *
  * Architecture:
  *   - Detection phase runs OUTSIDE the transaction against the pool directly.
  *     Each signal query runs on its own connection, enabling real parallelism.
- *   - Write phase opens a single short transaction only for the inserts.
- *     All writes use UNNEST batch inserts — O(1) queries regardless of match count.
+ *   - Write phase opens a single short transaction for the inserts plus
+ *     any required visibility suppression updates.
+ *   - Insert writes use UNNEST batch inserts — O(1) queries regardless of
+ *     candidate count.
  *
  * Protected by `INTERNAL_API_KEY` (shared secret). Not accessible to end users.
  */
@@ -29,9 +33,11 @@ import { isDatabaseConfigured, getPgPool, withTransaction } from '@/services/db/
 import { captureException } from '@/services/telemetry/sentry';
 import { detectRegressions } from '@/services/regression/detector';
 import type { RegressionCandidate } from '@/services/regression/detector';
+import { applyRegressionVisibilityPolicies } from '@/services/regression/policy';
 
 type ScanResult = {
   createdCount: number;
+  suppressedCount: number;
 };
 
 const DEFAULT_LIMIT = 100;
@@ -75,7 +81,11 @@ export async function POST(req: NextRequest) {
     // Write phase — short transaction only for the batch inserts.
     const result = await withTransaction(async (client) => {
       const createdCount = await persistRegressions(client, candidates);
-      const res: ScanResult = { createdCount };
+      const policySummary = await applyRegressionVisibilityPolicies(client, candidates);
+      const res: ScanResult = {
+        createdCount,
+        suppressedCount: policySummary.suppressedCount,
+      };
       return res;
     });
 
@@ -83,6 +93,7 @@ export async function POST(req: NextRequest) {
       {
         success: true,
         createdCount: result.createdCount,
+        suppressedCount: result.suppressedCount,
         checkedAt: new Date().toISOString(),
       },
       { status: 200 },
@@ -100,7 +111,7 @@ export async function POST(req: NextRequest) {
 /**
  * Persist newly detected regression candidates in three batched steps.
  *
- * Query budget: exactly 5 queries regardless of candidate count.
+ * Query budget: exactly 5 insert/dedup queries regardless of candidate count.
  *   1. Dedup check — filter keys already in the 72-hour window
  *   2. Batch INSERT confidence_regressions (ON CONFLICT handles concurrent races)
  *   3. Batch INSERT submissions (admin tasks)

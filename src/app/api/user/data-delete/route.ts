@@ -3,6 +3,7 @@
  *
  * Removes all personal data for the authenticated user:
  * - user_profiles
+ * - seeker_profiles
  * - saved_services
  * - notification_events
  * - notification_preferences
@@ -50,6 +51,9 @@ export async function DELETE(req: NextRequest) {
     await withTransaction(async (client) => {
       // 1. Delete saved services
       await client.query('DELETE FROM saved_services WHERE user_id = $1', [userId]);
+
+      // 1.5. Delete seeker profile context
+      await client.query('DELETE FROM seeker_profiles WHERE user_id = $1', [userId]);
 
       // 2. Delete notification preferences
       await client.query('DELETE FROM notification_preferences WHERE user_id = $1', [userId]);

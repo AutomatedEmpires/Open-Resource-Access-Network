@@ -10,7 +10,6 @@ import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
-import type { GeocodingResult } from '@/services/geocoding/azureMaps';
 import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
@@ -74,17 +73,20 @@ export async function POST(
       );
     }
 
-    // Generate a service ID for the published service
-    const serviceId = crypto.randomUUID();
+    const { publishCandidateToLiveService } = await import(
+      '@/agents/ingestion/livePublish'
+    );
 
-    // Mark candidate as published
-    await stores.candidates.markPublished(id, serviceId, authCtx.userId);
+    const { geocode, isConfigured: isGeocodingConfigured } = await import(
+      '@/services/geocoding/azureMaps'
+    );
 
-    // Transfer links from candidate to service
-    await stores.links.transferToService(id, serviceId);
-
-    // Withdraw all remaining assignments
-    await stores.assignments.withdrawAllForCandidate(id);
+    const published = await publishCandidateToLiveService({
+      stores,
+      candidateId: id,
+      publishedByUserId: authCtx.userId,
+      geocode: isGeocodingConfigured() ? geocode : undefined,
+    });
 
     // Audit event
     await stores.audit.append({
@@ -97,7 +99,11 @@ export async function POST(
       targetId: id,
       timestamp: new Date().toISOString(),
       inputs: {},
-      outputs: { serviceId },
+      outputs: {
+        serviceId: published.serviceId,
+        organizationId: published.organizationId,
+        locationId: published.locationId,
+      },
       evidenceRefs: [],
     });
 
@@ -109,51 +115,10 @@ export async function POST(
          (submission_type, status, target_type, target_id, service_id,
           submitted_by_user_id, title, submitted_at)
        VALUES ('service_verification', 'approved', 'service', $1, $1, $2, $3, NOW())`,
-      [serviceId, authCtx.userId, `Ingestion publish: candidate ${id}`],
+      [published.serviceId, authCtx.userId, `Ingestion publish: candidate ${id}`],
     );
 
-    // Idea 9: Azure Maps geocoding enrichment (fail-open)
-    // Geocode the candidate address and store coordinates in the investigation pack
-    // for downstream use when the service record is fully created.
-    const { geocode, isConfigured: isGeocodingConfigured } = await import(
-      '@/services/geocoding/azureMaps'
-    );
-    if (isGeocodingConfigured()) {
-      const candidate = await stores.candidates.getById(id);
-      const addr = candidate?.fields.address;
-      if (addr?.line1) {
-        const addressString = [addr.line1, addr.city, addr.region, addr.postalCode, addr.country]
-          .filter(Boolean)
-          .join(', ');
-        try {
-          const geoResults: GeocodingResult[] = await geocode(addressString);
-          const geo = geoResults[0];
-          if (geo) {
-            await executeQuery(
-              `UPDATE extracted_candidates
-               SET investigation_pack = investigation_pack || $1::jsonb
-               WHERE candidate_id = $2`,
-              [
-                JSON.stringify({
-                  geocodedLat: geo.lat,
-                  geocodedLon: geo.lon,
-                  geocodedAddress: geo.formattedAddress,
-                  geocodedConfidence: geo.confidence,
-                }),
-                id,
-              ],
-            );
-          }
-        } catch (geoErr) {
-          console.warn(
-            '[publish] Geocoding failed (non-fatal):',
-            geoErr instanceof Error ? geoErr.message : String(geoErr),
-          );
-        }
-      }
-    }
-
-    return NextResponse.json({ success: true, serviceId });
+    return NextResponse.json({ success: true, serviceId: published.serviceId });
   } catch (error) {
     captureException(error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });

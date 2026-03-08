@@ -21,6 +21,20 @@ import type { Location } from '@/domain/types';
 // SCHEMAS
 // ============================================================
 
+const PhoneInputSchema = z.object({
+  number:      z.string().min(7, 'Phone number too short').max(30),
+  extension:   z.string().max(10).optional(),
+  type:        z.enum(['voice', 'fax', 'text', 'hotline', 'tty']).default('voice'),
+  description: z.string().max(200).optional(),
+});
+
+const DayScheduleInputSchema = z.object({
+  day:    z.enum(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']),
+  opens:  z.string().regex(/^\d{2}:\d{2}$/, 'Time must be HH:MM'),
+  closes: z.string().regex(/^\d{2}:\d{2}$/, 'Time must be HH:MM'),
+  closed: z.boolean().default(false),
+});
+
 const UpdateLocationSchema = z.object({
   name:           z.string().min(1).max(500).optional(),
   alternateName:  z.string().max(500).optional(),
@@ -34,6 +48,8 @@ const UpdateLocationSchema = z.object({
   stateProvince:  z.string().max(200).optional(),
   postalCode:     z.string().max(20).optional(),
   country:        z.string().max(100).optional(),
+  phones:         z.array(PhoneInputSchema).max(10).optional(),
+  schedule:       z.array(DayScheduleInputSchema).min(7).max(7).optional(),
 }).refine((d) => Object.keys(d).length > 0, { message: 'At least one field required' });
 
 // ============================================================
@@ -269,6 +285,31 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
       }
 
       // Return updated location with address
+      // Replace phones if provided
+      if (d.phones !== undefined) {
+        await client.query('DELETE FROM phones WHERE location_id = $1', [id]);
+        for (const ph of d.phones) {
+          await client.query(
+            `INSERT INTO phones (location_id, number, extension, type, description)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [id, ph.number, ph.extension ?? null, ph.type === 'text' ? 'sms' : ph.type, ph.description ?? null],
+          );
+        }
+      }
+
+      // Replace schedule if provided
+      if (d.schedule !== undefined) {
+        await client.query('DELETE FROM schedules WHERE location_id = $1', [id]);
+        for (const ds of d.schedule) {
+          if (ds.closed) continue;
+          await client.query(
+            `INSERT INTO schedules (location_id, days, opens_at, closes_at)
+             VALUES ($1, $2, $3, $4)`,
+            [id, [ds.day], ds.opens, ds.closes],
+          );
+        }
+      }
+
       const finalResult = await client.query<Location>(
         `SELECT l.*, a.address_1, a.address_2, a.city, a.state_province, a.postal_code, a.country,
                 o.name AS organization_name

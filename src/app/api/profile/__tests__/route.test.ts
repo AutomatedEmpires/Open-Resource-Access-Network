@@ -123,8 +123,13 @@ describe('api/profile route', () => {
     await expect(response.json()).resolves.toEqual({
       profile: {
         userId: 'user-1',
+        displayName: null,
+        email: null,
+        phone: null,
+        authProvider: null,
         preferredLocale: 'es',
         approximateCity: 'Denver',
+        seekerProfile: null,
       },
     });
   });
@@ -187,8 +192,13 @@ describe('api/profile route', () => {
     await expect(response.json()).resolves.toEqual({
       profile: {
         userId: 'user-1',
+        displayName: null,
+        email: null,
+        phone: null,
+        authProvider: null,
         preferredLocale: 'fr',
         approximateCity: 'Paris',
+        seekerProfile: null,
       },
     });
   });

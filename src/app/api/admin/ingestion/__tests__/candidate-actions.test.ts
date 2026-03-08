@@ -16,6 +16,9 @@ const geocodingMocks = vi.hoisted(() => ({
   geocode: vi.fn(),
   isConfigured: vi.fn(),
 }));
+const livePublishMocks = vi.hoisted(() => ({
+  publishCandidateToLiveService: vi.fn(),
+}));
 
 const stores = vi.hoisted(() => ({
   publishReadiness: {
@@ -23,14 +26,7 @@ const stores = vi.hoisted(() => ({
     getReadiness: vi.fn(),
   },
   candidates: {
-    markPublished: vi.fn(),
     getById: vi.fn(),
-  },
-  links: {
-    transferToService: vi.fn(),
-  },
-  assignments: {
-    withdrawAllForCandidate: vi.fn(),
   },
   audit: {
     append: vi.fn(),
@@ -66,6 +62,7 @@ vi.mock('@/services/db/drizzle', () => ({
 }));
 vi.mock('@/agents/ingestion/persistence/storeFactory', () => storeFactoryMocks);
 vi.mock('@/services/geocoding/azureMaps', () => geocodingMocks);
+vi.mock('@/agents/ingestion/livePublish', () => livePublishMocks);
 
 function createRequest(options: {
   jsonBody?: unknown;
@@ -131,10 +128,7 @@ beforeEach(() => {
     score: 82,
     thresholdMet: true,
   });
-  stores.candidates.markPublished.mockResolvedValue(undefined);
   stores.candidates.getById.mockResolvedValue(null);
-  stores.links.transferToService.mockResolvedValue(undefined);
-  stores.assignments.withdrawAllForCandidate.mockResolvedValue(2);
   stores.audit.append.mockResolvedValue(undefined);
   stores.llmSuggestions.listForCandidate.mockResolvedValue([]);
   stores.llmSuggestions.getAcceptedValues.mockResolvedValue(new Map());
@@ -148,6 +142,11 @@ beforeEach(() => {
   stores.tagConfirmations.updateDecision.mockResolvedValue(undefined);
   geocodingMocks.isConfigured.mockReturnValue(false);
   geocodingMocks.geocode.mockResolvedValue([]);
+  livePublishMocks.publishCandidateToLiveService.mockResolvedValue({
+    serviceId: 'service-id',
+    organizationId: 'org-id',
+    locationId: 'loc-id',
+  });
 });
 
 describe('admin ingestion candidate action routes', () => {
@@ -167,7 +166,7 @@ describe('admin ingestion candidate action routes', () => {
     );
 
     expect(response.status).toBe(422);
-    expect(stores.candidates.markPublished).not.toHaveBeenCalled();
+    expect(livePublishMocks.publishCandidateToLiveService).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
       error: 'Candidate does not meet publish threshold.',
       readiness: {
@@ -182,7 +181,6 @@ describe('admin ingestion candidate action routes', () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
     const uuidSpy = vi
       .spyOn(globalThis.crypto, 'randomUUID')
-      .mockReturnValueOnce('service-id')
       .mockReturnValueOnce('event-id')
       .mockReturnValueOnce('corr-id');
     const { POST } = await loadPublishRoute();
@@ -194,24 +192,27 @@ describe('admin ingestion candidate action routes', () => {
 
     expect(rateLimitMock).toHaveBeenCalledWith('198.51.100.33', expect.any(Object));
     expect(requireMinRoleMock).toHaveBeenCalledWith({ userId: 'oran-1' }, 'oran_admin');
-    expect(stores.candidates.markPublished).toHaveBeenCalledWith(
-      '11111111-1111-4111-8111-111111111111',
-      'service-id',
-      'oran-1',
-    );
-    expect(stores.links.transferToService).toHaveBeenCalledWith(
-      '11111111-1111-4111-8111-111111111111',
-      'service-id',
-    );
-    expect(stores.assignments.withdrawAllForCandidate).toHaveBeenCalledWith(
-      '11111111-1111-4111-8111-111111111111',
+    expect(livePublishMocks.publishCandidateToLiveService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candidateId: '11111111-1111-4111-8111-111111111111',
+        publishedByUserId: 'oran-1',
+        geocode: undefined,
+      }),
     );
     expect(stores.audit.append).toHaveBeenCalledWith(
       expect.objectContaining({
         eventId: 'event-id',
         correlationId: 'corr-id',
-        outputs: { serviceId: 'service-id' },
+        outputs: {
+          serviceId: 'service-id',
+          organizationId: 'org-id',
+          locationId: 'loc-id',
+        },
       }),
+    );
+    expect(executeQueryMock).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO submissions'),
+      ['service-id', 'oran-1', 'Ingestion publish: candidate 11111111-1111-4111-8111-111111111111'],
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -252,31 +253,11 @@ describe('admin ingestion candidate action routes', () => {
     expect(invalid.status).toBe(400);
   });
 
-  it('enriches candidate investigation pack with geocoding when enabled', async () => {
+  it('passes the geocoder into the live publish helper when enabled', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
     geocodingMocks.isConfigured.mockReturnValueOnce(true);
-    geocodingMocks.geocode.mockResolvedValueOnce([
-      {
-        lat: 47.62,
-        lon: -122.33,
-        formattedAddress: '123 Main St, Seattle, WA',
-        confidence: 'High',
-      },
-    ]);
-    stores.candidates.getById.mockResolvedValueOnce({
-      fields: {
-        address: {
-          line1: '123 Main St',
-          city: 'Seattle',
-          region: 'WA',
-          postalCode: '98101',
-          country: 'US',
-        },
-      },
-    });
     const uuidSpy = vi
       .spyOn(globalThis.crypto, 'randomUUID')
-      .mockReturnValueOnce('service-id')
       .mockReturnValueOnce('event-id')
       .mockReturnValueOnce('corr-id');
     const { POST } = await loadPublishRoute();
@@ -287,33 +268,19 @@ describe('admin ingestion candidate action routes', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(geocodingMocks.geocode).toHaveBeenCalledWith('123 Main St, Seattle, WA, 98101, US');
-    expect(executeQueryMock).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE extracted_candidates'),
-      [
-        expect.stringContaining('"geocodedLat":47.62'),
-        '11111111-1111-4111-8111-111111111111',
-      ],
+    expect(livePublishMocks.publishCandidateToLiveService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        geocode: geocodingMocks.geocode,
+      }),
     );
     uuidSpy.mockRestore();
   });
 
-  it('ignores non-fatal geocoding failures and still publishes', async () => {
+  it('omits the geocoder when geocoding is not configured', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
-    geocodingMocks.isConfigured.mockReturnValueOnce(true);
-    geocodingMocks.geocode.mockRejectedValueOnce(new Error('maps down'));
-    stores.candidates.getById.mockResolvedValueOnce({
-      fields: {
-        address: {
-          line1: '500 Pine St',
-          city: 'Seattle',
-        },
-      },
-    });
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    geocodingMocks.isConfigured.mockReturnValueOnce(false);
     const uuidSpy = vi
       .spyOn(globalThis.crypto, 'randomUUID')
-      .mockReturnValueOnce('service-id')
       .mockReturnValueOnce('event-id')
       .mockReturnValueOnce('corr-id');
     const { POST } = await loadPublishRoute();
@@ -324,8 +291,11 @@ describe('admin ingestion candidate action routes', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(warnSpy).toHaveBeenCalledWith('[publish] Geocoding failed (non-fatal):', 'maps down');
-    warnSpy.mockRestore();
+    expect(livePublishMocks.publishCandidateToLiveService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        geocode: undefined,
+      }),
+    );
     uuidSpy.mockRestore();
   });
 

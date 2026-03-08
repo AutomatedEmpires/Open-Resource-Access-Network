@@ -13,6 +13,7 @@ const authMocks = vi.hoisted(() => ({
 
 const searchMock = vi.hoisted(() => vi.fn());
 const orchestrateChatMock = vi.hoisted(() => vi.fn());
+const hydrateChatContextMock = vi.hoisted(() => vi.fn());
 const isEnabledMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
 const translateBatchMock = vi.hoisted(() => vi.fn());
@@ -38,6 +39,9 @@ vi.mock('@/services/search/engine', () => ({
 vi.mock('@/services/chat/orchestrator', () => ({
   orchestrateChat: orchestrateChatMock,
   ChatRateLimitExceededError: MockChatRateLimitExceededError,
+}));
+vi.mock('@/services/profile/chatHydration', () => ({
+  hydrateChatContext: hydrateChatContextMock,
 }));
 vi.mock('@/services/flags/flags', () => ({
   flagService: {
@@ -71,7 +75,11 @@ function createRequest(options: {
 }
 
 async function loadRoute() {
-  return import('../route');
+  const routeModule = await import('../route');
+  return {
+    GET: routeModule.GET,
+    POST: routeModule.POST,
+  };
 }
 
 beforeEach(() => {
@@ -86,6 +94,7 @@ beforeEach(() => {
   isTranslatorConfiguredMock.mockReturnValue(false);
   translateBatchMock.mockResolvedValue([]);
   orchestrateChatMock.mockResolvedValue({ reply: 'ok' });
+  hydrateChatContextMock.mockImplementation(async (context: unknown) => context);
   captureExceptionMock.mockResolvedValue(undefined);
 });
 
@@ -165,8 +174,37 @@ describe('api/chat route', () => {
         },
       ],
     });
-    orchestrateChatMock.mockImplementationOnce(async (_message, _sessionId, userId, _locale, rateLimitKey, deps) => {
-      const services = await deps.retrieveServices({ rawQuery: 'food' }, { userId });
+    hydrateChatContextMock.mockResolvedValueOnce({
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      userId: 'user-1',
+      locale: 'en',
+      messageCount: 0,
+      userProfile: {
+        userId: 'user-1',
+        serviceInterests: ['housing'],
+        accessibilityNeeds: ['virtual_option', 'language_interpretation'],
+        selfIdentifiers: ['pregnant'],
+        householdType: 'single_parent',
+        housingSituation: 'shelter',
+        transportationBarrier: true,
+        preferredDeliveryModes: ['in_person'],
+        urgencyWindow: 'same_day',
+        documentationBarriers: ['no_id'],
+        digitalAccessBarrier: true,
+      },
+      approximateLocation: {
+        city: 'Denver',
+      },
+    });
+    orchestrateChatMock.mockImplementationOnce(async (_message, sessionId, userId, locale, rateLimitKey, deps) => {
+      const context = await deps.hydrateContext?.({
+        sessionId,
+        userId,
+        locale,
+        messageCount: 0,
+        userProfile: userId ? { userId } : undefined,
+      });
+      const services = await deps.retrieveServices({ category: 'general', rawQuery: 'food', urgencyQualifier: 'standard' }, context ?? { sessionId, userId, locale, messageCount: 0 });
       return { rateLimitKey, services };
     });
     const { POST } = await loadRoute();
@@ -184,13 +222,24 @@ describe('api/chat route', () => {
     expect(response.status).toBe(200);
     expect(searchMock).toHaveBeenCalledWith(
       {
-        text: 'food',
+        text: 'food housing',
+        cachePolicy: 'skip',
         filters: {
+          minConfidenceScore: undefined,
           status: 'active',
+          taxonomyTermIds: undefined,
         },
+        cityBias: 'Denver',
         pagination: {
           page: 1,
           limit: 5,
+        },
+        profileSignals: {
+          accessTags: ['interpreter_on_site', 'no_id_required', 'same_day', 'transportation_provided'],
+          cultureTags: ['bilingual_services'],
+          deliveryTags: ['virtual', 'phone', 'hybrid', 'in_person'],
+          populationTags: ['pregnant', 'single_parent'],
+          situationTags: ['no_fixed_address', 'language_barrier', 'transportation_barrier', 'digital_barrier'],
         },
         sortBy: 'relevance',
       },
@@ -268,15 +317,18 @@ describe('api/chat route', () => {
     expect(response.status).toBe(200);
     expect(searchMock).toHaveBeenCalledWith({
       text: 'food',
+      cachePolicy: 'skip',
       filters: {
         status: 'active',
         taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
         minConfidenceScore: 80,
       },
+      cityBias: undefined,
       pagination: {
         page: 1,
         limit: 5,
       },
+      profileSignals: undefined,
       sortBy: 'relevance',
     });
   });

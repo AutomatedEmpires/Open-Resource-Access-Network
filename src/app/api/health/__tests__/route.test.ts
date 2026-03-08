@@ -25,6 +25,7 @@ function createRequest(ip = '127.0.0.1') {
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
   dbMocks.executeQuery.mockResolvedValue([{ ok: 1 }]);
   rateLimitMock.mockReturnValue({ exceeded: false, retryAfterSeconds: 0 });
@@ -35,8 +36,10 @@ describe('GET /api/health', () => {
     const { GET } = await import('../route');
     const res = await GET(createRequest());
     expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('no-store, max-age=0');
     const body = await res.json();
     expect(body.status).toBe('healthy');
+    expect(body.configuration).toBe('ready');
     expect(body.database).toBe('connected');
     expect(typeof body.latencyMs).toBe('number');
   });
@@ -46,6 +49,7 @@ describe('GET /api/health', () => {
     const { GET } = await import('../route');
     const res = await GET(createRequest());
     expect(res.status).toBe(503);
+    expect(res.headers.get('Cache-Control')).toBe('no-store, max-age=0');
     const body = await res.json();
     expect(body.status).toBe('unhealthy');
     expect(body.database).toBe('not_configured');
@@ -56,9 +60,33 @@ describe('GET /api/health', () => {
     const { GET } = await import('../route');
     const res = await GET(createRequest());
     expect(res.status).toBe(503);
+    expect(res.headers.get('Cache-Control')).toBe('no-store, max-age=0');
     const body = await res.json();
     expect(body.status).toBe('unhealthy');
     expect(body.database).toBe('unreachable');
+  });
+
+  it('returns 503 when runtime configuration is invalid', async () => {
+    vi.stubEnv('AZURE_AD_CLIENT_ID', 'entra-client-id');
+    const { GET } = await import('../route');
+    const res = await GET(createRequest());
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Cache-Control')).toBe('no-store, max-age=0');
+    const body = await res.json();
+    expect(body.status).toBe('unhealthy');
+    expect(body.configuration).toBe('invalid');
+    expect(body.missing).toEqual(['AZURE_AD_CLIENT_SECRET']);
+  });
+
+  it('does not expose configuration details in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const { GET } = await import('../route');
+    const res = await GET(createRequest());
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.status).toBe('unhealthy');
+    expect(body.configuration).toBe('invalid');
+    expect(body.missing).toBeUndefined();
   });
 
   it('returns 429 when rate limited', async () => {
@@ -66,6 +94,7 @@ describe('GET /api/health', () => {
     const { GET } = await import('../route');
     const res = await GET(createRequest());
     expect(res.status).toBe(429);
+    expect(res.headers.get('Cache-Control')).toBe('no-store, max-age=0');
     expect(res.headers.get('Retry-After')).toBe('30');
   });
 });

@@ -7,42 +7,27 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { MAX_SERVICES_PER_RESPONSE, FEATURE_FLAGS } from '@/domain/constants';
+import type { EnrichedService } from '@/domain/types';
+import { getAuthContext } from '@/services/auth/session';
+import { orchestrateChat, ChatRateLimitExceededError } from '@/services/chat/orchestrator';
+import { buildChatSearchQuery } from '@/services/chat/retrievalProfile';
 import { ChatRequestSchema } from '@/services/chat/types';
-import {
-  orchestrateChat,
-  ChatRateLimitExceededError,
-} from '@/services/chat/orchestrator';
+import type { ChatContext, Intent } from '@/services/chat/types';
+import { executeCount, executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { flagService } from '@/services/flags/flags';
 import { summarizeWithLLM } from '@/services/chat/llm';
 import { enrichIntent } from '@/services/chat/intentEnrich';
-import { translateBatch, isConfigured as isTranslatorConfigured } from '@/services/i18n/translator';
 import { SUPPORTED_LOCALES } from '@/services/i18n/i18n';
 import type { LocaleCode } from '@/services/i18n/i18n';
-import type { EnrichedService } from '@/domain/types';
-import type { Intent, ChatContext } from '@/services/chat/types';
-import type { SearchQuery } from '@/services/search/types';
-import { ServiceSearchEngine } from '@/services/search/engine';
+import { translateBatch, isConfigured as isTranslatorConfigured } from '@/services/i18n/translator';
+import { hydrateChatContext } from '@/services/profile/chatHydration';
 import { cachedSearch } from '@/services/search/cache';
-import { executeQuery, executeCount, isDatabaseConfigured } from '@/services/db/postgres';
-import { MAX_SERVICES_PER_RESPONSE, FEATURE_FLAGS } from '@/domain/constants';
+import { ServiceSearchEngine } from '@/services/search/engine';
 import { captureException } from '@/services/telemetry/sentry';
-import { getAuthContext } from '@/services/auth/session';
-
-// ============================================================
-// REQUEST VALIDATION
-// ============================================================
 
 const RequestSchema = ChatRequestSchema;
-
-// ============================================================
-// DB-BACKED RETRIEVAL
-// ============================================================
-
 const engine = new ServiceSearchEngine({ executeQuery, executeCount });
-
-// ============================================================
-// HANDLER
-// ============================================================
 
 export async function POST(req: NextRequest) {
   let body: unknown;
@@ -52,12 +37,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  // Validate request
   const parsed = RequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: 'Invalid request', details: parsed.error.issues },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -66,19 +50,10 @@ export async function POST(req: NextRequest) {
   const authCtx = await getAuthContext();
   const effectiveUserId = authCtx?.userId;
 
-  // Rate limit key is derived server-side (per IP + optional user)
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   const rateLimitKey = effectiveUserId ? `chat:user:${effectiveUserId}` : `chat:ip:${ip}`;
 
-  /**
-   * Maps a chat intent to a SearchQuery and retrieves matching services.
-   * Pure SQL — no LLM, no ML. Text search uses the intent's raw query.
-   * Uses the same cachedSearch() helper as /api/search to keep behavior aligned.
-   */
-  async function retrieveServices(
-    intent: Intent,
-    _context: ChatContext,
-  ): Promise<EnrichedService[]> {
+  async function retrieveServices(intent: Intent, context: ChatContext): Promise<EnrichedService[]> {
     if (!isDatabaseConfigured()) {
       return [];
     }
@@ -86,53 +61,44 @@ export async function POST(req: NextRequest) {
     const trust = filters?.trust;
     const minConfidenceScore = trust === 'HIGH' ? 80 : trust === 'LIKELY' ? 60 : undefined;
 
-    const query: SearchQuery = {
-      text: intent.rawQuery,
-      filters: {
-        status: 'active',
-        taxonomyTermIds: filters?.taxonomyTermIds,
-        minConfidenceScore,
-      },
-      pagination: {
-        page: 1,
-        limit: MAX_SERVICES_PER_RESPONSE,
-      },
-      sortBy: 'relevance',
-    };
+    const query = buildChatSearchQuery(intent, context, {
+      taxonomyTermIds: filters?.taxonomyTermIds,
+      minConfidenceScore,
+      limit: MAX_SERVICES_PER_RESPONSE,
+    });
 
     const response = await cachedSearch(engine, query);
-    return response.results.map((r) => r.service);
+    return response.results.map((result) => result.service);
   }
 
   try {
     let response = await orchestrateChat(message, sessionId, effectiveUserId, locale, rateLimitKey, {
       retrieveServices,
+      hydrateContext: (context) => hydrateChatContext(context, { executeQuery }),
       isFlagEnabled: (flagName) => flagService.isEnabled(flagName),
       summarizeWithLLM,
       enrichIntent,
     });
 
-    // Idea 8: Multilingual service descriptions
-    // Translate service card descriptions when the request locale is not English.
-    // Fail-open: any translation error keeps original descriptions.
     const multilingualEnabled = await flagService.isEnabled(FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS);
     if (multilingualEnabled && locale !== 'en' && response.services.length > 0 && isTranslatorConfigured()) {
       const safeLocale: LocaleCode | null = SUPPORTED_LOCALES.includes(locale as LocaleCode)
         ? (locale as LocaleCode)
         : null;
+
       if (safeLocale) {
-        const descriptions = response.services.map((s) => s.description ?? '');
+        const descriptions = response.services.map((service) => service.description ?? '');
         try {
           const translated = await translateBatch(descriptions, safeLocale);
           response = {
             ...response,
-            services: response.services.map((s, i) => ({
-              ...s,
-              description: (descriptions[i] && translated[i]?.translatedText) || s.description,
+            services: response.services.map((service, index) => ({
+              ...service,
+              description: (descriptions[index] && translated[index]?.translatedText) || service.description,
             })),
           };
         } catch {
-          // Translator failure is non-fatal — keep original descriptions
+          // Translator failure is non-fatal — keep original descriptions.
         }
       }
     }
@@ -150,22 +116,20 @@ export async function POST(req: NextRequest) {
             'Retry-After': String(error.retryAfterSeconds),
             'Cache-Control': 'private, no-store',
           },
-        }
+        },
       );
     }
+
     await captureException(error, {
       feature: 'api_chat',
       sessionId,
       userId: effectiveUserId,
     });
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-// Only POST is supported
 export async function GET() {
   return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
 }

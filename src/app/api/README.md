@@ -27,6 +27,7 @@ All API routes must:
 | `/api/admin/audit` | GET | `oran_admin` | Yes | Yes (60/min) | Audit log read |
 | `/api/admin/approvals` | GET/POST | `oran_admin` | Yes | Yes (30/min write) | Approval queue |
 | `/api/admin/capacity` | GET | `community_admin` | N/A | Yes (60/min) | Admin capacity dashboard (scaling-aware) |
+| `/api/admin/agents/control-plane` | GET | `oran_admin` | N/A | Yes (60/min) | Enterprise operator/control-plane snapshot |
 | `/api/admin/rules` | GET/PUT | `oran_admin` | Yes | Yes (30/min write) | Feature flag management |
 | `/api/admin/zones` | GET/POST | `oran_admin` | Yes | Yes (30/min write) | Coverage zone CRUD |
 | `/api/admin/zones/[id]` | PUT/DELETE | `oran_admin` | Yes (UUID) | Yes (30/min) | Zone update/delete; UUID-validated |

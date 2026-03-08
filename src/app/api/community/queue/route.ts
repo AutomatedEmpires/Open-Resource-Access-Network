@@ -147,6 +147,7 @@ export async function GET(req: NextRequest) {
       service_status: string | null;
       organization_id: string | null;
       organization_name: string | null;
+      assigned_to_display_name: string | null;
     }>(
       `SELECT sub.id, sub.submission_type, sub.status,
               sub.service_id, sub.target_type, sub.target_id,
@@ -156,10 +157,12 @@ export async function GET(req: NextRequest) {
               sub.sla_deadline, sub.sla_breached,
               sub.created_at, sub.updated_at,
               s.name AS service_name, s.status AS service_status,
-              o.id AS organization_id, o.name AS organization_name
+              o.id AS organization_id, o.name AS organization_name,
+              up_assign.display_name AS assigned_to_display_name
        FROM submissions sub
        LEFT JOIN services s ON s.id = sub.service_id
        LEFT JOIN organizations o ON o.id = s.organization_id
+       LEFT JOIN user_profiles up_assign ON up_assign.user_id = sub.assigned_to_user_id
        ${where}
        ORDER BY sub.priority DESC, sub.created_at ASC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -267,6 +270,92 @@ export async function POST(req: NextRequest) {
       await releaseLock(submissionId, authCtx.userId, false);
     } catch { /* lock release is best-effort */ }
     await captureException(error, { feature: 'api_community_queue_assign' });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+// ============================================================
+// DELETE — Release a claimed submission (unclaim / release lock)
+// ============================================================
+
+const UnclaimSchema = z.object({
+  submissionId: z.string().uuid('submissionId must be a valid UUID'),
+});
+
+export async function DELETE(req: NextRequest) {
+  if (!isDatabaseConfigured()) {
+    return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
+  }
+
+  const ip = getIp(req);
+  const rl = checkRateLimit(`community:queue:write:${ip}`, {
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    maxRequests: COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS,
+  });
+  if (rl.exceeded) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(rl.retryAfterSeconds) },
+      },
+    );
+  }
+
+  const authCtx = await getAuthContext();
+  if (!authCtx) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+  if (!requireMinRole(authCtx, 'community_admin')) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+  }
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const parsed = UnclaimSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'Validation failed', details: parsed.error.issues },
+      { status: 400 },
+    );
+  }
+
+  const { submissionId } = parsed.data;
+
+  try {
+    const isAdmin = authCtx.role === 'oran_admin';
+    const released = await releaseLock(submissionId, authCtx.userId, isAdmin);
+    if (!released) {
+      return NextResponse.json(
+        { error: 'Cannot release — submission not found or not locked by you' },
+        { status: 409 },
+      );
+    }
+
+    // Revert status back to submitted via workflow engine
+    const result = await advance({
+      submissionId,
+      toStatus: 'submitted',
+      actorUserId: authCtx.userId,
+      actorRole: authCtx.role,
+      reason: 'Released by reviewer',
+    });
+
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error ?? 'Lock released but could not revert status' },
+        { status: 409 },
+      );
+    }
+
+    return NextResponse.json({ success: true, id: submissionId }, { status: 200 });
+  } catch (error) {
+    await captureException(error, { feature: 'api_community_queue_unclaim' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

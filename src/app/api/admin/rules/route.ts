@@ -2,13 +2,13 @@
  * GET  /api/admin/rules — List all feature flags.
  * PUT  /api/admin/rules — Update a feature flag.
  *
- * ORAN-admin only. Uses the in-memory FlagService for runtime;
- * DB-backed persistence is planned but not yet wired.
+ * ORAN-admin only. Uses the hybrid FlagService so database-backed flags
+ * are authoritative when configured, with local fallback in dev/runtime recovery.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { flagService } from '@/services/flags/flags';
+import { flagService, getFlagServiceImplementation } from '@/services/flags/flags';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
@@ -67,9 +67,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const flags = await flagService.getAllFlags();
+    const implementation = await getFlagServiceImplementation();
 
     return NextResponse.json(
-      { flags },
+      { flags, implementation },
       { headers: { 'Cache-Control': 'private, no-store' } },
     );
   } catch (error) {
@@ -120,12 +121,18 @@ export async function PUT(req: NextRequest) {
   const { name, enabled, rolloutPct } = parsed.data;
 
   try {
-    await flagService.setFlag(name, enabled, rolloutPct);
+    await flagService.setFlag(name, enabled, rolloutPct, {
+      actorUserId: authCtx.userId,
+      actorRole: authCtx.role,
+      reason: 'Updated via ORAN admin rules API',
+    });
     const updated = await flagService.getFlag(name);
+    const implementation = await getFlagServiceImplementation();
 
     return NextResponse.json({
       success: true,
       flag: updated,
+      implementation,
       message: `Flag "${name}" updated: ${enabled ? 'enabled' : 'disabled'} at ${rolloutPct}% rollout.`,
     });
   } catch (error) {

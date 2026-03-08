@@ -10,10 +10,15 @@ const detectorMocks = vi.hoisted(() => ({
   detectRegressions: vi.fn(),
 }));
 
+const policyMocks = vi.hoisted(() => ({
+  applyRegressionVisibilityPolicies: vi.fn(),
+}));
+
 const captureExceptionMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/regression/detector', () => detectorMocks);
+vi.mock('@/services/regression/policy', () => policyMocks);
 vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
 }));
@@ -71,6 +76,10 @@ beforeEach(() => {
 
   // Default: no regressions detected
   detectorMocks.detectRegressions.mockResolvedValue([]);
+  policyMocks.applyRegressionVisibilityPolicies.mockResolvedValue({
+    suppressedCount: 0,
+    suppressedServiceIds: [],
+  });
 
   // Default: transaction calls the callback with a no-op client
   dbMocks.withTransaction.mockImplementation(
@@ -148,7 +157,7 @@ describe('POST /api/internal/confidence-regression-scan', () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body).toMatchObject({ success: true, createdCount: 0 });
+    expect(body).toMatchObject({ success: true, createdCount: 0, suppressedCount: 0 });
     expect(typeof body.checkedAt).toBe('string');
   });
 
@@ -160,6 +169,8 @@ describe('POST /api/internal/confidence-regression-scan', () => {
       currentScore: 75,
       currentBand: 'LIKELY',
       reasons: ['Service data updated after score computed'],
+      recommendedAction: 'reverify',
+      actionReason: 'Published service changed after last verification snapshot',
       dedupeKey: 'svc-1:service_updated_after_verification:12345',
       notesText: 'Auto-flagged: re-review suggested.',
     };
@@ -178,6 +189,45 @@ describe('POST /api/internal/confidence-regression-scan', () => {
 
     expect(res.status).toBe(200);
     expect(body.createdCount).toBe(1);
+    expect(body.suppressedCount).toBe(0);
+  });
+
+  it('returns suppressedCount when policy removes flagged listings from seeker visibility', async () => {
+    const candidate = {
+      serviceId: 'svc-2',
+      serviceName: 'Shelter',
+      signalType: 'feedback_severity',
+      currentScore: 22,
+      currentBand: 'POSSIBLE',
+      reasons: ['3 negative reports in the last 30 days'],
+      recommendedAction: 'suppress',
+      actionReason: 'Repeated negative reports require reverification',
+      dedupeKey: 'svc-2:feedback_severity:12345',
+      notesText: 'Auto-flagged: seeker visibility should be suspended pending reverification.',
+    };
+
+    detectorMocks.detectRegressions.mockResolvedValue([candidate]);
+    policyMocks.applyRegressionVisibilityPolicies.mockResolvedValue({
+      suppressedCount: 1,
+      suppressedServiceIds: ['svc-2'],
+    });
+
+    dbMocks.withTransaction.mockImplementation(
+      async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
+        return callback({ query: makeClientForNewRegressions() });
+      },
+    );
+
+    const { POST } = await import('../route');
+    const res = await POST(createRequest({ apiKey: 'secret-key' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ createdCount: 1, suppressedCount: 1 });
+    expect(policyMocks.applyRegressionVisibilityPolicies).toHaveBeenCalledWith(
+      expect.objectContaining({ query: expect.any(Function) }),
+      [candidate],
+    );
   });
 
   it('uses a pool (not a transaction client) for detection', async () => {
@@ -201,6 +251,8 @@ describe('POST /api/internal/confidence-regression-scan', () => {
         currentScore: 75,
         currentBand: 'LIKELY',
         reasons: [],
+        recommendedAction: 'reverify',
+        actionReason: 'Published service changed after last verification snapshot',
         dedupeKey: existingKey,
         notesText: 'text',
       },
@@ -233,6 +285,8 @@ describe('POST /api/internal/confidence-regression-scan', () => {
         currentScore: 35,
         currentBand: 'POSSIBLE',
         reasons: [],
+        recommendedAction: 'suppress',
+        actionReason: 'Repeated negative reports require reverification',
         dedupeKey: 'svc-1:feedback_severity:12345',
         notesText: 'text',
       },

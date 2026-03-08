@@ -9,12 +9,16 @@ const flagServiceMocks = vi.hoisted(() => ({
   setFlag: vi.fn(),
   getFlag: vi.fn(),
 }));
+const getFlagServiceImplementationMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/security/rateLimit', () => ({ checkRateLimit: rateLimitMock }));
 vi.mock('@/services/telemetry/sentry', () => ({ captureException: captureExceptionMock }));
 vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/auth/guards', () => ({ requireMinRole: requireMinRoleMock }));
-vi.mock('@/services/flags/flags', () => ({ flagService: flagServiceMocks }));
+vi.mock('@/services/flags/flags', () => ({
+  flagService: flagServiceMocks,
+  getFlagServiceImplementation: getFlagServiceImplementationMock,
+}));
 
 function createRequest(options: { ip?: string; body?: unknown; jsonError?: boolean } = {}) {
   const headers = new Headers();
@@ -31,12 +35,13 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   rateLimitMock.mockReturnValue({ exceeded: false, retryAfterSeconds: 0 });
-  authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+  authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1', role: 'oran_admin' });
   requireMinRoleMock.mockReturnValue(true);
   captureExceptionMock.mockResolvedValue(undefined);
   flagServiceMocks.getAllFlags.mockResolvedValue([]);
   flagServiceMocks.setFlag.mockResolvedValue(undefined);
   flagServiceMocks.getFlag.mockResolvedValue({ name: 'x', enabled: true, rolloutPct: 100 });
+  getFlagServiceImplementationMock.mockResolvedValue('in_memory');
 });
 
 describe('admin rules route', () => {
@@ -76,6 +81,7 @@ describe('admin rules route', () => {
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
     await expect(response.json()).resolves.toEqual({
       flags: [{ name: 'chat-summary', enabled: true, rolloutPct: 50 }],
+      implementation: 'in_memory',
     });
   });
 
@@ -107,7 +113,22 @@ describe('admin rules route', () => {
     });
     const success = await PUT(createRequest({ body: { name: 'chat-summary', enabled: false } }));
     expect(success.status).toBe(200);
-    expect(flagServiceMocks.setFlag).toHaveBeenCalledWith('chat-summary', false, 100);
+    expect(flagServiceMocks.setFlag).toHaveBeenCalledWith('chat-summary', false, 100, {
+      actorUserId: 'oran-1',
+      actorRole: 'oran_admin',
+      reason: 'Updated via ORAN admin rules API',
+    });
+
+    await expect(success.json()).resolves.toEqual({
+      success: true,
+      flag: {
+        name: 'chat-summary',
+        enabled: false,
+        rolloutPct: 100,
+      },
+      implementation: 'in_memory',
+      message: 'Flag "chat-summary" updated: disabled at 100% rollout.',
+    });
 
     flagServiceMocks.setFlag.mockRejectedValueOnce(new Error('flag write failed'));
     const failed = await PUT(createRequest({ body: { name: 'chat-summary', enabled: true, rolloutPct: 20 } }));

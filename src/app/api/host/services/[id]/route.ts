@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
+import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, requireOrgAccess, isOranAdmin } from '@/services/auth';
@@ -21,6 +21,20 @@ import type { Service } from '@/domain/types';
 // SCHEMAS
 // ============================================================
 
+const PhoneInputSchema = z.object({
+  number:      z.string().min(7, 'Phone number too short').max(30),
+  extension:   z.string().max(10).optional(),
+  type:        z.enum(['voice', 'fax', 'text', 'hotline', 'tty']).default('voice'),
+  description: z.string().max(200).optional(),
+});
+
+const DayScheduleInputSchema = z.object({
+  day:    z.enum(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']),
+  opens:  z.string().regex(/^\d{2}:\d{2}$/, 'Time must be HH:MM'),
+  closes: z.string().regex(/^\d{2}:\d{2}$/, 'Time must be HH:MM'),
+  closed: z.boolean().default(false),
+});
+
 const UpdateServiceSchema = z.object({
   name:                  z.string().min(1).max(500).optional(),
   description:           z.string().max(5000).optional(),
@@ -33,6 +47,8 @@ const UpdateServiceSchema = z.object({
   fees:                  z.string().max(1000).optional(),
   accreditations:        z.string().max(1000).optional(),
   licenses:              z.string().max(1000).optional(),
+  phones:                z.array(PhoneInputSchema).max(10).optional(),
+  schedule:              z.array(DayScheduleInputSchema).min(7).max(7).optional(),
 }).refine((d) => Object.keys(d).length > 0, { message: 'At least one field required' });
 
 // ============================================================
@@ -204,20 +220,60 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
     setClauses.push(`updated_by_user_id = $${params.length}`);
   }
 
-  params.push(id);
+  const hasScalarChanges = setClauses.length > 0;
+  const hasPhones = d.phones !== undefined;
+  const hasSchedule = d.schedule !== undefined;
 
   try {
-    const rows = await executeQuery<Service>(
-      `UPDATE services SET ${setClauses.join(', ')} WHERE id = $${params.length} RETURNING *`,
-      params,
-    );
+    const saved = await withTransaction<Service>(async (client) => {
+      let service: Service;
 
-    if (rows.length === 0) {
+      if (hasScalarChanges) {
+        params.push(id);
+        const rows = await client.query<Service>(
+          `UPDATE services SET ${setClauses.join(', ')} WHERE id = $${params.length} RETURNING *`,
+          params,
+        );
+        if (rows.rows.length === 0) throw Object.assign(new Error('not_found'), { code: 'not_found' });
+        service = rows.rows[0];
+      } else {
+        // Only phones/schedule changing — fetch current row for the response
+        const rows = await client.query<Service>('SELECT * FROM services WHERE id = $1', [id]);
+        if (rows.rows.length === 0) throw Object.assign(new Error('not_found'), { code: 'not_found' });
+        service = rows.rows[0];
+      }
+
+      if (hasPhones) {
+        await client.query('DELETE FROM phones WHERE service_id = $1', [id]);
+        for (const ph of d.phones!) {
+          await client.query(
+            `INSERT INTO phones (service_id, number, extension, type, description)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [id, ph.number, ph.extension ?? null, ph.type === 'text' ? 'sms' : ph.type, ph.description ?? null],
+          );
+        }
+      }
+
+      if (hasSchedule) {
+        await client.query('DELETE FROM schedules WHERE service_id = $1', [id]);
+        for (const ds of d.schedule!) {
+          if (ds.closed) continue;
+          await client.query(
+            `INSERT INTO schedules (service_id, days, opens_at, closes_at)
+             VALUES ($1, $2, $3, $4)`,
+            [id, [ds.day], ds.opens, ds.closes],
+          );
+        }
+      }
+
+      return service;
+    });
+
+    return NextResponse.json(saved);
+  } catch (error) {
+    if (error instanceof Error && (error as NodeJS.ErrnoException & { code?: string }).code === 'not_found') {
       return NextResponse.json({ error: 'Service not found' }, { status: 404 });
     }
-
-    return NextResponse.json(rows[0]);
-  } catch (error) {
     await captureException(error, { feature: 'api_host_svc_update' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

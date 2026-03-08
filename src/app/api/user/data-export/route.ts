@@ -2,8 +2,8 @@
  * POST /api/user/data-export — GDPR / records data export.
  *
  * Authenticated users can request an export of all their personal data.
- * Returns a JSON archive with: submissions, notifications, preferences,
- * organization memberships, and audit log entries.
+ * Returns a JSON archive with: profile, seeker profile, submissions,
+ * notifications, preferences, organization memberships, and audit log entries.
  *
  * Rate-limited (1 per 10 minutes) to prevent abuse.
  */
@@ -99,18 +99,31 @@ export async function POST(req: NextRequest) {
 
     // 6. Saved services
     const savedServices = await executeQuery<Record<string, unknown>>(
-      `SELECT id, user_id, service_id, created_at
+      `SELECT id, user_id, service_id, saved_at
        FROM saved_services
        WHERE user_id = $1
-       ORDER BY created_at DESC`,
+       ORDER BY saved_at DESC`,
       [userId],
     );
 
     // 7. User profile
     const profile = await executeQuery<Record<string, unknown>>(
-      `SELECT user_id, preferred_locale, approximate_city, created_at, updated_at
+      `SELECT user_id, display_name, email, phone, auth_provider,
+              preferred_locale, approximate_city, created_at, updated_at
        FROM user_profiles
        WHERE user_id = $1`,
+      [userId],
+    );
+
+    // 8. Seeker profile
+    const seekerProfile = await executeQuery<Record<string, unknown>>(
+      `SELECT user_id, service_interests, age_group, household_type, housing_situation,
+              self_identifiers, current_services, accessibility_needs, pronouns,
+              profile_headline, avatar_emoji, accent_theme,
+              contact_phone, contact_email,
+              additional_context, created_at, updated_at
+         FROM seeker_profiles
+        WHERE user_id = $1`,
       [userId],
     );
 
@@ -118,6 +131,7 @@ export async function POST(req: NextRequest) {
       exportedAt: new Date().toISOString(),
       userId,
       profile: profile[0] ?? null,
+      seekerProfile: seekerProfile[0] ?? null,
       submissions,
       memberships,
       notifications,

@@ -113,6 +113,8 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       organization_url: string | null;
       organization_email: string | null;
       organization_description: string | null;
+      submitted_by_display_name: string | null;
+      assigned_to_display_name: string | null;
     }>(
       `SELECT sub.id, sub.submission_type, sub.status,
               sub.service_id, sub.target_type, sub.target_id,
@@ -126,10 +128,14 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
               s.url AS service_url, s.email AS service_email, s.status AS service_status,
               o.id AS organization_id, o.name AS organization_name,
               o.url AS organization_url, o.email AS organization_email,
-              o.description AS organization_description
+              o.description AS organization_description,
+              up_sub.display_name AS submitted_by_display_name,
+              up_assign.display_name AS assigned_to_display_name
        FROM submissions sub
        LEFT JOIN services s ON s.id = sub.service_id
        LEFT JOIN organizations o ON o.id = s.organization_id
+       LEFT JOIN user_profiles up_sub ON up_sub.user_id = sub.submitted_by_user_id
+       LEFT JOIN user_profiles up_assign ON up_assign.user_id = sub.assigned_to_user_id
        WHERE sub.id = $1`,
       [id],
     );
@@ -199,12 +205,15 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
       reason: string | null;
       gates_passed: boolean;
       created_at: string;
+      actor_display_name: string | null;
     }>(
-      `SELECT id, from_status, to_status, actor_user_id, actor_role,
-              reason, gates_passed, created_at
-       FROM submission_transitions
-       WHERE submission_id = $1
-       ORDER BY created_at ASC`,
+      `SELECT st.id, st.from_status, st.to_status, st.actor_user_id, st.actor_role,
+              st.reason, st.gates_passed, st.created_at,
+              up.display_name AS actor_display_name
+       FROM submission_transitions st
+       LEFT JOIN user_profiles up ON up.user_id = st.actor_user_id
+       WHERE st.submission_id = $1
+       ORDER BY st.created_at ASC`,
       [id],
     );
 

@@ -16,6 +16,7 @@ import {
   uniqueIndex,
   index,
   customType,
+  doublePrecision,
 } from 'drizzle-orm/pg-core';
 
 /**
@@ -75,6 +76,7 @@ export const ingestionJobs = pgTable(
     correlationId: text('correlation_id').notNull().unique(),
     jobType: text('job_type').notNull(),
     sourceId: uuid('source_id').references(() => ingestionSources.id),
+    sourceSystemId: uuid('source_system_id').references(() => sourceSystems.id),
     seedUrl: text('seed_url'),
     status: text('status').notNull().default('queued'),
     priority: integer('priority').notNull().default(0),
@@ -458,6 +460,46 @@ export const candidateAdminAssignments = pgTable(
 
 export type CandidateAdminAssignmentRow = typeof candidateAdminAssignments.$inferSelect;
 export type NewCandidateAdminAssignmentRow = typeof candidateAdminAssignments.$inferInsert;
+
+// ============================================================
+// SEEKER PROFILES (0034_seeker_profiles.sql)
+// ============================================================
+export const seekerProfiles = pgTable(
+  'seeker_profiles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id').notNull().unique(),
+    serviceInterests: text('service_interests').array().notNull().default([]),
+    ageGroup: text('age_group'),
+    householdType: text('household_type'),
+    housingSituation: text('housing_situation'),
+    selfIdentifiers: text('self_identifiers').array().notNull().default([]),
+    currentServices: text('current_services').array().notNull().default([]),
+    accessibilityNeeds: text('accessibility_needs').array().notNull().default([]),
+    transportationBarrier: boolean('transportation_barrier').notNull().default(false),
+    preferredDeliveryModes: text('preferred_delivery_modes').array().notNull().default([]),
+    urgencyWindow: text('urgency_window'),
+    documentationBarriers: text('documentation_barriers').array().notNull().default([]),
+    digitalAccessBarrier: boolean('digital_access_barrier').notNull().default(false),
+    pronouns: text('pronouns'),
+    profileHeadline: text('profile_headline'),
+    avatarEmoji: text('avatar_emoji'),
+    accentTheme: text('accent_theme').notNull().default('ocean'),
+    contactPhone: text('contact_phone'),
+    contactEmail: text('contact_email'),
+    additionalContext: text('additional_context'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_seeker_profiles_user').on(table.userId),
+  ]
+);
+
+export type SeekerProfileRow = typeof seekerProfiles.$inferSelect;
+export type NewSeekerProfileRow = typeof seekerProfiles.$inferInsert;
 
 // ============================================================
 // TAG CONFIRMATION QUEUE (0019_tag_confirmation_queue.sql)
@@ -1102,5 +1144,465 @@ export const candidateReadinessRelations = relations(candidateReadiness, ({ one 
   candidate: one(extractedCandidates, {
     fields: [candidateReadiness.candidateId],
     references: [extractedCandidates.candidateId],
+  }),
+}));
+
+// ============================================================
+// SOURCE SYSTEMS (0032_source_assertion_layer.sql)
+// ============================================================
+// Unified source registry. Subsumes ingestion_sources with a
+// superset design supporting HSDS publishers, partner APIs,
+// government data, scrape, and manual intake.
+export const sourceSystems = pgTable(
+  'source_systems',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    family: text('family').notNull(),
+    homepageUrl: text('homepage_url'),
+    licenseNotes: text('license_notes'),
+    termsUrl: text('terms_url'),
+    trustTier: text('trust_tier').notNull().default('quarantine'),
+    hsdsProfileUri: text('hsds_profile_uri'),
+    domainRules: jsonb('domain_rules').notNull().default([]),
+    crawlPolicy: jsonb('crawl_policy').notNull().default({}),
+    jurisdictionScope: jsonb('jurisdiction_scope').notNull().default({}),
+    contactInfo: jsonb('contact_info').notNull().default({}),
+    isActive: boolean('is_active').notNull().default(true),
+    notes: text('notes'),
+    legacyIngestionSourceId: uuid('legacy_ingestion_source_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_source_systems_name').on(table.name),
+    index('idx_source_systems_family').on(table.family),
+    index('idx_source_systems_trust').on(table.trustTier),
+    index('idx_source_systems_active').on(table.isActive),
+  ]
+);
+
+export type SourceSystemRow = typeof sourceSystems.$inferSelect;
+export type NewSourceSystemRow = typeof sourceSystems.$inferInsert;
+
+// ============================================================
+// SOURCE FEEDS (0032_source_assertion_layer.sql)
+// ============================================================
+export const sourceFeeds = pgTable(
+  'source_feeds',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sourceSystemId: uuid('source_system_id').notNull().references(() => sourceSystems.id, { onDelete: 'cascade' }),
+    feedName: text('feed_name').notNull(),
+    feedType: text('feed_type').notNull(),
+    baseUrl: text('base_url'),
+    healthcheckUrl: text('healthcheck_url'),
+    authType: text('auth_type').default('none'),
+    profileUri: text('profile_uri'),
+    jurisdictionScope: jsonb('jurisdiction_scope').notNull().default({}),
+    refreshIntervalHours: integer('refresh_interval_hours').default(24),
+    lastPolledAt: timestamp('last_polled_at', { withTimezone: true }),
+    lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+    lastError: text('last_error'),
+    errorCount: integer('error_count').notNull().default(0),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_source_feeds_system').on(table.sourceSystemId),
+    index('idx_source_feeds_active').on(table.isActive),
+    index('idx_source_feeds_type').on(table.feedType),
+  ]
+);
+
+export type SourceFeedRow = typeof sourceFeeds.$inferSelect;
+export type NewSourceFeedRow = typeof sourceFeeds.$inferInsert;
+
+// ============================================================
+// SOURCE RECORDS (0032_source_assertion_layer.sql)
+// ============================================================
+// Immutable assertion layer. Every inbound record lands here
+// before reaching canonical ORAN tables.
+export const sourceRecords = pgTable(
+  'source_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sourceFeedId: uuid('source_feed_id').notNull().references(() => sourceFeeds.id, { onDelete: 'cascade' }),
+    sourceRecordType: text('source_record_type').notNull(),
+    sourceRecordId: text('source_record_id').notNull(),
+    sourceVersion: text('source_version'),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+    canonicalSourceUrl: text('canonical_source_url'),
+    payloadSha256: text('payload_sha256').notNull(),
+    rawPayload: jsonb('raw_payload').notNull(),
+    parsedPayload: jsonb('parsed_payload'),
+    evidenceId: text('evidence_id'),
+    correlationId: text('correlation_id'),
+    sourceLicense: text('source_license'),
+    sourceConfidenceSignals: jsonb('source_confidence_signals').notNull().default({}),
+    processingStatus: text('processing_status').notNull().default('pending'),
+    processingError: text('processing_error'),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_source_records_dedup').on(
+      table.sourceFeedId, table.sourceRecordType, table.sourceRecordId, table.payloadSha256
+    ),
+    index('idx_source_records_feed').on(table.sourceFeedId),
+    index('idx_source_records_type').on(table.sourceRecordType),
+    index('idx_source_records_status').on(table.processingStatus),
+    index('idx_source_records_fetched').on(table.fetchedAt),
+    index('idx_source_records_source_id').on(table.sourceRecordId),
+    index('idx_source_records_correlation').on(table.correlationId),
+  ]
+);
+
+export type SourceRecordRow = typeof sourceRecords.$inferSelect;
+export type NewSourceRecordRow = typeof sourceRecords.$inferInsert;
+
+// ============================================================
+// SOURCE RECORD TAXONOMY (0032_source_assertion_layer.sql)
+// ============================================================
+// Preserves external taxonomy codes from inbound records for
+// round-trip fidelity. Never overwritten by ORAN tagging.
+export const sourceRecordTaxonomy = pgTable(
+  'source_record_taxonomy',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sourceRecordId: uuid('source_record_id').notNull().references(() => sourceRecords.id, { onDelete: 'cascade' }),
+    taxonomyName: text('taxonomy_name').notNull(),
+    termCode: text('term_code').notNull(),
+    termName: text('term_name'),
+    termUri: text('term_uri'),
+    isPrimary: boolean('is_primary').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_src_taxonomy_record').on(table.sourceRecordId),
+    index('idx_src_taxonomy_code').on(table.taxonomyName, table.termCode),
+  ]
+);
+
+export type SourceRecordTaxonomyRow = typeof sourceRecordTaxonomy.$inferSelect;
+export type NewSourceRecordTaxonomyRow = typeof sourceRecordTaxonomy.$inferInsert;
+
+// ============================================================
+// ENTITY IDENTIFIERS (0032_source_assertion_layer.sql)
+// ============================================================
+// Cross-database reference IDs. Links ORAN entities to their
+// identifiers in external systems. When a listing changes status,
+// all linked identifiers reflect that.
+export const entityIdentifiers = pgTable(
+  'entity_identifiers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    entityType: text('entity_type').notNull(),
+    entityId: uuid('entity_id').notNull(),
+    identifierScheme: text('identifier_scheme').notNull(),
+    identifierValue: text('identifier_value').notNull(),
+    sourceSystemId: uuid('source_system_id').references(() => sourceSystems.id, { onDelete: 'set null' }),
+    isPrimary: boolean('is_primary').notNull().default(false),
+    confidence: integer('confidence').default(100),
+    status: text('status').notNull().default('active'),
+    statusChangedAt: timestamp('status_changed_at', { withTimezone: true }),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_entity_ids_unique').on(
+      table.entityType, table.entityId, table.identifierScheme, table.identifierValue
+    ),
+    index('idx_entity_ids_entity').on(table.entityType, table.entityId),
+    index('idx_entity_ids_scheme').on(table.identifierScheme, table.identifierValue),
+    index('idx_entity_ids_source').on(table.sourceSystemId),
+    index('idx_entity_ids_status').on(table.status),
+  ]
+);
+
+export type EntityIdentifierRow = typeof entityIdentifiers.$inferSelect;
+export type NewEntityIdentifierRow = typeof entityIdentifiers.$inferInsert;
+
+// ============================================================
+// HSDS EXPORT SNAPSHOTS (0032_source_assertion_layer.sql)
+// ============================================================
+// Pre-computed HSDS-compatible JSON for published entities.
+export const hsdsExportSnapshots = pgTable(
+  'hsds_export_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    entityType: text('entity_type').notNull(),
+    entityId: uuid('entity_id').notNull(),
+    snapshotVersion: integer('snapshot_version').notNull().default(1),
+    hsdsPayload: jsonb('hsds_payload').notNull(),
+    profileUri: text('profile_uri'),
+    status: text('status').notNull().default('current'),
+    generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+    withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_hsds_snapshots_entity').on(table.entityType, table.entityId),
+    index('idx_hsds_snapshots_status').on(table.status),
+  ]
+);
+
+export type HsdsExportSnapshotRow = typeof hsdsExportSnapshots.$inferSelect;
+export type NewHsdsExportSnapshotRow = typeof hsdsExportSnapshots.$inferInsert;
+
+// ============================================================
+// LIFECYCLE EVENTS (0032_source_assertion_layer.sql)
+// ============================================================
+// Status change audit trail for cross-database propagation.
+export const lifecycleEvents = pgTable(
+  'lifecycle_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    entityType: text('entity_type').notNull(),
+    entityId: uuid('entity_id').notNull(),
+    eventType: text('event_type').notNull(),
+    fromStatus: text('from_status'),
+    toStatus: text('to_status'),
+    actorType: text('actor_type').notNull().default('system'),
+    actorId: text('actor_id'),
+    reason: text('reason'),
+    metadata: jsonb('metadata').notNull().default({}),
+    identifiersAffected: integer('identifiers_affected').notNull().default(0),
+    snapshotsInvalidated: integer('snapshots_invalidated').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_lifecycle_entity').on(table.entityType, table.entityId),
+    index('idx_lifecycle_type').on(table.eventType),
+    index('idx_lifecycle_created').on(table.createdAt),
+  ]
+);
+
+export type LifecycleEventRow = typeof lifecycleEvents.$inferSelect;
+export type NewLifecycleEventRow = typeof lifecycleEvents.$inferInsert;
+
+// ============================================================
+// RELATIONS (0032_source_assertion_layer.sql)
+// ============================================================
+export const sourceSystemsRelations = relations(sourceSystems, ({ many }) => ({
+  feeds: many(sourceFeeds),
+  entityIdentifiers: many(entityIdentifiers),
+}));
+
+export const sourceFeedsRelations = relations(sourceFeeds, ({ one, many }) => ({
+  sourceSystem: one(sourceSystems, {
+    fields: [sourceFeeds.sourceSystemId],
+    references: [sourceSystems.id],
+  }),
+  records: many(sourceRecords),
+}));
+
+export const sourceRecordsRelations = relations(sourceRecords, ({ one, many }) => ({
+  feed: one(sourceFeeds, {
+    fields: [sourceRecords.sourceFeedId],
+    references: [sourceFeeds.id],
+  }),
+  taxonomyTerms: many(sourceRecordTaxonomy),
+}));
+
+export const sourceRecordTaxonomyRelations = relations(sourceRecordTaxonomy, ({ one }) => ({
+  sourceRecord: one(sourceRecords, {
+    fields: [sourceRecordTaxonomy.sourceRecordId],
+    references: [sourceRecords.id],
+  }),
+}));
+
+export const entityIdentifiersRelations = relations(entityIdentifiers, ({ one }) => ({
+  sourceSystem: one(sourceSystems, {
+    fields: [entityIdentifiers.sourceSystemId],
+    references: [sourceSystems.id],
+  }),
+}));
+
+// ============================================================
+// CANONICAL FEDERATION LAYER (Phase 2 – migration 0033)
+// ============================================================
+
+// --- Canonical Organizations ---
+export const canonicalOrganizations = pgTable('canonical_organizations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  alternateName: text('alternate_name'),
+  description: text('description'),
+  url: text('url'),
+  email: text('email'),
+  phone: text('phone'),
+  taxStatus: text('tax_status'),
+  taxId: text('tax_id'),
+  yearIncorporated: integer('year_incorporated'),
+  legalStatus: text('legal_status'),
+  lifecycleStatus: text('lifecycle_status').notNull().default('draft'),
+  publicationStatus: text('publication_status').notNull().default('unpublished'),
+  winningSourceSystemId: uuid('winning_source_system_id').references(() => sourceSystems.id, { onDelete: 'set null' }),
+  sourceCount: integer('source_count').notNull().default(1),
+  sourceConfidenceSummary: jsonb('source_confidence_summary').notNull().default({}),
+  publishedOrganizationId: uuid('published_organization_id'),
+  firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  lastRefreshedAt: timestamp('last_refreshed_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type CanonicalOrganizationRow = typeof canonicalOrganizations.$inferSelect;
+export type NewCanonicalOrganizationRow = typeof canonicalOrganizations.$inferInsert;
+
+// --- Canonical Services ---
+export const canonicalServices = pgTable('canonical_services', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  canonicalOrganizationId: uuid('canonical_organization_id').notNull().references(() => canonicalOrganizations.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  alternateName: text('alternate_name'),
+  description: text('description'),
+  url: text('url'),
+  email: text('email'),
+  status: text('status').notNull().default('active'),
+  interpretationServices: text('interpretation_services'),
+  applicationProcess: text('application_process'),
+  waitTime: text('wait_time'),
+  fees: text('fees'),
+  accreditations: text('accreditations'),
+  licenses: text('licenses'),
+  lifecycleStatus: text('lifecycle_status').notNull().default('draft'),
+  publicationStatus: text('publication_status').notNull().default('unpublished'),
+  winningSourceSystemId: uuid('winning_source_system_id').references(() => sourceSystems.id, { onDelete: 'set null' }),
+  sourceCount: integer('source_count').notNull().default(1),
+  sourceConfidenceSummary: jsonb('source_confidence_summary').notNull().default({}),
+  publishedServiceId: uuid('published_service_id'),
+  firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  lastRefreshedAt: timestamp('last_refreshed_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type CanonicalServiceRow = typeof canonicalServices.$inferSelect;
+export type NewCanonicalServiceRow = typeof canonicalServices.$inferInsert;
+
+// --- Canonical Locations ---
+export const canonicalLocations = pgTable('canonical_locations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  canonicalOrganizationId: uuid('canonical_organization_id').notNull().references(() => canonicalOrganizations.id, { onDelete: 'cascade' }),
+  name: text('name'),
+  alternateName: text('alternate_name'),
+  description: text('description'),
+  transportation: text('transportation'),
+  latitude: doublePrecision('latitude'),
+  longitude: doublePrecision('longitude'),
+  geom: geometryPoint('geom'),
+  addressLine1: text('address_line1'),
+  addressLine2: text('address_line2'),
+  addressCity: text('address_city'),
+  addressRegion: text('address_region'),
+  addressPostalCode: text('address_postal_code'),
+  addressCountry: text('address_country').default('US'),
+  lifecycleStatus: text('lifecycle_status').notNull().default('draft'),
+  publicationStatus: text('publication_status').notNull().default('unpublished'),
+  winningSourceSystemId: uuid('winning_source_system_id').references(() => sourceSystems.id, { onDelete: 'set null' }),
+  sourceCount: integer('source_count').notNull().default(1),
+  sourceConfidenceSummary: jsonb('source_confidence_summary').notNull().default({}),
+  publishedLocationId: uuid('published_location_id'),
+  firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  lastRefreshedAt: timestamp('last_refreshed_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type CanonicalLocationRow = typeof canonicalLocations.$inferSelect;
+export type NewCanonicalLocationRow = typeof canonicalLocations.$inferInsert;
+
+// --- Canonical Service Locations (Junction) ---
+export const canonicalServiceLocations = pgTable('canonical_service_locations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  canonicalServiceId: uuid('canonical_service_id').notNull().references(() => canonicalServices.id, { onDelete: 'cascade' }),
+  canonicalLocationId: uuid('canonical_location_id').notNull().references(() => canonicalLocations.id, { onDelete: 'cascade' }),
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pairIndex: uniqueIndex('idx_canonical_service_locations_pair').on(table.canonicalServiceId, table.canonicalLocationId),
+}));
+
+export type CanonicalServiceLocationRow = typeof canonicalServiceLocations.$inferSelect;
+export type NewCanonicalServiceLocationRow = typeof canonicalServiceLocations.$inferInsert;
+
+// --- Canonical Provenance (Field-level Lineage) ---
+export const canonicalProvenance = pgTable('canonical_provenance', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  canonicalEntityType: text('canonical_entity_type').notNull(),
+  canonicalEntityId: uuid('canonical_entity_id').notNull(),
+  fieldName: text('field_name').notNull(),
+  assertedValue: jsonb('asserted_value'),
+  sourceRecordId: uuid('source_record_id').references(() => sourceRecords.id, { onDelete: 'set null' }),
+  evidenceId: text('evidence_id'),
+  selectorOrHint: text('selector_or_hint'),
+  confidenceHint: integer('confidence_hint').default(0),
+  decisionStatus: text('decision_status').notNull().default('candidate'),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+  decidedBy: text('decided_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  entityIndex: index('idx_canonical_provenance_entity').on(table.canonicalEntityType, table.canonicalEntityId),
+  decisionIndex: index('idx_canonical_provenance_decision').on(table.canonicalEntityType, table.canonicalEntityId, table.decisionStatus),
+}));
+
+export type CanonicalProvenanceRow = typeof canonicalProvenance.$inferSelect;
+export type NewCanonicalProvenanceRow = typeof canonicalProvenance.$inferInsert;
+
+// --- Canonical Federation Relations ---
+export const canonicalOrganizationsRelations = relations(canonicalOrganizations, ({ one, many }) => ({
+  winningSourceSystem: one(sourceSystems, {
+    fields: [canonicalOrganizations.winningSourceSystemId],
+    references: [sourceSystems.id],
+  }),
+  services: many(canonicalServices),
+  locations: many(canonicalLocations),
+}));
+
+export const canonicalServicesRelations = relations(canonicalServices, ({ one, many }) => ({
+  organization: one(canonicalOrganizations, {
+    fields: [canonicalServices.canonicalOrganizationId],
+    references: [canonicalOrganizations.id],
+  }),
+  winningSourceSystem: one(sourceSystems, {
+    fields: [canonicalServices.winningSourceSystemId],
+    references: [sourceSystems.id],
+  }),
+  serviceLocations: many(canonicalServiceLocations),
+}));
+
+export const canonicalLocationsRelations = relations(canonicalLocations, ({ one, many }) => ({
+  organization: one(canonicalOrganizations, {
+    fields: [canonicalLocations.canonicalOrganizationId],
+    references: [canonicalOrganizations.id],
+  }),
+  winningSourceSystem: one(sourceSystems, {
+    fields: [canonicalLocations.winningSourceSystemId],
+    references: [sourceSystems.id],
+  }),
+  serviceLocations: many(canonicalServiceLocations),
+}));
+
+export const canonicalServiceLocationsRelations = relations(canonicalServiceLocations, ({ one }) => ({
+  service: one(canonicalServices, {
+    fields: [canonicalServiceLocations.canonicalServiceId],
+    references: [canonicalServices.id],
+  }),
+  location: one(canonicalLocations, {
+    fields: [canonicalServiceLocations.canonicalLocationId],
+    references: [canonicalLocations.id],
+  }),
+}));
+
+export const canonicalProvenanceRelations = relations(canonicalProvenance, ({ one }) => ({
+  sourceRecord: one(sourceRecords, {
+    fields: [canonicalProvenance.sourceRecordId],
+    references: [sourceRecords.id],
   }),
 }));

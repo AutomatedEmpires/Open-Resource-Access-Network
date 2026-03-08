@@ -15,13 +15,13 @@ import {
   RefreshCw,
   Globe,
   CheckCircle2,
-  XCircle,
   Loader2,
   ChevronLeft,
   ChevronRight,
   ArrowUpDown,
 } from 'lucide-react';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { FormAlert } from '@/components/ui/form-alert';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { formatDateSafe } from '@/lib/format';
@@ -155,12 +155,9 @@ function SourcesTab() {
   if (isLoading) return <SkeletonCard />;
   if (error) {
     return (
-      <div role="alert" className="rounded-md bg-error-subtle border border-error-soft p-4">
-        <div className="flex items-center gap-2">
-          <XCircle className="h-5 w-5 text-error-light" aria-hidden="true" />
-          <p className="text-sm text-error-strong">{error}</p>
-        </div>
-        <Button variant="outline" size="sm" className="mt-2" onClick={fetchSources}>Retry</Button>
+      <div className="space-y-3">
+        <FormAlert variant="error" message={error} />
+        <Button variant="outline" size="sm" onClick={fetchSources}>Retry</Button>
       </div>
     );
   }
@@ -286,14 +283,7 @@ function JobsTab() {
       </div>
 
       {isLoading && <SkeletonCard />}
-      {error && (
-        <div role="alert" className="rounded-md bg-error-subtle border border-error-soft p-4">
-          <div className="flex items-center gap-2">
-            <XCircle className="h-5 w-5 text-error-light" aria-hidden="true" />
-            <p className="text-sm text-error-strong">{error}</p>
-          </div>
-        </div>
-      )}
+      {error && <FormAlert variant="error" message={error} className="mb-4" />}
       {!isLoading && !error && jobs.length === 0 && (
         <div className="text-center py-12 text-gray-500">
           <Database className="mx-auto h-12 w-12 text-gray-300 mb-3" aria-hidden="true" />
@@ -447,14 +437,7 @@ function CandidatesTab() {
       </div>
 
       {isLoading && <SkeletonCard />}
-      {error && (
-        <div role="alert" className="rounded-md bg-error-subtle border border-error-soft p-4">
-          <div className="flex items-center gap-2">
-            <XCircle className="h-5 w-5 text-error-light" aria-hidden="true" />
-            <p className="text-sm text-error-strong">{error}</p>
-          </div>
-        </div>
-      )}
+      {error && <FormAlert variant="error" message={error} className="mb-4" />}
       {!isLoading && !error && candidates.length === 0 && (
         <div className="text-center py-12 text-gray-500">
           <FileSearch className="mx-auto h-12 w-12 text-gray-300 mb-3" aria-hidden="true" />
@@ -673,14 +656,7 @@ function ProcessTab() {
       </div>
 
       {/* Result / Error */}
-      {error && (
-        <div role="alert" className="rounded-md bg-error-subtle border border-error-soft p-4">
-          <div className="flex items-center gap-2">
-            <XCircle className="h-5 w-5 text-error-light" aria-hidden="true" />
-            <p className="text-sm text-error-strong">{error}</p>
-          </div>
-        </div>
-      )}
+      {error && <FormAlert variant="error" message={error} className="mb-4" />}
       {result && (
         <div className="rounded-md bg-green-50 border border-green-200 p-4">
           <div className="flex items-center gap-2 mb-2">

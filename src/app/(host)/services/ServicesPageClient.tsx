@@ -230,6 +230,10 @@ export default function ServicesPage() {
       if (form.interpretationServices) payload.interpretationServices = form.interpretationServices;
       if (form.accreditations) payload.accreditations = form.accreditations;
       if (form.licenses) payload.licenses = form.licenses;
+      // Phones: include if any numbers have been entered
+      if (form.phones.length > 0) payload.phones = form.phones;
+      // Schedule: always include so the API can reset hours on each save
+      payload.schedule = form.schedule;
 
       const res = await fetch(endpoint, {
         method: isUpdate ? 'PUT' : 'POST',

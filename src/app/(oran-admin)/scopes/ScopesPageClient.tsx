@@ -19,13 +19,14 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Shield, RefreshCw, AlertTriangle, Plus,
+  Shield, RefreshCw, Plus,
   ChevronLeft, ChevronRight, CheckCircle2, XCircle,
   Loader2, Key, UserCheck, ScrollText,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { FormAlert } from '@/components/ui/form-alert';
 import { FormField } from '@/components/ui/form-field';
 import { useToast } from '@/components/ui/toast';
 import { SkeletonCard } from '@/components/ui/skeleton';
@@ -239,10 +240,7 @@ function ScopesTab() {
       )}
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 text-sm text-error-strong" role="alert">
-          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-          {error}
-        </div>
+        <FormAlert variant="error" message={error} onDismiss={() => setError(null)} />
       )}
 
       {isLoading && scopes.length === 0 && (
@@ -379,9 +377,7 @@ function GrantsTab() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 text-sm text-error-strong" role="alert">
-          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" /> {error}
-        </div>
+        <FormAlert variant="error" message={error} onDismiss={() => setError(null)} />
       )}
 
       {isLoading && grants.length === 0 && (
@@ -519,9 +515,7 @@ function AuditTab() {
   return (
     <div className="space-y-4">
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 text-sm text-error-strong" role="alert">
-          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" /> {error}
-        </div>
+        <FormAlert variant="error" message={error} onDismiss={() => setError(null)} />
       )}
 
       {isLoading && (

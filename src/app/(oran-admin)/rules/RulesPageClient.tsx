@@ -10,7 +10,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Settings, RefreshCw, AlertTriangle,
-  CheckCircle2, ToggleLeft, ToggleRight, Gauge,
+  ToggleLeft, ToggleRight, Gauge,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import {
   DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { FormAlert } from '@/components/ui/form-alert';
 import { SkeletonCard } from '@/components/ui/skeleton';
 
 // ============================================================
@@ -136,27 +137,17 @@ function RulesPageInner() {
 
       {/* Save result */}
       {saveResult && (
-        <div
-          role="alert"
-          className={`mb-4 flex items-center gap-2 rounded-lg border p-3 text-sm ${
-            saveResult.success
-              ? 'bg-green-50 border-green-200 text-green-800'
-              : 'bg-error-subtle border-error-soft text-error-deep'
-          }`}
-        >
-          {saveResult.success
-            ? <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-            : <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />}
-          {saveResult.message}
-        </div>
+        <FormAlert
+          variant={saveResult.success ? 'success' : 'error'}
+          message={saveResult.message}
+          onDismiss={() => setSaveResult(null)}
+          className="mb-4"
+        />
       )}
 
       {/* Error state */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 mb-4 text-sm text-error-strong" role="alert">
-          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-          {error}
-        </div>
+        <FormAlert variant="error" message={error} onDismiss={() => setError(null)} className="mb-4" />
       )}
 
       {/* Loading state */}

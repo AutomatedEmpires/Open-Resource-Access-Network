@@ -13,10 +13,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import {
   ArrowLeft, ShieldCheck, ShieldX, AlertTriangle, ExternalLink,
   MapPin, Phone, Mail, Globe, Building2, FileText, Clock,
-  CheckCircle2, XCircle, ArrowUpCircle, Loader2,
+  CheckCircle2, XCircle, ArrowUpCircle, Loader2, Unlock,
   Languages, ClipboardList, Accessibility, Tag,
 } from 'lucide-react';
 
@@ -108,8 +109,13 @@ interface QueueDetail {
   service_id: string;
   status: SubmissionStatus;
   submitted_by_user_id: string;
+  submitted_by_display_name: string | null;
   assigned_to_user_id: string | null;
+  assigned_to_display_name: string | null;
   notes: string | null;
+  reviewer_notes: string | null;
+  sla_deadline: string | null;
+  sla_breached: boolean;
   created_at: string;
   updated_at: string;
   service_name: string;
@@ -129,9 +135,20 @@ interface QueueDetail {
   required_documents: RequiredDocDetail[];
   languages: LanguageDetail[];
   accessibility: AccessibilityDetail[];
+  transitions: Array<{
+    id: string;
+    from_status: string;
+    to_status: string;
+    actor_user_id: string;
+    actor_display_name: string | null;
+    actor_role: string | null;
+    reason: string | null;
+    gates_passed: boolean;
+    created_at: string;
+  }>;
 }
 
-type Decision = 'approved' | 'denied' | 'escalated';
+type Decision = 'approved' | 'denied' | 'escalated' | 'returned';
 
 // ============================================================
 // CONSTANTS
@@ -175,6 +192,8 @@ function ScoreMeter({ label, value }: { label: string; value: number }) {
 
 export default function VerifyPage() {
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id;
   const entryId = searchParams.get('id');
 
   const [entry, setEntry] = useState<QueueDetail | null>(null);
@@ -185,6 +204,7 @@ export default function VerifyPage() {
   const [decision, setDecision] = useState<Decision | null>(null);
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isReleasing, setIsReleasing] = useState(false);
   const [submitResult, setSubmitResult] = useState<{ success: boolean; message: string } | null>(null);
   const { toast } = useToast();
 
@@ -227,7 +247,6 @@ export default function VerifyPage() {
         body: JSON.stringify({
           decision,
           notes: notes.trim() || undefined,
-          reviewerUserId: 'current-user', // Placeholder — replaced by auth
         }),
       });
       if (!res.ok) {
@@ -247,6 +266,34 @@ export default function VerifyPage() {
   }, [entryId, decision, notes, fetchDetail, toast]);
 
   const canDecide = entry && ['submitted', 'needs_review', 'under_review'].includes(entry.status);
+
+  const isAssignedToMe = entry?.assigned_to_user_id === currentUserId;
+
+  // ── Unclaim ──
+  const handleUnclaim = useCallback(async () => {
+    if (!entryId) return;
+    setIsReleasing(true);
+    try {
+      const res = await fetch('/api/community/queue', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId: entryId }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Release failed');
+      }
+      toast('success', 'Entry released — returning to queue.');
+      void fetchDetail(entryId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to release entry');
+    } finally {
+      setIsReleasing(false);
+    }
+  }, [entryId, fetchDetail, toast]);
+
+  /** Short display for a user ID — show first 8 chars to avoid UUID wall */
+  const shortId = (uid: string) => uid.slice(0, 8) + '…';
 
   // ── No ID provided ──
   if (!entryId) {
@@ -629,18 +676,55 @@ export default function VerifyPage() {
               </div>
               <div className="flex justify-between">
                 <dt className="text-gray-500">Submitted By</dt>
-                <dd className="text-gray-800 truncate max-w-[180px]">{entry.submitted_by_user_id}</dd>
+                <dd className="text-gray-800 truncate max-w-[180px] text-xs" title={entry.submitted_by_user_id}>
+                  {entry.submitted_by_display_name ?? shortId(entry.submitted_by_user_id)}
+                </dd>
               </div>
               {entry.assigned_to_user_id && (
                 <div className="flex justify-between">
                   <dt className="text-gray-500">Assigned To</dt>
-                  <dd className="text-gray-800 truncate max-w-[180px]">{entry.assigned_to_user_id}</dd>
+                  <dd className="text-gray-800 truncate max-w-[180px] text-xs" title={entry.assigned_to_user_id}>
+                    {entry.assigned_to_display_name ?? shortId(entry.assigned_to_user_id)}
+                  </dd>
+                </div>
+              )}
+              {isAssignedToMe && entry.status === 'under_review' && (
+                <div className="pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full gap-1 border-amber-300 text-amber-700 hover:bg-amber-50"
+                    disabled={isReleasing}
+                    onClick={() => void handleUnclaim()}
+                  >
+                    <Unlock className="h-3.5 w-3.5" aria-hidden="true" />
+                    {isReleasing ? 'Releasing…' : 'Release Claim'}
+                  </Button>
+                </div>
+              )}
+              {entry.sla_deadline && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">SLA Deadline</dt>
+                  <dd className={entry.sla_breached ? 'text-error-deep font-semibold' : 'text-gray-800'}>
+                    {formatDateTime(entry.sla_deadline)}
+                    {entry.sla_breached && (
+                      <span className="ml-1 inline-flex items-center gap-0.5 text-xs">
+                        <AlertTriangle className="h-3 w-3" aria-hidden="true" /> Breached
+                      </span>
+                    )}
+                  </dd>
                 </div>
               )}
               {entry.notes && (
                 <div>
-                  <dt className="text-gray-500 mb-1">Notes</dt>
+                  <dt className="text-gray-500 mb-1">Submission Notes</dt>
                   <dd className="text-gray-800 text-xs bg-gray-50 rounded p-2">{entry.notes}</dd>
+                </div>
+              )}
+              {entry.reviewer_notes && (
+                <div>
+                  <dt className="text-gray-500 mb-1">Prior Reviewer Notes</dt>
+                  <dd className="text-amber-900 text-xs bg-amber-50 border border-amber-200 rounded p-2">{entry.reviewer_notes}</dd>
                 </div>
               )}
             </dl>
@@ -714,6 +798,22 @@ export default function VerifyPage() {
                         <p className="text-xs text-gray-500">Needs ORAN admin review</p>
                       </div>
                     </label>
+
+                    <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'returned' ? 'border-amber-400 bg-amber-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                      <input
+                        type="radio"
+                        name="decision"
+                        value="returned"
+                        checked={decision === 'returned'}
+                        onChange={() => setDecision('returned')}
+                        className="h-4 w-4 text-amber-600"
+                      />
+                      <ArrowLeft className="h-4 w-4 text-amber-600" aria-hidden="true" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">Return to Submitter</p>
+                        <p className="text-xs text-gray-500">Send back to host for revision</p>
+                      </div>
+                    </label>
                   </div>
                 </fieldset>
 
@@ -722,11 +822,11 @@ export default function VerifyPage() {
                   label="Notes"
                   htmlFor="verify-notes"
                   hint={
-                    (decision === 'denied' || decision === 'escalated')
-                      ? `Required for ${decision === 'denied' ? 'rejection' : 'escalation'}`
+                    (decision === 'denied' || decision === 'escalated' || decision === 'returned')
+                      ? `Required for ${decision === 'denied' ? 'rejection' : decision === 'returned' ? 'returns' : 'escalation'}`
                       : 'Optional notes for this decision'
                   }
-                  required={decision === 'denied' || decision === 'escalated'}
+                  required={decision === 'denied' || decision === 'escalated' || decision === 'returned'}
                   charCount={notes.length}
                   maxLength={5000}
                 >
@@ -739,6 +839,8 @@ export default function VerifyPage() {
                     placeholder={
                       decision === 'denied'
                         ? 'Describe what needs to be corrected…'
+                        : decision === 'returned'
+                        ? 'Describe what the submitter needs to fix…'
                         : 'Optional notes for this decision…'
                     }
                     className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-action focus:ring-1 focus:ring-action"
@@ -752,7 +854,7 @@ export default function VerifyPage() {
                   disabled={
                     !decision ||
                     isSubmitting ||
-                    ((decision === 'denied' || decision === 'escalated') && !notes.trim())
+                    ((decision === 'denied' || decision === 'escalated' || decision === 'returned') && !notes.trim())
                   }
                 >
                   {isSubmitting ? (
@@ -774,9 +876,48 @@ export default function VerifyPage() {
                 <p className="text-sm text-gray-500">
                   This entry has already been reviewed ({statusStyle.label}).
                 </p>
+                <div className="mt-3">
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href="/queue">← Back to Queue</Link>
+                  </Button>
+                </div>
               </div>
             )}
           </section>
+
+          {/* Transition history */}
+          {entry.transitions && entry.transitions.length > 0 && (
+            <section className="bg-white rounded-lg border border-gray-200 p-5">
+              <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                <Clock className="h-4 w-4" aria-hidden="true" />
+                History ({entry.transitions.length})
+              </h2>
+              <ol className="space-y-3">
+                {entry.transitions.map((t) => {
+                  const toStyle = SUBMISSION_STATUS_STYLES[t.to_status];
+                  return (
+                    <li key={t.id} className="flex gap-3 text-xs">
+                      <div className="mt-0.5 flex-shrink-0">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${toStyle?.color ?? 'bg-gray-100 text-gray-800 ring-gray-600/20'}`}>
+                          {toStyle?.label ?? t.to_status}
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-gray-500">
+                          <span className="truncate" title={t.actor_user_id}>{t.actor_display_name ?? t.actor_user_id.slice(0, 8) + '…'}</span>
+                          {t.actor_role && <span className="ml-1 text-gray-400">({t.actor_role.replace(/_/g, ' ')})</span>}
+                          {' · '}{formatDateTime(t.created_at)}
+                        </p>
+                        {t.reason && (
+                          <p className="mt-0.5 text-gray-700 truncate" title={t.reason}>{t.reason}</p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
+          )}
         </div>
       </div>
     </ErrorBoundary>

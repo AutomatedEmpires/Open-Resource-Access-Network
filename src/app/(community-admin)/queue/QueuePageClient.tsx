@@ -12,9 +12,11 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import {
   ClipboardList, RefreshCw, ChevronLeft, ChevronRight,
-  UserCheck, Clock, Filter, AlertTriangle, ArrowUp,
+  UserCheck, Clock, Filter, AlertTriangle, ArrowUp, Unlock,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -36,6 +38,7 @@ interface QueueRow {
   status: SubmissionStatus;
   submitted_by_user_id: string;
   assigned_to_user_id: string | null;
+  assigned_to_display_name: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -65,12 +68,15 @@ interface QueueResponse {
 const LIMIT = 20;
 
 const STATUS_TABS: { value: '' | SubmissionStatus; label: string }[] = [
-  { value: '',             label: 'All' },
-  { value: 'submitted',    label: 'Submitted' },
-  { value: 'under_review', label: 'Under Review' },
-  { value: 'approved',     label: 'Approved' },
-  { value: 'denied',       label: 'Denied' },
-  { value: 'escalated',    label: 'Escalated' },
+  { value: '',                      label: 'All' },
+  { value: 'submitted',             label: 'Submitted' },
+  { value: 'under_review',          label: 'Under Review' },
+  { value: 'pending_second_approval', label: 'Pending 2nd Approval' },
+  { value: 'approved',              label: 'Approved' },
+  { value: 'denied',                label: 'Denied' },
+  { value: 'escalated',             label: 'Escalated' },
+  { value: 'returned',              label: 'Returned' },
+  { value: 'withdrawn',             label: 'Withdrawn' },
 ];
 
 const SPECIAL_FILTER_ASSIGNED = '__assigned_to_me__';
@@ -105,15 +111,36 @@ function TriageBadge({ tier, explanations }: { tier: 'urgent' | 'high' | 'normal
 
 
 export default function QueuePage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id;
   const [data, setData] = useState<QueueResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>(() => {
+    // Honour ?status= from Coverage deep-links (only accept valid values)
+    const s = searchParams.get('status') ?? '';
+    const validTab = STATUS_TABS.some((t) => t.value === s);
+    const isSpecial = s === SPECIAL_FILTER_ASSIGNED;
+    return validTab || isSpecial ? s : '';
+  });
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [releasingId, setReleasingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const { toast } = useToast();
+
+  // ── Push filter changes to URL for back-navigation ──
+  const setFilter = useCallback((value: string) => {
+    setStatusFilter(value);
+    setPage(1);
+    const params = new URLSearchParams();
+    if (value) params.set('status', value);
+    const qs = params.toString();
+    router.replace(qs ? `/queue?${qs}` : '/queue', { scroll: false });
+  }, [router]);
 
   // ── Fetch queue entries ──
   const fetchQueue = useCallback(async (p: number, filter: string) => {
@@ -167,6 +194,28 @@ export default function QueuePage() {
       setError(e instanceof Error ? e.message : 'Failed to claim entry');
     } finally {
       setClaimingId(null);
+    }
+  }, [page, statusFilter, fetchQueue, toast]);
+
+  // ── Unclaim (release lock) ──
+  const handleUnclaim = useCallback(async (entryId: string) => {
+    setReleasingId(entryId);
+    try {
+      const res = await fetch('/api/community/queue', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId: entryId }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Release failed');
+      }
+      toast('success', 'Entry released — available for others to claim.');
+      void fetchQueue(page, statusFilter);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to release entry');
+    } finally {
+      setReleasingId(null);
     }
   }, [page, statusFilter, fetchQueue, toast]);
 
@@ -259,7 +308,7 @@ export default function QueuePage() {
             key={value}
             role="tab"
             aria-selected={statusFilter === value}
-            onClick={() => { setStatusFilter(value); setPage(1); }}
+            onClick={() => { setFilter(value); }}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               statusFilter === value
                 ? 'bg-info-muted text-action-deep'
@@ -273,7 +322,7 @@ export default function QueuePage() {
         <button
           role="tab"
           aria-selected={statusFilter === SPECIAL_FILTER_ASSIGNED}
-          onClick={() => { setStatusFilter(SPECIAL_FILTER_ASSIGNED); setPage(1); }}
+          onClick={() => { setFilter(SPECIAL_FILTER_ASSIGNED); }}
           className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
             statusFilter === SPECIAL_FILTER_ASSIGNED
               ? 'bg-green-100 text-green-800'
@@ -399,11 +448,11 @@ export default function QueuePage() {
                           href={`/verify?id=${entry.id}`}
                           className="font-medium text-action-base hover:underline"
                         >
-                          {entry.service_name}
+                          {entry.service_name ?? <span className="italic text-gray-400">(unnamed service)</span>}
                         </Link>
                       </td>
                       <td className="px-4 py-3 text-gray-600">
-                        {entry.organization_name}
+                        {entry.organization_name ?? <span className="italic text-gray-400">—</span>}
                       </td>
                       <td className="px-4 py-3">
                         <TriageBadge
@@ -441,9 +490,14 @@ export default function QueuePage() {
                       </td>
                       <td className="px-4 py-3 text-gray-500">
                         {entry.assigned_to_user_id ? (
-                          <span className="flex items-center gap-1">
-                            <UserCheck className="h-3.5 w-3.5 text-green-600" aria-hidden="true" />
-                            <span className="truncate max-w-[120px]">{entry.assigned_to_user_id}</span>
+                          <span
+                            className="flex items-center gap-1"
+                            title={entry.assigned_to_user_id}
+                          >
+                            <UserCheck className="h-3.5 w-3.5 text-green-600 shrink-0" aria-hidden="true" />
+                            <span className="truncate max-w-[120px] text-xs text-gray-600">
+                              {entry.assigned_to_display_name ?? entry.assigned_to_user_id.slice(0, 8) + '…'}
+                            </span>
                           </span>
                         ) : (
                           <span className="text-gray-400">—</span>
@@ -461,6 +515,18 @@ export default function QueuePage() {
                             >
                               <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
                               {claimingId === entry.id ? 'Claiming…' : 'Claim'}
+                            </Button>
+                          )}
+                          {entry.status === 'under_review' && entry.assigned_to_user_id && entry.assigned_to_user_id === currentUserId && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1 border-amber-300 text-amber-700 hover:bg-amber-50"
+                              disabled={releasingId === entry.id}
+                              onClick={() => void handleUnclaim(entry.id)}
+                            >
+                              <Unlock className="h-3.5 w-3.5" aria-hidden="true" />
+                              {releasingId === entry.id ? 'Releasing…' : 'Release'}
                             </Button>
                           )}
                           <Button size="sm" variant="ghost" asChild>

@@ -18,6 +18,7 @@ import Link from 'next/link';
 import {
   Globe2, RefreshCw, CheckCircle2, Clock,
   XCircle, ArrowUpCircle, Building2, TrendingUp, AlarmClock,
+  RotateCcw, MinusCircle, FileStack, ShieldAlert,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -30,19 +31,23 @@ import { Skeleton } from '@/components/ui/skeleton';
 // ============================================================
 
 interface CoverageSummary {
-  pending: number;
-  inReview: number;
-  verified: number;
-  rejected: number;
+  submitted: number;
+  underReview: number;
+  pendingSecondApproval: number;
+  approved: number;
+  denied: number;
   escalated: number;
+  returned: number;
+  withdrawn: number;
   total: number;
   stale: number;
+  slaBreached: number;
 }
 
 interface ActivityDay {
   date: string;
-  verified: number;
-  rejected: number;
+  approved: number;
+  denied: number;
   escalated: number;
 }
 
@@ -54,6 +59,7 @@ interface TopOrg {
 
 interface CoverageData {
   summary: CoverageSummary;
+  byType: Record<string, number>;
   recentActivity: ActivityDay[];
   topOrganizations: TopOrg[];
 }
@@ -161,6 +167,16 @@ export default function CommunityAdminCoveragePage() {
               <Skeleton key={i} className="h-24 w-full" />
             ))}
           </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))}
+          </div>
           <Skeleton className="h-64 w-full" />
         </div>
       )}
@@ -170,25 +186,25 @@ export default function CommunityAdminCoveragePage() {
           {/* Summary stats grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <StatCard
-              label="Pending"
-              value={data.summary.pending}
+              label="Submitted"
+              value={data.summary.submitted}
               icon={Clock}
               color="bg-amber-100 text-amber-600"
-              href="/queue?status=pending"
+              href="/queue?status=submitted"
             />
             <StatCard
-              label="In Review"
-              value={data.summary.inReview}
+              label="Under Review"
+              value={data.summary.underReview}
               icon={TrendingUp}
               color="bg-info-muted text-action-base"
-              href="/queue?status=in_review"
+              href="/queue?status=under_review"
             />
             <StatCard
-              label="Verified"
-              value={data.summary.verified}
+              label="Approved"
+              value={data.summary.approved}
               icon={CheckCircle2}
               color="bg-green-100 text-green-600"
-              href="/queue?status=verified"
+              href="/queue?status=approved"
             />
             <StatCard
               label="Escalated"
@@ -199,26 +215,58 @@ export default function CommunityAdminCoveragePage() {
             />
           </div>
 
-          {/* Second row: total + stale */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+          {/* Second row: total + stale + sla + denied */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <StatCard
               label="Total Entries"
               value={data.summary.total}
               icon={Globe2}
               color="bg-gray-100 text-gray-600"
+              href="/queue"
             />
             <StatCard
-              label="Rejected"
-              value={data.summary.rejected}
+              label="Denied"
+              value={data.summary.denied}
               icon={XCircle}
               color="bg-error-muted text-error-base"
-              href="/queue?status=rejected"
+              href="/queue?status=denied"
             />
             <StatCard
               label="Stale (>14 days)"
               value={data.summary.stale}
               icon={AlarmClock}
               color={data.summary.stale > 0 ? 'bg-error-muted text-error-base' : 'bg-gray-100 text-gray-400'}
+            />
+            <StatCard
+              label="SLA Breached"
+              value={data.summary.slaBreached}
+              icon={ShieldAlert}
+              color={data.summary.slaBreached > 0 ? 'bg-error-muted text-error-deep' : 'bg-gray-100 text-gray-400'}
+            />
+          </div>
+
+          {/* Third row: in-flight pipeline statuses */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+            <StatCard
+              label="Pending 2nd Approval"
+              value={data.summary.pendingSecondApproval}
+              icon={ArrowUpCircle}
+              color="bg-indigo-100 text-indigo-600"
+              href="/queue?status=pending_second_approval"
+            />
+            <StatCard
+              label="Returned"
+              value={data.summary.returned}
+              icon={RotateCcw}
+              color="bg-amber-100 text-amber-600"
+              href="/queue?status=returned"
+            />
+            <StatCard
+              label="Withdrawn"
+              value={data.summary.withdrawn}
+              icon={MinusCircle}
+              color="bg-gray-100 text-gray-500"
+              href="/queue?status=withdrawn"
             />
           </div>
 
@@ -238,8 +286,8 @@ export default function CommunityAdminCoveragePage() {
                     <thead>
                       <tr className="border-b border-gray-100">
                         <th scope="col" className="text-left py-2 text-xs font-medium text-gray-500">Date</th>
-                        <th scope="col" className="text-center py-2 text-xs font-medium text-green-600">Verified</th>
-                        <th scope="col" className="text-center py-2 text-xs font-medium text-error-base">Rejected</th>
+                        <th scope="col" className="text-center py-2 text-xs font-medium text-green-600">Approved</th>
+                        <th scope="col" className="text-center py-2 text-xs font-medium text-error-base">Denied</th>
                         <th scope="col" className="text-center py-2 text-xs font-medium text-purple-600">Escalated</th>
                       </tr>
                     </thead>
@@ -252,18 +300,18 @@ export default function CommunityAdminCoveragePage() {
                             })}
                           </td>
                           <td className="py-2 text-center">
-                            {day.verified > 0 ? (
+                            {day.approved > 0 ? (
                               <span className="inline-flex items-center justify-center h-6 min-w-[24px] px-1.5 rounded-full bg-green-100 text-green-800 text-xs font-medium">
-                                {day.verified}
+                                {day.approved}
                               </span>
                             ) : (
                               <span className="text-gray-300">—</span>
                             )}
                           </td>
                           <td className="py-2 text-center">
-                            {day.rejected > 0 ? (
+                            {day.denied > 0 ? (
                               <span className="inline-flex items-center justify-center h-6 min-w-[24px] px-1.5 rounded-full bg-error-muted text-error-deep text-xs font-medium">
-                                {day.rejected}
+                                {day.denied}
                               </span>
                             ) : (
                               <span className="text-gray-300">—</span>
@@ -314,6 +362,38 @@ export default function CommunityAdminCoveragePage() {
               )}
             </section>
           </div>
+
+          {/* Submission Types breakdown */}
+          {data.byType && Object.keys(data.byType).length > 0 && (
+            <section className="bg-white rounded-lg border border-gray-200 p-5 mt-6">
+              <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                <FileStack className="h-4 w-4" aria-hidden="true" />
+                Submission Types
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {Object.entries(data.byType)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([type, count]) => {
+                    const pct = data.summary.total > 0 ? Math.round((count / data.summary.total) * 100) : 0;
+                    const label = type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+                    return (
+                      <div key={type} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                        <p className="text-xs font-medium text-gray-500 truncate" title={label}>{label}</p>
+                        <p className="mt-1 text-2xl font-bold text-gray-900">{count}</p>
+                        <div className="mt-2 h-1.5 w-full rounded-full bg-gray-200">
+                          <div
+                            className="h-1.5 rounded-full bg-action-base transition-all"
+                            style={{ width: `${pct}%` }}
+                            aria-label={`${pct}% of total`}
+                          />
+                        </div>
+                        <p className="mt-1 text-xs text-gray-400">{pct}% of total</p>
+                      </div>
+                    );
+                  })}
+              </div>
+            </section>
+          )}
 
           {/* Coverage zone placeholder */}
           <section className="bg-white rounded-lg border border-dashed border-gray-300 p-8 text-center mt-6">

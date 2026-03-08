@@ -9,13 +9,14 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ScrollText, RefreshCw, AlertTriangle,
+  ScrollText, RefreshCw,
   ChevronLeft, ChevronRight, Filter,
   ChevronDown, ChevronUp, Clock, Database,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { FormAlert } from '@/components/ui/form-alert';
 import { SkeletonCard } from '@/components/ui/skeleton';
 
 // ============================================================
@@ -228,10 +229,7 @@ function AuditPageInner() {
 
       {/* Error state */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 mb-4 text-sm text-error-strong" role="alert">
-          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-          {error}
-        </div>
+        <FormAlert variant="error" message={error} onDismiss={() => setError(null)} className="mb-4" />
       )}
 
       {/* Loading state */}

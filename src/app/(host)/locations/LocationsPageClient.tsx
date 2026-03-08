@@ -230,6 +230,10 @@ export default function LocationsPage() {
       if (form.stateProvince) payload.stateProvince = form.stateProvince;
       if (form.postalCode) payload.postalCode = form.postalCode;
       if (form.country) payload.country = form.country;
+      // Phones: include if any numbers have been entered
+      if (form.phones.length > 0) payload.phones = form.phones;
+      // Schedule: always include so the API can reset hours on each save
+      payload.schedule = form.schedule;
 
       const res = await fetch(endpoint, {
         method: isUpdate ? 'PUT' : 'POST',

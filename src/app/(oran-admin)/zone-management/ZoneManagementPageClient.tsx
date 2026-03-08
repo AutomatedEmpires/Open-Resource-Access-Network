@@ -10,7 +10,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  MapPin, RefreshCw, AlertTriangle, Plus,
+  MapPin, RefreshCw, Plus,
   ChevronLeft, ChevronRight,
   Pencil, Trash2, Filter, Users, Loader2,
 } from 'lucide-react';
@@ -289,10 +289,7 @@ function ZoneManagementInner() {
 
       {/* Error state */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 mb-4 text-sm text-error-strong" role="alert">
-          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-          {error}
-        </div>
+        <FormAlert variant="error" message={error} onDismiss={() => setError(null)} className="mb-4" />
       )}
 
       {/* Loading state */}

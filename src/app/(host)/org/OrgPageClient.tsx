@@ -33,25 +33,43 @@ import { FormAlert } from '@/components/ui/form-alert';
 import { SuccessCelebration } from '@/components/ui/success-celebration';
 import { useToast } from '@/components/ui/toast';
 import { useUnsavedChanges } from '@/lib/hooks/useUnsavedChanges';
-import type { Organization } from '@/domain/types';
 
 // ============================================================
 // TYPES
 // ============================================================
 
+// Shape returned by /api/host/organizations — DB columns are snake_case
+interface OrgApiRow {
+  id: string;
+  name: string;
+  description?: string | null;
+  url?: string | null;
+  email?: string | null;
+  tax_status?: string | null;
+  tax_id?: string | null;
+  year_incorporated?: number | null;
+  legal_status?: string | null;
+  status: 'active' | 'inactive' | 'defunct';
+}
+
 interface OrgListResponse {
-  results: Organization[];
+  results: OrgApiRow[];
   total: number;
   page: number;
   hasMore: boolean;
 }
 
-type EditingOrg = Pick<Organization, 'id' | 'name' | 'description' | 'url' | 'email'> & {
+interface EditingOrg {
+  id: string;
+  name: string;
+  description?: string | null;
+  url?: string | null;
+  email?: string | null;
   taxStatus: string;
   taxId: string;
   yearIncorporated: string;
   legalStatus: string;
-};
+}
 
 const LIMIT = 12;
 
@@ -297,10 +315,10 @@ export default function OrgDashboardPage() {
                         description: org.description ?? '',
                         url: org.url ?? '',
                         email: org.email ?? '',
-                        taxStatus: (org as unknown as Record<string, unknown>).tax_status as string ?? '',
-                        taxId: (org as unknown as Record<string, unknown>).tax_id as string ?? '',
-                        yearIncorporated: String((org as unknown as Record<string, unknown>).year_incorporated ?? ''),
-                        legalStatus: (org as unknown as Record<string, unknown>).legal_status as string ?? '',
+                        taxStatus: org.tax_status ?? '',
+                        taxId: org.tax_id ?? '',
+                        yearIncorporated: String(org.year_incorporated ?? ''),
+                        legalStatus: org.legal_status ?? '',
                       })}
                     >
                       <Pencil className="h-3 w-3" aria-hidden="true" />

@@ -24,6 +24,7 @@ import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormField } from '@/components/ui/form-field';
 import { FormAlert } from '@/components/ui/form-alert';
 import { useToast } from '@/components/ui/toast';
+import { formatDate } from '@/lib/format';
 import type { OranRole } from '@/domain/types';
 
 // ============================================================
@@ -46,8 +47,18 @@ interface TeamMember {
   id: string;
   userId: string;
   role: HostRole;
-  status: 'active';
+  status: string;
   addedAt: string;
+}
+
+const MEMBER_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  active:   { label: 'Active',   color: 'bg-green-100 text-green-700' },
+  pending:  { label: 'Pending',  color: 'bg-yellow-100 text-yellow-700' },
+  inactive: { label: 'Inactive', color: 'bg-gray-100 text-gray-600' },
+};
+
+function getMemberStatusDisplay(status: string) {
+  return MEMBER_STATUS_CONFIG[status] ?? { label: status, color: 'bg-gray-100 text-gray-600' };
 }
 
 type MemberAction =
@@ -156,7 +167,7 @@ export default function AdminsPage() {
         id: m.id,
         userId: m.user_id,
         role: m.role as HostRole,
-        status: 'active' as const,
+        status: m.status ?? 'active',
         addedAt: m.created_at,
       })));
     } catch {
@@ -498,22 +509,25 @@ export default function AdminsPage() {
               {members.map((m) => (
                 <li key={m.id} className="flex items-center justify-between px-6 py-3">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-info-muted text-action-strong text-xs font-medium">
-                      {m.userId.charAt(0).toUpperCase()}
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-info-muted text-action-strong">
+                      <Users className="h-4 w-4" aria-hidden="true" />
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-900">{m.userId}</p>
                       <p className="text-xs text-gray-500">
-                        Added {new Date(m.addedAt).toLocaleDateString()}
+                        Added {formatDate(m.addedAt)}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                      'bg-green-100 text-green-700'
-                    }`}>
-                      Active
-                    </span>
+                    {(() => {
+                      const cfg = getMemberStatusDisplay(m.status);
+                      return (
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cfg.color}`}>
+                          {cfg.label}
+                        </span>
+                      );
+                    })()}
                     <select
                       value={m.role}
                       onChange={(e) => setPendingRoleChange({ memberId: m.id, userId: m.userId, newRole: e.target.value as HostRole })}

@@ -16,6 +16,7 @@ import { isRoleAtLeast } from '@/services/auth/roles';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AppFooter } from '@/components/footer';
+import { PortalUserMenu } from '@/components/ui/portal-user-menu';
 
 const NAV_ITEMS = [
   { href: '/org', label: 'Organization', icon: Building2 },
@@ -32,8 +33,8 @@ export default function HostLayoutShell({ children }: { children: React.ReactNod
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-gray-50" aria-busy="true" aria-label="Loading Host portal">
-        <div className="sticky top-0 z-[var(--z-nav)] h-14 border-b border-gray-200 bg-white" />
+      <div className="min-h-screen bg-[var(--bg-page)]" aria-busy="true" aria-label="Loading Host portal">
+        <div className="sticky top-0 z-[var(--z-nav)] h-14 border-b border-[var(--border)] bg-[var(--bg-surface)]" />
         <div className="container mx-auto max-w-7xl space-y-4 px-4 py-6">
           <Skeleton className="h-7 w-40" />
           <Skeleton className="h-4 w-full" />
@@ -48,30 +49,33 @@ export default function HostLayoutShell({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="sticky top-0 z-[var(--z-nav)] border-b border-gray-200 bg-white">
+    <div className="min-h-screen bg-[var(--bg-page)]">
+      <header className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
         <div className="container mx-auto max-w-7xl flex items-center justify-between px-4 h-14">
           <Link href="/org" className="font-bold text-gray-900 tracking-tight">
             ORAN Host
           </Link>
 
-          <nav className="flex items-center gap-1 overflow-x-auto" aria-label="Host navigation">
-            {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
-              <Link
-                key={href}
-                href={href}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-                  isActive(href)
-                    ? 'bg-gray-100 text-gray-900'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-                aria-current={isActive(href) ? 'page' : undefined}
-              >
-                <Icon className="h-4 w-4" aria-hidden="true" />
-                {label}
-              </Link>
-            ))}
-          </nav>
+          <div className="flex items-center gap-2">
+            <nav className="flex items-center gap-1 overflow-x-auto" aria-label="Host navigation">
+              {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                    isActive(href)
+                      ? 'bg-gray-100 text-gray-900'
+                      : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                  aria-current={isActive(href) ? 'page' : undefined}
+                >
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                  {label}
+                </Link>
+              ))}
+            </nav>
+            <PortalUserMenu />
+          </div>
         </div>
       </header>
 

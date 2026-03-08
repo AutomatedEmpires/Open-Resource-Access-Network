@@ -15,11 +15,13 @@ import { isRoleAtLeast } from '@/services/auth/roles';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AppFooter } from '@/components/footer';
+import { PortalUserMenu } from '@/components/ui/portal-user-menu';
 
 const NAV_ITEMS = [
-  { href: '/queue', label: 'Queue' },
-  { href: '/verify', label: 'Verify' },
-  { href: '/coverage', label: 'Coverage' },
+  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/queue',     label: 'Queue' },
+  { href: '/verify',    label: 'Verify' },
+  { href: '/coverage',  label: 'Coverage' },
 ] as const;
 
 export default function CommunityAdminLayoutShell({ children }: { children: React.ReactNode }) {
@@ -29,8 +31,8 @@ export default function CommunityAdminLayoutShell({ children }: { children: Reac
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-gray-50" aria-busy="true" aria-label="Loading Community Admin portal">
-        <div className="sticky top-0 z-[var(--z-nav)] h-14 border-b border-gray-200 bg-white" />
+      <div className="min-h-screen bg-[var(--bg-page)]" aria-busy="true" aria-label="Loading Community Admin portal">
+        <div className="sticky top-0 z-[var(--z-nav)] h-14 border-b border-[var(--border)] bg-[var(--bg-surface)]" />
         <div className="container mx-auto max-w-7xl space-y-4 px-4 py-6">
           <Skeleton className="h-7 w-40" />
           <Skeleton className="h-4 w-full" />
@@ -45,29 +47,32 @@ export default function CommunityAdminLayoutShell({ children }: { children: Reac
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="sticky top-0 z-[var(--z-nav)] border-b border-gray-200 bg-white">
+    <div className="min-h-screen bg-[var(--bg-page)]">
+      <header className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
         <div className="container mx-auto max-w-7xl flex items-center justify-between px-4 h-14">
-          <Link href="/queue" className="font-bold text-gray-900 tracking-tight">
+          <Link href="/dashboard" className="font-bold text-[var(--text-default,#111827)] tracking-tight">
             ORAN Community Admin
           </Link>
 
-          <nav className="flex items-center gap-1 overflow-x-auto" aria-label="Community admin navigation">
-            {NAV_ITEMS.map(({ href, label }) => (
-              <Link
-                key={href}
-                href={href}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-                  isActive(href)
-                    ? 'bg-gray-100 text-gray-900'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-                aria-current={isActive(href) ? 'page' : undefined}
-              >
-                {label}
-              </Link>
-            ))}
-          </nav>
+          <div className="flex items-center gap-2">
+            <nav className="flex items-center gap-1 overflow-x-auto" aria-label="Community admin navigation">
+              {NAV_ITEMS.map(({ href, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                    isActive(href)
+                      ? 'bg-[var(--bg-active,#f3f4f6)] text-[var(--text-default,#111827)]'
+                      : 'text-gray-500 hover:text-[var(--text-default,#111827)] hover:bg-[var(--bg-hover,#f9fafb)]'
+                  }`}
+                  aria-current={isActive(href) ? 'page' : undefined}
+                >
+                  {label}
+                </Link>
+              ))}
+            </nav>
+            <PortalUserMenu />
+          </div>
         </div>
       </header>
 

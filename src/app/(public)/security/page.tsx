@@ -58,6 +58,11 @@ const SECURITY_PRACTICES = [
     detail:
       'In-memory sliding-window rate limiting on all API routes. 429 responses include Retry-After headers.',
   },
+  {
+    area: 'Dependency management',
+    detail:
+      'Dependabot security alerts enabled. npm audit runs in CI on every pull request. High-severity CVEs block merging.',
+  },
 ];
 
 export default function SecurityPage() {
@@ -91,7 +96,7 @@ export default function SecurityPage() {
             href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/security/advisories/new"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-5 py-4 text-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50"
+            className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-5 py-4 text-sm transition-colors hover:border-red-200 hover:bg-red-50"
           >
             <div>
               <p className="font-medium text-gray-900">GitHub private advisory</p>
@@ -101,7 +106,7 @@ export default function SecurityPage() {
           </a>
           <Link
             href="/contact"
-            className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-5 py-4 text-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50"
+            className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-5 py-4 text-sm transition-colors hover:border-red-200 hover:bg-red-50"
           >
             <div>
               <p className="font-medium text-gray-900">Contact form</p>
@@ -168,6 +173,13 @@ export default function SecurityPage() {
               (unless the researcher prefers anonymity).
             </span>
           </div>
+          <div className="flex gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+            <span className="shrink-0 font-mono text-gray-400">ℹ</span>
+            <span>
+              ORAN does not currently operate a paid bug bounty program. All qualifying reporters
+              receive public attribution (with consent) and our formal thanks.
+            </span>
+          </div>
         </div>
       </section>
 
@@ -202,7 +214,11 @@ export default function SecurityPage() {
           >
             docs/SECURITY_PRIVACY.md
           </a>
-          .
+          . See also our{' '}
+          <Link href="/privacy" className="underline hover:text-gray-700">
+            Privacy Policy
+          </Link>{' '}
+          for telemetry and data collection details.
         </p>
       </section>
 

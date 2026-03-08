@@ -44,7 +44,7 @@ const NON_NEGOTIABLES = [
   {
     title: 'Privacy by default',
     description:
-      'Location is approximate by default. Profile data is opt-in. We collect only what is necessary to help connect you with services.',
+      'Location is approximate by default. Profile saving is opt-in. Our Privacy Policy details how data is collected and used.',
   },
   {
     title: 'Accessible to everyone',
@@ -57,18 +57,18 @@ const PLATFORM_STATS = [
   { label: 'Service categories', value: '30+' },
   { label: 'Verification model', value: 'Community-driven' },
   { label: 'Crisis gate', value: '911 / 988 / 211' },
-  { label: 'Open source', value: 'Yes' },
+  { label: 'License', value: 'MIT' },
 ];
 
 export default function AboutPage() {
   return (
     <div className="container mx-auto max-w-3xl px-4 py-12">
       {/* Hero */}
-      <div className="mb-12 border-b border-gray-200 pb-10">
-        <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-xl bg-indigo-50">
-          <span className="text-2xl" aria-hidden="true">🌐</span>
+      <div className="mb-10 border-b border-gray-200 pb-8">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-50">
+          <span className="text-xl" aria-hidden="true">🌐</span>
         </div>
-        <h1 className="mb-4 text-3xl font-bold tracking-tight text-gray-900">
+        <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">
           Open Resource Access Network
         </h1>
         <p className="max-w-2xl text-xl leading-relaxed text-gray-600">

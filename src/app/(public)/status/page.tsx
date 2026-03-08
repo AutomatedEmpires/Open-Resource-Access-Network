@@ -41,14 +41,17 @@ export default function StatusPage() {
   return (
     <div className="container mx-auto max-w-3xl px-4 py-12">
       {/* Page header */}
-      <div className="mb-10">
+      <div className="mb-10 border-b border-gray-200 pb-8">
         <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-50">
           <span className="text-xl" aria-hidden="true">📡</span>
         </div>
         <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">
           System Status
         </h1>
-        <p className="text-sm text-gray-500">
+        <p className="max-w-xl leading-relaxed text-gray-600">
+          Real-time operational status for all ORAN platform services and infrastructure.
+        </p>
+        <p className="mt-2 text-sm text-gray-500">
           Last updated: <time dateTime={LAST_UPDATED_ISO}>{LAST_UPDATED_DISPLAY}</time>
         </p>
       </div>
@@ -81,7 +84,7 @@ export default function StatusPage() {
             }`}
           >
             {allOperational
-              ? 'No incidents reported in the last 90 days.'
+              ? 'ORAN is operating normally across all services.'
               : 'See active incidents below for details.'}
           </p>
         </div>

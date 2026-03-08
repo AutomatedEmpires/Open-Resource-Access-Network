@@ -14,6 +14,31 @@ import type { AdminProfile, AdminWithCapacity, ClosestAdmin } from './adminProfi
 import type { AdminAssignment, AssignmentStatus, AdminDecision } from './adminAssignments';
 import type { TagConfirmation, TagConfirmationStatus } from './tagConfirmations';
 import type { LlmSuggestion, SuggestionField, SuggestionStatus } from './llmSuggestions';
+import type {
+  SourceSystemRow,
+  NewSourceSystemRow,
+  SourceFeedRow,
+  NewSourceFeedRow,
+  SourceRecordRow,
+  NewSourceRecordRow,
+  NewSourceRecordTaxonomyRow,
+  EntityIdentifierRow,
+  NewEntityIdentifierRow,
+  HsdsExportSnapshotRow,
+  NewHsdsExportSnapshotRow,
+  LifecycleEventRow,
+  NewLifecycleEventRow,
+  CanonicalOrganizationRow,
+  NewCanonicalOrganizationRow,
+  CanonicalServiceRow,
+  NewCanonicalServiceRow,
+  CanonicalLocationRow,
+  NewCanonicalLocationRow,
+  CanonicalServiceLocationRow,
+  NewCanonicalServiceLocationRow,
+  CanonicalProvenanceRow,
+  NewCanonicalProvenanceRow,
+} from '@/db/schema';
 
 // ============================================================
 // SOURCE REGISTRY STORE
@@ -78,7 +103,16 @@ export interface JobStore {
 
 export interface EvidenceStore {
   /** Store a new evidence snapshot. */
-  create(snapshot: EvidenceSnapshot & { jobId?: string; correlationId: string }): Promise<void>;
+  create(snapshot: EvidenceSnapshot & {
+    jobId?: string;
+    correlationId: string;
+    htmlRaw?: string;
+    textExtracted?: string;
+    title?: string;
+    metaDescription?: string;
+    language?: string;
+    contentLength?: number;
+  }): Promise<void>;
 
   /** Get by ID. */
   getById(evidenceId: string): Promise<EvidenceSnapshot | null>;
@@ -652,7 +686,23 @@ export interface CandidatePublishReadiness {
   meetsPublishThreshold: boolean;
 }
 
+export interface CandidatePublishReadinessSnapshot {
+  candidateId: string;
+  isReady: boolean;
+  hasRequiredFields: boolean;
+  hasRequiredTags: boolean;
+  tagsConfirmed: boolean;
+  meetsScoreThreshold: boolean;
+  hasAdminApproval: boolean;
+  pendingTagCount: number;
+  adminApprovalCount: number;
+  blockers: string[];
+}
+
 export interface PublishReadinessStore {
+  /** Upsert the latest readiness snapshot for a candidate. */
+  upsert(snapshot: CandidatePublishReadinessSnapshot): Promise<void>;
+
   /** Get readiness info for a candidate. */
   getReadiness(candidateId: string): Promise<CandidatePublishReadiness | null>;
 
@@ -661,6 +711,327 @@ export interface PublishReadinessStore {
 
   /** Get all candidates ready for publish. */
   listReadyForPublish(limit?: number): Promise<CandidatePublishReadiness[]>;
+}
+
+// ============================================================
+// SOURCE SYSTEM STORE (0032 – unified source assertion layer)
+// ============================================================
+
+export interface SourceSystemStore {
+  /** Get a source system by ID. */
+  getById(id: string): Promise<SourceSystemRow | null>;
+
+  /** List active source systems, optionally filtered by family or trust tier. */
+  listActive(filters?: {
+    family?: string;
+    trustTier?: string;
+  }): Promise<SourceSystemRow[]>;
+
+  /** Create a source system. */
+  create(row: NewSourceSystemRow): Promise<SourceSystemRow>;
+
+  /** Update a source system. */
+  update(id: string, updates: Partial<NewSourceSystemRow>): Promise<void>;
+
+  /** Deactivate (soft delete). */
+  deactivate(id: string): Promise<void>;
+}
+
+// ============================================================
+// SOURCE FEED STORE
+// ============================================================
+
+export interface SourceFeedStore {
+  /** Get a feed by ID. */
+  getById(id: string): Promise<SourceFeedRow | null>;
+
+  /** List feeds for a source system. */
+  listBySystem(sourceSystemId: string): Promise<SourceFeedRow[]>;
+
+  /** List feeds due for polling. */
+  listDueForPoll(): Promise<SourceFeedRow[]>;
+
+  /** Create a feed. */
+  create(row: NewSourceFeedRow): Promise<SourceFeedRow>;
+
+  /** Update after poll attempt. */
+  updateAfterPoll(
+    feedId: string,
+    result: {
+      lastPolledAt: string;
+      lastSuccessAt?: string;
+      lastError?: string;
+      errorCount?: number;
+    }
+  ): Promise<void>;
+
+  /** Deactivate a feed. */
+  deactivate(id: string): Promise<void>;
+}
+
+// ============================================================
+// SOURCE RECORD STORE
+// ============================================================
+
+export interface SourceRecordStore {
+  /** Get a record by ID. */
+  getById(id: string): Promise<SourceRecordRow | null>;
+
+  /** Find existing record by dedup key (feed + type + sourceRecordId + hash). */
+  findByDedup(
+    sourceFeedId: string,
+    sourceRecordType: string,
+    sourceRecordId: string,
+    payloadSha256: string
+  ): Promise<SourceRecordRow | null>;
+
+  /** Create a source record. */
+  create(row: NewSourceRecordRow): Promise<SourceRecordRow>;
+
+  /** Batch insert source records. */
+  bulkCreate(rows: NewSourceRecordRow[]): Promise<void>;
+
+  /** Update processing status. */
+  updateStatus(
+    id: string,
+    status: string,
+    error?: string
+  ): Promise<void>;
+
+  /** List records pending processing. */
+  listPending(limit?: number): Promise<SourceRecordRow[]>;
+
+  /** List records by feed (for batch processing). */
+  listByFeed(sourceFeedId: string, limit?: number): Promise<SourceRecordRow[]>;
+
+  /** Attach taxonomy terms to a source record. */
+  addTaxonomy(rows: NewSourceRecordTaxonomyRow[]): Promise<void>;
+}
+
+// ============================================================
+// ENTITY IDENTIFIER STORE
+// ============================================================
+
+export interface EntityIdentifierStore {
+  /** Get all identifiers for an entity. */
+  listByEntity(entityType: string, entityId: string): Promise<EntityIdentifierRow[]>;
+
+  /** Find entity by external identifier. */
+  findByScheme(
+    identifierScheme: string,
+    identifierValue: string
+  ): Promise<EntityIdentifierRow | null>;
+
+  /** Create an identifier link. */
+  create(row: NewEntityIdentifierRow): Promise<EntityIdentifierRow>;
+
+  /** Bulk-update status for all identifiers of an entity. */
+  updateStatusForEntity(
+    entityType: string,
+    entityId: string,
+    status: string
+  ): Promise<number>;
+}
+
+// ============================================================
+// HSDS EXPORT SNAPSHOT STORE
+// ============================================================
+
+export interface HsdsExportSnapshotStore {
+  /** Get current snapshot for an entity. */
+  getCurrent(
+    entityType: string,
+    entityId: string
+  ): Promise<HsdsExportSnapshotRow | null>;
+
+  /** Create a new snapshot version. */
+  create(row: NewHsdsExportSnapshotRow): Promise<HsdsExportSnapshotRow>;
+
+  /** Withdraw (invalidate) all snapshots for an entity. */
+  withdrawForEntity(entityType: string, entityId: string): Promise<number>;
+
+  /** List current snapshots for export. */
+  listCurrent(limit?: number, offset?: number): Promise<HsdsExportSnapshotRow[]>;
+}
+
+// ============================================================
+// LIFECYCLE EVENT STORE
+// ============================================================
+
+export interface LifecycleEventStore {
+  /** Record a lifecycle event. */
+  create(row: NewLifecycleEventRow): Promise<LifecycleEventRow>;
+
+  /** Get events for an entity. */
+  listByEntity(
+    entityType: string,
+    entityId: string
+  ): Promise<LifecycleEventRow[]>;
+
+  /** Get recent events by type. */
+  listByType(eventType: string, limit?: number): Promise<LifecycleEventRow[]>;
+}
+
+// ============================================================
+// CANONICAL ORGANIZATION STORE (0033 – canonical federation)
+// ============================================================
+
+export interface CanonicalOrganizationStore {
+  /** Get a canonical organization by ID. */
+  getById(id: string): Promise<CanonicalOrganizationRow | null>;
+
+  /** List canonical organizations by lifecycle status. */
+  listByLifecycle(lifecycleStatus: string, limit?: number): Promise<CanonicalOrganizationRow[]>;
+
+  /** List canonical organizations by publication status. */
+  listByPublication(publicationStatus: string, limit?: number, offset?: number): Promise<CanonicalOrganizationRow[]>;
+
+  /** List canonical organizations by winning source system. */
+  listByWinningSource(sourceSystemId: string, limit?: number): Promise<CanonicalOrganizationRow[]>;
+
+  /** Create a canonical organization. */
+  create(row: NewCanonicalOrganizationRow): Promise<CanonicalOrganizationRow>;
+
+  /** Update a canonical organization. */
+  update(id: string, updates: Partial<NewCanonicalOrganizationRow>): Promise<void>;
+
+  /** Transition lifecycle status. */
+  updateLifecycleStatus(id: string, status: string): Promise<void>;
+
+  /** Transition publication status. */
+  updatePublicationStatus(id: string, status: string): Promise<void>;
+}
+
+// ============================================================
+// CANONICAL SERVICE STORE
+// ============================================================
+
+export interface CanonicalServiceStore {
+  /** Get a canonical service by ID. */
+  getById(id: string): Promise<CanonicalServiceRow | null>;
+
+  /** List services for a canonical organization. */
+  listByOrganization(canonicalOrganizationId: string): Promise<CanonicalServiceRow[]>;
+
+  /** List canonical services by lifecycle status. */
+  listByLifecycle(lifecycleStatus: string, limit?: number): Promise<CanonicalServiceRow[]>;
+
+  /** List canonical services by publication status. */
+  listByPublication(publicationStatus: string, limit?: number, offset?: number): Promise<CanonicalServiceRow[]>;
+
+  /** List canonical services by winning source system. */
+  listByWinningSource(sourceSystemId: string, limit?: number): Promise<CanonicalServiceRow[]>;
+
+  /** Create a canonical service. */
+  create(row: NewCanonicalServiceRow): Promise<CanonicalServiceRow>;
+
+  /** Update a canonical service. */
+  update(id: string, updates: Partial<NewCanonicalServiceRow>): Promise<void>;
+
+  /** Transition lifecycle status. */
+  updateLifecycleStatus(id: string, status: string): Promise<void>;
+
+  /** Transition publication status. */
+  updatePublicationStatus(id: string, status: string): Promise<void>;
+}
+
+// ============================================================
+// CANONICAL LOCATION STORE
+// ============================================================
+
+export interface CanonicalLocationStore {
+  /** Get a canonical location by ID. */
+  getById(id: string): Promise<CanonicalLocationRow | null>;
+
+  /** List locations for a canonical organization. */
+  listByOrganization(canonicalOrganizationId: string): Promise<CanonicalLocationRow[]>;
+
+  /** List canonical locations by lifecycle status. */
+  listByLifecycle(lifecycleStatus: string, limit?: number): Promise<CanonicalLocationRow[]>;
+
+  /** List canonical locations by publication status. */
+  listByPublication(publicationStatus: string, limit?: number, offset?: number): Promise<CanonicalLocationRow[]>;
+
+  /** List canonical locations by winning source system. */
+  listByWinningSource(sourceSystemId: string, limit?: number): Promise<CanonicalLocationRow[]>;
+
+  /** Create a canonical location. */
+  create(row: NewCanonicalLocationRow): Promise<CanonicalLocationRow>;
+
+  /** Update a canonical location. */
+  update(id: string, updates: Partial<NewCanonicalLocationRow>): Promise<void>;
+
+  /** Transition lifecycle status. */
+  updateLifecycleStatus(id: string, status: string): Promise<void>;
+
+  /** Transition publication status. */
+  updatePublicationStatus(id: string, status: string): Promise<void>;
+}
+
+// ============================================================
+// CANONICAL SERVICE LOCATION STORE (Junction)
+// ============================================================
+
+export interface CanonicalServiceLocationStore {
+  /** List locations for a canonical service. */
+  listByService(canonicalServiceId: string): Promise<CanonicalServiceLocationRow[]>;
+
+  /** List services at a canonical location. */
+  listByLocation(canonicalLocationId: string): Promise<CanonicalServiceLocationRow[]>;
+
+  /** Link a service to a location. */
+  create(row: NewCanonicalServiceLocationRow): Promise<CanonicalServiceLocationRow>;
+
+  /** Remove a service–location link. */
+  remove(canonicalServiceId: string, canonicalLocationId: string): Promise<void>;
+}
+
+// ============================================================
+// CANONICAL PROVENANCE STORE (Field-level Lineage)
+// ============================================================
+
+export interface CanonicalProvenanceStore {
+  /** List all provenance records for an entity. */
+  listByEntity(entityType: string, entityId: string): Promise<CanonicalProvenanceRow[]>;
+
+  /** List accepted provenance for an entity’s specific field. */
+  getAcceptedForField(
+    entityType: string,
+    entityId: string,
+    fieldName: string
+  ): Promise<CanonicalProvenanceRow | null>;
+
+  /** Create a provenance record. */
+  create(row: NewCanonicalProvenanceRow): Promise<CanonicalProvenanceRow>;
+
+  /** Bulk-create provenance records (for batch normalization). */
+  bulkCreate(rows: NewCanonicalProvenanceRow[]): Promise<void>;
+
+  /** Update decision status for a provenance record. */
+  updateDecision(
+    id: string,
+    decisionStatus: string,
+    decidedBy?: string
+  ): Promise<void>;
+
+  /** Supersede all accepted records for a field (before accepting a new one). */
+  supersedeField(
+    entityType: string,
+    entityId: string,
+    fieldName: string
+  ): Promise<number>;
+
+  /**
+   * Atomically supersede any existing accepted provenance for a field,
+   * then mark the given record as accepted — inside a single transaction.
+   */
+  acceptField(
+    provenanceId: string,
+    entityType: string,
+    entityId: string,
+    fieldName: string,
+    decidedBy?: string
+  ): Promise<{ supersededCount: number }>;
 }
 
 // ============================================================
@@ -686,5 +1057,19 @@ export interface IngestionStores {
   llmSuggestions: LlmSuggestionStore;
   publishThresholds: PublishThresholdStore;
   publishReadiness: PublishReadinessStore;
-}
 
+  // Source assertion layer (0032)
+  sourceSystems: SourceSystemStore;
+  sourceFeeds: SourceFeedStore;
+  sourceRecords: SourceRecordStore;
+  entityIdentifiers: EntityIdentifierStore;
+  hsdsExportSnapshots: HsdsExportSnapshotStore;
+  lifecycleEvents: LifecycleEventStore;
+
+  // Canonical federation layer (0033)
+  canonicalOrganizations: CanonicalOrganizationStore;
+  canonicalServices: CanonicalServiceStore;
+  canonicalLocations: CanonicalLocationStore;
+  canonicalServiceLocations: CanonicalServiceLocationStore;
+  canonicalProvenance: CanonicalProvenanceStore;
+}

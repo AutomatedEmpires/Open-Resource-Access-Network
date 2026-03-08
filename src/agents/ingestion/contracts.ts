@@ -2,8 +2,50 @@ import { z } from 'zod';
 
 import { buildDefaultChecklist, VerificationChecklistSchema } from './checklist';
 
-export const SourceKindSchema = z.enum(['allowlisted_scrape', 'partner_feed', 'manual', 'curated_list']);
+export const SourceKindSchema = z.enum([
+  'allowlisted_scrape',
+  'partner_feed',
+  'manual',
+  'curated_list',
+  'hsds_api',
+  'hsds_tabular',
+  'partner_api',
+  'partner_export',
+  'government_open_data',
+]);
 export type SourceKind = z.infer<typeof SourceKindSchema>;
+
+/**
+ * Source system family — mirrors the source_systems.family CHECK constraint.
+ * Used for the unified source registry.
+ */
+export const SourceSystemFamilySchema = z.enum([
+  'hsds_api',
+  'hsds_tabular',
+  'partner_api',
+  'partner_export',
+  'government_open_data',
+  'allowlisted_scrape',
+  'manual',
+]);
+export type SourceSystemFamily = z.infer<typeof SourceSystemFamilySchema>;
+
+/**
+ * Trust tiers — determines pipeline speed for inbound data.
+ * verified_publisher: auto-tag, auto-approve unless anomaly
+ * trusted_partner: auto-tag, light human review
+ * community: full review pipeline
+ * quarantine: full review + domain validation
+ * blocked: not ingested
+ */
+export const TrustTierSchema = z.enum([
+  'verified_publisher',
+  'trusted_partner',
+  'community',
+  'quarantine',
+  'blocked',
+]);
+export type TrustTier = z.infer<typeof TrustTierSchema>;
 
 export const CandidateLocatorSchema = z.object({
   kind: SourceKindSchema,

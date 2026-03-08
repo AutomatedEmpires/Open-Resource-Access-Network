@@ -19,8 +19,8 @@ import { CATEGORY_TAGS } from '../tags';
  */
 export const FieldConfidenceSchema = z.object({
   confidence: z.number().int().min(0).max(100),
-  reasoning: z.string().min(1).optional(),
-  sourceSnippet: z.string().optional(),
+  reasoning: z.string().nullable().optional(),
+  sourceSnippet: z.string().nullable().optional(),
 });
 export type FieldConfidence = z.infer<typeof FieldConfidenceSchema>;
 
@@ -34,7 +34,7 @@ export type FieldConfidence = z.infer<typeof FieldConfidenceSchema>;
 export const ExtractedPhoneSchema = z.object({
   number: z.string(),
   type: z.enum(['voice', 'fax', 'tty', 'hotline', 'sms', 'unknown']).default('voice'),
-  context: z.string().optional(),
+  context: z.string().nullable().optional(),
 });
 export type ExtractedPhone = z.infer<typeof ExtractedPhoneSchema>;
 
@@ -43,7 +43,7 @@ export type ExtractedPhone = z.infer<typeof ExtractedPhoneSchema>;
  */
 export const ExtractedAddressSchema = z.object({
   line1: z.string(),
-  line2: z.string().optional(),
+  line2: z.string().nullable().optional(),
   city: z.string(),
   region: z.string(),
   postalCode: z.string(),
@@ -56,11 +56,11 @@ export type ExtractedAddress = z.infer<typeof ExtractedAddressSchema>;
  */
 export const ExtractedHoursSchema = z.object({
   dayOfWeek: z.enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']),
-  opensAt: z.string().optional(), // HH:MM format
-  closesAt: z.string().optional(), // HH:MM format
+  opensAt: z.string().nullable().optional(), // HH:MM format
+  closesAt: z.string().nullable().optional(), // HH:MM format
   is24Hours: z.boolean().default(false),
   isClosed: z.boolean().default(false),
-  notes: z.string().optional(),
+  notes: z.string().nullable().optional(),
 });
 export type ExtractedHours = z.infer<typeof ExtractedHoursSchema>;
 
@@ -69,10 +69,10 @@ export type ExtractedHours = z.infer<typeof ExtractedHoursSchema>;
  */
 export const ExtractedEligibilitySchema = z.object({
   description: z.string(),
-  ageMin: z.number().int().min(0).optional(),
-  ageMax: z.number().int().min(0).optional(),
-  incomeRequirement: z.string().optional(),
-  residencyRequirement: z.string().optional(),
+  ageMin: z.number().int().min(0).nullable().optional(),
+  ageMax: z.number().int().min(0).nullable().optional(),
+  incomeRequirement: z.string().nullable().optional(),
+  residencyRequirement: z.string().nullable().optional(),
   documentationRequired: z.array(z.string()).default([]),
   restrictions: z.array(z.string()).default([]),
 });
@@ -86,18 +86,18 @@ export const ExtractedServiceSchema = z.object({
   organizationName: z.string(),
   serviceName: z.string(),
   description: z.string(),
-  category: z.string().optional(),
-  websiteUrl: z.string().url().optional(),
+  category: z.string().nullable().optional(),
+  websiteUrl: z.string().url().nullable().optional(),
   phones: z.array(ExtractedPhoneSchema).default([]),
-  email: z.string().email().optional(),
-  address: ExtractedAddressSchema.optional(),
+  email: z.string().email().nullable().optional(),
+  address: ExtractedAddressSchema.nullable().optional(),
   hours: z.array(ExtractedHoursSchema).default([]),
-  eligibility: ExtractedEligibilitySchema.optional(),
-  applicationProcess: z.string().optional(),
-  fees: z.string().optional(),
+  eligibility: ExtractedEligibilitySchema.nullable().optional(),
+  applicationProcess: z.string().nullable().optional(),
+  fees: z.string().nullable().optional(),
   languages: z.array(z.string()).default([]),
   isRemoteService: z.boolean().default(false),
-  serviceAreaDescription: z.string().optional(),
+  serviceAreaDescription: z.string().nullable().optional(),
 });
 export type ExtractedService = z.infer<typeof ExtractedServiceSchema>;
 
@@ -130,7 +130,7 @@ export const ExtractionResultSchema = z.object({
   services: z.array(ExtractedServiceSchema),
   confidences: z.array(ServiceFieldConfidencesSchema),
   pageType: z.enum(['service_listing', 'organization_home', 'contact_page', 'eligibility_page', 'unknown']),
-  extractionNotes: z.string().optional(),
+  extractionNotes: z.string().nullable().optional(),
   tokensUsed: z.number().int().min(0).optional(),
   modelId: z.string().optional(),
 });
@@ -153,7 +153,7 @@ export type ServiceCategory = z.infer<typeof ServiceCategorySchema>;
 export const TagResultSchema = z.object({
   tag: ServiceCategorySchema,
   confidence: z.number().int().min(0).max(100),
-  reasoning: z.string().optional(),
+  reasoning: z.string().nullable().optional(),
 });
 export type TagResult = z.infer<typeof TagResultSchema>;
 

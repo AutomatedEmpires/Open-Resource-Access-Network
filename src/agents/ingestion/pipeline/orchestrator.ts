@@ -1,5 +1,6 @@
 import type { SourceRegistryEntry } from '../sourceRegistry';
 import { buildBootstrapRegistry } from '../sourceRegistry';
+import { computeExtractKeySha256 } from '../fetcher';
 
 import type {
   PipelineConfig,
@@ -8,6 +9,8 @@ import type {
   PipelineEventListener,
   PipelineInput,
   PipelineResult,
+  PipelineArtifacts,
+  DetailedPipelineExecution,
   PipelineStageHandler,
   PipelineStage,
   StageResult,
@@ -132,10 +135,82 @@ export class PipelineOrchestrator {
     return result;
   }
 
-  /**
-   * Process a single URL through the pipeline.
-   */
-  async processUrl(input: PipelineInput): Promise<PipelineResult> {
+  private buildArtifacts(context: PipelineContext): PipelineArtifacts {
+    const evidence =
+      context.evidenceSnapshot && context.fetchResult
+        ? {
+            evidenceId: context.evidenceSnapshot.evidenceId,
+            canonicalUrl: context.evidenceSnapshot.canonicalUrl,
+            fetchedAt: context.evidenceSnapshot.fetchedAt,
+            httpStatus: context.evidenceSnapshot.httpStatus,
+            contentHashSha256: context.evidenceSnapshot.contentHashSha256,
+            contentType: context.fetchResult.contentType,
+            contentLength: context.fetchResult.contentLength,
+            htmlRaw: context.fetchResult.body,
+            textExtracted: context.textExtraction?.text,
+            title: context.textExtraction?.title,
+            metaDescription: context.textExtraction?.metaDescription,
+            language: context.textExtraction?.language,
+          }
+        : undefined;
+
+    const candidate =
+      context.candidateId &&
+      context.extractionId &&
+      context.llmExtraction &&
+      context.fetchResult &&
+      context.candidateScore &&
+      context.verificationChecklist
+        ? {
+            candidateId: context.candidateId,
+            extractionId: context.extractionId,
+            extractKeySha256: computeExtractKeySha256(
+              context.fetchResult.canonicalUrl,
+              context.fetchResult.contentHashSha256,
+            ),
+            extractedAt: new Date().toISOString(),
+            organizationName: context.llmExtraction.organizationName,
+            serviceName: context.llmExtraction.serviceName,
+            description: context.llmExtraction.description,
+            websiteUrl: context.llmExtraction.websiteUrl,
+            phone: context.llmExtraction.phone,
+            address: context.llmExtraction.address,
+            isRemoteService: false,
+            fieldConfidences: { ...context.llmExtraction.fieldConfidences },
+            categoryTags: (context.llmCategorization?.categories ?? []).map((tagValue) => ({
+              tagType: 'category' as const,
+              tagValue,
+              confidence: context.llmCategorization?.categoryConfidences[tagValue] ?? 50,
+            })),
+            discoveredLinks: (context.discoveredLinks ?? []).map((link) => ({
+              url: link.url,
+              type: link.type as 'home' | 'contact' | 'apply' | 'eligibility' | 'intake_form' | 'hours' | 'pdf' | 'privacy' | 'other',
+              label: link.label,
+              confidence: link.confidence,
+              evidenceId: context.evidenceSnapshot?.evidenceId ?? '',
+            })),
+            verificationChecks: (context.verificationResults ?? []).map((check) => ({
+              checkType: check.checkType as 'domain_allowlist' | 'contact_validity' | 'cross_source_agreement' | 'hours_stability' | 'location_plausibility' | 'policy_constraints',
+              severity: check.severity,
+              status: check.status,
+              ranAt: new Date().toISOString(),
+              details: {},
+              evidenceRefs: context.evidenceSnapshot ? [context.evidenceSnapshot.evidenceId] : [],
+              extractionId: context.extractionId!,
+            })),
+            verificationChecklist: context.verificationChecklist,
+            score: context.candidateScore,
+            sourceTrustLevel: context.sourceCheck?.trustLevel,
+          }
+        : undefined;
+
+    return {
+      evidence,
+      candidate,
+    };
+  }
+
+  private async processInternal(input: PipelineInput): Promise<DetailedPipelineExecution> {
     const context = createPipelineContext(input, this.config);
     let finalStage: PipelineStage = 'source_check';
 
@@ -219,6 +294,7 @@ export class PipelineOrchestrator {
       confidenceScore: context.candidateScore?.overall,
       confidenceTier: context.candidateScore?.tier,
     };
+    const artifacts = this.buildArtifacts(context);
 
     this.emit({
       type: 'pipeline_completed',
@@ -242,7 +318,23 @@ export class PipelineOrchestrator {
       }
     }
 
+    return { result, artifacts };
+  }
+
+  /**
+   * Process a single URL through the pipeline.
+   */
+  async processUrl(input: PipelineInput): Promise<PipelineResult> {
+    const { result } = await this.processInternal(input);
     return result;
+  }
+
+  /**
+   * Process a single URL and return both the public result and the
+   * materialized artifacts needed for durable persistence.
+   */
+  async processUrlDetailed(input: PipelineInput): Promise<DetailedPipelineExecution> {
+    return this.processInternal(input);
   }
 
   /**

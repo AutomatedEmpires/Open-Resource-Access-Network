@@ -2,8 +2,8 @@
  * scanConfidenceRegressions — Timer-triggered Azure Function (every 6 hours).
  *
  * Calls the ORAN web app's internal confidence regression scan endpoint.
- * This creates deduped `confidence_regression` submissions for verified
- * services that have changed since their last confidence computation.
+ * This creates deduped `confidence_regression` submissions and can suppress
+ * seeker-visible listings when trust signals degrade beyond policy thresholds.
  *
  * Environment variables required:
  *   ORAN_APP_URL       — Base URL of the ORAN web app
@@ -18,6 +18,7 @@ export interface TimerInfo {
 export interface RegressionScanResult {
   success: boolean;
   createdCount: number;
+  suppressedCount: number;
   checkedAt: string;
 }
 
@@ -54,7 +55,7 @@ export async function scanConfidenceRegressions(timer: TimerInfo): Promise<void>
 
     const result = (await response.json()) as RegressionScanResult;
     console.log(
-      `[scanConfidenceRegressions] Completed — created ${result.createdCount} regression submissions at ${result.checkedAt}`,
+      `[scanConfidenceRegressions] Completed — created ${result.createdCount} regression submissions, suppressed ${result.suppressedCount} listings at ${result.checkedAt}`,
     );
   } catch (error) {
     console.error(

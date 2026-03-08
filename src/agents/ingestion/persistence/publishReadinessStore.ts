@@ -8,7 +8,11 @@ import { eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { candidateReadiness, extractedCandidates } from '@/db/schema';
-import type { CandidatePublishReadiness, PublishReadinessStore } from '../stores';
+import type {
+  CandidatePublishReadiness,
+  CandidatePublishReadinessSnapshot,
+  PublishReadinessStore,
+} from '../stores';
 
 /**
  * Convert a candidate_readiness row + candidate info to domain object.
@@ -41,6 +45,40 @@ export function createDrizzlePublishReadinessStore(
   db: NodePgDatabase<Record<string, unknown>>
 ): PublishReadinessStore {
   return {
+    async upsert(snapshot: CandidatePublishReadinessSnapshot): Promise<void> {
+      await db
+        .insert(candidateReadiness)
+        .values({
+          candidateId: snapshot.candidateId,
+          isReady: snapshot.isReady,
+          hasRequiredFields: snapshot.hasRequiredFields,
+          hasRequiredTags: snapshot.hasRequiredTags,
+          tagsConfirmed: snapshot.tagsConfirmed,
+          meetsScoreThreshold: snapshot.meetsScoreThreshold,
+          hasAdminApproval: snapshot.hasAdminApproval,
+          pendingTagCount: snapshot.pendingTagCount,
+          adminApprovalCount: snapshot.adminApprovalCount,
+          blockers: snapshot.blockers,
+          lastEvaluatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: candidateReadiness.candidateId,
+          set: {
+            isReady: snapshot.isReady,
+            hasRequiredFields: snapshot.hasRequiredFields,
+            hasRequiredTags: snapshot.hasRequiredTags,
+            tagsConfirmed: snapshot.tagsConfirmed,
+            meetsScoreThreshold: snapshot.meetsScoreThreshold,
+            hasAdminApproval: snapshot.hasAdminApproval,
+            pendingTagCount: snapshot.pendingTagCount,
+            adminApprovalCount: snapshot.adminApprovalCount,
+            blockers: snapshot.blockers,
+            lastEvaluatedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+    },
+
     async getReadiness(
       candidateId: string
     ): Promise<CandidatePublishReadiness | null> {

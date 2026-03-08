@@ -1,16 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const processUrlMock = vi.hoisted(() => vi.fn());
+const processUrlDetailedMock = vi.hoisted(() => vi.fn());
 const createPipelineOrchestratorMock = vi.hoisted(() => vi.fn(() => ({
   processUrl: processUrlMock,
+  processUrlDetailed: processUrlDetailedMock,
 })));
 const createIngestionJobMock = vi.hoisted(() => vi.fn());
+const materializePipelineArtifactsMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../pipeline/orchestrator', () => ({
   createPipelineOrchestrator: createPipelineOrchestratorMock,
 }));
 vi.mock('../jobs', () => ({
   createIngestionJob: createIngestionJobMock,
+}));
+vi.mock('../materialize', () => ({
+  materializePipelineArtifacts: materializePipelineArtifactsMock,
 }));
 
 async function loadServiceModule() {
@@ -105,6 +111,17 @@ beforeEach(() => {
 
   createIngestionJobMock.mockReturnValue(makeJob());
   processUrlMock.mockResolvedValue(makePipelineResult());
+  processUrlDetailedMock.mockResolvedValue({
+    result: makePipelineResult(),
+    artifacts: {},
+  });
+  materializePipelineArtifactsMock.mockResolvedValue({
+    candidateId: 'cand-1',
+    evidenceId: 'ev-1',
+    deduped: false,
+    assignedToRole: 'community_admin',
+    reviewStatus: 'pending',
+  });
 });
 
 describe('ingestion service', () => {
@@ -132,6 +149,16 @@ describe('ingestion service', () => {
     );
     expect(createPipelineOrchestratorMock).toHaveBeenCalledWith(
       expect.objectContaining({ registry: [{ id: 'src-1' }] }),
+    );
+    expect(materializePipelineArtifactsMock).toHaveBeenCalledWith(
+      stores,
+      expect.objectContaining({
+        result: expect.objectContaining({ candidateId: 'cand-1' }),
+      }),
+      expect.objectContaining({
+        jobId: 'job-1',
+        correlationId: 'job-corr-1',
+      }),
     );
     expect(stores.audit.append).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -174,7 +201,7 @@ describe('ingestion service', () => {
     const stores = createStores();
     stores.sourceRegistry.findForUrl.mockResolvedValue(null);
     stores.sourceRegistry.listActive.mockResolvedValue([]);
-    processUrlMock.mockRejectedValueOnce(new Error('pipeline exploded'));
+    processUrlDetailedMock.mockRejectedValueOnce(new Error('pipeline exploded'));
     const { createIngestionService } = await loadServiceModule();
 
     const service = createIngestionService(stores as never);

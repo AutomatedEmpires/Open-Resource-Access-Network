@@ -14,6 +14,7 @@ import type { PipelineInput, PipelineResult } from './pipeline/types';
 import { createPipelineOrchestrator, type PipelineOrchestratorOptions } from './pipeline/orchestrator';
 import { createIngestionJob, type IngestionJob } from './jobs';
 import type { SourceRegistryEntry } from './sourceRegistry';
+import { materializePipelineArtifacts } from './materialize';
 
 // ============================================================
 // Service Types
@@ -74,8 +75,6 @@ export function createIngestionService(
 ): IngestionService {
   const service: IngestionService = {
     async runPipeline(options: RunPipelineOptions): Promise<RunPipelineResult> {
-      const correlationId = crypto.randomUUID();
-
       // 1. Look up source registry entry for URL
       const sourceEntry = await stores.sourceRegistry.findForUrl(options.sourceUrl);
 
@@ -87,6 +86,7 @@ export function createIngestionService(
       });
 
       await stores.jobs.create(job);
+      const correlationId = job.correlationId;
 
       // 3. Update job to running
       const updatedJob: IngestionJob = { ...job, status: 'running', startedAt: new Date().toISOString() };
@@ -121,7 +121,17 @@ export function createIngestionService(
 
       let pipelineResult: PipelineResult;
       try {
-        pipelineResult = await orchestrator.processUrl(pipelineInput);
+        const detailedExecution = await orchestrator.processUrlDetailed(pipelineInput);
+        const materialized = await materializePipelineArtifacts(stores, detailedExecution, {
+          jobId: job.id,
+          correlationId,
+        });
+
+        pipelineResult = {
+          ...detailedExecution.result,
+          candidateId: materialized.candidateId ?? detailedExecution.result.candidateId,
+          evidenceId: materialized.evidenceId ?? detailedExecution.result.evidenceId,
+        };
       } catch (error) {
         // Pipeline failed - update job
         const failedJob: IngestionJob = {
@@ -150,7 +160,7 @@ export function createIngestionService(
         throw error;
       }
 
-      // 7. Persist pipeline results to stores
+      // 7. Persist audit output for the completed pipeline
       await persistPipelineResults(stores, pipelineResult, correlationId, options.triggeredBy);
 
       // 8. Update job stats

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { SourceTrustLevelSchema } from '../sourceRegistry';
+import { SourceTrustLevelSchema, type SourceTrustLevel } from '../sourceRegistry';
 
 /**
  * Pipeline stage identifiers in execution order.
@@ -120,6 +120,91 @@ export const PipelineResultSchema = z
   })
   .strict();
 export type PipelineResult = z.infer<typeof PipelineResultSchema>;
+
+export interface PipelineEvidenceArtifact {
+  evidenceId: string;
+  canonicalUrl: string;
+  fetchedAt: string;
+  httpStatus: number;
+  contentHashSha256: string;
+  contentType?: string;
+  contentLength: number;
+  htmlRaw: string;
+  textExtracted?: string;
+  title?: string;
+  metaDescription?: string;
+  language?: string;
+}
+
+export interface PipelineDiscoveredLinkArtifact {
+  url: string;
+  type: 'home' | 'contact' | 'apply' | 'eligibility' | 'intake_form' | 'hours' | 'pdf' | 'privacy' | 'other';
+  label?: string;
+  confidence: number;
+  evidenceId: string;
+}
+
+export interface PipelineCandidateTagArtifact {
+  tagType: 'category';
+  tagValue: string;
+  confidence: number;
+}
+
+export interface PipelineVerificationCheckArtifact {
+  checkType: 'domain_allowlist' | 'contact_validity' | 'cross_source_agreement' | 'hours_stability' | 'location_plausibility' | 'policy_constraints';
+  severity: 'critical' | 'warning' | 'info';
+  status: 'pass' | 'fail' | 'unknown';
+  ranAt: string;
+  details: Record<string, unknown>;
+  evidenceRefs: string[];
+  extractionId: string;
+}
+
+export interface PipelineCandidateArtifact {
+  candidateId: string;
+  extractionId: string;
+  extractKeySha256: string;
+  extractedAt: string;
+  organizationName: string;
+  serviceName: string;
+  description: string;
+  websiteUrl?: string;
+  phone?: string;
+  address?: {
+    line1: string;
+    line2?: string;
+    city: string;
+    region: string;
+    postalCode: string;
+    country: string;
+  };
+  isRemoteService: boolean;
+  fieldConfidences: Record<string, number>;
+  categoryTags: PipelineCandidateTagArtifact[];
+  discoveredLinks: PipelineDiscoveredLinkArtifact[];
+  verificationChecks: PipelineVerificationCheckArtifact[];
+  verificationChecklist: import('../checklist').VerificationChecklist;
+  score: {
+    overall: number;
+    tier: 'green' | 'yellow' | 'orange' | 'red';
+    subScores: {
+      verification: number;
+      completeness: number;
+      freshness: number;
+    };
+  };
+  sourceTrustLevel?: SourceTrustLevel;
+}
+
+export interface PipelineArtifacts {
+  evidence?: PipelineEvidenceArtifact;
+  candidate?: PipelineCandidateArtifact;
+}
+
+export interface DetailedPipelineExecution {
+  result: PipelineResult;
+  artifacts: PipelineArtifacts;
+}
 
 /**
  * Configuration options for the pipeline.

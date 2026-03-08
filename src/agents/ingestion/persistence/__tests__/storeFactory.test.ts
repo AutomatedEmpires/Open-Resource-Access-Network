@@ -17,6 +17,17 @@ const creatorMocks = vi.hoisted(() => ({
   llmSuggestions: vi.fn(() => ({ name: 'llmSuggestionStore' })),
   publishThresholds: vi.fn(() => ({ name: 'publishThresholdStore' })),
   publishReadiness: vi.fn(() => ({ name: 'publishReadinessStore' })),
+  sourceSystems: vi.fn(() => ({ name: 'sourceSystemStore' })),
+  sourceFeeds: vi.fn(() => ({ name: 'sourceFeedStore' })),
+  sourceRecords: vi.fn(() => ({ name: 'sourceRecordStore' })),
+  entityIdentifiers: vi.fn(() => ({ name: 'entityIdentifierStore' })),
+  hsdsExportSnapshots: vi.fn(() => ({ name: 'hsdsExportSnapshotStore' })),
+  lifecycleEvents: vi.fn(() => ({ name: 'lifecycleEventStore' })),
+  canonicalOrganizations: vi.fn(() => ({ name: 'canonicalOrganizationStore' })),
+  canonicalServices: vi.fn(() => ({ name: 'canonicalServiceStore' })),
+  canonicalLocations: vi.fn(() => ({ name: 'canonicalLocationStore' })),
+  canonicalServiceLocations: vi.fn(() => ({ name: 'canonicalServiceLocationStore' })),
+  canonicalProvenance: vi.fn(() => ({ name: 'canonicalProvenanceStore' })),
 }));
 
 vi.mock('../sourceRegistryStore', () => ({
@@ -67,6 +78,39 @@ vi.mock('../publishThresholdStore', () => ({
 vi.mock('../publishReadinessStore', () => ({
   createDrizzlePublishReadinessStore: creatorMocks.publishReadiness,
 }));
+vi.mock('../sourceSystemStore', () => ({
+  createDrizzleSourceSystemStore: creatorMocks.sourceSystems,
+}));
+vi.mock('../sourceFeedStore', () => ({
+  createDrizzleSourceFeedStore: creatorMocks.sourceFeeds,
+}));
+vi.mock('../sourceRecordStore', () => ({
+  createDrizzleSourceRecordStore: creatorMocks.sourceRecords,
+}));
+vi.mock('../entityIdentifierStore', () => ({
+  createDrizzleEntityIdentifierStore: creatorMocks.entityIdentifiers,
+}));
+vi.mock('../hsdsExportSnapshotStore', () => ({
+  createDrizzleHsdsExportSnapshotStore: creatorMocks.hsdsExportSnapshots,
+}));
+vi.mock('../lifecycleEventStore', () => ({
+  createDrizzleLifecycleEventStore: creatorMocks.lifecycleEvents,
+}));
+vi.mock('../canonicalOrganizationStore', () => ({
+  createDrizzleCanonicalOrganizationStore: creatorMocks.canonicalOrganizations,
+}));
+vi.mock('../canonicalServiceStore', () => ({
+  createDrizzleCanonicalServiceStore: creatorMocks.canonicalServices,
+}));
+vi.mock('../canonicalLocationStore', () => ({
+  createDrizzleCanonicalLocationStore: creatorMocks.canonicalLocations,
+}));
+vi.mock('../canonicalServiceLocationStore', () => ({
+  createDrizzleCanonicalServiceLocationStore: creatorMocks.canonicalServiceLocations,
+}));
+vi.mock('../canonicalProvenanceStore', () => ({
+  createDrizzleCanonicalProvenanceStore: creatorMocks.canonicalProvenance,
+}));
 
 import { createIngestionStores } from '../storeFactory';
 
@@ -95,6 +139,17 @@ describe('storeFactory', () => {
     expect(creatorMocks.llmSuggestions).toHaveBeenCalledWith(db);
     expect(creatorMocks.publishThresholds).toHaveBeenCalledWith(db);
     expect(creatorMocks.publishReadiness).toHaveBeenCalledWith(db);
+    expect(creatorMocks.sourceSystems).toHaveBeenCalledWith(db);
+    expect(creatorMocks.sourceFeeds).toHaveBeenCalledWith(db);
+    expect(creatorMocks.sourceRecords).toHaveBeenCalledWith(db);
+    expect(creatorMocks.entityIdentifiers).toHaveBeenCalledWith(db);
+    expect(creatorMocks.hsdsExportSnapshots).toHaveBeenCalledWith(db);
+    expect(creatorMocks.lifecycleEvents).toHaveBeenCalledWith(db);
+    expect(creatorMocks.canonicalOrganizations).toHaveBeenCalledWith(db);
+    expect(creatorMocks.canonicalServices).toHaveBeenCalledWith(db);
+    expect(creatorMocks.canonicalLocations).toHaveBeenCalledWith(db);
+    expect(creatorMocks.canonicalServiceLocations).toHaveBeenCalledWith(db);
+    expect(creatorMocks.canonicalProvenance).toHaveBeenCalledWith(db);
 
     expect(stores).toEqual({
       sourceRegistry: { name: 'sourceRegistryStore' },
@@ -113,6 +168,17 @@ describe('storeFactory', () => {
       llmSuggestions: { name: 'llmSuggestionStore' },
       publishThresholds: { name: 'publishThresholdStore' },
       publishReadiness: { name: 'publishReadinessStore' },
+      sourceSystems: { name: 'sourceSystemStore' },
+      sourceFeeds: { name: 'sourceFeedStore' },
+      sourceRecords: { name: 'sourceRecordStore' },
+      entityIdentifiers: { name: 'entityIdentifierStore' },
+      hsdsExportSnapshots: { name: 'hsdsExportSnapshotStore' },
+      lifecycleEvents: { name: 'lifecycleEventStore' },
+      canonicalOrganizations: { name: 'canonicalOrganizationStore' },
+      canonicalServices: { name: 'canonicalServiceStore' },
+      canonicalLocations: { name: 'canonicalLocationStore' },
+      canonicalServiceLocations: { name: 'canonicalServiceLocationStore' },
+      canonicalProvenance: { name: 'canonicalProvenanceStore' },
     });
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Composite factory that creates all 16 ingestion stores.
+ * Composite factory that creates all 27 ingestion stores.
  *
  * Usage:
  *   const stores = createIngestionStores(db);
@@ -26,6 +26,17 @@ import { createDrizzleTagConfirmationStore } from './tagConfirmationStore';
 import { createDrizzleLlmSuggestionStore } from './llmSuggestionStore';
 import { createDrizzlePublishThresholdStore } from './publishThresholdStore';
 import { createDrizzlePublishReadinessStore } from './publishReadinessStore';
+import { createDrizzleSourceSystemStore } from './sourceSystemStore';
+import { createDrizzleSourceFeedStore } from './sourceFeedStore';
+import { createDrizzleSourceRecordStore } from './sourceRecordStore';
+import { createDrizzleEntityIdentifierStore } from './entityIdentifierStore';
+import { createDrizzleHsdsExportSnapshotStore } from './hsdsExportSnapshotStore';
+import { createDrizzleLifecycleEventStore } from './lifecycleEventStore';
+import { createDrizzleCanonicalOrganizationStore } from './canonicalOrganizationStore';
+import { createDrizzleCanonicalServiceStore } from './canonicalServiceStore';
+import { createDrizzleCanonicalLocationStore } from './canonicalLocationStore';
+import { createDrizzleCanonicalServiceLocationStore } from './canonicalServiceLocationStore';
+import { createDrizzleCanonicalProvenanceStore } from './canonicalProvenanceStore';
 
 /**
  * Creates the full set of ingestion stores backed by PostgreSQL via Drizzle.
@@ -53,5 +64,20 @@ export function createIngestionStores(
     llmSuggestions: createDrizzleLlmSuggestionStore(db),
     publishThresholds: createDrizzlePublishThresholdStore(db),
     publishReadiness: createDrizzlePublishReadinessStore(db),
+
+    // Source assertion layer (0032)
+    sourceSystems: createDrizzleSourceSystemStore(db),
+    sourceFeeds: createDrizzleSourceFeedStore(db),
+    sourceRecords: createDrizzleSourceRecordStore(db),
+    entityIdentifiers: createDrizzleEntityIdentifierStore(db),
+    hsdsExportSnapshots: createDrizzleHsdsExportSnapshotStore(db),
+    lifecycleEvents: createDrizzleLifecycleEventStore(db),
+
+    // Canonical federation layer (0033)
+    canonicalOrganizations: createDrizzleCanonicalOrganizationStore(db),
+    canonicalServices: createDrizzleCanonicalServiceStore(db),
+    canonicalLocations: createDrizzleCanonicalLocationStore(db),
+    canonicalServiceLocations: createDrizzleCanonicalServiceLocationStore(db),
+    canonicalProvenance: createDrizzleCanonicalProvenanceStore(db),
   };
 }

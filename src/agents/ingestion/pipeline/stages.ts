@@ -408,7 +408,7 @@ export class LlmExtractStage implements PipelineStageHandler {
         address: service.address
           ? {
               line1: service.address.line1,
-              line2: service.address.line2,
+              line2: service.address.line2 ?? undefined,
               city: service.address.city,
               region: service.address.region,
               postalCode: service.address.postalCode,

@@ -142,10 +142,23 @@ export function createDrizzleCandidateStore(
         reviewStatus: candidate.review?.status ?? 'pending',
         assignedToRole: candidate.review?.assignedToRole,
         assignedToUserId: candidate.review?.assignedToKey,
+        assignedAt:
+          candidate.review?.assignedToRole || candidate.review?.assignedToKey
+            ? new Date()
+            : undefined,
         jurisdictionState: candidate.jurisdictionState,
         jurisdictionCounty: candidate.jurisdictionCounty,
         jurisdictionCity: candidate.jurisdictionCity,
         jurisdictionKind: candidate.jurisdictionKind,
+        reviewBy: candidate.review?.timers?.reviewBy
+          ? new Date(candidate.review.timers.reviewBy)
+          : undefined,
+        lastVerifiedAt: candidate.review?.timers?.lastVerifiedAt
+          ? new Date(candidate.review.timers.lastVerifiedAt)
+          : undefined,
+        reverifyAt: candidate.review?.timers?.reverifyAt
+          ? new Date(candidate.review.timers.reverifyAt)
+          : undefined,
         verificationChecklist: candidate.review?.checklist ?? {},
         investigationPack: candidate.investigation ?? {},
         provenanceRecords: candidate.provenance ?? {},

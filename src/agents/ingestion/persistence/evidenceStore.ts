@@ -48,6 +48,12 @@ export function createDrizzleEvidenceStore(
         contentHashSha256: snapshot.contentHashSha256,
         contentType: snapshot.contentType,
         blobStorageKey: snapshot.blobUri,
+        htmlRaw: snapshot.htmlRaw,
+        textExtracted: snapshot.textExtracted,
+        title: snapshot.title,
+        metaDescription: snapshot.metaDescription,
+        language: snapshot.language,
+        contentLength: snapshot.contentLength ?? 0,
         correlationId: snapshot.correlationId,
         jobId: snapshot.jobId ? (snapshot.jobId as unknown as string) : undefined,
       };

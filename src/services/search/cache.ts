@@ -5,7 +5,7 @@
  *  - Key: "search:{sha256 of canonical query JSON}"
  *  - TTL: 5 minutes (search results can change as services are updated)
  *  - Cache-aside pattern: check cache → miss → query DB → store in cache
- *  - No cache for authenticated/personalized queries
+ *  - No cache for authenticated/personalized queries (`cachePolicy: 'skip'`)
  *
  * When Redis is not configured, all methods pass through to the engine directly.
  */
@@ -56,8 +56,8 @@ export async function cachedSearch(
   engine: ServiceSearchEngine,
   query: SearchQuery,
 ): Promise<SearchResponse> {
-  // Skip cache if Redis is not configured
-  if (!isRedisConfigured()) {
+  // Skip cache if Redis is not configured or the query is personalized.
+  if (!isRedisConfigured() || query.cachePolicy === 'skip') {
     return engine.search(query);
   }
 

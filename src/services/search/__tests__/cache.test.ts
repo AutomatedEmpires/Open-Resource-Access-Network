@@ -102,5 +102,21 @@ describe('Search Cache', () => {
       expect(result).toEqual(mockResponse);
       expect(mockEngine.search).toHaveBeenCalled();
     });
+
+    it('skips cache for personalized queries', async () => {
+      mockIsRedisConfigured.mockReturnValue(true);
+
+      const result = await cachedSearch(mockEngine, {
+        ...baseQuery,
+        cachePolicy: 'skip',
+        cityBias: 'Denver',
+        profileSignals: { populationTags: ['pregnant'] },
+      });
+
+      expect(result).toEqual(mockResponse);
+      expect(mockEngine.search).toHaveBeenCalledTimes(1);
+      expect(mockCacheGet).not.toHaveBeenCalled();
+      expect(mockCacheSet).not.toHaveBeenCalled();
+    });
   });
 });

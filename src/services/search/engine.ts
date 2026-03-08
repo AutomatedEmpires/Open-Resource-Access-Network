@@ -16,6 +16,7 @@ import type {
   RadiusQuery,
   SearchResponse,
   SortBy,
+  SearchPreferenceSignals,
 } from './types';
 import type { SearchFilters } from './types';
 import { CONFIDENCE_BANDS } from '@/domain/constants';
@@ -157,15 +158,55 @@ export interface CityCoords {
 export function buildOrderByClause(sortBy: SortBy | undefined, sortDistanceExpr: string): string {
   switch (sortBy) {
     case 'trust':
-      return 'cs.verification_confidence DESC NULLS LAST, cs.score DESC NULLS LAST';
+      return 'cs.verification_confidence DESC NULLS LAST, profile_match_score DESC, cs.score DESC NULLS LAST';
     case 'name_asc':
       return 's.name ASC';
     case 'name_desc':
       return 's.name DESC';
     case 'relevance':
     default:
-      return `cs.verification_confidence DESC NULLS LAST, cs.score DESC NULLS LAST, ${sortDistanceExpr} ASC NULLS LAST`;
+      return `cs.verification_confidence DESC NULLS LAST, profile_match_score DESC, cs.score DESC NULLS LAST, ${sortDistanceExpr} ASC NULLS LAST`;
   }
+}
+
+export function buildProfileBoostExpression(
+  signals: SearchPreferenceSignals | undefined,
+  paramOffset = 1
+): WhereClause {
+  if (!signals) {
+    return { sql: '0', params: [] };
+  }
+
+  const params: unknown[] = [];
+  const clauses: string[] = [];
+  let idx = paramOffset;
+
+  const weightedSignals: Array<{ taxonomy: string; tags?: string[]; weight: number }> = [
+    { taxonomy: 'population', tags: signals.populationTags, weight: 18 },
+    { taxonomy: 'situation', tags: signals.situationTags, weight: 14 },
+    { taxonomy: 'access', tags: signals.accessTags, weight: 10 },
+    { taxonomy: 'delivery', tags: signals.deliveryTags, weight: 8 },
+    { taxonomy: 'culture', tags: signals.cultureTags, weight: 8 },
+  ];
+
+  for (const signal of weightedSignals) {
+    if (!signal.tags || signal.tags.length === 0) {
+      continue;
+    }
+
+    clauses.push(`CASE WHEN EXISTS (
+      SELECT 1 FROM service_attributes sa
+      WHERE sa.service_id = s.id
+        AND sa.taxonomy = $${idx++}
+        AND sa.tag = ANY($${idx++}::text[])
+    ) THEN ${signal.weight} ELSE 0 END`);
+    params.push(signal.taxonomy, signal.tags);
+  }
+
+  return {
+    sql: clauses.length > 0 ? clauses.join(' + ') : '0',
+    params,
+  };
 }
 
 export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): BuiltQuery {
@@ -226,6 +267,10 @@ export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): B
     paramIdx += textClause.params.length;
   }
 
+  const profileBoostClause = buildProfileBoostExpression(query.profileSignals, paramIdx);
+  params.push(...profileBoostClause.params);
+  paramIdx += profileBoostClause.params.length;
+
   const whereStr = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
   const offset = (query.pagination.page - 1) * query.pagination.limit;
@@ -255,7 +300,8 @@ export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): B
       cs.constraint_fit,
       cs.computed_at AS confidence_computed_at,
       ${distanceExpr} AS distance_meters,
-      ${sortDistanceExpr} AS sort_distance
+      ${sortDistanceExpr} AS sort_distance,
+      ${profileBoostClause.sql} AS profile_match_score
     FROM services s
     JOIN organizations o ON o.id = s.organization_id
     LEFT JOIN service_at_location sal ON sal.service_id = s.id

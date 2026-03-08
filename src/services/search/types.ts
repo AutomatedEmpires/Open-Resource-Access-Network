@@ -45,6 +45,14 @@ export type SortBy = (typeof SORT_OPTIONS)[number];
 
 export const SortBySchema = z.enum(SORT_OPTIONS).default('relevance');
 
+export interface SearchPreferenceSignals {
+  populationTags?: string[];
+  situationTags?: string[];
+  accessTags?: string[];
+  deliveryTags?: string[];
+  cultureTags?: string[];
+}
+
 export const RadiusQuerySchema = z.object({
   type: z.literal('radius'),
   lat: z.coerce.number().min(-90).max(90),
@@ -85,6 +93,8 @@ export type SearchQuery = {
   text?: string;
   filters: SearchFilters;
   pagination: PaginationParams;
+  /** Internal cache control for personalized retrieval paths. */
+  cachePolicy?: 'default' | 'skip';
   /**
    * Optional city name for soft sorting bias.
    * If the city matches a known location in the DB, results will be sorted
@@ -92,6 +102,11 @@ export type SearchQuery = {
    * Does NOT exclude results — only affects sort order.
    */
   cityBias?: string;
+  /**
+   * Optional deterministic profile-derived signals used only to re-order already-eligible results.
+   * These signals never introduce new records and never bypass trust filtering.
+   */
+  profileSignals?: SearchPreferenceSignals;
   /**
    * Sort order for results. Defaults to 'relevance'.
    * - relevance: trust DESC, score DESC, distance ASC (default)

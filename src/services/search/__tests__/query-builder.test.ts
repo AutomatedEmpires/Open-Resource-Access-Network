@@ -10,6 +10,7 @@ import {
   buildRadiusWhereClause,
   buildBboxWhereClause,
   buildFiltersWhereClause,
+  buildProfileBoostExpression,
   buildTextSearchWhereClause,
   buildSearchQuery,
   ServiceSearchEngine,
@@ -169,6 +170,35 @@ describe('buildFiltersWhereClause', () => {
 });
 
 // ============================================================
+// buildProfileBoostExpression
+// ============================================================
+
+describe('buildProfileBoostExpression', () => {
+  it('returns zero with no signals', () => {
+    const clause = buildProfileBoostExpression(undefined);
+    expect(clause.sql).toBe('0');
+    expect(clause.params).toEqual([]);
+  });
+
+  it('generates weighted EXISTS clauses for supplied profile signals', () => {
+    const clause = buildProfileBoostExpression(
+      {
+        populationTags: ['pregnant'],
+        accessTags: ['interpreter_on_site'],
+      },
+      4,
+    );
+
+    expect(clause.sql).toContain('service_attributes');
+    expect(clause.sql).toContain('THEN 18');
+    expect(clause.sql).toContain('THEN 10');
+    expect(clause.sql).toContain('$4');
+    expect(clause.sql).toContain('$7');
+    expect(clause.params).toEqual(['population', ['pregnant'], 'access', ['interpreter_on_site']]);
+  });
+});
+
+// ============================================================
 // buildTextSearchWhereClause
 // ============================================================
 
@@ -238,6 +268,18 @@ describe('buildSearchQuery', () => {
     // Should still have LIMIT and OFFSET
     expect(built.params).toContain(20);  // limit
     expect(built.params).toContain(0);   // offset
+  });
+
+  it('includes profile match score when profile signals are provided', () => {
+    const built = buildSearchQuery({
+      ...baseQuery,
+      profileSignals: { populationTags: ['pregnant'] },
+    });
+
+    expect(built.sql).toContain('AS profile_match_score');
+    expect(built.sql).toContain('profile_match_score DESC');
+    expect(built.params).toContain('population');
+    expect(built.params).toContainEqual(['pregnant']);
   });
 });
 

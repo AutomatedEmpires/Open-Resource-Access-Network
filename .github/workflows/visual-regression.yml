@@ -64,7 +64,7 @@ jobs:
 
       - name: Upload diff artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-regression-diffs
           path: |
@@ -74,7 +74,7 @@ jobs:
 
       - name: Upload updated snapshots
         if: ${{ inputs.update_snapshots == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-snapshots-updated
           path: e2e/visual/visual.spec.ts-snapshots/

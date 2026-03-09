@@ -334,6 +334,7 @@ export function ChatWindow({
   const { success } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const quotaStateVersionRef = useRef(0);
 
   // Filters: trust tier + taxonomy term IDs
   const [trustFilter, setTrustFilter] = useState<TrustFilter>(initialTrustFilter ?? 'all');
@@ -353,6 +354,30 @@ export function ChatWindow({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  const applyQuotaState = useCallback((remaining: number, resetAt?: string | null, version?: number) => {
+    if (version !== undefined && version !== quotaStateVersionRef.current) {
+      return;
+    }
+
+    setQuotaRemaining(remaining);
+
+    if (!resetAt) {
+      setQuotaResetAt(null);
+      localStorage.removeItem(QUOTA_RESET_KEY);
+      return;
+    }
+
+    const nextResetAt = new Date(resetAt);
+    if (nextResetAt > new Date()) {
+      setQuotaResetAt(nextResetAt);
+      localStorage.setItem(QUOTA_RESET_KEY, nextResetAt.toISOString());
+      return;
+    }
+
+    setQuotaResetAt(null);
+    localStorage.removeItem(QUOTA_RESET_KEY);
+  }, []);
+
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
@@ -366,25 +391,17 @@ export function ChatWindow({
   // This ensures the countdown and remaining count are accurate even after
   // a page reload or cross-device navigation.
   useEffect(() => {
+    const quotaVersion = quotaStateVersionRef.current;
+
     fetch('/api/chat/quota', { method: 'GET', headers: { Accept: 'application/json' } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { remaining: number; resetAt: string | null } | null) => {
         if (!data) return;
-        setQuotaRemaining(data.remaining);
-        if (data.resetAt) {
-          const d = new Date(data.resetAt);
-          if (d > new Date()) {
-            setQuotaResetAt(d);
-            localStorage.setItem(QUOTA_RESET_KEY, d.toISOString());
-          } else {
-            setQuotaResetAt(null);
-            localStorage.removeItem(QUOTA_RESET_KEY);
-          }
-        }
+        applyQuotaState(data.remaining, data.resetAt, quotaVersion);
       })
       .catch(() => {/* non-fatal — keep default quota display */});
-   
-  }, []);
+
+  }, [applyQuotaState]);
 
   const toggleSave = useCallback((serviceId: string) => {
     setSavedIds((prev) => {
@@ -546,14 +563,8 @@ export function ChatWindow({
         trackInteraction('crisis_banner_shown');
       }
 
-      setQuotaRemaining(data.quotaRemaining);
-      if (data.quotaResetAt) {
-        const d = new Date(data.quotaResetAt);
-        if (d > new Date()) {
-          setQuotaResetAt(d);
-          localStorage.setItem(QUOTA_RESET_KEY, d.toISOString());
-        }
-      }
+      quotaStateVersionRef.current += 1;
+      applyQuotaState(data.quotaRemaining, data.quotaResetAt);
 
       // Show a one-time “what to verify” tip the first time we present service results.
       // Never show during crisis flow.
@@ -627,21 +638,16 @@ export function ChatWindow({
   const handleQuotaExpired = useCallback(() => {
     setQuotaResetAt(null);
     localStorage.removeItem(QUOTA_RESET_KEY);
+    const quotaVersion = quotaStateVersionRef.current;
+
     fetch('/api/chat/quota', { method: 'GET', headers: { Accept: 'application/json' } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { remaining: number; resetAt: string | null } | null) => {
         if (!data) return;
-        setQuotaRemaining(data.remaining);
-        if (data.resetAt) {
-          const d = new Date(data.resetAt);
-          if (d > new Date()) {
-            setQuotaResetAt(d);
-            localStorage.setItem(QUOTA_RESET_KEY, d.toISOString());
-          }
-        }
+        applyQuotaState(data.remaining, data.resetAt, quotaVersion);
       })
       .catch(() => {/* non-fatal */});
-  }, []);
+  }, [applyQuotaState]);
 
   return (
     <div className="flex flex-col h-[calc(100dvh-13rem)] md:h-auto md:max-h-[80vh] bg-gray-50 rounded-lg border border-gray-200 shadow">

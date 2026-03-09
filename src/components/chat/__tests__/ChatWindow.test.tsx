@@ -112,6 +112,10 @@ vi.mock('@/components/ui/dialog', () => {
 
 import { ChatWindow } from '../ChatWindow';
 
+function getChatCalls() {
+  return fetchMock.mock.calls.filter((call) => String(call[0]) === '/api/chat');
+}
+
 function makeChatResponse(overrides: Record<string, unknown> = {}) {
   return {
     message: 'Here are options',
@@ -141,7 +145,13 @@ beforeEach(() => {
   });
   fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.includes('/api/chat')) {
+    if (url === '/api/chat/quota') {
+      return {
+        ok: true,
+        json: async () => ({ remaining: 50, resetAt: null }),
+      } as Response;
+    }
+    if (url === '/api/chat') {
       return {
         ok: true,
         json: async () => makeChatResponse(),
@@ -173,7 +183,7 @@ describe('ChatWindow', () => {
     await screen.findByText('Here are options');
     expect(trackInteractionMock).toHaveBeenCalledWith('chat_message_sent', expect.any(Object));
 
-    const chatCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/api/chat'));
+    const chatCall = getChatCalls()[0];
     const body = JSON.parse(String((chatCall?.[1] as { body: string }).body));
     expect(body.message).toContain('food pantry');
     expect(body.profileMode).toBe('use');
@@ -204,7 +214,7 @@ describe('ChatWindow', () => {
 
     await screen.findByText('Here are options');
 
-    const chatCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/api/chat'));
+    const chatCall = getChatCalls()[0];
     const body = JSON.parse(String((chatCall?.[1] as { body: string }).body));
     expect(body).toMatchObject({
       message: 'food',
@@ -223,7 +233,13 @@ describe('ChatWindow', () => {
   it('freezes seeded discovery context onto assistant result cards', async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('/api/chat')) {
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
+      if (url === '/api/chat') {
         return {
           ok: true,
           json: async () => makeChatResponse({
@@ -287,6 +303,12 @@ describe('ChatWindow', () => {
   it('loads taxonomy tags, filters them, applies valid tag IDs, and sends trust filter payload', async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
       if (url.includes('/api/taxonomy/terms')) {
         return {
           ok: true,
@@ -312,7 +334,7 @@ describe('ChatWindow', () => {
           }),
         } as Response;
       }
-      if (url.includes('/api/chat')) {
+      if (url === '/api/chat') {
         return {
           ok: true,
           json: async () => makeChatResponse(),
@@ -350,7 +372,7 @@ describe('ChatWindow', () => {
 
     await screen.findByText('Here are options');
 
-    const chatCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/api/chat'));
+    const chatCall = getChatCalls()[0];
     const body = JSON.parse(String((chatCall?.[1] as { body: string }).body));
     expect(body.filters).toEqual({
       trust: 'HIGH',
@@ -364,7 +386,7 @@ describe('ChatWindow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
     await waitFor(() => {
-      const chatCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes('/api/chat'));
+      const chatCalls = getChatCalls();
       const secondBody = JSON.parse(String((chatCalls.at(-1)?.[1] as { body: string }).body));
       expect(secondBody.filters).toEqual({ trust: 'HIGH' });
     });
@@ -391,13 +413,19 @@ describe('ChatWindow', () => {
   it('shows taxonomy fetch failure and chat fallback when chat response is non-ok', async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
       if (url.includes('/api/taxonomy/terms')) {
         return {
           ok: false,
           json: async () => ({ error: 'taxonomy offline' }),
         } as Response;
       }
-      if (url.includes('/api/chat')) {
+      if (url === '/api/chat') {
         return {
           ok: false,
           json: async () => ({ error: 'upstream down' }),
@@ -427,7 +455,13 @@ describe('ChatWindow', () => {
 
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes('/api/chat')) {
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
+      if (url === '/api/chat') {
         return {
           ok: true,
           json: async () =>
@@ -500,7 +534,13 @@ describe('ChatWindow', () => {
   it('shows interpretation details and lets signed-in users disable saved profile shaping', async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes('/api/chat')) {
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
+      if (url === '/api/chat') {
         const body = JSON.parse(String((init as { body?: string } | undefined)?.body ?? '{}'));
         const ignoredProfileShaping = body.profileMode === 'ignore';
 
@@ -560,7 +600,7 @@ describe('ChatWindow', () => {
     await screen.findByText('Saved profile shaping is off for this session.');
     await screen.findByText('Status: No close match was found in the current catalog.');
 
-    const chatCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes('/api/chat'));
+    const chatCalls = getChatCalls();
     const firstBody = JSON.parse(String((chatCalls[0]?.[1] as { body: string }).body));
     const secondBody = JSON.parse(String((chatCalls[1]?.[1] as { body: string }).body));
     expect(firstBody.profileMode).toBe('use');

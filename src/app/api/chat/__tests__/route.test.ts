@@ -18,6 +18,10 @@ const isEnabledMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
 const translateBatchMock = vi.hoisted(() => vi.fn());
 const isTranslatorConfiguredMock = vi.hoisted(() => vi.fn());
+const chatQuotaMocks = vi.hoisted(() => ({
+  checkQuotaByIdentity: vi.fn(),
+  incrementQuotaByIdentity: vi.fn(),
+}));
 
 class MockChatRateLimitExceededError extends Error {
   retryAfterSeconds: number;
@@ -43,6 +47,7 @@ vi.mock('@/services/chat/orchestrator', () => ({
 vi.mock('@/services/profile/chatHydration', () => ({
   hydrateChatContext: hydrateChatContextMock,
 }));
+vi.mock('@/services/chat/quota', () => chatQuotaMocks);
 vi.mock('@/services/flags/flags', () => ({
   flagService: {
     isEnabled: isEnabledMock,
@@ -93,6 +98,14 @@ beforeEach(() => {
   isEnabledMock.mockReturnValue(false);
   isTranslatorConfiguredMock.mockReturnValue(false);
   translateBatchMock.mockResolvedValue([]);
+  chatQuotaMocks.checkQuotaByIdentity.mockResolvedValue({
+    sessionId: 'device:test',
+    messageCount: 0,
+    remaining: 50,
+    exceeded: false,
+    resetAt: undefined,
+  });
+  chatQuotaMocks.incrementQuotaByIdentity.mockResolvedValue(undefined);
   orchestrateChatMock.mockResolvedValue({ reply: 'ok' });
   hydrateChatContextMock.mockImplementation(async (context: unknown) => context);
   captureExceptionMock.mockResolvedValue(undefined);
@@ -169,6 +182,7 @@ describe('api/chat route', () => {
       services: [],
       retrievalStatus: 'temporarily_unavailable',
       summaries: false,
+      quotaRemaining: 50,
     });
   });
 
@@ -277,6 +291,7 @@ describe('api/chat route', () => {
         },
       ],
       retrievalStatus: 'results',
+      quotaRemaining: 50,
     });
   });
 
@@ -394,6 +409,7 @@ describe('api/chat route', () => {
     await expect(response.json()).resolves.toEqual({
       retrievalStatus: 'no_match',
       services: [],
+      quotaRemaining: 50,
     });
     expect(searchMock).toHaveBeenCalledTimes(2);
   });
@@ -454,6 +470,7 @@ describe('api/chat route', () => {
           },
         },
       },
+      quotaRemaining: 50,
     });
   });
 
@@ -506,6 +523,7 @@ describe('api/chat route', () => {
           },
         },
       },
+      quotaRemaining: 50,
     });
   });
 
@@ -546,6 +564,7 @@ describe('api/chat route', () => {
         { id: 'svc-1', description: 'Despensa de alimentos' },
         { id: 'svc-2', description: 'Refugio nocturno' },
       ],
+      quotaRemaining: 50,
     });
   });
 
@@ -573,6 +592,7 @@ describe('api/chat route', () => {
     await expect(response.json()).resolves.toEqual({
       reply: 'ok',
       services: [{ id: 'svc-1', description: 'Food pantry' }],
+      quotaRemaining: 50,
     });
   });
 
@@ -600,6 +620,7 @@ describe('api/chat route', () => {
     await expect(response.json()).resolves.toEqual({
       reply: 'ok',
       services: [{ id: 'svc-1', description: 'Food pantry' }],
+      quotaRemaining: 50,
     });
   });
 });

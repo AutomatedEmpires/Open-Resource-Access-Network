@@ -7,7 +7,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { MAX_SERVICES_PER_RESPONSE, FEATURE_FLAGS, CHAT_DEVICE_COOKIE } from '@/domain/constants';
 import { getAuthContext } from '@/services/auth/session';
 import { checkQuotaByIdentity, incrementQuotaByIdentity } from '@/services/chat/quota';
@@ -66,8 +65,7 @@ export async function POST(req: NextRequest) {
   const effectiveUserId = authCtx?.userId;
 
   // ---- Device identity (for 24-hr quota and logout-bypass prevention) ----
-  const cookieStore = await cookies();
-  let deviceId = cookieStore.get(CHAT_DEVICE_COOKIE)?.value;
+  let deviceId = req.cookies?.get(CHAT_DEVICE_COOKIE)?.value;
   // Validate: must be a UUID-shaped string to prevent injection
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if (deviceId && !UUID_RE.test(deviceId)) deviceId = undefined;

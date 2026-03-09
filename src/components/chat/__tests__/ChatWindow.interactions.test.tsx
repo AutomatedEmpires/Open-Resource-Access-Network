@@ -40,6 +40,10 @@ vi.mock('@/components/ui/toast', () => ({
 
 import { ChatWindow } from '@/components/chat/ChatWindow';
 
+function getChatCalls() {
+  return fetchMock.mock.calls.filter((call) => String(call[0]) === '/api/chat');
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   fetchMock.mockReset();
@@ -62,6 +66,12 @@ describe('ChatWindow interactions', () => {
 
     fetchMock.mockImplementation(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
       if (url === '/api/chat') {
         return {
           ok: true,
@@ -140,6 +150,12 @@ describe('ChatWindow interactions', () => {
   it('keeps chat save actions local-only when cross-device sync is off', async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
       if (url === '/api/chat') {
         return {
           ok: true,
@@ -183,11 +199,15 @@ describe('ChatWindow interactions', () => {
       expect(localStorage.getItem('oran:saved-service-ids')).toBe('["svc-1"]');
     });
     expect(toastSuccessMock).toHaveBeenCalledWith('Saved on this device');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getChatCalls()).toHaveLength(1);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]) === '/api/saved')).toBe(false);
   });
 
   it('submits suggestion chips, renders crisis banner, and disables input at quota 0', async () => {
     fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ remaining: 50, resetAt: null }),
+    }).mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         message: 'Please use emergency resources immediately.',
@@ -210,9 +230,7 @@ describe('ChatWindow interactions', () => {
     });
 
     expect(screen.queryByRole('note', { name: 'Verification tip' })).not.toBeInTheDocument();
-    expect(
-      screen.getByText('Message limit reached.'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Message limit reached.')).toBeInTheDocument();
     expect(screen.getByLabelText('Chat message input')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Help paying rent' })).not.toBeInTheDocument();
@@ -220,21 +238,37 @@ describe('ChatWindow interactions', () => {
 
   it('handles Enter key submission and network failures gracefully', async () => {
     localStorage.setItem('oran:saved-service-ids', '{bad-json');
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
     fetchMock.mockRejectedValueOnce(new Error('network down'));
 
     render(<ChatWindow sessionId="session-3" />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/chat/quota', expect.objectContaining({ method: 'GET' }));
+    });
+    fetchMock.mockClear();
 
     const input = screen.getByLabelText('Chat message input');
     fireEvent.change(input, { target: { value: 'Need assistance' } });
 
     fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getChatCalls()).toHaveLength(0);
 
     fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => {
       expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument();
     });
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(getChatCalls()).toHaveLength(1);
   });
 });

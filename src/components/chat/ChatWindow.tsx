@@ -599,6 +599,7 @@ export function ChatWindow({
       inputRef.current?.focus();
     }
   }, [
+    applyQuotaState,
     initialNeedId,
     initialPage,
     initialSortBy,

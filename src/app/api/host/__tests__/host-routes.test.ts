@@ -18,6 +18,10 @@ const authMocks = vi.hoisted(() => ({
   requireOrgRole: vi.fn(),
   shouldEnforceAuth: vi.fn(),
 }));
+const hostPortalIntakeMocks = vi.hoisted(() => ({
+  createHostPortalSourceAssertion: vi.fn(),
+  queueServiceVerificationSubmission: vi.fn(),
+}));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
@@ -33,6 +37,7 @@ vi.mock('@/services/auth', () => authMocks);
 vi.mock('@/services/workflow/engine', () => ({
   applySla: vi.fn(),
 }));
+vi.mock('@/services/ingestion/hostPortalIntake', () => hostPortalIntakeMocks);
 
 type JsonRequestOptions = {
   search?: string;
@@ -125,6 +130,12 @@ beforeEach(() => {
   authMocks.requireOrgAccess.mockReturnValue(true);
   authMocks.requireOrgRole.mockReturnValue(true);
   authMocks.shouldEnforceAuth.mockReturnValue(false);
+  hostPortalIntakeMocks.createHostPortalSourceAssertion.mockResolvedValue({
+    sourceSystemId: 'source-system-1',
+    sourceFeedId: 'source-feed-1',
+    sourceRecordId: 'source-record-1',
+  });
+  hostPortalIntakeMocks.queueServiceVerificationSubmission.mockResolvedValue('submission-1');
 
   captureExceptionMock.mockResolvedValue(undefined);
 });
@@ -225,6 +236,7 @@ describe('host organizations collection route', () => {
     await expect(response.json()).resolves.toEqual({
       id: 'org-new',
       name: 'New Org',
+      sourceRecordId: 'source-record-1',
     });
     expect(rateLimitMock).toHaveBeenCalledWith(
       'host:org:write:203.0.113.10',
@@ -360,7 +372,8 @@ describe('host organization detail route', () => {
       orgIds: ['org-1'],
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
-    dbMocks.executeQuery.mockResolvedValueOnce([]);
+    // executeQuery default returns [] → route short-circuits with 404
+    // before reaching withTransaction
     const { PUT } = await loadOrganizationDetailRoute();
 
     const response = await PUT(
@@ -382,13 +395,21 @@ describe('host organization detail route', () => {
       orgIds: ['org-1'],
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
-    dbMocks.executeQuery.mockResolvedValueOnce([
-      {
-        id: 'org-1',
-        name: 'Updated Org',
-        email: 'updated@example.org',
-      },
-    ]);
+    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'org-1' }]);
+    const client = {
+      query: vi.fn().mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'org-1',
+            name: 'Updated Org',
+            email: 'updated@example.org',
+          },
+        ],
+      }),
+    };
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (transactionClient: typeof client) => Promise<unknown>) => {
+      return callback(client);
+    });
     const { PUT } = await loadOrganizationDetailRoute();
 
     const response = await PUT(
@@ -407,6 +428,20 @@ describe('host organization detail route', () => {
       name: 'Updated Org',
       email: 'updated@example.org',
     });
+    expect(hostPortalIntakeMocks.createHostPortalSourceAssertion).toHaveBeenCalledWith(client, {
+      actorUserId: 'user-1',
+      actorRole: 'host_admin',
+      recordType: 'host_org_update',
+      recordId: 'org-1',
+      canonicalSourceUrl: 'oran://host-portal/organizations/org-1',
+      payload: {
+        organizationId: 'org-1',
+        requestedChanges: {
+          email: 'updated@example.org',
+          name: 'Updated Org',
+        },
+      },
+    });
   });
 
   it('returns 404 when deleting an organization that is already defunct or missing', async () => {
@@ -418,7 +453,6 @@ describe('host organization detail route', () => {
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
     authMocks.requireOrgRole.mockReturnValue(true);
-    dbMocks.executeQuery.mockResolvedValueOnce([]);
     const { DELETE } = await loadOrganizationDetailRoute();
 
     const response = await DELETE(
@@ -440,6 +474,14 @@ describe('host organization detail route', () => {
     });
     authMocks.requireOrgRole.mockReturnValue(true);
     dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'org-1' }]);
+    const client = {
+      query: vi.fn().mockResolvedValueOnce({
+        rows: [{ id: 'org-1' }],
+      }),
+    };
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (transactionClient: typeof client) => Promise<unknown>) => {
+      return callback(client);
+    });
     const { DELETE } = await loadOrganizationDetailRoute();
 
     const response = await DELETE(
@@ -451,6 +493,17 @@ describe('host organization detail route', () => {
     await expect(response.json()).resolves.toEqual({
       archived: true,
       id: 'org-1',
+    });
+    expect(hostPortalIntakeMocks.createHostPortalSourceAssertion).toHaveBeenCalledWith(client, {
+      actorUserId: 'user-1',
+      actorRole: 'host_admin',
+      recordType: 'host_org_archive',
+      recordId: 'org-1',
+      canonicalSourceUrl: 'oran://host-portal/organizations/org-1',
+      payload: {
+        organizationId: 'org-1',
+        status: 'defunct',
+      },
     });
   });
 });
@@ -665,13 +718,12 @@ describe('host service detail route', () => {
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
     dbMocks.executeQuery
-      .mockResolvedValueOnce([{ organization_id: 'org-1' }])
+      .mockResolvedValueOnce([{ organization_id: 'org-1', status: 'active', name: 'Updated Name' }])
       .mockResolvedValueOnce([
         {
-          id: 'svc-1',
           organization_id: 'org-1',
-          name: 'Updated Name',
           status: 'active',
+          name: 'Updated Name',
         },
       ]);
     const { PUT } = await loadServiceDetailRoute();
@@ -680,18 +732,18 @@ describe('host service detail route', () => {
       createRequest({
         jsonBody: {
           name: 'Updated Name',
-          status: 'active',
         },
       }),
       createRouteContext('11111111-1111-4111-8111-111111111111'),
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({
-      id: 'svc-1',
-      organization_id: 'org-1',
-      name: 'Updated Name',
-      status: 'active',
+      queuedForReview: true,
+      serviceId: '11111111-1111-4111-8111-111111111111',
+      submissionId: 'submission-1',
+      sourceRecordId: 'source-record-1',
+      message: 'Changes submitted for review. The live listing will stay unchanged until approval.',
     });
   });
 
@@ -739,8 +791,7 @@ describe('host service detail route', () => {
     });
     authMocks.requireOrgAccess.mockReturnValue(true);
     dbMocks.executeQuery
-      .mockResolvedValueOnce([{ organization_id: 'org-1' }])
-      .mockResolvedValueOnce([{ id: 'svc-1' }]);
+      .mockResolvedValueOnce([{ organization_id: 'org-1', status: 'active', name: 'Food Pantry' }]);
     const { DELETE } = await loadServiceDetailRoute();
 
     const response = await DELETE(
@@ -748,10 +799,14 @@ describe('host service detail route', () => {
       createRouteContext('11111111-1111-4111-8111-111111111111'),
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({
-      archived: true,
-      id: 'svc-1',
+      queuedForReview: true,
+      archived: false,
+      id: '11111111-1111-4111-8111-111111111111',
+      submissionId: 'submission-1',
+      sourceRecordId: 'source-record-1',
+      message: 'Archive request submitted for review. The live listing remains visible until approval.',
     });
   });
 });

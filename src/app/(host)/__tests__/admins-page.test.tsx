@@ -188,7 +188,7 @@ describe('host admins page', () => {
         }),
       });
       expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/host/admins?organizationId=org-1');
-      expect(screen.getByRole('alert')).toHaveTextContent('Team member added successfully.');
+      expect(screen.getByRole('status')).toHaveTextContent('Team member added successfully.');
     });
   });
 

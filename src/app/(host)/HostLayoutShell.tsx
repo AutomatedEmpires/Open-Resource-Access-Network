@@ -11,17 +11,21 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Building2, Wrench, MapPin, Users, Tag } from 'lucide-react';
+import { Building2, Wrench, MapPin, Users, Tag, LayoutDashboard, ClipboardList, Layers3 } from 'lucide-react';
 import { isRoleAtLeast } from '@/services/auth/roles';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AppFooter } from '@/components/footer';
 import { PortalUserMenu } from '@/components/ui/portal-user-menu';
+import HostContextStrip from '@/components/host/HostContextStrip';
 
 const NAV_ITEMS = [
+  { href: '/host', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/org', label: 'Organization', icon: Building2 },
   { href: '/services', label: 'Services', icon: Wrench },
+  { href: '/resource-studio', label: 'Resource Studio', icon: Layers3 },
   { href: '/locations', label: 'Locations', icon: MapPin },
+  { href: '/forms', label: 'Forms', icon: ClipboardList },
   { href: '/admins', label: 'Team', icon: Users },
   { href: '/claim', label: 'Claim', icon: Tag },
 ] as const;
@@ -52,7 +56,7 @@ export default function HostLayoutShell({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-[var(--bg-page)]">
       <header className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
         <div className="container mx-auto max-w-7xl flex items-center justify-between px-4 h-14">
-          <Link href="/org" className="font-bold text-gray-900 tracking-tight">
+          <Link href="/host" className="font-bold text-gray-900 tracking-tight">
             ORAN Host
           </Link>
 
@@ -79,6 +83,7 @@ export default function HostLayoutShell({ children }: { children: React.ReactNod
         </div>
       </header>
 
+      <HostContextStrip />
       <main id="main-content" className="container mx-auto max-w-7xl px-4 py-6">{children}</main>
       <AppFooter />
     </div>

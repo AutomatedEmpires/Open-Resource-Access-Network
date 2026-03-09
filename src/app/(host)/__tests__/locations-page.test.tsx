@@ -6,6 +6,16 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 const fetchMock = vi.hoisted(() => vi.fn());
 
+vi.mock('next/link', () => ({
+  default: ({
+    href,
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>{children}</a>
+  ),
+}));
+
 vi.mock('@/components/ui/error-boundary', () => ({
   ErrorBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
@@ -19,16 +29,6 @@ vi.mock('@/components/ui/button', () => ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
-}));
-
-vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
-    open ? <div data-testid="dialog-root">{children}</div> : null,
-  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
-  DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
 }));
 
 vi.mock('@/components/ui/toast', () => ({
@@ -63,6 +63,8 @@ function locationsResponse(overrides: Record<string, unknown> = {}) {
         postal_code: '98101',
         latitude: 47.61,
         longitude: -122.33,
+        primary_service_id: 'svc-1',
+        primary_service_name: 'Food Pantry',
         created_at: '2026-01-01T00:00:00.000Z',
         updated_at: '2026-01-01T00:00:00.000Z',
       },
@@ -82,7 +84,7 @@ beforeEach(() => {
 });
 
 describe('host locations page', () => {
-  it('loads organization options and location cards on mount', async () => {
+  it('loads org options and location cards on mount', async () => {
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
       .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() });
@@ -91,104 +93,76 @@ describe('host locations page', () => {
 
     await screen.findByText('Downtown Office');
     expect(screen.getByText('123 Main St, Seattle, WA, 98101')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add Location' })).toBeEnabled();
     expect(fetchMock).toHaveBeenCalledWith('/api/host/organizations?limit=100');
     expect(fetchMock).toHaveBeenCalledWith('/api/host/locations?page=1&limit=12');
+    expect(screen.getByRole('link', { name: 'Add Location' })).toHaveAttribute(
+      'href',
+      '/resource-studio?compose=listing&organizationId=org-1',
+    );
+    expect(screen.getByRole('link', { name: 'Open in Studio' })).toHaveAttribute(
+      'href',
+      '/resource-studio?compose=listing&serviceId=svc-1',
+    );
   });
 
-  it('validates latitude/longitude client-side before saving', async () => {
+  it('falls back to organization-based Studio links when no primary service exists', async () => {
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
-      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse({ results: [] }) });
-
-    render(<LocationsPage />);
-    await screen.findByText('No locations found');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
-    fireEvent.change(screen.getByLabelText(/^Organization/i), {
-      target: { value: 'org-1' },
-    });
-    fireEvent.change(screen.getByLabelText(/Location Name/i), {
-      target: { value: 'New Office' },
-    });
-    fireEvent.change(screen.getByLabelText('Latitude'), {
-      target: { value: '120' },
-    });
-    const createButton = screen.getByRole('button', { name: 'Create' });
-    expect(createButton).toBeEnabled();
-    fireEvent.click(createButton);
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-    });
-  }, 15000);
-
-  it('creates locations and refreshes the listing', async () => {
-    fetchMock
-      .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
-      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse({ results: [] }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'loc-2' }) }) // POST create
-      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() }); // refresh
-
-    render(<LocationsPage />);
-    await screen.findByText('No locations found');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
-    fireEvent.change(screen.getByLabelText(/^Organization/i), {
-      target: { value: 'org-1' },
-    });
-    fireEvent.change(screen.getByLabelText(/Location Name/i), {
-      target: { value: 'Downtown Office' },
-    });
-    fireEvent.change(screen.getByLabelText('Street Address'), {
-      target: { value: '123 Main St' },
-    });
-    fireEvent.change(screen.getByLabelText('City'), {
-      target: { value: 'Seattle' },
-    });
-    fireEvent.change(screen.getByLabelText('State'), {
-      target: { value: 'WA' },
-    });
-    fireEvent.change(screen.getByLabelText('Postal Code'), {
-      target: { value: '98101' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('/api/host/locations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'Downtown Office',
-          organizationId: 'org-1',
-          address1: '123 Main St',
-          city: 'Seattle',
-          stateProvince: 'WA',
-          postalCode: '98101',
-          country: 'US',
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => locationsResponse({
+          results: [
+            {
+              id: 'loc-2',
+              organization_id: 'org-1',
+              organization_name: 'Helping Hands',
+              name: 'North Office',
+              address_1: null,
+              city: null,
+              state_province: null,
+              postal_code: null,
+              latitude: null,
+              longitude: null,
+              primary_service_id: null,
+              primary_service_name: null,
+              created_at: '2026-01-01T00:00:00.000Z',
+              updated_at: '2026-01-01T00:00:00.000Z',
+            },
+          ],
         }),
       });
-      expect(screen.getByText('Downtown Office')).toBeInTheDocument();
-    });
+
+    render(<LocationsPage />);
+
+    await screen.findByText('North Office');
+    expect(screen.getByRole('link', { name: 'Open in Studio' })).toHaveAttribute(
+      'href',
+      '/resource-studio?compose=listing&organizationId=org-1',
+    );
   });
 
-  it('shows delete errors when location removal fails', async () => {
+  it('shows the studio-first empty state when no locations exist', async () => {
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
-      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() })
-      .mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ error: 'Delete failed: location in use' }),
-      });
+      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse({ results: [], total: 0 }) });
+
+    render(<LocationsPage />);
+
+    await screen.findByText('No locations found');
+    expect(screen.getByRole('link', { name: 'Resource Studio' })).toHaveAttribute(
+      'href',
+      '/resource-studio?compose=listing&organizationId=org-1',
+    );
+  });
+
+  it('does not expose a direct delete action on location cards', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
+      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() });
 
     render(<LocationsPage />);
     await screen.findByText('Downtown Office');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    fireEvent.click(screen.getAllByRole('button', { name: /^Delete$/ })[1]);
-
-    await screen.findByRole('alert');
-    expect(screen.getByText('Delete failed: location in use')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
   it('applies organization filters and paginates results', async () => {
@@ -217,59 +191,21 @@ describe('host locations page', () => {
     });
   });
 
-  it('shows save errors during edit and supports successful delete refresh', async () => {
+  it('keeps location cards studio-only during refresh flows', async () => {
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
-      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() })
-      .mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ error: 'Location save blocked' }),
-      })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => locationsResponse({ results: [], total: 0 }),
-      });
+      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() });
 
     render(<LocationsPage />);
     await screen.findByText('Downtown Office');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.change(screen.getByLabelText(/Location Name/i), {
-      target: { value: 'Downtown Office Updated' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await screen.findByRole('alert');
-    expect(screen.getByText('Location save blocked')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    fireEvent.click(screen.getAllByRole('button', { name: /^Delete$/ })[1]);
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/host/locations/loc-1', { method: 'DELETE' });
-      expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/host/locations?page=1&limit=12');
-      expect(screen.getByText('No locations found')).toBeInTheDocument();
-    });
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open in Studio' })).toHaveAttribute(
+      'href',
+      '/resource-studio?compose=listing&serviceId=svc-1',
+    );
   });
 
-  it('falls back to generic list-load error when response body is not JSON', async () => {
-    fetchMock
-      .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
-      .mockResolvedValueOnce({
-        ok: false,
-        json: async () => {
-          throw new Error('bad json');
-        },
-      });
-
-    render(<LocationsPage />);
-
-    await screen.findByRole('alert');
-    expect(screen.getByText('Failed to load locations')).toBeInTheDocument();
-  });
-
-  it('handles org-list failures non-fatally and renders unnamed/no-address rows', async () => {
+  it('handles org-list failures non-fatally and disables the add action', async () => {
     fetchMock
       .mockRejectedValueOnce(new Error('orgs unavailable'))
       .mockResolvedValueOnce({
@@ -288,6 +224,8 @@ describe('host locations page', () => {
                 postal_code: null,
                 latitude: null,
                 longitude: null,
+                primary_service_id: null,
+                primary_service_name: null,
                 created_at: '2026-01-01T00:00:00.000Z',
                 updated_at: '2026-01-01T00:00:00.000Z',
               },
@@ -302,170 +240,19 @@ describe('host locations page', () => {
     expect(screen.queryByText(/Seattle|WA|98101/)).not.toBeInTheDocument();
   });
 
-  it('falls back to generic list-load error when fetch throws non-Error values', async () => {
+  it('falls back to generic list-load error when response body is not JSON', async () => {
     fetchMock
       .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
-      .mockRejectedValueOnce('network down');
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => {
+          throw new Error('bad json');
+        },
+      });
 
     render(<LocationsPage />);
 
     await screen.findByRole('alert');
     expect(screen.getByText('Failed to load locations')).toBeInTheDocument();
   });
-
-  it('supports canceling create and delete dialogs', async () => {
-    fetchMock
-      .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
-      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() });
-
-    render(<LocationsPage />);
-    await screen.findByText('Downtown Office');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
-    expect(screen.getByRole('button', { name: 'Create' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Create' })).toBeNull();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    expect(screen.getAllByRole('button', { name: 'Cancel' }).length).toBeGreaterThan(0);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Cancel' }).at(-1)!);
-    await waitFor(() => {
-      expect(screen.queryByRole('heading', { name: 'Delete location?' })).toBeNull();
-    });
-  });
-
-  it('creates with optional fields, phone editor, and schedule editor values', async () => {
-    fetchMock
-      .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
-      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse({ results: [] }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'loc-2' }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() });
-
-    render(<LocationsPage />);
-    await screen.findByText('No locations found');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
-    fireEvent.change(screen.getByLabelText(/^Organization/i), {
-      target: { value: 'org-1' },
-    });
-    fireEvent.change(screen.getByLabelText(/Location Name/i), {
-      target: { value: 'North Office' },
-    });
-    fireEvent.change(screen.getByLabelText('Alternate Name'), {
-      target: { value: 'Satellite Office' },
-    });
-    fireEvent.change(screen.getByLabelText('Description'), {
-      target: { value: 'Open weekdays' },
-    });
-    fireEvent.change(screen.getByLabelText('Street Address'), {
-      target: { value: '99 Pine St' },
-    });
-    fireEvent.change(screen.getByLabelText('Address Line 2'), {
-      target: { value: 'Suite 10' },
-    });
-    fireEvent.change(screen.getByLabelText('City'), {
-      target: { value: 'Seattle' },
-    });
-    fireEvent.change(screen.getByLabelText('State'), {
-      target: { value: 'WA' },
-    });
-    fireEvent.change(screen.getByLabelText('Postal Code'), {
-      target: { value: '98104' },
-    });
-    fireEvent.change(screen.getByLabelText('Latitude'), {
-      target: { value: '47.61' },
-    });
-    fireEvent.change(screen.getByLabelText('Longitude'), {
-      target: { value: '-122.33' },
-    });
-    fireEvent.change(screen.getByLabelText('Transportation Notes'), {
-      target: { value: 'Light rail nearby' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Add Phone' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Reset to 9–5' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-
-    await waitFor(() => {
-      const createCall = fetchMock.mock.calls.find(
-        (call) => String(call[0]) === '/api/host/locations'
-      );
-      expect(createCall).toBeTruthy();
-      const body = JSON.parse((createCall?.[1] as { body: string }).body);
-      expect(body).toEqual(
-        expect.objectContaining({
-          name: 'North Office',
-          organizationId: 'org-1',
-          alternateName: 'Satellite Office',
-          description: 'Open weekdays',
-          transportation: 'Light rail nearby',
-          latitude: 47.61,
-          longitude: -122.33,
-          address1: '99 Pine St',
-          address2: 'Suite 10',
-          city: 'Seattle',
-          stateProvince: 'WA',
-          postalCode: '98104',
-          country: 'US',
-        })
-      );
-      expect(body.phones).toBeUndefined();
-      expect(body.schedule).toBeUndefined();
-    });
-  });
-
-  it('validates longitude client-side before saving', async () => {
-    fetchMock
-      .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
-      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse({ results: [] }) });
-
-    render(<LocationsPage />);
-    await screen.findByText('No locations found');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Add Location' }));
-    fireEvent.change(screen.getByLabelText(/^Organization/i), {
-      target: { value: 'org-1' },
-    });
-    fireEvent.change(screen.getByLabelText(/Location Name/i), {
-      target: { value: 'Bad Longitude Location' },
-    });
-    fireEvent.change(screen.getByLabelText('Longitude'), {
-      target: { value: '-181' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  it('updates existing locations through PUT endpoint', async () => {
-    fetchMock
-      .mockResolvedValueOnce({ ok: true, json: async () => orgsResponse() })
-      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'loc-1' }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => locationsResponse() });
-
-    render(<LocationsPage />);
-    await screen.findByText('Downtown Office');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.change(screen.getByLabelText(/Location Name/i), {
-      target: { value: 'Downtown Office v2' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      const putCall = fetchMock.mock.calls.find((call) =>
-        String(call[0]).includes('/api/host/locations/loc-1')
-      );
-      expect(putCall).toBeTruthy();
-      expect((putCall?.[1] as { method: string }).method).toBe('PUT');
-      const body = JSON.parse((putCall?.[1] as { body: string }).body);
-      expect(body.name).toBe('Downtown Office v2');
-      expect(body.organizationId).toBeUndefined();
-    });
-  });
-
 });

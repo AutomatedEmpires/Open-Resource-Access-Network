@@ -152,15 +152,27 @@ export async function GET(req: NextRequest) {
       state_province?: string | null;
       postal_code?: string | null;
       organization_name?: string | null;
+      primary_service_id?: string | null;
+      primary_service_name?: string | null;
     }>(
       `SELECT l.id, l.organization_id, l.name, l.alternate_name, l.description,
               l.transportation, l.latitude, l.longitude,
               l.created_at, l.updated_at,
               a.address_1, a.city, a.state_province, a.postal_code,
-              o.name AS organization_name
+              o.name AS organization_name,
+              linked_service.service_id AS primary_service_id,
+              linked_service.service_name AS primary_service_name
        FROM locations l
        LEFT JOIN addresses a ON a.location_id = l.id
        JOIN organizations o ON o.id = l.organization_id
+       LEFT JOIN LATERAL (
+         SELECT sal.service_id, s.name AS service_name
+           FROM service_at_location sal
+           JOIN services s ON s.id = sal.service_id
+          WHERE sal.location_id = l.id
+          ORDER BY s.updated_at DESC NULLS LAST, s.created_at ASC
+          LIMIT 1
+       ) linked_service ON true
        ${where}
        ORDER BY l.name ASC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,

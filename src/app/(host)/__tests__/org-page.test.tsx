@@ -6,6 +6,16 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 const fetchMock = vi.hoisted(() => vi.fn());
 
+vi.mock('next/link', () => ({
+  default: ({
+    href,
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>{children}</a>
+  ),
+}));
+
 vi.mock('@/components/ui/error-boundary', () => ({
   ErrorBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
@@ -19,21 +29,6 @@ vi.mock('@/components/ui/button', () => ({
     children,
     ...props
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
-}));
-
-vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({
-    open,
-    children,
-  }: {
-    open: boolean;
-    children: React.ReactNode;
-  }) => (open ? <div data-testid="dialog-root">{children}</div> : null),
-  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
-  DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
 }));
 
 vi.mock('@/components/ui/toast', () => ({
@@ -74,7 +69,7 @@ beforeEach(() => {
 });
 
 describe('host org dashboard page', () => {
-  it('loads and renders organization cards from the host API', async () => {
+  it('loads organizations and exposes Studio-first actions', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => makeListResponse(),
@@ -86,18 +81,24 @@ describe('host org dashboard page', () => {
     expect(screen.getByText('Community org')).toBeInTheDocument();
     expect(screen.getByText('Page 1 · 1 total')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith('/api/host/organizations?page=1&limit=12');
+    expect(screen.getByRole('link', { name: 'Resource Studio' })).toHaveAttribute(
+      'href',
+      '/resource-studio?compose=listing',
+    );
+    expect(screen.getByRole('link', { name: 'Claim' })).toHaveAttribute(
+      'href',
+      '/resource-studio?compose=claim',
+    );
+    expect(screen.getByRole('link', { name: 'Edit in Studio' })).toHaveAttribute(
+      'href',
+      '/resource-studio?compose=listing&organizationId=org-1',
+    );
   });
 
   it('applies search queries through the list endpoint', async () => {
     fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => makeListResponse(),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => makeListResponse(),
-      });
+      .mockResolvedValueOnce({ ok: true, json: async () => makeListResponse() })
+      .mockResolvedValueOnce({ ok: true, json: async () => makeListResponse() });
 
     render(<OrgDashboardPage />);
     await screen.findByText('Helping Hands');
@@ -112,64 +113,27 @@ describe('host org dashboard page', () => {
     });
   });
 
-  it('edits organizations and refreshes the list after save', async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => makeListResponse(),
-      })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({}) }) // PUT save
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          makeListResponse({
-            results: [{ id: 'org-1', name: 'Helping Hands Updated', description: 'Updated', url: null, email: null }],
-          }),
-      });
+  it('shows the Studio-first empty state when no organizations exist', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => makeListResponse({ results: [], total: 0 }),
+    });
 
     render(<OrgDashboardPage />);
-    await screen.findByText('Helping Hands');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.change(await screen.findByLabelText(/Organization Name/i), {
-      target: { value: 'Helping Hands Updated' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('/api/host/organizations/org-1', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'Helping Hands Updated',
-          description: 'Community org',
-          url: 'https://helpinghands.example.org',
-          email: 'info@helpinghands.example.org',
-        }),
-      });
-      expect(screen.getByText('Helping Hands Updated')).toBeInTheDocument();
-    });
+    await screen.findByText('No organizations found');
+    expect(screen.getByRole('link', { name: 'Claim an organization' })).toHaveAttribute(
+      'href',
+      '/resource-studio?compose=claim',
+    );
   });
 
-  it('surfaces delete failures from archive requests', async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => makeListResponse(),
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ error: 'Delete failed: protected organization' }),
-      });
+  it('does not expose a direct archive action on organization cards', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => makeListResponse() });
 
     render(<OrgDashboardPage />);
     await screen.findByText('Helping Hands');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
-
-    await screen.findByRole('alert');
-    expect(screen.getByText('Delete failed: protected organization')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
   it('renders API load failures from organization listing', async () => {
@@ -184,7 +148,7 @@ describe('host org dashboard page', () => {
     expect(screen.getByText('host organizations unavailable')).toBeInTheDocument();
   });
 
-  it('supports pagination and successful archive flow', async () => {
+  it('supports pagination without a direct archive mutation path', async () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
@@ -207,14 +171,6 @@ describe('host org dashboard page', () => {
               },
             ],
           }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ id: 'org-2' }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => makeListResponse({ page: 2, total: 0, hasMore: false, results: [] }),
       });
 
     render(<OrgDashboardPage />);
@@ -223,95 +179,6 @@ describe('host org dashboard page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await screen.findByText('Neighborhood Hub');
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/host/organizations?page=2&limit=12');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/host/organizations/org-2', { method: 'DELETE' });
-      expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/host/organizations?page=2&limit=12');
-      expect(screen.getByText('No organizations found')).toBeInTheDocument();
-    });
-  });
-
-  it('sends HSDS/legal fields and coerces year incorporated to a number on save', async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          makeListResponse({
-            results: [{
-              id: 'org-3',
-              name: 'Org Three',
-              description: 'Legal profile org',
-              url: 'https://org3.example.org',
-              email: 'admin@org3.example.org',
-              tax_status: '501(c)(3)',
-              tax_id: '12-3456789',
-              year_incorporated: 2001,
-              legal_status: 'nonprofit',
-            }],
-          }),
-      })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => makeListResponse(),
-      });
-
-    render(<OrgDashboardPage />);
-    await screen.findByText('Org Three');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.change(await screen.findByLabelText(/Year Incorporated/i), {
-      target: { value: '1999' },
-    });
-    fireEvent.change(screen.getByLabelText(/Tax Status/i), {
-      target: { value: 'Nonprofit' },
-    });
-    fireEvent.change(screen.getByLabelText(/Tax ID/i), {
-      target: { value: '98-7654321' },
-    });
-    fireEvent.change(screen.getByLabelText(/Legal Status/i), {
-      target: { value: 'government' },
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      const putCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/api/host/organizations/org-3'));
-      expect(putCall).toBeTruthy();
-      const body = JSON.parse((putCall?.[1] as { body: string }).body);
-      expect(body).toMatchObject({
-        name: 'Org Three',
-        taxStatus: 'Nonprofit',
-        taxId: '98-7654321',
-        yearIncorporated: 1999,
-        legalStatus: 'government',
-      });
-    });
-  });
-
-  it('shows save fallback error text when update fails without JSON body', async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => makeListResponse(),
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        json: async () => {
-          throw new Error('malformed');
-        },
-      });
-
-    render(<OrgDashboardPage />);
-    await screen.findByText('Helping Hands');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await screen.findByRole('alert');
-    expect(screen.getByText('Update failed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 });

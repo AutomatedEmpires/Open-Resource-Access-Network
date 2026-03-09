@@ -10,6 +10,14 @@ import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, requireOrgAccess, isOranAdmin } from '@/services/auth';
+import { applySla } from '@/services/workflow/engine';
+import {
+  createHostPortalSourceAssertion,
+  queueServiceVerificationSubmission,
+  type HostPortalDayScheduleInput,
+  type HostPortalPhoneInput,
+  type HostServiceRequestedChanges,
+} from '@/services/ingestion/hostPortalIntake';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -40,7 +48,6 @@ const UpdateServiceSchema = z.object({
   description:           z.string().max(5000).optional(),
   url:                   z.string().url().max(2000).optional(),
   email:                 z.string().email().max(500).optional(),
-  status:                z.enum(['active', 'inactive', 'defunct']).optional(),
   interpretationServices: z.string().max(1000).optional(),
   applicationProcess:    z.string().max(2000).optional(),
   waitTime:              z.string().max(500).optional(),
@@ -60,6 +67,40 @@ function getIp(req: NextRequest): string {
 }
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+function buildRequestedChanges(
+  input: {
+    name?: string;
+    description?: string;
+    url?: string;
+    email?: string;
+    interpretationServices?: string;
+    applicationProcess?: string;
+    waitTime?: string;
+    fees?: string;
+    accreditations?: string;
+    licenses?: string;
+    phones?: HostPortalPhoneInput[];
+    schedule?: HostPortalDayScheduleInput[];
+  },
+): HostServiceRequestedChanges {
+  const requested: HostServiceRequestedChanges = {};
+
+  if (input.name !== undefined) requested.name = input.name;
+  if (input.description !== undefined) requested.description = input.description;
+  if (input.url !== undefined) requested.url = input.url;
+  if (input.email !== undefined) requested.email = input.email;
+  if (input.interpretationServices !== undefined) requested.interpretationServices = input.interpretationServices;
+  if (input.applicationProcess !== undefined) requested.applicationProcess = input.applicationProcess;
+  if (input.waitTime !== undefined) requested.waitTime = input.waitTime;
+  if (input.fees !== undefined) requested.fees = input.fees;
+  if (input.accreditations !== undefined) requested.accreditations = input.accreditations;
+  if (input.licenses !== undefined) requested.licenses = input.licenses;
+  if (input.phones !== undefined) requested.phones = input.phones;
+  if (input.schedule !== undefined) requested.schedule = input.schedule;
+
+  return requested;
+}
 
 // ============================================================
 // HANDLERS
@@ -175,8 +216,12 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
   // First verify service exists and check authorization
   try {
-    const svcCheck = await executeQuery<{ organization_id: string }>(
-      'SELECT organization_id FROM services WHERE id = $1',
+    const svcCheck = await executeQuery<{
+      organization_id: string;
+      status: Service['status'];
+      name: string;
+    }>(
+      'SELECT organization_id, status, name FROM services WHERE id = $1',
       [id],
     );
     if (svcCheck.length === 0) {
@@ -198,7 +243,6 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
     description: 'description',
     url: 'url',
     email: 'email',
-    status: 'status',
     interpretationServices: 'interpretation_services',
     applicationProcess: 'application_process',
     waitTime: 'wait_time',
@@ -223,9 +267,95 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
   const hasScalarChanges = setClauses.length > 0;
   const hasPhones = d.phones !== undefined;
   const hasSchedule = d.schedule !== undefined;
+  const requestedChanges = buildRequestedChanges({
+    name: d.name,
+    description: d.description,
+    url: d.url,
+    email: d.email,
+    interpretationServices: d.interpretationServices,
+    applicationProcess: d.applicationProcess,
+    waitTime: d.waitTime,
+    fees: d.fees,
+    accreditations: d.accreditations,
+    licenses: d.licenses,
+    phones: d.phones,
+    schedule: d.schedule,
+  });
 
   try {
-    const saved = await withTransaction<Service>(async (client) => {
+    const svcRows = await executeQuery<{
+      organization_id: string;
+      status: Service['status'];
+      name: string;
+    }>(
+      'SELECT organization_id, status, name FROM services WHERE id = $1',
+      [id],
+    );
+
+    if (svcRows.length === 0) {
+      return NextResponse.json({ error: 'Service not found' }, { status: 404 });
+    }
+
+    const currentService = svcRows[0];
+
+    if (currentService.status === 'active') {
+      const queued = await withTransaction(async (client) => {
+        const assertion = await createHostPortalSourceAssertion(client, {
+          actorUserId: authCtx?.userId ?? 'system',
+          actorRole: authCtx?.role ?? null,
+          recordType: 'host_service_update',
+          recordId: id,
+          canonicalSourceUrl: `oran://host-portal/services/${id}`,
+          payload: {
+            serviceId: id,
+            organizationId: currentService.organization_id,
+            currentStatus: currentService.status,
+            requestedChanges,
+          },
+        });
+
+        const submissionId = await queueServiceVerificationSubmission(client, {
+          serviceId: id,
+          submittedByUserId: authCtx?.userId ?? 'system',
+          actorRole: authCtx?.role ?? 'host_admin',
+          title: `Service change review: ${currentService.name}`,
+          notes: 'Published service change submitted via host portal.',
+          payload: {
+            flow: 'host_portal',
+            changeType: 'host_service_update',
+            sourceRecordId: assertion.sourceRecordId,
+            organizationId: currentService.organization_id,
+            serviceId: id,
+            currentStatus: currentService.status,
+            requestedChanges,
+          },
+        });
+
+        return {
+          submissionId,
+          sourceRecordId: assertion.sourceRecordId,
+        };
+      });
+
+      try {
+        await applySla(queued.submissionId, 'service_verification');
+      } catch {
+        // SLA is best-effort.
+      }
+
+      return NextResponse.json(
+        {
+          queuedForReview: true,
+          serviceId: id,
+          submissionId: queued.submissionId,
+          sourceRecordId: queued.sourceRecordId,
+          message: 'Changes submitted for review. The live listing will stay unchanged until approval.',
+        },
+        { status: 202 },
+      );
+    }
+
+    const saved = await withTransaction<Service & { sourceRecordId: string }>(async (client) => {
       let service: Service;
 
       if (hasScalarChanges) {
@@ -266,7 +396,21 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
         }
       }
 
-      return service;
+      const assertion = await createHostPortalSourceAssertion(client, {
+        actorUserId: authCtx?.userId ?? 'system',
+        actorRole: authCtx?.role ?? null,
+        recordType: 'host_service_update',
+        recordId: id,
+        canonicalSourceUrl: `oran://host-portal/services/${id}`,
+        payload: {
+          serviceId: id,
+          organizationId: currentService.organization_id,
+          currentStatus: service.status,
+          requestedChanges,
+        },
+      });
+
+      return { ...service, sourceRecordId: assertion.sourceRecordId };
     });
 
     return NextResponse.json(saved);
@@ -312,8 +456,12 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
 
   try {
     // Check authorization
-    const svcCheck = await executeQuery<{ organization_id: string }>(
-      'SELECT organization_id FROM services WHERE id = $1 AND status != \'defunct\'',
+    const svcCheck = await executeQuery<{
+      organization_id: string;
+      status: Service['status'];
+      name: string;
+    }>(
+      'SELECT organization_id, status, name FROM services WHERE id = $1 AND status != \'defunct\'',
       [id],
     );
     if (svcCheck.length === 0) {
@@ -323,21 +471,99 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Soft-delete: mark as defunct instead of hard delete
-    const rows = await executeQuery<{ id: string }>(
-      `UPDATE services
-       SET status = 'defunct', updated_at = now(), updated_by_user_id = $2
-       WHERE id = $1 AND status != 'defunct'
-       RETURNING id`,
-      [id, authCtx?.userId ?? null],
-    );
+    if (svcCheck[0].status === 'active') {
+      const queued = await withTransaction(async (client) => {
+        const assertion = await createHostPortalSourceAssertion(client, {
+          actorUserId: authCtx?.userId ?? 'system',
+          actorRole: authCtx?.role ?? null,
+          recordType: 'host_service_archive',
+          recordId: id,
+          canonicalSourceUrl: `oran://host-portal/services/${id}`,
+          payload: {
+            serviceId: id,
+            organizationId: svcCheck[0].organization_id,
+            currentStatus: svcCheck[0].status,
+          },
+        });
 
-    if (rows.length === 0) {
-      return NextResponse.json({ error: 'Service not found' }, { status: 404 });
+        const submissionId = await queueServiceVerificationSubmission(client, {
+          serviceId: id,
+          submittedByUserId: authCtx?.userId ?? 'system',
+          actorRole: authCtx?.role ?? 'host_admin',
+          title: `Service archive review: ${svcCheck[0].name}`,
+          notes: 'Published service archive submitted via host portal.',
+          payload: {
+            flow: 'host_portal',
+            changeType: 'host_service_archive',
+            sourceRecordId: assertion.sourceRecordId,
+            organizationId: svcCheck[0].organization_id,
+            serviceId: id,
+            currentStatus: svcCheck[0].status,
+          },
+        });
+
+        return {
+          submissionId,
+          sourceRecordId: assertion.sourceRecordId,
+        };
+      });
+
+      try {
+        await applySla(queued.submissionId, 'service_verification');
+      } catch {
+        // SLA is best-effort.
+      }
+
+      return NextResponse.json(
+        {
+          queuedForReview: true,
+          archived: false,
+          id,
+          submissionId: queued.submissionId,
+          sourceRecordId: queued.sourceRecordId,
+          message: 'Archive request submitted for review. The live listing remains visible until approval.',
+        },
+        { status: 202 },
+      );
     }
 
-    return NextResponse.json({ archived: true, id: rows[0].id });
+    const archived = await withTransaction<{ id: string; sourceRecordId: string }>(async (client) => {
+      const rows = await client.query<{ id: string }>(
+        `UPDATE services
+         SET status = 'defunct', updated_at = now(), updated_by_user_id = $2
+         WHERE id = $1 AND status != 'defunct'
+         RETURNING id`,
+        [id, authCtx?.userId ?? null],
+      );
+
+      if (rows.rows.length === 0) {
+        throw Object.assign(new Error('not_found'), { code: 'not_found' });
+      }
+
+      const assertion = await createHostPortalSourceAssertion(client, {
+        actorUserId: authCtx?.userId ?? 'system',
+        actorRole: authCtx?.role ?? null,
+        recordType: 'host_service_archive',
+        recordId: id,
+        canonicalSourceUrl: `oran://host-portal/services/${id}`,
+        payload: {
+          serviceId: id,
+          organizationId: svcCheck[0].organization_id,
+          currentStatus: 'defunct',
+        },
+      });
+
+      return {
+        id: rows.rows[0].id,
+        sourceRecordId: assertion.sourceRecordId,
+      };
+    });
+
+    return NextResponse.json({ archived: true, id: archived.id, sourceRecordId: archived.sourceRecordId });
   } catch (error) {
+    if (error instanceof Error && (error as NodeJS.ErrnoException & { code?: string }).code === 'not_found') {
+      return NextResponse.json({ error: 'Service not found' }, { status: 404 });
+    }
     await captureException(error, { feature: 'api_host_svc_delete' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

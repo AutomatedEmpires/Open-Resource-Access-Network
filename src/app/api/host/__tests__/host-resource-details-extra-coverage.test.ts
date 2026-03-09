@@ -24,6 +24,9 @@ vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
 }));
 vi.mock('@/services/auth', () => authMocks);
+vi.mock('@/services/ingestion/hostPortalIntake', () => ({
+  createHostPortalSourceAssertion: vi.fn().mockResolvedValue({ sourceRecordId: 'source-mock' }),
+}));
 
 type RequestOptions = {
   search?: string;
@@ -219,11 +222,12 @@ describe('host organization detail extra coverage', () => {
     const invalid = await PUT(createRequest({ jsonBody: {} }), createRouteContext(ORG_ID));
     expect(invalid.status).toBe(400);
 
-    dbMocks.executeQuery.mockResolvedValueOnce([]);
+    // executeQuery default returns [] → route returns 404 before withTransaction
     const missing = await PUT(createRequest({ jsonBody: { name: 'Updated' } }), createRouteContext(ORG_ID));
     expect(missing.status).toBe(404);
 
-    dbMocks.executeQuery.mockRejectedValueOnce(new Error('update fail'));
+    dbMocks.executeQuery.mockResolvedValueOnce([{ id: ORG_ID }]);
+    dbMocks.withTransaction.mockRejectedValueOnce(new Error('update fail'));
     const failed = await PUT(createRequest({ jsonBody: { name: 'Updated' } }), createRouteContext(ORG_ID));
     expect(failed.status).toBe(500);
     expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(Error), {
@@ -253,12 +257,13 @@ describe('host organization detail extra coverage', () => {
     expect(limited.status).toBe(429);
 
     authMocks.getAuthContext.mockResolvedValueOnce({ userId: USER_ID, role: 'host_admin', orgIds: [ORG_ID], orgRoles: new Map([[ORG_ID, 'host_admin']]) });
-    dbMocks.executeQuery.mockResolvedValueOnce([]);
+    // executeQuery default returns [] → route returns 404 before withTransaction
     const missing = await DELETE(createRequest(), createRouteContext(ORG_ID));
     expect(missing.status).toBe(404);
 
     authMocks.getAuthContext.mockResolvedValueOnce({ userId: USER_ID, role: 'host_admin', orgIds: [ORG_ID], orgRoles: new Map([[ORG_ID, 'host_admin']]) });
-    dbMocks.executeQuery.mockRejectedValueOnce(new Error('delete fail'));
+    dbMocks.executeQuery.mockResolvedValueOnce([{ id: ORG_ID }]);
+    dbMocks.withTransaction.mockRejectedValueOnce(new Error('delete fail'));
     const failed = await DELETE(createRequest(), createRouteContext(ORG_ID));
     expect(failed.status).toBe(500);
     expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(Error), {

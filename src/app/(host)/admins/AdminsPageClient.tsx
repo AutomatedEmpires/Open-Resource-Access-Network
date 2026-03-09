@@ -11,7 +11,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
-  Users, Shield, UserPlus, AlertTriangle,
+  Users, Shield, AlertTriangle,
   Loader2, RefreshCw,
 } from 'lucide-react';
 
@@ -23,6 +23,8 @@ import {
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormField } from '@/components/ui/form-field';
 import { FormAlert } from '@/components/ui/form-alert';
+import { FormSection } from '@/components/ui/form-section';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/toast';
 import { formatDate } from '@/lib/format';
 import type { OranRole } from '@/domain/types';
@@ -300,17 +302,19 @@ export default function AdminsPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Users className="h-6 w-6 text-action-base" aria-hidden="true" />
-            Team Management
-          </h1>
-          <p className="mt-1 text-sm text-gray-600">
-            Manage who has access to your organization&apos;s host dashboard.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Host workspace"
+        title="Team Management"
+        icon={<Users className="h-6 w-6" aria-hidden="true" />}
+        subtitle="Manage who can operate inside this host workspace and keep access scoped to the minimum role each collaborator needs."
+        badges={(
+          <>
+            <PageHeaderBadge tone="trust">Role changes affect operational access immediately</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Organization-scoped workspace permissions</PageHeaderBadge>
+            <PageHeaderBadge>{organizationId ? `${members.length} members` : 'No organization selected'}</PageHeaderBadge>
+          </>
+        )}
+      />
 
       <ErrorBoundary>
         {/* Organization selector (if user has multiple orgs) */}
@@ -348,33 +352,6 @@ export default function AdminsPage() {
 
         {/* Invite form */}
         <div className="rounded-lg border border-gray-200 bg-white p-6 mb-6">
-          <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2 mb-4">
-            <UserPlus className="h-5 w-5 text-action-base" aria-hidden="true" />
-            Add Team Member
-          </h2>
-
-          <p className="mb-4 text-sm text-gray-600">
-            Invite a team member by email address or ORAN user ID.
-          </p>
-
-          {/* Toggle between email and UUID input modes */}
-          <div className="flex gap-2 mb-4">
-            <button
-              type="button"
-              onClick={() => setInviteInputMode('email')}
-              className={`px-3 py-1 text-sm rounded-full ${inviteInputMode === 'email' ? 'bg-info-muted text-action-deep font-medium' : 'bg-gray-100 text-gray-600'}`}
-            >
-              Email
-            </button>
-            <button
-              type="button"
-              onClick={() => setInviteInputMode('uuid')}
-              className={`px-3 py-1 text-sm rounded-full ${inviteInputMode === 'uuid' ? 'bg-info-muted text-action-deep font-medium' : 'bg-gray-100 text-gray-600'}`}
-            >
-              User ID
-            </button>
-          </div>
-
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -382,71 +359,101 @@ export default function AdminsPage() {
             }}
             className="space-y-4"
           >
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="flex-1">
-                {inviteInputMode === 'email' ? (
-                  <FormField
-                    id="invite-email"
-                    label="Email Address"
-                    hint="The team member's email"
-                    error={inviteEmail.trim() && !isEmail(inviteEmail.trim()) ? 'Enter a valid email' : undefined}
-                  >
-                    <input
-                      id="invite-email"
-                      type="email"
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                      placeholder="user@example.com"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-                    />
-                  </FormField>
-                ) : (
-                  <FormField
-                    id="invite-user-id"
-                    label="User ID (UUID)"
-                    hint="Paste the user's ORAN UUID"
-                    error={inviteUserId.trim() && !isUuid(inviteUserId.trim()) ? 'Enter a valid UUID' : undefined}
-                  >
-                    <input
-                      id="invite-user-id"
-                      type="text"
-                      value={inviteUserId}
-                      onChange={(e) => setInviteUserId(e.target.value)}
-                      placeholder="00000000-0000-0000-0000-000000000000"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-                      inputMode="text"
-                    />
-                  </FormField>
-                )}
-              </div>
-              <div className="w-full sm:w-48">
-                <FormField id="invite-role" label="Role">
-                  <select
-                    id="invite-role"
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value as HostRole)}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-h-[44px]"
-                  >
-                    {availableRoles.map((r) => (
-                      <option key={r.key} value={r.key}>{r.label}</option>
-                    ))}
-                  </select>
-                </FormField>
-              </div>
-              <div className="flex items-end">
-                <Button
-                  type="submit"
-                  disabled={inviteStatus === 'sending' || (inviteInputMode === 'uuid' ? !isUuid(inviteUserId.trim()) : !isEmail(inviteEmail.trim()))}
-                  className="gap-1 min-h-[44px]"
+            <FormSection
+              title="Add Team Member"
+              description="Invite a team member by email address or ORAN user ID."
+              className="border-0 bg-transparent p-0 shadow-none"
+            >
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setInviteInputMode('email')}
+                  className={`px-3 py-1 text-sm rounded-full ${inviteInputMode === 'email' ? 'bg-info-muted text-action-deep font-medium' : 'bg-gray-100 text-gray-600'}`}
                 >
-                  {inviteStatus === 'sending' ? (
-                    <><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Adding…</>
-                  ) : (
-                    'Add Member'
-                  )}
-                </Button>
+                  Email
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInviteInputMode('uuid')}
+                  className={`px-3 py-1 text-sm rounded-full ${inviteInputMode === 'uuid' ? 'bg-info-muted text-action-deep font-medium' : 'bg-gray-100 text-gray-600'}`}
+                >
+                  User ID
+                </button>
               </div>
-            </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <FormSection
+                  title="Invite details"
+                  description="Choose how you want to identify the collaborator and provide a valid destination."
+                  contentClassName="space-y-0"
+                >
+                  {inviteInputMode === 'email' ? (
+                    <FormField
+                      id="invite-email"
+                      label="Email Address"
+                      hint="The team member's email"
+                      error={inviteEmail.trim() && !isEmail(inviteEmail.trim()) ? 'Enter a valid email' : undefined}
+                    >
+                      <input
+                        id="invite-email"
+                        type="email"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        placeholder="user@example.com"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                      />
+                    </FormField>
+                  ) : (
+                    <FormField
+                      id="invite-user-id"
+                      label="User ID (UUID)"
+                      hint="Paste the user's ORAN UUID"
+                      error={inviteUserId.trim() && !isUuid(inviteUserId.trim()) ? 'Enter a valid UUID' : undefined}
+                    >
+                      <input
+                        id="invite-user-id"
+                        type="text"
+                        value={inviteUserId}
+                        onChange={(e) => setInviteUserId(e.target.value)}
+                        placeholder="00000000-0000-0000-0000-000000000000"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                        inputMode="text"
+                      />
+                    </FormField>
+                  )}
+                </FormSection>
+
+                <FormSection
+                  title="Access level"
+                  description="Assign the minimum role needed for the collaborator's work."
+                >
+                  <FormField id="invite-role" label="Role">
+                    <select
+                      id="invite-role"
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as HostRole)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-h-[44px]"
+                    >
+                      {availableRoles.map((r) => (
+                        <option key={r.key} value={r.key}>{r.label}</option>
+                      ))}
+                    </select>
+                  </FormField>
+
+                  <Button
+                    type="submit"
+                    disabled={inviteStatus === 'sending' || (inviteInputMode === 'uuid' ? !isUuid(inviteUserId.trim()) : !isEmail(inviteEmail.trim()))}
+                    className="gap-1 min-h-[44px] w-full"
+                  >
+                    {inviteStatus === 'sending' ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Adding…</>
+                    ) : (
+                      'Add Member'
+                    )}
+                  </Button>
+                </FormSection>
+              </div>
+            </FormSection>
 
             {inviteStatus === 'sent' && (
               <FormAlert

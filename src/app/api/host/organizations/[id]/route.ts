@@ -6,10 +6,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
+import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, requireOrgAccess, requireOrgRole, isOranAdmin } from '@/services/auth';
+import { createHostPortalSourceAssertion } from '@/services/ingestion/hostPortalIntake';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -159,6 +160,17 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
   const d = parsed.data;
 
+  const existingOrganizations = await executeQuery<{ id: string }>(
+    `SELECT id
+     FROM organizations
+     WHERE id = $1`,
+    [id],
+  );
+
+  if (existingOrganizations.length === 0) {
+    return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+  }
+
   // Build SET clause dynamically from provided fields
   const setClauses: string[] = [];
   const params: unknown[] = [];
@@ -190,20 +202,41 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
   params.push(id);
 
   try {
-    const rows = await executeQuery<Organization>(
-      `UPDATE organizations
-       SET ${setClauses.join(', ')}
-       WHERE id = $${params.length}
-       RETURNING id, name, description, url, email, tax_status, tax_id,
-                 year_incorporated, legal_status, logo_url, uri, created_at, updated_at`,
-      params,
-    );
+    const result = await withTransaction(async (client) => {
+      const updateResult = await client.query<Organization>(
+        `UPDATE organizations
+         SET ${setClauses.join(', ')}
+         WHERE id = $${params.length}
+         RETURNING id, name, description, url, email, tax_status, tax_id,
+                   year_incorporated, legal_status, logo_url, uri, created_at, updated_at`,
+        params,
+      );
 
-    if (rows.length === 0) {
+      const organization = updateResult.rows[0];
+      if (!organization) {
+        return null;
+      }
+
+      await createHostPortalSourceAssertion(client, {
+        actorUserId: authCtx?.userId ?? 'system',
+        actorRole: authCtx?.role ?? null,
+        recordType: 'host_org_update',
+        recordId: organization.id,
+        canonicalSourceUrl: `oran://host-portal/organizations/${organization.id}`,
+        payload: {
+          organizationId: organization.id,
+          requestedChanges: d,
+        },
+      });
+
+      return organization;
+    });
+
+    if (!result) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
 
-    return NextResponse.json(rows[0]);
+    return NextResponse.json(result);
   } catch (error) {
     await captureException(error, { feature: 'api_host_org_update' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -247,20 +280,51 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
   }
 
   try {
-    // Soft-delete: mark as defunct instead of hard delete
-    const rows = await executeQuery<{ id: string }>(
-      `UPDATE organizations
-       SET status = 'defunct', updated_at = now(), updated_by_user_id = $2
-       WHERE id = $1 AND (status IS NULL OR status != 'defunct')
-       RETURNING id`,
-      [id, authCtx?.userId ?? null],
+    const existingOrganizations = await executeQuery<{ id: string }>(
+      `SELECT id
+       FROM organizations
+       WHERE id = $1 AND (status IS NULL OR status != 'defunct')`,
+      [id],
     );
 
-    if (rows.length === 0) {
+    if (existingOrganizations.length === 0) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ archived: true, id: rows[0].id });
+    const result = await withTransaction(async (client) => {
+      const archiveResult = await client.query<{ id: string }>(
+        `UPDATE organizations
+         SET status = 'defunct', updated_at = now(), updated_by_user_id = $2
+         WHERE id = $1 AND (status IS NULL OR status != 'defunct')
+         RETURNING id`,
+        [id, authCtx?.userId ?? null],
+      );
+
+      const organization = archiveResult.rows[0];
+      if (!organization) {
+        return null;
+      }
+
+      await createHostPortalSourceAssertion(client, {
+        actorUserId: authCtx?.userId ?? 'system',
+        actorRole: authCtx?.role ?? null,
+        recordType: 'host_org_archive',
+        recordId: organization.id,
+        canonicalSourceUrl: `oran://host-portal/organizations/${organization.id}`,
+        payload: {
+          organizationId: organization.id,
+          status: 'defunct',
+        },
+      });
+
+      return organization;
+    });
+
+    if (!result) {
+      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ archived: true, id: result.id });
   } catch (error) {
     await captureException(error, { feature: 'api_host_org_delete' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

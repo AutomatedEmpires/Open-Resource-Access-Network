@@ -12,6 +12,7 @@ import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth';
 import { applySla } from '@/services/workflow/engine';
+import { createHostPortalSourceAssertion } from '@/services/ingestion/hostPortalIntake';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
@@ -128,6 +129,24 @@ export async function POST(req: NextRequest) {
       );
       const serviceId = svcResult.rows[0].id;
 
+      const assertion = await createHostPortalSourceAssertion(client, {
+        actorUserId: submitterId,
+        actorRole: authCtx.role,
+        recordType: 'host_org_claim',
+        recordId: orgId,
+        canonicalSourceUrl: `oran://host-portal/claims/${orgId}`,
+        payload: {
+          organizationId: orgId,
+          serviceId,
+          organizationName: d.organizationName,
+          description: d.description ?? null,
+          url: d.url ?? null,
+          email: d.email ?? null,
+          phone: d.phone ?? null,
+          claimNotes: d.claimNotes ?? null,
+        },
+      });
+
       // 3. Create submission entry for org claim
       const subResult = await client.query<{ id: string }>(
         `INSERT INTO submissions
@@ -141,7 +160,10 @@ export async function POST(req: NextRequest) {
           submitterId,
           `Organization claim: ${d.organizationName}`,
           d.claimNotes ?? 'Organization claim submitted via host portal.',
-          JSON.stringify({ phone: d.phone ?? null }),
+          JSON.stringify({
+            phone: d.phone ?? null,
+            sourceRecordId: assertion.sourceRecordId,
+          }),
         ],
       );
       const submissionId = subResult.rows[0].id;
@@ -157,7 +179,11 @@ export async function POST(req: NextRequest) {
           submitterId,
           authCtx.role,
           'Organization claim submitted',
-          JSON.stringify({ organization_id: orgId, service_id: serviceId }),
+          JSON.stringify({
+            organization_id: orgId,
+            service_id: serviceId,
+            source_record_id: assertion.sourceRecordId,
+          }),
         ],
       );
 

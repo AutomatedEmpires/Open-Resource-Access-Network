@@ -267,10 +267,10 @@ export async function POST(req: NextRequest) {
         recipientUserId: result.member.user_id,
         eventType: 'system_alert',
         title: `You've been invited to join ${orgName}`,
-        body: `You have been invited as ${role.replace('_', ' ')} for ${orgName}. Visit your team page to accept or decline.`,
+        body: `You have been invited as ${role.replace('_', ' ')} for ${orgName}. Visit your invitations page to accept or decline.`,
         resourceType: 'organization',
         resourceId: organizationId,
-        actionUrl: '/host/team',
+        actionUrl: '/invitations',
       }).catch(() => { /* best-effort */ });
     }
 

@@ -15,6 +15,10 @@ const authMocks = vi.hoisted(() => ({
   requireOrgAccess: vi.fn(),
   shouldEnforceAuth: vi.fn(),
 }));
+const hostPortalIntakeMocks = vi.hoisted(() => ({
+  createHostPortalSourceAssertion: vi.fn(),
+  queueServiceVerificationSubmission: vi.fn(),
+}));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
@@ -24,6 +28,10 @@ vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
 }));
 vi.mock('@/services/auth', () => authMocks);
+vi.mock('@/services/workflow/engine', () => ({
+  applySla: vi.fn(),
+}));
+vi.mock('@/services/ingestion/hostPortalIntake', () => hostPortalIntakeMocks);
 
 type RequestOptions = {
   search?: string;
@@ -78,6 +86,12 @@ beforeEach(() => {
   authMocks.isOranAdmin.mockReturnValue(false);
   authMocks.requireOrgAccess.mockReturnValue(true);
   authMocks.shouldEnforceAuth.mockReturnValue(false);
+  hostPortalIntakeMocks.createHostPortalSourceAssertion.mockResolvedValue({
+    sourceSystemId: 'source-system-1',
+    sourceFeedId: 'source-feed-1',
+    sourceRecordId: 'source-record-1',
+  });
+  hostPortalIntakeMocks.queueServiceVerificationSubmission.mockResolvedValue('submission-1');
 });
 
 describe('host locations collection route coverage', () => {
@@ -347,12 +361,11 @@ describe('host services collection route coverage', () => {
       organization_id: '11111111-1111-4111-8111-111111111111',
       name: 'Pantry Service',
       status: 'inactive',
+      queuedForReview: true,
+      submissionId: 'submission-1',
+      sourceRecordId: 'source-record-1',
+      message: 'Service submitted for review. It will publish after approval.',
     });
-    expect(clientQuery).toHaveBeenNthCalledWith(
-      2,
-      expect.stringContaining('INSERT INTO submissions'),
-      ['svc-1', 'user-1', expect.stringContaining('Service verification')],
-    );
   });
 
   it('returns 500 and captures exceptions on service create failures', async () => {

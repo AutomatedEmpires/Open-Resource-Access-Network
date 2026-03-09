@@ -12,6 +12,7 @@ import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, isOranAdmin } from '@/services/auth';
+import { createHostPortalSourceAssertion } from '@/services/ingestion/hostPortalIntake';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -230,7 +231,29 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      return org;
+      const assertion = await createHostPortalSourceAssertion(client, {
+        actorUserId: authCtx?.userId ?? 'system',
+        actorRole: authCtx?.role ?? null,
+        recordType: 'host_org_create',
+        recordId: org.id,
+        canonicalSourceUrl: `oran://host-portal/organizations/${org.id}`,
+        payload: {
+          organizationId: org.id,
+          name: d.name,
+          description: d.description ?? null,
+          url: d.url ?? null,
+          email: d.email ?? null,
+          taxStatus: d.taxStatus ?? null,
+          taxId: d.taxId ?? null,
+          yearIncorporated: d.yearIncorporated ?? null,
+          legalStatus: d.legalStatus ?? null,
+        },
+      });
+
+      return {
+        ...org,
+        sourceRecordId: assertion.sourceRecordId,
+      };
     });
 
     return NextResponse.json(result, { status: 201 });

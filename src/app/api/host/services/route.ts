@@ -11,6 +11,14 @@ import { executeQuery, withTransaction, isDatabaseConfigured } from '@/services/
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, isOranAdmin, requireOrgAccess } from '@/services/auth';
+import { applySla } from '@/services/workflow/engine';
+import {
+  createHostPortalSourceAssertion,
+  queueServiceVerificationSubmission,
+  type HostPortalDayScheduleInput,
+  type HostPortalPhoneInput,
+  type HostServiceRequestedChanges,
+} from '@/services/ingestion/hostPortalIntake';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -51,9 +59,6 @@ const CreateServiceSchema = z.object({
   description:           z.string().max(5000).optional(),
   url:                   z.string().url().max(2000).optional(),
   email:                 z.string().email().max(500).optional(),
-  // New services default to 'inactive' — they must complete the verification
-  // cycle before appearing as active in search results.
-  status:                z.enum(['active', 'inactive', 'defunct']).default('inactive'),
   interpretationServices: z.string().max(1000).optional(),
   applicationProcess:    z.string().max(2000).optional(),
   waitTime:              z.string().max(500).optional(),
@@ -70,6 +75,41 @@ const CreateServiceSchema = z.object({
 
 function getIp(req: NextRequest): string {
   return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+}
+
+function buildRequestedChanges(
+  input: {
+    name: string;
+    description?: string;
+    url?: string;
+    email?: string;
+    interpretationServices?: string;
+    applicationProcess?: string;
+    waitTime?: string;
+    fees?: string;
+    accreditations?: string;
+    licenses?: string;
+    phones?: HostPortalPhoneInput[];
+    schedule?: HostPortalDayScheduleInput[];
+  },
+): HostServiceRequestedChanges {
+  const requested: HostServiceRequestedChanges = {
+    name: input.name,
+  };
+
+  if (input.description !== undefined) requested.description = input.description;
+  if (input.url !== undefined) requested.url = input.url;
+  if (input.email !== undefined) requested.email = input.email;
+  if (input.interpretationServices !== undefined) requested.interpretationServices = input.interpretationServices;
+  if (input.applicationProcess !== undefined) requested.applicationProcess = input.applicationProcess;
+  if (input.waitTime !== undefined) requested.waitTime = input.waitTime;
+  if (input.fees !== undefined) requested.fees = input.fees;
+  if (input.accreditations !== undefined) requested.accreditations = input.accreditations;
+  if (input.licenses !== undefined) requested.licenses = input.licenses;
+  if (input.phones !== undefined) requested.phones = input.phones;
+  if (input.schedule !== undefined) requested.schedule = input.schedule;
+
+  return requested;
 }
 
 // ============================================================
@@ -261,7 +301,7 @@ export async function POST(req: NextRequest) {
           d.description ?? null,
           d.url ?? null,
           d.email ?? null,
-          d.status,
+          'inactive',
           d.interpretationServices ?? null,
           d.applicationProcess ?? null,
           d.waitTime ?? null,
@@ -273,40 +313,52 @@ export async function POST(req: NextRequest) {
       );
       const service = svcRows.rows[0];
 
-      // 2. Auto-enqueue service for verification via submissions table.
-      //    Every service must pass the community admin review cycle before
-      //    it can be marked active in search results.
-      const subRows = await client.query(
-        `INSERT INTO submissions
-           (submission_type, status, target_type, target_id, service_id,
-            submitted_by_user_id, title, submitted_at)
-         VALUES ('service_verification', 'submitted', 'service', $1, $1, $2, $3, NOW())
-         RETURNING id`,
-        [service.id, authCtx.userId, `Service verification: ${service.name}`],
-      );
-      const submissionId = subRows.rows[0]?.id;
+      const requestedChanges = buildRequestedChanges({
+        name: d.name,
+        description: d.description,
+        url: d.url,
+        email: d.email,
+        interpretationServices: d.interpretationServices,
+        applicationProcess: d.applicationProcess,
+        waitTime: d.waitTime,
+        fees: d.fees,
+        accreditations: d.accreditations,
+        licenses: d.licenses,
+        phones: d.phones,
+        schedule: d.schedule,
+      });
 
-      // Notify admin pool of new service verification
-      if (submissionId) {
-        await client.query(
-          `INSERT INTO notification_events
-             (recipient_user_id, event_type, title, body, resource_type, resource_id, action_url, idempotency_key)
-           SELECT up.user_id,
-                  'submission_status_changed',
-                  'New service submitted for verification',
-                  $2,
-                  'submission',
-                  $1,
-                '/verify?id=' || $1,
-                  'new_service_' || $1 || '_' || up.user_id
-           FROM user_profiles up
-           WHERE up.role IN ('community_admin', 'oran_admin')
-           ON CONFLICT (idempotency_key) DO NOTHING`,
-          [submissionId, `Service: ${service.name}`],
-        );
-      }
+      const assertion = await createHostPortalSourceAssertion(client, {
+        actorUserId: authCtx.userId,
+        actorRole: authCtx.role,
+        recordType: 'host_service_create',
+        recordId: service.id,
+        canonicalSourceUrl: `oran://host-portal/services/${service.id}`,
+        payload: {
+          organizationId: d.organizationId,
+          serviceId: service.id,
+          requestedChanges,
+        },
+      });
 
-      // 3. Insert phones if provided
+      const submissionId = await queueServiceVerificationSubmission(client, {
+        serviceId: service.id,
+        submittedByUserId: authCtx.userId,
+        actorRole: authCtx.role,
+        title: `Service verification: ${service.name}`,
+        notes: 'Service submitted via host portal.',
+        payload: {
+          flow: 'host_portal',
+          changeType: 'host_service_create',
+          sourceRecordId: assertion.sourceRecordId,
+          organizationId: d.organizationId,
+          serviceId: service.id,
+          currentStatus: service.status,
+          requestedChanges,
+        },
+      });
+
+      // 2. Insert phones if provided
       if (d.phones && d.phones.length > 0) {
         for (const ph of d.phones) {
           await client.query(
@@ -317,7 +369,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 4. Insert schedule rows for non-closed days
+      // 3. Insert schedule rows for non-closed days
       if (d.schedule && d.schedule.length > 0) {
         for (const ds of d.schedule) {
           if (ds.closed) continue;
@@ -329,10 +381,29 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      return service;
+      return {
+        service,
+        submissionId,
+        sourceRecordId: assertion.sourceRecordId,
+      };
     });
 
-    return NextResponse.json(result, { status: 201 });
+    try {
+      await applySla(result.submissionId, 'service_verification');
+    } catch {
+      // SLA is best-effort.
+    }
+
+    return NextResponse.json(
+      {
+        ...result.service,
+        queuedForReview: true,
+        submissionId: result.submissionId,
+        sourceRecordId: result.sourceRecordId,
+        message: 'Service submitted for review. It will publish after approval.',
+      },
+      { status: 201 },
+    );
   } catch (error) {
     await captureException(error, { feature: 'api_host_services_create' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

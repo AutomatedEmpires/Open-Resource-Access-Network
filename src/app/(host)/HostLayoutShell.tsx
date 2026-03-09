@@ -25,7 +25,7 @@ const NAV_ITEMS = [
   { href: '/services', label: 'Services', icon: Wrench },
   { href: '/resource-studio', label: 'Resource Studio', icon: Layers3 },
   { href: '/locations', label: 'Locations', icon: MapPin },
-  { href: '/forms', label: 'Forms', icon: ClipboardList },
+  { href: '/host-forms', label: 'Forms', icon: ClipboardList },
   { href: '/admins', label: 'Team', icon: Users },
   { href: '/claim', label: 'Claim', icon: Tag },
 ] as const;

@@ -36,6 +36,7 @@ import type {
   ChatResponse,
   ServiceCard,
   QuotaState,
+  ChatSessionContext,
 } from './types';
 import {
   INTENT_CATEGORIES,
@@ -60,8 +61,46 @@ import { buildSeekerDiscoveryProfile } from '@/services/profile/discoveryProfile
  * Must run before any other pipeline stage.
  */
 export function detectCrisis(message: string): boolean {
+  if (classifyCrisisScope(message) !== 'self') {
+    return false;
+  }
+
   const normalized = message.toLowerCase();
   return CRISIS_KEYWORDS.some((keyword) => normalized.includes(keyword.toLowerCase()));
+}
+
+type CrisisScope = 'self' | 'third_party' | 'informational' | null;
+
+const THIRD_PARTY_CRISIS_PATTERNS: RegExp[] = [
+  /\b(my friend|my brother|my sister|my partner|my spouse|my child|my son|my daughter|my mom|my mother|my dad|my father)\b/i,
+  /\b(friend|partner|spouse|child|parent|someone|another person)\b.*\b(suicid|kill themselves|hurt themselves|self harm|overdose)\b/i,
+  /\bhow do i help\b/i,
+  /\bwhat should i do if\b/i,
+  /\bhelp (him|her|them)\b/i,
+];
+
+const INFORMATIONAL_CRISIS_PATTERNS: RegExp[] = [
+  /\b(what is|what does|tell me about|information about)\b.*\b(988|suicide|self harm|self-harm|overdose)\b/i,
+  /\b(suicide hotline|crisis hotline|988 hotline)\b/i,
+  /\b(signs of suicide|suicide warning signs)\b/i,
+];
+
+function classifyCrisisScope(message: string): CrisisScope {
+  const normalized = message.toLowerCase();
+  const hasKeyword = CRISIS_KEYWORDS.some((keyword) => normalized.includes(keyword.toLowerCase()));
+  if (!hasKeyword) {
+    return null;
+  }
+
+  if (INFORMATIONAL_CRISIS_PATTERNS.some((pattern) => pattern.test(message))) {
+    return 'informational';
+  }
+
+  if (THIRD_PARTY_CRISIS_PATTERNS.some((pattern) => pattern.test(message))) {
+    return 'third_party';
+  }
+
+  return 'self';
 }
 
 // ============================================================
@@ -237,11 +276,12 @@ export function assembleResponse(
     llmSummarized?: boolean;
     retrievalStatus?: ChatRetrievalStatus;
     searchInterpretation?: SearchInterpretation;
+    activeContextUsed?: boolean;
   }
 ): ChatResponse {
   const quota = checkQuota(context.sessionId);
-  const cards: ServiceCard[] = services
-    .slice(0, MAX_SERVICES_PER_RESPONSE)
+  const diversified = diversifyServices(services, MAX_SERVICES_PER_RESPONSE);
+  const cards: ServiceCard[] = diversified.services
     .map((s) => enrichedServiceToCard(s, { intent, context }));
 
   const retrievalStatus = options?.retrievalStatus ?? (services.length > 0 ? 'results' : 'no_match');
@@ -249,6 +289,10 @@ export function assembleResponse(
 
   return {
     message,
+    resultSummary: buildResultSummary(retrievalStatus, intent, diversified.services, context, {
+      activeContextUsed: options?.activeContextUsed ?? false,
+      diversified: diversified.diversified,
+    }),
     services: cards,
     isCrisis: false,
     intent,
@@ -258,6 +302,7 @@ export function assembleResponse(
     llmSummarized: options?.llmSummarized ?? false,
     retrievalStatus,
     searchInterpretation: options?.searchInterpretation,
+    followUpSuggestions: buildFollowUpSuggestions(retrievalStatus, intent, context),
   };
 }
 
@@ -299,7 +344,40 @@ export function assembleOutOfScopeResponse(
     eligibilityDisclaimer: ELIGIBILITY_DISCLAIMER,
     llmSummarized: false,
     retrievalStatus: 'out_of_scope',
-    searchInterpretation: buildSearchInterpretation(intent, context),
+    activeContextUsed: false,
+    sessionContext: buildSessionContext(intent, context),
+    searchInterpretation: buildSearchInterpretation(intent, context, { activeContextUsed: false, sessionSignals: [] }),
+  };
+}
+
+function assembleClarificationResponse(
+  intent: Intent,
+  context: ChatContext,
+  clarification: ChatResponse['clarification'],
+  options?: {
+    activeContextUsed?: boolean;
+    sessionSignals?: string[];
+  },
+): ChatResponse {
+  const quota = checkQuota(context.sessionId);
+
+  return {
+    message: clarification?.prompt ?? 'Tell me more so I can search the service catalog accurately.',
+    services: [],
+    isCrisis: false,
+    intent,
+    sessionId: context.sessionId,
+    quotaRemaining: quota.remaining,
+    eligibilityDisclaimer: ELIGIBILITY_DISCLAIMER,
+    llmSummarized: false,
+    retrievalStatus: 'clarification_required',
+    activeContextUsed: options?.activeContextUsed ?? false,
+    sessionContext: buildSessionContext(intent, context),
+    searchInterpretation: buildSearchInterpretation(intent, context, {
+      activeContextUsed: options?.activeContextUsed ?? false,
+      sessionSignals: options?.sessionSignals ?? [],
+    }),
+    clarification,
   };
 }
 
@@ -361,7 +439,22 @@ function buildProfileSignalSummary(context: ChatContext, intent: Intent): string
   return Array.from(new Set(signals)).slice(0, 4);
 }
 
-function buildSearchInterpretation(intent: Intent, context: ChatContext): SearchInterpretation {
+function formatNeedLabel(needId: string): string {
+  return needId.replace(/_/g, ' ');
+}
+
+function buildSessionSignalSummary(signals: string[]): string[] {
+  return Array.from(new Set(signals)).slice(0, 4);
+}
+
+function buildSearchInterpretation(
+  intent: Intent,
+  context: ChatContext,
+  options: {
+    activeContextUsed: boolean;
+    sessionSignals: string[];
+  },
+): SearchInterpretation {
   const summaryParts = [`Interpreted as ${formatIntentCategoryLabel(intent.category)}`];
   if (intent.urgencyQualifier === 'urgent') {
     summaryParts.push('urgent');
@@ -380,6 +473,8 @@ function buildSearchInterpretation(intent: Intent, context: ChatContext): Search
     urgencyQualifier: intent.urgencyQualifier,
     actionQualifier: intent.actionQualifier,
     summary: summaryParts.join(', '),
+    usedSessionContext: options.activeContextUsed,
+    sessionSignals: buildSessionSignalSummary(options.sessionSignals),
     usedProfileShaping: profileSignals.length > 0,
     ignoredProfileShaping: Boolean(context.profileShapingDisabled),
     profileSignals,
@@ -398,10 +493,309 @@ function buildResponseMessage(
       return 'I could not find services in the current database for this search scope yet. Try broadening the filters or contact 211 for local assistance.';
     case 'temporarily_unavailable':
       return 'Search is temporarily unavailable right now. Please try again in a few minutes, or contact 211 for local assistance.';
+    case 'clarification_required':
+      return 'I need one more detail before I can search the catalog accurately.';
     case 'no_match':
     default:
       return 'I could not find a close match for that request in the current database. Try rephrasing, broadening the filters, or contact 211 for local assistance.';
   }
+}
+
+function getOrganizationId(service: EnrichedService): string {
+  return service.organization.id;
+}
+
+function hasAttributeTag(service: EnrichedService, tags: string[]): boolean {
+  return service.attributes?.some((attribute) => tags.includes(attribute.tag)) ?? false;
+}
+
+function diversifyServices(
+  services: EnrichedService[],
+  maxServices: number,
+): {
+  services: EnrichedService[];
+  diversified: boolean;
+} {
+  const seenServiceIds = new Set<string>();
+  const organizationCounts = new Map<string, number>();
+  const firstPass: EnrichedService[] = [];
+  const deferred: EnrichedService[] = [];
+
+  for (const service of services) {
+    if (seenServiceIds.has(service.service.id)) {
+      continue;
+    }
+    seenServiceIds.add(service.service.id);
+
+    const organizationId = getOrganizationId(service);
+    const organizationCount = organizationCounts.get(organizationId) ?? 0;
+    if (organizationCount === 0 && firstPass.length < maxServices) {
+      firstPass.push(service);
+      organizationCounts.set(organizationId, 1);
+      continue;
+    }
+
+    deferred.push(service);
+  }
+
+  for (const service of deferred) {
+    if (firstPass.length >= maxServices) {
+      break;
+    }
+
+    const organizationId = getOrganizationId(service);
+    const organizationCount = organizationCounts.get(organizationId) ?? 0;
+    if (organizationCount >= 2) {
+      continue;
+    }
+
+    firstPass.push(service);
+    organizationCounts.set(organizationId, organizationCount + 1);
+  }
+
+  const baseline = services.slice(0, maxServices).map((service) => service.service.id);
+  const diversifiedIds = firstPass.map((service) => service.service.id);
+
+  return {
+    services: firstPass,
+    diversified: diversifiedIds.join(',') !== baseline.join(','),
+  };
+}
+
+function buildResultSummary(
+  retrievalStatus: ChatRetrievalStatus,
+  intent: Intent,
+  services: EnrichedService[],
+  context: ChatContext,
+  options: {
+    activeContextUsed: boolean;
+    diversified: boolean;
+  },
+): string | undefined {
+  const city = context.approximateLocation?.city ?? context.sessionContext?.activeCity ?? context.userProfile?.locationCity;
+
+  if (retrievalStatus !== 'results' || services.length === 0) {
+    if (retrievalStatus === 'no_match' || retrievalStatus === 'catalog_empty_for_scope') {
+      return city
+        ? `The search stayed scoped to ${city}${options.activeContextUsed ? ' and your active chat context' : ''}.`
+        : options.activeContextUsed
+          ? 'The search stayed scoped to your active chat context.'
+          : undefined;
+    }
+
+    return undefined;
+  }
+
+  const organizationCount = new Set(services.map((service) => getOrganizationId(service))).size;
+  const highConfidenceCount = services.filter((service) => (service.confidenceScore?.verificationConfidence ?? 0) >= 80).length;
+  const urgentAvailabilityCount = services.filter((service) => hasAttributeTag(service, ['same_day', 'next_day', 'weekend_hours', 'evening_hours'])).length;
+  const parts = [
+    `Showing ${services.length} service${services.length !== 1 ? 's' : ''} from ${organizationCount} organization${organizationCount !== 1 ? 's' : ''}`,
+  ];
+
+  if (city) {
+    parts.push(`prioritized for ${city}`);
+  }
+
+  if (highConfidenceCount > 0) {
+    parts.push(`${highConfidenceCount} high-confidence match${highConfidenceCount !== 1 ? 'es' : ''}`);
+  }
+
+  if (intent.urgencyQualifier === 'urgent' && urgentAvailabilityCount > 0) {
+    parts.push(`${urgentAvailabilityCount} mention same-day or extended-hour availability`);
+  }
+
+  if (options.activeContextUsed) {
+    parts.push('kept the active chat scope in place');
+  }
+
+  if (options.diversified) {
+    parts.push('kept the set varied across organizations');
+  }
+
+  return `${parts.join('. ')}.`;
+}
+
+function buildFollowUpSuggestions(
+  retrievalStatus: ChatRetrievalStatus,
+  intent: Intent,
+  context: ChatContext,
+): string[] {
+  if (retrievalStatus === 'clarification_required' || retrievalStatus === 'out_of_scope') {
+    return [];
+  }
+
+  const byCategory: Partial<Record<Intent['category'], string[]>> = {
+    food_assistance: ['Open today', 'No ID required food help', 'Phone support only', 'Food pantry near me'],
+    housing: ['Shelter tonight', 'Help paying rent', 'Same-day housing help', 'Walk-in housing help'],
+    mental_health: ['Walk-in mental health care', 'Phone counseling', 'Help tonight', 'Support groups'],
+    healthcare: ['Free or low-cost care', 'Weekend clinic hours', 'Phone support only', 'Interpreter support'],
+    employment: ['Job training', 'Resume help', 'Same-day employment help', 'Virtual services'],
+    childcare: ['Childcare today', 'Child-friendly services', 'Low-cost childcare', 'Phone support only'],
+    transportation: ['Ride assistance', 'Same-day transportation help', 'Phone support only', 'Accessible transport'],
+    legal_aid: ['Legal help today', 'Phone legal advice', 'Housing legal help', 'Immigration legal help'],
+    utility_assistance: ['Help paying utilities', 'Same-day utility help', 'Phone support only', 'No documentation required'],
+    general: ['Help paying rent', 'Food pantry near me', 'Mental health support', 'Free or low-cost healthcare'],
+  };
+
+  const suggestions = [...(byCategory[intent.category] ?? byCategory.general ?? [])];
+  if (retrievalStatus === 'no_match' || retrievalStatus === 'catalog_empty_for_scope') {
+    suggestions.unshift('Show all trust levels');
+  }
+
+  if (context.sessionContext?.preferredDeliveryModes?.includes('phone') || context.sessionContext?.attributeFilters?.delivery?.includes('phone')) {
+    return suggestions.filter((suggestion) => suggestion !== 'Phone support only').slice(0, 4);
+  }
+
+  return Array.from(new Set(suggestions)).slice(0, 4);
+}
+
+function normalizeSessionContext(sessionContext: ChatSessionContext | undefined): ChatSessionContext | undefined {
+  if (!sessionContext) {
+    return undefined;
+  }
+
+  const normalized: ChatSessionContext = {
+    ...sessionContext,
+    activeCity: sessionContext.activeCity?.trim() || undefined,
+    preferredDeliveryModes: sessionContext.preferredDeliveryModes?.filter(Boolean),
+    taxonomyTermIds: sessionContext.taxonomyTermIds?.filter(Boolean),
+    attributeFilters: sessionContext.attributeFilters,
+    profileShapingEnabled: sessionContext.profileShapingEnabled,
+  };
+
+  const hasMeaningfulContext = Boolean(
+    normalized.activeNeedId
+    || normalized.activeCity
+    || normalized.urgency
+    || normalized.preferredDeliveryModes?.length
+    || (normalized.trustFilter && normalized.trustFilter !== 'all')
+    || normalized.taxonomyTermIds?.length
+    || Object.keys(normalized.attributeFilters ?? {}).length > 0,
+  );
+
+  if (!hasMeaningfulContext && normalized.profileShapingEnabled) {
+    return undefined;
+  }
+
+  return normalized;
+}
+
+function extractCityFromMessage(message: string): string | undefined {
+  const match = message.match(/\b(?:in|near)\s+([a-z][a-z\s.'-]{1,40})(?:[?.!,]|$)/i);
+  if (!match?.[1]) {
+    return undefined;
+  }
+
+  return match[1]
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (segment) => segment.toUpperCase());
+}
+
+function buildSessionContext(intent: Intent, context: ChatContext): ChatSessionContext | undefined {
+  const current = normalizeSessionContext(context.sessionContext);
+  const explicitCity = extractCityFromMessage(intent.rawQuery);
+  const activeNeedId = intent.category === 'general'
+    ? current?.activeNeedId
+    : intent.category;
+  const activeCity = explicitCity
+    ?? current?.activeCity
+    ?? context.approximateLocation?.city;
+  const preferredDeliveryModes = current?.preferredDeliveryModes
+    ?? context.userProfile?.preferredDeliveryModes;
+
+  return normalizeSessionContext({
+    activeNeedId,
+    activeCity,
+    urgency: intent.urgencyQualifier === 'urgent' ? 'urgent' : current?.urgency,
+    preferredDeliveryModes,
+    trustFilter: current?.trustFilter,
+    taxonomyTermIds: current?.taxonomyTermIds,
+    attributeFilters: current?.attributeFilters,
+    profileShapingEnabled: !context.profileShapingDisabled,
+  });
+}
+
+function applySessionContext(intent: Intent, context: ChatContext): {
+  intent: Intent;
+  context: ChatContext;
+  activeContextUsed: boolean;
+  sessionSignals: string[];
+} {
+  const sessionContext = normalizeSessionContext(context.sessionContext);
+  if (!sessionContext) {
+    return {
+      intent,
+      context,
+      activeContextUsed: false,
+      sessionSignals: [],
+    };
+  }
+
+  let nextIntent = intent;
+  let nextContext = {
+    ...context,
+    sessionContext,
+  };
+  const sessionSignals: string[] = [];
+  let activeContextUsed = false;
+
+  const explicitCity = extractCityFromMessage(intent.rawQuery);
+  if (sessionContext.activeNeedId && intent.category === 'general') {
+    nextIntent = {
+      ...intent,
+      category: sessionContext.activeNeedId,
+    };
+    activeContextUsed = true;
+    sessionSignals.push(`Need: ${formatNeedLabel(sessionContext.activeNeedId)}`);
+  }
+
+  if (sessionContext.activeCity && !explicitCity && !context.approximateLocation?.city) {
+    nextContext = {
+      ...nextContext,
+      approximateLocation: {
+        ...nextContext.approximateLocation,
+        city: sessionContext.activeCity,
+      },
+    };
+    activeContextUsed = true;
+    sessionSignals.push(`City: ${sessionContext.activeCity}`);
+  }
+
+  return {
+    intent: nextIntent,
+    context: nextContext,
+    activeContextUsed,
+    sessionSignals,
+  };
+}
+
+function shouldClarifyWeakQuery(message: string, intent: Intent, context: ChatContext): boolean {
+  if (intent.category !== 'general') {
+    return false;
+  }
+
+  if (normalizeSessionContext(context.sessionContext)?.activeNeedId) {
+    return false;
+  }
+
+  if (isOutOfScopeRequest(message, intent)) {
+    return false;
+  }
+
+  const normalized = message.trim().toLowerCase();
+  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+
+  if (wordCount <= 2) {
+    return true;
+  }
+
+  return [
+    /\b(anything open today|what is open today|open today)\b/i,
+    /\b(i need help|need help|help me|support|assistance|resources)\b/i,
+    /\bnear me\b/i,
+  ].some((pattern) => pattern.test(normalized));
 }
 
 const OUT_OF_SCOPE_PATTERNS: RegExp[] = [
@@ -449,8 +843,10 @@ export async function orchestrateChat(
   rateLimitKey: string,
   deps: OrchestratorDeps
 ): Promise<ChatResponse> {
+  const crisisScope = classifyCrisisScope(message);
+
   // Stage 1a: Crisis detection (keyword gate) — always first, always takes priority
-  if (detectCrisis(message)) {
+  if (crisisScope === 'self' && detectCrisis(message)) {
     const intent = detectIntent(message);
     return assembleCrisisResponse(intent, sessionId);
   }
@@ -461,7 +857,7 @@ export async function orchestrateChat(
   // FAIL-OPEN: any API error is swallowed and pipeline continues normally.
   // Cost: calls the API only when hasDistressSignals() → true (<5% of messages).
   const contentSafetyEnabled = await deps.isFlagEnabled(FEATURE_FLAGS.CONTENT_SAFETY_CRISIS);
-  if (contentSafetyEnabled && hasDistressSignals(message)) {
+  if (crisisScope === 'self' && contentSafetyEnabled && hasDistressSignals(message)) {
     const isCrisisBySemantic = await checkCrisisContentSafety(message);
     if (isCrisisBySemantic) {
       const intent = detectIntent(message);
@@ -474,7 +870,7 @@ export async function orchestrateChat(
   if (quota.exceeded) {
     const intent = detectIntent(message);
     return {
-      message: `You've reached the message limit for this session (${MAX_CHAT_QUOTA} messages). Please start a new conversation.`,
+      message: `You've reached the message limit for this session (${MAX_CHAT_QUOTA} messages). Start a new chat session or continue in Directory or Map with the same search scope.`,
       services: [],
       isCrisis: false,
       intent,
@@ -482,6 +878,8 @@ export async function orchestrateChat(
       quotaRemaining: 0,
       eligibilityDisclaimer: ELIGIBILITY_DISCLAIMER,
       llmSummarized: false,
+      sessionContext: undefined,
+      activeContextUsed: false,
     };
   }
 
@@ -513,6 +911,59 @@ export async function orchestrateChat(
     context = await deps.hydrateContext(context);
   }
 
+  const appliedContext = applySessionContext(intent, context);
+  intent = appliedContext.intent;
+  context = appliedContext.context;
+
+  if (crisisScope === 'third_party' || crisisScope === 'informational') {
+    const response = assembleClarificationResponse(
+      intent,
+      context,
+      {
+        reason: 'crisis_scope',
+        prompt:
+          crisisScope === 'third_party'
+            ? 'If someone is in immediate danger, call 911 now. For urgent mental health crisis support, call or text 988. If you want help finding local services for them, tell me the kind of service you need, such as mental health care, shelter, food, or legal help.'
+            : 'If this is an immediate crisis, call 911 or 988 now. If you want local services, tell me what kind of help to look for, such as mental health care, shelter, food, or healthcare.',
+        suggestions: [
+          'Mental health crisis support',
+          'Emergency shelter tonight',
+          'Food assistance near me',
+          'Legal help',
+        ],
+      },
+      {
+        activeContextUsed: appliedContext.activeContextUsed,
+        sessionSignals: appliedContext.sessionSignals,
+      },
+    );
+    await incrementQuota(sessionId, userId);
+    return response;
+  }
+
+  if (shouldClarifyWeakQuery(message, intent, context)) {
+    const response = assembleClarificationResponse(
+      intent,
+      context,
+      {
+        reason: 'weak_query',
+        prompt: 'I can search the catalog once I know the kind of help you want. Tell me the need, such as housing, food, healthcare, mental health, transportation, childcare, employment, legal help, or utility assistance.',
+        suggestions: [
+          'Help paying rent',
+          'Food pantry near me',
+          'Mental health support',
+          'Free or low-cost healthcare',
+        ],
+      },
+      {
+        activeContextUsed: appliedContext.activeContextUsed,
+        sessionSignals: appliedContext.sessionSignals,
+      },
+    );
+    await incrementQuota(sessionId, userId);
+    return response;
+  }
+
   if (isOutOfScopeRequest(message, intent)) {
     const response = assembleOutOfScopeResponse(intent, context);
     await incrementQuota(sessionId, userId);
@@ -526,8 +977,17 @@ export async function orchestrateChat(
   // Stage 7: Response assembly
   let response = assembleResponse(services, intent, context, {
     retrievalStatus: retrieval.retrievalStatus,
-    searchInterpretation: buildSearchInterpretation(intent, context),
+    searchInterpretation: buildSearchInterpretation(intent, context, {
+      activeContextUsed: appliedContext.activeContextUsed,
+      sessionSignals: appliedContext.sessionSignals,
+    }),
+    activeContextUsed: appliedContext.activeContextUsed,
   });
+  response = {
+    ...response,
+    activeContextUsed: appliedContext.activeContextUsed,
+    sessionContext: buildSessionContext(intent, context),
+  };
 
   // Stage 8: LLM summarization gate
   // ONLY activate if: (a) flag is enabled AND (b) there are services to summarize

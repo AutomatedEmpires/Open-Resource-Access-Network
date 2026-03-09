@@ -231,6 +231,9 @@ describe('ChatWindow interactions', () => {
 
     expect(screen.queryByRole('note', { name: 'Verification tip' })).not.toBeInTheDocument();
     expect(screen.getByText('Message limit reached.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open Directory' })).toHaveAttribute('href', '/directory?q=I+need+a+shelter+or+safe+place+to+stay+tonight');
+    expect(screen.getByRole('link', { name: 'Open Map' })).toHaveAttribute('href', '/map?q=I+need+a+shelter+or+safe+place+to+stay+tonight');
+    expect(screen.getByRole('button', { name: 'Start new chat session' })).toBeInTheDocument();
     expect(screen.getByLabelText('Chat message input')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Help paying rent' })).not.toBeInTheDocument();

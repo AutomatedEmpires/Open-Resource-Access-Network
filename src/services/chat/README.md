@@ -6,11 +6,14 @@
 - Retrieval is injected and must be **DB-only** (no external sources, no LLM).
 - Authenticated context hydration is server-side and must fail open.
 - Authenticated requests may disable saved profile shaping with `profileMode='ignore'`; explicit browse filters must still survive that override.
+- Requests may carry `sessionContext` for lightweight structured chat memory. This is session-scoped only and must never become raw transcript memory.
 - Request-time locale is authoritative for the active turn.
 - Eligibility disclaimer must be present on all service recommendations.
 - LLM is allowed only as **post-retrieval summarization**, gated behind `llm_summarize`, and must not add facts.
 - Optional contextual links may be included, but must be selected deterministically from stored URLs only (no invented links).
-- Chat responses must disclose retrieval outcome via `retrievalStatus` and the normalized turn framing via `searchInterpretation`.
+- Weak queries must clarify before retrieval rather than pretending to search with insufficient scope.
+- Third-party or informational crisis language must return immediate safety guidance without falsely triggering the self-harm crisis hard gate.
+- Chat responses must disclose retrieval outcome via `retrievalStatus`, inherited-scope use via `activeContextUsed` + `sessionContext`, and the normalized turn framing via `searchInterpretation`.
 
 Authenticated chat may shape retrieval with deterministic profile signals, but only through schema-backed mappings and only as a secondary ordering hint after trust.
 
@@ -22,6 +25,7 @@ Current client-visible retrieval outcomes:
 - `no_match`
 - `catalog_empty_for_scope`
 - `temporarily_unavailable`
+- `clarification_required`
 - `out_of_scope`
 
 Primary entry points:

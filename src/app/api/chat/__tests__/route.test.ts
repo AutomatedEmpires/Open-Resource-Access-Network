@@ -527,6 +527,70 @@ describe('api/chat route', () => {
     });
   });
 
+  it('uses session context city and filters when the current request does not send explicit browse filters', async () => {
+    searchMock.mockResolvedValueOnce({
+      results: [],
+      total: 0,
+    }).mockResolvedValueOnce({
+      results: [],
+      total: 1,
+    });
+    orchestrateChatMock.mockImplementationOnce(async (_message, sessionId, userId, locale, _rateLimitKey, deps) => {
+      const context = await deps.hydrateContext?.({
+        sessionId,
+        userId,
+        locale,
+        messageCount: 0,
+      });
+      const retrieval = await deps.retrieveServices(
+        { category: 'housing', rawQuery: 'Anything open today?', urgencyQualifier: 'urgent', actionQualifier: 'hours' },
+        context ?? { sessionId, userId, locale, messageCount: 0 },
+      );
+      return { retrievalStatus: retrieval.retrievalStatus, quotaRemaining: 50 };
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          message: 'Anything open today?',
+          sessionId: '11111111-1111-4111-8111-111111111111',
+          locale: 'en',
+          sessionContext: {
+            activeNeedId: 'housing',
+            activeCity: 'Denver',
+            trustFilter: 'HIGH',
+            taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
+            attributeFilters: {
+              access: ['same_day'],
+            },
+            preferredDeliveryModes: ['phone'],
+            profileShapingEnabled: true,
+          },
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cityBias: 'Denver',
+        filters: expect.objectContaining({
+          minConfidenceScore: 80,
+          taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
+          attributeFilters: {
+            access: ['same_day'],
+            delivery: ['phone'],
+          },
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toEqual({
+      retrievalStatus: 'no_match',
+      quotaRemaining: 50,
+    });
+  });
+
   it('translates descriptions when multilingual flag and translator are enabled for supported locales', async () => {
     isEnabledMock.mockImplementation((flagName: string) => flagName === FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS);
     isTranslatorConfiguredMock.mockReturnValue(true);

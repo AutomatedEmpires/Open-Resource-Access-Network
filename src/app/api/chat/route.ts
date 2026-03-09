@@ -24,6 +24,7 @@ import { translateBatch, isConfigured as isTranslatorConfigured } from '@/servic
 import { hydrateChatContext } from '@/services/profile/chatHydration';
 import { cachedSearch } from '@/services/search/cache';
 import { ServiceSearchEngine } from '@/services/search/engine';
+import type { SearchFilters } from '@/services/search/types';
 import { captureException } from '@/services/telemetry/sentry';
 
 const RequestSchema = ChatRequestSchema;
@@ -33,14 +34,45 @@ function stripProfileShaping(context: ChatContext): ChatContext {
   return {
     ...context,
     profileShapingDisabled: true,
-    approximateLocation: undefined,
+    approximateLocation: context.sessionContext?.activeCity
+      ? {
+          ...context.approximateLocation,
+          city: context.sessionContext.activeCity,
+        }
+      : undefined,
     userProfile: context.userProfile
       ? {
           userId: context.userProfile.userId,
           browsePreference: context.userProfile.browsePreference,
         }
       : undefined,
+    sessionContext: context.sessionContext
+      ? {
+          ...context.sessionContext,
+          profileShapingEnabled: false,
+        }
+      : context.sessionContext,
   };
+}
+
+function mergeAttributeFilters(
+  base: SearchFilters['attributeFilters'] | undefined,
+  extra: SearchFilters['attributeFilters'] | undefined,
+): SearchFilters['attributeFilters'] | undefined {
+  if (!base && !extra) {
+    return undefined;
+  }
+
+  const merged: NonNullable<SearchFilters['attributeFilters']> = {
+    ...(base ?? {}),
+  };
+
+  for (const [taxonomy, tags] of Object.entries(extra ?? {})) {
+    const existing = merged[taxonomy] ?? [];
+    merged[taxonomy] = Array.from(new Set([...existing, ...tags]));
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 export async function POST(req: NextRequest) {
@@ -59,7 +91,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { message, sessionId, locale, filters, profileMode } = parsed.data;
+  const { message, sessionId, locale, filters, profileMode, sessionContext } = parsed.data;
 
   const authCtx = await getAuthContext();
   const effectiveUserId = authCtx?.userId;
@@ -104,15 +136,23 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    const trust = filters?.trust;
+    const inheritedAttributeFilters = mergeAttributeFilters(
+      context.sessionContext?.attributeFilters,
+      context.sessionContext?.preferredDeliveryModes?.length
+        ? { delivery: context.sessionContext.preferredDeliveryModes }
+        : undefined,
+    );
+    const trust = filters?.trust ?? context.sessionContext?.trustFilter;
+    const taxonomyTermIds = filters?.taxonomyTermIds ?? context.sessionContext?.taxonomyTermIds;
+    const attributeFilters = mergeAttributeFilters(inheritedAttributeFilters, filters?.attributeFilters);
     const minConfidenceScore = trust === 'HIGH' ? 80 : trust === 'LIKELY' ? 60 : undefined;
 
     try {
       const query = buildChatSearchQuery(intent, context, {
-        taxonomyTermIds: filters?.taxonomyTermIds,
-        attributeFilters: filters?.attributeFilters,
+        taxonomyTermIds,
+        attributeFilters,
         minConfidenceScore,
-        limit: MAX_SERVICES_PER_RESPONSE,
+        limit: MAX_SERVICES_PER_RESPONSE * 3,
       });
 
       const response = await cachedSearch(engine, query);
@@ -151,10 +191,22 @@ export async function POST(req: NextRequest) {
       hydrateContext: async (context) => {
         const hydrated = await hydrateChatContext(context, { executeQuery });
         const hasBrowseFilters = Boolean(filters?.taxonomyTermIds?.length) || Boolean(filters?.attributeFilters);
-        const merged = !hasBrowseFilters
+        const merged = !hasBrowseFilters && !sessionContext
           ? hydrated
           : {
               ...hydrated,
+              approximateLocation: sessionContext?.activeCity
+                ? {
+                    ...hydrated.approximateLocation,
+                    city: sessionContext.activeCity,
+                  }
+                : hydrated.approximateLocation,
+              sessionContext: sessionContext
+                ? {
+                    ...sessionContext,
+                    profileShapingEnabled: profileMode !== 'ignore',
+                  }
+                : hydrated.sessionContext,
               userProfile: {
                 ...(hydrated.userProfile ?? { userId: hydrated.userId ?? 'guest' }),
                 browsePreference: {

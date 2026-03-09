@@ -606,4 +606,129 @@ describe('ChatWindow', () => {
     expect(firstBody.profileMode).toBe('use');
     expect(secondBody.profileMode).toBe('ignore');
   });
+
+  it('renders clarification suggestions and active session context from the response', async () => {
+    let chatRequestCount = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
+      if (url === '/api/chat') {
+        chatRequestCount += 1;
+        if (chatRequestCount === 1) {
+          return {
+            ok: true,
+            json: async () => makeChatResponse({
+              message: 'I can search once I know the kind of help you want.',
+              retrievalStatus: 'clarification_required',
+              clarification: {
+                reason: 'weak_query',
+                prompt: 'I can search once I know the kind of help you want.',
+                suggestions: ['Help paying rent', 'Food pantry near me'],
+              },
+              sessionContext: {
+                activeNeedId: 'housing',
+                activeCity: 'Denver',
+                profileShapingEnabled: true,
+              },
+              activeContextUsed: true,
+              searchInterpretation: {
+                category: 'general',
+                categoryLabel: 'general help',
+                urgencyQualifier: 'standard',
+                summary: 'Interpreted as general help',
+                usedSessionContext: true,
+                sessionSignals: ['Need: housing', 'City: Denver'],
+                usedProfileShaping: false,
+                ignoredProfileShaping: false,
+                profileSignals: [],
+              },
+            }),
+          } as Response;
+        }
+
+        return {
+          ok: true,
+          json: async () => makeChatResponse({
+            message: 'Here are options',
+          }),
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response;
+    });
+
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'help' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await screen.findByText('Refine this search');
+    expect(screen.getByText('Active chat context')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Need: Housing x' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'City: Denver x' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Help paying rent' }));
+
+    await waitFor(() => {
+      expect(getChatCalls()).toHaveLength(2);
+    });
+  });
+
+  it('renders result summaries and adaptive follow-up chips for successful result sets', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
+      if (url === '/api/chat') {
+        return {
+          ok: true,
+          json: async () => makeChatResponse({
+            resultSummary: 'Showing 2 services from 2 organizations. Prioritized for Denver. Kept the set varied across organizations.',
+            followUpSuggestions: ['Open today', 'Phone support only', 'No ID required food help'],
+            services: [
+              {
+                serviceId: 'svc-1',
+                serviceName: 'Food Pantry One',
+                organizationName: 'Helping Hands',
+                confidenceBand: 'HIGH',
+                confidenceScore: 92,
+                eligibilityHint: 'You may qualify.',
+              },
+            ],
+          }),
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response;
+    });
+
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'food pantry' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await screen.findByText('Next refinements');
+    expect(screen.getByText('Showing 2 services from 2 organizations. Prioritized for Denver. Kept the set varied across organizations.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open today' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Phone support only' })).toBeInTheDocument();
+  });
 });

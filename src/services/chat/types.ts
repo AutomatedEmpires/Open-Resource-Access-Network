@@ -57,6 +57,18 @@ export const ChatRequestSchema = z.object({
   userId: z.string().optional(),
   locale: z.string().default('en'),
   profileMode: z.enum(['use', 'ignore']).default('use'),
+  sessionContext: z
+    .object({
+      activeNeedId: z.enum(DISCOVERY_NEED_IDS).optional(),
+      activeCity: z.string().trim().min(1).max(120).optional(),
+      urgency: z.enum(['urgent', 'standard']).optional(),
+      preferredDeliveryModes: z.array(z.string().min(1).max(40)).max(10).optional(),
+      trustFilter: z.enum(['all', 'LIKELY', 'HIGH']).optional(),
+      taxonomyTermIds: z.array(z.string().uuid()).max(20).optional(),
+      attributeFilters: SearchFiltersSchema.shape.attributeFilters,
+      profileShapingEnabled: z.boolean().default(true),
+    })
+    .optional(),
   filters: z
     .object({
       /** Canonical taxonomy term IDs (UUIDs). */
@@ -70,6 +82,8 @@ export const ChatRequestSchema = z.object({
 });
 
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
+
+export type ChatSessionContext = NonNullable<ChatRequest['sessionContext']>;
 
 // ============================================================
 // CHAT CONTEXT
@@ -108,6 +122,7 @@ export interface ChatContext {
   locale: string;
   messageCount: number;
   profileShapingDisabled?: boolean;
+  sessionContext?: ChatSessionContext;
   userProfile?: UserProfile;
   /** Approximate location — city or postal code only */
   approximateLocation?: {
@@ -146,6 +161,7 @@ export const CHAT_RETRIEVAL_STATUSES = [
   'no_match',
   'catalog_empty_for_scope',
   'temporarily_unavailable',
+  'clarification_required',
   'out_of_scope',
 ] as const;
 
@@ -157,6 +173,8 @@ export interface SearchInterpretation {
   urgencyQualifier: Intent['urgencyQualifier'];
   actionQualifier?: IntentAction;
   summary: string;
+  usedSessionContext: boolean;
+  sessionSignals: string[];
   usedProfileShaping: boolean;
   ignoredProfileShaping: boolean;
   profileSignals: string[];
@@ -164,11 +182,18 @@ export interface SearchInterpretation {
 
 export interface ChatRetrievalResult {
   services: EnrichedService[];
-  retrievalStatus: Exclude<ChatRetrievalStatus, 'out_of_scope'>;
+  retrievalStatus: Exclude<ChatRetrievalStatus, 'out_of_scope' | 'clarification_required'>;
+}
+
+export interface ChatClarification {
+  reason: 'weak_query' | 'crisis_scope';
+  prompt: string;
+  suggestions: string[];
 }
 
 export interface ChatResponse {
   message: string;
+  resultSummary?: string;
   services: ServiceCard[];
   isCrisis: boolean;
   crisisResources?: typeof CRISIS_RESOURCES;
@@ -180,7 +205,11 @@ export interface ChatResponse {
   eligibilityDisclaimer: typeof ELIGIBILITY_DISCLAIMER;
   llmSummarized: boolean;
   retrievalStatus?: ChatRetrievalStatus;
+  activeContextUsed?: boolean;
+  sessionContext?: ChatSessionContext;
   searchInterpretation?: SearchInterpretation;
+  clarification?: ChatClarification;
+  followUpSuggestions?: string[];
 }
 
 // ============================================================

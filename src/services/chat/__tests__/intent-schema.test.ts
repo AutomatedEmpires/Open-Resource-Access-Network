@@ -35,13 +35,22 @@ const mockContext = {
   messageCount: 0,
 };
 
-function makeMockService(id: string): EnrichedService {
+function makeMockService(
+  id: string,
+  options?: {
+    organizationId?: string;
+    organizationName?: string;
+    verificationConfidence?: number;
+    attributes?: Array<{ taxonomy: string; tag: string }>;
+  },
+): EnrichedService {
   const now = new Date();
+  const organizationId = options?.organizationId ?? 'org-1';
 
   return {
     service: {
       id,
-      organizationId: 'org-1',
+      organizationId,
       name: 'Test Food Bank',
       description: 'Provides emergency food assistance.',
       status: 'active',
@@ -49,8 +58,8 @@ function makeMockService(id: string): EnrichedService {
       createdAt: now,
     },
     organization: {
-      id: 'org-1',
-      name: 'Test Organization',
+      id: organizationId,
+      name: options?.organizationName ?? `Organization ${organizationId}`,
       status: 'active',
       updatedAt: now,
       createdAt: now,
@@ -66,11 +75,12 @@ function makeMockService(id: string): EnrichedService {
     ],
     schedules: [],
     taxonomyTerms: [],
+    attributes: options?.attributes,
     confidenceScore: {
       id: 'cs-1',
       serviceId: id,
       score: 80,
-      verificationConfidence: 85,
+      verificationConfidence: options?.verificationConfidence ?? 85,
       eligibilityMatch: 75,
       constraintFit: 70,
       computedAt: now,
@@ -238,7 +248,7 @@ describe('orchestrateChat', () => {
     });
 
     await orchestrateChat(
-      'I need help',
+      'I need food help',
       '00000000-0000-0000-0000-000000000094',
       'user-123',
       'en',
@@ -258,12 +268,131 @@ describe('orchestrateChat', () => {
       })
     );
     expect(retrieveServices).toHaveBeenCalledWith(
-      expect.objectContaining({ rawQuery: 'I need help' }),
+      expect.objectContaining({ rawQuery: 'I need food help' }),
       expect.objectContaining({
         locale: 'es',
         approximateLocation: { city: 'Seattle' },
       })
     );
+  });
+
+  it('returns a clarification response for weak general queries before retrieval', async () => {
+    const retrieveServices = vi.fn();
+
+    const response = await orchestrateChat(
+      'help',
+      '00000000-0000-0000-0000-000000000093',
+      undefined,
+      'en',
+      'chat:test:clarify',
+      {
+        retrieveServices,
+        isFlagEnabled: async () => false,
+      },
+    );
+
+    expect(response.retrievalStatus).toBe('clarification_required');
+    expect(response.clarification?.reason).toBe('weak_query');
+    expect(retrieveServices).not.toHaveBeenCalled();
+  });
+
+  it('does not hard-route third-party crisis language and asks for service scope instead', async () => {
+    const retrieveServices = vi.fn();
+
+    const response = await orchestrateChat(
+      'My brother is suicidal and I need help finding support',
+      '00000000-0000-0000-0000-000000000092',
+      undefined,
+      'en',
+      'chat:test:third-party-crisis',
+      {
+        retrieveServices,
+        isFlagEnabled: async () => false,
+      },
+    );
+
+    expect(response.isCrisis).toBe(false);
+    expect(response.retrievalStatus).toBe('clarification_required');
+    expect(response.clarification?.reason).toBe('crisis_scope');
+    expect(response.message).toContain('988');
+    expect(retrieveServices).not.toHaveBeenCalled();
+  });
+
+  it('reuses active session need and city for ambiguous follow-up queries', async () => {
+    const retrieveServices = vi.fn().mockResolvedValue({
+      services: [],
+      retrievalStatus: 'no_match',
+    });
+
+    const response = await orchestrateChat(
+      'Anything open today?',
+      '00000000-0000-0000-0000-000000000091',
+      undefined,
+      'en',
+      'chat:test:session-context',
+      {
+        retrieveServices,
+        isFlagEnabled: async () => false,
+        hydrateContext: async (context) => ({
+          ...context,
+          sessionContext: {
+            activeNeedId: 'housing',
+            activeCity: 'Denver',
+            profileShapingEnabled: true,
+          },
+        }),
+      },
+    );
+
+    expect(retrieveServices).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'housing',
+        actionQualifier: 'hours',
+      }),
+      expect.objectContaining({
+        approximateLocation: { city: 'Denver' },
+      }),
+    );
+    expect(response.activeContextUsed).toBe(true);
+    expect(response.sessionContext?.activeNeedId).toBe('housing');
+    expect(response.searchInterpretation?.usedSessionContext).toBe(true);
+  });
+
+  it('diversifies the final result set across organizations and exposes deterministic follow-up metadata', () => {
+    const response = assembleResponse(
+      [
+        makeMockService('svc-1', { organizationId: 'org-a', verificationConfidence: 95, attributes: [{ taxonomy: 'access', tag: 'same_day' }] }),
+        makeMockService('svc-2', { organizationId: 'org-a', verificationConfidence: 92 }),
+        makeMockService('svc-3', { organizationId: 'org-a', verificationConfidence: 91 }),
+        makeMockService('svc-4', { organizationId: 'org-b', verificationConfidence: 84 }),
+        makeMockService('svc-5', { organizationId: 'org-c', verificationConfidence: 83 }),
+        makeMockService('svc-6', { organizationId: 'org-d', verificationConfidence: 82 }),
+      ],
+      { ...baseIntent, urgencyQualifier: 'urgent' },
+      {
+        ...mockContext,
+        approximateLocation: { city: 'Denver' },
+        sessionContext: {
+          activeNeedId: 'food_assistance',
+          activeCity: 'Denver',
+          profileShapingEnabled: true,
+        },
+      },
+      {
+        retrievalStatus: 'results',
+        activeContextUsed: true,
+      },
+    );
+
+    expect(response.services.map((service) => service.organizationName)).toEqual([
+      'Organization org-a',
+      'Organization org-b',
+      'Organization org-c',
+      'Organization org-d',
+      'Organization org-a',
+    ]);
+    expect(response.resultSummary).toContain('varied across organizations');
+    expect(response.followUpSuggestions?.length).toBeGreaterThan(0);
   });
 
   it('returns a quota-exceeded response before retrieval when the session is exhausted', async () => {

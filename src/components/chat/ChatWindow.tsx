@@ -7,13 +7,18 @@
  */
 
 'use client';
-
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Send, AlertTriangle, Phone, Trash2, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ELIGIBILITY_DISCLAIMER } from '@/domain/constants';
 import type { DiscoveryNeedId } from '@/domain/discoveryNeeds';
-import type { ChatResponse, SearchInterpretation, ServiceCard } from '@/services/chat/types';
+import type {
+  ChatClarification,
+  ChatResponse,
+  ChatSessionContext,
+  SearchInterpretation,
+  ServiceCard,
+} from '@/services/chat/types';
 import { ChatServiceCard } from '@/components/chat/ChatServiceCard';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
 import { useToast } from '@/components/ui/toast';
@@ -32,6 +37,7 @@ import type {
   DiscoveryLinkState,
   DiscoverySortOption,
 } from '@/services/search/discovery';
+import { buildDiscoveryHref } from '@/services/search/discovery';
 import type { SearchFilters } from '@/services/search/types';
 import {
   Dialog,
@@ -144,11 +150,16 @@ interface AssistantMessage {
   role: 'assistant';
   content: string;
   timestamp: Date;
+  resultSummary?: string;
   services?: ServiceCard[];
   isCrisis?: boolean;
   discoveryContext?: DiscoveryLinkState;
   retrievalStatus?: ChatResponse['retrievalStatus'];
+  activeContextUsed?: boolean;
+  sessionContext?: ChatSessionContext;
   searchInterpretation?: SearchInterpretation;
+  clarification?: ChatClarification;
+  followUpSuggestions?: string[];
 }
 
 type Message = UserMessage | AssistantMessage;
@@ -167,6 +178,104 @@ function autoResize(el: HTMLTextAreaElement | null) {
 
 /** localStorage key for persisting the quota-reset timestamp across page reloads */
 const QUOTA_RESET_KEY = 'oran:quota-reset-at';
+const SESSION_CONTEXT_KEY_PREFIX = 'oran:chat-session-context:';
+
+function getSessionContextStorageKey(sessionId: string): string {
+  return `${SESSION_CONTEXT_KEY_PREFIX}${sessionId}`;
+}
+
+function normalizeSessionContext(sessionContext: ChatSessionContext | undefined): ChatSessionContext | undefined {
+  if (!sessionContext) {
+    return undefined;
+  }
+
+  const normalized: ChatSessionContext = {
+    ...sessionContext,
+    activeCity: sessionContext.activeCity?.trim() || undefined,
+    preferredDeliveryModes: sessionContext.preferredDeliveryModes?.filter(Boolean),
+    taxonomyTermIds: sessionContext.taxonomyTermIds?.filter(Boolean),
+    attributeFilters: sessionContext.attributeFilters,
+    profileShapingEnabled: sessionContext.profileShapingEnabled,
+  };
+
+  const hasMeaningfulContext = Boolean(
+    normalized.activeNeedId
+    || normalized.activeCity
+    || normalized.urgency
+    || normalized.preferredDeliveryModes?.length
+    || (normalized.trustFilter && normalized.trustFilter !== 'all')
+    || normalized.taxonomyTermIds?.length
+    || Object.keys(normalized.attributeFilters ?? {}).length > 0,
+  );
+
+  if (!hasMeaningfulContext && normalized.profileShapingEnabled) {
+    return undefined;
+  }
+
+  return normalized;
+}
+
+function readStoredSessionContext(sessionId: string): ChatSessionContext | undefined {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  const raw = sessionStorage.getItem(getSessionContextStorageKey(sessionId));
+  if (!raw) {
+    return undefined;
+  }
+
+  try {
+    return normalizeSessionContext(JSON.parse(raw) as ChatSessionContext);
+  } catch {
+    return undefined;
+  }
+}
+
+function writeStoredSessionContext(sessionId: string, sessionContext: ChatSessionContext | undefined): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const key = getSessionContextStorageKey(sessionId);
+  const normalized = normalizeSessionContext(sessionContext);
+  if (!normalized) {
+    sessionStorage.removeItem(key);
+    return;
+  }
+
+  sessionStorage.setItem(key, JSON.stringify(normalized));
+}
+
+function buildSeededSessionContext(options: {
+  initialNeedId?: DiscoveryNeedId | null;
+  initialTrustFilter?: DiscoveryConfidenceFilter;
+  initialTaxonomyTermIds?: string[];
+  initialAttributeFilters?: SearchFilters['attributeFilters'];
+  ignoreProfileShaping: boolean;
+}): ChatSessionContext | undefined {
+  return normalizeSessionContext({
+    activeNeedId: options.initialNeedId ?? undefined,
+    preferredDeliveryModes: options.initialAttributeFilters?.delivery,
+    trustFilter: options.initialTrustFilter,
+    taxonomyTermIds: options.initialTaxonomyTermIds,
+    attributeFilters: options.initialAttributeFilters,
+    profileShapingEnabled: !options.ignoreProfileShaping,
+  });
+}
+
+function buildHandoffDiscoveryContext(
+  sessionContext: ChatSessionContext | undefined,
+  fallbackText: string,
+): DiscoveryLinkState {
+  return {
+    text: fallbackText,
+    needId: sessionContext?.activeNeedId,
+    confidenceFilter: sessionContext?.trustFilter,
+    taxonomyTermIds: sessionContext?.taxonomyTermIds,
+    attributeFilters: sessionContext?.attributeFilters,
+  };
+}
 
 // ============================================================
 // QUOTA COOLDOWN DISPLAY
@@ -247,6 +356,22 @@ function SearchInterpretationPanel({
     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800">
       <p className="font-medium text-slate-900">How this was interpreted</p>
       <p className="mt-1">{interpretation.summary}</p>
+
+      {interpretation.usedSessionContext && interpretation.sessionSignals.length > 0 && (
+        <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-emerald-900">
+          <p className="font-medium">Inherited from this chat session</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {interpretation.sessionSignals.map((signal) => (
+              <span
+                key={signal}
+                className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-emerald-900"
+              >
+                {signal}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {(interpretation.usedProfileShaping || interpretation.ignoredProfileShaping) && (
         <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-2 text-blue-900">
@@ -348,6 +473,13 @@ export function ChatWindow({
     initialAttributeFilters,
   );
   const [showSeededContext, setShowSeededContext] = useState(initialHasSeededContext);
+  const [sessionContext, setSessionContext] = useState<ChatSessionContext | undefined>(() => buildSeededSessionContext({
+    initialNeedId,
+    initialTrustFilter,
+    initialTaxonomyTermIds,
+    initialAttributeFilters,
+    ignoreProfileShaping: false,
+  }));
   const hasLoadedTaxonomyRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
@@ -386,6 +518,39 @@ export function ChatWindow({
   useEffect(() => {
     setSavedIds(new Set(readStoredSavedServiceIds()));
   }, []);
+
+  useEffect(() => {
+    const stored = readStoredSessionContext(sessionId);
+    setSessionContext((current) => normalizeSessionContext(stored ?? current ?? buildSeededSessionContext({
+      initialNeedId,
+      initialTrustFilter,
+      initialTaxonomyTermIds,
+      initialAttributeFilters,
+      ignoreProfileShaping,
+    })));
+  }, [
+    ignoreProfileShaping,
+    initialAttributeFilters,
+    initialNeedId,
+    initialTaxonomyTermIds,
+    initialTrustFilter,
+    sessionId,
+  ]);
+
+  useEffect(() => {
+    setSessionContext((current) => normalizeSessionContext({
+      ...(current ?? {}),
+      trustFilter,
+      taxonomyTermIds: selectedTaxonomyIds.length > 0 ? selectedTaxonomyIds : undefined,
+      attributeFilters: seededAttributeFilters,
+      preferredDeliveryModes: seededAttributeFilters?.delivery ?? current?.preferredDeliveryModes,
+      profileShapingEnabled: !ignoreProfileShaping,
+    }));
+  }, [ignoreProfileShaping, seededAttributeFilters, selectedTaxonomyIds, trustFilter]);
+
+  useEffect(() => {
+    writeStoredSessionContext(sessionId, sessionContext);
+  }, [sessionContext, sessionId]);
 
   // Fetch the server-authoritative quota state on mount.
   // This ensures the countdown and remaining count are accurate even after
@@ -501,6 +666,101 @@ export function ChatWindow({
     setInput((current) => (current.trim() === (initialPrompt?.trim() ?? '') ? '' : current));
   }, [initialPrompt]);
 
+  const updateSessionContext = useCallback((updater: (current: ChatSessionContext | undefined) => ChatSessionContext | undefined) => {
+    setSessionContext((current) => normalizeSessionContext(updater(current)));
+  }, []);
+
+  const _clearSessionContextField = useCallback((field: 'activeNeedId' | 'activeCity' | 'urgency' | 'trustFilter' | 'taxonomyTermIds' | 'attributeFilters' | 'preferredDeliveryModes') => {
+    updateSessionContext((current) => {
+      const next = { ...(current ?? {}), profileShapingEnabled: !ignoreProfileShaping };
+
+      switch (field) {
+        case 'trustFilter':
+          setTrustFilter('all');
+          next.trustFilter = undefined;
+          break;
+        case 'taxonomyTermIds':
+          setSelectedTaxonomyIds([]);
+          next.taxonomyTermIds = undefined;
+          break;
+        case 'attributeFilters':
+          setSeededAttributeFilters(undefined);
+          next.attributeFilters = undefined;
+          break;
+        case 'preferredDeliveryModes':
+          setSeededAttributeFilters((currentFilters) => {
+            if (!currentFilters?.delivery) return currentFilters;
+            const { delivery: _delivery, ...rest } = currentFilters;
+            return Object.keys(rest).length > 0 ? rest : undefined;
+          });
+          next.preferredDeliveryModes = undefined;
+          break;
+        default:
+          next[field] = undefined;
+      }
+
+      return next;
+    });
+  }, [ignoreProfileShaping, updateSessionContext]);
+
+  const _removeSessionAttributeTag = useCallback((taxonomy: string, tag: string) => {
+    setSeededAttributeFilters((current) => {
+      if (!current?.[taxonomy]) {
+        return current;
+      }
+
+      const nextTags = current[taxonomy]?.filter((value) => value !== tag) ?? [];
+      const nextFilters = { ...(current ?? {}) };
+      if (nextTags.length > 0) {
+        nextFilters[taxonomy] = nextTags;
+      } else {
+        delete nextFilters[taxonomy];
+      }
+      return Object.keys(nextFilters).length > 0 ? nextFilters : undefined;
+    });
+    updateSessionContext((current) => {
+      const nextAttributeFilters = { ...(current?.attributeFilters ?? {}) };
+      const nextTags = nextAttributeFilters[taxonomy]?.filter((value) => value !== tag) ?? [];
+      if (nextTags.length > 0) {
+        nextAttributeFilters[taxonomy] = nextTags;
+      } else {
+        delete nextAttributeFilters[taxonomy];
+      }
+
+      return {
+        ...(current ?? {}),
+        attributeFilters: Object.keys(nextAttributeFilters).length > 0 ? nextAttributeFilters : undefined,
+        profileShapingEnabled: !ignoreProfileShaping,
+      };
+    });
+  }, [ignoreProfileShaping, updateSessionContext]);
+
+  const latestUserMessage = useMemo(
+    () => [...messages].reverse().find((message): message is UserMessage => message.role === 'user')?.content ?? input.trim(),
+    [input, messages],
+  );
+
+  const handoffDiscoveryContext = useMemo(
+    () => buildHandoffDiscoveryContext(sessionContext, latestUserMessage),
+    [latestUserMessage, sessionContext],
+  );
+
+  const _directoryHandoffHref = useMemo(
+    () => buildDiscoveryHref('/directory', handoffDiscoveryContext),
+    [handoffDiscoveryContext],
+  );
+  const _mapHandoffHref = useMemo(
+    () => buildDiscoveryHref('/map', handoffDiscoveryContext),
+    [handoffDiscoveryContext],
+  );
+
+  const _startNewSession = useCallback(() => {
+    const nextSessionId = crypto.randomUUID();
+    sessionStorage.setItem('oran_chat_session_id', nextSessionId);
+    writeStoredSessionContext(nextSessionId, sessionContext);
+    window.location.assign(buildDiscoveryHref('/chat', handoffDiscoveryContext));
+  }, [handoffDiscoveryContext, sessionContext]);
+
   const sendMessage = useCallback(async (override?: string) => {
     const trimmed = (override ?? input).trim();
     if (!trimmed || isLoading) return;
@@ -532,6 +792,14 @@ export function ChatWindow({
         sessionId,
         userId,
         profileMode: ignoreProfileShaping ? 'ignore' : 'use',
+        sessionContext: normalizeSessionContext({
+          ...(sessionContext ?? {}),
+          trustFilter,
+          taxonomyTermIds: selectedTaxonomyIds.length > 0 ? selectedTaxonomyIds : undefined,
+          attributeFilters: seededAttributeFilters,
+          preferredDeliveryModes: seededAttributeFilters?.delivery ?? sessionContext?.preferredDeliveryModes,
+          profileShapingEnabled: !ignoreProfileShaping,
+        }),
       };
       const filterPayload: Record<string, unknown> = {};
       if (trustFilter !== 'all') filterPayload.trust = trustFilter;
@@ -563,6 +831,20 @@ export function ChatWindow({
         trackInteraction('crisis_banner_shown');
       }
 
+      setSessionContext(normalizeSessionContext(data.sessionContext));
+      if (data.sessionContext?.trustFilter) {
+        setTrustFilter(data.sessionContext.trustFilter);
+      }
+      if (data.sessionContext?.taxonomyTermIds) {
+        setSelectedTaxonomyIds(data.sessionContext.taxonomyTermIds);
+      }
+      if (data.sessionContext?.attributeFilters) {
+        setSeededAttributeFilters(data.sessionContext.attributeFilters);
+      }
+      if (typeof data.sessionContext?.profileShapingEnabled === 'boolean') {
+        setIgnoreProfileShaping(!data.sessionContext.profileShapingEnabled);
+      }
+
       quotaStateVersionRef.current += 1;
       applyQuotaState(data.quotaRemaining, data.quotaResetAt);
 
@@ -578,11 +860,16 @@ export function ChatWindow({
           role: 'assistant',
           content: data.message,
           timestamp: new Date(),
+          resultSummary: data.resultSummary,
           services: data.services,
           isCrisis: data.isCrisis,
           discoveryContext: frozenDiscoveryContext,
           retrievalStatus: data.retrievalStatus,
+          activeContextUsed: data.activeContextUsed,
+          sessionContext: data.sessionContext,
           searchInterpretation: data.searchInterpretation,
+          clarification: data.clarification,
+          followUpSuggestions: data.followUpSuggestions,
         },
       ]);
     } catch {
@@ -613,6 +900,7 @@ export function ChatWindow({
     trustFilter,
     userId,
     ignoreProfileShaping,
+    sessionContext,
   ]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -632,8 +920,15 @@ export function ChatWindow({
     setHasCrisis(false);
     setShowVerifyTip(false);
     setInput('');
+    setSessionContext(buildSeededSessionContext({
+      initialNeedId,
+      initialTrustFilter: trustFilter,
+      initialTaxonomyTermIds: selectedTaxonomyIds,
+      initialAttributeFilters: seededAttributeFilters,
+      ignoreProfileShaping,
+    }));
     inputRef.current?.focus();
-  }, []);
+  }, [ignoreProfileShaping, initialNeedId, seededAttributeFilters, selectedTaxonomyIds, trustFilter]);
 
   /** Called by QuotaCooldown when the countdown reaches zero — re-fetches to confirm reset */
   const handleQuotaExpired = useCallback(() => {
@@ -819,6 +1114,121 @@ export function ChatWindow({
           </div>
         )}
 
+        {sessionContext && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">
+                  Active chat context
+                </p>
+                <p className="mt-1 text-sm text-emerald-900">
+                  Follow-up questions can reuse this scope until you clear it.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setTrustFilter('all');
+                  setSelectedTaxonomyIds([]);
+                  setSeededAttributeFilters(undefined);
+                  setSessionContext(undefined);
+                }}
+              >
+                Clear all
+              </Button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {sessionContext.activeNeedId && (
+                <button
+                  type="button"
+                  onClick={() => _clearSessionContextField('activeNeedId')}
+                  className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                >
+                  Need: {formatFilterLabel(sessionContext.activeNeedId)} x
+                </button>
+              )}
+              {sessionContext.activeCity && (
+                <button
+                  type="button"
+                  onClick={() => _clearSessionContextField('activeCity')}
+                  className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                >
+                  City: {sessionContext.activeCity} x
+                </button>
+              )}
+              {sessionContext.urgency && (
+                <button
+                  type="button"
+                  onClick={() => _clearSessionContextField('urgency')}
+                  className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                >
+                  Urgency: {formatFilterLabel(sessionContext.urgency)} x
+                </button>
+              )}
+              {sessionContext.trustFilter && sessionContext.trustFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => _clearSessionContextField('trustFilter')}
+                  className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                >
+                  Trust: {formatFilterLabel(sessionContext.trustFilter)} x
+                </button>
+              )}
+              {sessionContext.taxonomyTermIds?.length ? (
+                <button
+                  type="button"
+                  onClick={() => _clearSessionContextField('taxonomyTermIds')}
+                  className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                >
+                  Tags: {sessionContext.taxonomyTermIds.length} x
+                </button>
+              ) : null}
+              {sessionContext.preferredDeliveryModes?.map((mode) => (
+                <button
+                  key={`delivery-${mode}`}
+                  type="button"
+                  onClick={() => {
+                    setSeededAttributeFilters((current) => {
+                      const nextModes = current?.delivery?.filter((value) => value !== mode) ?? [];
+                      const nextFilters = { ...(current ?? {}) };
+                      if (nextModes.length > 0) {
+                        nextFilters.delivery = nextModes;
+                      } else {
+                        delete nextFilters.delivery;
+                      }
+                      return Object.keys(nextFilters).length > 0 ? nextFilters : undefined;
+                    });
+                    updateSessionContext((current) => ({
+                      ...(current ?? {}),
+                      preferredDeliveryModes: current?.preferredDeliveryModes?.filter((value) => value !== mode),
+                      profileShapingEnabled: !ignoreProfileShaping,
+                    }));
+                  }}
+                  className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                >
+                  Delivery: {formatFilterLabel(mode)} x
+                </button>
+              ))}
+              {Object.entries(sessionContext.attributeFilters ?? {})
+                .flatMap(([taxonomy, tags]) => taxonomy === 'delivery'
+                  ? []
+                  : tags.map((tag) => ({ taxonomy, tag })))
+                .map(({ taxonomy, tag }) => (
+                  <button
+                    key={`${taxonomy}-${tag}`}
+                    type="button"
+                    onClick={() => _removeSessionAttributeTag(taxonomy, tag)}
+                    className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                  >
+                    {formatFilterLabel(tag)} x
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
+
         {messages.length === 0 && (
           <div className="flex flex-col items-center py-6 gap-5">
             {hasSeededBrowseContext && (
@@ -901,12 +1311,53 @@ export function ChatWindow({
               <p>{msg.content}</p>
               {msg.role === 'assistant' && (
                 <div className="space-y-2 mt-2">
+                  {(msg as AssistantMessage).resultSummary && (
+                    <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-950">
+                      {(msg as AssistantMessage).resultSummary}
+                    </div>
+                  )}
                   <RetrievalStatusNote status={(msg as AssistantMessage).retrievalStatus} />
                   <SearchInterpretationPanel
                     interpretation={(msg as AssistantMessage).searchInterpretation}
                     canToggleProfile={Boolean(userId)}
                     onToggleProfile={() => setIgnoreProfileShaping((current) => !current)}
                   />
+                  {(msg as AssistantMessage).clarification && (
+                    <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                      <p className="font-medium">Refine this search</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(msg as AssistantMessage).clarification?.suggestions.map((suggestion) => (
+                          <button
+                            key={suggestion}
+                            type="button"
+                            onClick={() => handleChipClick(suggestion)}
+                            disabled={isLoading || quotaRemaining === 0}
+                            className="rounded-full border border-sky-200 bg-white px-2.5 py-1 text-[11px] font-medium text-sky-900 disabled:opacity-50"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {((msg as AssistantMessage).followUpSuggestions?.length ?? 0) > 0 && !(msg as AssistantMessage).clarification && (
+                    <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-950">
+                      <p className="font-medium">Next refinements</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(msg as AssistantMessage).followUpSuggestions?.map((suggestion) => (
+                          <button
+                            key={suggestion}
+                            type="button"
+                            onClick={() => handleChipClick(suggestion)}
+                            disabled={isLoading || quotaRemaining === 0}
+                            className="rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-medium text-indigo-900 disabled:opacity-50"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {msg.role === 'assistant' && (msg as AssistantMessage).services && (
@@ -963,6 +1414,20 @@ export function ChatWindow({
 
       {/* Input */}
       <div className="p-3 border-t border-gray-200 bg-white rounded-b-lg">
+        {quotaRemaining <= 5 && quotaRemaining > 0 && (
+          <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <p className="font-medium">Low message budget</p>
+            <p className="mt-1">You can keep this search scope and continue in Directory or Map if needed.</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <a href={_directoryHandoffHref} className="rounded-full border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900">
+                Open Directory
+              </a>
+              <a href={_mapHandoffHref} className="rounded-full border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900">
+                Open Map
+              </a>
+            </div>
+          </div>
+        )}
         <div className="flex gap-2">
           <textarea
             ref={inputRef}
@@ -989,10 +1454,24 @@ export function ChatWindow({
           <QuotaCooldown resetAt={quotaResetAt} onExpired={handleQuotaExpired} />
         )}
         {quotaRemaining === 0 && !quotaResetAt && (
-          <div className="flex items-center gap-2 mt-1" role="alert">
-            <p className="text-xs text-red-600">
-              Message limit reached.
-            </p>
+          <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+            <p className="font-medium">Message limit reached.</p>
+            <p className="mt-1">Continue with the same scope in Directory or Map, or start a fresh chat session.</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <a href={_directoryHandoffHref} className="rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700">
+                Open Directory
+              </a>
+              <a href={_mapHandoffHref} className="rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700">
+                Open Map
+              </a>
+              <button
+                type="button"
+                onClick={_startNewSession}
+                className="rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700"
+              >
+                Start new chat session
+              </button>
+            </div>
           </div>
         )}
       </div>

@@ -11,7 +11,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Building2, Wrench, MapPin, Users, Tag, LayoutDashboard, ClipboardList, Layers3 } from 'lucide-react';
+import { Award, Building2, Wrench, MapPin, Users, Tag, LayoutDashboard, ClipboardList, Layers3 } from 'lucide-react';
 import { isRoleAtLeast } from '@/services/auth/roles';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -21,6 +21,7 @@ import HostContextStrip from '@/components/host/HostContextStrip';
 
 const NAV_ITEMS = [
   { href: '/host', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/org/profile', label: 'Profile', icon: Award },
   { href: '/org', label: 'Organization', icon: Building2 },
   { href: '/services', label: 'Services', icon: Wrench },
   { href: '/resource-studio', label: 'Resource Studio', icon: Layers3 },

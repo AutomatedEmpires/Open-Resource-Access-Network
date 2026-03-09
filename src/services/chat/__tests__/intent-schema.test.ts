@@ -75,7 +75,14 @@ function makeMockService(
     ],
     schedules: [],
     taxonomyTerms: [],
-    attributes: options?.attributes,
+    attributes: options?.attributes?.map((attribute, index) => ({
+      id: `attr-${id}-${index}`,
+      serviceId: id,
+      taxonomy: attribute.taxonomy as never,
+      tag: attribute.tag,
+      createdAt: now,
+      updatedAt: now,
+    })),
     confidenceScore: {
       id: 'cs-1',
       serviceId: id,

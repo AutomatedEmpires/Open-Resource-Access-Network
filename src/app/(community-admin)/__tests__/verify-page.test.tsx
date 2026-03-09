@@ -5,12 +5,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const fetchMock = vi.hoisted(() => vi.fn());
+const resourceWorkspaceSpy = vi.hoisted(() => vi.fn());
 const navigationState = vi.hoisted(() => ({
   searchParams: new URLSearchParams('id=q-1'),
 }));
 
 vi.mock('next/navigation', () => ({
   useSearchParams: () => navigationState.searchParams,
+}));
+
+vi.mock('next-auth/react', () => ({
+  useSession: () => ({
+    data: {
+      user: {
+        id: 'current-user',
+      },
+    },
+  }),
 }));
 
 vi.mock('@/components/ui/error-boundary', () => ({
@@ -43,6 +54,13 @@ vi.mock('@/components/ui/toast', () => ({
     error: vi.fn(),
     info: vi.fn(),
   }),
+}));
+
+vi.mock('@/components/resource-submissions/ResourceSubmissionWorkspace', () => ({
+  ResourceSubmissionWorkspace: (props: Record<string, unknown>) => {
+    resourceWorkspaceSpy(props);
+    return <div>resource review workspace</div>;
+  },
 }));
 
 import VerifyPage from '@/app/(community-admin)/verify/page';
@@ -152,7 +170,15 @@ describe('community admin verify page', () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
         json: async () => ({ error: 'entry lookup failed' }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -165,23 +191,32 @@ describe('community admin verify page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(fetchMock).toHaveBeenLastCalledWith('/api/community/queue/q-1');
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/resource-submissions/q-1');
+      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/community/queue/q-1');
+      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/resource-submissions/q-1');
+      expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/community/queue/q-1');
       expect(screen.getByRole('heading', { name: 'Housing Navigator' })).toBeInTheDocument();
     });
   });
 
   it('renders loaded details, fallback hostname text, and reviewed-state panel', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () =>
-        makeQueueDetail({
-          status: 'approved',
-          service_url: 'not-a-valid-url',
-          confidenceScore: null,
-          assigned_to_user_id: 'reviewer-1',
-        }),
-    });
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          makeQueueDetail({
+            status: 'approved',
+            service_url: 'not-a-valid-url',
+            confidenceScore: null,
+            assigned_to_user_id: 'reviewer-1',
+            assigned_to_display_name: 'reviewer-1',
+          }),
+      });
 
     render(<VerifyPage />);
 
@@ -195,12 +230,20 @@ describe('community admin verify page', () => {
   it('submits a rejection decision, trims notes, and refreshes entry data', async () => {
     fetchMock
       .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
         ok: true,
         json: async () => makeQueueDetail(),
       })
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ message: 'Decision recorded' }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -222,16 +265,16 @@ describe('community admin verify page', () => {
     fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/community/queue/q-1', {
+      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/community/queue/q-1', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           decision: 'denied',
           notes: 'Missing required docs',
-          reviewerUserId: 'current-user',
         }),
       });
-      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/community/queue/q-1');
+      expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/resource-submissions/q-1');
+      expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/community/queue/q-1');
       expect(screen.getByText('Decision recorded')).toBeInTheDocument();
       expect(screen.getByText('This entry has already been reviewed (Denied).')).toBeInTheDocument();
     });
@@ -239,6 +282,10 @@ describe('community admin verify page', () => {
 
   it('shows decision submission failures from the API', async () => {
     fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
       .mockResolvedValueOnce({
         ok: true,
         json: async () => makeQueueDetail(),
@@ -259,28 +306,33 @@ describe('community admin verify page', () => {
   });
 
   it('renders compact detail state when optional fields are absent and status is unknown', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () =>
-        makeQueueDetail({
-          status: 'unknown_status',
-          service_description: null,
-          service_url: null,
-          service_email: null,
-          organization_description: null,
-          organization_url: null,
-          organization_email: null,
-          notes: null,
-          assigned_to_user_id: null,
-          locations: [],
-          phones: [],
-          eligibility: [],
-          required_documents: [],
-          languages: [],
-          accessibility: [],
-          confidenceScore: null,
-        }),
-    });
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          makeQueueDetail({
+            status: 'unknown_status',
+            service_description: null,
+            service_url: null,
+            service_email: null,
+            organization_description: null,
+            organization_url: null,
+            organization_email: null,
+            notes: null,
+            assigned_to_user_id: null,
+            locations: [],
+            phones: [],
+            eligibility: [],
+            required_documents: [],
+            languages: [],
+            accessibility: [],
+            confidenceScore: null,
+          }),
+      });
 
     render(<VerifyPage />);
 
@@ -298,12 +350,20 @@ describe('community admin verify page', () => {
   it('submits an approval decision without notes and omits notes from payload', async () => {
     fetchMock
       .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
         ok: true,
         json: async () => makeQueueDetail({ status: 'under_review' }),
       })
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ message: 'Approved successfully' }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -317,15 +377,16 @@ describe('community admin verify page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Submit Decision' }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/community/queue/q-1', {
+      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/community/queue/q-1', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           decision: 'approved',
           notes: undefined,
-          reviewerUserId: 'current-user',
         }),
       });
+      expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/resource-submissions/q-1');
+      expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/community/queue/q-1');
       expect(screen.getByText('Approved successfully')).toBeInTheDocument();
     });
   });
@@ -333,12 +394,20 @@ describe('community admin verify page', () => {
   it('requires notes for escalation and submits once notes are provided', async () => {
     fetchMock
       .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
         ok: true,
         json: async () => makeQueueDetail({ status: 'needs_review' }),
       })
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ message: 'Escalated to ORAN' }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -359,15 +428,16 @@ describe('community admin verify page', () => {
     fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/community/queue/q-1', {
+      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/community/queue/q-1', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           decision: 'escalated',
           notes: 'Needs second-level review',
-          reviewerUserId: 'current-user',
         }),
       });
+      expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/resource-submissions/q-1');
+      expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/community/queue/q-1');
       expect(screen.getByText('Escalated to ORAN')).toBeInTheDocument();
     });
   });
@@ -382,6 +452,10 @@ describe('community admin verify page', () => {
 
   it('shows fallback decision error when API failure has no JSON body', async () => {
     fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
       .mockResolvedValueOnce({
         ok: true,
         json: async () => makeQueueDetail(),
@@ -401,5 +475,28 @@ describe('community admin verify page', () => {
 
     await screen.findByRole('alert');
     expect(screen.getByText('Decision submission failed')).toBeInTheDocument();
+  });
+
+  it('renders the shared resource workspace when the submission is form-backed', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        detail: {
+          instance: { id: 'form-1' },
+        },
+      }),
+    });
+
+    render(<VerifyPage />);
+
+    await screen.findByText('resource review workspace');
+    expect(resourceWorkspaceSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        portal: 'community_admin',
+        entryId: 'q-1',
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('/api/resource-submissions/q-1');
   });
 });

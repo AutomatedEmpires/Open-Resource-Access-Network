@@ -13,6 +13,7 @@ import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
+import { buildCommunitySubmissionScope, getCommunityAdminScope } from '@/services/community/scope';
 import { advance } from '@/services/workflow/engine';
 import {
   RATE_LIMIT_WINDOW_MS,
@@ -88,7 +89,34 @@ export async function PATCH(req: NextRequest) {
   const failed: { id: string; error: string }[] = [];
 
   try {
+    const scope = await getCommunityAdminScope(authCtx.userId);
+    const accessibleIds = new Set<string>();
+
+    if (scope.hasExplicitScope) {
+      const accessParams: unknown[] = [ids];
+      const scopeCondition = buildCommunitySubmissionScope('sub', scope, accessParams);
+      const accessibleRows = await executeQuery<{ id: string }>(
+        `SELECT sub.id
+         FROM submissions sub
+         WHERE sub.id = ANY($1::uuid[])${scopeCondition ? ` AND ${scopeCondition}` : ''}`,
+        accessParams,
+      );
+
+      for (const row of accessibleRows) {
+        accessibleIds.add(row.id);
+      }
+    } else {
+      for (const id of ids) {
+        accessibleIds.add(id);
+      }
+    }
+
     for (const id of ids) {
+      if (!accessibleIds.has(id)) {
+        failed.push({ id, error: 'Submission is outside your assigned community scope' });
+        continue;
+      }
+
       try {
         if (notes) {
           await executeQuery(

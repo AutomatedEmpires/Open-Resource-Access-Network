@@ -109,6 +109,7 @@ describe('PATCH /api/community/queue/bulk', () => {
 
   it('applies approved decisions and updates confidence scores when service ids exist', async () => {
     dbMocks.executeQuery
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]) // notes update id 1
       .mockResolvedValueOnce([{ service_id: 'svc-1' }]) // service lookup id 1
       .mockResolvedValueOnce([]) // confidence upsert id 1
@@ -138,6 +139,10 @@ describe('PATCH /api/community/queue/bulk', () => {
   });
 
   it('collects per-item failures without failing the whole request', async () => {
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: ID_ONE }, { id: ID_TWO }]);
+
     advanceMock
       .mockResolvedValueOnce({ success: false, error: 'Transition denied' })
       .mockRejectedValueOnce(new Error('engine exploded'));

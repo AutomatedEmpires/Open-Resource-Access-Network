@@ -22,9 +22,12 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ResourceSubmissionWorkspace } from '@/components/resource-submissions/ResourceSubmissionWorkspace';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormAlert } from '@/components/ui/form-alert';
 import { FormField } from '@/components/ui/form-field';
+import { FormSection } from '@/components/ui/form-section';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/toast';
 import { getConfidenceTier } from '@/domain/confidence';
@@ -197,6 +200,7 @@ export default function VerifyPage() {
   const entryId = searchParams.get('id');
 
   const [entry, setEntry] = useState<QueueDetail | null>(null);
+  const [resourceSubmissionFound, setResourceSubmissionFound] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -213,6 +217,14 @@ export default function VerifyPage() {
     setIsLoading(true);
     setError(null);
     try {
+      const resourceRes = await fetch(`/api/resource-submissions/${id}`);
+      if (resourceRes.ok) {
+        setResourceSubmissionFound(true);
+        setEntry(null);
+        return;
+      }
+
+      setResourceSubmissionFound(false);
       const res = await fetch(`/api/community/queue/${id}`);
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -312,6 +324,22 @@ export default function VerifyPage() {
     );
   }
 
+  if (resourceSubmissionFound) {
+    return (
+      <ResourceSubmissionWorkspace
+        portal="community_admin"
+        initialVariant="listing"
+        initialChannel="host"
+        entryId={entryId}
+        pageEyebrow="Community Admin"
+        pageTitle="Resource review"
+        pageSubtitle="Review the same resource cards the submitter completed, make precise edits when needed, and record the final decision against the workflow."
+        backHref="/queue"
+        backLabel="Back to queue"
+      />
+    );
+  }
+
   // ── Loading ──
   if (isLoading) {
     return (
@@ -356,22 +384,25 @@ export default function VerifyPage() {
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Back to Queue
         </Link>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <ShieldCheck className="h-6 w-6 text-action-base" aria-hidden="true" />
-              {entry.service_name}
-            </h1>
-            <p className="mt-1 text-sm text-gray-600">
-              {entry.organization_name}
-            </p>
-          </div>
-          <span
-            className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ring-1 ring-inset ${statusStyle.color}`}
-          >
-            {statusStyle.label}
-          </span>
-        </div>
+        <PageHeader
+          eyebrow="Community Admin"
+          title={entry.service_name}
+          icon={<ShieldCheck className="h-6 w-6 text-action-base" aria-hidden="true" />}
+          subtitle={entry.organization_name}
+          badges={
+            <>
+              <PageHeaderBadge tone="trust">Evidence-based review</PageHeaderBadge>
+              <PageHeaderBadge tone="accent">
+                {isAssignedToMe ? 'Assigned to you' : entry.assigned_to_user_id ? 'Assigned to another reviewer' : 'Unassigned'}
+              </PageHeaderBadge>
+              <span
+                className={`inline-flex min-h-[28px] items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${statusStyle.color}`}
+              >
+                {statusStyle.label}
+              </span>
+            </>
+          }
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -747,128 +778,135 @@ export default function VerifyPage() {
                 onSubmit={(e) => { e.preventDefault(); void handleSubmit(); }}
                 className="space-y-4"
               >
-                {/* Decision radio options */}
-                <fieldset>
-                  <legend className="text-xs font-medium text-gray-500 mb-2">Select decision</legend>
-                  <div className="space-y-2">
-                    <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'approved' ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                      <input
-                        type="radio"
-                        name="decision"
-                        value="approved"
-                        checked={decision === 'approved'}
-                        onChange={() => setDecision('approved')}
-                        className="h-4 w-4 text-green-600"
-                      />
-                      <CheckCircle2 className="h-4 w-4 text-green-600" aria-hidden="true" />
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">Verify</p>
-                        <p className="text-xs text-gray-500">Confirm this record is accurate and current</p>
-                      </div>
-                    </label>
-
-                    <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'denied' ? 'border-error-pale bg-error-subtle' : 'border-gray-200 hover:bg-gray-50'}`}>
-                      <input
-                        type="radio"
-                        name="decision"
-                        value="denied"
-                        checked={decision === 'denied'}
-                        onChange={() => setDecision('denied')}
-                        className="h-4 w-4 text-error-base"
-                      />
-                      <XCircle className="h-4 w-4 text-error-base" aria-hidden="true" />
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">Reject</p>
-                        <p className="text-xs text-gray-500">Record has issues — send back to host</p>
-                      </div>
-                    </label>
-
-                    <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'escalated' ? 'border-purple-400 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                      <input
-                        type="radio"
-                        name="decision"
-                        value="escalated"
-                        checked={decision === 'escalated'}
-                        onChange={() => setDecision('escalated')}
-                        className="h-4 w-4 text-purple-600"
-                      />
-                      <ArrowUpCircle className="h-4 w-4 text-purple-600" aria-hidden="true" />
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">Escalate</p>
-                        <p className="text-xs text-gray-500">Needs ORAN admin review</p>
-                      </div>
-                    </label>
-
-                    <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'returned' ? 'border-amber-400 bg-amber-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                      <input
-                        type="radio"
-                        name="decision"
-                        value="returned"
-                        checked={decision === 'returned'}
-                        onChange={() => setDecision('returned')}
-                        className="h-4 w-4 text-amber-600"
-                      />
-                      <ArrowLeft className="h-4 w-4 text-amber-600" aria-hidden="true" />
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">Return to Submitter</p>
-                        <p className="text-xs text-gray-500">Send back to host for revision</p>
-                      </div>
-                    </label>
-                  </div>
-                </fieldset>
-
-                {/* Notes */}
-                <FormField
-                  label="Notes"
-                  htmlFor="verify-notes"
-                  hint={
-                    (decision === 'denied' || decision === 'escalated' || decision === 'returned')
-                      ? `Required for ${decision === 'denied' ? 'rejection' : decision === 'returned' ? 'returns' : 'escalation'}`
-                      : 'Optional notes for this decision'
-                  }
-                  required={decision === 'denied' || decision === 'escalated' || decision === 'returned'}
-                  charCount={notes.length}
-                  maxLength={5000}
+                <FormSection
+                  title="Decision"
+                  description="Choose the review outcome that best matches the current evidence for this submission."
                 >
-                  <textarea
-                    id="verify-notes"
-                    rows={4}
-                    maxLength={5000}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder={
-                      decision === 'denied'
-                        ? 'Describe what needs to be corrected…'
-                        : decision === 'returned'
-                        ? 'Describe what the submitter needs to fix…'
-                        : 'Optional notes for this decision…'
+                  <fieldset>
+                    <legend className="text-xs font-medium text-gray-500 mb-2">Select decision</legend>
+                    <div className="space-y-2">
+                      <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'approved' ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                        <input
+                          type="radio"
+                          name="decision"
+                          value="approved"
+                          checked={decision === 'approved'}
+                          onChange={() => setDecision('approved')}
+                          className="h-4 w-4 text-green-600"
+                        />
+                        <CheckCircle2 className="h-4 w-4 text-green-600" aria-hidden="true" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">Verify</p>
+                          <p className="text-xs text-gray-500">Confirm this record is accurate and current</p>
+                        </div>
+                      </label>
+
+                      <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'denied' ? 'border-error-pale bg-error-subtle' : 'border-gray-200 hover:bg-gray-50'}`}>
+                        <input
+                          type="radio"
+                          name="decision"
+                          value="denied"
+                          checked={decision === 'denied'}
+                          onChange={() => setDecision('denied')}
+                          className="h-4 w-4 text-error-base"
+                        />
+                        <XCircle className="h-4 w-4 text-error-base" aria-hidden="true" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">Reject</p>
+                          <p className="text-xs text-gray-500">Record has issues — send back to host</p>
+                        </div>
+                      </label>
+
+                      <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'escalated' ? 'border-purple-400 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                        <input
+                          type="radio"
+                          name="decision"
+                          value="escalated"
+                          checked={decision === 'escalated'}
+                          onChange={() => setDecision('escalated')}
+                          className="h-4 w-4 text-purple-600"
+                        />
+                        <ArrowUpCircle className="h-4 w-4 text-purple-600" aria-hidden="true" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">Escalate</p>
+                          <p className="text-xs text-gray-500">Needs ORAN admin review</p>
+                        </div>
+                      </label>
+
+                      <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'returned' ? 'border-amber-400 bg-amber-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                        <input
+                          type="radio"
+                          name="decision"
+                          value="returned"
+                          checked={decision === 'returned'}
+                          onChange={() => setDecision('returned')}
+                          className="h-4 w-4 text-amber-600"
+                        />
+                        <ArrowLeft className="h-4 w-4 text-amber-600" aria-hidden="true" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">Return to Submitter</p>
+                          <p className="text-xs text-gray-500">Send back to host for revision</p>
+                        </div>
+                      </label>
+                    </div>
+                  </fieldset>
+                </FormSection>
+
+                <FormSection
+                  title="Rationale and submission"
+                  description="Capture the rationale needed for the audit trail before sending the decision."
+                >
+                  <FormField
+                    label="Notes"
+                    htmlFor="verify-notes"
+                    hint={
+                      (decision === 'denied' || decision === 'escalated' || decision === 'returned')
+                        ? `Required for ${decision === 'denied' ? 'rejection' : decision === 'returned' ? 'returns' : 'escalation'}`
+                        : 'Optional notes for this decision'
                     }
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-action focus:ring-1 focus:ring-action"
-                  />
-                </FormField>
+                    required={decision === 'denied' || decision === 'escalated' || decision === 'returned'}
+                    charCount={notes.length}
+                    maxLength={5000}
+                  >
+                    <textarea
+                      id="verify-notes"
+                      rows={4}
+                      maxLength={5000}
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder={
+                        decision === 'denied'
+                          ? 'Describe what needs to be corrected…'
+                          : decision === 'returned'
+                          ? 'Describe what the submitter needs to fix…'
+                          : 'Optional notes for this decision…'
+                      }
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-action focus:ring-1 focus:ring-action"
+                    />
+                  </FormField>
 
-                {/* Submit */}
-                <Button
-                  type="submit"
-                  className="w-full gap-2"
-                  disabled={
-                    !decision ||
-                    isSubmitting ||
-                    ((decision === 'denied' || decision === 'escalated' || decision === 'returned') && !notes.trim())
-                  }
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                      Submitting…
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-                      Submit Decision
-                    </>
-                  )}
-                </Button>
+                  <Button
+                    type="submit"
+                    className="w-full gap-2"
+                    disabled={
+                      !decision ||
+                      isSubmitting ||
+                      ((decision === 'denied' || decision === 'escalated' || decision === 'returned') && !notes.trim())
+                    }
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        Submitting…
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                        Submit Decision
+                      </>
+                    )}
+                  </Button>
+                </FormSection>
               </form>
             ) : (
               <div className="text-center py-4">

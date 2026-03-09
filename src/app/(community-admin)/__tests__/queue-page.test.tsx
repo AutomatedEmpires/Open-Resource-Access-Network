@@ -5,6 +5,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const fetchMock = vi.hoisted(() => vi.fn());
+const replaceMock = vi.hoisted(() => vi.fn());
+const navigationState = vi.hoisted(() => ({
+  searchParams: new URLSearchParams(),
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: replaceMock }),
+  useSearchParams: () => navigationState.searchParams,
+}));
+
+vi.mock('next-auth/react', () => ({
+  useSession: () => ({
+    data: {
+      user: {
+        id: 'community-admin-1',
+      },
+    },
+  }),
+}));
 
 vi.mock('@/components/ui/error-boundary', () => ({
   ErrorBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -67,6 +86,8 @@ beforeEach(() => {
   cleanup();
   vi.clearAllMocks();
   fetchMock.mockReset();
+  replaceMock.mockReset();
+  navigationState.searchParams = new URLSearchParams();
   global.fetch = fetchMock as unknown as typeof fetch;
 });
 
@@ -86,7 +107,7 @@ describe('community admin queue page', () => {
 
     await screen.findByText('Food Pantry');
     expect(fetchMock).toHaveBeenCalledWith('/api/community/queue?page=1&limit=20');
-    expect(screen.getByText('40 entries')).toBeInTheDocument();
+    expect(screen.getAllByText('40 entries').length).toBeGreaterThan(0);
     expect(screen.getByText(/\(\d+d\)/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
@@ -133,6 +154,7 @@ describe('community admin queue page', () => {
               {
                 ...makeQueueResponse().results[0],
                 assigned_to_user_id: 'community-admin-1',
+                assigned_to_display_name: 'community-admin-1',
               },
             ],
           }),
@@ -177,6 +199,7 @@ describe('community admin queue page', () => {
               {
                 ...makeQueueResponse().results[0],
                 assigned_to_user_id: 'community-admin-1',
+                assigned_to_display_name: 'community-admin-1',
               },
             ],
           }),
@@ -249,6 +272,7 @@ describe('community admin queue page', () => {
                 service_name: 'Health Clinic',
                 status: 'under_review',
                 assigned_to_user_id: 'reviewer-2',
+                assigned_to_display_name: 'reviewer-2',
                 sla_deadline: '2026-02-20T00:00:00.000Z',
               },
             ],

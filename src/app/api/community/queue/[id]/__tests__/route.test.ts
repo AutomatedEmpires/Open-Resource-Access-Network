@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const dbMocks = vi.hoisted(() => ({
   executeQuery: vi.fn(),
   isDatabaseConfigured: vi.fn(),
+  withTransaction: vi.fn(),
 }));
 
 const rateLimitMock = vi.hoisted(() => vi.fn());
@@ -62,6 +63,10 @@ beforeEach(() => {
 
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
   dbMocks.executeQuery.mockResolvedValue([]);
+  dbMocks.withTransaction.mockImplementation(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
+    const client = { query: vi.fn().mockResolvedValue({ rows: [] }) };
+    return callback(client);
+  });
   rateLimitMock.mockReturnValue({
     exceeded: false,
     retryAfterSeconds: 0,
@@ -103,7 +108,9 @@ describe('api/community/queue/[id] route', () => {
 
   it('returns 404 when submission does not exist', async () => {
     const { GET } = await loadRoute();
-    dbMocks.executeQuery.mockResolvedValueOnce([]);
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     const response = await GET(createRequest(), ctx(VALID_ID));
 
@@ -114,6 +121,7 @@ describe('api/community/queue/[id] route', () => {
   it('returns GET details for submissions without a linked service', async () => {
     const { GET } = await loadRoute();
     dbMocks.executeQuery
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         {
           id: VALID_ID,
@@ -132,12 +140,13 @@ describe('api/community/queue/[id] route', () => {
     expect(body.phones).toEqual([]);
     expect(body.confidenceScore).toBeNull();
     expect(body.transitions).toEqual([{ id: 'tr-1', to_status: 'submitted' }]);
-    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(2);
+    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(3);
   });
 
   it('returns GET details including locations, phones, confidence score, and transitions', async () => {
     const { GET } = await loadRoute();
     dbMocks.executeQuery
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         {
           id: VALID_ID,
@@ -160,7 +169,7 @@ describe('api/community/queue/[id] route', () => {
     expect(body.confidenceScore).toEqual({ score: 88 });
     expect(body.transitions).toEqual([{ id: 'tr-2', to_status: 'approved' }]);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
-    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(5);
+    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(6);
   });
 
   it('returns 500 on GET errors and captures telemetry', async () => {
@@ -217,6 +226,10 @@ describe('api/community/queue/[id] route', () => {
 
   it('saves reviewer notes and returns 409 when workflow transition is denied', async () => {
     const { PUT } = await loadRoute();
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: VALID_ID }])
+      .mockResolvedValueOnce([]);
     advanceMock.mockResolvedValueOnce({ success: false, error: 'Transition denied' });
 
     const response = await PUT(
@@ -240,6 +253,7 @@ describe('api/community/queue/[id] route', () => {
   it('updates confidence score for approved decisions when service exists', async () => {
     const { PUT } = await loadRoute();
     dbMocks.executeQuery
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ service_id: 'svc-1' }])
       .mockResolvedValueOnce([]);
 
@@ -256,13 +270,26 @@ describe('api/community/queue/[id] route', () => {
     const body = await response.json();
     expect(body.success).toBe(true);
     expect(body.message).toBe('Record approved. Confidence score updated.');
-    expect(dbMocks.executeQuery.mock.calls[1]?.[0]).toContain('INSERT INTO confidence_scores');
-    expect(dbMocks.executeQuery.mock.calls[1]?.[1]).toEqual(['svc-1']);
   });
 
-  it('skips confidence score update when approved decision has no linked service', async () => {
+  it('applies approved host service verification payloads before updating confidence', async () => {
     const { PUT } = await loadRoute();
-    dbMocks.executeQuery.mockResolvedValueOnce([]);
+    const clientQuery = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [{
+          submission_type: 'service_verification',
+          service_id: 'svc-1',
+          payload: { changeType: 'host_service_update' },
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: { query: typeof clientQuery }) => Promise<unknown>) => {
+      return callback({ query: clientQuery });
+    });
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     const response = await PUT(
       createRequest({
@@ -274,11 +301,37 @@ describe('api/community/queue/[id] route', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(1);
+    expect(clientQuery.mock.calls[1]?.[0]).toContain("UPDATE services");
+    expect(clientQuery.mock.calls[1]?.[1]).toEqual(['active', 'community-1', 'svc-1']);
+    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(2);
+    expect(dbMocks.executeQuery.mock.calls[1]?.[0]).toContain('INSERT INTO confidence_scores');
+    expect(dbMocks.executeQuery.mock.calls[1]?.[1]).toEqual(['svc-1']);
+  });
+
+  it('skips confidence score update when approved decision has no linked service', async () => {
+    const { PUT } = await loadRoute();
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const response = await PUT(
+      createRequest({
+        jsonBody: {
+          decision: 'approved',
+        },
+      }),
+      ctx(VALID_ID),
+    );
+
+    expect(response.status).toBe(200);
+    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(2);
   });
 
   it('returns 500 on PUT exceptions and captures telemetry', async () => {
     const { PUT } = await loadRoute();
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: VALID_ID }]);
     advanceMock.mockRejectedValueOnce(new Error('engine failed'));
 
     const response = await PUT(

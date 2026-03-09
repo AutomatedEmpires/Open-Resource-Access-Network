@@ -78,7 +78,7 @@ beforeEach(() => {
   dbMocks.executeQuery.mockResolvedValue([]);
   dbMocks.withTransaction.mockImplementation(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
     const client = {
-      query: vi.fn(),
+      query: vi.fn().mockResolvedValue({ rows: [] }),
     };
     return callback(client);
   });
@@ -106,6 +106,16 @@ describe('community api routes', () => {
   it('returns community coverage summary data', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
     dbMocks.executeQuery
+      .mockResolvedValueOnce([
+        {
+          coverage_zone_id: 'zone-1',
+          coverage_zone_name: 'Central Texas',
+          coverage_zone_description: 'Austin metro community review zone.',
+          coverage_states: ['TX'],
+          coverage_counties: ['TX_Travis'],
+          has_geometry: true,
+        },
+      ])
       .mockResolvedValueOnce([
         { status: 'submitted', count: 2 },
         { status: 'approved', count: 3 },
@@ -140,6 +150,15 @@ describe('community api routes', () => {
     expect(body.topOrganizations).toEqual([
       { organization_id: 'org-1', organization_name: 'Org', pending_count: 2 },
     ]);
+    expect(body.zone).toEqual({
+      id: 'zone-1',
+      name: 'Central Texas',
+      description: 'Austin metro community review zone.',
+      states: ['TX'],
+      counties: ['TX_Travis'],
+      hasGeometry: true,
+      hasExplicitScope: true,
+    });
   });
 
   it('validates community queue list parameters', async () => {
@@ -156,6 +175,7 @@ describe('community api routes', () => {
   it('lists verification queue entries', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
     dbMocks.executeQuery
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ count: 1 }])
       .mockResolvedValueOnce([{ id: 'queue-1', status: 'submitted' }]);
     const { GET } = await loadQueueRoute();
@@ -234,6 +254,7 @@ describe('community api routes', () => {
   it('returns a detailed submission payload', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
     dbMocks.executeQuery
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         {
           id: '11111111-1111-4111-8111-111111111111',
@@ -275,6 +296,9 @@ describe('community api routes', () => {
 
   it('returns 409 when a submission cannot be advanced', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: '11111111-1111-4111-8111-111111111111' }]);
     engineMocks.advance.mockResolvedValueOnce({ success: false, error: 'Invalid transition' });
     const { PUT } = await loadQueueDetailRoute();
 
@@ -295,7 +319,8 @@ describe('community api routes', () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
     engineMocks.advance.mockResolvedValueOnce({ success: true, fromStatus: 'under_review', toStatus: 'approved', transitionId: 'tx-2' });
     dbMocks.executeQuery
-      .mockResolvedValueOnce([])                        // notes update
+      .mockResolvedValueOnce([])                         // scope lookup
+      .mockResolvedValueOnce([])                         // notes update
       .mockResolvedValueOnce([{ service_id: 'svc-1' }]) // service lookup
       .mockResolvedValueOnce([]);                        // confidence upsert
     const { PUT } = await loadQueueDetailRoute();

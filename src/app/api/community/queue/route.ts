@@ -13,6 +13,7 @@ import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
+import { buildCommunitySubmissionScope, getCommunityAdminScope } from '@/services/community/scope';
 import { advance, acquireLock, releaseLock } from '@/services/workflow/engine';
 import { computeTriagePriority } from '@/services/queue/triage';
 import {
@@ -98,8 +99,14 @@ export async function GET(req: NextRequest) {
   const offset = (page - 1) * limit;
 
   try {
+    const scope = await getCommunityAdminScope(authCtx.userId);
     const conditions: string[] = [];
     const params: unknown[] = [];
+
+    const scopeCondition = buildCommunitySubmissionScope('sub', scope, params);
+    if (scopeCondition) {
+      conditions.push(scopeCondition);
+    }
 
     if (status) {
       params.push(status);

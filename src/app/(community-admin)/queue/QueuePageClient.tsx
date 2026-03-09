@@ -22,6 +22,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormAlert } from '@/components/ui/form-alert';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useToast } from '@/components/ui/toast';
@@ -274,31 +275,33 @@ export default function QueuePage() {
 
   return (
     <ErrorBoundary>
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <ClipboardList className="h-6 w-6 text-action-base" aria-hidden="true" />
-            Verification Queue
-            <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
-              Community Admin
-            </span>
-          </h1>
-          <p className="mt-1 text-sm text-gray-600">
-            Triage and review pending service verification submissions for your community.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1"
-          onClick={() => void fetchQueue(page, statusFilter)}
-          disabled={isLoading}
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Community Admin"
+        title="Verification Queue"
+        icon={<ClipboardList className="h-6 w-6 text-action-base" aria-hidden="true" />}
+        subtitle="Triage and review pending service verification submissions for your community."
+        badges={
+          <>
+            <PageHeaderBadge tone="trust">Community review workspace</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">
+              {statusFilter === SPECIAL_FILTER_ASSIGNED ? 'Assigned filter active' : 'Queue is SLA-aware'}
+            </PageHeaderBadge>
+            <PageHeaderBadge>{data ? `${data.total} entries` : 'Loading queue'}</PageHeaderBadge>
+          </>
+        }
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => void fetchQueue(page, statusFilter)}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Status filter tabs */}
       <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-1" role="tablist" aria-label="Filter by status">

@@ -16,11 +16,13 @@ import { AccessDenied } from '@/components/ui/access-denied';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AppFooter } from '@/components/footer';
 import { PortalUserMenu } from '@/components/ui/portal-user-menu';
+import CommunityAdminContextStrip from '@/components/community-admin/CommunityAdminContextStrip';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/queue',     label: 'Queue' },
   { href: '/verify',    label: 'Verify' },
+  { href: '/forms',     label: 'Forms' },
   { href: '/coverage',  label: 'Coverage' },
 ] as const;
 
@@ -75,6 +77,8 @@ export default function CommunityAdminLayoutShell({ children }: { children: Reac
           </div>
         </div>
       </header>
+
+      <CommunityAdminContextStrip />
 
       <main id="main-content" className="container mx-auto max-w-7xl px-4 py-6">{children}</main>
       <AppFooter />

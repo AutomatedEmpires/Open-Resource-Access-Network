@@ -23,6 +23,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormAlert } from '@/components/ui/form-alert';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 
 // ============================================================
@@ -44,10 +45,21 @@ interface ActivityDay {
   escalated: number;
 }
 
+interface ZoneContext {
+  id: string | null;
+  name: string | null;
+  description: string | null;
+  states: string[];
+  counties: string[];
+  hasGeometry: boolean;
+  hasExplicitScope: boolean;
+}
+
 interface DashboardData {
   summary: CoverageSummary;
   recentActivity: ActivityDay[];
   assignedToMeCount: number;
+  zone: ZoneContext;
 }
 
 // ============================================================
@@ -174,6 +186,7 @@ export default function DashboardPageClient() {
       const coverage = (await coverageRes.json()) as {
         summary: CoverageSummary;
         recentActivity: ActivityDay[];
+        zone: ZoneContext;
       };
 
       let assignedToMeCount = 0;
@@ -198,31 +211,76 @@ export default function DashboardPageClient() {
 
   return (
     <ErrorBoundary>
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <LayoutDashboard className="h-6 w-6 text-action-base" aria-hidden="true" />
-            Dashboard
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
+      <PageHeader
+        eyebrow="Community Admin"
+        title="Dashboard"
+        icon={<LayoutDashboard className="h-6 w-6 text-action-base" aria-hidden="true" />}
+        subtitle={
+          <>
             Welcome back, <span className="font-medium text-gray-700">{firstName}</span>. Here&apos;s what needs your attention.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1 shrink-0"
-          onClick={() => void fetchData()}
-          disabled={isLoading}
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
-          Refresh
-        </Button>
-      </div>
+          </>
+        }
+        badges={
+          <>
+            <PageHeaderBadge tone="trust">Zone decisions affect verified inventory</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Assignment and SLA cues stay visible</PageHeaderBadge>
+            <PageHeaderBadge>
+              {data?.zone.name ?? (data?.zone.hasExplicitScope ? 'Assigned community scope' : 'Fallback review scope')}
+            </PageHeaderBadge>
+          </>
+        }
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1 shrink-0"
+            onClick={() => void fetchData()}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            Refresh
+          </Button>
+        }
+        className="mb-8"
+      />
 
       {error && (
         <FormAlert variant="error" message={error} onDismiss={() => setError(null)} className="mb-6" />
+      )}
+
+      {data && (
+        <section className="mb-8 rounded-xl border border-gray-200 bg-white p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Assigned scope</p>
+              <h2 className="mt-1 text-lg font-semibold text-gray-900">{data.zone.name ?? 'Community review coverage'}</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {data.zone.description
+                  ?? (data.zone.hasExplicitScope
+                    ? 'Your dashboard cards, queue entry points, and review links follow your assigned community coverage rules.'
+                    : 'A specific zone assignment is not on file yet, so the dashboard is emphasizing your active workload and assignments.')}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:w-full xl:max-w-xl">
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Assigned to me</p>
+                <p className="mt-1 text-lg font-semibold text-gray-900">{data.assignedToMeCount}</p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">States</p>
+                <p className="mt-1 text-lg font-semibold text-gray-900">{data.zone.states.length}</p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Counties</p>
+                <p className="mt-1 text-lg font-semibold text-gray-900">{data.zone.counties.length}</p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Boundary</p>
+                <p className="mt-1 text-lg font-semibold text-gray-900">{data.zone.hasGeometry ? 'On file' : 'Pending'}</p>
+              </div>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* Key metrics */}

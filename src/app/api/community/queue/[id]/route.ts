@@ -7,12 +7,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
+import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
+import { buildCommunitySubmissionScope, getCommunityAdminScope } from '@/services/community/scope';
 import { advance } from '@/services/workflow/engine';
+import type { PoolClient } from 'pg';
+import type { HostServiceRequestedChanges, HostServiceVerificationPayload } from '@/services/ingestion/hostPortalIntake';
 import {
   RATE_LIMIT_WINDOW_MS,
   COMMUNITY_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -40,6 +43,142 @@ function getIp(req: NextRequest): string {
 }
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function parseRequestedChanges(value: unknown): HostServiceRequestedChanges {
+  return asRecord(value) as HostServiceRequestedChanges;
+}
+
+async function applySubmittedServiceChanges(
+  client: PoolClient,
+  serviceId: string,
+  requestedChanges: HostServiceRequestedChanges,
+  actorUserId: string,
+  forceStatus: 'active' | 'defunct' = 'active',
+): Promise<void> {
+  const setClauses: string[] = [];
+  const params: unknown[] = [];
+  const fieldMap: Record<string, string> = {
+    name: 'name',
+    description: 'description',
+    url: 'url',
+    email: 'email',
+    interpretationServices: 'interpretation_services',
+    applicationProcess: 'application_process',
+    waitTime: 'wait_time',
+    fees: 'fees',
+    accreditations: 'accreditations',
+    licenses: 'licenses',
+  };
+
+  for (const [tsKey, dbCol] of Object.entries(fieldMap)) {
+    if (!(tsKey in requestedChanges)) continue;
+    params.push((requestedChanges as Record<string, unknown>)[tsKey] ?? null);
+    setClauses.push(`${dbCol} = $${params.length}`);
+  }
+
+  params.push(forceStatus);
+  setClauses.push(`status = $${params.length}`);
+
+  params.push(actorUserId);
+  setClauses.push(`updated_by_user_id = $${params.length}`);
+
+  params.push(serviceId);
+  await client.query(
+    `UPDATE services
+     SET ${setClauses.join(', ')}, updated_at = NOW()
+     WHERE id = $${params.length}`,
+    params,
+  );
+
+  if (requestedChanges.phones !== undefined) {
+    await client.query('DELETE FROM phones WHERE service_id = $1', [serviceId]);
+    for (const phone of requestedChanges.phones) {
+      await client.query(
+        `INSERT INTO phones (service_id, number, extension, type, description)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          serviceId,
+          phone.number,
+          phone.extension ?? null,
+          phone.type === 'text' ? 'sms' : phone.type,
+          phone.description ?? null,
+        ],
+      );
+    }
+  }
+
+  if (requestedChanges.schedule !== undefined) {
+    await client.query('DELETE FROM schedules WHERE service_id = $1', [serviceId]);
+    for (const day of requestedChanges.schedule) {
+      if (day.closed) continue;
+      await client.query(
+        `INSERT INTO schedules (service_id, days, opens_at, closes_at)
+         VALUES ($1, $2, $3, $4)`,
+        [serviceId, [day.day], day.opens, day.closes],
+      );
+    }
+  }
+}
+
+async function applyApprovedServiceVerification(
+  submissionId: string,
+  actorUserId: string,
+): Promise<{ serviceId: string | null; shouldUpdateConfidence: boolean }> {
+  return withTransaction(async (client) => {
+    const rows = await client.query<{
+      submission_type: string;
+      service_id: string | null;
+      payload: HostServiceVerificationPayload | null;
+    }>(
+      `SELECT submission_type, service_id, payload
+       FROM submissions
+       WHERE id = $1
+       FOR UPDATE`,
+      [submissionId],
+    );
+
+    const submission = rows.rows[0];
+    if (!submission || submission.submission_type !== 'service_verification' || !submission.service_id) {
+      return { serviceId: null, shouldUpdateConfidence: true };
+    }
+
+    const payload = asRecord(submission.payload) as Partial<HostServiceVerificationPayload>;
+    const requestedChanges = parseRequestedChanges(payload.requestedChanges);
+
+    switch (payload.changeType) {
+      case 'host_service_archive':
+        await client.query(
+          `UPDATE services
+           SET status = 'defunct', updated_at = NOW(), updated_by_user_id = $2
+           WHERE id = $1`,
+          [submission.service_id, actorUserId],
+        );
+        return { serviceId: submission.service_id, shouldUpdateConfidence: false };
+      case 'host_service_update':
+        await applySubmittedServiceChanges(client, submission.service_id, requestedChanges, actorUserId, 'active');
+        break;
+      case 'host_service_create':
+        await applySubmittedServiceChanges(client, submission.service_id, requestedChanges, actorUserId, 'active');
+        break;
+      default:
+        await client.query(
+          `UPDATE services
+           SET status = 'active', updated_at = NOW(), updated_by_user_id = $2
+           WHERE id = $1`,
+          [submission.service_id, actorUserId],
+        );
+        break;
+    }
+
+    return { serviceId: submission.service_id, shouldUpdateConfidence: true };
+  });
+}
 
 // ============================================================
 // HANDLERS
@@ -79,6 +218,10 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
   }
 
   try {
+    const scope = await getCommunityAdminScope(authCtx.userId);
+    const detailParams: unknown[] = [id];
+    const scopeCondition = buildCommunitySubmissionScope('sub', scope, detailParams);
+
     // Full detail: submission + service + organization
     const rows = await executeQuery<{
       id: string;
@@ -136,8 +279,8 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
        LEFT JOIN organizations o ON o.id = s.organization_id
        LEFT JOIN user_profiles up_sub ON up_sub.user_id = sub.submitted_by_user_id
        LEFT JOIN user_profiles up_assign ON up_assign.user_id = sub.assigned_to_user_id
-       WHERE sub.id = $1`,
-      [id],
+       WHERE sub.id = $1${scopeCondition ? ` AND ${scopeCondition}` : ''}`,
+      detailParams,
     );
 
     if (rows.length === 0) {
@@ -284,6 +427,22 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
   const { decision, notes } = parsed.data;
 
   try {
+    const scope = await getCommunityAdminScope(authCtx.userId);
+    if (scope.hasExplicitScope) {
+      const accessParams: unknown[] = [id];
+      const scopeCondition = buildCommunitySubmissionScope('sub', scope, accessParams);
+      const accessRows = await executeQuery<{ id: string }>(
+        `SELECT sub.id
+         FROM submissions sub
+         WHERE sub.id = $1${scopeCondition ? ` AND ${scopeCondition}` : ''}`,
+        accessParams,
+      );
+
+      if (accessRows.length === 0) {
+        return NextResponse.json({ error: 'Submission not found' }, { status: 404 });
+      }
+    }
+
     // Save reviewer notes before advancing
     if (notes) {
       await executeQuery(
@@ -308,13 +467,23 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
       );
     }
 
-    // If approved, bump confidence score for the associated service
+    let approvedMessage = 'Record approved. Confidence score updated.';
+
+    // If approved, apply any pending service-verification payload and then
+    // bump confidence score for the associated live service.
     if (decision === 'approved') {
-      const serviceRows = await executeQuery<{ service_id: string }>(
-        `SELECT service_id FROM submissions WHERE id = $1 AND service_id IS NOT NULL`,
-        [id],
-      );
-      if (serviceRows.length > 0) {
+      const applied = await applyApprovedServiceVerification(id, authCtx.userId);
+      if (!applied.shouldUpdateConfidence) {
+        approvedMessage = 'Record approved. Live listing updated.';
+      }
+      const serviceId = applied.serviceId ?? (
+        await executeQuery<{ service_id: string }>(
+          `SELECT service_id FROM submissions WHERE id = $1 AND service_id IS NOT NULL`,
+          [id],
+        )
+      )[0]?.service_id;
+
+      if (serviceId && applied.shouldUpdateConfidence) {
         await executeQuery(
           `INSERT INTO confidence_scores (service_id, score, verification_confidence, eligibility_match, constraint_fit)
            VALUES ($1, 80, 80, 50, 50)
@@ -322,13 +491,13 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
            DO UPDATE SET verification_confidence = 80,
                          score = GREATEST(confidence_scores.score, 80),
                          computed_at = now()`,
-          [serviceRows[0].service_id],
+          [serviceId],
         );
       }
     }
 
     const messages: Record<string, string> = {
-      approved: 'Record approved. Confidence score updated.',
+      approved: approvedMessage,
       denied: 'Record denied. Change request notes saved for the host.',
       escalated: 'Record escalated for ORAN admin review.',
       returned: 'Record returned to submitter for revision.',

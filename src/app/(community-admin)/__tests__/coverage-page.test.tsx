@@ -30,22 +30,35 @@ import CoveragePage from '@/app/(community-admin)/coverage/page';
 function makeCoverageResponse(overrides: Record<string, unknown> = {}) {
   return {
     summary: {
-      pending: 4,
-      inReview: 2,
-      verified: 9,
-      rejected: 1,
+      submitted: 4,
+      underReview: 2,
+      pendingSecondApproval: 1,
+      approved: 9,
+      denied: 1,
       escalated: 1,
+      returned: 0,
+      withdrawn: 0,
       total: 17,
       stale: 3,
+      slaBreached: 1,
     },
     recentActivity: [
-      { date: '2026-02-01', verified: 3, rejected: 0, escalated: 1 },
-      { date: '2026-02-02', verified: 0, rejected: 2, escalated: 0 },
+      { date: '2026-02-01', approved: 3, denied: 0, escalated: 1 },
+      { date: '2026-02-02', approved: 0, denied: 2, escalated: 0 },
     ],
     topOrganizations: [
       { organization_id: 'org-1', organization_name: 'Helping Hands', pending_count: 3 },
       { organization_id: 'org-2', organization_name: 'Food Access', pending_count: 1 },
     ],
+    zone: {
+      id: 'zone-1',
+      name: 'Central Texas',
+      description: 'Austin metro community review zone.',
+      states: ['TX'],
+      counties: ['TX_Travis'],
+      hasGeometry: true,
+      hasExplicitScope: true,
+    },
     ...overrides,
   };
 }
@@ -74,7 +87,9 @@ describe('community admin coverage page', () => {
     expect(screen.getByText('Food Access')).toBeInTheDocument();
     expect(screen.getByText('3 pending')).toBeInTheDocument();
     expect(screen.getByText('1 pending')).toBeInTheDocument();
-    expect(screen.getByText('Coverage Zone Map')).toBeInTheDocument();
+    expect(screen.getAllByText('Central Texas').length).toBeGreaterThan(0);
+    expect(screen.getByText('Assigned Scope')).toBeInTheDocument();
+    expect(screen.getByText('Boundary')).toBeInTheDocument();
   });
 
   it('shows API errors and recovers via refresh retry', async () => {
@@ -88,13 +103,17 @@ describe('community admin coverage page', () => {
         json: async () =>
           makeCoverageResponse({
             summary: {
-              pending: 0,
-              inReview: 0,
-              verified: 5,
-              rejected: 0,
+              submitted: 0,
+              underReview: 0,
+              pendingSecondApproval: 0,
+              approved: 5,
+              denied: 0,
               escalated: 0,
+              returned: 0,
+              withdrawn: 0,
               total: 5,
               stale: 0,
+              slaBreached: 0,
             },
           }),
       });

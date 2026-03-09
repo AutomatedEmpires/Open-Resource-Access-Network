@@ -7,8 +7,6 @@
  * organization breakdown for the community admin's zone.
  * Wired to GET /api/community/coverage.
  *
- * Note: coverage_zones table does not exist yet (see AGENT_PROMPT_SQL.md).
- * When it ships, this page will show zone boundary + per-zone filters.
  */
 
 'use client';
@@ -24,6 +22,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormAlert } from '@/components/ui/form-alert';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 
 // ============================================================
@@ -57,11 +56,22 @@ interface TopOrg {
   pending_count: number;
 }
 
+interface ZoneContext {
+  id: string | null;
+  name: string | null;
+  description: string | null;
+  states: string[];
+  counties: string[];
+  hasGeometry: boolean;
+  hasExplicitScope: boolean;
+}
+
 interface CoverageData {
   summary: CoverageSummary;
   byType: Record<string, number>;
   recentActivity: ActivityDay[];
   topOrganizations: TopOrg[];
+  zone: ZoneContext;
 }
 
 // ============================================================
@@ -131,28 +141,33 @@ export default function CommunityAdminCoveragePage() {
 
   return (
     <ErrorBoundary>
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Globe2 className="h-6 w-6 text-action-base" aria-hidden="true" />
-            My Coverage Zone
-          </h1>
-          <p className="mt-1 text-sm text-gray-600">
-            Verification metrics and activity overview for your zone.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1"
-          onClick={() => void fetchCoverage()}
-          disabled={isLoading}
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Community Admin"
+        title="My Coverage Zone"
+        icon={<Globe2 className="h-6 w-6 text-action-base" aria-hidden="true" />}
+        subtitle="Verification metrics and activity overview for your zone."
+        badges={
+          <>
+            <PageHeaderBadge tone="trust">Zone-level review stewardship</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Trend signals guide queue prioritization</PageHeaderBadge>
+            <PageHeaderBadge>
+              {data?.zone.name ?? (data?.zone.hasExplicitScope ? 'Assigned community scope' : 'Fallback review scope')}
+            </PageHeaderBadge>
+          </>
+        }
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => void fetchCoverage()}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Error state */}
       {error && (
@@ -183,6 +198,64 @@ export default function CommunityAdminCoveragePage() {
 
       {data && (
         <>
+          <section className="mb-6 rounded-lg border border-gray-200 bg-white p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Assigned Scope</p>
+                <h2 className="mt-1 text-xl font-semibold text-gray-900">
+                  {data.zone.name ?? 'Community review coverage'}
+                </h2>
+                <p className="mt-1 max-w-2xl text-sm text-gray-500">
+                  {data.zone.description
+                    ?? (data.zone.hasExplicitScope
+                      ? 'Queue, coverage, and verification detail views are filtered to your assigned community scope.'
+                      : 'No explicit zone assignment is on file yet, so this dashboard is showing your current review workload and assignments.')}
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:w-full xl:max-w-md">
+                <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Boundary</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900">
+                    {data.zone.hasGeometry ? 'Configured' : 'Not mapped'}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">States</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900">{data.zone.states.length}</p>
+                </div>
+                <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Counties</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900">{data.zone.counties.length}</p>
+                </div>
+              </div>
+            </div>
+
+            {(data.zone.states.length > 0 || data.zone.counties.length > 0) && (
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">States in scope</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {data.zone.states.length > 0 ? data.zone.states.map((state) => (
+                      <span key={state} className="inline-flex items-center rounded-full bg-info-muted px-2.5 py-1 text-xs font-medium text-action-deep">
+                        {state}
+                      </span>
+                    )) : <span className="text-sm text-gray-400">No state constraints</span>}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">County priorities</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {data.zone.counties.length > 0 ? data.zone.counties.map((county) => (
+                      <span key={county} className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+                        {county.replace('_', ' / ')}
+                      </span>
+                    )) : <span className="text-sm text-gray-400">No county priorities</span>}
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+
           {/* Summary stats grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <StatCard
@@ -395,13 +468,27 @@ export default function CommunityAdminCoveragePage() {
             </section>
           )}
 
-          {/* Coverage zone placeholder */}
-          <section className="bg-white rounded-lg border border-dashed border-gray-300 p-8 text-center mt-6">
-            <Globe2 className="h-10 w-10 text-gray-300 mx-auto mb-3" aria-hidden="true" />
-            <p className="text-gray-500 font-medium">Coverage Zone Map</p>
-            <p className="text-sm text-gray-400 mt-1">
-              Zone boundary visualization will be available once coverage zone management is enabled.
-            </p>
+          <section className="mt-6 rounded-lg border border-gray-200 bg-white p-5">
+            <div className="flex items-center gap-2">
+              <Globe2 className="h-4 w-4 text-action-base" aria-hidden="true" />
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-900">Zone Routing Notes</h2>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Queue scoping</p>
+                <p className="mt-1 text-sm text-gray-600">
+                  Coverage metrics and queue links are filtered to your assigned community scope, with your active assignments always remaining visible.
+                </p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Boundary status</p>
+                <p className="mt-1 text-sm text-gray-600">
+                  {data.zone.hasGeometry
+                    ? 'A zone boundary is configured for this assignment and can be used by downstream routing workflows.'
+                    : 'No boundary geometry is stored for this assignment yet. State and assignment rules remain active.'}
+                </p>
+              </div>
+            </div>
           </section>
         </>
       )}

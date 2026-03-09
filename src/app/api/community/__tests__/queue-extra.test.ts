@@ -99,6 +99,7 @@ describe('community queue extra coverage', () => {
     expect(invalid.status).toBe(400);
 
     dbMocks.executeQuery
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ count: 2 }])
       .mockResolvedValueOnce([{ id: 'sub-1' }]);
     const listed = await GET(
@@ -107,9 +108,9 @@ describe('community queue extra coverage', () => {
       }),
     );
     expect(listed.status).toBe(200);
-    expect(dbMocks.executeQuery.mock.calls[0]?.[0]).toContain('sub.status =');
-    expect(dbMocks.executeQuery.mock.calls[0]?.[0]).toContain('sub.submission_type =');
-    expect(dbMocks.executeQuery.mock.calls[0]?.[0]).toContain('sub.assigned_to_user_id =');
+    expect(dbMocks.executeQuery.mock.calls[1]?.[0]).toContain('sub.status =');
+    expect(dbMocks.executeQuery.mock.calls[1]?.[0]).toContain('sub.submission_type =');
+    expect(dbMocks.executeQuery.mock.calls[1]?.[0]).toContain('sub.assigned_to_user_id =');
 
     dbMocks.executeQuery.mockRejectedValueOnce(new Error('list failed'));
     const failed = await GET(createRequest());

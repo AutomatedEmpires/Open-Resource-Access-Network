@@ -832,3 +832,31 @@ export async function bulkUpdateInstanceStatus(
 
   return results;
 }
+
+export async function deleteFormTemplate(
+  id: string,
+): Promise<{ deleted: boolean; reason?: string }> {
+  const countRows = await executeQuery<{ count: string }>(
+    `SELECT COUNT(*)::TEXT AS count FROM form_instances WHERE template_id = $1`,
+    [id],
+  );
+  const instanceCount = Number.parseInt(countRows[0]?.count ?? '0', 10);
+
+  if (instanceCount > 0) {
+    return {
+      deleted: false,
+      reason: `Template has ${instanceCount} instance${instanceCount === 1 ? '' : 's'}. Unpublish it instead or archive all instances first.`,
+    };
+  }
+
+  const result = await executeQuery<{ id: string }>(
+    `DELETE FROM form_templates WHERE id = $1 RETURNING id`,
+    [id],
+  );
+
+  if (result.length === 0) {
+    return { deleted: false, reason: 'Template not found' };
+  }
+
+  return { deleted: true };
+}

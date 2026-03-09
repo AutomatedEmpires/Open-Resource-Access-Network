@@ -5,7 +5,7 @@ import { requireMinRole } from '@/services/auth/guards';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { isDatabaseConfigured } from '@/services/db/postgres';
-import { getFormTemplateById, updateFormTemplate } from '@/services/forms/vault';
+import { getFormTemplateById, updateFormTemplate, deleteFormTemplate } from '@/services/forms/vault';
 import {
   FORM_RECIPIENT_ROLES,
   FORM_STORAGE_SCOPES,
@@ -139,6 +139,48 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({ template });
   } catch (error) {
     await captureException(error, { feature: 'api_forms_templates_update' });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest, ctx: RouteContext) {
+  if (!isDatabaseConfigured()) {
+    return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
+  }
+
+  const { id } = await ctx.params;
+  if (!z.string().uuid().safeParse(id).success) {
+    return NextResponse.json({ error: 'Invalid template ID' }, { status: 400 });
+  }
+
+  const ip = getIp(req);
+  const rl = checkRateLimit(`forms:templates:write:${ip}`, {
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
+  });
+  if (rl.exceeded) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+
+  const authCtx = await getAuthContext();
+  if (!authCtx) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+  if (!requireMinRole(authCtx, 'oran_admin')) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+  }
+
+  try {
+    const result = await deleteFormTemplate(id);
+    if (!result.deleted) {
+      return NextResponse.json({ error: result.reason }, { status: 409 });
+    }
+    return NextResponse.json({ deleted: true });
+  } catch (error) {
+    await captureException(error, { feature: 'api_forms_templates_delete' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

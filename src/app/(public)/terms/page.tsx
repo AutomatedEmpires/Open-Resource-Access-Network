@@ -61,7 +61,7 @@ export default function TermsPage() {
 
       {/* Table of contents */}
       <nav aria-label="Section navigation" className="mb-10 rounded-lg border border-gray-200 bg-gray-50 px-5 py-4">
-        <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400">Sections</p>
+        <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">Sections</p>
         <ol className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
           {TOC_ITEMS.map(([id, label]) => (
             <li key={id}>

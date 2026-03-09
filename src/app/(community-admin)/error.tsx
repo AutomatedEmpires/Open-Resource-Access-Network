@@ -41,7 +41,7 @@ export default function CommunityAdminError({
       </p>
 
       {error.digest && (
-        <p className="text-xs text-gray-400 mb-4">Error ID: {error.digest}</p>
+        <p className="text-xs text-gray-500 mb-4">Error ID: {error.digest}</p>
       )}
 
       <div className="flex gap-3">

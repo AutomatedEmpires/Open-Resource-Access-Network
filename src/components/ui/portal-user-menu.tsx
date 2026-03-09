@@ -76,7 +76,7 @@ export function PortalUserMenu() {
         aria-hidden="true"     /* decorative; name is in the sign-out aria-label */
       >
         <span
-          className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-blue-100 text-blue-700 text-xs font-bold select-none"
+          className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-teal-100 text-teal-700 text-xs font-bold select-none"
           title={displayName}
         >
           {initials}

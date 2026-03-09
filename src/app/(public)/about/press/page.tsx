@@ -196,7 +196,7 @@ export default function PressPage() {
                 <p className="font-medium text-gray-900">{label}</p>
                 <p className="text-sm text-gray-500">{description}</p>
               </div>
-              <span className="shrink-0 rounded-full border border-gray-100 bg-gray-50 px-3 py-1 text-xs text-gray-400">
+              <span className="shrink-0 rounded-full border border-gray-100 bg-gray-50 px-3 py-1 text-xs text-gray-500">
                 Coming soon
               </span>
             </div>

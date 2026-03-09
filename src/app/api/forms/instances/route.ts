@@ -13,6 +13,9 @@ import {
 import {
   FORM_RECIPIENT_ROLES,
   getVisibleFormTemplateAudiences,
+  deriveFormFieldDefinitions,
+  computeVisibleFields,
+  validateFormData,
 } from '@/domain/forms';
 import {
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -156,6 +159,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Validate formData against template field definitions
+    const fields = deriveFormFieldDefinitions(
+      template.schema_json ?? {},
+      template.ui_schema_json ?? {},
+    );
+    const visibleFields = computeVisibleFields(fields, parsed.data.formData);
+    const validationErrors = validateFormData(fields, parsed.data.formData, visibleFields);
+
     const instance = await createFormInstance({
       template,
       submittedByUserId: authCtx.userId,
@@ -170,7 +181,11 @@ export async function POST(req: NextRequest) {
       attachmentManifest: parsed.data.attachmentManifest,
     });
 
-    return NextResponse.json({ instance }, { status: 201 });
+    const hasWarnings = Object.keys(validationErrors).length > 0;
+    return NextResponse.json(
+      { instance, ...(hasWarnings ? { validationWarnings: validationErrors } : {}) },
+      { status: 201 },
+    );
   } catch (error) {
     await captureException(error, { feature: 'api_forms_instances_create' });
     const message = error instanceof Error ? error.message : 'Internal server error';

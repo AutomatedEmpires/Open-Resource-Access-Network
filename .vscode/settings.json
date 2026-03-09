@@ -43,5 +43,10 @@
 
   "tailwindCSS.experimental.classRegex": [
     ["cva\\(([^)]*)\\)", "[\\"'`]([^\\"'`]*).*?[\\"'`]"]
-  ]
+  ],
+
+  // SQL migration files use PostgreSQL dialect, not T-SQL.
+  // Disable MSSQL validation to avoid false-positive syntax errors on
+  // valid PostgreSQL constructs (IF NOT EXISTS, JSONB, UUID, TIMESTAMPTZ, etc.).
+  "mssql.pgsql.isEnabled": false
 }

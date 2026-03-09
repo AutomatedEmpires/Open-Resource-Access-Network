@@ -211,7 +211,7 @@ function SignInContent() {
         {/* Header */}
         <div className="px-8 pt-8 pb-2 text-center">
           <h1 className="text-xl font-bold text-gray-900">Welcome to ORAN</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-gray-700">
             How would you like to use ORAN?
           </p>
         </div>
@@ -244,7 +244,7 @@ function SignInContent() {
 
         {/* Dynamic content area */}
         <div className="px-8 pb-8 pt-4">
-          <p className="text-sm text-gray-600 text-center mb-5" data-testid="path-detail">
+          <p className="text-sm text-gray-700 text-center mb-5" data-testid="path-detail">
             {activePath.detail}
           </p>
 
@@ -299,7 +299,7 @@ function SignInContent() {
                   <div className="w-full border-t border-gray-200" />
                 </div>
                 <div className="relative flex justify-center text-xs">
-                  <span className="bg-white px-3 text-gray-400">or</span>
+                  <span className="bg-white px-3 text-gray-500">or</span>
                 </div>
               </div>
 
@@ -311,6 +311,20 @@ function SignInContent() {
                 <Mail className="h-5 w-5" aria-hidden="true" />
                 Sign in with Email
               </Button>
+
+              {/* Sign-up discoverability */}
+              <div className="mt-2 text-center border-t border-gray-100 pt-3">
+                <p className="text-sm text-gray-700">
+                  New to ORAN?{' '}
+                  <button
+                    type="button"
+                    onClick={() => { setShowEmailForm(true); setIsRegistering(true); }}
+                    className="font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-2 transition-colors"
+                  >
+                    Create a free account
+                  </button>
+                </p>
+              </div>
             </div>
           )}
 
@@ -435,7 +449,7 @@ function SignInContent() {
                     setFormError(null);
                     setFormSuccess(null);
                   }}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="text-gray-600 hover:text-gray-900 transition-colors"
                 >
                   Back to options
                 </button>
@@ -444,7 +458,7 @@ function SignInContent() {
           )}
 
           {!showEmailForm && (
-            <p className="mt-3 text-xs text-gray-400 text-center">
+            <p className="mt-3 text-xs text-gray-600 text-center">
               Secure sign-in. Your credentials are encrypted and never shared.
             </p>
           )}
@@ -454,7 +468,7 @@ function SignInContent() {
             <div className="mt-5 text-center border-t border-gray-100 pt-4">
               <Link
                 href={effectiveCallback}
-                className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors"
+                className="inline-flex items-center gap-1 text-sm text-gray-700 hover:text-gray-900 transition-colors"
               >
                 <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
                 Continue without signing in
@@ -465,7 +479,7 @@ function SignInContent() {
       </div>
 
       {/* Privacy note */}
-      <p className="mt-4 text-xs text-gray-400 text-center max-w-sm mx-auto">
+      <p className="mt-4 text-xs text-gray-600 text-center max-w-sm mx-auto">
         By signing in, you agree to ORAN collecting your name, email, and
         location data to deliver and improve our services.
         See our <Link href="/privacy" className="underline hover:text-gray-600">Privacy Policy</Link> for

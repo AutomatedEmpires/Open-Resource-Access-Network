@@ -553,6 +553,14 @@ function diversifyServices(
     organizationCounts.set(organizationId, organizationCount + 1);
   }
 
+  for (const service of deferred) {
+    if (firstPass.length >= maxServices || firstPass.some((candidate) => candidate.service.id === service.service.id)) {
+      continue;
+    }
+
+    firstPass.push(service);
+  }
+
   const baseline = services.slice(0, maxServices).map((service) => service.service.id);
   const diversifiedIds = firstPass.map((service) => service.service.id);
 

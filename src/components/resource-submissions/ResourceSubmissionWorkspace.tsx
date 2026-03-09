@@ -24,6 +24,7 @@ import { FormSection } from '@/components/ui/form-section';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/toast';
 import { CategoryPicker } from '@/components/ui/category-picker';
+import { CoTagSuggestionPanel } from '@/components/resource-submissions/CoTagSuggestionPanel';
 import { PhoneEditor, type PhoneEntry } from '@/components/ui/phone-editor';
 import { ScheduleEditor, type WeekSchedule } from '@/components/ui/schedule-editor';
 import type { FormInstance } from '@/domain/forms';
@@ -945,6 +946,20 @@ export function ResourceSubmissionWorkspace({
                     onChange={(categories) => updateDraft((current) => ({ ...current, taxonomy: { ...current.taxonomy, categories } }))}
                     className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
                   />
+                  {draft.taxonomy.categories.length > 0 && (
+                    <CoTagSuggestionPanel
+                      selectedCategories={draft.taxonomy.categories}
+                      customTerms={draft.taxonomy.customTerms}
+                      onAddTag={(updatedTerms) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          taxonomy: { ...current.taxonomy, customTerms: updatedTerms },
+                        }))
+                      }
+                      readOnly={!canEdit}
+                      className="mt-4"
+                    />
+                  )}
                   <div className="mt-4">
                     <ArrayChipsEditor
                       label="Custom taxonomy terms"
@@ -962,13 +977,57 @@ export function ResourceSubmissionWorkspace({
                   title="Access and eligibility"
                   description="Spell out who can use the resource, where it applies, and what a person may need before arriving."
                 >
-                  <ArrayChipsEditor
-                    label="Service areas"
-                    values={draft.access.serviceAreas}
-                    onChange={(serviceAreas) => updateDraft((current) => ({ ...current, access: { ...current.access, serviceAreas } }))}
-                    placeholder="County, city, ZIP, statewide…"
-                    readOnly={!canEdit}
-                  />
+                  <div>
+                    <ArrayChipsEditor
+                      label="Service areas"
+                      values={draft.access.serviceAreas}
+                      onChange={(serviceAreas) => updateDraft((current) => ({ ...current, access: { ...current.access, serviceAreas } }))}
+                      placeholder="County, city, ZIP, statewide…"
+                      readOnly={!canEdit}
+                    />
+                    {!canEdit ? null : (
+                      <div className="mt-2">
+                        <p className="mb-1.5 text-xs text-slate-500">
+                          Quick-add scope · or type a ZIP code, city, or county name above
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(['Statewide', 'Countywide', 'Online only', 'National', 'Virtual/Telehealth'] as const).map((scope) => {
+                            const alreadyAdded = draft.access.serviceAreas.includes(scope);
+                            return (
+                              <button
+                                key={scope}
+                                type="button"
+                                disabled={alreadyAdded}
+                                onClick={() => {
+                                  if (!alreadyAdded) {
+                                    updateDraft((current) => ({
+                                      ...current,
+                                      access: {
+                                        ...current.access,
+                                        serviceAreas: [...current.access.serviceAreas, scope],
+                                      },
+                                    }));
+                                  }
+                                }}
+                                className={[
+                                  'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium border transition-all',
+                                  alreadyAdded
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 cursor-default'
+                                    : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700',
+                                ].join(' ')}
+                                aria-pressed={alreadyAdded}
+                              >
+                                {alreadyAdded ? '✓ ' : '+ '}{scope}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="mt-2 text-xs text-slate-400">
+                          Examples: <span className="font-mono">94102</span> (ZIP) · <span className="font-mono">San Francisco</span> (city) · <span className="font-mono">Alameda County</span> (county)
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <FormField id="resource-eligibility-description" label="Eligibility and access notes" required>

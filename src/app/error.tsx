@@ -56,7 +56,7 @@ export default function Error({
       </p>
 
       {error.digest && (
-        <p className="text-xs text-gray-400 mb-4">
+        <p className="text-xs text-gray-500 mb-4">
           Error ID: {error.digest}
         </p>
       )}

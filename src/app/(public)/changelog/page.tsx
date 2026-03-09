@@ -152,7 +152,7 @@ export default function ChangelogPage() {
                 >
                   v{release.version}
                 </span>
-                <span className="text-sm text-gray-400">{release.date}</span>
+                <span className="text-sm text-gray-600">{release.date}</span>
               </div>
 
               {/* Summary */}

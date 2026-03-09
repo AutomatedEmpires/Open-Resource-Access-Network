@@ -22,7 +22,7 @@ export interface AccessDeniedProps {
 
 export function AccessDenied({ portalName, requiredRole }: AccessDeniedProps) {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-orange-50 via-rose-50 to-emerald-50 px-4">
       <div className="max-w-md w-full text-center" role="main">
         {/* Lock icon */}
         <div
@@ -45,16 +45,16 @@ export function AccessDenied({ portalName, requiredRole }: AccessDeniedProps) {
           </svg>
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
+        <h1 className="mb-2 text-2xl font-bold text-stone-900">Access Denied</h1>
 
-        <p className="text-gray-600 mb-1">
+        <p className="mb-1 text-stone-600">
           You don&apos;t have permission to access the{' '}
           <strong>{portalName}</strong>.
         </p>
 
-        <p className="text-sm text-gray-500 mb-8">
+        <p className="mb-8 text-sm text-stone-500">
           This area requires the{' '}
-          <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">{requiredRole}</code>{' '}
+          <code className="rounded bg-orange-100 px-1 py-0.5 text-xs text-stone-700">{requiredRole}</code>{' '}
           role or higher. Contact your administrator if you believe this is an
           error.
         </p>
@@ -62,14 +62,14 @@ export function AccessDenied({ portalName, requiredRole }: AccessDeniedProps) {
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Link
             href="/"
-            className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="inline-flex items-center justify-center rounded-full bg-orange-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2"
           >
             Go to Home
           </Link>
 
           <Link
             href="/api/auth/signout"
-            className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="inline-flex items-center justify-center rounded-full border border-orange-100 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2"
           >
             Sign Out
           </Link>

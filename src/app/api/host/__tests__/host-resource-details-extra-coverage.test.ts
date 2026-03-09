@@ -432,24 +432,35 @@ describe('host location detail extra coverage', () => {
     const deleteUnauthorized = await DELETE(createRequest(), createRouteContext(LOC_ID));
     expect(deleteUnauthorized.status).toBe(401);
 
-    dbMocks.executeQuery
-      .mockResolvedValueOnce([{ id: LOC_ID, organization_id: ORG_ID }])
-      .mockRejectedValueOnce(new Error('column "status" of relation "locations" does not exist'))
-      .mockResolvedValueOnce([{ id: LOC_ID }]);
+    dbMocks.executeQuery.mockResolvedValueOnce([{ id: LOC_ID, organization_id: ORG_ID }]);
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
+      const client = {
+        query: vi
+          .fn()
+          .mockRejectedValueOnce(new Error('column "status" of relation "locations" does not exist'))
+          .mockResolvedValueOnce({ rows: [{ id: LOC_ID }] }),
+      };
+      return callback(client);
+    });
     const fallbackDeleted = await DELETE(createRequest(), createRouteContext(LOC_ID));
     expect(fallbackDeleted.status).toBe(200);
     await expect(fallbackDeleted.json()).resolves.toEqual({ deleted: true, id: LOC_ID });
 
-    dbMocks.executeQuery
-      .mockResolvedValueOnce([{ id: LOC_ID, organization_id: ORG_ID }])
-      .mockRejectedValueOnce(new Error('column "status" of relation "locations" does not exist'))
-      .mockResolvedValueOnce([]);
+    dbMocks.executeQuery.mockResolvedValueOnce([{ id: LOC_ID, organization_id: ORG_ID }]);
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
+      const client = {
+        query: vi
+          .fn()
+          .mockRejectedValueOnce(new Error('column "status" of relation "locations" does not exist'))
+          .mockResolvedValueOnce({ rows: [] }),
+      };
+      return callback(client);
+    });
     const fallbackMissing = await DELETE(createRequest(), createRouteContext(LOC_ID));
     expect(fallbackMissing.status).toBe(404);
 
-    dbMocks.executeQuery
-      .mockResolvedValueOnce([{ id: LOC_ID, organization_id: ORG_ID }])
-      .mockRejectedValueOnce(new Error('unexpected db error'));
+    dbMocks.executeQuery.mockResolvedValueOnce([{ id: LOC_ID, organization_id: ORG_ID }]);
+    dbMocks.withTransaction.mockRejectedValueOnce(new Error('unexpected db error'));
     const failedDelete = await DELETE(createRequest(), createRouteContext(LOC_ID));
     expect(failedDelete.status).toBe(500);
     expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(Error), {

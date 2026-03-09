@@ -217,11 +217,11 @@ const ACCENT_THEME_OPTIONS: Array<{
   progressClass: string;
   textClass: string;
 }> = [
-  { id: 'ocean', label: 'Ocean', previewClass: 'bg-cyan-500', cardClass: 'border-cyan-100 bg-gradient-to-r from-cyan-50 to-blue-50', progressClass: 'bg-cyan-500', textClass: 'text-cyan-900' },
+  { id: 'ocean', label: 'Petal', previewClass: 'bg-rose-400', cardClass: 'border-rose-100 bg-gradient-to-r from-rose-50 to-orange-50', progressClass: 'bg-rose-400', textClass: 'text-rose-900' },
   { id: 'blossom', label: 'Blossom', previewClass: 'bg-pink-500', cardClass: 'border-pink-100 bg-gradient-to-r from-pink-50 to-rose-50', progressClass: 'bg-pink-500', textClass: 'text-pink-900' },
-  { id: 'forest', label: 'Forest', previewClass: 'bg-emerald-600', cardClass: 'border-emerald-100 bg-gradient-to-r from-emerald-50 to-lime-50', progressClass: 'bg-emerald-600', textClass: 'text-emerald-900' },
-  { id: 'sunset', label: 'Sunset', previewClass: 'bg-orange-500', cardClass: 'border-orange-100 bg-gradient-to-r from-orange-50 to-amber-50', progressClass: 'bg-orange-500', textClass: 'text-orange-900' },
-  { id: 'midnight', label: 'Midnight', previewClass: 'bg-slate-700', cardClass: 'border-slate-200 bg-gradient-to-r from-slate-50 to-indigo-50', progressClass: 'bg-slate-700', textClass: 'text-slate-900' },
+  { id: 'forest', label: 'Meadow', previewClass: 'bg-emerald-500', cardClass: 'border-emerald-100 bg-gradient-to-r from-emerald-50 to-lime-50', progressClass: 'bg-emerald-500', textClass: 'text-emerald-900' },
+  { id: 'sunset', label: 'Sunrise', previewClass: 'bg-orange-400', cardClass: 'border-orange-100 bg-gradient-to-r from-orange-50 to-amber-50', progressClass: 'bg-orange-400', textClass: 'text-orange-900' },
+  { id: 'midnight', label: 'Hearth', previewClass: 'bg-amber-500', cardClass: 'border-amber-100 bg-gradient-to-r from-amber-50 to-rose-50', progressClass: 'bg-amber-500', textClass: 'text-amber-900' },
 ];
 
 const AUTH_PROVIDER_LABELS: Record<string, string> = {
@@ -318,13 +318,13 @@ function CollapsibleSection({ id, title, subtitle, icon, accentColor, badge, isO
 
   return (
     <FormSection
-      className="overflow-hidden p-0 hover:shadow-md transition-shadow"
-      contentClassName="border-t border-gray-100 px-5 pb-5 pt-4"
+      className="overflow-hidden border border-orange-100/80 bg-white/90 p-0 shadow-sm transition-shadow hover:shadow-md"
+      contentClassName="border-t border-orange-100 px-5 pb-5 pt-4"
       header={
         <button
           type="button"
           onClick={onToggle}
-          className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-gray-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="w-full flex items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-orange-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
           aria-expanded={isOpen}
           aria-controls={`section-${id}-body`}
         >
@@ -333,17 +333,17 @@ function CollapsibleSection({ id, title, subtitle, icon, accentColor, badge, isO
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span id={headingId} className="font-semibold text-gray-900 text-sm">{title}</span>
+              <span id={headingId} className="font-semibold text-stone-900 text-sm">{title}</span>
               {badge && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                <span className="inline-flex items-center gap-1 rounded-full border border-rose-100 bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700">
                   <Sparkles className="h-3 w-3" aria-hidden="true" />
                   {badge}
                 </span>
               )}
             </div>
-            {subtitle && <p id={subtitleId} className="text-xs text-gray-500 mt-0.5 truncate">{subtitle}</p>}
+            {subtitle && <p id={subtitleId} className="mt-0.5 truncate text-xs text-stone-500">{subtitle}</p>}
           </div>
-          <div className="flex-none text-gray-400">
+          <div className="flex-none text-stone-400">
             {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </div>
         </button>
@@ -365,11 +365,11 @@ interface PillButtonProps {
 }
 
 function PillButton({ label, icon, selected, onToggle, colorClass }: PillButtonProps) {
-  const base = 'inline-flex items-center gap-1.5 px-3 py-2 rounded-full border text-sm font-medium cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-[44px]';
+  const base = 'inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400';
   const active = colorClass
     ? `${colorClass} border-current shadow-sm`
-    : 'bg-blue-600 text-white border-blue-600 shadow-sm';
-  const inactive = 'bg-white text-gray-700 border-gray-200 hover:border-gray-300 hover:bg-gray-50';
+    : 'border-orange-500 bg-orange-500 text-white shadow-sm';
+  const inactive = 'border-orange-100 bg-white text-stone-700 hover:border-orange-200 hover:bg-orange-50';
 
   return (
     <button
@@ -402,10 +402,10 @@ function RadioPillGroup({ options, selected, onChange, name }: RadioPillGroupPro
           role="radio"
           aria-checked={selected === opt.id}
           onClick={() => onChange(selected === opt.id ? '' : opt.id)}
-          className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-full border text-sm font-medium cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-[44px] ${
+          className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 ${
             selected === opt.id
-              ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-              : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+              ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+              : 'border-orange-100 bg-white text-stone-700 hover:border-orange-200 hover:bg-orange-50'
           }`}
         >
           {selected === opt.id && <CheckCircle className="h-3.5 w-3.5" aria-hidden="true" />}
@@ -499,13 +499,13 @@ function NotificationPreferencesSection() {
               <div className="flex justify-center w-14">
                 <input type="checkbox" checked={isEnabled(et, 'in_app')}
                   onChange={e => void toggle(et, 'in_app', e.target.checked)} disabled={isSaving}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-orange-200 text-orange-500 focus:ring-orange-400"
                   aria-label={`${EVENT_TYPE_LABELS[et]} in-app notifications`} />
               </div>
               <div className="flex justify-center w-14">
                 <input type="checkbox" checked={isEnabled(et, 'email')}
                   onChange={e => void toggle(et, 'email', e.target.checked)} disabled={isSaving}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-orange-200 text-orange-500 focus:ring-orange-400"
                   aria-label={`${EVENT_TYPE_LABELS[et]} email notifications`} />
               </div>
             </div>
@@ -880,7 +880,9 @@ export default function ProfilePage() {
   // RENDER
   // ============================================================
   return (
-    <main className="container mx-auto max-w-2xl px-4 py-8">
+    <main className="min-h-screen bg-gradient-to-b from-orange-50 via-rose-50 to-emerald-50">
+      <div className="container mx-auto max-w-4xl px-4 py-6 md:py-8">
+      <section className="rounded-[30px] border border-orange-100/80 bg-white/90 p-5 shadow-[0_24px_80px_rgba(234,88,12,0.10)] backdrop-blur md:p-8">
       <PageHeader
         eyebrow="Private seeker profile"
         title="Profile"
@@ -939,19 +941,19 @@ export default function ProfilePage() {
 
           {/* ── Anonymous value-proposition banner (H6 + L1) ─── */}
           {!isAuthenticated && (
-            <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
+            <div className="rounded-xl border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50 px-4 py-3 text-sm text-rose-900">
               <div className="flex items-start gap-2 mb-2">
-                <Info className="h-4 w-4 text-blue-500 flex-none mt-0.5" aria-hidden="true" />
+                <Info className="mt-0.5 h-4 w-4 flex-none text-rose-500" aria-hidden="true" />
                 <p className="font-medium">Your profile is saved on this device only</p>
               </div>
-              <p className="text-xs text-blue-700 mb-2">
+              <p className="mb-2 text-xs text-rose-700">
                 Preferences marked <strong>&ldquo;AI uses this&rdquo;</strong> improve chat and search results right away
                 — no account needed. Signing in lets ORAN sync your profile across devices, remember your saved
                 services, and unlock future features like alerts and history.
               </p>
               <Link
                 href="/api/auth/signin"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-orange-600"
               >
                 Sign in to sync across devices
               </Link>
@@ -967,15 +969,15 @@ export default function ProfilePage() {
                 </div>
                 <div>
                 <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                  <Sparkles className="h-4 w-4 text-orange-500" aria-hidden="true" />
                   <span className={`font-semibold text-sm ${selectedTheme.textClass}`}>AI Match Strength</span>
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                     strengthPct < 34 ? 'bg-orange-100 text-orange-700' :
                     strengthPct < 67 ? 'bg-yellow-100 text-yellow-700' :
-                    strengthPct < 100 ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                    strengthPct < 100 ? 'bg-rose-100 text-rose-700' : 'bg-green-100 text-green-700'
                   }`}>{strength.label}</span>
                 </div>
-                <p className="text-xs text-blue-700 mt-1">
+                <p className="mt-1 text-xs text-stone-600">
                   {strengthPct < 100
                     ? `Complete ${strength.max - strength.score} more section${strength.max - strength.score === 1 ? '' : 's'} to improve AI matching`
                     : 'Your profile is fully set up for AI-powered recommendations!'}
@@ -1160,7 +1162,7 @@ export default function ProfilePage() {
                   value={account.displayName}
                   onChange={e => setAccount(prev => ({ ...prev, displayName: e.target.value }))}
                   placeholder="What should ORAN call you?"
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  className="w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
                 />
               </FormField>
 
@@ -1426,7 +1428,7 @@ export default function ProfilePage() {
                     value={seeker.contactPhone}
                     onChange={e => updateSeeker('contactPhone', e.target.value)}
                     placeholder="(555) 123-4567"
-                    className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="flex-1 rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
                   />
                 </div>
               </FormField>
@@ -1440,7 +1442,7 @@ export default function ProfilePage() {
                     value={seeker.contactEmail}
                     onChange={e => updateSeeker('contactEmail', e.target.value)}
                     placeholder="you@example.com"
-                    className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="flex-1 rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
                   />
                 </div>
               </FormField>
@@ -1513,8 +1515,8 @@ export default function ProfilePage() {
                     aria-pressed={seeker.accentTheme === theme.id}
                     className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm min-h-[44px] transition-colors ${
                       seeker.accentTheme === theme.id
-                        ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
-                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                        ? 'border-orange-300 bg-orange-50 text-orange-700 font-medium'
+                        : 'border-orange-100 bg-white text-stone-700 hover:bg-orange-50'
                     }`}
                   >
                     <span className={`h-3 w-3 rounded-full ${theme.previewClass}`} aria-hidden="true" />
@@ -1529,7 +1531,7 @@ export default function ProfilePage() {
                 onClick={() => toggleTheme(false)}
                 aria-pressed={!isDark}
                 className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm min-h-[44px] transition-colors ${
-                  !isDark ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                  !isDark ? 'border-orange-300 bg-orange-50 text-orange-700 font-medium' : 'border-orange-100 bg-white text-stone-700 hover:bg-orange-50'
                 }`}
               >
                 <Sun className="h-4 w-4" aria-hidden="true" /> Light
@@ -1539,7 +1541,7 @@ export default function ProfilePage() {
                 onClick={() => toggleTheme(true)}
                 aria-pressed={isDark}
                 className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm min-h-[44px] transition-colors ${
-                  isDark ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                  isDark ? 'border-orange-300 bg-orange-50 text-orange-700 font-medium' : 'border-orange-100 bg-white text-stone-700 hover:bg-orange-50'
                 }`}
               >
                 <Moon className="h-4 w-4" aria-hidden="true" /> Dark
@@ -1573,7 +1575,7 @@ export default function ProfilePage() {
                       value={account.phone}
                       onChange={e => setAccount(prev => ({ ...prev, phone: e.target.value }))}
                       placeholder="Optional account phone"
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                      className="w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
                     />
                   </FormField>
                 </div>
@@ -1598,7 +1600,7 @@ export default function ProfilePage() {
                           autoComplete="current-password"
                           value={currentPassword}
                           onChange={e => setCurrentPassword(e.target.value)}
-                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                          className="w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
                         />
                       </FormField>
                       <FormField label="New password" htmlFor="new-password">
@@ -1608,7 +1610,7 @@ export default function ProfilePage() {
                           autoComplete="new-password"
                           value={newPassword}
                           onChange={e => setNewPassword(e.target.value)}
-                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                          className="w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
                         />
                       </FormField>
                     </div>
@@ -1619,7 +1621,7 @@ export default function ProfilePage() {
                         autoComplete="new-password"
                         value={confirmPassword}
                         onChange={e => setConfirmPassword(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                        className="w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
                       />
                     </FormField>
                     <Button type="button" size="sm" onClick={() => void updatePassword()} disabled={isUpdatingPassword}>
@@ -1681,7 +1683,7 @@ export default function ProfilePage() {
                       type="checkbox"
                       checked={prefs.serverSyncEnabled === true}
                       onChange={(event) => void toggleServerSync(event.target.checked)}
-                      className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      className="mt-0.5 rounded border-orange-200 text-orange-500 focus:ring-orange-400"
                       aria-label="Save my preferences to improve future results across devices"
                     />
                     <span className="space-y-1">
@@ -1743,7 +1745,7 @@ export default function ProfilePage() {
                     <button
                       type="button"
                       onClick={() => void exportData()}
-                      className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-700 hover:bg-blue-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      className="flex items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-4 py-2.5 text-sm font-medium text-orange-700 transition-colors hover:bg-orange-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
                     >
                       Export my data
                     </button>
@@ -1765,6 +1767,8 @@ export default function ProfilePage() {
 
         </div>
       </ErrorBoundary>
+      </section>
+      </div>
     </main>
   );
 }

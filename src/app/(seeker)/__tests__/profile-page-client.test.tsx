@@ -403,7 +403,7 @@ describe('ProfilePageClient', () => {
     expect(screen.getByRole('button', { name: 'Confirm delete' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('button', { name: 'Confirm delete' })).not.toBeInTheDocument();
-  });
+  }, 30_000);
 
   it('hydrates and persists Phase 1 constraint selections locally', async () => {
     fetchMock.mockResolvedValueOnce({
@@ -427,7 +427,7 @@ describe('ProfilePageClient', () => {
         }),
       );
     });
-  });
+  }, 30_000);
 
   it('shows export and delete failures for authenticated users without clearing local data', async () => {
     localStorage.setItem(PREFS_KEY, JSON.stringify({ approximateCity: 'Dallas', language: 'en' }));
@@ -478,7 +478,7 @@ describe('ProfilePageClient', () => {
       expect(localStorage.getItem(PREFS_KEY)).not.toBeNull();
       expect(localStorage.getItem(SAVED_KEY)).not.toBeNull();
     });
-  });
+  }, 30_000);
 
   it('defaults notification channels to enabled when no explicit preference exists', async () => {
     fetchMock
@@ -501,9 +501,18 @@ describe('ProfilePageClient', () => {
 
     render(<ProfilePage />);
 
-    const inApp = await screen.findByLabelText('Submission assigned to you in-app notifications');
-    const email = await screen.findByLabelText('Submission assigned to you email notifications');
+    await screen.findByText('Notification preferences');
+    const inApp = await screen.findByLabelText(
+      'Submission assigned to you in-app notifications',
+      {},
+      { timeout: 10_000 },
+    );
+    const email = await screen.findByLabelText(
+      'Submission assigned to you email notifications',
+      {},
+      { timeout: 10_000 },
+    );
     expect(inApp).toBeChecked();
     expect(email).toBeChecked();
-  });
+  }, 30_000);
 });

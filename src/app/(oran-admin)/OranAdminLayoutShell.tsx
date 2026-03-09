@@ -70,8 +70,8 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
                   href={href}
                   className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                     isActive(href)
-                      ? 'bg-gray-100 text-gray-900'
-                      : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                      ? 'bg-teal-50 text-teal-800'
+                      : 'text-stone-500 hover:text-stone-900 hover:bg-stone-50'
                   }`}
                   aria-current={isActive(href) ? 'page' : undefined}
                 >

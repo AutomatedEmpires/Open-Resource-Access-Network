@@ -4,8 +4,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fffcf9;
+  --foreground: #1c1412;
 
   /* Z-Index scale — named layers to prevent ad-hoc stacking conflicts */
   --z-skip-link: 100;
@@ -17,12 +17,12 @@
   --z-elevated: 20;
 
   /* Semantic color tokens — light mode defaults */
-  --bg-page: #f9fafb;
-  --bg-surface: #ffffff;
-  --border: #e5e7eb;
-  --text-primary: #111827;
-  --text-secondary: #4b5563;
-  --text-muted: #6b7280;
+  --bg-page: #fff8f2;
+  --bg-surface: #fffdf9;
+  --border: #f1e3d4;
+  --text-primary: #2f241d;
+  --text-secondary: #6a5a4d;
+  --text-muted: #8a7768;
 
   /* Motion tokens — zero-out under prefers-reduced-motion */
   --transition-fast:     150ms ease;
@@ -40,20 +40,20 @@
 
 /* Dark mode token overrides — applied when .dark is on <html> */
 .dark {
-  --background: #0f172a;
-  --foreground: #f1f5f9;
-  --bg-page: #0f172a;
-  --bg-surface: #1e293b;
-  --border: #334155;
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --background: #130f0b;
+  --foreground: #fef7f0;
+  --bg-page: #130f0b;
+  --bg-surface: #221711;
+  --border: #3d2d22;
+  --text-primary: #fef7f0;
+  --text-secondary: #c4a08c;
+  --text-muted: #8c6050;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-ring: #2563eb;
+  --color-ring: #f97316;
 
   /* ── Semantic status colour tokens ───────────────────────────────────────
    * Use these instead of raw Tailwind palette classes (bg-red-50, bg-blue-600).
@@ -71,17 +71,17 @@
   --color-error-strong:  #b91c1c;   /* = red-700 — delete/danger action bg    */
   --color-error-deep:    #991b1b;   /* = red-800 — dark error / hover bg      */
 
-  /* Info / primary / action (blue scale) */
-  --color-info-subtle:   #eff6ff;   /* = blue-50  — active nav, info bg       */
-  --color-info-muted:    #dbeafe;   /* = blue-100 — count badge, info muted   */
-  --color-action:        #3b82f6;   /* = blue-500 — bright accent             */
-  --color-action-base:   #2563eb;   /* = blue-600 — primary action, nav       */
-  --color-action-strong: #1d4ed8;   /* = blue-700 — hover / dark action       */
-  --color-action-soft:   #bfdbfe;   /* = blue-200 — action borders, outlines  */
-  --color-action-pale:   #93c5fd;   /* = blue-300 — pale action border        */
-  --color-action-mid:    #60a5fa;   /* = blue-400 — mid action accent         */
-  --color-action-deep:   #1e40af;   /* = blue-800 — dark action emphasis text */
-  --color-action-max:    #1e3a8a;   /* = blue-900 — deepest action / pressed  */
+  /* Info / primary / action (warm coral scale) */
+  --color-info-subtle:   #fff7ed;   /* = orange-50 — active nav, info bg      */
+  --color-info-muted:    #ffedd5;   /* = orange-100 — count badge, info muted */
+  --color-action:        #fb923c;   /* = orange-400 — bright accent           */
+  --color-action-base:   #f97316;   /* = orange-500 — primary action          */
+  --color-action-strong: #ea580c;   /* = orange-600 — hover / dark action     */
+  --color-action-soft:   #fed7aa;   /* = orange-200 — action borders          */
+  --color-action-pale:   #fdba74;   /* = orange-300 — pale action border      */
+  --color-action-mid:    #fb923c;   /* = orange-400 — mid action accent       */
+  --color-action-deep:   #9a3412;   /* = orange-800 — dark action text        */
+  --color-action-max:    #7c2d12;   /* = orange-900 — deepest action          */
 
   /* --font-sans is injected as a CSS variable by next/font Inter (layout.tsx) */
   --font-sans: var(--font-sans, system-ui, Arial, Helvetica, sans-serif);
@@ -96,7 +96,7 @@ body {
 
 /* Ensure focus rings are always visible — WCAG 2.4.7 */
 :focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid #0d9488;
   outline-offset: 2px;
 }
 

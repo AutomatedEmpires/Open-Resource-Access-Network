@@ -885,29 +885,33 @@ export default function MapPage() {
   }, [hasSearchContext, resetResultsToEmpty, runSearch, selectedAttributes, selectedTaxonomyIds, taxonomyIdsParam]);
 
   return (
-    <main className="container mx-auto max-w-6xl px-4 py-4 md:py-8">
-      <PageHeader
-        eyebrow="Verified discovery"
-        title="Service Map"
-        subtitle={
-          <>
-            Search verified service locations. Prefer browsing?{' '}
-            <Link href={directoryHref} className="text-action-base hover:underline">Directory</Link>
-            {' '}or{' '}
-            <Link href={chatHref} className="text-action-base hover:underline">Chat</Link>.
-          </>
-        }
-        badges={(
-          <>
-            <PageHeaderBadge tone="trust">Verified listings only</PageHeaderBadge>
-            <PageHeaderBadge tone="accent">{deviceCenter ? 'Approximate location active' : 'Location optional'}</PageHeaderBadge>
-            <PageHeaderBadge>{activeCategory ? 'Category view active' : 'Map and list stay in sync'}</PageHeaderBadge>
-            <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync to your account' : 'Saves stay on this device'}</PageHeaderBadge>
-          </>
-        )}
-      />
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(191,219,254,0.42),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(167,243,208,0.2),_transparent_24%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fb_55%,_#eef4f7_100%)]">
+      <div className="container mx-auto max-w-7xl px-4 pt-4 pb-8 md:py-8">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+          <section className="rounded-[30px] border border-white/70 bg-white/85 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+            <PageHeader
+              eyebrow="Verified discovery"
+              title="Service Map"
+              subtitle={
+                <>
+                  Search verified service locations. Prefer browsing?{' '}
+                  <Link href={directoryHref} className="font-medium text-action-base hover:underline">Directory</Link>
+                  {' '}or{' '}
+                  <Link href={chatHref} className="font-medium text-action-base hover:underline">Chat</Link>.
+                </>
+              }
+              badges={(
+                <>
+                  <PageHeaderBadge tone="trust">Verified listings only</PageHeaderBadge>
+                  <PageHeaderBadge tone="accent">{deviceCenter ? 'Approximate location active' : 'Location optional'}</PageHeaderBadge>
+                  <PageHeaderBadge>{activeCategory ? 'Category view active' : 'Map and list stay in sync'}</PageHeaderBadge>
+                  <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync to your account' : 'Saves stay on this device'}</PageHeaderBadge>
+                </>
+              )}
+            />
 
-      <ErrorBoundary>
+            <ErrorBoundary>
+              <div className="rounded-[24px] border border-orange-100/90 bg-gradient-to-b from-white to-orange-50/60 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-5">
         {/* Search bar */}
         <FormSection
           title="Search the map"
@@ -917,7 +921,7 @@ export default function MapPage() {
           <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end">
             <FormField id="map-search" label="Search services to plot" className="flex-1 basis-64">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" aria-hidden="true" />
                 <input
                   ref={searchInputRef}
                   id="map-search"
@@ -930,14 +934,14 @@ export default function MapPage() {
                   }}
                   type="search"
                   placeholder="Search for services (e.g., food bank, shelter)"
-                  className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                  className="min-h-[44px] w-full rounded-xl border border-orange-200 bg-white py-2 pl-9 pr-8 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
                   aria-label="Search services to plot"
                 />
                 {query && (
                   <button
                     type="button"
                     onClick={handleClearSearch}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-action"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-stone-400 hover:text-stone-600 focus:outline-none focus:ring-2 focus:ring-action"
                     aria-label="Clear search"
                   >
                     <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -982,11 +986,11 @@ export default function MapPage() {
         />
 
         {/* Service attribute dimension filters (delivery, cost, access) */}
-        <div className="mb-3">
+        <div className="mb-3 rounded-[20px] border border-orange-100 bg-white/80 p-4 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
           <button
             type="button"
             onClick={() => setAttributeSectionOpen((v) => !v)}
-            className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 mb-2"
+            className="mb-2 flex items-center gap-1 text-xs font-medium text-stone-500 hover:text-stone-700"
             aria-expanded={attributeSectionOpen || hasActiveAttributes}
           >
             Service type filters
@@ -1011,7 +1015,7 @@ export default function MapPage() {
                 const activeTags = selectedAttributes[dim] ?? [];
                 return (
                   <div key={dim} className="flex flex-wrap items-center gap-2" role="group" aria-label={def.name}>
-                    <span className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">{def.name}:</span>
+                    <span className="w-20 flex-shrink-0 text-xs font-medium text-stone-500">{def.name}:</span>
                     {commonTags.map((t) => {
                       const isActive = activeTags.includes(t.tag);
                       return (
@@ -1021,8 +1025,8 @@ export default function MapPage() {
                           onClick={() => toggleAttribute(dim, t.tag)}
                           className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
                             isActive
-                              ? 'bg-action-base text-white'
-                              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                                ? 'bg-action-base text-white shadow-sm'
+                                : 'border border-orange-200 bg-white text-stone-700 hover:bg-orange-50'
                           }`}
                           aria-pressed={isActive}
                           title={t.description}
@@ -1038,7 +1042,7 @@ export default function MapPage() {
                 <button
                   type="button"
                   onClick={clearAttributes}
-                  className="text-xs text-action-strong hover:underline"
+                  className="text-xs font-medium text-action-strong hover:underline"
                 >
                   Clear service type filters
                 </button>
@@ -1051,7 +1055,7 @@ export default function MapPage() {
         <FormSection
           title="Trust and sort"
           description="Change the confidence threshold or list order without resetting the active map view."
-          className="mb-3"
+          className="mb-3 rounded-[20px] border border-orange-100 bg-white/80 p-4 shadow-[0_10px_30px_rgba(234,88,12,0.04)]"
         >
           <div className="flex flex-wrap items-end gap-3">
             <FormField id="map-confidence" label="Trust:" className="w-40 max-w-full">
@@ -1067,7 +1071,7 @@ export default function MapPage() {
                     void runSearch({ confidence: next });
                   }
                 }}
-                className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                className="min-h-[44px] rounded-lg border border-orange-200 bg-white px-2 py-1 text-xs text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
               >
                 {CONFIDENCE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -1087,7 +1091,7 @@ export default function MapPage() {
                     void runSearch({ sort: next });
                   }
                 }}
-                className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                className="min-h-[44px] rounded-lg border border-orange-200 bg-white px-2 py-1 text-xs text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
               >
                 {SORT_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -1097,7 +1101,7 @@ export default function MapPage() {
           </div>
         </FormSection>
 
-        <p className="-mt-2 mb-3 text-xs text-gray-600">
+        <p className="-mt-2 mb-3 text-xs leading-5 text-stone-600">
           Location is optional. If you choose “Use my location”, ORAN uses an approximate location to center the map in-session only and does not store it.
         </p>
 
@@ -1111,14 +1115,14 @@ export default function MapPage() {
         />
 
         {/* Mobile view toggle — only visible below md */}
-        <div className="flex gap-1 mb-3 md:hidden">
+        <div className="mb-3 flex gap-1 rounded-[18px] border border-orange-100 bg-white/80 p-1 shadow-[0_8px_24px_rgba(234,88,12,0.04)] md:hidden">
           <button
             type="button"
             onClick={() => setMobileView('map')}
             className={`flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
               mobileView === 'map'
-                ? 'bg-action-base text-white'
-                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                ? 'bg-action-base text-white shadow-sm'
+                : 'border border-orange-200 bg-white text-stone-700 hover:bg-orange-50'
             }`}
           >
             <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1129,8 +1133,8 @@ export default function MapPage() {
             onClick={() => setMobileView('list')}
             className={`flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
               mobileView === 'list'
-                ? 'bg-action-base text-white'
-                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                ? 'bg-action-base text-white shadow-sm'
+                : 'border border-orange-200 bg-white text-stone-700 hover:bg-orange-50'
             }`}
           >
             <List className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1142,7 +1146,7 @@ export default function MapPage() {
         {error && (
           <div
             role="alert"
-            className="mb-4 flex items-start gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 text-sm text-error-deep"
+            className="mb-4 flex items-start gap-2 rounded-[20px] border border-error-soft bg-error-subtle p-4 text-sm text-error-deep shadow-[0_12px_32px_rgba(127,29,29,0.08)]"
           >
             <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
             <div>
@@ -1155,7 +1159,7 @@ export default function MapPage() {
         {/* Split-pane layout: stacked on mobile, side-by-side on desktop */}
         <div className="md:grid md:grid-cols-[1fr_380px] md:gap-4 md:items-start">
           {/* Map column */}
-          <div className={`rounded-lg overflow-hidden md:sticky md:top-24 ${
+          <div className={`overflow-hidden rounded-[24px] border border-orange-100 bg-white/85 p-2 shadow-[0_18px_50px_rgba(234,88,12,0.06)] md:sticky md:top-24 ${
             mobileView === 'list' ? 'hidden md:block' : ''
           }`}>
             <div className="relative">
@@ -1187,7 +1191,7 @@ export default function MapPage() {
             </div>
 
             {/* Desktop: always-visible control */}
-            <div className="hidden md:flex items-center gap-3 mt-2">
+            <div className="mt-3 hidden items-center gap-3 px-2 pb-1 md:flex">
               <Button
                 type="button"
                 variant="outline"
@@ -1199,7 +1203,7 @@ export default function MapPage() {
                 Search this area
               </Button>
               {searchMode === 'bbox' && (
-                <span className="text-gray-500 text-xs">Updates as you pan.</span>
+                <span className="text-xs text-stone-500">Updates as you pan.</span>
               )}
             </div>
           </div>
@@ -1208,7 +1212,7 @@ export default function MapPage() {
           <div
             ref={resultsContainerRef}
             tabIndex={-1}
-            className={`mt-4 md:mt-0 md:max-h-[calc(100vh-16rem)] md:overflow-y-auto outline-none ${
+            className={`mt-4 rounded-[24px] border border-orange-100 bg-white/85 p-4 shadow-[0_18px_50px_rgba(234,88,12,0.06)] outline-none md:mt-0 md:max-h-[calc(100vh-16rem)] md:overflow-y-auto ${
               mobileView === 'map' ? 'hidden md:block' : ''
             }`}
           >
@@ -1226,10 +1230,10 @@ export default function MapPage() {
             )}
 
             {!isLoading && !data && !error && (
-              <div className="rounded-lg border border-gray-200 bg-white p-6 text-center">
-                <MapPin className="h-8 w-8 text-gray-300 mx-auto mb-2" aria-hidden="true" />
-                <p className="text-gray-700 font-medium text-sm">Ready to search</p>
-                <p className="mt-1 text-xs text-gray-500">
+              <div className="rounded-[20px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/70 p-6 text-center shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
+                <MapPin className="mx-auto mb-2 h-8 w-8 text-orange-200" aria-hidden="true" />
+                <p className="text-sm font-semibold text-stone-800">Ready to search</p>
+                <p className="mt-1 text-xs text-stone-500">
                   Type a keyword above, tap a category chip, or pan the map and tap <strong>Search this area</strong>.
                 </p>
               </div>
@@ -1237,7 +1241,7 @@ export default function MapPage() {
 
             {!isLoading && data && (
               <>
-                <p className="text-xs text-gray-500 mb-3" role="status" aria-live="polite">
+                <p className="mb-3 text-xs text-stone-500" role="status" aria-live="polite">
                   {data.results.length === 0
                     ? 'No matches'
                     : `${data.results.length} of ${data.total} shown`}
@@ -1246,9 +1250,9 @@ export default function MapPage() {
                   )}
                 </p>
                 {data.results.length === 0 ? (
-                  <div className="rounded-lg border border-gray-200 bg-white p-6 text-center">
-                    <p className="text-gray-700 font-medium text-sm">No matches in this area</p>
-                    <p className="mt-1 text-xs text-gray-500">Try different keywords, a broader category, or pan to a new area.</p>
+                  <div className="rounded-[20px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/60 p-6 text-center shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
+                    <p className="text-sm font-semibold text-stone-800">No matches in this area</p>
+                    <p className="mt-1 text-xs text-stone-500">Try different keywords, a broader category, or pan to a new area.</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -1272,9 +1276,32 @@ export default function MapPage() {
                 )}
               </>
             )}
-          </div>
+              </div>
         </div>
-      </ErrorBoundary>
+              </div>
+            </ErrorBoundary>
+          </section>
+
+          <aside className="space-y-4 lg:sticky lg:top-6">
+            <div className="rounded-[24px] border border-rose-100 bg-gradient-to-br from-rose-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(251,113,133,0.10)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Map rhythm</p>
+              <h2 className="mt-2 text-lg font-semibold text-stone-900">Scan an area, then tighten the list</h2>
+              <ul className="mt-3 space-y-3 text-sm leading-6 text-stone-600">
+                <li>Map pins and the result list stay in the same discovery scope.</li>
+                <li>Use “Search this area” after panning to re-run inside the visible map.</li>
+                <li>Switch to Directory or Chat without losing the active search context.</li>
+              </ul>
+            </div>
+
+            <div className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(16,185,129,0.10)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Location handling</p>
+              <p className="mt-2 text-sm leading-6 text-stone-700">
+                ORAN only uses approximate location in-session when you opt in. You can clear it at any time and continue browsing by text, category, or map bounds.
+              </p>
+            </div>
+          </aside>
+        </div>
+      </div>
     </main>
   );
 }

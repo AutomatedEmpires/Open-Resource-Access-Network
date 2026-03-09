@@ -126,7 +126,9 @@ export default function NotificationsPageClient() {
   // Not authenticated
   if (isAuthenticated === false) {
     return (
-      <main className="container mx-auto max-w-2xl px-4 py-12 text-center">
+      <main className="min-h-screen bg-gradient-to-b from-orange-50 via-rose-50 to-emerald-50">
+        <div className="container mx-auto max-w-3xl px-4 py-8 md:py-10">
+        <section className="rounded-[30px] border border-orange-100/80 bg-white/90 p-6 text-center shadow-[0_24px_80px_rgba(234,88,12,0.10)] backdrop-blur md:p-8">
         <PageHeader
           eyebrow="Account activity"
           title="Notifications"
@@ -138,20 +140,24 @@ export default function NotificationsPageClient() {
             </>
           )}
         />
-        <Bell className="h-12 w-12 text-gray-300 mx-auto mb-4" aria-hidden="true" />
-        <h1 className="text-lg font-semibold text-gray-900 mb-2">Sign in to view notifications</h1>
-        <p className="text-sm text-gray-500 mb-4">
+        <Bell className="mx-auto mb-4 h-12 w-12 text-orange-200" aria-hidden="true" />
+        <h1 className="mb-2 text-lg font-semibold text-stone-900">Sign in to view notifications</h1>
+        <p className="mb-4 text-sm text-stone-500">
           Notifications are only available for authenticated users.
         </p>
         <Button asChild>
           <Link href="/api/auth/signin?callbackUrl=/notifications">Sign in with Microsoft</Link>
         </Button>
+        </section>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="container mx-auto max-w-2xl px-4 py-8">
+    <main className="min-h-screen bg-gradient-to-b from-orange-50 via-rose-50 to-emerald-50">
+      <div className="container mx-auto max-w-3xl px-4 py-6 md:py-8">
+      <section className="rounded-[30px] border border-orange-100/80 bg-white/90 p-5 shadow-[0_24px_80px_rgba(234,88,12,0.10)] backdrop-blur md:p-8">
       <PageHeader
         eyebrow="Account activity"
         title="Notifications"
@@ -175,10 +181,10 @@ export default function NotificationsPageClient() {
             <button
               type="button"
               onClick={() => setFilter('all')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                 filter === 'all'
                   ? 'bg-info-subtle text-action-strong'
-                  : 'text-gray-600 hover:bg-gray-50'
+                  : 'text-stone-600 hover:bg-orange-50'
               }`}
             >
               All ({total})
@@ -186,10 +192,10 @@ export default function NotificationsPageClient() {
             <button
               type="button"
               onClick={() => setFilter('unread')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                 filter === 'unread'
                   ? 'bg-info-subtle text-action-strong'
-                  : 'text-gray-600 hover:bg-gray-50'
+                  : 'text-stone-600 hover:bg-orange-50'
               }`}
             >
               Unread ({unreadCount})
@@ -208,16 +214,16 @@ export default function NotificationsPageClient() {
         </div>
 
         {loading && isAuthenticated === null ? (
-          <div className="text-center py-12 text-sm text-gray-400">Loading notifications…</div>
+          <div className="py-12 text-center text-sm text-stone-400">Loading notifications…</div>
         ) : notifications.length === 0 ? (
           <div className="text-center py-12">
-            <Inbox className="h-10 w-10 text-gray-200 mx-auto mb-3" aria-hidden="true" />
-            <p className="text-sm text-gray-400">
+            <Inbox className="mx-auto mb-3 h-10 w-10 text-orange-200" aria-hidden="true" />
+            <p className="text-sm text-stone-400">
               {filter === 'unread' ? 'No unread notifications.' : 'No notifications yet.'}
             </p>
           </div>
         ) : (
-          <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 bg-white">
+          <div className="divide-y divide-orange-100 overflow-hidden rounded-[24px] border border-orange-100 bg-white shadow-sm">
             {notifications.map((n) => (
               <div
                 key={n.id}
@@ -234,11 +240,11 @@ export default function NotificationsPageClient() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm ${!n.read_at ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                  <p className={`text-sm ${!n.read_at ? 'font-semibold text-stone-900' : 'text-stone-700'}`}>
                     {n.title}
                   </p>
-                  <p className="text-xs text-gray-500 mt-0.5">{n.body}</p>
-                  <p className="text-[10px] text-gray-400 mt-1">{formatDate(n.created_at)}</p>
+                  <p className="mt-0.5 text-xs text-stone-500">{n.body}</p>
+                  <p className="mt-1 text-[10px] text-stone-400">{formatDate(n.created_at)}</p>
                 </div>
 
                 <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
@@ -246,7 +252,7 @@ export default function NotificationsPageClient() {
                     <button
                       type="button"
                       onClick={() => markOneRead(n.id)}
-                      className="p-1.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
+                      className="rounded p-1.5 text-stone-400 hover:bg-orange-100 hover:text-stone-600"
                       aria-label={`Mark "${n.title}" as read`}
                     >
                       <Check className="h-4 w-4" />
@@ -255,7 +261,7 @@ export default function NotificationsPageClient() {
                   {n.action_url && (
                     <Link
                       href={n.action_url}
-                      className="p-1.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
+                      className="rounded p-1.5 text-stone-400 hover:bg-orange-100 hover:text-stone-600"
                       aria-label={`View ${n.title}`}
                     >
                       <ExternalLink className="h-4 w-4" />
@@ -277,7 +283,7 @@ export default function NotificationsPageClient() {
             >
               Previous
             </Button>
-            <span className="text-xs text-gray-400">Page {page}</span>
+            <span className="text-xs text-stone-400">Page {page}</span>
             <Button
               variant="outline"
               size="sm"
@@ -289,6 +295,8 @@ export default function NotificationsPageClient() {
           </div>
         )}
       </FormSection>
+      </section>
+      </div>
     </main>
   );
 }

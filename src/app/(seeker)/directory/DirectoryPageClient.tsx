@@ -915,421 +915,427 @@ export default function DirectoryPage() {
   }, [confidenceFilter, deviceLocation, hasSearchContext, resetResultsToEmpty, runSearch, selectedAttributes, selectedTaxonomyIds, sortBy]);
 
   return (
-    <main className="container mx-auto max-w-6xl px-4 py-8">
-      <PageHeader
-        eyebrow="Verified discovery"
-        title="Service Directory"
-        subtitle={
-          <>
-            Search verified listings. Also try{' '}
-            <Link href={chatHref} className="text-action-base hover:underline">Chat</Link>
-            {' '}or{' '}
-            <Link href={mapHref} className="text-action-base hover:underline">Map view</Link>.
-          </>
-        }
-        badges={(
-          <>
-            <PageHeaderBadge tone="trust">Trust-aware results</PageHeaderBadge>
-            <PageHeaderBadge tone="accent">{deviceLocation ? 'Approximate location active' : 'Location optional'}</PageHeaderBadge>
-            <PageHeaderBadge>{selectedTaxonomyIds.length + Object.keys(selectedAttributes).length > 0 ? 'Filters applied' : 'Browse and compare'}</PageHeaderBadge>
-            <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync to your account' : 'Saves stay on this device'}</PageHeaderBadge>
-          </>
-        )}
-      />
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(191,219,254,0.42),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(167,243,208,0.2),_transparent_24%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fb_55%,_#eef4f7_100%)]">
+      <div className="container mx-auto max-w-7xl px-4 pt-4 pb-8 md:py-8">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+          <section className="rounded-[30px] border border-white/70 bg-white/85 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+            <PageHeader
+              eyebrow="Verified discovery"
+              title="Service Directory"
+              subtitle={
+                <>
+                  Search verified listings. Also try{' '}
+                  <Link href={chatHref} className="font-medium text-action-base hover:underline">Chat</Link>
+                  {' '}or{' '}
+                  <Link href={mapHref} className="font-medium text-action-base hover:underline">Map view</Link>.
+                </>
+              }
+              badges={(
+                <>
+                  <PageHeaderBadge tone="trust">Trust-aware results</PageHeaderBadge>
+                  <PageHeaderBadge tone="accent">{deviceLocation ? 'Approximate location active' : 'Location optional'}</PageHeaderBadge>
+                  <PageHeaderBadge>{selectedTaxonomyIds.length + Object.keys(selectedAttributes).length > 0 ? 'Filters applied' : 'Browse and compare'}</PageHeaderBadge>
+                  <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync to your account' : 'Saves stay on this device'}</PageHeaderBadge>
+                </>
+              )}
+            />
 
-      <ErrorBoundary>
-        {/* Search + filters */}
-        <FormSection
-          title="Search the directory"
-          description="Search verified listings, then refine sort order and location-aware discovery without leaving the page."
-          className="mb-3"
-        >
-          <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end">
-            <FormField id="directory-search" label="Search services" className="flex-1 basis-64">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
-                <input
-                  ref={searchInputRef}
-                  id="directory-search"
-                  value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
-                    if (activeCategory && !isDiscoveryNeedSearchText(activeCategory, e.target.value)) {
-                      setActiveCategory(null);
-                    }
-                  }}
-                  type="search"
-                  placeholder="Search for services (e.g., rent help, food pantry, job training)"
-                  className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-                  aria-label="Search services"
+            <ErrorBoundary>
+              <div className="rounded-[24px] border border-orange-100/90 bg-gradient-to-b from-white to-orange-50/60 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-5">
+                <FormSection
+                  title="Search the directory"
+                  description="Search verified listings, then refine sort order and location-aware discovery without leaving the page."
+                  className="mb-3"
+                >
+                  <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
+                    <FormField id="directory-search" label="Search services" className="flex-1 basis-64">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
+                        <input
+                          ref={searchInputRef}
+                          id="directory-search"
+                          value={query}
+                          onChange={(e) => {
+                            setQuery(e.target.value);
+                            if (activeCategory && !isDiscoveryNeedSearchText(activeCategory, e.target.value)) {
+                              setActiveCategory(null);
+                            }
+                          }}
+                          type="search"
+                          placeholder="Search for services (e.g., rent help, food pantry, job training)"
+                          className="min-h-[44px] w-full rounded-xl border border-orange-200 bg-white py-2 pl-9 pr-8 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
+                          aria-label="Search services"
+                        />
+                        {query && (
+                          <button
+                            type="button"
+                            onClick={handleClearSearch}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-stone-400 hover:text-stone-600 focus:outline-none focus:ring-2 focus:ring-action"
+                            aria-label="Clear search"
+                          >
+                            <X className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                        )}
+                      </div>
+                    </FormField>
+                    <Button type="submit" disabled={!canSearch || isLoading}>
+                      Search
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleUseMyLocation}
+                      disabled={isLocating}
+                      title="Opt-in: uses device location in-session only; not stored"
+                      className="gap-1.5"
+                    >
+                      <MapPin className="h-4 w-4" aria-hidden="true" />
+                      {isLocating ? 'Locating…' : 'Use my location'}
+                    </Button>
+                  </form>
+                </FormSection>
+
+                <p className="-mt-2 mb-3 text-xs leading-5 text-stone-600">
+                  Location is optional. If you choose “Use my location”, ORAN uses an approximate location to show nearby results in-session only and does not store it.
+                </p>
+
+                {deviceLocation && (
+                  <div className="mb-3">
+                    <button
+                      type="button"
+                      onClick={clearDeviceLocation}
+                      className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-white px-3 py-1 text-xs font-medium text-stone-700 shadow-sm hover:bg-orange-50"
+                      aria-label="Clear location filter"
+                      title="Clear location (not saved)"
+                    >
+                      Near you (approx.)
+                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
+
+                <SeekerDiscoveryFilters
+                  activeCategory={activeCategory}
+                  onCategoryClick={handleCategoryClick}
+                  taxonomyError={taxonomyError}
+                  taxonomyTerms={taxonomyTerms}
+                  isLoadingTaxonomy={isLoadingTaxonomy}
+                  quickTaxonomyTerms={topTaxonomyTerms}
+                  selectedTaxonomyIds={selectedTaxonomyIds}
+                  onToggleTaxonomyId={toggleTaxonomyId}
+                  taxonomyDialogOpen={taxonomyDialogOpen}
+                  onTaxonomyOpenChange={handleTaxonomyOpenChange}
+                  taxonomySearch={taxonomySearch}
+                  onTaxonomySearchChange={setTaxonomySearch}
+                  onClearTaxonomyFilters={clearTaxonomyFilters}
+                  groupedTaxonomyTerms={groupedTaxonomyTerms}
+                  visibleTaxonomyTermsCount={visibleTaxonomyTerms.length}
+                  dimensionLabels={DIMENSION_LABELS}
                 />
-                {query && (
+
+                <div className="mb-4 rounded-[20px] border border-orange-100 bg-white/80 p-4 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
                   <button
                     type="button"
-                    onClick={handleClearSearch}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-action"
-                    aria-label="Clear search"
+                    onClick={() => setAttributeSectionOpen((v) => !v)}
+                    className="mb-2 flex items-center gap-1 text-xs font-medium text-stone-500 hover:text-stone-700"
+                    aria-expanded={attributeSectionOpen || hasActiveAttributes}
                   >
-                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    Service type filters
+                    {hasActiveAttributes && (
+                      <span className="ml-1 rounded-full bg-info-muted px-1.5 py-0.5 text-[10px] font-semibold text-action-strong">
+                        {Object.values(selectedAttributes).flat().length}
+                      </span>
+                    )}
+                    {attributeSectionOpen ? (
+                      <ChevronUp className="h-3 w-3" aria-hidden="true" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3" aria-hidden="true" />
+                    )}
                   </button>
-                )}
-              </div>
-            </FormField>
-            <Button type="submit" disabled={!canSearch || isLoading}>
-              Search
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleUseMyLocation}
-              disabled={isLocating}
-              title="Opt-in: uses device location in-session only; not stored"
-              className="gap-1.5"
-            >
-              <MapPin className="h-4 w-4" aria-hidden="true" />
-              {isLocating ? 'Locating…' : 'Use my location'}
-            </Button>
-          </form>
-        </FormSection>
 
-        <p className="-mt-2 mb-3 text-xs text-gray-600">
-          Location is optional. If you choose “Use my location”, ORAN uses an approximate location to show nearby results in-session only and does not store it.
-        </p>
-
-        {deviceLocation && (
-          <div className="mb-3">
-            <button
-              type="button"
-              onClick={clearDeviceLocation}
-              className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-              aria-label="Clear location filter"
-              title="Clear location (not saved)"
-            >
-              Near you (approx.)
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
-          </div>
-        )}
-
-        <SeekerDiscoveryFilters
-          activeCategory={activeCategory}
-          onCategoryClick={handleCategoryClick}
-          taxonomyError={taxonomyError}
-          taxonomyTerms={taxonomyTerms}
-          isLoadingTaxonomy={isLoadingTaxonomy}
-          quickTaxonomyTerms={topTaxonomyTerms}
-          selectedTaxonomyIds={selectedTaxonomyIds}
-          onToggleTaxonomyId={toggleTaxonomyId}
-          taxonomyDialogOpen={taxonomyDialogOpen}
-          onTaxonomyOpenChange={handleTaxonomyOpenChange}
-          taxonomySearch={taxonomySearch}
-          onTaxonomySearchChange={setTaxonomySearch}
-          onClearTaxonomyFilters={clearTaxonomyFilters}
-          groupedTaxonomyTerms={groupedTaxonomyTerms}
-          visibleTaxonomyTermsCount={visibleTaxonomyTerms.length}
-          dimensionLabels={DIMENSION_LABELS}
-        />
-
-        {/* Service attribute dimension filters (delivery, cost, access) */}
-        <div className="mb-4">
-          <button
-            type="button"
-            onClick={() => setAttributeSectionOpen((v) => !v)}
-            className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 mb-2"
-            aria-expanded={attributeSectionOpen || hasActiveAttributes}
-          >
-            Service type filters
-            {hasActiveAttributes && (
-              <span className="ml-1 rounded-full bg-info-muted text-action-strong px-1.5 py-0.5 text-[10px] font-semibold">
-                {Object.values(selectedAttributes).flat().length}
-              </span>
-            )}
-            {attributeSectionOpen ? (
-              <ChevronUp className="h-3 w-3" aria-hidden="true" />
-            ) : (
-              <ChevronDown className="h-3 w-3" aria-hidden="true" />
-            )}
-          </button>
-
-          {(attributeSectionOpen || hasActiveAttributes) && (
-            <div className="space-y-2">
-              {SEEKER_ATTRIBUTE_DIMENSIONS.map((dim) => {
-                const def = SERVICE_ATTRIBUTES_TAXONOMY[dim];
-                if (!def) return null;
-                const commonTags = def.tags.filter((t) => t.common);
-                const activeTags = selectedAttributes[dim] ?? [];
-                return (
-                  <div key={dim} className="flex flex-wrap items-center gap-2" role="group" aria-label={def.name}>
-                    <span className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">{def.name}:</span>
-                    {commonTags.map((t) => {
-                      const isActive = activeTags.includes(t.tag);
-                      return (
+                  {(attributeSectionOpen || hasActiveAttributes) && (
+                    <div className="space-y-2">
+                      {SEEKER_ATTRIBUTE_DIMENSIONS.map((dim) => {
+                        const def = SERVICE_ATTRIBUTES_TAXONOMY[dim];
+                        if (!def) return null;
+                        const commonTags = def.tags.filter((t) => t.common);
+                        const activeTags = selectedAttributes[dim] ?? [];
+                        return (
+                          <div key={dim} className="flex flex-wrap items-center gap-2" role="group" aria-label={def.name}>
+                            <span className="w-20 flex-shrink-0 text-xs font-medium text-stone-500">{def.name}:</span>
+                            {commonTags.map((t) => {
+                              const isActive = activeTags.includes(t.tag);
+                              return (
+                                <button
+                                  key={t.tag}
+                                  type="button"
+                                  onClick={() => toggleAttribute(dim, t.tag)}
+                                  className={`min-h-[44px] flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                    isActive
+                                      ? 'bg-action-base text-white shadow-sm'
+                                      : 'border border-orange-200 bg-white text-stone-700 hover:bg-orange-50'
+                                  }`}
+                                  aria-pressed={isActive}
+                                  title={t.description}
+                                >
+                                  {DISCOVERY_ATTRIBUTE_LABELS[t.tag] ?? t.tag.replace(/_/g, ' ')}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                      {hasActiveAttributes && (
                         <button
-                          key={t.tag}
                           type="button"
-                          onClick={() => toggleAttribute(dim, t.tag)}
-                          className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
-                            isActive
-                              ? 'bg-action-base text-white'
-                              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
-                          }`}
-                          aria-pressed={isActive}
-                          title={t.description}
+                          onClick={clearAttributes}
+                          className="text-xs font-medium text-action-strong hover:underline"
                         >
-                          {DISCOVERY_ATTRIBUTE_LABELS[t.tag] ?? t.tag.replace(/_/g, ' ')}
+                          Clear service type filters
                         </button>
-                      );
-                    })}
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <FormSection
+                  title="Trust and sort"
+                  description="Adjust confidence and result order while keeping the current search and filters intact."
+                  className="mb-4 rounded-[20px] border border-orange-100 bg-white/80 p-4 shadow-[0_10px_30px_rgba(234,88,12,0.04)]"
+                >
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Trust filter">
+                      <span className="text-xs font-medium text-stone-500">Trust:</span>
+                      {CONFIDENCE_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => handleConfidenceChange(opt.value)}
+                          className={`min-h-[44px] flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                            confidenceFilter === opt.value
+                              ? 'bg-action-base text-white shadow-sm'
+                              : 'border border-orange-200 bg-white text-stone-700 hover:bg-orange-50'
+                          }`}
+                          aria-pressed={confidenceFilter === opt.value}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="ml-auto flex items-center gap-2">
+                      <FormField id="sort-select" label="Sort:" className="w-44 max-w-full">
+                        <select
+                          id="sort-select"
+                          value={sortBy}
+                          onChange={handleSortChange}
+                          className="min-h-[44px] rounded-lg border border-orange-200 bg-white px-2 py-1.5 text-xs text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
+                        >
+                          {SORT_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </FormField>
+                    </div>
                   </div>
-                );
-              })}
-              {hasActiveAttributes && (
-                <button
-                  type="button"
-                  onClick={clearAttributes}
-                  className="text-xs text-action-strong hover:underline"
-                >
-                  Clear service type filters
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+                </FormSection>
 
-        {/* Confidence + sort controls — always visible, no toggle required */}
-        <FormSection
-          title="Trust and sort"
-          description="Adjust confidence and result order while keeping the current search and filters intact."
-          className="mb-4"
-        >
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Trust filter">
-            <span className="text-xs font-medium text-gray-500">Trust:</span>
-            {CONFIDENCE_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => handleConfidenceChange(opt.value)}
-                className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
-                  confidenceFilter === opt.value
-                    ? 'bg-action-base text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
-                }`}
-                aria-pressed={confidenceFilter === opt.value}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 ml-auto">
-              <FormField id="sort-select" label="Sort:" className="w-44 max-w-full">
-              <select
-                id="sort-select"
-                value={sortBy}
-                onChange={handleSortChange}
-                className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-              >
-                {SORT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-          </div>
-          </div>
-        </FormSection>
+                <SeekerAppliedFilters items={appliedFilterItems} onClearAll={clearAllFilters} />
+                <DiscoveryContextPanel
+                  discoveryContext={directoryDiscoveryContext}
+                  taxonomyLabelById={taxonomyLabelById}
+                  title="Current search scope"
+                  description="Results stay inside this trust and filter scope until you change or clear it."
+                  className="mb-4"
+                />
 
-        <SeekerAppliedFilters items={appliedFilterItems} onClearAll={clearAllFilters} />
-        <DiscoveryContextPanel
-          discoveryContext={directoryDiscoveryContext}
-          taxonomyLabelById={taxonomyLabelById}
-          title="Current search scope"
-          description="Results stay inside this trust and filter scope until you change or clear it."
-          className="mb-4"
-        />
+                {error && (
+                  <div
+                    role="alert"
+                    className="mb-6 flex items-start gap-2 rounded-[20px] border border-error-soft bg-error-subtle p-4 text-sm text-error-deep shadow-[0_12px_32px_rgba(127,29,29,0.08)]"
+                  >
+                    <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden="true" />
+                    <div>
+                      <p className="font-medium">Search failed</p>
+                      <p className="mt-0.5 text-xs">{error}</p>
+                    </div>
+                  </div>
+                )}
 
-        {error && (
-          <div
-            role="alert"
-            className="mb-6 flex items-start gap-2 rounded-lg border border-error-soft bg-error-subtle p-3 text-sm text-error-deep"
-          >
-            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
-            <div>
-              <p className="font-medium">Search failed</p>
-              <p className="text-xs mt-0.5">{error}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Loading state */}
-        {isLoading && (
-          <div
-            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-            role="status"
-            aria-busy="true"
-            aria-label="Loading search results"
-          >
-            {Array.from({ length: 4 }).map((_, i) => (
-              <SkeletonCard key={`skeleton-${i}`} />
-            ))}
-          </div>
-        )}
-
-        {/* Empty state before search */}
-        {!isLoading && !data && !error && (
-          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-            <p className="text-gray-700 font-medium">Start with a search</p>
-            <p className="mt-1 text-sm text-gray-500">
-              Results are from verified service records only.
-            </p>
-          </div>
-        )}
-
-        {/* Results */}
-        {!isLoading && data && (
-          <div
-            ref={resultsContainerRef}
-            tabIndex={-1}
-            className="space-y-4 outline-none"
-          >
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-sm text-gray-600" role="status" aria-live="polite">
-                {allResults.length === 0
-                  ? `0 of ${data.total} results`
-                  : `Showing ${allResults.length} of ${data.total}`
-                }
-              </p>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void runSearch(Math.max(1, page - 1))}
-                  disabled={page <= 1 || isLoading || isFetchingMore}
-                  className="gap-1"
-                >
-                  <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-                  Prev
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void runSearch(page + 1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, true)}
-                  disabled={!data.hasMore || isLoading || isFetchingMore}
-                  className="gap-1"
-                >
-                  Next
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </Button>
-              </div>
-            </div>
-
-            {allResults.length === 0 ? (
-              <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-                <p className="text-gray-700 font-medium">No matches</p>
-                <p className="mt-1 text-sm text-gray-500">
-                  Try different keywords, broaden trust filters, or clear tags.
-                </p>
-                <div className="mt-4 flex flex-wrap justify-center gap-2">
-                  {selectedTaxonomyIds.length > 0 && (
-                    <Button type="button" variant="outline" size="sm" onClick={clearTaxonomyFilters}>
-                      Clear tags
-                    </Button>
-                  )}
-                  {hasActiveAttributes && (
-                    <Button type="button" variant="outline" size="sm" onClick={clearAttributes}>
-                      Clear service type filters
-                    </Button>
-                  )}
-                  {confidenceFilter !== 'all' && (
-                    <Button type="button" variant="outline" size="sm" onClick={clearTrust}>
-                      Show all trust levels
-                    </Button>
-                  )}
-                  {activeCategory && (
-                    <Button type="button" variant="outline" size="sm" onClick={clearCategory}>
-                      Clear category
-                    </Button>
-                  )}
-                  {deviceLocation && (
-                    <Button type="button" variant="outline" size="sm" onClick={clearDeviceLocation}>
-                      Clear location
-                    </Button>
-                  )}
-                  <Link href={chatHref} className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-                    Try Chat
-                  </Link>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {allResults.map((r) => (
-                    <ServiceCard
-                      key={r.service.service.id}
-                      enriched={r.service}
-                      isSaved={savedIds.has(r.service.service.id)}
-                      onToggleSave={toggleSave}
-                      savedSyncEnabled={savedSyncEnabled}
-                      href={buildServiceDetailHref(r.service.service.id)}
-                      discoveryContext={directoryDiscoveryContext}
-                    />
-                  ))}
-                </div>
-                {/* Sentinel for infinite scroll — IntersectionObserver auto-loads next page */}
-                <div ref={sentinelRef} aria-hidden="true" className="h-4" />
-                {isFetchingMore && (
+                {isLoading && (
                   <div
                     className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
                     role="status"
-                    aria-label="Loading more results"
+                    aria-busy="true"
+                    aria-label="Loading search results"
                   >
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <SkeletonCard key={`more-skeleton-${i}`} />
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <SkeletonCard key={`skeleton-${i}`} />
                     ))}
                   </div>
                 )}
-              </>
-            )}
 
-            {/* Bottom pagination — fallback for when infinite scroll hasn’t triggered */}
-            {allResults.length > 0 && (
-              <div className="flex items-center justify-between gap-4 pt-3 border-t border-gray-100">
-                <p className="text-xs text-gray-400">
-                  Page {page}{data.hasMore ? '' : ' · end of results'}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void runSearch(Math.max(1, page - 1))}
-                    disabled={page <= 1 || isLoading || isFetchingMore}
-                    className="gap-1"
-                  >
-                    <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-                    Prev
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void runSearch(page + 1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, true)}
-                    disabled={!data.hasMore || isLoading || isFetchingMore}
-                    className="gap-1"
-                  >
-                    Next
-                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </div>
+                {!isLoading && !data && !error && (
+                  <div className="rounded-[24px] border border-orange-100 bg-gradient-to-br from-white via-orange-50/70 to-rose-50/50 p-8 text-center shadow-[0_18px_50px_rgba(234,88,12,0.06)]">
+                    <p className="text-base font-semibold text-stone-800">Start with a search</p>
+                    <p className="mt-1 text-sm text-stone-500">Results are from verified service records only.</p>
+                  </div>
+                )}
+
+                {!isLoading && data && (
+                  <div ref={resultsContainerRef} tabIndex={-1} className="space-y-4 outline-none">
+                    <div className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] border border-orange-100 bg-white/80 px-4 py-3 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
+                      <p className="text-sm text-stone-600" role="status" aria-live="polite">
+                        {allResults.length === 0 ? `0 of ${data.total} results` : `Showing ${allResults.length} of ${data.total}`}
+                      </p>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void runSearch(Math.max(1, page - 1))}
+                          disabled={page <= 1 || isLoading || isFetchingMore}
+                          className="gap-1"
+                        >
+                          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                          Prev
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void runSearch(page + 1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, true)}
+                          disabled={!data.hasMore || isLoading || isFetchingMore}
+                          className="gap-1"
+                        >
+                          Next
+                          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {allResults.length === 0 ? (
+                      <div className="rounded-[24px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/60 p-8 text-center shadow-[0_18px_50px_rgba(234,88,12,0.06)]">
+                        <p className="text-base font-semibold text-stone-800">No matches</p>
+                        <p className="mt-1 text-sm text-stone-500">Try different keywords, broaden trust filters, or clear tags.</p>
+                        <div className="mt-4 flex flex-wrap justify-center gap-2">
+                          {selectedTaxonomyIds.length > 0 && (
+                            <Button type="button" variant="outline" size="sm" onClick={clearTaxonomyFilters}>
+                              Clear tags
+                            </Button>
+                          )}
+                          {hasActiveAttributes && (
+                            <Button type="button" variant="outline" size="sm" onClick={clearAttributes}>
+                              Clear service type filters
+                            </Button>
+                          )}
+                          {confidenceFilter !== 'all' && (
+                            <Button type="button" variant="outline" size="sm" onClick={clearTrust}>
+                              Show all trust levels
+                            </Button>
+                          )}
+                          {activeCategory && (
+                            <Button type="button" variant="outline" size="sm" onClick={clearCategory}>
+                              Clear category
+                            </Button>
+                          )}
+                          {deviceLocation && (
+                            <Button type="button" variant="outline" size="sm" onClick={clearDeviceLocation}>
+                              Clear location
+                            </Button>
+                          )}
+                          <Link href={chatHref} className="inline-flex items-center rounded-lg border border-orange-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-orange-50">
+                            Try Chat
+                          </Link>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          {allResults.map((r) => (
+                            <ServiceCard
+                              key={r.service.service.id}
+                              enriched={r.service}
+                              isSaved={savedIds.has(r.service.service.id)}
+                              onToggleSave={toggleSave}
+                              savedSyncEnabled={savedSyncEnabled}
+                              href={buildServiceDetailHref(r.service.service.id)}
+                              discoveryContext={directoryDiscoveryContext}
+                            />
+                          ))}
+                        </div>
+                        <div ref={sentinelRef} aria-hidden="true" className="h-4" />
+                        {isFetchingMore && (
+                          <div
+                            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+                            role="status"
+                            aria-label="Loading more results"
+                          >
+                            {Array.from({ length: 3 }).map((_, i) => (
+                              <SkeletonCard key={`more-skeleton-${i}`} />
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {allResults.length > 0 && (
+                      <div className="flex items-center justify-between gap-4 border-t border-orange-100 pt-3">
+                        <p className="text-xs text-stone-400">Page {page}{data.hasMore ? '' : ' · end of results'}</p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void runSearch(Math.max(1, page - 1))}
+                            disabled={page <= 1 || isLoading || isFetchingMore}
+                            className="gap-1"
+                          >
+                            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                            Prev
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void runSearch(page + 1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, true)}
+                            disabled={!data.hasMore || isLoading || isFetchingMore}
+                            className="gap-1"
+                          >
+                            Next
+                            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        )}
-      </ErrorBoundary>
+            </ErrorBoundary>
+          </section>
+
+          <aside className="space-y-4 lg:sticky lg:top-6">
+            <div className="rounded-[24px] border border-rose-100 bg-gradient-to-br from-rose-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(251,113,133,0.10)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Browse with confidence</p>
+              <h2 className="mt-2 text-lg font-semibold text-stone-900">Tighten scope without losing your place</h2>
+              <ul className="mt-3 space-y-3 text-sm leading-6 text-stone-600">
+                <li>Search stays grounded in verified records only.</li>
+                <li>Trust, tags, and service type filters layer together cleanly.</li>
+                <li>You can move the same search into Chat or Map at any time.</li>
+              </ul>
+            </div>
+
+            <div className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(16,185,129,0.10)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Private by default</p>
+              <p className="mt-2 text-sm leading-6 text-stone-700">
+                Location stays optional. If you opt in, ORAN uses an approximate in-session location to improve nearby results and does not store it.
+              </p>
+            </div>
+          </aside>
+        </div>
+      </div>
     </main>
   );
 }

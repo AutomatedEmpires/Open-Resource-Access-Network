@@ -10,7 +10,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, ArrowRight, Briefcase, ExternalLink, Pencil, Plus, Search, Trash2,
+  ArrowLeft, ArrowRight, Briefcase, Download, ExternalLink, Pencil, Plus, Search, Trash2,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -76,6 +76,7 @@ export default function ServicesPage() {
   const [orgs, setOrgs] = useState<OrgOption[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -159,6 +160,28 @@ export default function ServicesPage() {
     }
   }, [fetchServices, orgFilter, page, query, toast]);
 
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (orgFilter) params.set('organizationId', orgFilter);
+      const res = await fetch(`/api/host/services/export?${params.toString()}`);
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `services-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('CSV downloaded');
+    } catch (exportError) {
+      toast.error(exportError instanceof Error ? exportError.message : 'Export failed');
+    } finally {
+      setIsExporting(false);
+    }
+  }, [orgFilter, toast]);
+
   return (
     <div>
       <PageHeader
@@ -174,12 +197,25 @@ export default function ServicesPage() {
           </>
         )}
         actions={(
-          <Link href={composeHref}>
-            <Button size="sm" className="gap-1" disabled={orgs.length === 0}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Add Service
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1"
+              onClick={() => void handleExport()}
+              disabled={isExporting || !data || data.total === 0}
+              aria-label="Export services as CSV"
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              {isExporting ? 'Exporting…' : 'Export CSV'}
             </Button>
-          </Link>
+            <Link href={composeHref}>
+              <Button size="sm" className="gap-1" disabled={orgs.length === 0}>
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Add Service
+              </Button>
+            </Link>
+          </div>
         )}
       />
 

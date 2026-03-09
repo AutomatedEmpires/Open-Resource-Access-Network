@@ -129,6 +129,7 @@ export async function GET(req: NextRequest) {
     const dataSql = `
       SELECT id, name, description, url, email, tax_status, tax_id,
              year_incorporated, legal_status, logo_url, uri,
+             mission_statement, verified_at,
              created_at, updated_at
       FROM organizations
       ${where}

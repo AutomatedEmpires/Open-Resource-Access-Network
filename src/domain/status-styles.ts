@@ -20,11 +20,11 @@ export interface StatusStyle {
  *   under_review → "Under Review"  (not "In Review")
  */
 export const SUBMISSION_STATUS_STYLES: Record<string, StatusStyle> = {
-  draft:                    { color: 'bg-gray-100 text-gray-800 ring-gray-600/20',       label: 'Draft' },
+  draft:                    { color: 'bg-stone-100 text-stone-800 ring-stone-600/20',    label: 'Draft' },
   submitted:                { color: 'bg-amber-100 text-amber-800 ring-amber-600/20',    label: 'Submitted' },
   auto_checking:            { color: 'bg-cyan-100 text-cyan-800 ring-cyan-600/20',       label: 'Auto-Checking' },
   needs_review:             { color: 'bg-orange-100 text-orange-800 ring-orange-600/20', label: 'Needs Review' },
-  under_review:             { color: 'bg-blue-100 text-blue-800 ring-blue-600/20',       label: 'Under Review' },
+  under_review:             { color: 'bg-rose-100 text-rose-800 ring-rose-600/20',       label: 'Under Review' },
   approved:                 { color: 'bg-green-100 text-green-800 ring-green-600/20',    label: 'Approved' },
   denied:                   { color: 'bg-red-100 text-red-800 ring-red-600/20',          label: 'Denied' },
   escalated:                { color: 'bg-purple-100 text-purple-800 ring-purple-600/20', label: 'Escalated' },
@@ -37,6 +37,6 @@ export const SUBMISSION_STATUS_STYLES: Record<string, StatusStyle> = {
 
 /** Fallback style when a status value is unknown. */
 export const DEFAULT_STATUS_STYLE: StatusStyle = {
-  color: 'bg-gray-100 text-gray-800 ring-gray-600/20',
+  color: 'bg-stone-100 text-stone-800 ring-stone-600/20',
   label: 'Unknown',
 };

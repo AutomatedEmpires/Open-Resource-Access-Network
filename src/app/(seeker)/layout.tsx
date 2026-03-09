@@ -81,7 +81,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
     pathname === href || pathname.startsWith(href + '/');
 
   return (
-      <div className="flex flex-col min-h-screen bg-[var(--bg-page)]">
+      <div className="flex min-h-screen flex-col bg-gradient-to-b from-orange-50 via-rose-50/70 to-emerald-50/80 text-[var(--text-primary)]">
       {/* Command palette — opens on ⌘K / Ctrl+K */}
       <CommandPalette
         open={commandPaletteOpen}
@@ -89,18 +89,18 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
       />
 
       {/* ── Top bar ─────────────────────────────────────── */}
-      <header className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
+      <header className="sticky top-0 z-[var(--z-nav)] border-b border-orange-100/80 bg-white/90 backdrop-blur">
         <div className="container mx-auto max-w-6xl flex items-center justify-between px-4 h-14">
 
           {/* Brand */}
           <div className="flex min-w-0 items-center gap-3">
             <Link
               href="/"
-              className="flex items-center gap-2 font-bold text-gray-900 text-lg tracking-tight hover:text-action-base transition-colors"
+              className="flex items-center gap-2 text-lg font-bold tracking-tight text-stone-900 transition-colors hover:text-action-base"
             >
               ORAN
             </Link>
-            <span className="hidden rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-widest text-blue-700 md:inline-flex">
+            <span className="hidden rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-widest text-emerald-700 md:inline-flex">
               Verified records only
             </span>
           </div>
@@ -109,7 +109,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
             <button
               type="button"
               onClick={() => setCommandPaletteOpen(true)}
-              className="inline-flex min-h-10 items-center rounded-md border border-[var(--border)] px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
+              className="inline-flex min-h-10 items-center rounded-full border border-orange-100 bg-white px-3 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-orange-50 hover:text-stone-900"
               aria-label="Open quick actions"
             >
               Quick actions
@@ -124,10 +124,10 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
                   <Link
                     key={href}
                     href={href}
-                    className={`relative flex items-center gap-1.5 px-3 py-2 rounded-md text-sm transition-colors min-h-[44px] ${
+                    className={`relative flex min-h-[44px] items-center gap-1.5 rounded-full px-3 py-2 text-sm transition-colors ${
                       active
-                        ? 'bg-info-subtle text-action-strong font-semibold'
-                        : 'font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                        ? 'bg-info-subtle text-action-strong font-semibold shadow-sm'
+                        : 'font-medium text-stone-600 hover:bg-orange-50 hover:text-stone-900'
                     }`}
                     aria-current={active ? 'page' : undefined}
                   >
@@ -136,7 +136,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
                     {isSavedItem && savedCount > 0 && (
                       <span
                         className={`ml-0.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold min-w-[16px] h-4 px-1 leading-none ${
-                          active ? 'bg-action-base text-white' : 'bg-gray-200 text-gray-700'
+                          active ? 'bg-action-base text-white' : 'bg-orange-100 text-stone-700'
                         }`}
                         aria-label={`${savedCount} saved`}
                       >
@@ -172,7 +172,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
         the outer nav just grows downward into the safe area.
       */}
       <nav
-        className="fixed bottom-0 inset-x-0 z-[var(--z-nav)] border-t border-[var(--border)] bg-[var(--bg-surface)] md:hidden"
+        className="fixed bottom-0 inset-x-0 z-[var(--z-nav)] border-t border-orange-100/80 bg-white/95 backdrop-blur md:hidden"
         aria-label="Mobile navigation"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
@@ -185,7 +185,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
                 key={href}
                 href={href}
                 className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-xs font-medium transition-colors ${
-                  active ? 'text-action-base' : 'text-gray-400 hover:text-gray-600'
+                  active ? 'text-action-base' : 'text-stone-400 hover:text-stone-600'
                 }`}
                 aria-current={active ? 'page' : undefined}
               >

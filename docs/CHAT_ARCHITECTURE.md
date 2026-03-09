@@ -159,12 +159,12 @@ Intent also extracts:
 - Clarification only fires when the system lacks enough structured scope to search honestly
 - Clarification responses include `retrievalStatus='clarification_required'` plus suggestion chips for common service categories
 - If the active chat session already has structured scope, ambiguous follow-up turns may inherit:
-     - active need
-     - active city
-     - trust filter
-     - taxonomy filters
-     - attribute filters
-     - preferred delivery modes
+  - active need
+  - active city
+  - trust filter
+  - taxonomy filters
+  - attribute filters
+  - preferred delivery modes
 - Third-party or informational crisis language returns immediate 911/988 guidance without showing the self-harm crisis banner, then asks the seeker to specify the local service type they want to find
 
 ### Stage 4b: Scope Guard
@@ -229,13 +229,14 @@ Pure SQL query against PostgreSQL/PostGIS:
 - Personalized chat retrieval skips the shared search cache
 - Order by: verification confidence DESC, profile match DESC, stored score DESC, distance ASC
 - Limit: 5 results by default
+- Chat retrieval may fetch a slightly larger deterministic candidate pool first, then diversify the final 5 seeker-visible cards across organizations without weakening trust-first ordering
 - **No LLM involvement. No vector similarity. No reranking beyond SQL ORDER BY.**
 - Retrieval outcomes are classified explicitly for the client contract:
   - `results`: matching stored records were returned
   - `no_match`: the catalog has records in scope, but none matched the current query closely enough
   - `catalog_empty_for_scope`: the catalog is effectively empty for the current scope/filter combination
   - `temporarily_unavailable`: search infrastructure or DB access was unavailable
-     - `clarification_required`: retrieval was intentionally skipped because the query lacked enough search scope
+    - `clarification_required`: retrieval was intentionally skipped because the query lacked enough search scope
   - `out_of_scope`: handled before retrieval when the request is outside the service-finding boundary
 
 Current schema-backed mappings:
@@ -287,6 +288,8 @@ Build `ChatResponse` from retrieved records:
 - Include `activeContextUsed` + `sessionContext` so the UI can disclose and persist structured turn scope between requests
 - Include `searchInterpretation` so the UI can disclose the normalized search framing used for the turn, including whether saved profile shaping influenced ordering or was explicitly ignored, and whether session context was inherited
 - Include `clarification` metadata when retrieval is intentionally deferred pending a clearer request
+- Include deterministic `resultSummary` metadata so the UI can explain the set-level logic behind returned cards without relying on LLM prose
+- Include deterministic `followUpSuggestions` so the UI can surface adaptive follow-up chips based on intent, urgency, and retrieval outcome
 
 #### Contextual link selection (deep links vs general links)
 

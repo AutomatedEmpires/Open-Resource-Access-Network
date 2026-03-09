@@ -72,62 +72,91 @@ export default function ChatPage() {
 
   if (!sessionId) {
     return (
-      <main className="container mx-auto max-w-2xl px-4 py-8">
-        <PageHeader
-          eyebrow="Seeker assistant"
-          title="Find Services"
-          subtitle="Prefer browsing? Directory or Map."
-          badges={(
-            <>
-              <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
-              <PageHeaderBadge tone="accent">Private by default</PageHeaderBadge>
-            </>
-          )}
-        />
-        <div className="rounded-lg border border-gray-200 bg-white p-4" role="status" aria-busy="true" aria-label="Loading chat">
-          <SkeletonLine className="h-5 w-40" />
-          <SkeletonLine className="mt-3 h-4 w-full" />
-          <SkeletonLine className="mt-2 h-4 w-2/3" />
+      <main className="min-h-screen bg-gradient-to-b from-orange-50 via-rose-50 to-emerald-50">
+        <div className="container mx-auto max-w-5xl px-4 py-6 md:py-8">
+          <div className="rounded-[28px] border border-orange-100/80 bg-white/90 p-5 shadow-[0_24px_80px_rgba(234,88,12,0.10)] backdrop-blur md:p-8">
+            <PageHeader
+              eyebrow="Seeker assistant"
+              title="Find Services"
+              subtitle="Prefer browsing? Directory or Map."
+              badges={(
+                <>
+                  <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
+                  <PageHeaderBadge tone="accent">Private by default</PageHeaderBadge>
+                </>
+              )}
+            />
+            <div className="rounded-[24px] border border-orange-100 bg-white p-5" role="status" aria-busy="true" aria-label="Loading chat">
+              <SkeletonLine className="h-5 w-40" />
+              <SkeletonLine className="mt-3 h-4 w-full" />
+              <SkeletonLine className="mt-2 h-4 w-2/3" />
+            </div>
+          </div>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="container mx-auto max-w-2xl px-4 pt-4 pb-4 md:py-8">
-      <PageHeader
-        eyebrow="Seeker assistant"
-        title="Find Services"
-        subtitle={
-          <>
-            Prefer browsing?{' '}
-            <Link href={directoryHref} className="text-action-base hover:underline">Directory</Link>
-            {' '}or{' '}
-            <Link href={mapHref} className="text-action-base hover:underline">Map</Link>.
-          </>
-        }
-        badges={(
-          <>
-            <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
-            <PageHeaderBadge tone="accent">
-              {savedSyncEnabled ? 'Saves can sync to your account' : 'Saves stay on this device'}
-            </PageHeaderBadge>
-            <PageHeaderBadge>Session-based guidance</PageHeaderBadge>
-          </>
-        )}
-      />
-      <ErrorBoundary>
-        <ChatWindow
-          sessionId={sessionId}
-          initialPrompt={initialPrompt}
-          initialNeedId={discoveryIntent.needId}
-          initialTrustFilter={discoveryIntent.confidenceFilter}
-          initialSortBy={discoveryIntent.sortBy}
-          initialPage={discoveryIntent.page}
-          initialTaxonomyTermIds={discoveryIntent.taxonomyTermIds}
-          initialAttributeFilters={discoveryIntent.attributeFilters}
-        />
-      </ErrorBoundary>
+    <main className="min-h-screen bg-gradient-to-b from-orange-50 via-rose-50 to-emerald-50">
+      <div className="container mx-auto max-w-5xl px-4 pt-4 pb-6 md:py-8">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+          <section className="rounded-[30px] border border-orange-100/80 bg-white/90 p-5 shadow-[0_24px_80px_rgba(234,88,12,0.10)] backdrop-blur md:p-8">
+            <PageHeader
+              eyebrow="Seeker assistant"
+              title="Find Services"
+              subtitle={
+                <>
+                  Ask in your own words, or prefer browsing in{' '}
+                  <Link href={directoryHref} className="font-medium text-action-base hover:underline">Directory</Link>
+                  {' '}or{' '}
+                  <Link href={mapHref} className="font-medium text-action-base hover:underline">Map</Link>.
+                </>
+              }
+              badges={(
+                <>
+                  <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
+                  <PageHeaderBadge tone="accent">
+                    {savedSyncEnabled ? 'Saves can sync to your account' : 'Saves stay on this device'}
+                  </PageHeaderBadge>
+                  <PageHeaderBadge>Session-based guidance</PageHeaderBadge>
+                </>
+              )}
+            />
+            <ErrorBoundary>
+              <ChatWindow
+                sessionId={sessionId}
+                initialPrompt={initialPrompt}
+                initialNeedId={discoveryIntent.needId}
+                initialTrustFilter={discoveryIntent.confidenceFilter}
+                initialSortBy={discoveryIntent.sortBy}
+                initialPage={discoveryIntent.page}
+                initialTaxonomyTermIds={discoveryIntent.taxonomyTermIds}
+                initialAttributeFilters={discoveryIntent.attributeFilters}
+              />
+            </ErrorBoundary>
+          </section>
+
+          <aside className="space-y-4 lg:sticky lg:top-6">
+            <div className="rounded-[24px] border border-rose-100 bg-gradient-to-br from-rose-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(251,113,133,0.10)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">How it works</p>
+              <h2 className="mt-2 text-lg font-semibold text-stone-900">Gentle guidance, grounded in records</h2>
+              <ul className="mt-3 space-y-3 text-sm leading-6 text-stone-600">
+                <li>Results come from stored verified listings only.</li>
+                <li>The chat keeps lightweight session scope, not raw conversation memory.</li>
+                <li>You can move the same search into Directory or Map at any time.</li>
+              </ul>
+            </div>
+
+            <div className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(16,185,129,0.10)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Safety note</p>
+              <p className="mt-2 text-sm leading-6 text-stone-700">
+                If you or someone nearby is in immediate danger, use 911 or 988 first. The chat will route crisis language immediately and then help narrow local support.
+              </p>
+            </div>
+          </aside>
+        </div>
+      </div>
     </main>
   );
 }

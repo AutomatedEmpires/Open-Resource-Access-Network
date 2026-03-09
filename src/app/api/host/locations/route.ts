@@ -11,6 +11,7 @@ import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, isOranAdmin, requireOrgAccess } from '@/services/auth';
+import { createHostPortalSourceAssertion } from '@/services/ingestion/hostPortalIntake';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -312,6 +313,34 @@ export async function POST(req: NextRequest) {
           );
         }
       }
+
+      await createHostPortalSourceAssertion(client, {
+        actorUserId: authCtx?.userId ?? 'system',
+        actorRole: authCtx?.role ?? null,
+        recordType: 'host_location_create',
+        recordId: loc.id,
+        canonicalSourceUrl: `oran://host-portal/locations/${loc.id}`,
+        payload: {
+          organizationId: d.organizationId,
+          locationId: loc.id,
+          name: d.name,
+          alternateName: d.alternateName ?? null,
+          description: d.description ?? null,
+          transportation: d.transportation ?? null,
+          latitude: d.latitude ?? null,
+          longitude: d.longitude ?? null,
+          address: {
+            address1: d.address1 ?? null,
+            address2: d.address2 ?? null,
+            city: d.city ?? null,
+            stateProvince: d.stateProvince ?? null,
+            postalCode: d.postalCode ?? null,
+            country: d.country,
+          },
+          phones: d.phones ?? [],
+          schedule: d.schedule ?? [],
+        },
+      });
 
       return loc;
     });

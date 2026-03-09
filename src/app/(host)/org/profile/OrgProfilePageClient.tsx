@@ -21,7 +21,7 @@ import {
   CheckCircle2,
   ExternalLink,
   Globe,
-  Image,
+  Image as ImageIcon,
   Info,
   Loader2,
   MapPin,
@@ -545,7 +545,7 @@ export default function OrgProfilePageClient() {
                           />
                         ) : (
                           <div className="h-10 w-10 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center shrink-0">
-                            <Image className="h-4 w-4 text-gray-400" aria-hidden="true" />
+                            <ImageIcon className="h-4 w-4 text-gray-400" aria-hidden="true" />
                           </div>
                         )}
                       </div>
@@ -683,12 +683,12 @@ export default function OrgProfilePageClient() {
                 <VerifiedBadge verifiedAt={org.verifiedAt} />
 
                 {/* Tips */}
-                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                <div className="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-800">
                   <div className="flex items-center gap-2 font-semibold mb-2">
                     <Info className="h-4 w-4 shrink-0" aria-hidden="true" />
                     Profile tips
                   </div>
-                  <ul className="space-y-1.5 list-disc list-inside text-blue-700">
+                  <ul className="space-y-1.5 list-disc list-inside text-teal-700">
                     <li>A clear <strong>mission statement</strong> is the single biggest driver of seeker trust.</li>
                     <li><strong>Who we serve</strong> helps people self-identify before calling — fewer wrong-number inquiries.</li>
                     <li>A square logo at least 100×100 px looks best on map listing cards.</li>

@@ -137,11 +137,13 @@ function ReportPageInner() {
   const canSubmit = serviceId.trim().length > 0 && reason.length > 0 && details.trim().length >= 5;
 
   return (
-    <main className="container mx-auto max-w-xl px-4 py-8">
+    <main className="min-h-screen bg-gradient-to-b from-orange-50 via-rose-50 to-emerald-50">
+      <div className="container mx-auto max-w-3xl px-4 py-6 md:py-8">
+      <section className="rounded-[30px] border border-orange-100/80 bg-white/90 p-5 shadow-[0_24px_80px_rgba(234,88,12,0.10)] backdrop-blur md:p-8">
       <div className="mb-4">
         <Link
           href={listingHref}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+          className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-700"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Back to listing
@@ -163,7 +165,7 @@ function ReportPageInner() {
         )}
       />
 
-      <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+      <div className="mb-5 rounded-[20px] border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50 px-4 py-3 text-sm text-rose-900">
         Missing a resource entirely?
         {' '}
         <Link href="/submit-resource?compose=listing" className="font-semibold underline hover:no-underline">
@@ -185,7 +187,7 @@ function ReportPageInner() {
       {!serviceId && (
         <div
           role="note"
-          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 mb-5"
+          className="mb-5 rounded-[20px] border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 px-4 py-3 text-sm text-amber-800"
         >
           <AlertTriangle className="inline h-4 w-4 mr-1.5 align-text-bottom" aria-hidden="true" />
           To report a specific listing, open the service page and click
@@ -197,10 +199,10 @@ function ReportPageInner() {
       )}
 
       {result?.success ? (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-8 text-center">
+        <div className="rounded-[24px] border border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 p-8 text-center">
           <CheckCircle2 className="h-10 w-10 text-green-500 mx-auto mb-3" aria-hidden="true" />
-          <p className="text-gray-700 font-medium">Thank you for your report</p>
-          <p className="text-sm text-gray-500 mt-1">Our team will review it and take appropriate action.</p>
+          <p className="font-medium text-stone-700">Thank you for your report</p>
+          <p className="mt-1 text-sm text-stone-500">Our team will review it and take appropriate action.</p>
           <Link
             href={directoryHref}
             className="inline-block mt-4 text-sm text-action-base hover:underline"
@@ -220,7 +222,7 @@ function ReportPageInner() {
                 type="text"
                 value={serviceId}
                 disabled
-                className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-500"
+                className="w-full rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-stone-500"
               />
             </FormField>
 
@@ -230,7 +232,7 @@ function ReportPageInner() {
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 required
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                className="min-h-[44px] w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
               >
                 <option value="">Select a reason…</option>
                 {REPORT_REASONS.map(({ value, label }) => (
@@ -252,7 +254,7 @@ function ReportPageInner() {
                 onChange={(e) => setDetails(e.target.value)}
                 rows={4}
                 required
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+                className="w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
                 placeholder="What is wrong with this listing?"
                 maxLength={2000}
               />
@@ -269,7 +271,7 @@ function ReportPageInner() {
                 type="email"
                 value={contactEmail}
                 onChange={(e) => setContactEmail(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                className="min-h-[44px] w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
                 placeholder="your@email.com"
               />
             </FormField>
@@ -289,7 +291,7 @@ function ReportPageInner() {
             Submit Report
           </Button>
 
-          <p className="text-xs text-gray-400 text-center">
+          <p className="text-center text-xs text-stone-400">
             Reports are reviewed by our team. Abuse of the reporting system may result in restrictions.
           </p>
         </form>
@@ -300,7 +302,7 @@ function ReportPageInner() {
         description="Reports go into a reviewer queue so ORAN can verify record changes without inventing new facts."
         className="mt-8"
       >
-        <ul className="space-y-2 text-sm text-gray-600">
+        <ul className="space-y-2 text-sm text-stone-600">
           <li>Reviewers compare your note against stored provider data and evidence.</li>
           <li>Listings are corrected, flagged, or removed only after verification.</li>
           <li>Optional contact details are used only if clarification is needed.</li>
@@ -320,19 +322,19 @@ function ReportPageInner() {
               return (
                 <div
                   key={r.id}
-                  className="rounded-lg border border-gray-200 bg-white p-4"
+                  className="rounded-[20px] border border-orange-100 bg-white p-4 shadow-sm"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-gray-900 truncate">
+                      <p className="truncate font-medium text-stone-900">
                         {r.title ?? 'Report'}
                       </p>
                       {r.reason && (
-                        <p className="text-xs text-gray-500 mt-0.5">
+                        <p className="mt-0.5 text-xs text-stone-500">
                           Reason: {r.reason.replace(/_/g, ' ')}
                         </p>
                       )}
-                      <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                      <p className="mt-1 flex items-center gap-1 text-xs text-stone-400">
                         <Clock className="h-3 w-3" aria-hidden="true" />
                         {formatDate(r.created_at)}
                         {age > 0 && ` (${age}d ago)`}
@@ -341,8 +343,8 @@ function ReportPageInner() {
                     <StatusBadge status={r.status} />
                   </div>
                   {r.reviewer_notes && (
-                    <div className="mt-2 rounded bg-gray-50 p-2 text-sm text-gray-600">
-                      <span className="font-medium text-gray-500">Reviewer: </span>
+                    <div className="mt-2 rounded-xl bg-orange-50 p-2 text-sm text-stone-600">
+                      <span className="font-medium text-stone-500">Reviewer: </span>
                       {r.reviewer_notes}
                     </div>
                   )}
@@ -354,11 +356,13 @@ function ReportPageInner() {
       )}
 
       {isLoadingReports && myReports.length === 0 && (
-        <div className="mt-8 text-center text-sm text-gray-400 flex items-center justify-center gap-2">
+        <div className="mt-8 flex items-center justify-center gap-2 text-center text-sm text-stone-400">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
           Loading your reports…
         </div>
       )}
+      </section>
+      </div>
     </main>
   );
 }
@@ -366,7 +370,7 @@ function ReportPageInner() {
 export default function ReportPageContent() {
   return (
     <ErrorBoundary>
-      <React.Suspense fallback={<div className="container mx-auto max-w-xl px-4 py-8 text-center text-gray-400">Loading…</div>}>
+      <React.Suspense fallback={<div className="container mx-auto max-w-xl px-4 py-8 text-center text-stone-400">Loading…</div>}>
         <ReportPageInner />
       </React.Suspense>
     </ErrorBoundary>

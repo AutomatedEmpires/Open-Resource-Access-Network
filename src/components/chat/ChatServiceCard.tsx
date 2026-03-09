@@ -14,7 +14,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { MapPin, Phone, Clock, ExternalLink, Bookmark, BookmarkCheck, MessageSquare, Flag } from 'lucide-react';
+import { Award, MapPin, Phone, Clock, ExternalLink, Bookmark, BookmarkCheck, MessageSquare, Flag } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { FeedbackForm } from '@/components/feedback/FeedbackForm';
 import type { ServiceCard } from '@/services/chat/types';
@@ -85,7 +85,18 @@ export function ChatServiceCard({
               {card.serviceName}
             </Link>
           </h4>
-          <p className="text-xs text-gray-500 truncate">{card.organizationName}</p>
+          <p className="text-xs text-gray-500 truncate flex items-center gap-1">
+            {card.organizationName}
+            {(card as ServiceCard & { orgVerifiedAt?: string }).orgVerifiedAt && (
+              <span
+                className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0 text-[10px] font-semibold text-emerald-700"
+                title="Verified Provider"
+              >
+                <Award className="h-2.5 w-2.5" aria-hidden="true" />
+                Verified
+              </span>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {onToggleSave && (

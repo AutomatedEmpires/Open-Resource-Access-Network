@@ -192,6 +192,9 @@ const INSTANCE_SELECT = `SELECT fi.id,
         s.submitted_at,
         s.reviewed_at,
         s.resolved_at,
+       s.is_locked,
+       s.locked_at,
+       s.locked_by_user_id,
        s.created_at,
        s.updated_at
   FROM form_instances fi

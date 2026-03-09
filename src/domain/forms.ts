@@ -117,6 +117,9 @@ export interface FormInstance {
   submitted_at: string | null;
   reviewed_at: string | null;
   resolved_at: string | null;
+  is_locked: boolean;
+  locked_at: string | null;
+  locked_by_user_id: string | null;
   created_at: string;
   updated_at: string;
 }

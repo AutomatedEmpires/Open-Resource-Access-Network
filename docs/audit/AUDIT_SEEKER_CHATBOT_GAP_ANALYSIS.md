@@ -83,15 +83,15 @@ The chatbot should clearly distinguish between:
 - no services in the catalog for this scope
 - chat/search temporarily unavailable
 
-4. Explicit about why results appeared.
+1. Explicit about why results appeared.
 
 The seeker should understand whether results were selected because of the query, active browse filters, trust threshold, city bias, or saved profile signals.
 
-5. Useful for messy real-world requests.
+1. Useful for messy real-world requests.
 
 If the request is vague, off-topic, mixed-topic, or phrased unusually, the system should redirect, narrow, or clarify instead of silently falling back to generic search.
 
-6. Cost disciplined.
+1. Cost disciplined.
 
 Improvements should favor:
 
@@ -796,6 +796,15 @@ Status as of 2026-03-09:
 - add result diversification
 - add adaptive follow-up chips
 - add richer set-level explanation summary
+
+### P2 Status Update
+
+Status as of 2026-03-09:
+
+- implemented deterministic post-ranking diversification so the final seeker-visible set can vary across organizations when the candidate pool is overly concentrated
+- implemented deterministic `resultSummary` metadata explaining the returned set in terms of organization spread, city scope, urgency cues, and active chat context
+- implemented adaptive `followUpSuggestions` chips for result and no-match states
+- expanded focused regression coverage across orchestrator and chat-window flows for diversified results, summaries, and adaptive follow-up chips
 
 ---
 

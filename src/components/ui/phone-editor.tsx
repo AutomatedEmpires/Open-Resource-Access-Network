@@ -43,7 +43,7 @@ const PHONE_TYPES: { value: PhoneEntry['type']; label: string; icon: string }[] 
 const EMPTY_PHONE: PhoneEntry = { number: '', type: 'voice', extension: '', description: '' };
 
 const INPUT_CLASS =
-  'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px] transition-shadow';
+  'w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 min-h-[44px] transition-shadow';
 
 /* ── Component ─────────────────────────────────────────────────── */
 
@@ -112,7 +112,7 @@ export function PhoneEditor({ phones, onChange, max = 10, className }: PhoneEdit
               key={p.id ?? i}
               className={cn(
                 'flex items-center gap-3 rounded-lg border px-3 py-2 text-sm',
-                editingId === i ? 'border-blue-300 bg-blue-50' : 'border-gray-100 bg-gray-50',
+                editingId === i ? 'border-teal-300 bg-teal-50' : 'border-stone-100 bg-stone-50',
               )}
             >
               {editingId === i ? (
@@ -170,7 +170,7 @@ export function PhoneEditor({ phones, onChange, max = 10, className }: PhoneEdit
 
       {/* Add form */}
       {adding && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3">
+        <div className="rounded-lg border border-teal-200 bg-teal-50/50 p-3">
           <PhoneInlineForm
             draft={draft}
             setDraft={setDraft}

@@ -1088,6 +1088,27 @@ describe('host locations routes', () => {
       postal_code: '80202',
       country: 'US',
     });
+    expect(hostPortalIntakeMocks.createHostPortalSourceAssertion).toHaveBeenCalledWith(
+      expect.objectContaining({ query: expect.any(Function) }),
+      {
+        actorUserId: 'user-1',
+        actorRole: 'host_admin',
+        recordType: 'host_location_update',
+        recordId: '11111111-1111-4111-8111-111111111111',
+        canonicalSourceUrl: 'oran://host-portal/locations/11111111-1111-4111-8111-111111111111',
+        payload: {
+          organizationId: 'org-1',
+          locationId: '11111111-1111-4111-8111-111111111111',
+          requestedChanges: {
+            name: 'Updated Office',
+            address1: '123 Main St',
+            city: 'Denver',
+            stateProvince: 'CO',
+            postalCode: '80202',
+          },
+        },
+      },
+    );
   });
 
   it('returns 404 when deleting a missing location', async () => {
@@ -1133,9 +1154,13 @@ describe('host locations routes', () => {
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
     authMocks.requireOrgAccess.mockReturnValue(true);
-    dbMocks.executeQuery
-      .mockResolvedValueOnce([{ id: 'loc-1', organization_id: 'org-1' }])
-      .mockResolvedValueOnce([{ id: 'loc-1' }]);
+    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'loc-1', organization_id: 'org-1' }]);
+    const client = {
+      query: vi.fn().mockResolvedValueOnce({ rows: [{ id: 'loc-1' }] }),
+    };
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (transactionClient: typeof client) => Promise<unknown>) => {
+      return callback(client);
+    });
     const { DELETE } = await loadLocationDetailRoute();
 
     const response = await DELETE(
@@ -1145,6 +1170,19 @@ describe('host locations routes', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ deleted: true, id: 'loc-1' });
+    expect(hostPortalIntakeMocks.createHostPortalSourceAssertion).toHaveBeenCalledWith(client, {
+      actorUserId: 'user-1',
+      actorRole: 'host_admin',
+      recordType: 'host_location_archive',
+      recordId: '11111111-1111-4111-8111-111111111111',
+      canonicalSourceUrl: 'oran://host-portal/locations/11111111-1111-4111-8111-111111111111',
+      payload: {
+        organizationId: 'org-1',
+        locationId: '11111111-1111-4111-8111-111111111111',
+        status: 'defunct',
+        archiveMode: 'soft_delete',
+      },
+    });
   });
 
   it('falls back to hard delete when the locations status column does not exist', async () => {
@@ -1156,10 +1194,16 @@ describe('host locations routes', () => {
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
     authMocks.requireOrgAccess.mockReturnValue(true);
-    dbMocks.executeQuery
-      .mockResolvedValueOnce([{ id: 'loc-1', organization_id: 'org-1' }])
-      .mockRejectedValueOnce(new Error('column "status" of relation "locations" does not exist'))
-      .mockResolvedValueOnce([{ id: 'loc-1' }]);
+    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'loc-1', organization_id: 'org-1' }]);
+    const client = {
+      query: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('column "status" of relation "locations" does not exist'))
+        .mockResolvedValueOnce({ rows: [{ id: 'loc-1' }] }),
+    };
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (transactionClient: typeof client) => Promise<unknown>) => {
+      return callback(client);
+    });
     const { DELETE } = await loadLocationDetailRoute();
 
     const response = await DELETE(
@@ -1169,6 +1213,19 @@ describe('host locations routes', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ deleted: true, id: 'loc-1' });
+    expect(hostPortalIntakeMocks.createHostPortalSourceAssertion).toHaveBeenCalledWith(client, {
+      actorUserId: 'user-1',
+      actorRole: 'host_admin',
+      recordType: 'host_location_archive',
+      recordId: '11111111-1111-4111-8111-111111111111',
+      canonicalSourceUrl: 'oran://host-portal/locations/11111111-1111-4111-8111-111111111111',
+      payload: {
+        organizationId: 'org-1',
+        locationId: '11111111-1111-4111-8111-111111111111',
+        status: 'defunct',
+        archiveMode: 'hard_delete',
+      },
+    });
   });
 });
 

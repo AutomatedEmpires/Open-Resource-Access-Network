@@ -24,13 +24,14 @@ import {
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   RATE_LIMIT_WINDOW_MS,
 } from '@/domain/constants';
+import type { SubmissionPriority } from '@/domain/types';
 import { advance, applySla, assignSubmission } from '@/services/workflow/engine';
 import { send as sendNotification } from '@/services/notifications/service';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 const UpdateInstanceSchema = z.object({
-  action: z.enum(['save', 'submit', 'start_review', 'approve', 'deny', 'return', 'archive', 'withdraw']),
+  action: z.enum(['save', 'submit', 'start_review', 'approve', 'deny', 'return', 'archive', 'withdraw', 'update_metadata']),
   title: z.string().max(200).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
   reviewerNotes: z.string().max(5000).nullable().optional(),
@@ -39,6 +40,8 @@ const UpdateInstanceSchema = z.object({
   recipientRole: z.enum(FORM_RECIPIENT_ROLES).nullable().optional(),
   recipientUserId: z.string().min(1).max(200).nullable().optional(),
   recipientOrganizationId: z.string().uuid().nullable().optional(),
+  priority: z.number().int().min(0).max(3).optional(),
+  slaDeadline: z.string().datetime().nullable().optional(),
 }).superRefine((value, ctx) => {
   if ((value.action === 'deny' || value.action === 'return') && !value.reviewerNotes?.trim()) {
     ctx.addIssue({
@@ -153,6 +156,36 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
     const isReviewerAction = ['start_review', 'approve', 'deny', 'return'].includes(parsed.data.action);
     if (isReviewerAction && !requireMinRole(authCtx, 'community_admin')) {
       return NextResponse.json({ error: 'Reviewer permissions required' }, { status: 403 });
+    }
+
+    // ── Update operational metadata (priority / SLA) ─────────
+    if (parsed.data.action === 'update_metadata') {
+      if (!requireMinRole(authCtx, 'community_admin')) {
+        return NextResponse.json({ error: 'Reviewer permissions required to update metadata' }, { status: 403 });
+      }
+      const terminalStatuses = ['approved', 'denied', 'withdrawn', 'archived', 'expired'];
+      if (terminalStatuses.includes(instance.status)) {
+        return NextResponse.json(
+          { error: `Cannot update metadata for form in terminal status "${instance.status}"` },
+          { status: 409 },
+        );
+      }
+      const metaUpdate: { priority?: SubmissionPriority; slaDeadline?: string | null; slaBreached?: boolean } = {};
+      if (parsed.data.priority !== undefined) {
+        metaUpdate.priority = parsed.data.priority as SubmissionPriority;
+      }
+      if (parsed.data.slaDeadline !== undefined) {
+        metaUpdate.slaDeadline = parsed.data.slaDeadline;
+        if (parsed.data.slaDeadline) {
+          metaUpdate.slaBreached = new Date(parsed.data.slaDeadline) < new Date();
+        }
+      }
+      if (Object.keys(metaUpdate).length === 0) {
+        return NextResponse.json({ error: 'No metadata fields provided to update' }, { status: 400 });
+      }
+      await updateFormSubmissionOperationalMetadata(instance.submission_id, metaUpdate);
+      const refreshed = await getAccessibleFormInstance(authCtx, id);
+      return NextResponse.json({ instance: refreshed });
     }
 
     // ── Archive / Withdraw lifecycle actions ──────────────────
@@ -365,6 +398,24 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
     if (!transition.success) {
       return NextResponse.json({ error: transition.error ?? 'Unable to update form status' }, { status: 409 });
+    }
+
+    // ── Fire lifecycle notification to submitter ──────────────
+    const notifyStatuses = ['approved', 'denied', 'returned'] as const;
+    const toStatus = statusMap[parsed.data.action as keyof typeof statusMap];
+    if (notifyStatuses.includes(toStatus as (typeof notifyStatuses)[number])) {
+      const formLabel = currentInstance.title ?? currentInstance.template_title ?? 'Managed form';
+      const actionLabel = toStatus === 'returned' ? 'returned for revision' : toStatus;
+      await sendNotification({
+        recipientUserId: currentInstance.submitted_by_user_id,
+        eventType: 'submission_status_changed',
+        title: `Form ${actionLabel}`,
+        body: `${formLabel} has been ${actionLabel}.`,
+        resourceType: 'submission',
+        resourceId: currentInstance.submission_id,
+        actionUrl: '/forms',
+        idempotencyKey: `managed_form_${toStatus}_${currentInstance.submission_id}_${Date.now()}`,
+      });
     }
 
     const refreshed = await getAccessibleFormInstance(authCtx, id);

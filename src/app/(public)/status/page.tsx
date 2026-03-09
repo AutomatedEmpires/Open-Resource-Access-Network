@@ -149,7 +149,7 @@ export default function StatusPage() {
       </section>
 
       {/* Footer note */}
-      <div className="border-t border-gray-200 pt-6 text-xs text-gray-400">
+      <div className="border-t border-gray-200 pt-6 text-xs text-gray-600">
         Status is maintained statically and updated during incidents. For urgent production
         issues, open an issue on{' '}
         <a

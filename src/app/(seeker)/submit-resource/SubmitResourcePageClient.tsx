@@ -25,14 +25,14 @@ function LaunchCard({
   return (
     <Link
       href={href}
-      className="group rounded-3xl border border-slate-200 bg-white p-6 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg"
+      className="group rounded-3xl border border-orange-100 bg-white/95 p-6 transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-lg"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
+          <h2 className="text-xl font-semibold text-stone-900">{title}</h2>
+          <p className="mt-2 text-sm leading-6 text-stone-600">{description}</p>
         </div>
-        <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
+        <div className="rounded-2xl bg-orange-50 p-3 text-orange-700">
           <Icon className="h-5 w-5" aria-hidden="true" />
         </div>
       </div>
@@ -85,7 +85,9 @@ export default function SubmitResourcePageClient() {
   }
 
   return (
-    <div className="space-y-8">
+    <main className="min-h-screen bg-gradient-to-b from-orange-50 via-rose-50 to-emerald-50">
+      <div className="container mx-auto max-w-5xl px-4 py-6 md:py-8">
+      <section className="space-y-8 rounded-[30px] border border-orange-100/80 bg-white/90 p-5 shadow-[0_24px_80px_rgba(234,88,12,0.10)] backdrop-blur md:p-8">
       <PageHeader
         eyebrow="Community contribution"
         title="Submit a Resource"
@@ -115,28 +117,28 @@ export default function SubmitResourcePageClient() {
           description="Share what the service is, who provides it, how people access it, and what evidence reviewers can use to verify it."
           icon={FilePenLine}
         />
-        <div className="rounded-3xl border border-slate-200 bg-white p-6">
+        <div className="rounded-3xl border border-orange-100 bg-white/95 p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-semibold text-slate-900">What to expect</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
+              <h2 className="text-xl font-semibold text-stone-900">What to expect</h2>
+              <p className="mt-2 text-sm leading-6 text-stone-600">
                 The cards go green as required information becomes complete. After you submit, community admins can approve, deny,
                 edit and approve, or send the submission back requesting more information.
               </p>
             </div>
-            <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
+            <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-700">
               <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
             </div>
           </div>
 
-          <ul className="mt-5 space-y-3 text-sm text-slate-600">
+          <ul className="mt-5 space-y-3 text-sm text-stone-600">
             <li>Include at least one verification path: website, phone, or email.</li>
             <li>Describe where the service is offered and who it is for.</li>
             <li>Use categories and service area details so the listing can be reviewed accurately.</li>
           </ul>
 
           {savedDraftId && (
-            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="mt-5 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-4">
               <p className="text-sm font-medium text-amber-900">A saved submission draft is available on this device.</p>
               <Link href={`/submit-resource?entryId=${savedDraftId}`} className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-amber-900 underline underline-offset-2">
                 Continue saved draft
@@ -146,6 +148,8 @@ export default function SubmitResourcePageClient() {
           )}
         </div>
       </section>
-    </div>
+      </section>
+      </div>
+    </main>
   );
 }

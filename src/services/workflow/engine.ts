@@ -386,6 +386,27 @@ export async function releaseLock(
   return result.length > 0;
 }
 
+/** Default lock timeout in minutes. */
+const LOCK_TIMEOUT_MINUTES = 30;
+
+/**
+ * Release all locks older than the given timeout.
+ * Returns the number of locks expired.
+ */
+export async function expireStaleLocks(
+  timeoutMinutes: number = LOCK_TIMEOUT_MINUTES,
+): Promise<number> {
+  const result = await executeQuery<{ id: string }>(
+    `UPDATE submissions
+     SET is_locked = false, locked_at = NULL, locked_by_user_id = NULL, updated_at = NOW()
+     WHERE is_locked = true
+       AND locked_at < NOW() - INTERVAL '1 minute' * $1
+     RETURNING id`,
+    [timeoutMinutes],
+  );
+  return result.length;
+}
+
 // ============================================================
 // ASSIGNMENT
 // ============================================================

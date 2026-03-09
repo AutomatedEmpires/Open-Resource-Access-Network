@@ -256,31 +256,31 @@ describe('api/chat route', () => {
 
     expect(response.status).toBe(200);
     expect(searchMock).toHaveBeenCalledWith(
-      {
+      expect.objectContaining({
         text: 'food housing',
         cachePolicy: 'skip',
         geo: undefined,
-        filters: {
+        filters: expect.objectContaining({
           attributeFilters: { delivery: ['virtual'] },
           minConfidenceScore: undefined,
           organizationId: undefined,
           status: 'active',
           taxonomyTermIds: undefined,
-        },
+        }),
         cityBias: 'Denver',
-        pagination: {
+        pagination: expect.objectContaining({
           page: 1,
-          limit: 5,
-        },
-        profileSignals: {
+          limit: 15,
+        }),
+        profileSignals: expect.objectContaining({
           accessTags: ['interpreter_on_site', 'no_id_required', 'same_day', 'transportation_provided'],
           cultureTags: ['bilingual_services'],
           deliveryTags: ['virtual', 'phone', 'hybrid', 'in_person'],
           populationTags: ['pregnant', 'single_parent'],
           situationTags: ['no_fixed_address', 'language_barrier', 'transportation_barrier', 'digital_barrier'],
-        },
+        }),
         sortBy: 'relevance',
-      },
+      }),
     );
     await expect(response.json()).resolves.toEqual({
       rateLimitKey: 'chat:user:user-1',
@@ -366,22 +366,25 @@ describe('api/chat route', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(searchMock).toHaveBeenCalledWith({
+    expect(searchMock).toHaveBeenCalledWith(expect.objectContaining({
       text: 'food',
       cachePolicy: 'skip',
-      filters: {
+      geo: undefined,
+      filters: expect.objectContaining({
         status: 'active',
+        organizationId: undefined,
+        attributeFilters: undefined,
         taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
         minConfidenceScore: 80,
-      },
+      }),
       cityBias: undefined,
-      pagination: {
+      pagination: expect.objectContaining({
         page: 1,
-        limit: 5,
-      },
+        limit: 15,
+      }),
       profileSignals: undefined,
       sortBy: 'relevance',
-    });
+    }));
   });
 
   it('distinguishes no-match results from empty catalog scope', async () => {

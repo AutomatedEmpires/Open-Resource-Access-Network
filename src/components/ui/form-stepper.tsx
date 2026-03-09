@@ -43,7 +43,7 @@ export function FormStepper({ steps, currentStep, className }: FormStepperProps)
                     isCompleted &&
                       'bg-green-500 text-white shadow-md ring-2 ring-green-200',
                     isCurrent &&
-                      'bg-blue-600 text-white shadow-lg ring-4 ring-blue-200 scale-110',
+                      'bg-teal-600 text-white shadow-lg ring-4 ring-teal-200 scale-110',
                     !isCompleted &&
                       !isCurrent &&
                       'bg-gray-100 text-gray-400 border-2 border-gray-200',
@@ -60,7 +60,7 @@ export function FormStepper({ steps, currentStep, className }: FormStepperProps)
                 <span
                   className={cn(
                     'text-xs font-medium whitespace-nowrap',
-                    isCurrent ? 'text-blue-700' : isCompleted ? 'text-green-700' : 'text-gray-400',
+                    isCurrent ? 'text-teal-700' : isCompleted ? 'text-green-700' : 'text-stone-400',
                   )}
                 >
                   {step.label}

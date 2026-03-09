@@ -86,8 +86,8 @@ const colorMap: Record<
       'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500',
   },
   blue: {
-    border: 'border-blue-200',
-    activeCta: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
+    border: 'border-teal-200',
+    activeCta: 'bg-teal-600 text-white hover:bg-teal-700 focus:ring-teal-500',
   },
   amber: {
     border: 'border-amber-200',

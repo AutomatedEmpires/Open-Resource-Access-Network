@@ -266,7 +266,7 @@ describe('portal page shells', () => {
     expect(alerts.length).toBeGreaterThanOrEqual(0);
     expect(dialogRoots).toHaveLength(0);
     expect(dialogContents).toHaveLength(0);
-    expect(buttons.length).toBe(4);
+    expect(buttons.length).toBe(5);
     expect(skeletons).toHaveLength(0);
   });
 

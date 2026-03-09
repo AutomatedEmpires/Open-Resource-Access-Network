@@ -65,9 +65,9 @@ const STATUS_STYLES: Record<string, { color: string; label: string }> = {
   returned:               { color: 'bg-orange-100 text-orange-800', label: 'Returned' },
   escalated:              { color: 'bg-purple-100 text-purple-800', label: 'Escalated' },
   pending_second_approval:{ color: 'bg-indigo-100 text-indigo-800', label: 'Pending 2nd Approval' },
-  withdrawn:              { color: 'bg-gray-100 text-gray-600',     label: 'Withdrawn' },
-  expired:                { color: 'bg-gray-100 text-gray-500',     label: 'Expired' },
-  archived:               { color: 'bg-gray-50 text-gray-400',      label: 'Archived' },
+  withdrawn:              { color: 'bg-orange-100 text-stone-600',  label: 'Withdrawn' },
+  expired:                { color: 'bg-stone-100 text-stone-500',   label: 'Expired' },
+  archived:               { color: 'bg-stone-50 text-stone-400',    label: 'Archived' },
 };
 
 const EVIDENCE_TYPE_OPTIONS: Array<{ value: EvidenceItem['type']; label: string }> = [
@@ -189,7 +189,9 @@ function AppealPageInner() {
 
   if (sessionStatus !== 'loading' && !session) {
     return (
-      <main className="container mx-auto max-w-xl px-4 py-8">
+      <main className="min-h-screen bg-gradient-to-b from-orange-50 via-rose-50 to-emerald-50">
+        <div className="container mx-auto max-w-3xl px-4 py-6 md:py-8">
+        <section className="rounded-[30px] border border-orange-100/80 bg-white/90 p-5 shadow-[0_24px_80px_rgba(234,88,12,0.10)] backdrop-blur md:p-8">
         <PageHeader
           eyebrow="Decision review"
           title="Appeal a Decision"
@@ -202,10 +204,10 @@ function AppealPageInner() {
             </>
           )}
         />
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center">
+        <div className="rounded-[24px] border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-6 text-center shadow-sm">
           <Scale className="h-8 w-8 text-amber-500 mx-auto mb-3" aria-hidden="true" />
-          <p className="font-medium text-gray-900 mb-1">Sign in required</p>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="mb-1 font-medium text-stone-900">Sign in required</p>
+          <p className="mb-4 text-sm text-stone-600">
             You must be signed in to submit or view appeals.
           </p>
           <Link
@@ -215,16 +217,20 @@ function AppealPageInner() {
             Sign in
           </Link>
         </div>
+        </section>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="container mx-auto max-w-xl px-4 py-8">
+    <main className="min-h-screen bg-gradient-to-b from-orange-50 via-rose-50 to-emerald-50">
+      <div className="container mx-auto max-w-3xl px-4 py-6 md:py-8">
+      <section className="rounded-[30px] border border-orange-100/80 bg-white/90 p-5 shadow-[0_24px_80px_rgba(234,88,12,0.10)] backdrop-blur md:p-8">
       <div className="mb-4">
         <Link
           href="/profile"
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+          className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-700"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Back to profile
@@ -269,7 +275,7 @@ function AppealPageInner() {
                   value={submissionId}
                   onChange={(e) => setSubmissionId(e.target.value)}
                   aria-label="Select a denied submission to appeal"
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                  className="min-h-[44px] w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
                 >
                   <option value="">Select a submission…</option>
                   {deniedSubmissions.map((s) => (
@@ -295,14 +301,14 @@ function AppealPageInner() {
                 disabled={!!prefilledId}
                 required
                 className={`w-full rounded-lg border px-3 py-2 text-sm ${
-                    prefilledId ? 'border-gray-300 bg-gray-50 text-gray-500' : 'border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-action'
+                    prefilledId ? 'border-orange-200 bg-orange-50 text-stone-500' : 'border-orange-200 bg-white text-stone-700 focus:outline-none focus:ring-2 focus:ring-action'
                 } ${!isValidUuid && submissionId.trim().length > 0 ? 'border-error-accent ring-1 ring-error-accent' : ''}`}
                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
               />
             </FormField>
 
             {deniedSubmissions.length === 0 && (
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-stone-500">
                 No denied submissions were found on your account. You can still paste a valid submission ID if support directed you to appeal manually.
               </p>
             )}
@@ -325,7 +331,7 @@ function AppealPageInner() {
                 onChange={(e) => setReason(e.target.value)}
                 rows={4}
                 required
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+                className="w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
                 placeholder="Provide details about why this submission should be reconsidered..."
                 maxLength={2000}
               />
@@ -350,13 +356,13 @@ function AppealPageInner() {
             }
           >
             {evidence.map((item, idx) => (
-              <div key={idx} className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+              <div key={idx} className="space-y-3 rounded-[20px] border border-orange-100 bg-orange-50/50 p-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-gray-500">Evidence #{idx + 1}</span>
+                  <span className="text-xs font-medium text-stone-500">Evidence #{idx + 1}</span>
                   <button
                     type="button"
                     onClick={() => removeEvidenceItem(idx)}
-                    className="text-gray-400 hover:text-error-light"
+                    className="text-stone-400 hover:text-error-light"
                     aria-label={`Remove evidence ${idx + 1}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -368,7 +374,7 @@ function AppealPageInner() {
                     type="text"
                     value={item.description}
                     onChange={(e) => updateEvidenceItem(idx, 'description', e.target.value)}
-                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-action"
+                    className="w-full rounded-lg border border-orange-200 bg-white px-2 py-1.5 text-sm text-stone-700 focus:outline-none focus:ring-1 focus:ring-action"
                     placeholder="Description of this evidence"
                   />
                 </FormField>
@@ -377,7 +383,7 @@ function AppealPageInner() {
                     aria-label={`Evidence ${idx + 1} type`}
                     value={item.type}
                     onChange={(e) => updateEvidenceItem(idx, 'type', e.target.value as EvidenceItem['type'])}
-                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-action"
+                    className="w-full rounded-lg border border-orange-200 bg-white px-2 py-1.5 text-sm text-stone-700 focus:outline-none focus:ring-1 focus:ring-action"
                   >
                     {EVIDENCE_TYPE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
@@ -390,7 +396,7 @@ function AppealPageInner() {
                     type="url"
                     value={item.fileUrl}
                     onChange={(e) => updateEvidenceItem(idx, 'fileUrl', e.target.value)}
-                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-action"
+                    className="w-full rounded-lg border border-orange-200 bg-white px-2 py-1.5 text-sm text-stone-700 focus:outline-none focus:ring-1 focus:ring-action"
                     placeholder="URL to document or screenshot (https://...)"
                   />
                 </FormField>
@@ -414,10 +420,10 @@ function AppealPageInner() {
       )}
 
       {result?.success && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-8 text-center mb-8">
+        <div className="mb-8 rounded-[24px] border border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 p-8 text-center">
           <CheckCircle2 className="h-10 w-10 text-green-500 mx-auto mb-3" aria-hidden="true" />
-          <p className="text-gray-700 font-medium">Appeal submitted</p>
-          <p className="text-sm text-gray-500 mt-1">You will be notified when your appeal is reviewed.</p>
+          <p className="font-medium text-stone-700">Appeal submitted</p>
+          <p className="mt-1 text-sm text-stone-500">You will be notified when your appeal is reviewed.</p>
         </div>
       )}
 
@@ -426,7 +432,7 @@ function AppealPageInner() {
         description="Appeals are reconsidered using the original submission, reviewer notes, and any supporting evidence you provide."
         className="mb-8"
       >
-        <ul className="space-y-2 text-sm text-gray-600">
+        <ul className="space-y-2 text-sm text-stone-600">
           <li>Use the appeal statement to explain what changed or what was missed.</li>
           <li>Attach only evidence that can be verified by the review team.</li>
           <li>Approval is not guaranteed and may require additional reviewer follow-up.</li>
@@ -439,12 +445,12 @@ function AppealPageInner() {
         description="Track active and prior appeals from the same seeker account."
       >
         {isLoadingAppeals && (
-          <p className="text-sm text-gray-400">Loading…</p>
+          <p className="text-sm text-stone-400">Loading…</p>
         )}
 
         {!isLoadingAppeals && myAppeals.length === 0 && (
-          <div className="text-center p-6 text-gray-400 rounded-lg border border-gray-200">
-            <Scale className="h-8 w-8 mx-auto mb-2 text-gray-300" aria-hidden="true" />
+          <div className="rounded-[20px] border border-orange-100 bg-orange-50/40 p-6 text-center text-stone-400">
+            <Scale className="mx-auto mb-2 h-8 w-8 text-orange-200" aria-hidden="true" />
             <p className="text-sm">No appeals found.</p>
           </div>
         )}
@@ -452,13 +458,13 @@ function AppealPageInner() {
         {myAppeals.length > 0 && (
           <div className="space-y-3">
             {myAppeals.map((a) => {
-              const style = STATUS_STYLES[a.status] ?? { color: 'bg-gray-100 text-gray-700', label: a.status };
+              const style = STATUS_STYLES[a.status] ?? { color: 'bg-orange-100 text-stone-700', label: a.status };
               return (
-                <div key={a.id} className="rounded-lg border border-gray-200 bg-white p-4">
+                <div key={a.id} className="rounded-[20px] border border-orange-100 bg-white p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{a.title ?? 'Appeal'}</p>
-                      <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                      <p className="truncate text-sm font-medium text-stone-900">{a.title ?? 'Appeal'}</p>
+                      <p className="mt-0.5 flex items-center gap-1 text-xs text-stone-500">
                         <Clock className="h-3 w-3" aria-hidden="true" />
                         Submitted {formatDate(a.created_at)}
                       </p>
@@ -468,12 +474,12 @@ function AppealPageInner() {
                     </span>
                   </div>
                   {a.notes && (
-                    <p className="text-sm text-gray-600 mt-2">{a.notes}</p>
+                    <p className="mt-2 text-sm text-stone-600">{a.notes}</p>
                   )}
                   {a.reviewer_notes && (
                     <div className="mt-2 text-sm">
-                      <span className="text-gray-500 font-medium">Reviewer: </span>
-                      <span className="text-gray-700">{a.reviewer_notes}</span>
+                      <span className="font-medium text-stone-500">Reviewer: </span>
+                      <span className="text-stone-700">{a.reviewer_notes}</span>
                     </div>
                   )}
                 </div>
@@ -482,6 +488,8 @@ function AppealPageInner() {
           </div>
         )}
       </FormSection>
+      </section>
+      </div>
     </main>
   );
 }
@@ -489,7 +497,7 @@ function AppealPageInner() {
 export default function AppealPageContent() {
   return (
     <ErrorBoundary>
-      <React.Suspense fallback={<div className="container mx-auto max-w-xl px-4 py-8 text-center text-gray-400">Loading…</div>}>
+      <React.Suspense fallback={<div className="container mx-auto max-w-xl px-4 py-8 text-center text-stone-400">Loading…</div>}>
         <AppealPageInner />
       </React.Suspense>
     </ErrorBoundary>

@@ -193,8 +193,11 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
   const formattedAddress = service ? formatAddress(service) : null;
 
   return (
-    <main className="container mx-auto max-w-2xl px-4 py-8">
-      <ErrorBoundary>
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(191,219,254,0.42),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(167,243,208,0.2),_transparent_24%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fb_55%,_#eef4f7_100%)]">
+      <div className="container mx-auto max-w-7xl px-4 pt-4 pb-8 md:py-8">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+          <section className="rounded-[30px] border border-white/70 bg-white/85 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+            <ErrorBoundary>
         {/* Breadcrumb navigation */}
         <Breadcrumb
           className="mb-6"
@@ -221,7 +224,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
         {error && !isLoading && (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-lg border border-error-soft bg-error-subtle p-4 text-sm text-error-deep"
+            className="flex items-start gap-2 rounded-[20px] border border-error-soft bg-error-subtle p-4 text-sm text-error-deep shadow-[0_12px_32px_rgba(127,29,29,0.08)]"
           >
             <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
             <div>
@@ -240,10 +243,10 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
 
         {/* Not found */}
         {notFound && !isLoading && (
-          <div className="rounded-lg border border-gray-200 bg-white p-10 text-center">
-            <AlertTriangle className="h-10 w-10 mx-auto text-amber-400 mb-3" aria-hidden="true" />
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900 mb-2">Service not found</h1>
-            <p className="text-sm text-gray-600 mb-4">
+          <div className="rounded-[24px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/60 p-10 text-center shadow-[0_18px_50px_rgba(234,88,12,0.06)]">
+            <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-400" aria-hidden="true" />
+            <h1 className="mb-2 text-2xl font-bold tracking-tight text-stone-900">Service not found</h1>
+            <p className="mb-4 text-sm text-stone-600">
               This service may no longer be available, or the link may be incorrect.
             </p>
             <Link href={directoryHref}>
@@ -257,16 +260,16 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
 
         {/* Service card */}
         {service && !isLoading && !notFound && (
-          <div>
+          <div className="rounded-[24px] border border-orange-100/90 bg-gradient-to-b from-white to-orange-50/60 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-5">
             <PageHeader
               eyebrow="Verified service record"
               title={service.service.name}
               subtitle={
                 <>
                   Stored record from {service.organization.name}. Also try the{' '}
-                  <Link href={directoryHref} className="text-action-base hover:underline">Directory</Link>,{' '}
-                  <Link href={mapHref} className="text-action-base hover:underline">Map</Link>, or{' '}
-                  <Link href={chatHref} className="text-action-base hover:underline">Chat</Link>
+                  <Link href={directoryHref} className="font-medium text-action-base hover:underline">Directory</Link>,{' '}
+                  <Link href={mapHref} className="font-medium text-action-base hover:underline">Map</Link>, or{' '}
+                  <Link href={chatHref} className="font-medium text-action-base hover:underline">Chat</Link>
                   {' '}if you want alternate routes.
                 </>
               }
@@ -318,7 +321,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               className="mt-4"
             >
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4">
+                <div className="rounded-[20px] border border-emerald-100 bg-emerald-50 p-4 shadow-[0_10px_30px_rgba(16,185,129,0.08)]">
                   <p className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
                     <ShieldCheck className="h-4 w-4" aria-hidden="true" />
                     Trust evidence
@@ -341,7 +344,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <div className="rounded-[20px] border border-amber-200 bg-amber-50 p-4 shadow-[0_10px_30px_rgba(180,83,9,0.08)]">
                   <p className="flex items-center gap-2 text-sm font-semibold text-amber-900">
                     <FileText className="h-4 w-4" aria-hidden="true" />
                     Eligibility and documents
@@ -382,14 +385,14 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               className="mt-4"
             >
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-                  <p className="flex items-center gap-2 font-semibold text-gray-900">
+                <div className="space-y-3 rounded-[20px] border border-orange-100 bg-orange-50/40 p-4 text-sm text-stone-700 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
+                  <p className="flex items-center gap-2 font-semibold text-stone-900">
                     <MapPin className="h-4 w-4" aria-hidden="true" />
                     Visit and schedule
                   </p>
                   <p>{formattedAddress ?? 'No stored address is listed for this service.'}</p>
                   <p className="flex items-start gap-2">
-                    <Clock className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-500" aria-hidden="true" />
+                    <Clock className="mt-0.5 h-4 w-4 flex-shrink-0 text-stone-500" aria-hidden="true" />
                     <span>
                       {service.schedules && service.schedules.length > 0
                         ? service.schedules.slice(0, 2).map((schedule) => schedule.description).filter(Boolean).join(' · ')
@@ -398,19 +401,19 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                   </p>
                   {service.serviceAreas && service.serviceAreas.length > 0 ? (
                     <p>
-                      <span className="font-medium text-gray-900">Service area:</span>{' '}
+                      <span className="font-medium text-stone-900">Service area:</span>{' '}
                       {service.serviceAreas.map((area) => area.name ?? area.extentType ?? 'Custom area').join(', ')}
                     </p>
                   ) : null}
                 </div>
 
-                <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-                  <p className="flex items-center gap-2 font-semibold text-gray-900">
+                <div className="space-y-3 rounded-[20px] border border-orange-100 bg-orange-50/40 p-4 text-sm text-stone-700 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
+                  <p className="flex items-center gap-2 font-semibold text-stone-900">
                     <Accessibility className="h-4 w-4" aria-hidden="true" />
                     Access details
                   </p>
                   <p className="flex items-start gap-2">
-                    <Globe2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-500" aria-hidden="true" />
+                    <Globe2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-stone-500" aria-hidden="true" />
                     <span>
                       {service.languages && service.languages.length > 0
                         ? `Languages: ${service.languages.map((language) => language.language).join(', ')}`
@@ -424,13 +427,13 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                   </p>
                   {service.attributes && service.attributes.length > 0 ? (
                     <p>
-                      <span className="font-medium text-gray-900">Service tags:</span>{' '}
+                      <span className="font-medium text-stone-900">Service tags:</span>{' '}
                       {service.attributes.slice(0, 6).map((attribute) => attribute.tag).join(', ')}
                     </p>
                   ) : null}
                   {service.program ? (
                     <p>
-                      <span className="font-medium text-gray-900">Program:</span> {service.program.name}
+                      <span className="font-medium text-stone-900">Program:</span> {service.program.name}
                     </p>
                   ) : null}
                 </div>
@@ -444,8 +447,8 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               contentClassName="space-y-4"
             >
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-                  <p className="flex items-center gap-2 font-semibold text-gray-900">
+                <div className="space-y-3 rounded-[20px] border border-orange-100 bg-orange-50/40 p-4 text-sm text-stone-700 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
+                  <p className="flex items-center gap-2 font-semibold text-stone-900">
                     <Phone className="h-4 w-4" aria-hidden="true" />
                     Contact the provider
                   </p>
@@ -467,7 +470,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                   )}
                   {service.contacts && service.contacts.length > 0 ? (
                     <div>
-                      <p className="flex items-center gap-2 font-medium text-gray-900">
+                      <p className="flex items-center gap-2 font-medium text-stone-900">
                         <Users className="h-4 w-4" aria-hidden="true" />
                         Named contacts
                       </p>
@@ -493,9 +496,9 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                   ) : null}
                 </div>
 
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-                  <p className="font-semibold text-gray-900">Continue exploring</p>
-                  <p className="mt-1 text-sm text-gray-600">
+                <div className="rounded-[20px] border border-orange-100 bg-orange-50/40 p-4 text-sm text-stone-700 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
+                  <p className="font-semibold text-stone-900">Continue exploring</p>
+                  <p className="mt-1 text-sm text-stone-600">
                     Use another seeker surface if you want nearby alternatives or conversational routing without losing the trust-first contract.
                   </p>
                   <div className="mt-4 flex flex-col gap-2 sm:flex-row">
@@ -516,7 +519,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               </div>
             </FormSection>
 
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div className="mt-4 rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-[0_10px_30px_rgba(180,83,9,0.08)]">
               <p className="font-medium">Confirm details with the provider before visiting.</p>
               <p className="mt-1 text-xs text-amber-800">
                 ORAN shows stored, verified records only, but hours, eligibility, intake requirements, and availability can still change.
@@ -524,7 +527,29 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
             </div>
           </div>
         )}
-      </ErrorBoundary>
+            </ErrorBoundary>
+          </section>
+
+          <aside className="space-y-4 lg:sticky lg:top-6">
+            <div className="rounded-[24px] border border-rose-100 bg-gradient-to-br from-rose-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(251,113,133,0.10)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Record view</p>
+              <h2 className="mt-2 text-lg font-semibold text-stone-900">One record, multiple ways to continue</h2>
+              <ul className="mt-3 space-y-3 text-sm leading-6 text-stone-600">
+                <li>This page shows stored provider details only, with no invented facts.</li>
+                <li>Browse scope carries into Directory, Map, and Chat when available.</li>
+                <li>Trust cues help compare records, but provider confirmation still matters.</li>
+              </ul>
+            </div>
+
+            <div className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(16,185,129,0.10)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Eligibility caution</p>
+              <p className="mt-2 text-sm leading-6 text-stone-700">
+                ORAN can show who may qualify and which documents may be needed, but it never guarantees eligibility. Confirm current intake rules directly with the provider.
+              </p>
+            </div>
+          </aside>
+        </div>
+      </div>
     </main>
   );
 }

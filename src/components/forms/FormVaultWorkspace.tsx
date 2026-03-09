@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Archive,
   BarChart3,
+  Bell,
   CheckSquare,
   ChevronLeft,
   ChevronRight,
@@ -11,6 +12,7 @@ import {
   Copy,
   Download,
   Loader2,
+  Paperclip,
   PencilLine,
   Plus,
   RefreshCw,
@@ -19,6 +21,7 @@ import {
   Search,
   Send,
   Settings,
+  Lock,
   ShieldCheck,
   ShieldX,
   Square,
@@ -34,6 +37,7 @@ import { FormField } from '@/components/ui/form-field';
 import { FormSection } from '@/components/ui/form-section';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/toast';
+import NotificationPreferencesPanel from '@/components/forms/NotificationPreferencesPanel';
 import {
   computeVisibleFields,
   deriveFormFieldDefinitions,
@@ -366,6 +370,14 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
   // ── Template delete state ───────────────────────────────
   const [deletePending, setDeletePending] = useState<string | null>(null);
 
+  // ── Operational metadata editing state ──────────────────
+  const [metaPriority, setMetaPriority] = useState('');
+  const [metaSlaDeadline, setMetaSlaDeadline] = useState('');
+  const [metaPending, setMetaPending] = useState(false);
+
+  // ── Notification preferences panel toggle ──────────────
+  const [showNotifPrefs, setShowNotifPrefs] = useState(false);
+
   const templateMap = useMemo(
     () => new Map((templatesData?.templates ?? []).map((template) => [template.id, template])),
     [templatesData],
@@ -474,6 +486,8 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
     setDraftRecipientUserId(instance.recipient_user_id ?? '');
     setDraftRecipientOrganizationId(instance.recipient_organization_id ?? '');
     setReviewerNotes(instance.reviewer_notes ?? '');
+    setMetaPriority(String(instance.priority));
+    setMetaSlaDeadline(instance.sla_deadline ? instance.sla_deadline.slice(0, 16) : '');
   }, []);
 
   const fetchTemplates = useCallback(async () => {
@@ -834,6 +848,41 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
       setAssignPending(false);
     }
   }, [applyInstanceState, assigneeUserId, selectedInstanceId, showError, success]);
+
+  const handleUpdateMetadata = useCallback(async () => {
+    if (!selectedInstanceId || !selectedInstance) return;
+    setMetaPending(true);
+    try {
+      const payload: Record<string, unknown> = { action: 'update_metadata' };
+      const newPriority = Number(metaPriority);
+      if (newPriority !== selectedInstance.priority) {
+        payload.priority = newPriority;
+      }
+      const currentDeadline = selectedInstance.sla_deadline ? selectedInstance.sla_deadline.slice(0, 16) : '';
+      if (metaSlaDeadline !== currentDeadline) {
+        payload.slaDeadline = metaSlaDeadline ? new Date(metaSlaDeadline).toISOString() : null;
+      }
+      if (Object.keys(payload).length <= 1) {
+        showError('No metadata changes to save.');
+        return;
+      }
+      const response = await fetch(`/api/forms/instances/${selectedInstanceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = (await response.json().catch(() => null)) as { instance?: FormInstance; error?: string } | null;
+      if (!response.ok || !body?.instance) {
+        throw new Error(body?.error ?? 'Failed to update metadata.');
+      }
+      success('Operational metadata updated.');
+      applyInstanceState(body.instance);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to update metadata.');
+    } finally {
+      setMetaPending(false);
+    }
+  }, [applyInstanceState, metaPriority, metaSlaDeadline, selectedInstance, selectedInstanceId, showError, success]);
 
   const handleDeleteTemplate = useCallback(async (templateId: string) => {
     setDeletePending(templateId);
@@ -1754,6 +1803,11 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
                           <p className="mt-1 text-xs text-gray-500">{instance.template_title}</p>
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5">
+                          {instance.is_locked && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800" title={`Locked by ${instance.locked_by_user_id ?? 'unknown'}`}>
+                              <Lock className="h-3 w-3" aria-hidden="true" /> Locked
+                            </span>
+                          )}
                           {instance.priority > 0 && (
                             <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${FORM_PRIORITY_STYLES[instance.priority]}`}>
                               {FORM_PRIORITY_LABELS[instance.priority]}
@@ -1960,8 +2014,10 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2 text-sm text-gray-700">
-                      <p><span className="font-medium text-gray-900">Template:</span> {selectedInstance.template_title}</p>
+                      <p><span className="font-medium text-gray-900">Template:</span> {selectedInstance.template_title} <span className="text-xs text-gray-500">(v{selectedInstance.template_version})</span></p>
                       <p><span className="font-medium text-gray-900">Storage scope:</span> {selectedInstance.storage_scope.replace(/_/g, ' ')}</p>
+                      <p><span className="font-medium text-gray-900">Owner org:</span> {selectedInstance.owner_organization_id ?? 'Platform-scoped'}</p>
+                      <p><span className="font-medium text-gray-900">Coverage zone:</span> {selectedInstance.coverage_zone_id ?? 'Not assigned'}</p>
                       <p><span className="font-medium text-gray-900">Submitted by:</span> {selectedInstance.submitted_by_user_id}</p>
                       <p><span className="font-medium text-gray-900">Submitted at:</span> {formatDateTime(selectedInstance.submitted_at)}</p>
                       <p><span className="font-medium text-gray-900">Last updated:</span> {formatDateTime(selectedInstance.updated_at)}</p>
@@ -1969,11 +2025,36 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
                     <div className="space-y-2 text-sm text-gray-700">
                       <p><span className="font-medium text-gray-900">Recipient role:</span> {selectedInstance.recipient_role ? selectedInstance.recipient_role.replace(/_/g, ' ') : 'Unassigned'}</p>
                       <p><span className="font-medium text-gray-900">Assigned reviewer:</span> {selectedInstance.assigned_to_user_id ?? 'Unassigned'}</p>
+                      <p><span className="font-medium text-gray-900">Lock status:</span> {selectedInstance.is_locked ? <span className="inline-flex items-center gap-1 text-amber-700"><Lock className="h-3.5 w-3.5" aria-hidden="true" /> Locked by {selectedInstance.locked_by_user_id ?? 'unknown'}{selectedInstance.locked_at ? ` since ${formatDateTime(selectedInstance.locked_at)}` : ''}</span> : 'Unlocked'}</p>
                       <p><span className="font-medium text-gray-900">Recipient user:</span> {selectedInstance.recipient_user_id ?? 'Unassigned'}</p>
                       <p><span className="font-medium text-gray-900">Recipient org:</span> {selectedInstance.recipient_organization_id ?? 'Unassigned'}</p>
                       <p><span className="font-medium text-gray-900">Blob prefix:</span> {selectedInstance.blob_storage_prefix ?? 'Not configured'}</p>
                     </div>
                   </div>
+
+                  {/* ── Attachment manifest ──────────────────── */}
+                  {Array.isArray(selectedInstance.attachment_manifest) && selectedInstance.attachment_manifest.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-900">
+                        <Paperclip className="h-4 w-4 text-gray-500" aria-hidden="true" />
+                        Attachments ({selectedInstance.attachment_manifest.length})
+                      </p>
+                      <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white text-sm">
+                        {selectedInstance.attachment_manifest.map((att, idx) => {
+                          const a = att && typeof att === 'object' ? (att as Record<string, unknown>) : {};
+                          return (
+                            <li key={String(a.name ?? idx)} className="flex items-center justify-between px-3 py-2">
+                              <span className="truncate font-medium text-gray-800">{String(a.name ?? `File ${idx + 1}`)}</span>
+                              <span className="whitespace-nowrap text-xs text-gray-500">
+                                {a.size ? `${Math.round(Number(a.size) / 1024)} KB` : ''}
+                                {a.type ? ` · ${String(a.type)}` : ''}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
 
                   {selectedInstanceRouting ? (
                     <div className="grid gap-3 md:grid-cols-3">
@@ -2299,6 +2380,48 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
                       </div>
                     )}
 
+                    {/* ── Operational metadata controls ──────── */}
+                    {!['approved', 'denied', 'withdrawn', 'archived', 'expired'].includes(selectedInstance.status) && (
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Operational metadata</p>
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <FormField label="Priority" id="managed-form-meta-priority">
+                            <select
+                              value={metaPriority}
+                              onChange={(e) => setMetaPriority(e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                            >
+                              <option value="0">Standard</option>
+                              <option value="1">Elevated</option>
+                              <option value="2">High</option>
+                              <option value="3">Critical</option>
+                            </select>
+                          </FormField>
+                          <FormField label="SLA deadline" id="managed-form-meta-sla">
+                            <input
+                              type="datetime-local"
+                              value={metaSlaDeadline}
+                              onChange={(e) => setMetaSlaDeadline(e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                            />
+                          </FormField>
+                          <div className="flex items-end">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="gap-1"
+                              disabled={metaPending}
+                              onClick={() => void handleUpdateMetadata()}
+                            >
+                              {metaPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Settings className="h-4 w-4" aria-hidden="true" />}
+                              Update metadata
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap items-center gap-2">
                       {['submitted', 'needs_review'].includes(selectedInstance.status) ? (
                         <Button
@@ -2471,6 +2594,26 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
             ) : null}
           </div>
         </div>
+
+        {/* ── Notification preferences (admin portals) ──────────── */}
+        {canReview && (
+          <div className="mt-6">
+            <button
+              type="button"
+              className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+              onClick={() => setShowNotifPrefs((v) => !v)}
+            >
+              <Bell className="h-4 w-4" aria-hidden="true" />
+              {showNotifPrefs ? 'Hide notification preferences' : 'Notification preferences'}
+              <ChevronRight className={`h-4 w-4 transition-transform ${showNotifPrefs ? 'rotate-90' : ''}`} aria-hidden="true" />
+            </button>
+            {showNotifPrefs && (
+              <div className="mt-3 rounded-xl border border-gray-200 bg-white p-4">
+                <NotificationPreferencesPanel />
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </ErrorBoundary>
   );

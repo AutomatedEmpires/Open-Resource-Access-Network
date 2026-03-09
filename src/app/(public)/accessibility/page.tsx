@@ -176,7 +176,7 @@ export default function AccessibilityPage() {
       </section>
 
       {/* Footer note */}
-      <div className="border-t border-gray-200 pt-6 text-xs text-gray-400">
+      <div className="border-t border-gray-200 pt-6 text-xs text-gray-600">
         This statement was last evaluated on{' '}
         <time dateTime={LAST_EVALUATED_ISO}>{LAST_EVALUATED_DISPLAY}</time>. It is updated
         when evaluations are refreshed or known issues change.

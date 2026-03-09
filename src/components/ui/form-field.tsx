@@ -62,7 +62,7 @@ export function FormField({
           htmlFor={id}
           className={cn(
             'block text-sm font-medium',
-            hasError ? 'text-red-700' : 'text-gray-700',
+            hasError ? 'text-red-700' : 'text-stone-700',
             srOnlyLabel && 'sr-only',
           )}
         >
@@ -78,7 +78,7 @@ export function FormField({
           <span
             className={cn(
               'text-xs tabular-nums',
-              charCount > maxChars * 0.9 ? 'text-amber-600' : 'text-gray-400',
+              charCount > maxChars * 0.9 ? 'text-amber-600' : 'text-stone-400',
               charCount >= maxChars && 'text-red-500 font-medium',
             )}
             aria-live="polite"
@@ -112,7 +112,7 @@ export function FormField({
       })}
 
       {hint && (
-        <p id={hintId} className="text-xs text-gray-500">
+        <p id={hintId} className="text-xs text-stone-500">
           {hint}
         </p>
       )}

@@ -346,4 +346,250 @@ describe('PUT /api/forms/instances/[id]', () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: 'Reviewer permissions required' });
   });
+
+  // ── update_metadata tests ─────────────────────────────────
+
+  it('updates priority and sla via update_metadata', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({
+      userId: 'reviewer-1',
+      role: 'community_admin',
+      orgIds: [],
+      orgRoles: new Map(),
+    });
+    const refreshed = makeInstance({ priority: 3, sla_deadline: '2026-06-01T00:00:00.000Z' });
+    vaultMocks.getAccessibleFormInstance
+      .mockResolvedValueOnce(makeInstance({ status: 'under_review' }))
+      .mockResolvedValueOnce(refreshed);
+
+    const { PUT } = await loadRoute();
+    const response = await PUT(
+      createRequest({ jsonBody: { action: 'update_metadata', priority: 3, slaDeadline: '2026-06-01T00:00:00.000Z' } }),
+      createParams(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(vaultMocks.updateFormSubmissionOperationalMetadata).toHaveBeenCalledWith(
+      SUBMISSION_ID,
+      expect.objectContaining({ priority: 3, slaDeadline: '2026-06-01T00:00:00.000Z', slaBreached: false }),
+    );
+    await expect(response.json()).resolves.toEqual({ instance: refreshed });
+  });
+
+  it('rejects update_metadata for non-reviewer roles', async () => {
+    guardMocks.requireMinRole
+      .mockReturnValueOnce(true)   // route-level DB check
+      .mockReturnValueOnce(false); // community_admin check in handler
+
+    const { PUT } = await loadRoute();
+    const response = await PUT(
+      createRequest({ jsonBody: { action: 'update_metadata', priority: 1 } }),
+      createParams(),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: 'Reviewer permissions required to update metadata' });
+  });
+
+  it('blocks update_metadata on terminal statuses', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({
+      userId: 'reviewer-1',
+      role: 'community_admin',
+      orgIds: [],
+      orgRoles: new Map(),
+    });
+    vaultMocks.getAccessibleFormInstance.mockResolvedValueOnce(
+      makeInstance({ status: 'approved' }),
+    );
+
+    const { PUT } = await loadRoute();
+    const response = await PUT(
+      createRequest({ jsonBody: { action: 'update_metadata', priority: 2 } }),
+      createParams(),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Cannot update metadata for form in terminal status "approved"',
+    });
+  });
+
+  it('returns 400 when update_metadata has no fields', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({
+      userId: 'reviewer-1',
+      role: 'community_admin',
+      orgIds: [],
+      orgRoles: new Map(),
+    });
+    vaultMocks.getAccessibleFormInstance.mockResolvedValueOnce(
+      makeInstance({ status: 'under_review' }),
+    );
+
+    const { PUT } = await loadRoute();
+    const response = await PUT(
+      createRequest({ jsonBody: { action: 'update_metadata' } }),
+      createParams(),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'No metadata fields provided to update' });
+  });
+
+  it('auto-computes slaBreached when slaDeadline is in the past', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({
+      userId: 'reviewer-1',
+      role: 'community_admin',
+      orgIds: [],
+      orgRoles: new Map(),
+    });
+    vaultMocks.getAccessibleFormInstance
+      .mockResolvedValueOnce(makeInstance({ status: 'needs_review' }))
+      .mockResolvedValueOnce(makeInstance({ sla_breached: true }));
+
+    const { PUT } = await loadRoute();
+    const response = await PUT(
+      createRequest({ jsonBody: { action: 'update_metadata', slaDeadline: '2020-01-01T00:00:00.000Z' } }),
+      createParams(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(vaultMocks.updateFormSubmissionOperationalMetadata).toHaveBeenCalledWith(
+      SUBMISSION_ID,
+      expect.objectContaining({ slaBreached: true }),
+    );
+  });
+
+  // ── Lifecycle notification tests ──────────────────────────
+
+  it('sends notification to submitter on approve', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({
+      userId: 'reviewer-1',
+      role: 'community_admin',
+      orgIds: [],
+      orgRoles: new Map(),
+    });
+    vaultMocks.getAccessibleFormInstance
+      .mockResolvedValueOnce(makeInstance({ status: 'under_review' }))
+      .mockResolvedValueOnce(makeInstance({ status: 'approved' }));
+    workflowMocks.advance.mockResolvedValueOnce({
+      success: true,
+      submissionId: SUBMISSION_ID,
+      fromStatus: 'under_review',
+      toStatus: 'approved',
+      transitionId: 'transition-approve',
+      gateResults: [],
+    });
+
+    const { PUT } = await loadRoute();
+    const response = await PUT(
+      createRequest({ jsonBody: { action: 'approve', reviewerNotes: 'All good' } }),
+      createParams(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(notificationMocks.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipientUserId: 'user-1',
+        eventType: 'submission_status_changed',
+        title: 'Form approved',
+      }),
+    );
+  });
+
+  it('sends notification to submitter on deny', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({
+      userId: 'reviewer-1',
+      role: 'community_admin',
+      orgIds: [],
+      orgRoles: new Map(),
+    });
+    vaultMocks.getAccessibleFormInstance
+      .mockResolvedValueOnce(makeInstance({ status: 'under_review' }))
+      .mockResolvedValueOnce(makeInstance({ status: 'denied' }));
+    workflowMocks.advance.mockResolvedValueOnce({
+      success: true,
+      submissionId: SUBMISSION_ID,
+      fromStatus: 'under_review',
+      toStatus: 'denied',
+      transitionId: 'transition-deny',
+      gateResults: [],
+    });
+
+    const { PUT } = await loadRoute();
+    const response = await PUT(
+      createRequest({ jsonBody: { action: 'deny', reviewerNotes: 'Missing info' } }),
+      createParams(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(notificationMocks.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipientUserId: 'user-1',
+        eventType: 'submission_status_changed',
+        title: 'Form denied',
+      }),
+    );
+  });
+
+  it('sends notification to submitter on return', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({
+      userId: 'reviewer-1',
+      role: 'community_admin',
+      orgIds: [],
+      orgRoles: new Map(),
+    });
+    vaultMocks.getAccessibleFormInstance
+      .mockResolvedValueOnce(makeInstance({ status: 'under_review' }))
+      .mockResolvedValueOnce(makeInstance({ status: 'returned' }));
+    workflowMocks.advance.mockResolvedValueOnce({
+      success: true,
+      submissionId: SUBMISSION_ID,
+      fromStatus: 'under_review',
+      toStatus: 'returned',
+      transitionId: 'transition-return',
+      gateResults: [],
+    });
+
+    const { PUT } = await loadRoute();
+    const response = await PUT(
+      createRequest({ jsonBody: { action: 'return', reviewerNotes: 'Please fix section 2' } }),
+      createParams(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(notificationMocks.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipientUserId: 'user-1',
+        eventType: 'submission_status_changed',
+        title: 'Form returned for revision',
+      }),
+    );
+  });
+
+  it('does not send lifecycle notification on start_review', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({
+      userId: 'reviewer-1',
+      role: 'community_admin',
+      orgIds: [],
+      orgRoles: new Map(),
+    });
+    vaultMocks.getAccessibleFormInstance
+      .mockResolvedValueOnce(makeInstance({ status: 'needs_review' }))
+      .mockResolvedValueOnce(makeInstance({ status: 'under_review' }));
+    workflowMocks.advance.mockResolvedValueOnce({
+      success: true,
+      submissionId: SUBMISSION_ID,
+      fromStatus: 'needs_review',
+      toStatus: 'under_review',
+      transitionId: 'transition-start-review',
+      gateResults: [],
+    });
+
+    const { PUT } = await loadRoute();
+    await PUT(
+      createRequest({ jsonBody: { action: 'start_review' } }),
+      createParams(),
+    );
+
+    expect(notificationMocks.send).not.toHaveBeenCalled();
+  });
 });

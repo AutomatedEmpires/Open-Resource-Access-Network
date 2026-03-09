@@ -407,6 +407,14 @@ function SearchInterpretationPanel({
   );
 }
 
+function SectionBadge({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-white/70 bg-white/85 px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm">
+      {children}
+    </span>
+  );
+}
+
 // ============================================================
 // CHAT WINDOW
 // ============================================================
@@ -946,17 +954,20 @@ export function ChatWindow({
   }, [applyQuotaState]);
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-13rem)] md:h-auto md:max-h-[80vh] bg-gray-50 rounded-lg border border-gray-200 shadow">
+    <div className="flex h-[calc(100dvh-13rem)] flex-col overflow-hidden rounded-[26px] border border-orange-100/90 bg-gradient-to-b from-white via-orange-50/40 to-rose-50/50 shadow-[0_18px_55px_rgba(234,88,12,0.12)] md:h-auto md:max-h-[80vh]">
       {/* Header — quota indicator + actions */}
-      <div className="px-4 py-2.5 border-b border-gray-200 bg-white rounded-t-lg">
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-gray-500">Verified records only</p>
+      <div className="border-b border-orange-100/80 bg-gradient-to-b from-orange-50/80 to-white px-4 py-3 md:px-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-700">Verified records only</p>
+            <p className="mt-1 text-sm text-stone-600">Start with a plain-language question or refine the active search scope below.</p>
+          </div>
           <div className="flex items-center gap-2">
             {messages.length > 0 && (
               <button
                 type="button"
                 onClick={clearConversation}
-                className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700"
                 title="Clear conversation"
                 aria-label="Clear conversation"
               >
@@ -964,8 +975,10 @@ export function ChatWindow({
                 Clear
               </button>
             )}
-            <p className={`text-xs font-medium tabular-nums ${
-              quotaRemaining <= 10 ? 'text-amber-600' : 'text-gray-400'
+            <p className={`rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums ${
+              quotaRemaining <= 10
+                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                : 'border-orange-100 bg-white text-stone-500'
             }`}>
               {quotaRemaining} msg{quotaRemaining !== 1 ? 's' : ''} left
             </p>
@@ -973,11 +986,11 @@ export function ChatWindow({
         </div>
         {/* Quota progress bar — visible when ≤ 40 remaining */}
         {quotaRemaining <= 40 && (
-          <div className="mt-1.5 h-1 w-full rounded-full bg-gray-100 overflow-hidden" aria-hidden="true">
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-orange-100/70" aria-hidden="true">
             <div
               className={`h-full rounded-full transition-all duration-300 ${
                 quotaRemaining > 20
-                  ? 'bg-blue-400'
+                  ? 'bg-emerald-400'
                   : quotaRemaining > 10
                   ? 'bg-amber-400'
                   : 'bg-red-500'
@@ -988,9 +1001,9 @@ export function ChatWindow({
         )}
 
         {/* Filters */}
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-gray-500">Trust:</span>
-          <div role="group" aria-label="Trust filter" className="flex flex-wrap gap-1">
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-orange-100/80 bg-white/90 p-2.5 shadow-sm">
+          <span className="px-1 text-xs font-semibold uppercase tracking-wide text-stone-500">Trust</span>
+          <div role="group" aria-label="Trust filter" className="flex flex-wrap gap-1.5">
             {TRUST_OPTIONS.map((opt) => {
               const selected = trustFilter === opt.value;
               return (
@@ -998,10 +1011,10 @@ export function ChatWindow({
                   key={opt.value}
                   type="button"
                   onClick={() => setTrustFilter(opt.value)}
-                  className={`inline-flex items-center justify-center rounded-full px-2.5 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
+                  className={`inline-flex min-h-[40px] flex-shrink-0 items-center justify-center rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
                     selected
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                      ? 'bg-orange-500 text-white shadow-sm'
+                      : 'border border-orange-100 bg-orange-50/60 text-stone-700 hover:border-orange-200 hover:bg-white'
                   }`}
                   aria-pressed={selected}
                 >
@@ -1013,7 +1026,7 @@ export function ChatWindow({
 
           <Dialog open={taxonomyDialogOpen} onOpenChange={handleTaxonomyOpenChange}>
             <DialogTrigger asChild>
-              <Button type="button" variant="outline" size="sm" className="text-xs">
+              <Button type="button" variant="outline" size="sm" className="rounded-full border-orange-100 bg-white text-xs shadow-sm hover:bg-orange-50">
                 Tags{selectedTaxonomyIds.length > 0 ? ` (${selectedTaxonomyIds.length})` : ''}
               </Button>
             </DialogTrigger>
@@ -1032,7 +1045,7 @@ export function ChatWindow({
                     onChange={(e) => setTaxonomySearch(e.target.value)}
                     type="search"
                     placeholder="Search tags…"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                    className="w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
                     aria-label="Search service tags"
                   />
                   {selectedTaxonomyIds.length > 0 && (
@@ -1081,10 +1094,10 @@ export function ChatWindow({
             <button
               type="button"
               onClick={() => setIgnoreProfileShaping((current) => !current)}
-              className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium min-h-[36px] ${
+              className={`inline-flex min-h-[40px] items-center rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm ${
                 ignoreProfileShaping
-                  ? 'border-amber-300 bg-amber-50 text-amber-900'
-                  : 'border-blue-200 bg-blue-50 text-blue-900'
+                  ? 'border-amber-200 bg-amber-50 text-amber-900'
+                  : 'border-rose-200 bg-rose-50 text-rose-900'
               }`}
               aria-pressed={ignoreProfileShaping}
             >
@@ -1096,7 +1109,7 @@ export function ChatWindow({
 
       {/* Messages */}
       <div
-        className="flex-1 overflow-y-auto p-4 space-y-4"
+        className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-orange-50/60 via-white to-rose-50/40 p-4 md:p-5"
         role="log"
         aria-live="polite"
         aria-label="Chat messages"
@@ -1106,7 +1119,7 @@ export function ChatWindow({
 
         {showVerifyTip && !hasCrisis && (
           <div
-            className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800"
+            className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-rose-50 px-4 py-3 text-xs text-orange-900 shadow-sm"
             role="note"
             aria-label="Verification tip"
           >
@@ -1115,13 +1128,13 @@ export function ChatWindow({
         )}
 
         {sessionContext && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left">
+          <div className="rounded-[24px] border border-emerald-200 bg-[linear-gradient(145deg,_rgba(236,253,245,0.96),_rgba(255,255,255,0.95))] px-4 py-4 text-left shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-800">
                   Active chat context
                 </p>
-                <p className="mt-1 text-sm text-emerald-900">
+                <p className="mt-1 text-sm text-emerald-950">
                   Follow-up questions can reuse this scope until you clear it.
                 </p>
               </div>
@@ -1144,7 +1157,7 @@ export function ChatWindow({
                 <button
                   type="button"
                   onClick={() => _clearSessionContextField('activeNeedId')}
-                  className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                  className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                 >
                   Need: {formatFilterLabel(sessionContext.activeNeedId)} x
                 </button>
@@ -1153,7 +1166,7 @@ export function ChatWindow({
                 <button
                   type="button"
                   onClick={() => _clearSessionContextField('activeCity')}
-                  className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                  className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                 >
                   City: {sessionContext.activeCity} x
                 </button>
@@ -1162,7 +1175,7 @@ export function ChatWindow({
                 <button
                   type="button"
                   onClick={() => _clearSessionContextField('urgency')}
-                  className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                  className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                 >
                   Urgency: {formatFilterLabel(sessionContext.urgency)} x
                 </button>
@@ -1171,7 +1184,7 @@ export function ChatWindow({
                 <button
                   type="button"
                   onClick={() => _clearSessionContextField('trustFilter')}
-                  className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                  className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                 >
                   Trust: {formatFilterLabel(sessionContext.trustFilter)} x
                 </button>
@@ -1180,7 +1193,7 @@ export function ChatWindow({
                 <button
                   type="button"
                   onClick={() => _clearSessionContextField('taxonomyTermIds')}
-                  className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                  className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                 >
                   Tags: {sessionContext.taxonomyTermIds.length} x
                 </button>
@@ -1206,7 +1219,7 @@ export function ChatWindow({
                       profileShapingEnabled: !ignoreProfileShaping,
                     }));
                   }}
-                  className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                  className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                 >
                   Delivery: {formatFilterLabel(mode)} x
                 </button>
@@ -1220,7 +1233,7 @@ export function ChatWindow({
                     key={`${taxonomy}-${tag}`}
                     type="button"
                     onClick={() => _removeSessionAttributeTag(taxonomy, tag)}
-                    className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                    className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                   >
                     {formatFilterLabel(tag)} x
                   </button>
@@ -1230,38 +1243,37 @@ export function ChatWindow({
         )}
 
         {messages.length === 0 && (
-          <div className="flex flex-col items-center py-6 gap-5">
+          <div className="relative overflow-hidden rounded-[28px] border border-orange-100/80 bg-gradient-to-br from-white via-orange-50/70 to-rose-50/70 px-5 py-8 shadow-sm md:px-8 md:py-10">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-r from-orange-100/70 via-rose-100/40 to-emerald-100/50" aria-hidden="true" />
+            <div className="relative flex flex-col items-center gap-5">
             {hasSeededBrowseContext && (
-              <div className="w-full max-w-lg rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-left">
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-900">
+              <div className="w-full max-w-2xl rounded-[22px] border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50 px-4 py-4 text-left shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-900">
                   Using current browse context
                 </p>
-                <p className="mt-1 text-sm text-blue-900">
+                <p className="mt-1 text-sm text-stone-800">
                   {seededContextDescription}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {isSeededPromptActive && (
-                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-blue-900">
+                    <SectionBadge>
                       Need: {input.trim()}
-                    </span>
+                    </SectionBadge>
                   )}
                   {trustFilter !== 'all' && trustFilterLabel && (
-                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-blue-900">
+                    <SectionBadge>
                       Trust: {trustFilterLabel}
-                    </span>
+                    </SectionBadge>
                   )}
                   {selectedTaxonomyIds.length > 0 && (
-                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-blue-900">
+                    <SectionBadge>
                       Tags: {selectedTaxonomyIds.length}
-                    </span>
+                    </SectionBadge>
                   )}
                   {seededAttributeLabels.map((label) => (
-                    <span
-                      key={label}
-                      className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-blue-900"
-                    >
+                    <SectionBadge key={label}>
                       {label}
-                    </span>
+                    </SectionBadge>
                   ))}
                 </div>
                 <div className="mt-3 flex justify-end">
@@ -1271,28 +1283,35 @@ export function ChatWindow({
                 </div>
               </div>
             )}
-            <div className="text-center">
-              <p className="text-gray-800 font-medium text-base">What do you need help with?</p>
-              <p className="text-xs mt-1 text-gray-400">
+            <div className="max-w-xl text-center">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Start here</p>
+              <p className="mt-3 text-2xl font-semibold tracking-tight text-stone-900">What do you need help with?</p>
+              <p className="mt-2 text-sm leading-6 text-stone-500">
                 Tap a topic below or type your own question.
               </p>
             </div>
-            <div className="flex flex-wrap justify-center gap-2 max-w-xs mx-auto">
+            <div className="grid w-full max-w-2xl gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {SUGGESTION_CHIPS.map((chip) => (
                 <button
                   key={chip.label}
                   type="button"
                   onClick={() => handleChipClick(chip.prompt)}
                   disabled={isLoading || quotaRemaining === 0}
-                  className="text-xs px-3 py-2 rounded-full border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 active:bg-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+                  className="min-h-[54px] rounded-2xl border border-orange-200 bg-white/95 px-4 py-3 text-left text-sm font-medium text-stone-800 shadow-sm transition-all hover:-translate-y-0.5 hover:border-rose-300 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {chip.label}
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-gray-400 text-center max-w-[18rem]">
+            <div className="flex flex-wrap justify-center gap-2">
+              <SectionBadge>Stored records only</SectionBadge>
+              <SectionBadge>No personal data collected</SectionBadge>
+              <SectionBadge>Session-based guidance</SectionBadge>
+            </div>
+            <p className="max-w-[22rem] text-center text-[11px] text-stone-400">
               Results come from verified service records only — no personal data collected.
             </p>
+          </div>
           </div>
         )}
 
@@ -1302,17 +1321,17 @@ export function ChatWindow({
             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[85%] space-y-2 ${
+              className={`max-w-[88%] space-y-2.5 ${
                 msg.role === 'user'
-                  ? 'bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2 text-sm'
-                  : 'bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-2 text-sm text-gray-800 shadow-sm'
+                  ? 'rounded-[24px] rounded-tr-md bg-gradient-to-br from-rose-500 to-orange-500 px-4 py-3 text-sm text-white shadow-[0_18px_40px_rgba(249,115,22,0.24)]'
+                  : 'rounded-[24px] rounded-tl-md border border-orange-100/90 bg-white/96 px-4 py-3 text-sm text-stone-800 shadow-[0_12px_32px_rgba(234,88,12,0.08)]'
               }`}
             >
               <p>{msg.content}</p>
               {msg.role === 'assistant' && (
                 <div className="space-y-2 mt-2">
                   {(msg as AssistantMessage).resultSummary && (
-                    <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-950">
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50/90 px-3 py-2.5 text-xs text-rose-950">
                       {(msg as AssistantMessage).resultSummary}
                     </div>
                   )}
@@ -1323,7 +1342,7 @@ export function ChatWindow({
                     onToggleProfile={() => setIgnoreProfileShaping((current) => !current)}
                   />
                   {(msg as AssistantMessage).clarification && (
-                    <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                    <div className="rounded-2xl border border-orange-200 bg-orange-50/90 px-3 py-2.5 text-xs text-orange-900">
                       <p className="font-medium">Refine this search</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {(msg as AssistantMessage).clarification?.suggestions.map((suggestion) => (
@@ -1332,7 +1351,7 @@ export function ChatWindow({
                             type="button"
                             onClick={() => handleChipClick(suggestion)}
                             disabled={isLoading || quotaRemaining === 0}
-                            className="rounded-full border border-sky-200 bg-white px-2.5 py-1 text-[11px] font-medium text-sky-900 disabled:opacity-50"
+                            className="rounded-full border border-orange-200 bg-white px-2.5 py-1 text-[11px] font-medium text-orange-900 disabled:opacity-50"
                           >
                             {suggestion}
                           </button>
@@ -1341,7 +1360,7 @@ export function ChatWindow({
                     </div>
                   )}
                   {((msg as AssistantMessage).followUpSuggestions?.length ?? 0) > 0 && !(msg as AssistantMessage).clarification && (
-                    <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-950">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/90 px-3 py-2.5 text-xs text-emerald-950">
                       <p className="font-medium">Next refinements</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {(msg as AssistantMessage).followUpSuggestions?.map((suggestion) => (
@@ -1350,7 +1369,7 @@ export function ChatWindow({
                             type="button"
                             onClick={() => handleChipClick(suggestion)}
                             disabled={isLoading || quotaRemaining === 0}
-                            className="rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-medium text-indigo-900 disabled:opacity-50"
+                            className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-medium text-emerald-900 disabled:opacity-50"
                           >
                             {suggestion}
                           </button>
@@ -1366,7 +1385,7 @@ export function ChatWindow({
                     discoveryContext={(msg as AssistantMessage).discoveryContext}
                     title="Search scope used for these results"
                     description="This response stayed inside the trust and filter scope active when you sent the message."
-                    className="border-blue-100 bg-blue-50"
+                    className="border-orange-100 bg-orange-50"
                   />
                   {(msg as AssistantMessage).services!.map((card) => (
                     <ChatServiceCard
@@ -1381,7 +1400,7 @@ export function ChatWindow({
                 </div>
               )}
               <span className={`block text-[10px] mt-1 select-none ${
-                msg.role === 'user' ? 'text-blue-200 text-right' : 'text-gray-400'
+                msg.role === 'user' ? 'text-orange-100 text-right' : 'text-stone-400'
               }`}>{formatTime(msg.timestamp)}</span>
             </div>
           </div>
@@ -1389,7 +1408,7 @@ export function ChatWindow({
 
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-2 shadow-sm">
+            <div className="rounded-[22px] rounded-tl-md border border-orange-100 bg-white/95 px-4 py-3 shadow-sm">
               <div className="flex gap-1 items-center h-5" role="status">
                 <span className="sr-only">Searching for services…</span>
                 <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]" aria-hidden="true" />
@@ -1405,7 +1424,7 @@ export function ChatWindow({
 
       {/* Eligibility disclaimer — always shown */}
       <div
-        className="px-4 py-2 bg-amber-50 border-t border-amber-200 text-xs text-amber-700"
+        className="border-t border-amber-200/80 bg-gradient-to-b from-amber-50 to-orange-50 px-4 py-2.5 text-xs text-amber-800"
         role="note"
         aria-label="Eligibility disclaimer"
       >
@@ -1413,61 +1432,67 @@ export function ChatWindow({
       </div>
 
       {/* Input */}
-      <div className="p-3 border-t border-gray-200 bg-white rounded-b-lg">
+      <div className="border-t border-orange-100/80 bg-gradient-to-b from-white to-orange-50/60 p-3 md:p-4">
         {quotaRemaining <= 5 && quotaRemaining > 0 && (
-          <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-xs text-amber-900 shadow-sm">
             <p className="font-medium">Low message budget</p>
             <p className="mt-1">You can keep this search scope and continue in Directory or Map if needed.</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <a href={_directoryHandoffHref} className="rounded-full border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900">
+              <a href={_directoryHandoffHref} className="rounded-full border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900 shadow-sm">
                 Open Directory
               </a>
-              <a href={_mapHandoffHref} className="rounded-full border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900">
+              <a href={_mapHandoffHref} className="rounded-full border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900 shadow-sm">
                 Open Map
               </a>
             </div>
           </div>
         )}
-        <div className="flex gap-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => { setInput(e.target.value); autoResize(e.target); }}
-            onKeyDown={handleKeyDown}
-            placeholder="Describe what you need help with..."
-            className="flex-1 resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
-            rows={1}
-            aria-label="Chat message input"
-            disabled={isLoading || quotaRemaining === 0}
-          />
-          <Button
-            onClick={() => void sendMessage()}
-            disabled={isLoading || !input.trim() || quotaRemaining === 0}
-            size="icon"
-            aria-label="Send message"
-            className="min-w-[44px] min-h-[44px]"
-          >
-            <Send className="h-4 w-4" aria-hidden="true" />
-          </Button>
+        <div className="rounded-[24px] border border-orange-100 bg-white/95 p-2 shadow-[0_12px_32px_rgba(234,88,12,0.08)]">
+          <div className="mb-2 flex items-center justify-between gap-3 px-2 pt-1">
+            <p className="text-xs font-medium text-stone-500">Ask for a service, then refine by trust, timing, or delivery.</p>
+            <p className="text-[11px] text-stone-400">Shift + Enter for a new line</p>
+          </div>
+          <div className="flex gap-2">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => { setInput(e.target.value); autoResize(e.target); }}
+              onKeyDown={handleKeyDown}
+              placeholder="Describe what you need help with..."
+              className="min-h-[48px] flex-1 resize-none rounded-[18px] border border-orange-200 bg-orange-50/50 px-3 py-3 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              rows={1}
+              aria-label="Chat message input"
+              disabled={isLoading || quotaRemaining === 0}
+            />
+            <Button
+              onClick={() => void sendMessage()}
+              disabled={isLoading || !input.trim() || quotaRemaining === 0}
+              size="icon"
+              aria-label="Send message"
+              className="min-h-[48px] min-w-[48px] rounded-2xl bg-orange-500 shadow-sm hover:bg-orange-600"
+            >
+              <Send className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
         </div>
         {quotaRemaining === 0 && quotaResetAt && (
           <QuotaCooldown resetAt={quotaResetAt} onExpired={handleQuotaExpired} />
         )}
         {quotaRemaining === 0 && !quotaResetAt && (
-          <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+          <div className="mt-3 rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-xs text-red-700 shadow-sm" role="alert">
             <p className="font-medium">Message limit reached.</p>
             <p className="mt-1">Continue with the same scope in Directory or Map, or start a fresh chat session.</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <a href={_directoryHandoffHref} className="rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700">
+              <a href={_directoryHandoffHref} className="rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 shadow-sm">
                 Open Directory
               </a>
-              <a href={_mapHandoffHref} className="rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700">
+              <a href={_mapHandoffHref} className="rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 shadow-sm">
                 Open Map
               </a>
               <button
                 type="button"
                 onClick={_startNewSession}
-                className="rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700"
+                className="rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 shadow-sm"
               >
                 Start new chat session
               </button>

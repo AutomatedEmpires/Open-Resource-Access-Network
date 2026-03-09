@@ -35,18 +35,18 @@ export function FormSection({
     <section
       aria-labelledby={header ? labelledBy : headingId}
       aria-describedby={header ? describedBy : description ? descriptionId : undefined}
-      className={cn('rounded-xl border border-gray-200 bg-white p-5 shadow-sm', className)}
+      className={cn('rounded-[24px] border border-orange-100/80 bg-white/92 p-5 shadow-[0_12px_32px_rgba(234,88,12,0.06)]', className)}
     >
       {header ? (
         header
       ) : (
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 id={headingId} className="text-base font-semibold text-gray-900">
+            <h2 id={headingId} className="text-base font-semibold text-stone-900">
               {title}
             </h2>
             {description && (
-              <p id={descriptionId} className="mt-1 text-sm text-gray-600">
+              <p id={descriptionId} className="mt-1 text-sm text-stone-600">
                 {description}
               </p>
             )}

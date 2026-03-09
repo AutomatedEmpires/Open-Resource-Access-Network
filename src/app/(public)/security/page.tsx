@@ -151,15 +151,15 @@ export default function SecurityPage() {
         <h2 className="mb-4 text-lg font-semibold text-gray-900">Our commitments</h2>
         <div className="space-y-3 text-sm text-gray-700">
           <div className="flex gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
-            <span className="shrink-0 font-mono text-gray-400">48h</span>
+            <span className="shrink-0 font-mono text-gray-600">48h</span>
             <span>Acknowledge all vulnerability reports within 48 hours.</span>
           </div>
           <div className="flex gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
-            <span className="shrink-0 font-mono text-gray-400">14d</span>
+            <span className="shrink-0 font-mono text-gray-600">14d</span>
             <span>Remediate critical vulnerabilities within 14 days of confirmation.</span>
           </div>
           <div className="flex gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
-            <span className="shrink-0 font-mono text-gray-400">✓</span>
+            <span className="shrink-0 font-mono text-gray-600">✓</span>
             <span>
               No legal action against researchers acting in good faith, following this policy,
               and not accessing or exfiltrating user data beyond what is necessary to demonstrate
@@ -167,14 +167,14 @@ export default function SecurityPage() {
             </span>
           </div>
           <div className="flex gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
-            <span className="shrink-0 font-mono text-gray-400">✓</span>
+            <span className="shrink-0 font-mono text-gray-600">✓</span>
             <span>
               Credit in release notes for responsibly disclosed, confirmed vulnerabilities
               (unless the researcher prefers anonymity).
             </span>
           </div>
           <div className="flex gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
-            <span className="shrink-0 font-mono text-gray-400">ℹ</span>
+            <span className="shrink-0 font-mono text-gray-600">ℹ</span>
             <span>
               ORAN does not currently operate a paid bug bounty program. All qualifying reporters
               receive public attribution (with consent) and our formal thanks.

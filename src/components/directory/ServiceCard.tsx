@@ -18,6 +18,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { FeedbackForm } from '@/components/feedback/FeedbackForm';
 import { ReportProblemDialog } from '@/components/feedback/ReportProblemDialog';
+import { OrgProfileCard } from '@/components/host/OrgProfileCard';
 import type { EnrichedService } from '@/domain/types';
 import type { ConfidenceBand } from '@/domain/types';
 import { CONFIDENCE_BANDS, ORAN_CONFIDENCE_WEIGHTS } from '@/domain/constants';
@@ -458,6 +459,26 @@ export function ServiceCard({
       <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
         You may qualify. Confirm eligibility and hours with the provider.
       </p>
+
+      {/* Org profile snippet — shown when org has mission or is verified */}
+      {!compact && (organization.missionStatement || organization.verifiedAt) && (
+        <div className="mt-3">
+          <OrgProfileCard
+            org={{
+              id: organization.id,
+              name: organization.name,
+              logoUrl: organization.logoUrl,
+              missionStatement: organization.missionStatement,
+              whoWeServe: organization.whoWeServe,
+              serviceRegion: organization.serviceRegion,
+              verifiedAt: typeof organization.verifiedAt === 'string' ? organization.verifiedAt : (organization.verifiedAt ? String(organization.verifiedAt) : null),
+              url: organization.url,
+              email: organization.email,
+            }}
+            size="md"
+          />
+        </div>
+      )}
 
       {/* Bottom action row: View details + feedback/report */}
       {!showFeedback && (

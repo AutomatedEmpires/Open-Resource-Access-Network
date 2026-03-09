@@ -130,7 +130,7 @@ export function CategoryPicker({
               onClick={() => toggle(cat.id)}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-all duration-150',
-                'border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1',
+                'border focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1',
                 isSelected
                   ? `${cat.color} ${cat.textColor} border-transparent shadow-sm scale-105`
                   : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50',
@@ -159,14 +159,14 @@ export function CategoryPicker({
         )}
 
         {allowCustom && showCustomInput && (
-          <div className="inline-flex items-center gap-1 rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5">
+          <div className="inline-flex items-center gap-1 rounded-full border border-teal-300 bg-teal-50 px-2 py-0.5">
             <input
               type="text"
               value={customInput}
               onChange={(e) => setCustomInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Type & Enter"
-              className="bg-transparent text-sm outline-none w-24 placeholder:text-blue-300"
+              className="bg-transparent text-sm outline-none w-24 placeholder:text-teal-300"
               autoFocus
               maxLength={50}
               aria-label="Custom category name"
@@ -174,7 +174,7 @@ export function CategoryPicker({
             <button
               type="button"
               onClick={addCustom}
-              className="text-blue-600 hover:text-blue-800 p-0.5"
+              className="text-teal-600 hover:text-teal-800 p-0.5"
               aria-label="Add custom category"
             >
               <Plus className="h-3.5 w-3.5" />

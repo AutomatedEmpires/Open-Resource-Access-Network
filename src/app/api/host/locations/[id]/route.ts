@@ -10,6 +10,7 @@ import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, requireOrgAccess } from '@/services/auth';
+import { createHostPortalSourceAssertion } from '@/services/ingestion/hostPortalIntake';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -320,6 +321,19 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
         [id],
       );
 
+      await createHostPortalSourceAssertion(client, {
+        actorUserId: auth?.userId ?? 'system',
+        actorRole: auth?.role ?? null,
+        recordType: 'host_location_update',
+        recordId: id,
+        canonicalSourceUrl: `oran://host-portal/locations/${id}`,
+        payload: {
+          organizationId: orgId,
+          locationId: id,
+          requestedChanges: d,
+        },
+      });
+
       return finalResult.rows[0];
     });
 
@@ -385,35 +399,69 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Soft-delete: set status to 'defunct' instead of hard delete
-    // Try status column first, fall back to hard delete if column doesn't exist
-    try {
-      const rows = await executeQuery<{ id: string }>(
-        `UPDATE locations SET status = 'defunct' WHERE id = $1 RETURNING id`,
-        [id],
-      );
+    const deletionResult = await withTransaction(async (client) => {
+      try {
+        const softDeleteResult = await client.query<{ id: string }>(
+          `UPDATE locations SET status = 'defunct' WHERE id = $1 RETURNING id`,
+          [id],
+        );
 
-      if (rows.length === 0) {
-        return NextResponse.json({ error: 'Location not found' }, { status: 404 });
-      }
+        if (softDeleteResult.rows.length === 0) {
+          return null;
+        }
 
-      return NextResponse.json({ deleted: true, id: rows[0].id });
-    } catch (e: unknown) {
-      // If status column doesn't exist, fall back to hard delete
-      if (e instanceof Error && e.message.includes('column "status" of relation "locations"')) {
-        const rows = await executeQuery<{ id: string }>(
+        await createHostPortalSourceAssertion(client, {
+          actorUserId: auth?.userId ?? 'system',
+          actorRole: auth?.role ?? null,
+          recordType: 'host_location_archive',
+          recordId: id,
+          canonicalSourceUrl: `oran://host-portal/locations/${id}`,
+          payload: {
+            organizationId: locResult[0].organization_id,
+            locationId: id,
+            status: 'defunct',
+            archiveMode: 'soft_delete',
+          },
+        });
+
+        return { id: softDeleteResult.rows[0].id };
+      } catch (e: unknown) {
+        if (!(e instanceof Error) || !e.message.includes('column "status" of relation "locations"')) {
+          throw e;
+        }
+
+        const hardDeleteResult = await client.query<{ id: string }>(
           'DELETE FROM locations WHERE id = $1 RETURNING id',
           [id],
         );
 
-        if (rows.length === 0) {
-          return NextResponse.json({ error: 'Location not found' }, { status: 404 });
+        if (hardDeleteResult.rows.length === 0) {
+          return null;
         }
 
-        return NextResponse.json({ deleted: true, id: rows[0].id });
+        await createHostPortalSourceAssertion(client, {
+          actorUserId: auth?.userId ?? 'system',
+          actorRole: auth?.role ?? null,
+          recordType: 'host_location_archive',
+          recordId: id,
+          canonicalSourceUrl: `oran://host-portal/locations/${id}`,
+          payload: {
+            organizationId: locResult[0].organization_id,
+            locationId: id,
+            status: 'defunct',
+            archiveMode: 'hard_delete',
+          },
+        });
+
+        return { id: hardDeleteResult.rows[0].id };
       }
-      throw e;
+    });
+
+    if (!deletionResult) {
+      return NextResponse.json({ error: 'Location not found' }, { status: 404 });
     }
+
+    return NextResponse.json({ deleted: true, id: deletionResult.id });
   } catch (error) {
     await captureException(error, { feature: 'api_host_loc_delete' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

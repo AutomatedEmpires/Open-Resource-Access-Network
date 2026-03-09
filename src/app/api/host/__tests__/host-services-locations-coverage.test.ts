@@ -252,6 +252,36 @@ describe('host locations collection route coverage', () => {
       organization_id: '11111111-1111-4111-8111-111111111111',
       name: 'Downtown Office',
     });
+    expect(hostPortalIntakeMocks.createHostPortalSourceAssertion).toHaveBeenCalledWith(
+      { query: clientQuery },
+      {
+        actorUserId: 'user-1',
+        actorRole: 'host_admin',
+        recordType: 'host_location_create',
+        recordId: 'loc-1',
+        canonicalSourceUrl: 'oran://host-portal/locations/loc-1',
+        payload: {
+          organizationId: '11111111-1111-4111-8111-111111111111',
+          locationId: 'loc-1',
+          name: 'Downtown Office',
+          alternateName: null,
+          description: null,
+          transportation: null,
+          latitude: null,
+          longitude: null,
+          address: {
+            address1: '123 Main St',
+            address2: null,
+            city: 'Seattle',
+            stateProvince: 'WA',
+            postalCode: '98101',
+            country: 'US',
+          },
+          phones: [],
+          schedule: [],
+        },
+      },
+    );
     expect(clientQuery).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO addresses'),
       expect.arrayContaining(['loc-1', '123 Main St', 'Seattle', 'WA', '98101']),

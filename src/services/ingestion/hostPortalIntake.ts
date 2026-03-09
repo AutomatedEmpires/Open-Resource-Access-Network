@@ -59,6 +59,9 @@ export interface CreateHostPortalSourceAssertionInput {
     | 'host_org_claim'
     | 'host_org_update'
     | 'host_org_archive'
+    | 'host_location_create'
+    | 'host_location_update'
+    | 'host_location_archive'
     | 'host_service_create'
     | 'host_service_update'
     | 'host_service_archive';

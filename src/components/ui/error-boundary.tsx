@@ -46,12 +46,12 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       return (
         <div
           role="alert"
-          className="flex flex-col items-center justify-center gap-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-8 text-center"
+          className="flex flex-col items-center justify-center gap-4 rounded-[24px] border border-orange-100 bg-white/92 p-8 text-center shadow-[0_12px_32px_rgba(234,88,12,0.06)]"
         >
           <AlertTriangle className="h-8 w-8 text-amber-500" aria-hidden="true" />
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Something went wrong</h2>
-            <p className="mt-1 text-sm text-gray-500">
+            <h2 className="text-lg font-semibold text-stone-900">Something went wrong</h2>
+            <p className="mt-1 text-sm text-stone-500">
               We couldn&apos;t load this section. Your data is safe.
             </p>
           </div>

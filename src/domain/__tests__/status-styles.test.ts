@@ -35,8 +35,8 @@ describe('SUBMISSION_STATUS_STYLES', () => {
 });
 
 describe('DEFAULT_STATUS_STYLE', () => {
-  it('provides a gray fallback', () => {
-    expect(DEFAULT_STATUS_STYLE.color).toContain('gray');
+  it('provides a neutral fallback', () => {
+    expect(DEFAULT_STATUS_STYLE.color).toContain('stone');
     expect(DEFAULT_STATUS_STYLE.label).toBe('Unknown');
   });
 });

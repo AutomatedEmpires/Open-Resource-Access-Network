@@ -812,6 +812,48 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
     }
   }, [bulkAction, bulkNotes, fetchInstances, selectedInstanceIds, showError, success]);
 
+  const handleAssignReviewer = useCallback(async () => {
+    if (!selectedInstanceId || !assigneeUserId.trim()) return;
+    setAssignPending(true);
+    try {
+      const response = await fetch(`/api/forms/instances/${selectedInstanceId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assigneeUserId: assigneeUserId.trim() }),
+      });
+      const body = (await response.json().catch(() => null)) as { instance?: FormInstance; error?: string } | null;
+      if (!response.ok || !body?.instance) {
+        throw new Error(body?.error ?? 'Failed to assign reviewer.');
+      }
+      success('Reviewer assigned.');
+      setAssigneeUserId('');
+      applyInstanceState(body.instance);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to assign reviewer.');
+    } finally {
+      setAssignPending(false);
+    }
+  }, [applyInstanceState, assigneeUserId, selectedInstanceId, showError, success]);
+
+  const handleDeleteTemplate = useCallback(async (templateId: string) => {
+    setDeletePending(templateId);
+    try {
+      const response = await fetch(`/api/forms/templates/${templateId}`, { method: 'DELETE' });
+      const body = (await response.json().catch(() => null)) as { deleted?: boolean; error?: string } | null;
+      if (!response.ok || !body?.deleted) {
+        throw new Error(body?.error ?? 'Failed to delete template.');
+      }
+      success('Template deleted.');
+      setEditingTemplateId(null);
+      setSelectedTemplateId(null);
+      await fetchTemplates();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to delete template.');
+    } finally {
+      setDeletePending(null);
+    }
+  }, [fetchTemplates, showError, success]);
+
   // Debounce template search — trigger fetch after 300ms of inactivity
   useEffect(() => {
     if (!showTemplates) return;
@@ -1374,6 +1416,21 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
                                 {duplicatePending === template.id ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
                                 Duplicate
                               </span>
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-red-700 hover:bg-red-100 transition-colors cursor-pointer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm(`Delete template "${template.title}"? This cannot be undone.`)) {
+                                    void handleDeleteTemplate(template.id);
+                                  }
+                                }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); if (window.confirm(`Delete template "${template.title}"? This cannot be undone.`)) { void handleDeleteTemplate(template.id); } } }}
+                              >
+                                {deletePending === template.id ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> : <Trash2 className="h-3 w-3" aria-hidden="true" />}
+                                Delete
+                              </span>
                             </>
                           )}
                         </div>
@@ -1577,7 +1634,7 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
               <FormField label="Status filter" id={`${portal}-form-status-filter`} className="flex-1">
                 <select
                   value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value)}
+                  onChange={(event) => { setStatusFilter(event.target.value); setInstancePage(0); }}
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                 >
                   {STATUS_OPTIONS.map((option) => (
@@ -1726,6 +1783,37 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
                 title="No forms in this view"
                 body={canReview ? 'Nothing in the current review slice. Adjust the status filter or wait for new submissions.' : 'Start a form from the template library to create the first submission-backed draft.'}
               />
+            )}
+
+            {/* ── Instance pagination ─────────────────── */}
+            {(instancesData?.total ?? 0) > 50 && (
+              <div className="flex items-center justify-between border-t border-gray-200 pt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  disabled={instancePage === 0}
+                  onClick={() => setInstancePage((p) => Math.max(0, p - 1))}
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  Previous
+                </Button>
+                <p className="text-xs text-gray-500">
+                  Page {instancePage + 1} of {Math.ceil((instancesData?.total ?? 0) / 50)}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  disabled={(instancePage + 1) * 50 >= (instancesData?.total ?? 0)}
+                  onClick={() => setInstancePage((p) => p + 1)}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </div>
             )}
           </FormSection>
 
@@ -2185,6 +2273,31 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
                         className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                       />
                     </FormField>
+
+                    {['submitted', 'needs_review', 'under_review'].includes(selectedInstance.status) && (
+                      <div className="flex items-end gap-2">
+                        <FormField label="Assign reviewer" id="managed-form-assign-reviewer" hint="Enter the user ID of the reviewer to assign." className="flex-1">
+                          <input
+                            type="text"
+                            value={assigneeUserId}
+                            onChange={(e) => setAssigneeUserId(e.target.value)}
+                            placeholder="Reviewer user ID"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                          />
+                        </FormField>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          disabled={!assigneeUserId.trim() || assignPending}
+                          onClick={() => void handleAssignReviewer()}
+                        >
+                          {assignPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <UserPlus className="h-4 w-4" aria-hidden="true" />}
+                          Assign
+                        </Button>
+                      </div>
+                    )}
 
                     <div className="flex flex-wrap items-center gap-2">
                       {['submitted', 'needs_review'].includes(selectedInstance.status) ? (

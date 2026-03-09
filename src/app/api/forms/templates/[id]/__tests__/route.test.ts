@@ -17,6 +17,7 @@ const captureExceptionMock = vi.hoisted(() => vi.fn());
 const vaultMocks = vi.hoisted(() => ({
   getFormTemplateById: vi.fn(),
   updateFormTemplate: vi.fn(),
+  deleteFormTemplate: vi.fn(),
 }));
 const formsMocks = vi.hoisted(() => ({
   getVisibleFormTemplateAudiences: vi.fn(),
@@ -82,6 +83,12 @@ function makePutRequest(body: unknown) {
   } as never;
 }
 
+function makeDeleteRequest() {
+  return {
+    headers: new Headers(),
+  } as never;
+}
+
 function makeRouteContext(id = TEMPLATE_ID) {
   return { params: Promise.resolve({ id }) } as never;
 }
@@ -103,6 +110,7 @@ beforeEach(() => {
   formsMocks.getVisibleFormTemplateAudiences.mockReturnValue(['shared', 'host_member', 'host_admin', 'community_admin', 'oran_admin']);
   vaultMocks.getFormTemplateById.mockResolvedValue(makeTemplate());
   vaultMocks.updateFormTemplate.mockResolvedValue(makeTemplate({ title: 'Updated Title', version: 2 }));
+  vaultMocks.deleteFormTemplate.mockResolvedValue({ deleted: true });
 });
 
 // ── GET tests ─────────────────────────────────────────
@@ -267,5 +275,69 @@ describe('PUT /api/forms/templates/[id]', () => {
         updated_by_user_id: USER_ID,
       }),
     );
+  });
+});
+
+// ── DELETE tests ──────────────────────────────────────
+
+describe('DELETE /api/forms/templates/[id]', () => {
+  it('deletes template on success', async () => {
+    const { DELETE } = await loadRoute();
+    const res = await DELETE(makeDeleteRequest(), makeRouteContext());
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.deleted).toBe(true);
+    expect(vaultMocks.deleteFormTemplate).toHaveBeenCalledWith(TEMPLATE_ID);
+  });
+
+  it('returns 409 when template has instances', async () => {
+    vaultMocks.deleteFormTemplate.mockResolvedValue({ deleted: false, reason: 'Template has 3 instances.' });
+    const { DELETE } = await loadRoute();
+    const res = await DELETE(makeDeleteRequest(), makeRouteContext());
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.error).toContain('3 instances');
+  });
+
+  it('returns 400 for invalid UUID', async () => {
+    const { DELETE } = await loadRoute();
+    const res = await DELETE(makeDeleteRequest(), makeRouteContext('not-valid'));
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 503 when database not configured', async () => {
+    dbMocks.isDatabaseConfigured.mockReturnValue(false);
+    const { DELETE } = await loadRoute();
+    const res = await DELETE(makeDeleteRequest(), makeRouteContext());
+    expect(res.status).toBe(503);
+  });
+
+  it('returns 401 when not authenticated', async () => {
+    authMocks.getAuthContext.mockResolvedValue(null);
+    const { DELETE } = await loadRoute();
+    const res = await DELETE(makeDeleteRequest(), makeRouteContext());
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 403 when not oran_admin', async () => {
+    guardMocks.requireMinRole.mockReturnValue(false);
+    const { DELETE } = await loadRoute();
+    const res = await DELETE(makeDeleteRequest(), makeRouteContext());
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 429 on rate limit', async () => {
+    rateLimitMock.mockReturnValue({ exceeded: true, retryAfterSeconds: 15 });
+    const { DELETE } = await loadRoute();
+    const res = await DELETE(makeDeleteRequest(), makeRouteContext());
+    expect(res.status).toBe(429);
+  });
+
+  it('returns 500 on internal error', async () => {
+    vaultMocks.deleteFormTemplate.mockRejectedValue(new Error('DB error'));
+    const { DELETE } = await loadRoute();
+    const res = await DELETE(makeDeleteRequest(), makeRouteContext());
+    expect(res.status).toBe(500);
+    expect(captureExceptionMock).toHaveBeenCalled();
   });
 });

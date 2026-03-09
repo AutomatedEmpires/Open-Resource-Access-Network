@@ -20,10 +20,10 @@ import CommunityAdminContextStrip from '@/components/community-admin/CommunityAd
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard' },
-  { href: '/queue',     label: 'Queue' },
-  { href: '/verify',    label: 'Verify' },
-  { href: '/forms',     label: 'Forms' },
-  { href: '/coverage',  label: 'Coverage' },
+  { href: '/queue',            label: 'Queue' },
+  { href: '/verify',           label: 'Verify' },
+  { href: '/community-forms',  label: 'Forms' },
+  { href: '/coverage',         label: 'Coverage' },
 ] as const;
 
 export default function CommunityAdminLayoutShell({ children }: { children: React.ReactNode }) {

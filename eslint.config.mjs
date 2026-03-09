@@ -1,24 +1,31 @@
-import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import oranPlugin from "./eslint-plugin-oran.mjs";
 
-const eslintConfig = defineConfig([
+const eslintConfig = [
+  // Global ignores MUST come first as a standalone object.
+  {
+    ignores: [
+      // Default ignores of eslint-config-next:
+      ".next/**",
+      "out/**",
+      "build/**",
+      "next-env.d.ts",
+      // Build / generated output:
+      "dist/**",
+      "coverage/**",
+      "playwright-report/**",
+      "test-results/**",
+      // Non-app utility scripts and DB tooling (not part of Next.js app):
+      "db/**",
+      "functions/**",
+      "docs/_archive/**",
+      "e2e/**",
+      "scripts/**",
+    ],
+  },
   ...nextVitals,
   ...nextTs,
-  // Override default ignores of eslint-config-next.
-  globalIgnores([
-    // Default ignores of eslint-config-next:
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
-    // Build / generated output:
-    "dist/**",
-    "coverage/**",
-    "playwright-report/**",
-    "test-results/**",
-  ]),
 
   // Allow _-prefixed args/vars to signal intentionally unused parameters
   // (e.g. required positional params in route handlers, destructured rest).
@@ -59,6 +66,6 @@ const eslintConfig = defineConfig([
       "oran/no-unapproved-arbitrary": "warn",
     },
   },
-]);
+];
 
 export default eslintConfig;

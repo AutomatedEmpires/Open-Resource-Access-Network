@@ -235,6 +235,7 @@ that depend on ORAN being available. Reduces support ticket volume during outage
 
 1. **Overall status badge** — Operational / Degraded / Outage
 2. **Component table** — per service:
+
    | Component | Status | Uptime 90d |
    |---|---|---|
    | Web App | ✅ Operational | 99.9% |
@@ -242,6 +243,7 @@ that depend on ORAN being available. Reduces support ticket volume during outage
    | Chat API | ✅ Operational | 99.7% |
    | Data Ingestion | ✅ Operational | 99.5% |
    | Authentication | ✅ Operational | 100% |
+
 3. **Active incidents** — zero-state copy + active incident cards
 4. **Incident history** — 90-day log
 

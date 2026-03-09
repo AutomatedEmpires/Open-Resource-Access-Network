@@ -92,10 +92,12 @@ export const CONFIDENCE_THRESHOLDS = {
 **Location**: `src/services/scoring/scorer.ts`, DB: `confidence_scores` table
 
 **Purpose**:
+
 - **Trust**: shown prominently to seekers (verification confidence)
 - **Match**: optional secondary indicator (eligibility + constraints)
 
 **Stored overall score formula** (historical contract):
+
 ```
 final = 0.45 * verification_confidence
       + 0.40 * eligibility_match
@@ -164,6 +166,7 @@ match_score = (0.40 * eligibility_match + 0.15 * constraint_fit) / (0.40 + 0.15)
 | Checklist completion | up to +20 |
 
 **Verification Check Weights**:
+
 - Critical check: ±20 points
 - Warning check: ±10 points
 - Info check: ±4 points
@@ -188,6 +191,7 @@ match_score = (0.40 * eligibility_match + 0.15 * constraint_fit) / (0.40 + 0.15)
 | 0-39 | red | Weak signal, likely incorrect |
 
 **Auto-Approval Logic**:
+
 - Green tier (≥80) tags CAN be auto-approved for most tag types
 - Category and Geographic tags ALWAYS require human review (regardless of confidence)
 - Orange/Red tier tags ALWAYS require human review
@@ -219,6 +223,7 @@ match_score = (0.40 * eligibility_match + 0.15 * constraint_fit) / (0.40 + 0.15)
 **Type**: Checklist (booleans) + minimum confidence threshold
 
 **Requirements** (ALL must be true):
+
 - ✓ hasOrgName
 - ✓ hasServiceName
 - ✓ hasDescription
@@ -281,6 +286,7 @@ src/
 ## 5. Database Tables
 
 ### confidence_scores (service-level)
+
 ```sql
 CREATE TABLE confidence_scores (
   id                    UUID PRIMARY KEY,
@@ -294,6 +300,7 @@ CREATE TABLE confidence_scores (
 ```
 
 ### extracted_candidates (candidate-level)
+
 ```sql
 -- Relevant columns:
 confidence_score      INT NOT NULL DEFAULT 0 CHECK (confidence_score >= 0 AND confidence_score <= 100),
@@ -308,6 +315,7 @@ confidence_tier       TEXT GENERATED ALWAYS AS (
 ```
 
 ### tag_confirmations (per-tag)
+
 ```sql
 -- Relevant columns:
 agent_confidence      INT NOT NULL DEFAULT 50 CHECK (agent_confidence >= 0 AND agent_confidence <= 100),
@@ -334,6 +342,7 @@ minConfidence?: number;       // Legacy: 0-1 (auto-converted)
 ```
 
 ### Response includes:
+
 ```typescript
 {
   results: [{
@@ -371,6 +380,7 @@ const { label, color, description } = getTierDisplayInfo(tier);
 ## 8. Common Mistakes to Avoid
 
 ### ❌ Using 0-1 Scale Internally
+
 ```typescript
 // WRONG
 const confidence = 0.85;
@@ -381,6 +391,7 @@ const confidence = 85;
 ```
 
 ### ❌ Hardcoding Thresholds
+
 ```typescript
 // WRONG
 if (score >= 80) return 'green';
@@ -391,6 +402,7 @@ return getConfidenceTier(score);
 ```
 
 ### ❌ Mixing Tier Systems
+
 ```typescript
 // WRONG - mixing admin tiers with seeker bands
 if (tier === 'HIGH') // This is a band, not a tier!
@@ -405,11 +417,13 @@ if (band === 'HIGH')  // Use bands with bands
 ## 9. Testing Confidence Logic
 
 ### Unit Tests Location
+
 - `src/services/scoring/__tests__/scoring.test.ts`
 - `src/agents/ingestion/__tests__/scoring.test.ts`
 - `src/agents/ingestion/__tests__/confirmations.test.ts`
 
 ### Key Test Cases
+
 1. Score normalization (0-1 → 0-100)
 2. Tier boundary conditions (exactly 80, exactly 60, exactly 40)
 3. Clamping to valid range (negative → 0, >100 → 100)

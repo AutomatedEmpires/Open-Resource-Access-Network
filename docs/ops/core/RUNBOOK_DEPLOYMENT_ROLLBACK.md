@@ -35,6 +35,7 @@ This runbook defines rollback procedures for failed or risky production deployme
 5. Validate DB migration compatibility with rollback target.
 
 Record rollback target details before execution:
+
 - Previous known-good commit SHA
 - Previous successful workflow run ID
 - Environment and timestamp of known-good deploy
@@ -69,6 +70,7 @@ Record rollback target details before execution:
 5. No active SEV-level alerts remain.
 
 Stabilization window:
+
 - Monitor for at least 30 minutes after rollback before declaring resolved.
 
 ## Communications

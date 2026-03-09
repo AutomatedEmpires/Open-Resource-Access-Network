@@ -1,10 +1,10 @@
 # Ingestion Agent Output 001
 
-**Date:** 2026-03-08  
-**URL:** `https://www.samhsa.gov/find-help/national-helpline`  
-**LLM:** Azure OpenAI `gpt-4o-mini` via `oranhf57ir-prod-oai`  
-**Pipeline:** 9-stage `PipelineOrchestrator` — all stages completed  
-**Duration:** 8,466 ms  
+**Date:** 2026-03-08
+**URL:** `https://www.samhsa.gov/find-help/national-helpline`
+**LLM:** Azure OpenAI `gpt-4o-mini` via `oranhf57ir-prod-oai`
+**Pipeline:** 9-stage `PipelineOrchestrator` — all stages completed
+**Duration:** 8,466 ms
 **Correlation ID:** `7a9099da-3502-438b-81a3-ca789fcb0447`
 
 ---
@@ -73,6 +73,7 @@ The extraction prompt sends the page's extracted text (972 words) plus context (
 ```
 
 **Key observations:**
+
 - The LLM returns explicit `null` for fields it can't determine (not `undefined`)
 - `category` is `null` at this stage — the LLM extract prompt does NOT assign categories
 - Field-level confidence scores: `organizationName` 95, `phones` 95, `serviceName` 90, `description` 85
@@ -83,6 +84,7 @@ The extraction prompt sends the page's extracted text (972 words) plus context (
 ### Stage 6 — `llm_categorize` (1,594 ms)
 
 A separate LLM call is made specifically for categorization. The categorize prompt sends the extracted service data (org name, service name, description, eligibility, etc.) and asks the LLM to assign:
+
 1. Exactly ONE `primaryCategory`
 2. Up to 5 taxonomy tags with confidence scores
 
@@ -100,6 +102,7 @@ The LLM returned:
 ```
 
 **Key observations:**
+
 - 3 category tags assigned with individual confidence scores
 - `mental_health` and `substance_use` both scored 90 — the SAMHSA helpline covers both equally
 - `crisis` scored 70 (strongly implied but not the primary purpose)
@@ -189,15 +192,15 @@ Each category tag from the LLM becomes a separate row in `resource_tags`:
 | `evidence_id` | `url` | `link_type` | `label` | `confidence` |
 |---|---|---|---|---|
 | `ddc518a0...` | `https://www.samhsa.gov/about/contact` | `contact` | `Contact Us` | `1.0` |
-| `https://www.samhsa.gov/grants/how-to-apply` | `apply` | `How to Apply` | `1.0` |
-| `https://www.samhsa.gov/grants/how-to-apply/application-guide` | `apply` | `Application Guide` | `1.0` |
-| `https://nacoa.org/wp-content/uploads/2018/04/Its-Not-Your-Fault-NACoA.pdf` | `pdf` | `It's Not Your Fault (NACoA) (PDF \| 12 KB)` | `1.0` |
-| `https://www.samhsa.gov/substance-use/learn/tobacco-vaping/synar/requirements` | `eligibility` | `Requirements` | `0.95` |
-| `https://www.samhsa.gov/substance-use/treatment/resources/mat-act/training-requirements` | `eligibility` | `Training Requirements (MATE Act) Resources` | `0.95` |
-| `https://www.samhsa.gov/find-support/.../connecticut` | `contact` | `Connecticut's Medicaid Program or CHIP` | `0.90` |
-| `https://www.samhsa.gov/substance-use/treatment/contact` | `contact` | `Contact Information` | `0.90` |
-| `https://www.samhsa.gov/grants/about/contact-information` | `contact` | `Contact Information` | `0.90` |
-| `https://www.samhsa.gov/about/contact/speaker-request-form` | `contact` | `Speaker Request Form` | `0.90` |
+| — | `https://www.samhsa.gov/grants/how-to-apply` | `apply` | `How to Apply` | `1.0` |
+| — | `https://www.samhsa.gov/grants/how-to-apply/application-guide` | `apply` | `Application Guide` | `1.0` |
+| — | `https://nacoa.org/wp-content/uploads/2018/04/Its-Not-Your-Fault-NACoA.pdf` | `pdf` | `It's Not Your Fault (NACoA) (PDF \| 12 KB)` | `1.0` |
+| — | `https://www.samhsa.gov/substance-use/learn/tobacco-vaping/synar/requirements` | `eligibility` | `Requirements` | `0.95` |
+| — | `https://www.samhsa.gov/substance-use/treatment/resources/mat-act/training-requirements` | `eligibility` | `Training Requirements (MATE Act) Resources` | `0.95` |
+| — | `https://www.samhsa.gov/find-support/.../connecticut` | `contact` | `Connecticut's Medicaid Program or CHIP` | `0.90` |
+| — | `https://www.samhsa.gov/substance-use/treatment/contact` | `contact` | `Contact Information` | `0.90` |
+| — | `https://www.samhsa.gov/grants/about/contact-information` | `contact` | `Contact Information` | `0.90` |
+| — | `https://www.samhsa.gov/about/contact/speaker-request-form` | `contact` | `Speaker Request Form` | `0.90` |
 
 **Link type distribution:** 14 contact, 15 apply, 9 eligibility, 3 PDF, 2 intake_form, 5 privacy, 2 other
 
@@ -299,25 +302,26 @@ There are two natural insertion points:
 **Option A: Expand Stage 6 (`llm_categorize`)**
 
 Add audience, program, and geographic dimensions to the existing categorization prompt. The LLM already sees the full service description — it could simultaneously assign:
+
 - Category tags (already done)
 - Audience tags: "Who is this service for?"
 - Program tags: "Which public benefit programs does this relate to?"
 
-**Pros:** Single LLM call, data is available.  
+**Pros:** Single LLM call, data is available.
 **Cons:** More complex prompt, higher token usage, potential quality dilution.
 
 **Option B: Add a new Stage 6b (`taxonomy_label`) between categorize and verify**
 
 A dedicated taxonomy labeling step that takes the extracted service + category tags and runs a focused LLM call comparing against all AUDIENCE_TAGS + PROGRAM_TAGS.
 
-**Pros:** Separation of concerns, can be iterated independently.  
+**Pros:** Separation of concerns, can be iterated independently.
 **Cons:** Additional LLM call (~1-2s), additional latency.
 
 **Option C: Post-ingestion enrichment (before publish)**
 
 When a community admin reviews the candidate, a "taxonomy enrichment" step runs automatically — comparing the candidate against the full tag set and suggesting additional labels. The admin confirms or corrects.
 
-**Pros:** Human-in-the-loop for taxonomy quality, doesn't slow pipeline.  
+**Pros:** Human-in-the-loop for taxonomy quality, doesn't slow pipeline.
 **Cons:** Delays full labeling until review time.
 
 ### What Would Full Taxonomy Output Look Like for This SAMHSA Candidate?

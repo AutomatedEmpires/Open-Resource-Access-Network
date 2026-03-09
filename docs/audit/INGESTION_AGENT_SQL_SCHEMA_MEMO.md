@@ -3,6 +3,7 @@
 Audience: the engineer/agent authoring the ingestion-agent SQL migrations.
 
 ## TL;DR
+
 There are currently **two competing ingestion-pipeline schemas** in this repo:
 
 - **Schema A (implemented in code today):** `db/migrations/0002_ingestion_tables.sql` + Drizzle schema in `src/db/schema.ts` (and the ingestion persistence code that writes to these columns).
@@ -19,12 +20,14 @@ This memo focuses on what looks wrong, why it matters, and concrete options to r
 ## What I reviewed (evidence)
 
 ### SQL files
+
 - `db/migrations/0002_ingestion_tables.sql` (tables that match the current Drizzle schema)
 - `db/migrations/0014_ingestion_pipeline.sql` (alternate/expanded ingestion schema)
 - `db/migrations/0015_admin_approval_workflow.sql` (admin profiles/assignments + routing functions)
 - `db/migrations/0016_admin_review_pipeline.sql` (a second, different admin-review pipeline)
 
 ### Code files
+
 - `src/db/schema.ts` (Drizzle schema; explicitly claims it corresponds to `0002_ingestion_tables.sql`)
 
 ---
@@ -32,19 +35,23 @@ This memo focuses on what looks wrong, why it matters, and concrete options to r
 ## Finding 1 — Two “source registry” tables with different semantics
 
 ### Schema A (code-backed)
+
 - Table: `ingestion_sources`
 - Drizzle: `ingestionSources`
 - Trust levels: `('vetted', 'community', 'quarantine', 'blocked')`
 
 ### Schema B (SQL-only)
+
 - Table: `source_registry`
 - Trust levels: `('allowlisted', 'quarantine', 'blocked')`
 
 **Why this matters:**
+
 - The code cannot use `source_registry` without a full rename/mapping.
 - The enum values don’t overlap (`vetted/community` vs `allowlisted`), so even a naive rename would break logic unless the meaning is reconciled.
 
 **Questions to ask yourself:**
+
 - Are these actually different concepts (curated registry vs crawler allowlist)? If so, they should not be treated as the same table.
 - If they’re the same concept, which naming/enum set is canonical?
 
@@ -53,9 +60,11 @@ This memo focuses on what looks wrong, why it matters, and concrete options to r
 ## Finding 2 — Two different models for “evidence snapshots”
 
 ### Schema A (code-backed)
+
 - Table: `evidence_snapshots` includes `evidence_id`, `blob_storage_key`, and also stores `html_raw` + `text_extracted` in-db.
 
 ### Schema B (SQL-only)
+
 - Table: `evidence_snapshots` uses:
   - `source_url` and `canonical_url`
   - `blob_uri` + `blob_container`
@@ -63,10 +72,12 @@ This memo focuses on what looks wrong, why it matters, and concrete options to r
   - no in-db raw content fields
 
 **Why this matters:**
+
 - These aren’t minor diffs: they reflect fundamentally different storage strategies.
 - Storing `html_raw`/`text_extracted` in Postgres can bloat storage and can increase privacy risk if raw pages contain PII. Schema B seems to be moving toward “blob store for payload, DB for metadata,” which is usually a better long-term posture.
 
 **Recommendation:**
+
 - Pick one strategy explicitly and document it.
 - If you keep raw content in the DB, add explicit retention/size constraints and ensure you’re not capturing user-submitted PII.
 
@@ -75,7 +86,9 @@ This memo focuses on what looks wrong, why it matters, and concrete options to r
 ## Finding 3 — `extracted_candidates` shape drift (breaks routing + workflow)
 
 ### Schema A (code-backed)
+
 `extracted_candidates` contains:
+
 - `candidate_id` (TEXT unique)
 - `extraction_id` (TEXT unique)
 - `verification_checklist` (JSONB)
@@ -84,17 +97,21 @@ This memo focuses on what looks wrong, why it matters, and concrete options to r
 - plus denormalized address fields
 
 ### Schema B (SQL-only)
+
 `extracted_candidates` contains:
+
 - no `candidate_id`/`extraction_id` fields
 - includes `address` as a JSONB object
 - includes `discovered_links` as JSONB on the candidate
 - includes `provenance` JSONB (single object)
 
 **Why this matters:**
+
 - The Drizzle schema and any persistence code built on it will not map to Schema B.
 - Even inside Schema B, `0015_admin_approval_workflow.sql` references an `extracted_candidates.extracted_data` JSON column that does **not** exist in Schema B (or Schema A).
 
 **Concrete broken reference (in 0015):**
+
 - `c.extracted_data->>'location'` and `c.extracted_data->>'location_id'` in `route_candidate_to_admins()`
 
 This suggests `0015` was authored against an older/third candidate schema and not updated.
@@ -104,23 +121,30 @@ This suggests `0015` was authored against an older/third candidate schema and no
 ## Finding 4 — `resource_tags` model is inconsistent across migrations
 
 ### Schema A (code-backed)
+
 `resource_tags` is modeled as a polymorphic tag table:
+
 - `target_id` (TEXT)
 - `target_type` (candidate/service)
 - `tag_type`, `tag_value`, `confidence`, etc.
 
 ### Schema B (SQL-only)
+
 `resource_tags` is modeled as a relational child of either:
+
 - `candidate_id` (UUID FK to extracted_candidates)
 - `service_id` (UUID FK to services)
 
 ### Concrete broken reference (in 0015):
+
 `route_candidate_to_admins()` does:
+
 - `WHERE rt.target_id = c.id AND rt.tag_type = 'category'`
 
 …but in Schema B, there is **no** `target_id` column (and `c.id` is UUID, not TEXT).
 
 **Why this matters:**
+
 - If `0014` is the canonical ingestion schema, `0015` needs to be rewritten to join `resource_tags` using `candidate_id`.
 - If `0002` is canonical, `0014` needs refactoring or removal.
 
@@ -129,14 +153,17 @@ This suggests `0015` was authored against an older/third candidate schema and no
 ## Finding 5 — `0015` assumes a `locations.point` geometry column
 
 In `route_candidate_to_admins()` (0015), there is:
+
 - `LEFT JOIN locations l ON l.id = (c.extracted_data->>'location_id')::UUID`
 - `l.point AS location_geom`
 
 **Why this matters:**
+
 - This is a hard dependency on a `locations.point` geometry column.
 - If your locations model uses a different column name/type (or you don’t persist location per candidate that way), routing can’t work as authored.
 
 **Recommendation:**
+
 - Decide where candidate geometry lives:
   - Option A: persist candidate `address` + geocode to a `candidate_location` geometry column.
   - Option B: reference an existing `locations` row, but then candidates must store that `location_id` in a real column.
@@ -146,6 +173,7 @@ In `route_candidate_to_admins()` (0015), there is:
 ## Finding 6 — `0015` and `0016` are competing designs, not additive
 
 Both `0015_admin_approval_workflow.sql` and `0016_admin_review_pipeline.sql` define overlapping concepts:
+
 - assignments tables (`admin_assignments` vs `candidate_assignments`)
 - capacity (`admin_profiles` + `admin_pending_counts` vs `admin_review_capacity`)
 - a `tag_confirmations` table — but with different columns/enums
@@ -153,9 +181,11 @@ Both `0015_admin_approval_workflow.sql` and `0016_admin_review_pipeline.sql` def
 Because both migrations use `CREATE TABLE IF NOT EXISTS`, whichever migration runs first “wins,” and the other becomes a no-op (leaving missing columns and silent drift).
 
 **Why this matters:**
+
 - This is the kind of drift that’s extremely hard to debug later: the migration logs say “success,” but the schema is incomplete.
 
 **Recommendation:**
+
 - Pick one workflow design (0015-style or 0016-style), and rewrite the other as either:
   - a true extension via `ALTER TABLE ADD COLUMN IF NOT EXISTS ...`, or
   - a separate experimental branch not applied to shared DBs.
@@ -165,6 +195,7 @@ Because both migrations use `CREATE TABLE IF NOT EXISTS`, whichever migration ru
 ## Suggested resolution paths (pick one)
 
 ### Path 1 — Keep Schema A as SSOT (code-first)
+
 Use this if the ingestion agent is already running/writing data via Drizzle.
 
 - Treat `0002_ingestion_tables.sql` + `src/db/schema.ts` as canonical.
@@ -175,6 +206,7 @@ Use this if the ingestion agent is already running/writing data via Drizzle.
   - replace `locations.point` dependency with whatever the actual locations schema is
 
 ### Path 2 — Make Schema B canonical (SQL-first)
+
 Use this if `0014` is your intended final ingestion architecture.
 
 - Write a new reconciliation migration that:
@@ -184,6 +216,7 @@ Use this if `0014` is your intended final ingestion architecture.
 - Fix `0015` to join on Schema B `resource_tags(candidate_id)` and replace `extracted_data` usage with real columns.
 
 ### Path 3 — Explicit split: “operational now” vs “future aspirational”
+
 If Schema B is intentionally a future design:
 
 - Do not ship/apply `0014–0016` into environments where Schema A-backed code runs.

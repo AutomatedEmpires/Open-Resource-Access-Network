@@ -66,7 +66,6 @@ namecheap (unused.. )
 Zendesk 6 months
 webflow for startups
 
-
 complete:
 ArcGIS Enterprise (student $100/ yr)
 jetbrains student
@@ -122,7 +121,6 @@ maptitude student (+ code for live training)
 Google skills + 500 or so credit for certs
 Planet labs
 Zendesk 6mos
-
 
 paid subscriptions:
 GitHub copilot pro

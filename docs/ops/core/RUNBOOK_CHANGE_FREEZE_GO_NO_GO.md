@@ -38,6 +38,7 @@ Defines when to declare a temporary change freeze and how to execute go/no-go re
 ## Hard No-Go Criteria
 
 Declare `NO-GO` if any are true:
+
 - Active SEV-1/SEV-2 unresolved.
 - Unknown root cause for elevated 5xx/latency trend.
 - Migration compatibility unresolved.
@@ -47,6 +48,7 @@ Declare `NO-GO` if any are true:
 ## Emergency Exception Path
 
 If a deployment is required during freeze:
+
 1. Incident Commander and Release Manager jointly approve.
 2. Scope is limited to minimal-risk corrective change.
 3. Rollback target is validated before deployment starts.

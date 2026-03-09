@@ -18,6 +18,7 @@
 | 6 | `/profile` | `src/app/(seeker)/profile/page.tsx` | Declared (`seeker`) but **not enforced** | **Partially implemented** — localStorage only, "Sign in" disabled |
 
 **Missing seeker pages (no route exists)**:
+
 - `/service/[id]` — No individual service detail page. Users see cards inline but cannot deep-link to a service.
 - `/auth/signin`, `/auth/signout` — No sign-in/sign-out UI pages exist (the middleware would redirect to `/api/auth/signin` which depends on NextAuth.js provider config).
 
@@ -26,6 +27,7 @@
 ## 2. Seeker Flows (End-to-End)
 
 ### Flow A: Chat-based service discovery
+
 1. User lands on `/` → clicks "Find services" → navigates to `/chat`
 2. `sessionId` generated via `crypto.randomUUID()`, stored in `sessionStorage`
 3. User types message → POST `/api/chat` with `{ message, sessionId }`
@@ -39,6 +41,7 @@
    - `_context` parameter in `retrieveServices` is **ignored**: no geo-filtering, no profile-based personalization despite the parameter being passed
 
 ### Flow B: Directory search
+
 1. User navigates to `/directory` (via nav or landing page)
 2. Types query → GET `/api/search?q=...&page=1&limit=10`
 3. Results rendered as `ServiceCard` components with trust/match badges
@@ -51,6 +54,7 @@
    - No geo-based search from directory (no location input; geo-search only available on map page)
 
 ### Flow C: Map-based search
+
 1. User navigates to `/map`
 2. Text search → GET `/api/search?q=...`
 3. Or "Search this area" → GET `/api/search?bbox=...` using map bounds
@@ -63,6 +67,7 @@
    - No click-pin-to-see-detail interaction documented in `MapContainer` source
 
 ### Flow D: Viewing saved services
+
 1. User navigates to `/saved`
 2. Page reads `oran:saved-service-ids` from `localStorage` → array of service IDs
 3. Fetches ALL active services via GET `/api/search?limit=100` → filters client-side by saved IDs
@@ -72,6 +77,7 @@
    - Auth is declared in middleware but not enforced (see Section 3)
 
 ### Flow E: Managing profile/preferences
+
 1. User navigates to `/profile`
 2. Reads `oran:preferences` from `localStorage` → `{ approximateCity?, language? }`
 3. User can set approximate city (text input) and language (dropdown, 10 options)
@@ -84,6 +90,7 @@
    - No sync between client preferences and server-side profile
 
 ### Flow F: Feedback submission
+
 1. **This flow does not exist in the UI.** POST `/api/feedback` accepts `{ serviceId, sessionId, rating, comment?, contactSuccess? }` and is rate-limited at 10/min.
 2. No component in any seeker page triggers this endpoint.
 3. The `feedback_form` feature flag is referenced in flag definitions but no UI checks it.
@@ -106,7 +113,7 @@
 
 1. **`minRole` is declared but never checked.** The `PROTECTED_ROUTES` array defines `minRole: 'seeker'` for `/saved` and `/profile`, `minRole: 'host_member'` for host routes, etc. **The middleware never reads this field.** Any authenticated user (regardless of role) can access any protected route.
 
-2. **Session token is not validated.** The middleware checks for cookie *existence* only. It does not verify the token's signature, expiration, or extract any claims (including role). A forged or expired cookie would pass.
+2. **Session token is not validated.** The middleware checks for cookie _existence_ only. It does not verify the token's signature, expiration, or extract any claims (including role). A forged or expired cookie would pass.
 
 3. **Dev mode bypasses all auth.** When `AZURE_AD_CLIENT_ID` is unset (typical in dev), all protected routes — including host and admin routes — are fully accessible without any cookie.
 
@@ -115,6 +122,7 @@
 5. **No sign-in / sign-out UI** exists. NextAuth.js routes (`/api/auth/signin`, etc.) may function if a provider is configured, but no seeker-visible sign-in page, session indicator, or sign-out button is rendered in the app.
 
 ### What IS enforced
+
 - Rate limiting on `/api/chat` (20/min), `/api/search` (60/min), `/api/feedback` (10/min) — in-memory, per-IP
 - Input validation via Zod on all three API routes
 - Security headers in `next.config.mjs`: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` disabling camera/mic and allowing geolocation for same-origin opt-in flows
@@ -144,9 +152,11 @@
 | `saved_at` | TIMESTAMPTZ | — | N/A |
 
 ### Summary
+
 **Zero profile fields are synced server-side.** Both `user_profiles` and `saved_services` tables exist in the DB schema but have no corresponding API routes for seeker CRUD. All seeker state lives exclusively in `localStorage` / `sessionStorage`.
 
 **Missing API routes needed for server-side profile**:
+
 - `GET/PUT /api/profile` — read/write `user_profiles`
 - `GET/POST/DELETE /api/saved` — CRUD `saved_services`
 
@@ -155,6 +165,7 @@
 ## 5. Mobile-First & UX Quality Audit
 
 ### Navigation: `AppNav` (`src/components/nav/AppNav.tsx`)
+
 - 5 nav items: Chat, Directory, Map, Saved, Profile
 - Mobile hamburger menu with `min-h-[44px]` / `min-w-[44px]` touch targets (meets WCAG 2.5.5)
 - Route-aware active state via `usePathname()`
@@ -172,16 +183,19 @@
 | `/profile` | None needed (localStorage sync) | None (localStorage read can't fail) | Default empty state | Form fields populated | Not handled |
 
 ### Touch target compliance
+
 - All buttons: Tailwind `p-2` or larger → ≥ 40px effective area
 - Nav links: explicitly `min-h-[44px]`
 - Phone links in ServiceCard: standard anchor, could be undersized (text-only)
 
 ### Responsive layout
+
 - All pages use Tailwind responsive classes (`max-w-2xl mx-auto` patterns)
 - ServiceCard: single-column card layout, no multi-column grid issues
 - Map page: `h-[50vh]` for map + scrollable list below — functional on mobile but map could be cramped on small screens
 
 ### Accessibility observations
+
 - `aria-label` on all interactive elements in ServiceCard, ChatWindow, nav
 - `role="status"` on chat loading indicator
 - `aria-live="polite"` on chat message list
@@ -208,24 +222,28 @@ The chat pipeline in `src/services/chat/orchestrator.ts` implements an 8-stage p
 | 8. LLM summarization gate | Gated by `llm_summarize` flag (**default: false**) | **Only if flag enabled** |
 
 ### LLM summarization safety
+
 - Feature flag `llm_summarize` defaults to `false` — LLM never called in current config
 - If enabled, `deps.summarizeWithLLM` receives **only already-retrieved records** — cannot hallucinate new services
 - LLM failure is non-fatal: catch block falls back to assembled template message
 - `llmSummarized: boolean` flag is set on every response, making it auditable
 
 ### Crisis detection
+
 - Keyword list in `CRISIS_KEYWORDS`: `suicide`, `kill myself`, `self-harm`, `hurt myself`, `end my life`, `overdose`, `abuse`, `domestic violence`, `assault`, `trafficking` (plus others)
 - Crisis fires **before** quota check — never penalizes a crisis message
 - Returns hard-coded resources: **911**, **988 Suicide & Crisis Lifeline**, **211**
 - `ChatWindow` renders a persistent `CrisisBanner` once `isCrisis` is true — banner stays visible for remainder of session
 
 ### Eligibility safety
+
 - `ELIGIBILITY_DISCLAIMER` constant shown on every chat response
 - ServiceCard always renders: _"You may qualify for this service. Confirm eligibility with the provider before visiting."_
 - ChatServiceCard always renders an eligibility hint line
 - **Never says "you are eligible"** — always "may qualify"
 
 ### Gaps in safety
+
 1. Crisis detection is keyword-only — no fuzzy matching, no synonym expansion. Indirect phrasing may be missed.
 2. Intent detection has no "unknown" fallback — if no keywords match, category defaults to `general`, which searches broadly. This is safe (no harm) but may produce low-relevance results.
 3. Quota is in-memory only — server restart resets all session quotas.
@@ -268,6 +286,7 @@ The chat pipeline in `src/services/chat/orchestrator.ts` implements an 8-stage p
 ## 8. Definition of Done — Seeker UX Checklist
 
 ### Pages & Navigation
+
 - [x] Landing page with primary CTA to chat, secondary to directory/map
 - [x] Chat page — functional, no auth required
 - [x] Directory page — search, pagination, confidence filter, save
@@ -279,6 +298,7 @@ The chat pipeline in `src/services/chat/orchestrator.ts` implements an 8-stage p
 - [ ] **Role-adaptive navigation** — nav only shows seeker links regardless of role
 
 ### Authentication & Authorization
+
 - [ ] **Sign-in flow** — button exists but is disabled; no provider configured
 - [ ] **Sign-out flow** — no UI element
 - [ ] **Session indicator** — no visual indication of signed-in state
@@ -289,6 +309,7 @@ The chat pipeline in `src/services/chat/orchestrator.ts` implements an 8-stage p
 - [x] Security headers configured
 
 ### Data Persistence
+
 - [ ] **Server-side profile read/write** — DB table exists, no API
 - [ ] **Server-side saved services** — DB table exists, no API
 - [ ] **Batch service fetch by IDs** — `/saved` page uses workaround
@@ -296,6 +317,7 @@ The chat pipeline in `src/services/chat/orchestrator.ts` implements an 8-stage p
 - [x] localStorage fallback for saved service IDs
 
 ### Chat Pipeline
+
 - [x] Crisis detection with 911/988/211 routing
 - [x] Crisis banner persists in UI once triggered
 - [x] Quota enforcement (50 messages/session, in-memory)
@@ -309,6 +331,7 @@ The chat pipeline in `src/services/chat/orchestrator.ts` implements an 8-stage p
 - [ ] **Persistent quota** — in-memory only
 
 ### Safety & Compliance
+
 - [x] Never guarantees eligibility — "may qualify" language everywhere
 - [x] No PII stored in telemetry
 - [x] No browser GPS requested without explicit user action
@@ -319,6 +342,7 @@ The chat pipeline in `src/services/chat/orchestrator.ts` implements an 8-stage p
 - [x] Location consent flow (map) — explicit opt-in; in-session only; not stored
 
 ### UX Quality
+
 - [x] Loading states on all async pages
 - [x] Error states with retry on directory/map
 - [x] Empty states with guidance on all pages

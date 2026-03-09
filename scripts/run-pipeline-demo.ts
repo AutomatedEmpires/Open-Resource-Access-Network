@@ -39,18 +39,18 @@ async function main() {
   console.log('RESULT');
   console.log('='.repeat(72));
   console.log(`Status         : ${result.status}`);
-  console.log(`Stages run     : ${result.stagesCompleted}`);
-  console.log(`Overall score  : ${result.score ?? 'N/A'} (${result.scoreTier ?? '—'})`);
-  console.log(`Duration       : ${result.durationMs} ms`);
+  console.log(`Stages run     : ${result.stages.filter(s => s.status === 'completed').length}`);
+  console.log(`Overall score  : ${result.confidenceScore ?? 'N/A'} (${result.confidenceTier ?? '—'})`);
+  console.log(`Duration       : ${result.totalDurationMs} ms`);
   console.log(`Correlation ID : ${result.correlationId}`);
-  if (result.error) console.log(`Error          : ${result.error}`);
+  if (result.status === 'failed') console.log(`Final stage    : ${result.finalStage}`);
   console.log('');
 
   // Per-stage summary
   console.log('Stage timings:');
   for (const s of result.stages) {
     const icon = s.status === 'completed' ? '✓' : s.status === 'skipped' ? '–' : '✗';
-    console.log(`  ${icon} ${s.name.padEnd(24)} ${String(s.durationMs).padStart(6)} ms  ${s.status}`);
+    console.log(`  ${icon} ${s.stage.padEnd(24)} ${String(s.durationMs ?? 0).padStart(6)} ms  ${s.status}`);
   }
 }
 

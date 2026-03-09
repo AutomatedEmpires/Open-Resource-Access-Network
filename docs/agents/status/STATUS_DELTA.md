@@ -63,6 +63,7 @@ Added 2 missing indexes identified by cross-referencing `engine.ts` WHERE/ORDER 
 
 **C2: Job status transition validation (FIXED)**
 `transitionJobStatus()` in `jobs.ts` now enforces a `VALID_JOB_TRANSITIONS` map:
+
 - `queued → running | cancelled`
 - `running → completed | failed | cancelled`
 - `completed → (none)`, `failed → (none)`, `cancelled → (none)`
@@ -90,6 +91,7 @@ The `AuditEventSchema` contract fields (`eventId`, `correlationId`, `targetType`
 ### 2.6 Documentation — `docs/DATA_MODEL.md`
 
 Expanded from ~15 tables to all 47 application tables. Added sections:
+
 - Programs, Eligibility & Required Documents (migration 0009)
 - Service Areas, Languages & Accessibility (migration 0010)
 - Contacts, Saved Services & Verification Evidence (migration 0011)
@@ -136,6 +138,7 @@ Appended DELTA summary entry per update-on-touch rule.
 - CLI entrypoint with proper arg parsing
 
 Noted incompletions (not bugs):
+
 - DB writes are stubbed (`TODO` comments) — expected for staging milestone
 - Only org/service/attribute/adaptation/dietary CSV handlers implemented; locations, addresses, phones, schedules handlers not yet built despite raw types being defined
 

@@ -7,6 +7,7 @@
 This doc describes the **implemented** behavior. Follows docs/SSOT.md for conflicts.
 
 Implemented:
+
 - File-based JSON locale bundles under `src/locales/{en,es,zh,ar,vi,fr}.json`.
 - `t()` supports dot-notation keys and `{param}` interpolation.
 - RTL detection helper via `isRTL()`.
@@ -17,6 +18,7 @@ Implemented:
 - Non-English locale files contain English fallback strings — ready for translator hand-off.
 
 Planned (not yet implemented):
+
 - Missing-key reporting integrated with telemetry (no PII).
 - Actual translated string bundles for es / zh / ar / vi / fr (translator hand-off pending).
 
@@ -31,6 +33,7 @@ Keys use dot-notation namespaced by feature area:
 ```
 
 Examples:
+
 ```
 chat.crisis.title
 chat.crisis.emergency
@@ -56,18 +59,19 @@ nav.directory
 ## RTL Support
 
 For Arabic (`ar`) and other RTL languages:
+
 - Set `<html dir="rtl" lang="ar">` via locale detection
 - Tailwind CSS supports RTL with the `rtl:` variant prefix
 - Use logical CSS properties (`margin-inline-start` instead of `margin-left`)
 - Test with at least one RTL locale in UI reviews
-
 
 ## Missing Key Behavior
 
 - In development: throw error (surface missing translations immediately).
 - In non-development environments: return the key as a fallback so the UI does not break.
 
-Note: “never display raw translation keys to end users” is a **design goal**, but is not currently enforced.
+Note: "never display raw translation keys to end users" is a **design goal**, but is not currently enforced.
+
 ---
 
 ## `<html lang>` Attribute Policy (Phase 8 Resolution)
@@ -77,6 +81,7 @@ Note: “never display raw translation keys to end users” is a **design goal**
 resolved locale to `<html lang={locale} dir={dir}>`.
 
 `resolveLocale()` reads, in order:
+
 1. `NEXT_LOCALE` cookie (set when user saves language preference in `/profile`)
 2. `Accept-Language` request header (best-match against `SUPPORTED_LOCALES`)
 3. Falls back to `DEFAULT_LOCALE` ('en')

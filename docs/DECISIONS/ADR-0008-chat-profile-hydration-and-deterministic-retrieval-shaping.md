@@ -35,20 +35,21 @@ At the same time, ORAN has hard constraints:
 
 4. Use hydrated context in retrieval only through deterministic, schema-backed shaping:
    - approximate city becomes `cityBias`
-  - request locale remains authoritative for the live chat turn; saved locale is a UI-default concern
-  - `general` intents may append up to three normalized `serviceInterests` hints to the text query
-   - exact profile-to-taxonomy mappings may generate `profileSignals` for `service_attributes` dimensions only
-  - personalized chat retrieval skips the shared search cache
 
-5. Keep trust primary in ranking. Retrieval order becomes:
+- request locale remains authoritative for the live chat turn; saved locale is a UI-default concern
+- `general` intents may append up to three normalized `serviceInterests` hints to the text query
+- exact profile-to-taxonomy mappings may generate `profileSignals` for `service_attributes` dimensions only
+- personalized chat retrieval skips the shared search cache
+
+1. Keep trust primary in ranking. Retrieval order becomes:
    - verification confidence DESC
    - profile match DESC
    - stored score DESC
    - distance ASC
 
-6. Exclude free-text seeker context and unsupported metadata from retrieval until the live search engine can query those dimensions directly.
+2. Exclude free-text seeker context and unsupported metadata from retrieval until the live search engine can query those dimensions directly.
 
-7. Keep explicit user-selected directory/map/search filters authoritative. Profile hydration is allowed to tailor chat ordering, but not to block review of other verified listings.
+3. Keep explicit user-selected directory/map/search filters authoritative. Profile hydration is allowed to tailor chat ordering, but not to block review of other verified listings.
 
 ## Consequences
 

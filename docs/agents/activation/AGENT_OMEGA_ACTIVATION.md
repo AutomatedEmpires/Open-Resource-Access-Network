@@ -131,8 +131,10 @@ Before starting any work, read these files in full:
 document what is broken, not what you wish were there.
 
 ### 3.1 Surface-by-Surface Audit
+
 For each surface (landing page, chat, directory, map, service detail, profile, saved,
 sign-in), audit and document in `docs/agents/status/STATUS_OMEGA.md`:
+
 - **Mobile layout** (360px–390px viewport): does it render without horizontal scroll?
   Are touch targets at least 44×44px? Is text legible without zoom?
 - **Tablet layout** (768px–1024px): does the layout transition gracefully?
@@ -156,7 +158,9 @@ Document every finding with: surface, severity (critical/major/minor), descripti
 current behavior, required behavior.
 
 ### 3.2 Mobile-First Overhaul Prioritization
+
 After the audit, triage all mobile findings by severity:
+
 - **Critical** (breaks layout or function at 360px) → fix immediately before moving to step 4
 - **Major** (degraded but usable) → fix in step 4 alongside the surface refactor
 - **Minor** (cosmetic) → fix in step 5 during polish pass
@@ -169,6 +173,7 @@ Proceed through each surface in priority order: crisis-adjacent surfaces first
 (chat, service detail), then directory/map, then utility surfaces (profile, saved).
 
 ### 4.1 Landing Page (`src/app/page.tsx`)
+
 - **Purpose**: First impression of ORAN for people seeking help.
 - **Requirements**:
   - Hero block: clear value proposition, accessible heading hierarchy (H1 on page), prominent
@@ -183,6 +188,7 @@ Proceed through each surface in priority order: crisis-adjacent surfaces first
   - Canonical `<link>` tag set to the production URL.
 
 ### 4.2 Root Layout (`src/app/layout.tsx`)
+
 - **Metadata object** must define:
   - `title.template` for consistent per-page titling
   - `description` (global fallback)
@@ -201,6 +207,7 @@ Proceed through each surface in priority order: crisis-adjacent surfaces first
 - **Viewport meta**: confirm that `maximum-scale=1` or `user-scalable=no` is NEVER set.
 
 ### 4.3 Chat Page (`src/app/(seeker)/chat/`)
+
 This is ORAN's highest-stakes surface. A person in acute distress may be reading it.
 
 - **Crisis gate UI**:
@@ -234,6 +241,7 @@ This is ORAN's highest-stakes surface. A person in acute distress may be reading
   not suitable for indexing).
 
 ### 4.4 Directory Page (`src/app/(seeker)/directory/`)
+
 - **Filters**: all filter controls must have visible labels (not placeholder-only).
   Filter state must be reflected in the URL (query params) so results are linkable/shareable.
 - **Service cards**: each card must display: service name, organization name, address (if
@@ -253,6 +261,7 @@ This is ORAN's highest-stakes surface. A person in acute distress may be reading
   results. Service cards must not trigger layout shift during image/icon load.
 
 ### 4.5 Map Page (`src/app/(seeker)/map/`)
+
 - **Map library**: verify the map implementation (Leaflet, Mapbox, or Google Maps).
   Ensure the map tiles do not expose the user's precise location without consent.
 - **Map accessibility**: implement a text-based alternative below the map listing the same
@@ -270,6 +279,7 @@ This is ORAN's highest-stakes surface. A person in acute distress may be reading
   for indexing).
 
 ### 4.6 Service Detail Page (`src/app/(seeker)/service/`)
+
 - **Data display rules**: display only what is returned by the API. Every field has a
   defined empty/unavailable state (e.g., "Hours not listed — call to confirm").
   Never show a blank field or a default placeholder that could be read as real data.
@@ -294,6 +304,7 @@ This is ORAN's highest-stakes surface. A person in acute distress may be reading
   touch tapping. "Call now" CTA above the fold.
 
 ### 4.7 Seeker Profile Page (`src/app/(seeker)/profile/`)
+
 - **Consent gate**: profile fields that collect personal data (location, demographics,
   needs assessment) must be preceded by explicit inline consent copy explaining storage
   and use. Do not pre-populate fields from inferred data.
@@ -309,6 +320,7 @@ This is ORAN's highest-stakes surface. A person in acute distress may be reading
 - **SEO**: `noindex` (private user-specific page).
 
 ### 4.8 Saved Services Page (`src/app/(seeker)/saved/`)
+
 - **Auth gate UI**: if the user is not signed in, show a clear sign-in prompt explaining
   that signing in enables saving services — not a blank page or generic error.
 - **Services list**: matches the design of the directory cards for visual consistency.
@@ -321,6 +333,7 @@ This is ORAN's highest-stakes surface. A person in acute distress may be reading
 - **SEO**: `noindex` (private user-specific page).
 
 ### 4.9 Sign-In Page (`src/app/auth/`)
+
 - Minimal, clean design. One action: sign in with Microsoft (Entra ID).
 - Do not collect any information before sign-in.
 - Accessible: button has descriptive label; error messages are visible and linked.
@@ -332,6 +345,7 @@ This is ORAN's highest-stakes surface. A person in acute distress may be reading
 ## 5. Then Do This — SEO, Performance, i18n, and Design System Completeness
 
 ### 5.1 Site-Wide SEO Infrastructure
+
 - **`robots.txt`**: create or verify `public/robots.txt`. Rule: allow all crawlers for
   public pages, disallow `/api/`, `/profile`, `/saved`, `/auth`.
   Include `Sitemap: https://<production-domain>/sitemap.xml` directive.
@@ -355,6 +369,7 @@ This is ORAN's highest-stakes surface. A person in acute distress may be reading
   and that it updates for i18n locales when enabled.
 
 ### 5.2 Core Web Vitals + Performance
+
 - **Largest Contentful Paint (LCP)**: the hero/heading image or text block on each page
   must be the LCP element. Verify it is not blocked by lazy loading. Use `priority` on
   any `next/image` that is above the fold.
@@ -375,6 +390,7 @@ This is ORAN's highest-stakes surface. A person in acute distress may be reading
   and does not block the initial page load).
 
 ### 5.3 Internationalization (`src/services/i18n/`)
+
 - Read `docs/solutions/I18N_WORKFLOW.md` in full.
 - Audit every user-visible string in `src/app/(seeker)/` and `src/components/`.
 - Any hard-coded English string that is user-visible must be moved to the i18n translation
@@ -388,6 +404,7 @@ This is ORAN's highest-stakes surface. A person in acute distress may be reading
 - Update `docs/solutions/I18N_WORKFLOW.md` to accurately reflect the current implementation.
 
 ### 5.4 Design System Completeness (`src/components/ui/`)
+
 - Audit every primitive needed by the seeker surfaces:
   - Button (variants: primary, secondary, ghost, destructive) with `disabled` state
   - Input + Textarea (with label, error state, helper text)
@@ -407,6 +424,7 @@ This is ORAN's highest-stakes surface. A person in acute distress may be reading
 - Document all primitives in a `src/components/ui/README.md`.
 
 ### 5.5 Navigation (`src/components/nav/`)
+
 - **Mobile nav**: verify a hamburger/drawer menu works on mobile. Verify it is keyboard
   accessible (Escape closes, focus trap while open, focus returns to trigger on close).
 - **Active state**: current page must be visually indicated in the nav with `aria-current="page"`.

@@ -1,214 +1,245 @@
-# ORAN - Open Resource Access Network
+# ORAN | Open Resource Access Network
 
-ORAN is a civic-grade, safety-critical platform for finding government, state, county, nonprofit, and community services quickly and safely.
+> Big, bold civic infrastructure for fast, modern, verified resource matching.
+
+**Mission statement:** ORAN is building a user-friendly, modern system that rapidly connects people to the resources most applicable to them, using verified inputs, transparent scoring, and reproducible results.
+
+ORAN exists because finding help is still too fragmented, too slow, and too easy to get wrong. This platform is being built from lived pain with broken discovery, unclear eligibility, stale listings, and systems that make people do too much work just to find what might help. The goal is a next-generation resource matching tool that feels intuitive for younger users, trustworthy for families, useful for organizations, and rigorous enough for operators, partners, and investors.
+
+## Live Signals
 
 [![CI](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/codeql.yml)
-[![Runbook Freshness](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/runbook-freshness.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/runbook-freshness.yml)
-[![Deploy App Service](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-appservice.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-appservice.yml)
-[![Deploy Functions](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-functions.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-functions.yml)
-
-## Experience Hub
-
-| Need | Go To |
-| --- | --- |
-| Hackathon command center | [docs/HACKATHON_ONBOARDING.md](docs/HACKATHON_ONBOARDING.md) |
-| Role-based onboarding | [START_HERE.md](START_HERE.md) |
-| Ownership and skills matrix | [docs/OWNERSHIP_SKILLS_MATRIX.md](docs/OWNERSHIP_SKILLS_MATRIX.md) |
-| Live proof and assurance panel | [docs/EVIDENCE_DASHBOARD.md](docs/EVIDENCE_DASHBOARD.md) |
-| Verified dev setup and command paths | [docs/DEVELOPER_GOLDEN_PATH.md](docs/DEVELOPER_GOLDEN_PATH.md) |
-| Visual architecture and change map | [docs/REPO_MAP.md](docs/REPO_MAP.md) |
-| Behavior guarantees and contracts | [docs/contracts/README.md](docs/contracts/README.md) |
-| Public now/next/later roadmap | [docs/ROADMAP_PUBLIC.md](docs/ROADMAP_PUBLIC.md) |
-| Operational command center | [docs/ops/README.md](docs/ops/README.md) |
-
-<details>
-<summary>Interactive first-click paths</summary>
-
-- Investor / executive: [START_HERE.md#investor-lane](START_HERE.md#investor-lane)
-- Developer: [START_HERE.md#developer-lane](START_HERE.md#developer-lane)
-- Operator / on-call: [START_HERE.md#operator-lane](START_HERE.md#operator-lane)
-- Contributor: [START_HERE.md#contributor-lane](START_HERE.md#contributor-lane)
-
-</details>
-
-## Executive Snapshot
-
-| Dimension | Position | Evidence |
-| --- | --- | --- |
-| Safety model | Retrieval-first with crisis hard-gate behavior | `docs/CHAT_ARCHITECTURE.md`, `docs/VISION.md` |
-| Data trust | Import-first and verification-first publication model | `docs/solutions/IMPORT_PIPELINE.md`, `db/import/README.md` |
-| Engineering discipline | Strict TypeScript, CI quality gates, security scanning | `.github/workflows/ci.yml`, `.github/workflows/codeql.yml` |
-| Governance | SSOT hierarchy plus operating model and ADRs | `docs/SSOT.md`, `docs/governance/OPERATING_MODEL.md`, `docs/DECISIONS/` |
-| Deployment posture | Azure-first production architecture and runbooks | `docs/platform/DEPLOYMENT_AZURE.md`, `infra/README.md` |
-
-## Hackathon Command Center
-
-If you are onboarding contributors quickly, use this sequence:
-
-1. Read [START_HERE.md](START_HERE.md) for role-based entry.
-2. Put developers into repo lanes using [docs/OWNERSHIP_SKILLS_MATRIX.md](docs/OWNERSHIP_SKILLS_MATRIX.md).
-3. Run team setup from [docs/HACKATHON_ONBOARDING.md](docs/HACKATHON_ONBOARDING.md).
-4. Keep architecture and contract changes anchored to [docs/REPO_MAP.md](docs/REPO_MAP.md) and [docs/contracts/README.md](docs/contracts/README.md).
-5. Route production and operational questions to [docs/ops/README.md](docs/ops/README.md).
-
-## Who Does What
-
-| Workstream | Best-Fit Contributors | Primary Areas | Canonical Docs |
-| --- | --- | --- | --- |
-| Seeker and public experience | Frontend engineers, UX designers, accessibility reviewers | `src/app/(seeker)/**`, `src/app/(public)/**`, `src/components/**` | `docs/ui/**`, `src/app/(seeker)/README.md` |
-| Host and organization workflows | Full-stack product engineers | `src/app/(host)/**`, `src/app/api/**`, `src/services/organizations/**` | `docs/REPO_MAP.md`, `src/app/(host)/README.md` |
-| ORAN admin and moderation | Workflow engineers, operations-minded full-stack engineers | `src/app/(oran-admin)/**`, `src/app/api/admin/**`, `src/services/triage/**` | `docs/ops/README.md`, `src/app/(oran-admin)/README.md` |
-| Search, chat, scoring | Backend engineers, applied AI engineers working within strict retrieval constraints | `src/services/chat/**`, `src/services/search/**`, `src/services/scoring/**` | `docs/CHAT_ARCHITECTURE.md`, `docs/SCORING_MODEL.md`, `docs/contracts/**` |
-| Ingestion and verification agents | Data engineers, AI engineers, queue/workflow engineers | `src/agents/ingestion/**`, `functions/**`, `src/services/ingestion/**` | `docs/agents/**`, `docs/ops/services/RUNBOOK_INGESTION.md` |
-| Platform, CI/CD, Azure operations | DevOps, platform engineers, security engineers | `.github/workflows/**`, `infra/**`, `docs/platform/**`, `docs/ops/**` | `docs/platform/DEPLOYMENT_AZURE.md`, `docs/ops/README.md` |
-| Data model and persistence | Database engineers, backend engineers | `db/**`, `src/db/**`, `src/domain/**` | `docs/DATA_MODEL.md`, `docs/DECISIONS/` |
-
-## Vision In One Page
-
-ORAN exists to help people find real services fast, without fabricated results, unsafe shortcuts, or opaque operations. The product standard is not “helpful enough.” The standard is retrieval-backed, safety-governed, and operationally defensible.
-
-For hackathon contributors, that means:
-
-- Ship features that improve verified access to services.
-- Do not weaken crisis routing, privacy posture, or retrieval-first constraints.
-- Keep changes attached to contracts, tests, and runbooks so the platform stays operable after the event.
-
-## Platform Status
-
-### Quality And Assurance
-
-[![CI](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/ci.yml)
 [![Accessibility Gate](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/a11y.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/a11y.yml)
-[![Bundle Size Budget](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/bundle-size.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/bundle-size.yml)
 [![Visual Regression](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/visual-regression.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/visual-regression.yml)
+[![Bundle Size Budget](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/bundle-size.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/bundle-size.yml)
 [![Runbook Freshness](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/runbook-freshness.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/runbook-freshness.yml)
-
-### Security
-
-[![CodeQL](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/codeql.yml)
-
-### Delivery
-
 [![Deploy Infra](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-infra.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-infra.yml)
 [![Deploy App Service](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-appservice.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-appservice.yml)
 [![Deploy Functions](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-functions.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-functions.yml)
 
-## Production Deployment Path
+![Seeking Partnerships](https://img.shields.io/badge/Partnerships-open-0A7F5A?style=flat-square)
+![Investor Conversations](https://img.shields.io/badge/Investor%20conversations-open-1F6FEB?style=flat-square)
+![Developer Collaborators](https://img.shields.io/badge/Developers-welcome-F59E0B?style=flat-square)
+![Mobile App Direction](https://img.shields.io/badge/Mobile%20app-planned-C2410C?style=flat-square)
+![Youth Friendly UX](https://img.shields.io/badge/UX-younger%20gen%20friendly-8B5CF6?style=flat-square)
 
-1. Review deployment architecture and prerequisites in `docs/platform/DEPLOYMENT_AZURE.md`.
-2. Validate infrastructure definitions in `infra/main.bicep` and environment parameters.
-3. Deploy infrastructure with `.github/workflows/deploy-infra.yml`.
-4. Deploy application workloads with `.github/workflows/deploy-azure-appservice.yml` and `.github/workflows/deploy-azure-functions.yml`.
-5. Apply database migrations using `db/migrations/` and `npx drizzle-kit migrate`.
-6. Confirm release health in Actions and security dashboards.
+![Last Commit](https://img.shields.io/github/last-commit/AutomatedEmpires/Open-Resource-Access-Network?style=flat-square&label=last%20commit)
+![Open Issues](https://img.shields.io/github/issues/AutomatedEmpires/Open-Resource-Access-Network?style=flat-square&label=open%20issues)
+![Open Pull Requests](https://img.shields.io/github/issues-pr/AutomatedEmpires/Open-Resource-Access-Network?style=flat-square&label=open%20pull%20requests)
+![Top Language](https://img.shields.io/github/languages/top/AutomatedEmpires/Open-Resource-Access-Network?style=flat-square&label=top%20language)
+![Commit Activity](https://img.shields.io/github/commit-activity/y/AutomatedEmpires/Open-Resource-Access-Network?style=flat-square&label=commits%2Fyear)
 
-Release operations links:
+![Next.js 16](https://img.shields.io/badge/Next.js-16-black?style=flat-square)
+![React 19](https://img.shields.io/badge/React-19-149ECA?style=flat-square)
+![TypeScript Strict](https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square)
+![Azure First](https://img.shields.io/badge/Platform-Azure--first-0078D4?style=flat-square)
+![PostgreSQL + PostGIS](https://img.shields.io/badge/Data-PostgreSQL%20%2B%20PostGIS-336791?style=flat-square)
+![Azure Functions](https://img.shields.io/badge/Runtime-Azure%20Functions-0062AD?style=flat-square)
+![Retrieval First](https://img.shields.io/badge/Policy-retrieval--first-0A7F5A?style=flat-square)
+![Verified Scoring](https://img.shields.io/badge/Results-verified%20%2B%20scored-0F766E?style=flat-square)
+![No Hallucinated Facts](https://img.shields.io/badge/Policy-no%20hallucinated%20facts-1F6FEB?style=flat-square)
+![Crisis Hard Gate](https://img.shields.io/badge/Safety-crisis%20hard%20gate-C0392B?style=flat-square)
+![Privacy First](https://img.shields.io/badge/Privacy-approximate%20location%20by%20default-6E7781?style=flat-square)
 
-- Actions dashboard: <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions>
-- Open pull requests: <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/pulls>
-- Open issues: <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/issues>
-- Code scanning alerts: <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/security/code-scanning>
-- Dependabot alerts: <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/security/dependabot>
+## Why ORAN Hits Different
 
-## Start Here By Role
+ORAN is not trying to be another generic directory. It is trying to become the trusted operating layer between people, organizations, and real-world services.
 
-- Product and policy reviewers: `docs/README.md`, `docs/VISION.md`, `docs/SSOT.md`
-- Engineers implementing behavior: `docs/CHAT_ARCHITECTURE.md`, `docs/SCORING_MODEL.md`, `src/services/README.md`
-- Security and compliance reviewers: `SECURITY.md`, `docs/SECURITY_PRIVACY.md`, `docs/governance/OPERATING_MODEL.md`
-- Contributors and maintainers: `CONTRIBUTING.md`, `.github/PULL_REQUEST_TEMPLATE.md`, `SUPPORT.md`
+| Problem | ORAN Response |
+| --- | --- |
+| Listings are stale, vague, or contradictory | Preserve provenance, route through verification, and score trust explicitly |
+| Help seekers waste time chasing weak leads | Match faster with structured retrieval, geographic relevance, and constrained scoring |
+| AI systems improvise facts they should not invent | Keep retrieval and ranking grounded in stored records only |
+| Users need modern UX, not bureaucratic friction | Build for speed, clarity, mobile direction, and younger-user expectations |
 
-## Getting Started In 5 Minutes
+## Signal-Rich Snapshot
 
-1. Read `docs/SSOT.md` and `docs/governance/OPERATING_MODEL.md` to understand authoritative behavior and safety guardrails.
-2. Start locally:
+| Dimension | ORAN Position | Evidence |
+| --- | --- | --- |
+| Service truth model | Recommendations come from stored records only | [docs/VISION.md](docs/VISION.md), [docs/CHAT_ARCHITECTURE.md](docs/CHAT_ARCHITECTURE.md) |
+| Safety posture | Crisis routing happens before normal response flow | [docs/VISION.md](docs/VISION.md), [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md) |
+| Data trust | Import-first, verify-before-publish lifecycle | [docs/contracts/INGESTION_CONTRACT.md](docs/contracts/INGESTION_CONTRACT.md), [db/README.md](db/README.md) |
+| Match discipline | Deterministic trust and match scoring | [docs/SCORING_MODEL.md](docs/SCORING_MODEL.md), [docs/contracts/SCORING_CONTRACT.md](docs/contracts/SCORING_CONTRACT.md) |
+| AI boundaries | AI can assist ingestion and summarization, not seeker-facing fact invention | [docs/CHAT_ARCHITECTURE.md](docs/CHAT_ARCHITECTURE.md), [docs/agents/AGENTS_OVERVIEW.md](docs/agents/AGENTS_OVERVIEW.md), [docs/platform/OWNER_INFO.md](docs/platform/OWNER_INFO.md) |
+| Platform posture | Azure-first web, functions, secrets, and data stack | [docs/platform/PLATFORM_AZURE.md](docs/platform/PLATFORM_AZURE.md), [infra/README.md](infra/README.md) |
+| External brief | Investor, partner, and collaborator brief with proof links | [docs/INVESTOR_PARTNER_BRIEF.md](docs/INVESTOR_PARTNER_BRIEF.md) |
+
+## How ORAN Works
+
+| Stage | What Happens | Why It Matters |
+| --- | --- | --- |
+| Source | Candidate records come from imports, submissions, and approved source discovery | Growth starts with provenance, not guesswork |
+| Verify | Evidence is checked, candidates are routed for review, and unsafe/stale records stay out of seeker surfaces | Trust is earned before exposure |
+| Score | Verification confidence, eligibility match, and constraint fit are calculated deterministically | Results stay explainable and reproducible |
+| Deliver | Chat, directory, and map experiences surface the strongest applicable records | Users get faster, clearer next steps |
+
+## Where Data Comes From
+
+ORAN is designed to grow from real source material, not fabricated catalogs.
+
+- Structured imports and staging flows from the data pipeline in [db/README.md](db/README.md).
+- Source-driven ingestion governed by [docs/agents/AGENTS_SOURCE_REGISTRY.md](docs/agents/AGENTS_SOURCE_REGISTRY.md).
+- Internal extraction and ingestion workflows defined by [docs/contracts/INGESTION_CONTRACT.md](docs/contracts/INGESTION_CONTRACT.md) and [docs/solutions/IMPORT_PIPELINE.md](docs/solutions/IMPORT_PIPELINE.md).
+- Staff and organization submissions that still route through review and verification.
+
+The hard rule is simple: external content can assist ingestion, but it does not get shown directly to seekers without staging, review, and publish controls.
+
+## How Trust Is Earned
+
+| Trust Layer | ORAN Rule |
+| --- | --- |
+| Provenance | Preserve source URLs, snapshots, evidence, and reviewability |
+| Verification | Unverified data does not publish as trusted seeker-facing content |
+| Scoring | Same inputs produce the same results |
+| Monitoring | Backlogs, SLA drift, and regressions trigger operational responses |
+| Reverification | Stale or degraded listings move back into review instead of silently lingering |
+
+## How Scoring Works
+
+ORAN separates trust from fit so the product stays honest.
+
+| Public Score | Meaning |
+| --- | --- |
+| Verification Confidence | How verified and reliable the listing appears |
+| Eligibility Match | How well the listing fits the user's stated needs |
+| Constraint Fit | How actionable the listing is right now given practical constraints |
+
+Stored overall score:
+
+```text
+final = 0.45 * verification
+      + 0.40 * eligibility
+      + 0.15 * constraint
+```
+
+Reference: [docs/SCORING_MODEL.md](docs/SCORING_MODEL.md)
+
+## How AI Is Used
+
+ORAN uses AI in carefully bounded places, not as a license to invent.
+
+- AI may assist with extraction, categorization, ingestion support, and optional post-retrieval summarization.
+- AI does not retrieve services, rank services, or inject new facts into seeker answers.
+- Seeker-facing answers must remain grounded in stored records.
+- Crisis routing remains rule-driven and safety-first.
+
+References: [docs/CHAT_ARCHITECTURE.md](docs/CHAT_ARCHITECTURE.md), [docs/agents/AGENTS_OVERVIEW.md](docs/agents/AGENTS_OVERVIEW.md), [docs/platform/OWNER_INFO.md](docs/platform/OWNER_INFO.md)
+
+## Product Areas
+
+| Area | Primary User | What It Unlocks | Reference |
+| --- | --- | --- | --- |
+| Seeker surface | People trying to find help quickly | Chat, discovery, saved services, profile, map, directory | [src/app/(seeker)/README.md](src/app/(seeker)/README.md) |
+| Host surface | Organizations maintaining listings | Manage organizations, services, locations, and team workflows | [src/app/(host)/README.md](src/app/(host)/README.md) |
+| Community admin surface | Local verifiers and reviewers | Verification queue, coverage workflows, review operations | [src/app/(community-admin)/README.md](src/app/(community-admin)/README.md) |
+| ORAN admin surface | Global platform operators | Rules, approvals, audits, ingestion jobs, governance | [src/app/(oran-admin)/README.md](src/app/(oran-admin)/README.md) |
+
+## For Investors, Partners, And Builders
+
+ORAN is looking for collaborators who understand that trust, distribution, and product quality all matter at the same time.
+
+| We want to talk to... | Why |
+| --- | --- |
+| Investors | To accelerate product execution, trust infrastructure, and distribution |
+| Government and nonprofit partners | To improve verified supply, sourcing quality, and local relevance |
+| Universities and youth-facing programs | To help younger users learn how to maximize available support in expensive markets |
+| Technical collaborators | To strengthen product UX, data systems, AI tooling, and mobile direction |
+
+External brief: [docs/INVESTOR_PARTNER_BRIEF.md](docs/INVESTOR_PARTNER_BRIEF.md)
+
+## What Comes Next
+
+- Deeper public trust evidence and partnership collateral.
+- Stronger seeker and organization workflows.
+- Continued expansion of verification and sourcing infrastructure.
+- Mobile app direction for faster, more accessible everyday use.
+
+Roadmap: [docs/ROADMAP_PUBLIC.md](docs/ROADMAP_PUBLIC.md)
+
+## Architecture At A Glance
+
+```mermaid
+flowchart LR
+    U[Seekers Hosts Admins] --> A[src/app<br/>Next.js App Router]
+    A --> API[src/app/api<br/>Route Handlers]
+    API --> S[src/services<br/>Chat Search Scoring Verification]
+    S --> D[(PostgreSQL + PostGIS)]
+    D --> I[db/import<br/>Import and Review Pipeline]
+    F[functions<br/>Azure Functions Workflows] --> D
+    F --> S
+    G[docs<br/>SSOT Governance Security] -.defines.-> A
+    G -.defines.-> API
+    G -.defines.-> S
+    P[infra<br/>Azure Bicep] -.deploys.-> A
+    P -.deploys.-> F
+    P -.deploys.-> D
+```
+
+## Repo Guide
+
+| If you want to inspect... | Start here |
+| --- | --- |
+| Mission and product direction | [docs/VISION.md](docs/VISION.md) |
+| Investor and partner brief | [docs/INVESTOR_PARTNER_BRIEF.md](docs/INVESTOR_PARTNER_BRIEF.md) |
+| System truth hierarchy | [docs/SSOT.md](docs/SSOT.md) |
+| Chat and retrieval behavior | [docs/CHAT_ARCHITECTURE.md](docs/CHAT_ARCHITECTURE.md) |
+| Scoring model and ranking logic | [docs/SCORING_MODEL.md](docs/SCORING_MODEL.md) |
+| Data sourcing and ingestion | [docs/solutions/IMPORT_PIPELINE.md](docs/solutions/IMPORT_PIPELINE.md) |
+| Source governance | [docs/agents/AGENTS_SOURCE_REGISTRY.md](docs/agents/AGENTS_SOURCE_REGISTRY.md) |
+| Security and privacy controls | [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md) |
+| Evidence and workflow health | [docs/EVIDENCE_DASHBOARD.md](docs/EVIDENCE_DASHBOARD.md) |
+| Azure platform direction | [docs/platform/PLATFORM_AZURE.md](docs/platform/PLATFORM_AZURE.md) |
+| Azure dashboard modernization plan | [docs/platform/AZURE_DASHBOARD_MODERNIZATION.md](docs/platform/AZURE_DASHBOARD_MODERNIZATION.md) |
+| Enterprise evolution strategy | [docs/platform/ENTERPRISE_EVOLUTION_STRATEGY.md](docs/platform/ENTERPRISE_EVOLUTION_STRATEGY.md) |
+| Infrastructure as code | [infra/README.md](infra/README.md) |
+
+## Quick Start
 
 ```bash
 npm install
 npm run dev
 ```
 
-3. Open `http://localhost:3000`.
-4. Optional local database:
+Open `http://localhost:3000`.
+
+Optional local database:
 
 ```bash
 docker compose -f db/docker-compose.yml up -d
 ```
 
-5. Validate changes with `npm run lint`, `npx tsc --noEmit`, and `npm run test`.
+Recommended validation path:
 
-## Why ORAN
-
-- Retrieval-first recommendations using stored records only.
-- Safety-critical crisis routing for imminent-risk scenarios.
-- Verification-first data lifecycle from ingest to publish.
-- Deterministic scoring and confidence contracts.
-- Enterprise-grade quality gates in CI/CD and security scanning.
-
-## Non-Negotiables
-
-- **Retrieval-first**: recommendations must come from stored records only.
-- **No hallucinated facts**: never invent services, phone numbers, addresses, hours, eligibility, or URLs.
-- **Crisis hard gate**: if imminent risk is detected, route immediately to **911 / 988 / 211**.
-- **Eligibility caution**: never guarantee eligibility; use "may qualify" and "confirm with provider" language.
-- **Privacy-first**: approximate location by default; explicit consent before saving profile details.
-
-## Engineering Quality Gates
-
-- `CI`: lint, strict typecheck, tests with coverage, production build, security audit.
-- `CodeQL`: code scanning for code-level vulnerabilities.
-- `Accessibility Gate`: UI accessibility checks on key surface changes.
-- `Bundle Size Budget`: bundle growth enforcement to prevent performance drift.
-- `Visual Regression`: snapshot-based UI regression detection.
-- `Deploy` workflows: release automation pathways for infrastructure and workloads.
-
-## Architecture At A Glance
-
-- `src/app/**`: Next.js App Router pages and API routes.
-- `src/services/**`: chat/search/scoring orchestration and domain business logic.
-- `src/domain/**`: core types, constraints, and constants.
-- `db/**`: migrations, import pipeline, and local data workflows.
-- `functions/**`: Azure Functions for data and operational workflows.
-- `docs/**`: authoritative specifications, governance, and operating model.
-
-```mermaid
-flowchart LR
-	U[Seeker and Admin Users] --> A[src/app - Next.js App Router]
-	A --> API[src/app/api - Route Handlers]
-	API --> S[src/services - Chat Search Scoring]
-	S --> D[(PostgreSQL + PostGIS)]
-	D --> I[db/import - Intake Pipeline]
-	F[functions - Azure Functions] --> D
-	F --> S
-	G[docs - SSOT Governance Security] -.guides.-> A
-	G -.guides.-> API
-	G -.guides.-> S
+```bash
+npm run lint
+npx tsc --noEmit
+npm run test
 ```
 
-## Data Lifecycle (Import-First)
+## Delivery And Review Links
 
-ORAN is designed to start with an empty directory and populate services through imports and verification.
-
-1. Import HSDS CSV/JSON into staging.
-2. Mark imported records as `unverified`.
-3. Review through moderation queues.
-4. Verify and publish records.
-5. Recompute confidence scores.
-
-`db/seed/demo.sql` is optional and demo-only with fictional data.
+- Actions dashboard: <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions>
+- Pull requests: <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/pulls>
+- Issues: <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/issues>
+- Code scanning: <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/security/code-scanning>
+- Dependabot alerts: <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/security/dependabot>
 
 ## Trust, Security, And Governance
 
-- Security policy and reporting: `SECURITY.md`
-- Security and privacy requirements: `docs/SECURITY_PRIVACY.md`
-- Operating model: `docs/governance/OPERATING_MODEL.md`
-- Engineering decision records (ADRs): `docs/DECISIONS/`
-- Engineering change log: `docs/ENGINEERING_LOG.md`
+- Security policy: [SECURITY.md](SECURITY.md)
+- Security and privacy requirements: [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md)
+- Engineering operating model: [docs/governance/OPERATING_MODEL.md](docs/governance/OPERATING_MODEL.md)
+- Architecture and system docs: [docs/README.md](docs/README.md)
+- ADRs and decisions: [docs/DECISIONS](docs/DECISIONS)
+- Engineering log: [docs/ENGINEERING_LOG.md](docs/ENGINEERING_LOG.md)
 
-## Contributing And Collaboration
+## Join The Build
 
-- Contributor workflow: `CONTRIBUTING.md`
-- Issue forms and triage entry points: `.github/ISSUE_TEMPLATE/`
-- Pull request checklist: `.github/PULL_REQUEST_TEMPLATE.md`
-- Community standards: `CODE_OF_CONDUCT.md`
-- Support routing: `SUPPORT.md`
+If you want to help shape a faster, more trustworthy way for people to find support, ORAN is open to serious conversations across product, civic data, verification workflows, partnerships, and platform engineering.
+
+- Contributor guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Investor and partner brief: [docs/INVESTOR_PARTNER_BRIEF.md](docs/INVESTOR_PARTNER_BRIEF.md)
+- Pull request checklist: [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md)
+- Support routing: [SUPPORT.md](SUPPORT.md)
+- Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)

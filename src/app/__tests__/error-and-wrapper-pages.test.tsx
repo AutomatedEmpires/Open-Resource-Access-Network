@@ -51,6 +51,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
 });
 
 describe('app-level error and wrapper pages', () => {
@@ -153,6 +154,23 @@ describe('app-level error and wrapper pages', () => {
       expect(captureExceptionMock).toHaveBeenCalledWith(errD, {
         feature: 'seeker_error_boundary',
       });
+    });
+  });
+
+  it('personalizes seeker error discovery fallback from stored seeker needs', async () => {
+    localStorage.setItem('oran:seeker-context', JSON.stringify({
+      serviceInterests: ['food_assistance'],
+    }));
+    const reset = vi.fn();
+    const error = Object.assign(new Error('seeker'), { digest: 'seeker-pref-1' });
+
+    render(<SeekerError error={error} reset={reset} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Search services' })).toHaveAttribute(
+        'href',
+        '/chat?q=food&category=food_assistance',
+      );
     });
   });
 

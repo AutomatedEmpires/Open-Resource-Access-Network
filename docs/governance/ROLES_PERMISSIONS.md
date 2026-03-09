@@ -3,18 +3,23 @@
 ## Role Definitions
 
 ### `seeker`
+
 A person looking for services. May be anonymous or authenticated. Limited to read-only access of published records.
 
 ### `host_member`
+
 An employee or volunteer of a service-providing organization. Can edit their organization's own records and submit them for verification.
 
 ### `host_admin`
+
 An administrator of a service-providing organization. Has full control over their organization's records, can manage host_members, and submit bulk updates.
 
 ### `community_admin`
+
 A trusted local verifier assigned to a geographic coverage zone. Verifies records submitted by hosts, flags stale data, and provides community context.
 
 ### `oran_admin`
+
 Platform governor. Has full access to all resources, can override verifications, manage feature flags, access audit logs, and manage coverage zone assignments.
 
 ---
@@ -57,21 +62,27 @@ Platform governor. Has full access to all resources, can override verifications,
 ## Permission Details
 
 ### `read`
+
 Can view published, verified records. Seekers always get approximate addresses (street-level, not unit/apartment).
 
 ### `write`
+
 Can create and update records. Writes by hosts go into a pending/draft state until verified (unless auto-publish threshold is met).
 
 ### `verify`
+
 Can mark a record as verified after reviewing evidence. Only community_admin and oran_admin have this permission.
 
 ### `approve`
+
 Can approve host claims (organization ownership). Only oran_admin can approve new host claims; community_admin can assist with reviews.
 
 ### `audit`
+
 Can read full audit trails including IP-stamped change history. Only oran_admin has unrestricted audit access; community_admin can view within their zone.
 
 ### `scope_grant`
+
 Can request, approve, deny, or revoke scope grants. Scope grant decisions enforce two-person approval: the same user who requested a grant cannot approve it. Only `oran_admin` can manage platform scopes and decide on grants.
 
 ---

@@ -38,6 +38,7 @@ This runbook covers active security/privacy incidents including suspected unauth
 ## Evidence Checklist
 
 Capture and preserve:
+
 - Incident timeline with UTC timestamps.
 - Relevant request IDs/correlation IDs.
 - Deployment and config change history for incident window.

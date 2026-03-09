@@ -15,6 +15,7 @@ Procedures for when Azure OpenAI is unavailable or degraded.
 ## Impact Assessment
 
 The LLM is used **only** for extraction and categorization in the ingestion pipeline. It does **not** affect:
+
 - Search (pure SQL + PostGIS)
 - Scoring (deterministic algorithm)
 - Admin workflows (queue, review, approve/reject)
@@ -106,6 +107,7 @@ az storage queue show --name ingestion-extract-poison --account-name <storage> -
 ### When LLM is back online
 
 1. Re-enable the timer (if disabled):
+
    ```bash
    az functionapp config appsettings delete \
      --resource-group <rg> \
@@ -114,11 +116,13 @@ az storage queue show --name ingestion-extract-poison --account-name <storage> -
    ```
 
 2. Check for poison messages accumulated during outage:
+
    ```bash
    az storage queue show --name ingestion-extract-poison --account-name <storage> --query "approximateMessageCount"
    ```
 
 3. Re-queue poison messages if they failed due to the LLM outage (not due to bad data):
+
    ```bash
    # Peek to confirm they are LLM-timeout failures
    az storage message peek --queue-name ingestion-extract-poison --account-name <storage> --num-messages 5
@@ -127,6 +131,7 @@ az storage queue show --name ingestion-extract-poison --account-name <storage> -
    ```
 
 4. Verify extraction is succeeding:
+
    ```kql
    traces
    | where timestamp > ago(1h)
@@ -135,9 +140,10 @@ az storage queue show --name ingestion-extract-poison --account-name <storage> -
    ```
 
 5. Validate end-to-end progression resumes:
-  - `ingestion-extract` depth declines
-  - `ingestion-verify` receives new messages
-  - `ingestion-route` receives new messages
+
+- `ingestion-extract` depth declines
+- `ingestion-verify` receives new messages
+- `ingestion-route` receives new messages
 
 ---
 
@@ -150,6 +156,7 @@ If the issue is Azure OpenAI quota throttling (HTTP 429):
 1. Check current quota usage in Azure Portal → Azure OpenAI → Deployments → your model
 2. Request a quota increase via Azure Portal → Quotas
 3. Reduce crawl concurrency in `functions/host.json`:
+
    ```json
    {
      "extensions": {
@@ -167,12 +174,14 @@ If the issue is Azure OpenAI quota throttling (HTTP 429):
 If the GPT-4o deployment is deleted or misconfigured:
 
 1. Verify deployment exists:
+
    ```bash
    az cognitiveservices account deployment show \
      --resource-group <rg> \
      --name <openai-resource> \
      --deployment-name <deployment-name>
    ```
+
 2. Recreate if needed (see Azure OpenAI documentation)
 3. Update the `AZURE_OPENAI_DEPLOYMENT_NAME` app setting on the Function App if the deployment name changed
 

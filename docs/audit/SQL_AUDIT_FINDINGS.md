@@ -4,7 +4,6 @@ Status: **in progress**
 
 This log is the working record produced while following [SQL_AUDIT_PLAYBOOK.md](SQL_AUDIT_PLAYBOOK.md).
 
-
 ## Inventory
 
 - SQL files in scope:

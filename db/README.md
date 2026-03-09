@@ -1,6 +1,7 @@
 # ORAN Database Setup
 
 ## Prerequisites
+
 - Docker and Docker Compose (for local development)
 - OR an Azure Database for PostgreSQL Flexible Server instance (production / staging)
 
@@ -16,6 +17,7 @@ docker compose up -d
 ```
 
 This starts:
+
 - **PostgreSQL 16 with PostGIS 3.4** on port `5432`
 - **pgAdmin 4** on port `5050` (optional, for visual DB management)
 
@@ -33,11 +35,13 @@ echo 'DATABASE_URL=postgresql://oran:oran_local_password@localhost:5432/oran_db?
 
 ### pgAdmin (optional)
 
-Visit http://localhost:5050 and log in:
+Visit <http://localhost:5050> and log in:
+
 - Email: `admin@oran.local`
 - Password: `pgadmin_local_password`
 
 Then add a server with:
+
 - Host: `db` (Docker network) or `localhost` (from host machine)
 - Port: `5432`
 - Database: `oran_db`
@@ -51,12 +55,15 @@ Then add a server with:
 ORAN uses **Azure Database for PostgreSQL Flexible Server** in production. See `docs/platform/PLATFORM_AZURE.md` for provisioning details.
 
 1. Provision a Flexible Server instance with PostGIS enabled:
+
    ```sql
    CREATE EXTENSION IF NOT EXISTS postgis;
    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
    ```
+
 2. Copy the connection string from the Azure Portal
 3. Add to your environment:
+
    ```
    DATABASE_URL=postgresql://user:password@your-server.postgres.database.azure.com/oran_db?sslmode=require
    ```

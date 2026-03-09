@@ -29,40 +29,48 @@ You are the SQL migration agent for ORAN (Open Resource Access Network), a civic
 The UI/API agent has built API routes that write to these tables. Verify the SQL schema supports every query. Specific areas to check:
 
 ### Claim Route (`/api/host/claim` — POST)
+
 Writes to: `organizations`, `services`, `verification_queue`
+
 - `verification_queue.submitted_by_user_id` — CONFIRMED renamed in 0002. ✅
 - `verification_queue.notes` — column exists in 0000. ✅
 - `services.status` — CHECK constraint includes 'inactive'. ✅
 
 ### Organization CRUD (`/api/host/organizations`)
+
 - GET uses: `SELECT id, name, description, url, email, status, created_at, updated_at FROM organizations`
 - ⚠️ NOTE: The app queries `organizations.status` but this column DOES NOT EXIST in the schema. The API route may reference it. Add `status TEXT DEFAULT 'active'` to organizations if not present.
 - PUT dynamic SET on: `name`, `description`, `url`, `email`
 - DELETE from: `organizations WHERE id = $1` — relies on `ON DELETE CASCADE` to locations/services. ✅
 
 ### Service CRUD (`/api/host/services`)
+
 - GET filters by: `organization_id`, `status`, text search on `name`
 - POST inserts: `organization_id, name, alternate_name, description, url, email, status`
 - All columns exist in 0000. ✅
 
 ### Location CRUD (`/api/host/locations`)
+
 - GET joins: `locations LEFT JOIN addresses ON a.location_id = l.id JOIN organizations ON o.id = l.organization_id`
 - POST inserts to `locations` then `addresses` (in transaction). All columns exist. ✅
 - PUT updates `locations` fields + upserts `addresses`. ✅
 
 ### Verification Queue (Community Admin `/queue`, `/verify` — Phase 4 being built now)
+
 - Queries: `SELECT * FROM verification_queue WHERE status IN ('pending','in_review') ORDER BY created_at`
 - Joins: `verification_queue JOIN services ON s.id = vq.service_id JOIN organizations ON o.id = s.organization_id`
 - Updates: `UPDATE verification_queue SET status = $1, assigned_to = $2, notes = $3 WHERE id = $4`
 - ⚠️ `assigned_to` column: exists in 0000 as `TEXT` — consider renaming to `assigned_to_user_id` for consistency with the audit field convention used everywhere else. This is optional but recommended.
 
 ### Audit Logs (ORAN Admin `/audit` — Phase 5)
+
 - `audit_logs` table exists from 0004. ✅
 - Has: `actor_user_id, actor_role, action, resource_type, resource_id, before, after, ip_digest, request_id, created_at`
 
 ## Task 2: Missing Tables — CREATE These
 
 ### 2a. `coverage_zones` table (needed by Phase 4 `/coverage` and Phase 5 `/zone-management`)
+
 Referenced in `docs/governance/ROLES_PERMISSIONS.md` permission matrix but DOES NOT EXIST in any migration.
 
 ```sql
@@ -79,9 +87,11 @@ CREATE TABLE IF NOT EXISTS coverage_zones (
   updated_by_user_id TEXT
 );
 ```
+
 Indexes needed: `(assigned_user_id)`, GIST on `(geometry)`, `(status)`
 
 ### 2b. `organization_members` table (needed for `/admins` team management)
+
 No team membership table exists. The `/admins` page needs:
 
 ```sql
@@ -101,9 +111,11 @@ CREATE TABLE IF NOT EXISTS organization_members (
   UNIQUE(organization_id, user_id)
 );
 ```
+
 Indexes needed: `(organization_id)`, `(user_id)`, `(status)`
 
 ### 2c. `user_profiles` table (referenced in permissions matrix)
+
 Stores pseudonymous user preferences. Privacy-first: no PII beyond what the IdP provides.
 
 ```sql
@@ -143,6 +155,7 @@ Evaluate and implement if beneficial:
 ## Task 4: Seed Data Review
 
 Review `db/seed/demo.sql` and ensure it:
+
 - Covers all new tables (coverage_zones, organization_members, user_profiles)
 - Inserts realistic demo data that exercises all status values
 - Does not contain real PII

@@ -44,6 +44,7 @@ Tags services with searchable attributes across 6 dimensions.
 | details | No | Human-readable elaboration |
 
 Example:
+
 ```csv
 service_id,taxonomy,tag,details
 abc123,delivery,in_person,
@@ -65,6 +66,7 @@ Service-level disability/health accommodations (distinct from location accessibi
 | details | No | Description of the accommodation |
 
 Example:
+
 ```csv
 service_id,adaptation_type,adaptation_tag,details
 abc123,disability,deaf,ASL interpreter available by appointment
@@ -84,6 +86,7 @@ For food services: dietary restrictions accommodated.
 | details | No | Elaboration |
 
 Example:
+
 ```csv
 service_id,dietary_type,availability,details
 abc123,halal,by_request,Call 24 hours in advance
@@ -94,5 +97,6 @@ abc123,kosher,limited,When donated
 ## LLM-Assisted Tagging
 
 For automated ingestion from unstructured sources (website scrapes, PDFs), see:
+
 - `src/services/ingestion/tagging-prompt.ts` — LLM prompt templates
 - `docs/governance/TAGGING_GUIDE.md` — Complete tagging reference

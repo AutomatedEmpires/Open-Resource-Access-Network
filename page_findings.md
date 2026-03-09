@@ -23,14 +23,17 @@ This document records every UI/UX, accessibility, correctness, and architecture 
 ## Foundation Issues (cross-cutting)
 
 ### F-1 — Duplicate toast systems
+
 **Severity:** High
 **Status:** ✅ Fixed
 
 Two incompatible toast systems coexisted:
+
 - `src/lib/hooks/useToast.ts` — standalone hook with local `ToastRegion` component (used in 3 seeker pages)
 - `@/components/ui/toast` context-based system (`ToastProvider` in `providers.tsx`) — the canonical system
 
 **Affected files (pre-fix):**
+
 - `DirectoryPageClient.tsx` — used standalone `useToast` + rendered `<ToastRegion>`
 - `SavedPageClient.tsx` — same
 - `MapPageClient.tsx` — same
@@ -42,20 +45,24 @@ Two incompatible toast systems coexisted:
 ---
 
 ### F-2 — Admin/host layout.tsx exported metadata from a client component
+
 **Severity:** High
 **Status:** ✅ Fixed
 
 All three portal layouts (`(host)`, `(community-admin)`, `(oran-admin)`) combined `'use client'` with `export const metadata`, which is invalid in Next.js App Router. Metadata exports are silently ignored on client components, meaning:
+
 - No `<title>` tag was emitted for any admin/host page
 - `robots: noindex` was never applied despite being privacy-sensitive portals
 
 **Fix applied:** Split each layout into:
+
 - `layout.tsx` — clean server component, exports `metadata` with `robots: { index: false, follow: false }` and title template
 - `*LayoutShell.tsx` — `'use client'` component containing `useSession`, nav, auth-gating
 
 ---
 
 ### F-3 — 404 page broken link
+
 **Severity:** Medium
 **Status:** ✅ Fixed
 
@@ -64,6 +71,7 @@ All three portal layouts (`(host)`, `(community-admin)`, `(oran-admin)`) combine
 ---
 
 ### F-4 / F-5 — ServiceDetail back button and breadcrumb
+
 **Severity:** Medium
 **Status:** ✅ Fixed
 
@@ -76,12 +84,14 @@ All three portal layouts (`(host)`, `(community-admin)`, `(oran-admin)`) combine
 ---
 
 ### F-6 — Codex PageClient files orphaned (page.tsx not wired up)
+
 **Severity:** High
 **Status:** ✅ Fixed
 
 Codex created improved `*PageClient.tsx` files for 11 pages with better form UX (FormField, FormAlert, useToast, unsaved-changes guard, Loader2, SuccessCelebration). However, none of the `page.tsx` files were updated to import them — Next.js was still routing to the old inline `'use client'` implementations.
 
 **Affected pages:**
+
 | Page | Improvement in PageClient |
 |------|--------------------------|
 | `(host)/org` | + FormField, FormAlert, useUnsavedChanges, HSDS fields |
@@ -103,6 +113,7 @@ Codex created improved `*PageClient.tsx` files for 11 pages with better form UX 
 ## (seeker) Pages
 
 ### S-1 — Skip link duplication
+
 **Severity:** Low
 **Status:** ⬜ Not started
 
@@ -113,6 +124,7 @@ The root layout (`src/app/layout.tsx`) renders a "Skip to main content" link. Th
 ---
 
 ### S-2 — Chat page flash skeleton on load
+
 **Severity:** Low / Visual
 **Status:** ⬜ Not started
 
@@ -123,6 +135,7 @@ The root layout (`src/app/layout.tsx`) renders a "Skip to main content" link. Th
 ---
 
 ### S-3 — Category chips not wired to search API
+
 **Severity:** High
 **Status:** ⬜ Not started
 
@@ -131,6 +144,7 @@ The root layout (`src/app/layout.tsx`) renders a "Skip to main content" link. Th
 ---
 
 ### S-4 — Directory empty state missing
+
 **Severity:** Medium
 **Status:** ⬜ Not started
 
@@ -139,6 +153,7 @@ When a search returns zero results, `DirectoryPageClient.tsx` renders nothing �
 ---
 
 ### S-5 — Notifications page: infinite loading spinner for unauthenticated users
+
 **Severity:** Medium
 **Status:** ⬜ Not started
 
@@ -147,6 +162,7 @@ When a search returns zero results, `DirectoryPageClient.tsx` renders nothing �
 ---
 
 ### S-6 — Report page: no guidance when `serviceId` param is missing
+
 **Severity:** Low
 **Status:** ⬜ Not started
 
@@ -155,6 +171,7 @@ When a search returns zero results, `DirectoryPageClient.tsx` renders nothing �
 ---
 
 ### S-7 — Appeal page: no auth gate
+
 **Severity:** Medium
 **Status:** ⬜ Not started
 
@@ -163,6 +180,7 @@ When a search returns zero results, `DirectoryPageClient.tsx` renders nothing �
 ---
 
 ### S-8 — Language preference non-functional
+
 **Severity:** Low
 **Status:** ⬜ Not started
 
@@ -171,6 +189,7 @@ When a search returns zero results, `DirectoryPageClient.tsx` renders nothing �
 ---
 
 ### S-9 — ServiceDetail test needs update after router.back() removal
+
 **Severity:** Medium (test regression)
 **Status:** ⬜ Not started
 
@@ -181,6 +200,7 @@ When a search returns zero results, `DirectoryPageClient.tsx` renders nothing �
 ## (host) Pages
 
 ### H-1 — Host nav lacks icons
+
 **Severity:** Low / Visual
 **Status:** ⬜ Not started (may be partially done by Codex)
 
@@ -189,6 +209,7 @@ The host nav items in `HostLayoutShell.tsx` render text-only links. The pattern 
 ---
 
 ### H-2 — Org page: edit modal closes fields on small viewport
+
 **Severity:** Medium
 **Status:** ⬜ Not started
 
@@ -197,6 +218,7 @@ The host nav items in `HostLayoutShell.tsx` render text-only links. The pattern 
 ---
 
 ### H-3 — Services page: multi-step form shows all steps simultaneously
+
 **Severity:** Medium
 **Status:** ⬜ Not started
 
@@ -205,6 +227,7 @@ The host nav items in `HostLayoutShell.tsx` render text-only links. The pattern 
 ---
 
 ### H-4 — Admins page: invite-mode toggle label unclear
+
 **Severity:** Low
 **Status:** ⬜ Not started
 
@@ -213,6 +236,7 @@ The host nav items in `HostLayoutShell.tsx` render text-only links. The pattern 
 ---
 
 ### H-5 — Claim page: no success animation on desktop
+
 **Severity:** Low / Visual
 **Status:** ⬜ Not started
 
@@ -223,6 +247,7 @@ The host nav items in `HostLayoutShell.tsx` render text-only links. The pattern 
 ## (community-admin) Pages
 
 ### P-1 — Queue page: bulk action buttons unimplemented
+
 **Severity:** Medium
 **Status:** ⬜ Not started
 
@@ -231,6 +256,7 @@ The host nav items in `HostLayoutShell.tsx` render text-only links. The pattern 
 ---
 
 ### P-2 — Verify page: IP address shown in reviewer notes
+
 **Severity:** High (security/privacy)
 **Status:** ⬜ Not started
 
@@ -241,6 +267,7 @@ The host nav items in `HostLayoutShell.tsx` render text-only links. The pattern 
 ---
 
 ### P-3 — Coverage page: `<AlertTriangle>` still referenced after FormAlert migration
+
 **Severity:** Low
 **Status:** ⬜ Not started
 
@@ -249,6 +276,7 @@ The `CoveragePageClient.tsx` diff removed the `AlertTriangle` icon import but re
 ---
 
 ### P-4 — Verify page: uses `SubmissionStatus` not `VerificationStatus`
+
 **Severity:** Low (type alignment)
 **Status:** ⬜ Not started
 
@@ -259,14 +287,16 @@ The `CoveragePageClient.tsx` diff removed the `AlertTriangle` icon import but re
 ## (oran-admin) Pages
 
 ### A-1 — Audit log: IP address shown in plain text
+
 **Severity:** High (security/privacy)
 **Status:** ⬜ Not started
 
-Both `audit/page.tsx` (old, now replaced) and `audit/AuditPageClient.tsx` render `row.ip_address` directly: `{row.ip_address ? \` · IP: ${row.ip_address}\` : ''}`. Per `SECURITY_PRIVACY.md`, IP data must not appear in the UI — use a masked/truncated display or remove entirely.
+Both `audit/page.tsx` (old, now replaced) and `audit/AuditPageClient.tsx` render `row.ip_address` directly: `{row.ip_address ? \` · IP: ${row.ip_address}\` : ''}`. Per`SECURITY_PRIVACY.md`, IP data must not appear in the UI — use a masked/truncated display or remove entirely.
 
 ---
 
 ### A-2 — Audit log: `user_id` displayed as raw UUID
+
 **Severity:** Low
 **Status:** ⬜ Not started
 
@@ -275,6 +305,7 @@ Both `audit/page.tsx` (old, now replaced) and `audit/AuditPageClient.tsx` render
 ---
 
 ### A-3 — Scopes page: unexpected API call on load
+
 **Severity:** Medium (test regression / possible bug)
 **Status:** ⬜ Not started
 
@@ -283,6 +314,7 @@ Test `scopes-page.test.tsx` expects the page to call `/api/admin/scopes?limit=1`
 ---
 
 ### A-4 — Rules page: no confirmation before toggling production flags
+
 **Severity:** High (safety)
 **Status:** ⬜ Not started
 
@@ -291,6 +323,7 @@ Test `scopes-page.test.tsx` expects the page to call `/api/admin/scopes?limit=1`
 ---
 
 ### A-5 — Ingestion page: process tab has no cancel mechanism
+
 **Severity:** Low
 **Status:** ⬜ Not started
 
@@ -299,6 +332,7 @@ Test `scopes-page.test.tsx` expects the page to call `/api/admin/scopes?limit=1`
 ---
 
 ### A-6 — Zone management: assigned_user_id shown as raw UUID
+
 **Severity:** Low
 **Status:** ⬜ Not started
 
@@ -307,6 +341,7 @@ Test `scopes-page.test.tsx` expects the page to call `/api/admin/scopes?limit=1`
 ---
 
 ### A-7 — Appeals / Approvals pages: missing empty states
+
 **Severity:** Low
 **Status:** ⬜ Not started
 
@@ -317,6 +352,7 @@ Test `scopes-page.test.tsx` expects the page to call `/api/admin/scopes?limit=1`
 ## Auth / System Pages
 
 ### AS-1 — Sign-in page: no redirect preservation
+
 **Severity:** Medium
 **Status:** ⬜ Not started
 
@@ -325,6 +361,7 @@ Test `scopes-page.test.tsx` expects the page to call `/api/admin/scopes?limit=1`
 ---
 
 ### AS-2 — Auth error page test failures
+
 **Severity:** Medium (test)
 **Status:** ⬜ Not started
 
@@ -333,10 +370,12 @@ Test `scopes-page.test.tsx` expects the page to call `/api/admin/scopes?limit=1`
 ---
 
 ### AS-3 — Appeal/Directory/Map page tests failing
+
 **Severity:** Medium (test)
 **Status:** ⬜ Not started
 
 The following test suites have failures that appear to be pre-existing (present in HEAD, not introduced by this session's changes):
+
 - `appeal-page-client.test.tsx` (4 failures)
 - `directory-page-client.test.tsx` (6 failures)
 - `map-page-client.test.tsx` (6 failures)
@@ -366,16 +405,19 @@ These were failing before any changes in this session. Root cause unknown — li
 ## File Inventory
 
 ### Deleted files
+
 - `src/lib/hooks/useToast.ts` (standalone hook, replaced by context system)
 - `src/components/ui/ToastRegion.tsx` (standalone toast container)
 - `src/components/ui/__tests__/ToastRegion.test.tsx`
 
 ### Created files
+
 - `src/app/(host)/HostLayoutShell.tsx`
 - `src/app/(community-admin)/CommunityAdminLayoutShell.tsx`
 - `src/app/(oran-admin)/OranAdminLayoutShell.tsx`
 
 ### Pages converted from inline client to thin server wrapper + PageClient split
+
 - `src/app/(host)/org/page.tsx` → wraps `OrgPageClient.tsx`
 - `src/app/(host)/services/page.tsx` → wraps `ServicesPageClient.tsx`
 - `src/app/(host)/locations/page.tsx` → wraps `LocationsPageClient.tsx`

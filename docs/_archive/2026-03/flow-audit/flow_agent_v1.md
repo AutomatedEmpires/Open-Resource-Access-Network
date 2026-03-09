@@ -29,11 +29,13 @@
 A seeker files an appeal when one of their **own** submissions has been **denied**. The flow is reachable via `/appeal?submissionId=<uuid>` — the `submissionId` query parameter pre-fills the form.
 
 **Entry points (current)**:
+
 - Direct URL: `/appeal?submissionId=<uuid>`
 - "Back to profile" link on the appeal page
 - Success message after appeal submission says "you will be notified when it is reviewed"
 
 **Missing entry points**:
+
 - ❌ No link from the denied submission itself (e.g., profile → my submissions → denied → "Appeal" button)
 - ❌ No browse-denied-submissions picker — the seeker must already know the UUID
 - ❌ No navigation link in the seeker menu/nav to the appeal page
@@ -116,6 +118,7 @@ Admin clicks Approve or Deny
 ### 1.6 Notification process
 
 **On appeal submission (POST /api/submissions/appeal)**:
+
 - Recipient: **original reviewer** (`assigned_to_user_id` on the denied submission)
 - Event type: `submission_status_changed`
 - Title: `Appeal filed on your decision`
@@ -124,6 +127,7 @@ Admin clicks Approve or Deny
 - ⚠️ No notification goes to any admin pool (community_admin / oran_admin)
 
 **On appeal decision (POST /api/admin/appeals)**:
+
 - Recipient: **appeal submitter** (`submitted_by_user_id`)
 - Event type: `submission_status_changed`
 - Title: `Your appeal has been ${decision}`
@@ -131,6 +135,7 @@ Admin clicks Approve or Deny
 - ✅ Always fires — submitter is always known
 
 **Gaps**:
+
 - ❌ If no reviewer was assigned to the original submission, appeal creation is a silent event — no admin learns about it until they manually check the queue
 - ❌ No broadcast to admin pool when appeal arrives
 - ❌ No SLA is applied to appeals (no applySla() call)
@@ -211,6 +216,7 @@ Admin clicks Approve or Deny
 Any user (authenticated OR anonymous) can report a service listing. Entry via `/report?serviceId=<uuid>`.
 
 **Entry points**:
+
 - Direct URL: `/report?serviceId=<uuid>`
 - Expected: service detail page should link here (not verified in this audit)
 
@@ -261,6 +267,7 @@ Community admin decides (PUT /api/community/queue/[id])
   - BUT: if the reporter was anonymous (`anon_${ip}`), notification goes to a non-existent user
 
 **Gaps**:
+
 - ❌ No admin notification when report is filed
 - ❌ Anonymous reporter can never be notified of outcome
 - ❌ contactEmail field is stored but never used for follow-up
@@ -631,12 +638,12 @@ The `submissions` table (migration 0022) is well-designed:
 
 ### Wave 4 Recommended (Medium)
 
-10. **M1 + M2**: Add lock/claim mechanism to admin appeals and admin approvals
-11. **M3**: Decide single canonical review path for org claims
-12. **M4**: Add UUID format validation on client for submissionId
-13. **M5**: Add cleanup logic when org claim is denied
-14. **M6**: Add "assigned to me" filter to community queue
-15. **M8**: Build remaining seeker forms (data_correction, new_service, removal_request)
+1. **M1 + M2**: Add lock/claim mechanism to admin appeals and admin approvals
+2. **M3**: Decide single canonical review path for org claims
+3. **M4**: Add UUID format validation on client for submissionId
+4. **M5**: Add cleanup logic when org claim is denied
+5. **M6**: Add "assigned to me" filter to community queue
+6. **M8**: Build remaining seeker forms (data_correction, new_service, removal_request)
 
 ---
 

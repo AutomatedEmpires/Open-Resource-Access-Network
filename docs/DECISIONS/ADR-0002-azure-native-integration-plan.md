@@ -10,8 +10,8 @@ ORAN is Azure-first (docs/platform/PLATFORM_AZURE.md). Several planned integrati
 external providers or in-memory stubs. The team has:
 
 - **$200 Azure credits** (primary subscription)
-- **Student access** (jackson.cole@snhu.edu — Azure for Students, GitHub Student Dev Pack)
-- **Startup access** (automatedempires@outlook.com — Microsoft for Startups Founders Hub)
+- **Student access** (<jackson.cole@snhu.edu> — Azure for Students, GitHub Student Dev Pack)
+- **Startup access** (<automatedempires@outlook.com> — Microsoft for Startups Founders Hub)
 - **GitHub Copilot** (student-eligible)
 
 Goal: maximize Azure-native services, minimize external dependencies, and stay within
@@ -97,8 +97,8 @@ That leaves ~$158/mo headroom within the $200 credit.
 
 ### Student + Startup Credits Strategy
 
-- **Azure for Students** (jackson.cole@snhu.edu): $100/year, renewable. Use for dev/staging.
-- **Microsoft for Startups Founders Hub** (automatedempires@outlook.com): Apply for up to $1,000-$150,000 in credits.
+- **Azure for Students** (<jackson.cole@snhu.edu>): $100/year, renewable. Use for dev/staging.
+- **Microsoft for Startups Founders Hub** (<automatedempires@outlook.com>): Apply for up to $1,000-$150,000 in credits.
   This can cover production costs for 1-3 years.
 - **GitHub Student Dev Pack**: Free Copilot, free Actions minutes, free Codespaces hours.
 - **GitHub Copilot**: Available on both accounts for AI-assisted development.

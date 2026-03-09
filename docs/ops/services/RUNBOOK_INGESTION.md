@@ -24,6 +24,7 @@ All functions are Azure Functions (Consumption plan) triggered by Azure Storage 
 Queue and timer bindings are defined under `functions/*/function.json`.
 
 Timer schedules (UTC):
+
 - `scheduledCrawl`: `0 0 6 * * *` (daily at 06:00)
 - `checkSlaBreaches`: `0 0 * * * *` (hourly)
 - `alertCoverageGaps`: `0 0 8 * * *` (daily at 08:00)
@@ -43,9 +44,11 @@ Timer schedules (UTC):
 
 1. Review SLA breach trend (KQL: `docs/ops/monitoring/MONITORING_QUERIES.md` §2)
 2. Check queue poison message counts:
+
    ```bash
    az storage queue list --account-name <storage> --query "[?contains(name,'poison')]" -o table
    ```
+
 3. Review confidence regression scan output
 
 ### Runtime Queue Settings (from `functions/host.json`)
@@ -77,6 +80,7 @@ At critical level, declare at least SEV-2 and follow `docs/ops/core/RUNBOOK_INCI
 **Symptom**: Messages appear in `*-poison` queues.
 
 **Diagnosis**:
+
 ```bash
 # List poison queues
 az storage queue list --account-name <storage> --query "[?contains(name,'poison')].{name:name}" -o table
@@ -86,9 +90,11 @@ az storage message peek --queue-name ingestion-fetch-poison --account-name <stor
 ```
 
 **Resolution**:
+
 1. Check Application Insights for the error that caused the failure
 2. Fix the root cause (usually a malformed URL or LLM parse failure)
 3. Re-queue the message if appropriate:
+
    ```bash
    # Move message from poison back to main queue
    MSG=$(az storage message get --queue-name ingestion-fetch-poison --account-name <storage> --query "[0]" -o json)
@@ -102,6 +108,7 @@ az storage message peek --queue-name ingestion-fetch-poison --account-name <stor
 **Symptom**: `[extractService] HTTP 429` or `[extractService] Failed` in logs.
 
 **Diagnosis**:
+
 ```kql
 traces
 | where timestamp > ago(1h)
@@ -111,6 +118,7 @@ traces
 ```
 
 **Resolution**:
+
 - **429 (rate limited)**: Azure OpenAI throttling. Check quota in Azure Portal → Azure OpenAI → Deployments. Consider reducing `scheduledCrawl` concurrency or increasing TPM quota.
 - **Parse failure**: LLM returned non-JSON. Check the raw response in logs. Usually transient — message will retry automatically (3 attempts before poison queue).
 - **Timeout**: Increase function timeout in `host.json` if consistently timing out.
@@ -120,20 +128,27 @@ traces
 **Symptom**: No new candidates appearing in admin queues despite crawl running.
 
 **Diagnosis**:
+
 1. Check if `scheduledCrawl` ran:
+
    ```kql
    traces | where message has "[scheduledCrawl]" | take 5
    ```
+
 2. Check if fetch queue has messages:
+
    ```bash
    az storage queue show --name ingestion-fetch --account-name <storage> --query "approximateMessageCount"
    ```
+
 3. Check function execution history:
+
    ```bash
    az functionapp function show --resource-group <rg> --name <func-app> --function-name fetchPage
    ```
 
 **Resolution**:
+
 - If crawl didn't run: Check timer function is enabled and `host.json` has correct schedule
 - If queue is empty but crawl ran: Check source registry — sources may be exhausted or all URLs already processed
 - If queue has messages but no processing: Check function app is running (`az functionapp show --query state`)
@@ -154,6 +169,7 @@ curl -X POST "https://<web-app>.azurewebsites.net/api/admin/ingestion/process" \
 ```
 
 Notes:
+
 - This endpoint requires authenticated `oran_admin` role.
 - The Azure Function `manualSubmit` currently returns 501 (stub).
 

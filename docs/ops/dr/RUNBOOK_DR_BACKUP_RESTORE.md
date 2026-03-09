@@ -68,6 +68,7 @@ Recovery objective recording template:
 ## Drill Outcome Requirements
 
 After each DR drill:
+
 1. Document measured RTO/RPO in `docs/ops/core/OPERATIONS_READINESS.md`.
 2. Record discovered gaps and owners.
 3. Update this runbook with learned adjustments.

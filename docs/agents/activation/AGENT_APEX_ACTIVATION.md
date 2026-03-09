@@ -128,7 +128,9 @@ the role requirements in `docs/governance/ROLES_PERMISSIONS.md` and the governan
 in `docs/governance/GOVERNANCE.md`. No admin action can be unguarded or unlogged.
 
 ### 3.1 Admin Role Inventory
+
 For every admin surface, document in `docs/agents/status/STATUS_APEX.md`:
+
 - Route path
 - Required role (per `docs/governance/ROLES_PERMISSIONS.md`)
 - UI role guard present (yes/no — does the layout/page show/hide based on role?)
@@ -139,8 +141,10 @@ For every admin surface, document in `docs/agents/status/STATUS_APEX.md`:
 - Critical gaps
 
 ### 3.2 Mobile + Accessibility Audit for Admin Surfaces
+
 Admin users may work on mobile devices in the field. The same mobile-first and
 accessibility standards apply:
+
 - Layouts must use `max-w-7xl` for dashboards per `docs/ui/UI_UX_TOKENS.md`.
 - Tables must scroll horizontally on mobile, not overflow the viewport.
 - All buttons and form controls meet 44×44px touch target minimum.
@@ -150,6 +154,7 @@ accessibility standards apply:
 - Error messages are inline and associated with fields via `aria-describedby`.
 
 ### 3.3 Design System Compliance Audit
+
 - All admin UIs must use `src/components/ui/` primitives for buttons, inputs, badges,
   dialogs, tables, and skeletons.
 - No ad-hoc inline Tailwind that deviates from the token scale without justification.
@@ -174,12 +179,14 @@ community admin (data quality pipeline), host portal (most user-facing admin sur
 platform-wide consequences.
 
 #### 4.1.1 Layout + Role Gate (`layout.tsx`)
+
 - Verify the layout enforces `oran_admin` role visually (redirects or shows
   an "Access Denied" page if role is insufficient at the UI level).
 - Navigation must clearly label this as the admin portal.
 - Include an urgent indicator if there are pending approval items (badge count on nav).
 
 #### 4.1.2 Approvals Workflow (`approvals/`)
+
 - The approvals queue is the critical path for records becoming public.
 - Build a fully functional queue view:
   - List of pending service records with: org name, service name, submitted at, submitter,
@@ -203,6 +210,7 @@ platform-wide consequences.
 - Optimistic UI for approval/rejection with error rollback if the API call fails.
 
 #### 4.1.3 Audit Log Viewer (`audit/`)
+
 - Filterable, read-only log table: entity type, entity ID, action, actor, before/after
   snapshot (if available), metadata, timestamp.
 - Filters: by entity type, actor, date range, action type.
@@ -212,12 +220,14 @@ platform-wide consequences.
 - `aria-label` on all filter controls; table must have proper `<caption>`.
 
 #### 4.1.4 Rules Management (`rules/`)
+
 - If moderation rules (e.g., taxonomy-based auto-routing) are partially implemented,
   complete the CRUD UI: list rules, create rule, edit rule, delete rule (with confirmation).
 - Each rule must show: name, description, trigger conditions, action, enabled/disabled state.
 - All mutations write to audit log.
 
 #### 4.1.5 Zone Management (`zone-management/`)
+
 - Coverage zone management UI: list zones, view zone on map, create zone, edit zone,
   delete zone (with confirmation and warning about affected services).
 - Zone editor: must support drawing/editing polygon boundaries (use Leaflet or the
@@ -230,10 +240,12 @@ platform-wide consequences.
 for their geographic area.
 
 #### 4.2.1 Layout + Role Gate (`layout.tsx`)
+
 - Verify `community_admin` role gating at the UI level.
 - Navigation shows: queue count badge, coverage zone assignment.
 
 #### 4.2.2 Verification Queue (`queue/`)
+
 - Identical purpose to ORAN admin approvals, but scoped to the community admin's
   assigned coverage zones.
 - Queue view: same columns as ORAN approvals queue. Filtered to their zone only.
@@ -242,6 +254,7 @@ for their geographic area.
 - Empty state: "No records pending review in your zone."
 
 #### 4.2.3 Verification Flow (`verify/`)
+
 - Step-by-step verification workflow for a single record:
   - Step 1: Confirm basic facts (name, org, service type) against the record.
   - Step 2: Verify address (optionally view on map).
@@ -252,6 +265,7 @@ for their geographic area.
 - Incomplete verification must persist as draft (do not lose work on page refresh).
 
 #### 4.2.4 Coverage Management (`coverage/`)
+
 - View the community admin's assigned zones on a map.
 - Read-only (zone assignment is managed by ORAN admin — community admins cannot
   self-assign zones).
@@ -264,6 +278,7 @@ services on ORAN. This is the most user-facing admin surface — hosts may not b
 technically sophisticated.
 
 #### 4.3.1 Layout + Role Gate (`layout.tsx`)
+
 - Role gate: `host_member` minimum. `host_admin`-only features must be clearly distinguished
   (e.g., admin management is host_admin only).
 - Navigation: org name + logo (if available), service count, pending items badge.
@@ -271,6 +286,7 @@ technically sophisticated.
   banner directing them through the claim/setup flow.
 
 #### 4.3.2 Organization Claim Flow (`claim/`)
+
 - This is the onboarding entry point for new host organizations.
 - Step 1: Search for your organization by name.
 - Step 2: Select your organization or indicate it doesn't exist yet.
@@ -283,6 +299,7 @@ technically sophisticated.
   with instructions to contact the existing admin.
 
 #### 4.3.3 Organization Profile (`org/`)
+
 - Edit org name, description, website URL, phone number, email, category/taxonomy tags.
 - Show verification status prominently (badge: Verified / Pending / Unverified).
 - Logo upload: `next/image`-compatible, max 2MB, PNG/JPG/SVG only. Preview before save.
@@ -291,6 +308,7 @@ technically sophisticated.
   All via Zod (or inline form validation aligned to the API's Zod schema).
 
 #### 4.3.4 Location Management (`locations/`)
+
 - List view: all locations for the org with status, address, service count.
 - Create location: name, address (with geocoding preview — show a map pin when address
   is entered), hours of operation (structured hourly input per day), accessibility
@@ -303,6 +321,7 @@ technically sophisticated.
   fully usable on mobile.
 
 #### 4.3.5 Service Management (`services/`)
+
 - List view: all services for the org with status, name, location, verification status.
 - Create service:
   - Service name, description, taxonomy category/subcategory, eligibility requirements,
@@ -319,6 +338,7 @@ technically sophisticated.
 - Status badge on every service reflects the verification pipeline state.
 
 #### 4.3.6 Admin Management (`admins/`)
+
 - `host_admin` only.
 - List current org members (name, role, joined date, last active).
 - Invite new member: email → generates invite link. Invited user receives an email
@@ -336,6 +356,7 @@ technically sophisticated.
 **Rule**: You are reconciling docs with reality. You are not writing fiction.
 
 For each document you touch:
+
 - If the document describes something as "Implemented" that is not yet built → change to
   "Planned" and note what is missing.
 - If the document says "Planned" for something that is now built → change to "Implemented."
@@ -362,6 +383,7 @@ the codebase is brought under SSOT tracking that was not previously covered. Do 
 the non-negotiables section.
 
 ### 5.2 Azure Deployment Scripts (`scripts/azure/`)
+
 - Read every script in `scripts/azure/`.
 - Verify each script:
   - Has a top-of-file comment explaining: purpose, required environment variables,
@@ -384,6 +406,7 @@ the non-negotiables section.
 ### 5.3 Service Layer Completeness
 
 #### `src/services/admin/`
+
 - Verify the service layer covers all admin mutations: approve, reject, request-info,
   write-audit-log, manage-rules, manage-zones.
 - Every function that mutates data must:
@@ -393,12 +416,14 @@ the non-negotiables section.
 - Add or complete `src/services/admin/README.md`.
 
 #### `src/services/community/`
+
 - Verify the service layer covers community admin mutations: verify-record,
   flag-record, escalate-record.
 - Same audit log requirements as admin service.
 - Add or complete `src/services/community/README.md`.
 
 #### `src/services/profile/`
+
 - Verify the service layer handles: get-profile, upsert-profile, delete-profile.
 - Profile mutations must be scoped to the authenticated user — never allow a user
   to modify another user's profile via this service layer.

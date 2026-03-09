@@ -5,6 +5,7 @@ Archived on 2026-03-05.
 Reason: superseded by newer audits.
 
 Replacement:
+
 - `docs/audit/AUDIT_SEEKER_UX.md`
 - `docs/audit/AUDIT_REPORT.md`
 
@@ -31,12 +32,14 @@ Replacement:
 | Font stack | Arial, Helvetica, sans-serif | ✅ Via `--font-sans` CSS variable |
 
 **Typography scale:**
+
 - h1: `text-2xl font-bold text-gray-900` — consistent across ALL 14 pages
 - h2: `text-sm font-semibold` (section headings) or `text-lg font-semibold` (modals)
 - Body: `text-sm text-gray-600`
 - Supporting: `text-xs text-gray-500`
 
 **Container widths (intentionally varied by content type):**
+
 - Chat, Claim forms: `max-w-2xl` (focused reading)
 - Profile: `max-w-lg` (single-column form)
 - Saved, Admins: `max-w-4xl` (2-column grid)
@@ -148,16 +151,20 @@ Replacement:
 ## 6. Gaps Found & Remediated
 
 ### GAP-1: Missing skip-to-content (FIXED)
+
 **Before:** Host, Community Admin, ORAN Admin layouts had no skip-to-content link.
 **After:** All 3 layouts now have identical skip-to-content pattern matching seeker layout.
 
 ### GAP-2: Admin nav mobile scroll (FIXED)
+
 **Before:** Admin nav links could overflow on narrow screens with no scrolling.
 **After:** All 3 admin nav elements have `overflow-x-auto` + `whitespace-nowrap`.
 
 ### GAP-3: Modal accessibility (FIXED)
+
 **Before:** 6 host CRUD modals (org edit, service create/edit, location create/edit, + 3 delete confirms) used raw `<div>` overlays with no keyboard/mouse dismiss.
 **After:** All 6 modals now have:
+
 - `onKeyDown` handler for Escape key
 - `onClick` handler for click-outside dismiss
 - `aria-modal="true"` attribute

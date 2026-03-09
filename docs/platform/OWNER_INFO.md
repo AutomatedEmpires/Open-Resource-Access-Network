@@ -16,6 +16,7 @@ This file is a **high-level inventory** of ORAN’s Microsoft/Azure ecosystem: w
 - Subscription ID: `e3d708a7-6264-451c-bd7e-670fecfbf4fa`
 
 Helpful commands:
+
 - `az account show --output jsonc`
 - `az account list --output table`
 
@@ -46,6 +47,7 @@ These resources are expected to exist in `oranhf57ir-prod-rg`:
 - Azure AI Translator: Azure-native translation for service-record text (names/descriptions) with a free tier for early-stage usage.
 
 ORAN safety contract reminder:
+
 - Anything shown to seekers must come from **stored records only**.
 - AI services may help with **ingestion/extraction/summarization**, but never directly inject new “facts” into seeker responses.
 
@@ -54,6 +56,7 @@ ORAN safety contract reminder:
 Key Vault: `oranhf57ir-prod-kv`
 
 Expected secret *names* (values MUST NOT be committed):
+
 - `database-url`
 - `pg-admin-password`
 - `pg-admin-user`
@@ -61,6 +64,7 @@ Expected secret *names* (values MUST NOT be committed):
 - `azure-translator-key`
 
 Helpful commands (names only):
+
 - `az keyvault secret list --vault-name oranhf57ir-prod-kv --query "[].name" -o tsv`
 
 ## App Service configuration (prod)
@@ -68,6 +72,7 @@ Helpful commands (names only):
 Web App: `oranhf57ir-prod-web`
 
 Expected App Settings (some are Key Vault references):
+
 - `DATABASE_URL` = `@Microsoft.KeyVault(SecretUri=...)`
 - `APPLICATIONINSIGHTS_CONNECTION_STRING` = (non-secret string; still treat as sensitive)
 - `AZURE_MAPS_KEY` = `@Microsoft.KeyVault(SecretUri=...)`
@@ -78,6 +83,7 @@ Expected App Settings (some are Key Vault references):
 - `WEBSITE_RUN_FROM_PACKAGE` = `1`
 
 Helpful commands:
+
 - `az webapp config appsettings list -g oranhf57ir-prod-rg -n oranhf57ir-prod-web -o table`
 
 ## Budgets (Cost Management)
@@ -90,28 +96,34 @@ Budgets are alerting controls (they do not hard-stop spend).
 Notification thresholds (both budgets): 50% / 80% / 100%
 
 To view notifications (do not copy/paste emails into this file):
+
 - `az consumption budget show --budget-name oran-monthly-budget --resource-group oranhf57ir-prod-rg --output jsonc`
 - `az rest --method get --url "https://management.azure.com/subscriptions/e3d708a7-6264-451c-bd7e-670fecfbf4fa/providers/Microsoft.Consumption/budgets/oran-subscription-budget?api-version=2019-10-01" --output jsonc`
 
 ## Access control (RBAC)
 
 Preferred pattern:
+
 - Create Entra security groups (e.g. `ORAN-Owners`, `ORAN-Contributors`, `ORAN-Readers`).
 - Assign Azure roles to groups at subscription/RG scopes.
 - Add/remove humans from groups (audit-friendly).
 
 Current (prod RG) roles:
+
 - Resource group scope `oranhf57ir-prod-rg`: two invited guest users have `Owner`.
 
 Ownership mapping policy (repo-safe):
+
 - Do not list personal emails here.
 - Record roles and scopes here (e.g., “2 Owners at prod RG scope”).
 - Keep the specific human identities in `docs/OWNER_INFO.local.md`.
 
 Recommended next hardening step:
+
 - Move from per-user RBAC to Entra security groups (`ORAN-Owners`, `ORAN-Contributors`, `ORAN-Readers`).
 
 To inspect RBAC:
+
 - `az role assignment list --scope /subscriptions/e3d708a7-6264-451c-bd7e-670fecfbf4fa/resourceGroups/oranhf57ir-prod-rg --include-inherited -o table`
 
 ## Repo integration pointers
@@ -131,31 +143,38 @@ Scraping is acceptable **only** as an ingestion input that still goes through st
 Clean pipeline shape:
 
 1) **Locate candidates** (non-user-facing)
+
 - Inputs: curated lists, partner feeds, permitted scrapes, submissions.
 - Output: candidate URLs/documents stored as evidence.
 
-2) **Extract structured fields** (unverified)
+1) **Extract structured fields** (unverified)
+
 - Parse source HTML/PDF into a normalized candidate record.
 - Must include traceability: source URL, fetch timestamp, content hash.
 
-3) **Verify repeatedly** (publish gate)
+1) **Verify repeatedly** (publish gate)
+
 - Automated checks (domain consistency, contact info stability, cross-source agreement).
 - Human review required for publish (community-admin / ORAN-admin).
 
-4) **Confidence scoring** (internal)
+1) **Confidence scoring** (internal)
+
 - Score determines review priority and reverify cadence.
 - Score does not override the publish gate.
 
-5) **Reverification scheduler**
+1) **Reverification scheduler**
+
 - Periodically re-check published records; flag drift, downgrade confidence, and/or move back to review.
 
 Azure-native building blocks (recommended):
+
 - Orchestration: Azure Functions (Durable) or Container Apps Jobs
 - Queues: Azure Service Bus
 - Evidence storage: Azure Blob Storage
 - Telemetry: Application Insights
 
 Implementation note:
+
 - Keep seeker retrieval/ranking LLM-free. If an LLM is used, it must only summarize already-retrieved stored records.
 
 ## Student Azure → production Azure promotion workflow
@@ -166,21 +185,24 @@ Recommended approach: **Infrastructure as Code + environment separation**
 
 - Maintain a single set of IaC templates (Bicep or Terraform) with parameterized names, SKU tiers, and resource group.
 - Create two Azure environments:
-	- `oran-dev` (student subscription): cheapest SKUs, reduced retention, smaller quotas.
-	- `oran-prod` (main subscription): production SKUs, retention, locks, alerts.
+  - `oran-dev` (student subscription): cheapest SKUs, reduced retention, smaller quotas.
+  - `oran-prod` (main subscription): production SKUs, retention, locks, alerts.
 
 CI/CD pattern:
+
 - GitHub Environments:
-	- `azure-student` → deploys only to student subscription RG
-	- `azure-prod` → deploys only to prod subscription RG (requires approvals)
+  - `azure-student` → deploys only to student subscription RG
+  - `azure-prod` → deploys only to prod subscription RG (requires approvals)
 - Separate OIDC federated credentials per subscription/environment.
 - Promote by re-deploying the same IaC + app build to prod (no manual portal clicking).
 
 Data promotion policy (important):
+
 - Do not “copy unverified candidates” into prod by default.
 - Prefer: run the same ingestion pipeline in prod against approved sources, or export/import only after explicit review.
 
 Checklist to switch from student → prod:
+
 - IaC parameters updated (RG names, SKUs, alerting, retention)
 - OIDC configured for prod deployment identity
 - Key Vault secrets created in prod KV (by name) and referenced by App Service
@@ -189,6 +211,7 @@ Checklist to switch from student → prod:
 ## Local-only owner notes
 
 Create and maintain `docs/OWNER_INFO.local.md` for:
+
 - Alert recipient emails
 - Which human accounts are primary operators
 - Any key rotation notes

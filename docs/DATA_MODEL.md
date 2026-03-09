@@ -7,6 +7,7 @@ ORAN implements the [Open Referral Human Services Data Specification (HSDS)](htt
 ## Core HSDS Entities
 
 ### `organizations`
+
 The top-level entity representing a service-providing entity.
 
 | Field            | Type         | Description |
@@ -27,6 +28,7 @@ The top-level entity representing a service-providing entity.
 | created_at       | TIMESTAMPTZ  | Record creation timestamp |
 
 ### `locations`
+
 Physical or virtual places where services are delivered.
 
 | Field            | Type         | Description |
@@ -45,6 +47,7 @@ Physical or virtual places where services are delivered.
 | updated_at       | TIMESTAMPTZ  | Last update timestamp |
 
 ### `services`
+
 Specific services offered by an organization.
 
 | Field                   | Type        | Description |
@@ -68,6 +71,7 @@ Specific services offered by an organization.
 | created_at              | TIMESTAMPTZ | Record creation timestamp |
 
 ### `service_at_location`
+
 Junction table linking services to locations.
 
 | Field          | Type        | Description |
@@ -77,8 +81,10 @@ Junction table linking services to locations.
 | location_id    | UUID FK     | Reference to location |
 | description    | TEXT        | Any location-specific service notes |
 | created_at     | TIMESTAMPTZ | Record creation timestamp |
+| updated_at     | TIMESTAMPTZ | Last update timestamp |
 
 ### `phones`
+
 Phone numbers associated with organizations, locations, or services.
 
 | Field          | Type        | Description |
@@ -94,6 +100,7 @@ Phone numbers associated with organizations, locations, or services.
 | description    | TEXT        | Additional context |
 
 ### `addresses`
+
 Physical addresses for locations.
 
 | Field          | Type        | Description |
@@ -110,6 +117,7 @@ Physical addresses for locations.
 | country        | TEXT        | ISO 3166 country code |
 
 ### `schedules`
+
 Operating hours using RFC 5545 iCalendar RRULE semantics.
 
 | Field       | Type        | Description |
@@ -128,6 +136,7 @@ Operating hours using RFC 5545 iCalendar RRULE semantics.
 | description | TEXT        | Human-readable schedule description |
 
 ### `taxonomy_terms`
+
 Classification terms (AIRS/211 taxonomy or custom).
 
 | Field       | Type        | Description |
@@ -140,6 +149,7 @@ Classification terms (AIRS/211 taxonomy or custom).
 | created_at  | TIMESTAMPTZ | Record creation timestamp |
 
 ### `service_taxonomy`
+
 Junction table linking services to taxonomy terms.
 
 | Field            | Type    | Description |
@@ -153,6 +163,7 @@ Junction table linking services to taxonomy terms.
 ## ORAN Extensions
 
 ### `confidence_scores`
+
 Computed confidence score for each service record.
 
 | Field                | Type        | Description |
@@ -166,6 +177,7 @@ Computed confidence score for each service record.
 | computed_at          | TIMESTAMPTZ | When score was last computed |
 
 ### `verification_queue`
+
 Workflow queue for record verification.
 
 | Field       | Type        | Description |
@@ -180,6 +192,7 @@ Workflow queue for record verification.
 | updated_at  | TIMESTAMPTZ | Last status change timestamp |
 
 ### `seeker_feedback`
+
 User-submitted feedback on service encounters.
 
 | Field           | Type        | Description |
@@ -193,6 +206,7 @@ User-submitted feedback on service encounters.
 | created_at      | TIMESTAMPTZ | Submission timestamp |
 
 ### `chat_sessions`
+
 Analytics log of chat interactions.
 
 | Field             | Type        | Description |
@@ -206,6 +220,7 @@ Analytics log of chat interactions.
 | message_count     | INT          | Number of messages in session |
 
 ### `feature_flags`
+
 Runtime feature toggle configuration.
 
 | Field       | Type        | Description |
@@ -225,6 +240,7 @@ Implementation note: when `DATABASE_URL` is configured, the database catalog is 
 ## Programs, Eligibility & Documents (Migration 0009)
 
 ### `programs`
+
 Organizational programs that group related services.
 
 | Field       | Type        | Description |
@@ -238,6 +254,7 @@ Organizational programs that group related services.
 | updated_at  | TIMESTAMPTZ | Last update |
 
 ### `eligibility`
+
 Eligibility criteria for services.
 
 | Field          | Type        | Description |
@@ -255,6 +272,7 @@ Eligibility criteria for services.
 | updated_at     | TIMESTAMPTZ | Last update |
 
 ### `required_documents`
+
 Documents needed to access a service.
 
 | Field       | Type        | Description |
@@ -272,6 +290,7 @@ Documents needed to access a service.
 ## Service Areas, Languages & Accessibility (Migration 0010)
 
 ### `service_areas`
+
 Geographic coverage areas for services.
 
 | Field              | Type        | Description |
@@ -287,6 +306,7 @@ Geographic coverage areas for services.
 | updated_at         | TIMESTAMPTZ | Last update |
 
 ### `languages`
+
 Languages available for services.
 
 | Field       | Type        | Description |
@@ -301,6 +321,7 @@ Languages available for services.
 | updated_at  | TIMESTAMPTZ | Last update |
 
 ### `accessibility_for_disabilities`
+
 Accessibility accommodations at service locations.
 
 | Field       | Type        | Description |
@@ -318,6 +339,7 @@ Accessibility accommodations at service locations.
 ## Contacts, Saved Services & Evidence (Migration 0011)
 
 ### `contacts`
+
 Contact persons for organizations/services.
 
 | Field            | Type        | Description |
@@ -334,6 +356,7 @@ Contact persons for organizations/services.
 | updated_at       | TIMESTAMPTZ | Last update |
 
 ### `saved_services`
+
 User-saved service bookmarks.
 
 | Field       | Type        | Description |
@@ -344,6 +367,7 @@ User-saved service bookmarks.
 | created_at  | TIMESTAMPTZ | When saved |
 
 ### `verification_evidence`
+
 Evidence artifacts supporting service verification.
 
 | Field          | Type        | Description |
@@ -362,6 +386,7 @@ Evidence artifacts supporting service verification.
 ## Service Attributes & Extensions (Migrations 0012–0013)
 
 ### `service_attributes`
+
 Flexible tag-based attributes for services.
 
 | Field       | Type        | Description |
@@ -375,6 +400,7 @@ Flexible tag-based attributes for services.
 | updated_at  | TIMESTAMPTZ | Last update |
 
 ### `service_adaptations`
+
 Adaptations for specific populations/conditions.
 
 | Field           | Type        | Description |
@@ -388,6 +414,7 @@ Adaptations for specific populations/conditions.
 | updated_at      | TIMESTAMPTZ | Last update |
 
 ### `dietary_options`
+
 Dietary accommodations for food services.
 
 | Field         | Type        | Description |
@@ -405,6 +432,7 @@ Dietary accommodations for food services.
 ## Governance & Members (Migrations 0004–0006)
 
 ### `audit_logs`
+
 System-wide audit trail for data changes.
 
 | Field       | Type        | Description |
@@ -421,6 +449,7 @@ System-wide audit trail for data changes.
 | user_agent  | TEXT        | Request user agent |
 
 ### `coverage_zones`
+
 Geographic coverage zones for admin assignment and routing.
 
 | Field       | Type        | Description |
@@ -436,6 +465,7 @@ Geographic coverage zones for admin assignment and routing.
 | updated_at  | TIMESTAMPTZ | Last update |
 
 ### `organization_members`
+
 Members/staff of organizations with role assignments.
 
 | Field            | Type        | Description |
@@ -450,6 +480,7 @@ Members/staff of organizations with role assignments.
 | updated_at       | TIMESTAMPTZ | Last update |
 
 ### `user_profiles`
+
 Shared user profile data used across seeker, host, community-admin, and ORAN admin surfaces.
 
 | Field       | Type        | Description |
@@ -467,6 +498,7 @@ Shared user profile data used across seeker, host, community-admin, and ORAN adm
 | updated_at  | TIMESTAMPTZ | Last update |
 
 ### `seeker_profiles`
+
 Authenticated seeker-only profile context used for matching, saved workflows, and server-side chat hydration.
 
 | Field       | Type        | Description |
@@ -500,6 +532,7 @@ Authenticated seeker-only profile context used for matching, saved workflows, an
 ## Import & Staging (Migration 0003)
 
 ### `import_batches`
+
 Track each bulk import operation.
 
 | Field       | Type        | Description |
@@ -512,6 +545,7 @@ Track each bulk import operation.
 | created_at  | TIMESTAMPTZ | When import started |
 
 ### `staging_organizations` / `staging_locations` / `staging_services`
+
 Temporary staging tables that hold imported data before admin review and promotion to live tables. Schema mirrors the corresponding live table plus import metadata fields (`batch_id`, `import_status`, `diff_json`).
 
 ---
@@ -519,27 +553,35 @@ Temporary staging tables that hold imported data before admin review and promoti
 ## Ingestion Pipeline (Migration 0002)
 
 ### `ingestion_sources`
+
 Registry of crawl sources (domains, feeds, APIs).
 
 ### `ingestion_jobs`
+
 Tracks individual crawl/extraction jobs with status, stats, and timestamps.
 
 ### `evidence_snapshots`
+
 Raw HTML/content snapshots captured during crawls with content hashing.
 
 ### `extracted_candidates`
+
 Full candidate records extracted from crawled pages, 45 columns including all HSDS fields, review status, jurisdiction hints, and confidence scores.
 
 ### `resource_tags`
+
 Tags assigned to candidates (by LLM or human) with confidence and source metadata.
 
 ### `discovered_links`
+
 Sub-links found during page crawls, classified by type (contact, hours, apply, etc.).
 
 ### `ingestion_audit_events`
+
 Event log for ingestion pipeline actions (fetch, extract, verify, etc.).
 
 ### `llm_suggestions`
+
 LLM-generated field value suggestions pending admin review.
 
 ---
@@ -549,24 +591,31 @@ LLM-generated field value suggestions pending admin review.
 This layer normalizes every intake path before publication. No HSDS feed, partner export, allowlisted scrape, or manual submission is supposed to bypass it and write directly to canonical publishable entities.
 
 ### `source_systems`
+
 Unified registry of upstream publishers and source families. Stores trust tier, crawl policy, domain rules, jurisdiction scope, and legacy linkage back to `ingestion_sources` during migration.
 
 ### `source_feeds`
+
 Endpoints or files under a source system. Tracks feed type, auth mode, refresh cadence, health metadata, and whether the feed is active.
 
 ### `source_records`
+
 Immutable assertion-layer payload store. Persists the original raw payload, normalized parse, payload hash, source-native record ID/version, evidence linkage, correlation ID, and processing state.
 
 ### `source_record_taxonomy`
+
 Preserves external taxonomy codes exactly as supplied by the upstream source so ORAN can round-trip or compare external classifications without overwriting them with internal tags.
 
 ### `entity_identifiers`
+
 Cross-system identifier registry linking ORAN or canonical entities to external schemes (`oran`, HSDS, 211, partner IDs, EIN, and similar). Includes confidence, status, source linkage, and primary-identifier semantics.
 
 ### `hsds_export_snapshots`
+
 Precomputed HSDS-compatible JSON payloads for published entities. Supports snapshot versioning and one current snapshot per entity.
 
 ### `lifecycle_events`
+
 Append-only status-change audit trail for organizations, services, and locations. Tracks actor type, reason, metadata, and downstream propagation counters such as affected identifiers and invalidated snapshots.
 
 Related bridge change: `ingestion_jobs` now carries `source_system_id` alongside legacy source linkage so older ingestion records can be mapped into the assertion layer without dropping traceability.
@@ -578,18 +627,23 @@ Related bridge change: `ingestion_jobs` now carries `source_system_id` alongside
 The canonical layer normalizes multiple source assertions into deduplicated organization, service, and location entities before publish-time promotion into seeker-visible live tables.
 
 ### `canonical_organizations`
+
 Normalized organization entities assembled from one or more source assertions. Stores HSDS-aligned organization fields plus ORAN lifecycle/publication state, winning source reference, source count, confidence summary, and a pointer to the published live organization when present.
 
 ### `canonical_services`
+
 Normalized service entities under a canonical organization. Stores service-facing HSDS fields, lifecycle/publication state, winning source reference, source count, confidence summary, and a pointer to the published live service.
 
 ### `canonical_locations`
+
 Normalized location entities with denormalized address fields and PostGIS geometry. Like other canonical tables, it tracks lifecycle/publication state, winning source, source count, confidence summary, and published-live linkage.
 
 ### `canonical_service_locations`
+
 Many-to-many junction mapping canonical services to canonical locations with optional relationship notes.
 
 ### `canonical_provenance`
+
 Field-level lineage table describing which `source_record` asserted which canonical field value, the confidence hint for that assertion, and whether the assertion was accepted, superseded, or rejected.
 
 ---
@@ -597,18 +651,23 @@ Field-level lineage table describing which `source_record` asserted which canoni
 ## Admin Review & Publish (Migrations 0018–0019)
 
 ### `admin_review_profiles`
+
 Reviewer profiles with expertise, capacity, and geographic assignment.
 
 ### `candidate_admin_assignments`
+
 Links candidates to assigned admin reviewers with SLA tracking.
 
 ### `tag_confirmation_queue`
+
 Queue of tags awaiting admin confirmation/rejection.
 
 ### `publish_criteria`
+
 Configurable thresholds for auto-publish and publish readiness by category/jurisdiction.
 
 ### `candidate_readiness`
+
 Computed readiness status for each candidate (all criteria met, score, tier).
 
 ---
@@ -616,6 +675,7 @@ Computed readiness status for each candidate (all criteria met, score, tier).
 ## Universal Pipeline (Migration 0022)
 
 ### `submissions`
+
 Replaces `verification_queue` as the universal pipeline table. Supports polymorphic types (`service_verification`, `org_claim`, `data_correction`, `new_service`, `removal_request`, `community_report`, `appeal`) with a full state machine (`draft` → `submitted` → `auto_checking` → `needs_review` → `under_review` → `approved`/`denied`/`returned`/`escalated`/`pending_second_approval`/`withdrawn`/`expired`/`archived`).
 
 | Field | Type | Description |
@@ -640,6 +700,7 @@ Replaces `verification_queue` as the universal pipeline table. Supports polymorp
 | updated_at | TIMESTAMPTZ | Last update |
 
 ### `submission_transitions`
+
 Append-only audit trail of every status change on a submission.
 
 | Field | Type | Description |
@@ -652,7 +713,58 @@ Append-only audit trail of every status change on a submission.
 | notes | TEXT | Transition notes |
 | created_at | TIMESTAMPTZ | When transition occurred |
 
+### `form_templates`
+
+Submission-backed in-app form definitions used by host, community-admin, and ORAN-admin workflows.
+
+| Field                 | Type         | Description |
+|-----------------------|--------------|-------------|
+| id                    | UUID PK      | Unique identifier |
+| slug                  | TEXT UNIQUE  | Stable template key for routing and API references |
+| title                 | TEXT NOT NULL| Display title shown in the app |
+| description           | TEXT         | Optional operator-facing description |
+| category              | TEXT NOT NULL| Template grouping such as onboarding, compliance, or operations |
+| audience_scope        | TEXT NOT NULL| Visibility gate: `shared`, `host_member`, `host_admin`, `community_admin`, `oran_admin` |
+| storage_scope         | TEXT NOT NULL| Storage policy: `platform`, `organization`, or `community` |
+| default_target_role   | TEXT         | Default downstream reviewer / recipient role |
+| schema_json           | JSONB NOT NULL | Form field schema persisted in Postgres |
+| ui_schema_json        | JSONB NOT NULL | Optional UI rendering hints |
+| instructions_markdown | TEXT         | Operator instructions shown alongside the form |
+| version               | INT NOT NULL | Template version captured onto each instance at creation time |
+| is_published          | BOOLEAN NOT NULL | Whether non-ORAN-admin users may instantiate the template |
+| blob_storage_prefix   | TEXT         | Optional deterministic prefix for large attachment artifacts |
+| created_by_user_id    | TEXT         | Creator identifier |
+| updated_by_user_id    | TEXT         | Last updater identifier |
+| created_at            | TIMESTAMPTZ  | Record creation |
+| updated_at            | TIMESTAMPTZ  | Last update |
+
+### `form_instances`
+
+Per-submission form payload state. Workflow status remains canonical in `submissions` and `submission_transitions`; this table stores the editable draft payload, recipient metadata, and attachment manifest.
+
+| Field                     | Type           | Description |
+|---------------------------|----------------|-------------|
+| id                        | UUID PK        | Unique identifier |
+| submission_id             | UUID UNIQUE FK | 1:1 link to the workflow record in `submissions` |
+| template_id               | UUID FK        | Source template |
+| template_version          | INT NOT NULL   | Snapshot of the template version used for the instance |
+| storage_scope             | TEXT NOT NULL  | Copied from the template so storage policy survives template edits |
+| owner_organization_id     | UUID FK        | Owning organization when scoped to a host org |
+| coverage_zone_id          | UUID FK        | Community scope when forms belong to a zone rather than an org |
+| recipient_role            | TEXT           | Intended reviewer / recipient role |
+| recipient_user_id         | TEXT           | Specific reviewer / assignee when known |
+| recipient_organization_id | UUID FK        | Organization recipient when the workflow routes cross-org |
+| blob_storage_prefix       | TEXT           | Deterministic prefix for large attachments stored outside Postgres |
+| form_data                 | JSONB NOT NULL | Current fillable form payload |
+| attachment_manifest       | JSONB NOT NULL | Metadata for uploaded artifacts; not the artifact bytes themselves |
+| last_saved_at             | TIMESTAMPTZ    | Latest draft-save timestamp |
+| created_at                | TIMESTAMPTZ    | Record creation |
+| updated_at                | TIMESTAMPTZ    | Last update |
+
+Implementation note: managed forms are intentionally submission-backed. `submissions` owns lifecycle state such as `draft`, `submitted`, `needs_review`, `under_review`, `approved`, `denied`, and `returned`; `form_instances` owns the in-app payload and routing metadata so admins and organization users can save, submit, review, return, and reopen the same form inside ORAN without inventing a second workflow system.
+
 ### `submission_slas`
+
 Deadline rules per submission type.
 
 | Field | Type | Description |
@@ -663,6 +775,7 @@ Deadline rules per submission type.
 | escalation_action | TEXT | What happens on breach |
 
 ### `platform_scopes`
+
 RBAC scope definitions (e.g. `service:write`, `submission:approve`, `service:merge`).
 
 | Field | Type | Description |
@@ -673,12 +786,15 @@ RBAC scope definitions (e.g. `service:write`, `submission:approve`, `service:mer
 | created_at | TIMESTAMPTZ | Creation time |
 
 ### `platform_roles`
+
 Named platform roles (beyond the 5 base roles) for fine-grained RBAC.
 
 ### `role_scope_assignments`
+
 Maps platform roles to scopes (many-to-many).
 
 ### `user_scope_grants`
+
 Direct scope grants to individual users.
 
 | Field | Type | Description |
@@ -692,6 +808,7 @@ Direct scope grants to individual users.
 | revoked_at | TIMESTAMPTZ | Null if active |
 
 ### `pending_scope_grants`
+
 Two-person approval queue for scope grants. The requestor cannot approve their own requests.
 
 | Field | Type | Description |
@@ -706,9 +823,11 @@ Two-person approval queue for scope grants. The requestor cannot approve their o
 | decided_at | TIMESTAMPTZ | When decided |
 
 ### `scope_audit_log`
+
 Append-only audit trail for all scope-related actions.
 
 ### `notification_events`
+
 In-app notification delivery records.
 
 | Field | Type | Description |
@@ -726,9 +845,11 @@ In-app notification delivery records.
 | created_at | TIMESTAMPTZ | Sent time |
 
 ### `notification_preferences`
+
 Per-user opt-in/opt-out preferences by event type and channel.
 
 ### `verification_queue` (Compatibility View)
+
 Backward-compatible view over `submissions` for code that references the old table.
 
 ---

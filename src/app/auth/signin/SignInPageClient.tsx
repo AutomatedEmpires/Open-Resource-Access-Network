@@ -15,6 +15,8 @@ import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 import { Search, Building2, ShieldCheck, ArrowLeft, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { FormField } from '@/components/ui/form-field';
+import { FormSection } from '@/components/ui/form-section';
 
 // ============================================================
 // PATH DEFINITIONS
@@ -123,6 +125,7 @@ function SignInContent() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [phone, setPhone] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
@@ -172,6 +175,12 @@ function SignInContent() {
     setFormError(null);
     setFormSuccess(null);
     setIsSubmitting(true);
+
+    if (password !== confirmPassword) {
+      setFormError('Passwords do not match.');
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       const res = await fetch('/api/auth/register', {
@@ -311,73 +320,88 @@ function SignInContent() {
               onSubmit={isRegistering ? handleRegister : handleEmailSignIn}
               className="space-y-3"
             >
-              {isRegistering && (
-                <div>
-                  <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 mb-1">
-                    Display Name
-                  </label>
+              <FormSection
+                title={isRegistering ? 'Create your account' : 'Sign in with email'}
+                description={isRegistering ? 'Enter the account details ORAN will use for this sign-in path.' : 'Use your email and password to continue to the selected ORAN experience.'}
+              >
+                {isRegistering && (
+                  <FormField id="displayName" label="Display Name" required>
+                    <input
+                      id="displayName"
+                      type="text"
+                      required
+                      maxLength={100}
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder="Your name"
+                    />
+                  </FormField>
+                )}
+
+                <FormField id="email" label="Email" required>
                   <input
-                    id="displayName"
-                    type="text"
+                    id="email"
+                    type="email"
                     required
-                    maxLength={100}
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
+                    maxLength={255}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="Your name"
+                    placeholder="you@example.com"
                   />
-                </div>
-              )}
+                </FormField>
 
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  maxLength={255}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="you@example.com"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                  Password
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  required
-                  minLength={8}
-                  maxLength={128}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder={isRegistering ? 'Create a password (8+ characters)' : 'Your password'}
-                />
-              </div>
-
-              {isRegistering && (
-                <div>
-                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-                    Phone <span className="text-gray-400 font-normal">(optional)</span>
-                  </label>
+                <FormField id="password" label="Password" required>
                   <input
-                    id="phone"
-                    type="tel"
-                    maxLength={20}
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    id="password"
+                    type="password"
+                    required
+                    minLength={8}
+                    maxLength={128}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="(555) 123-4567"
+                    placeholder={isRegistering ? 'Create a password (8+ characters)' : 'Your password'}
                   />
-                </div>
-              )}
+                </FormField>
+
+                {isRegistering && (
+                  <FormField
+                    id="confirmPassword"
+                    label="Confirm password"
+                    required
+                    error={confirmPassword.length > 0 && password !== confirmPassword ? 'Passwords must match to create your account.' : undefined}
+                  >
+                    <input
+                      id="confirmPassword"
+                      type="password"
+                      required
+                      minLength={8}
+                      maxLength={128}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      aria-invalid={confirmPassword.length > 0 && password !== confirmPassword}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder="Re-enter your password"
+                    />
+                  </FormField>
+                )}
+
+                {isRegistering && (
+                  <FormField id="phone" label="Phone" hint="Optional">
+                    <input
+                      id="phone"
+                      type="tel"
+                      maxLength={20}
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder="(555) 123-4567"
+                    />
+                  </FormField>
+                )}
+              </FormSection>
 
               <Button
                 type="submit"
@@ -398,6 +422,7 @@ function SignInContent() {
                     setIsRegistering(!isRegistering);
                     setFormError(null);
                     setFormSuccess(null);
+                    setConfirmPassword('');
                   }}
                   className="text-blue-600 hover:text-blue-800 transition-colors"
                 >

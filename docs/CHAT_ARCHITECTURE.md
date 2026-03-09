@@ -46,6 +46,13 @@ User Message
      │
      ▼
 ┌─────────────────────┐
+│  4b. Scope Guard     │  ← Deterministic off-topic / out-of-scope check
+└─────────────────────┘
+     │ out of scope?
+     ├── YES → Return service-finding boundary message. STOP.
+     │
+     ▼ in scope
+┌─────────────────────┐
 │  5. Profile Hydration│  ← Load saved user preferences if authenticated
 └─────────────────────┘
      │
@@ -104,6 +111,7 @@ Return ChatResponse (with eligibility disclaimer always included)
 - Session identified by `sessionId` from request
 - Count stored in-memory per session with TTL + bounded eviction (future: Redis)
 - On quota exceeded: friendly message explaining the limit with option to start new session
+- Temporary search-unavailable responses do not consume quota, so infrastructure faults do not burn seeker turns
 
 ### Stage 3: Rate Limiting
 
@@ -132,54 +140,73 @@ Schema-based intent classification — **no LLM**. Pattern matching against a pr
 | `general`          | (fallback for unmatched queries) |
 
 Intent also extracts:
+
 - Geographic qualifier (city/county/ZIP from message)
 - Population qualifier (veteran, senior, child, family)
 - Urgency qualifier (urgent, emergency, immediate, today)
 
+### Stage 4b: Scope Guard
+
+- After intent detection and before retrieval, the orchestrator applies a deterministic out-of-scope guard for requests that are clearly not about finding services or support resources
+- Examples: weather, sports scores, stock prices, generic trivia, unrelated translation requests
+- On out-of-scope detection, the system returns a boundary message explaining that chat is for finding services from stored records only
+- Out-of-scope handling still respects crisis-first behavior because crisis routing happens earlier in the pipeline
+
 ### Stage 5: Profile Hydration
 
 For authenticated users (Entra ID / NextAuth.js session present):
+
 - Load saved approximate city from `user_profiles`
 - Load saved seeker context from `seeker_profiles`
+- The request may explicitly disable saved profile shaping with `profileMode='ignore'`; this strips saved city and seeker-profile shaping fields for the active session while preserving explicit browse filters supplied in the request
 - Hydrate only schema-backed fields into chat context:
-     - `serviceInterests`
-     - `selfIdentifiers`
-     - `currentServices`
-     - `accessibilityNeeds`
-     - `ageGroup`
-     - `householdType`
-     - `housingSituation`
-     - `transportationBarrier`
-     - `preferredDeliveryModes`
-     - `urgencyWindow`
-     - `documentationBarriers`
-     - `digitalAccessBarrier`
+  - `serviceInterests`
+  - `selfIdentifiers`
+  - `currentServices`
+  - `accessibilityNeeds`
+  - `ageGroup`
+  - `householdType`
+  - `housingSituation`
+  - `transportationBarrier`
+  - `preferredDeliveryModes`
+  - `urgencyWindow`
+  - `documentationBarriers`
+  - `digitalAccessBarrier`
 - Fail open: if hydration fails, chat continues with the request-only context
 - Request-time locale remains authoritative for the active turn. Saved locale may guide UI defaults, but must not silently override an in-flight chat request.
+- Response assembly discloses whether saved profile shaping was used or explicitly ignored
 
 For anonymous users:
+
 - Use geo from request (IP-based approximate location) if explicitly allowed
 - No profile persistence
 
 ### Stage 6: Retrieval
 
 Pure SQL query against PostgreSQL/PostGIS:
+
 - Filter by intent category (taxonomy join)
 - Filter by geographic radius (PostGIS `ST_DWithin`) or bbox
 - Filter by status = 'active'
 - Apply authenticated approximate-city soft sorting via `cityBias` when no explicit geo query is present
 - For authenticated users, optionally append up to 3 normalized `serviceInterests` hints to the text query only when the intent classifier falls back to `general`
 - For authenticated users, optionally compute deterministic profile-match signals from canonical taxonomies only:
-     - `population`
-     - `situation`
-     - `access`
-     - `delivery`
-     - `culture`
+  - `population`
+  - `situation`
+  - `access`
+  - `delivery`
+  - `culture`
 - Profile-match signals only re-order already eligible results; they do not widen retrieval and do not bypass trust filters
 - Personalized chat retrieval skips the shared search cache
 - Order by: verification confidence DESC, profile match DESC, stored score DESC, distance ASC
 - Limit: 5 results by default
 - **No LLM involvement. No vector similarity. No reranking beyond SQL ORDER BY.**
+- Retrieval outcomes are classified explicitly for the client contract:
+  - `results`: matching stored records were returned
+  - `no_match`: the catalog has records in scope, but none matched the current query closely enough
+  - `catalog_empty_for_scope`: the catalog is effectively empty for the current scope/filter combination
+  - `temporarily_unavailable`: search infrastructure or DB access was unavailable
+  - `out_of_scope`: handled before retrieval when the request is outside the service-finding boundary
 
 Current schema-backed mappings:
 
@@ -220,31 +247,37 @@ These stay out of retrieval until the underlying service metadata is queryable i
 ### Stage 7: Response Assembly
 
 Build `ChatResponse` from retrieved records:
+
 - Format each `Service` record into a `ServiceCard`
 - Include: name, organization, address, phone, hours, confidence band
 - Optionally include: contextual `links[]` selected deterministically from stored URLs
 - Always append `ELIGIBILITY_DISCLAIMER`
 - Never generate or infer data not in the record
+- Include `retrievalStatus` so the UI can distinguish no-match, sparse-catalog, temporary-unavailability, and out-of-scope states
+- Include `searchInterpretation` so the UI can disclose the normalized search framing used for the turn, including whether saved profile shaping influenced ordering or was explicitly ignored
 
 #### Contextual link selection (deep links vs general links)
 
 Some user questions require different URLs for the **same** service, e.g.:
+
 - “How do I apply?” → application/intake form deep link
 - “Am I eligible?” → eligibility/requirements page
 - “How do I contact them?” → contact page
 
 Contract:
+
 - Links must come from **stored records only**:
-     - `service.url` and `organization.url` (HSDS fields)
-     - and/or a future verified-links table populated from ingestion evidence (never generated URLs)
+  - `service.url` and `organization.url` (HSDS fields)
+  - and/or a future verified-links table populated from ingestion evidence (never generated URLs)
 - Link selection is **deterministic** and based on explicit parameters:
-     - `intent.category` (domain need)
-     - `intent.actionQualifier` (apply/contact/eligibility/hours/website)
-     - `context.locale`
-     - optional `userProfile.audienceTags` (self-identified; must not be persisted without consent)
+  - `intent.category` (domain need)
+  - `intent.actionQualifier` (apply/contact/eligibility/hours/website)
+  - `context.locale`
+  - optional `userProfile.audienceTags` (self-identified; must not be persisted without consent)
 - If a link is constrained to an audience tag (e.g., `veteran`) and the tag is missing, it must not be shown.
 
 Safety rule:
+
 - The chat system must never invent URLs or suggest navigation to pages that were not stored/verified.
 
 ### Stage 8: LLM Summarization Gate
@@ -254,6 +287,7 @@ Safety rule:
 Model: `gpt-4o-mini` on Azure OpenAI resource `oranhf57ir-prod-oai` (eastus). Implemented in `src/services/chat/llm.ts`.
 
 Only activated when feature flag `llm_summarize` is enabled:
+
 - **Input**: The already-retrieved and assembled service records (plain text)
 - **Task**: Write 2–4 sentence natural language summary of what was found
 - **Constraints**: LLM must not add any information not present in the records; temperature=0.2; max_tokens=300

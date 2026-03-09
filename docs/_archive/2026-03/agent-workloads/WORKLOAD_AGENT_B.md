@@ -5,6 +5,7 @@ Archived on 2026-03-05.
 Reason: superseded by the per-area activation docs in `docs/agents/activation/`.
 
 Replacement:
+
 - `docs/agents/activation/AGENT_OMEGA_ACTIVATION.md`
 
 **Scope**: All seeker-facing pages (`src/app/(seeker)/`), UI components (`src/components/`), and their tests.
@@ -30,6 +31,7 @@ Replacement:
 Agent B codes against these. If the endpoint returns 401/500/network error, fall back to localStorage gracefully.
 
 ### Batch fetch services by IDs
+
 ```
 GET /api/services?ids=uuid1,uuid2,uuid3
 Response 200: { results: EnrichedService[] }
@@ -37,6 +39,7 @@ Response 400: { error: string }
 ```
 
 ### Profile
+
 ```
 GET /api/profile
   Response 200: { profile: { userId: string, preferredLocale: string | null, approximateCity: string | null } | null }
@@ -49,6 +52,7 @@ PUT /api/profile
 ```
 
 ### Saved services
+
 ```
 GET /api/saved
   Response 200: { savedIds: string[] }
@@ -74,9 +78,11 @@ DELETE /api/saved
 **Problem**: `/saved` page fetches ALL services via `/api/search?limit=100` then filters client-side. Services beyond page 1 are silently lost.
 
 **File to modify**:
+
 - `src/app/(seeker)/saved/page.tsx`
 
 **What to do**:
+
 1. Replace the current fetch-all-and-filter logic with a call to `GET /api/services?ids=...` using the IDs from localStorage.
 2. Additionally attempt `GET /api/saved` to merge server-side saves (if user is authenticated). If 401, ignore silently and use localStorage only.
 3. Merge strategy: union of localStorage IDs + server-side IDs. Deduplicate.
@@ -84,12 +90,14 @@ DELETE /api/saved
 5. Keep the existing remove/clear-all functionality. When removing: update localStorage AND attempt `DELETE /api/saved` (fire-and-forget if user is authenticated).
 
 **Edge cases to handle**:
+
 - No saved IDs → show existing empty state (no API call needed).
 - API returns 400 (invalid IDs) → show error state with "Some saved services could not be loaded."
 - Network failure → show existing error state with retry.
 - Mix of valid and invalid IDs → show what loaded, note count of failures.
 
 **Acceptance criteria**:
+
 - Saved page loads correct services by ID (not all-and-filter).
 - Works with localStorage only (unauthenticated users).
 - If authenticated, merges server-side saves.
@@ -103,9 +111,11 @@ DELETE /api/saved
 **Problem**: Profile saves to localStorage only. "Sign in" button is disabled. Language preference has no effect.
 
 **File to modify**:
+
 - `src/app/(seeker)/profile/page.tsx`
 
 **What to do**:
+
 1. On mount, attempt `GET /api/profile`. If 200 with a profile, pre-fill fields from server data (server wins over localStorage). If 401 or error, use localStorage as before.
 2. On save, write to localStorage AND attempt `PUT /api/profile` (fire-and-forget if 401).
 3. Enable the "Sign in" button — change it from `disabled` to a link to `/api/auth/signin?callbackUrl=/profile`. Label: "Sign in with Microsoft". Remove "(coming soon)".
@@ -113,6 +123,7 @@ DELETE /api/saved
 5. Language preference: the saved locale should be passed as a `lang` attribute on the `<html>` element. Modify the profile page to store `preferredLocale` and, when it changes, call `document.documentElement.lang = locale`. This is a minimal i18n hook — full translation is out of scope, but the HTML lang attribute should reflect the user's choice for screen readers.
 
 **Acceptance criteria**:
+
 - Profile pre-fills from server if authenticated.
 - Profile saves to server if authenticated, localStorage always.
 - "Sign in" button links to `/api/auth/signin?callbackUrl=/profile`.
@@ -127,9 +138,11 @@ DELETE /api/saved
 **Problem**: No `/service/[id]` route exists. Users cannot deep-link to or share a specific service.
 
 **Files to create**:
+
 - `src/app/(seeker)/service/[id]/page.tsx`
 
 **What to do**:
+
 1. Create a dynamic route page at `src/app/(seeker)/service/[id]/page.tsx`.
 2. On mount, fetch `GET /api/services?ids=<id>` with the single ID from the URL.
 3. If service found, render using the existing `ServiceCard` component in full (non-compact) mode. Add a back link ("← Back to results" using `router.back()`).
@@ -139,11 +152,13 @@ DELETE /api/saved
 7. Include the eligibility disclaimer at bottom (same as other pages).
 
 **Wiring from existing pages**:
+
 - Update `ServiceCard` to accept an optional `href` prop. When present, the service name becomes a clickable link to `/service/<id>`.
 - Update directory page and saved page: pass `href={/service/${service.id}}` to each `ServiceCard`.
 - Update `ChatServiceCard` to link the service name to `/service/<id>`.
 
 **Acceptance criteria**:
+
 - `/service/<valid-uuid>` renders the full service card with all fields.
 - `/service/<invalid>` shows "Service not found".
 - Service name in directory/saved/chat cards links to the detail page.
@@ -157,13 +172,16 @@ DELETE /api/saved
 **Problem**: POST `/api/feedback` exists and works but no UI triggers it.
 
 **Files to create**:
+
 - `src/components/feedback/FeedbackForm.tsx`
 
 **Files to modify**:
+
 - `src/components/directory/ServiceCard.tsx` — add feedback button
 - `src/components/chat/ChatServiceCard.tsx` — add feedback button
 
 **What to do**:
+
 1. Create `FeedbackForm` component:
    - Props: `serviceId: string`, `sessionId: string`, `onClose: () => void`, `onSubmit?: () => void`
    - UI: a small inline form (not a modal — keep it lightweight) with:
@@ -179,6 +197,7 @@ DELETE /api/saved
 3. In `ChatServiceCard`: add a small "Feedback" text link. Same behavior.
 
 **Acceptance criteria**:
+
 - Star rating is required — submit disabled without it.
 - Successful submission shows confirmation.
 - Failed submission shows error with retry.
@@ -193,19 +212,23 @@ DELETE /api/saved
 **Problem**: `ChatServiceCard` has no bookmark button — users must navigate to directory to save a service.
 
 **File to modify**:
+
 - `src/components/chat/ChatServiceCard.tsx`
 
 **What to do**:
+
 1. Add optional props: `isSaved?: boolean`, `onToggleSave?: (serviceId: string) => void`.
 2. Render a bookmark icon button (same as `ServiceCard`'s save button) in the card header area.
 3. In `ChatWindow`, maintain the saved IDs state from localStorage (same pattern as directory/map pages). Pass `isSaved` and `onToggleSave` to each `ChatServiceCard`.
 4. When toggling save: update localStorage AND attempt POST/DELETE `/api/saved` (best-effort, same pattern as B1).
 
 **Files to modify**:
+
 - `src/components/chat/ChatServiceCard.tsx` — add save button
 - `src/components/chat/ChatWindow.tsx` — add saved state management, pass props
 
 **Acceptance criteria**:
+
 - Bookmark button visible on each chat service card.
 - Toggle updates localStorage immediately.
 - Visual state (filled/outline) reflects saved status.
@@ -216,14 +239,17 @@ DELETE /api/saved
 ### B6. Accessibility improvements (Audit Section 5 gaps)
 
 **Files to modify**:
+
 - `src/app/(seeker)/directory/page.tsx`
 - `src/app/(seeker)/map/page.tsx`
 
 **What to do**:
+
 1. **`aria-live` for search results count**: On both directory and map pages, add an `aria-live="polite"` region that announces the results count when search results change. Example: `<div aria-live="polite" className="sr-only">{total} services found</div>`.
 2. **Focus management**: After search results load, focus should move to the results region (not the first card — just the container). Use a `ref` + `useEffect` to call `.focus()` on the results container when `results` state changes. Add `tabIndex={-1}` to the container so it can receive focus without being in tab order.
 
 **Acceptance criteria**:
+
 - Screen reader announces results count after each search.
 - Focus moves to results container after search completes.
 - No visual change from these additions (sr-only for live region).

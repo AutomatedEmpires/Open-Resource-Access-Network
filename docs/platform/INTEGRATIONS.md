@@ -7,6 +7,7 @@
 This doc describes both **Implemented** and **Planned** integrations. When it conflicts with executable behavior, follow docs/SSOT.md.
 
 Implemented today:
+
 - Local Postgres/PostGIS via db/docker-compose.yml.
 - SQL migrations in db/migrations/**.
 - Optional Microsoft Entra ID wiring (middleware gating when env vars exist).
@@ -16,10 +17,12 @@ Implemented today:
 - Azure AI Translator service (`src/services/i18n/translator.ts`).
 
 Platform direction:
+
 - **Azure-first** for hosting, production DB, secrets, observability, geocoding, and translation.
 - See `docs/platform/DEPLOYMENT_AZURE.md` and `docs/platform/PLATFORM_AZURE.md`.
 
 Implemented (recently):
+
 - Full RBAC enforcement (middleware + API route guards + `shouldEnforceAuth()` production fail-closed).
 - Hybrid feature flags with a DB-backed authoritative catalog when `DATABASE_URL` is configured, plus an in-memory fallback for local development and runtime recovery.
 - Content Security Policy (see ADR-0005).
@@ -31,6 +34,7 @@ Implemented (recently):
 - Azure Speech — authenticated TTS summary endpoint behind `tts_summaries` (`src/services/tts/azureSpeech.ts`, `src/app/api/tts/summary/route.ts`).
 
 Planned:
+
 - Any external 211 API integration.
 
 ## Authentication: Microsoft Entra ID
@@ -38,6 +42,7 @@ Planned:
 ORAN uses [Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity/) for authentication and session management via NextAuth.js with the Azure AD provider.
 
 ### Configuration
+
 - Environment variables required:
   - `AZURE_AD_CLIENT_ID`
   - `AZURE_AD_CLIENT_SECRET`
@@ -46,6 +51,7 @@ ORAN uses [Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity/
   - `NEXTAUTH_SECRET` (random secret for JWT encryption)
 
 ### Implementation
+
 - `src/proxy.ts`: JWT extraction via `getToken()` + role enforcement via `isRoleAtLeast()` for protected page routes.
 - `src/app/api/auth/[...nextauth]/route.ts`: NextAuth.js handler with Azure AD provider. Rate-limited per IP.
 - `src/app/providers.tsx`: client-side `SessionProvider` boundary for authenticated UI surfaces.
@@ -54,6 +60,7 @@ ORAN uses [Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity/
 - Roles: currently derived from org memberships via `organization_members` table. Entra ID app roles planned.
 
 ### Protected Routes
+
 | Route Pattern         | Minimum Role     |
 |-----------------------|-----------------|
 | `/saved`, `/profile`  | seeker (any auth)|
@@ -80,9 +87,11 @@ ORAN is deployed to **Azure App Service (Linux)** with Node.js 20 LTS.
 ORAN runs on PostgreSQL with the PostGIS extension.
 
 Production target (Azure-first):
+
 - **Azure Database for PostgreSQL Flexible Server** with PostGIS enabled.
 
 Optional alternative:
+
 - Neon can be used for non-Azure environments, as long as the `DATABASE_URL` contract is maintained.
 
 ### Configuration
@@ -97,6 +106,7 @@ Status: Raw SQL migrations are the source of truth today.
 - Planned: Drizzle ORM adoption (no db/schema/** folder in the repo today).
 
 ### PostGIS
+
 - Enable extension: `CREATE EXTENSION IF NOT EXISTS postgis;`
 - Location geometry column: `geom GEOMETRY(Point, 4326)`
 - Spatial queries use `ST_DWithin` for radius search and `ST_MakeEnvelope` for bbox search
@@ -108,6 +118,7 @@ Status: Raw SQL migrations are the source of truth today.
 ORAN uses a hybrid in-house feature flag service. When `DATABASE_URL` is configured, the `feature_flags` table is the authoritative catalog; otherwise the service falls back to an in-memory baseline and last-known-good cache.
 
 ### Interface (`src/services/flags/flags.ts`)
+
 ```typescript
 interface FlagService {
   isEnabled(flagName: string, subjectKey?: string): Promise<boolean>;
@@ -117,11 +128,13 @@ interface FlagService {
 ```
 
 Current implementation notes:
+
 - The expanded catalog is maintained in `db/migrations/0035_feature_flag_catalog.sql`.
 - DB-backed writes record best-effort audit metadata and keep the in-memory fallback synchronized.
 - Safety-critical AI flags default off unless explicitly enabled.
 
 ### Representative Flags
+
 | Flag Name       | Default | Description |
 |-----------------|---------|-------------|
 | `llm_summarize` | false   | Enable LLM post-retrieval summarization |
@@ -143,21 +156,26 @@ For the full registry, see `src/services/flags/README.md` and `src/services/flag
 ORAN uses [Sentry](https://sentry.io) for error monitoring and performance tracking.
 
 ### Configuration
+
 - Environment variable: `NEXT_PUBLIC_SENTRY_DSN`
 - `SENTRY_AUTH_TOKEN` for source map uploads
 
 ### Wrapper (`src/services/telemetry/sentry.ts`)
+
 Provides typed wrappers:
+
 - `captureException(error, context?)` — report errors
 - `captureMessage(message, level?)` — report events
 - `addBreadcrumb(message, category?, data?)` — add context
 
 ### Privacy Rules
+
 - No user PII in Sentry events
 - SessionId (UUID) is allowed as a correlation identifier
 - Location data: city-level only, no coordinates in Sentry
 
 ### Azure-first note
+
 - **Azure Application Insights** is now the primary production observability backend (see below).
 - If Sentry is also used, it must remain strictly PII-free per `docs/SECURITY_PRIVACY.md`.
 
@@ -168,11 +186,14 @@ Provides typed wrappers:
 ORAN uses **Azure Application Insights** (backed by a Log Analytics workspace) as the primary production telemetry backend.
 
 ### Configuration
+
 - Environment variable: `APPLICATIONINSIGHTS_CONNECTION_STRING`
 - The SDK auto-initializes via the Next.js instrumentation hook (`src/instrumentation.ts`).
 
 ### Wrapper (`src/services/telemetry/appInsights.ts`)
+
 Provides typed wrappers:
+
 - `trackException(error, context?)` — report errors
 - `trackEvent(name, properties?)` — report custom events
 - `trackMetric(name, value)` — report numeric metrics
@@ -180,11 +201,13 @@ Provides typed wrappers:
 - `flush()` — drain pending telemetry
 
 ### Auto-instrumentation
+
 - HTTP incoming/outgoing requests
 - PostgreSQL queries (via `pg` driver)
 - Azure SDK instrumentation is disabled to reduce noise
 
 ### Privacy Rules
+
 - Same PII constraints as Sentry: no user PII in telemetry events.
 - Session correlation uses anonymous IDs only.
 
@@ -195,10 +218,12 @@ Provides typed wrappers:
 ORAN uses **Azure Maps** (G2 Gen2 SKU) for geocoding queries.
 
 ### Configuration
+
 - Environment variable: `AZURE_MAPS_KEY` (stored as Key Vault reference in App Service)
 - Production resource: `oranhf57ir-prod-maps` in `westus2`
 
 ### Service (`src/services/geocoding/azureMaps.ts`)
+
 ```typescript
 interface AzureMapsGeocodingResult {
   lat: number;
@@ -208,11 +233,13 @@ interface AzureMapsGeocodingResult {
   type: string;
 }
 ```
+
 - `isConfigured()` — checks for API key
 - `geocode(query, options?)` — forward geocoding with optional bbox/country filters
 - `reverseGeocode(lat, lon)` — reverse geocoding
 
 ### Privacy
+
 - Only query text is sent to Azure Maps; no user PII.
 - Approximate location by default (city-level for seekers).
 
@@ -223,22 +250,26 @@ interface AzureMapsGeocodingResult {
 ORAN uses **Azure AI Translator** (F0 free tier — 2M characters/month) for dynamic content translation.
 
 ### Configuration
+
 - Environment variables:
   - `AZURE_TRANSLATOR_KEY` (stored as Key Vault reference)
   - `AZURE_TRANSLATOR_ENDPOINT` (`https://api.cognitive.microsofttranslator.com/`)
   - `AZURE_TRANSLATOR_REGION` (`westus2`)
 
 ### Service (`src/services/i18n/translator.ts`)
+
 ```typescript
 async function translate(request: TranslateRequest): Promise<TranslateResult>
 async function translateBatch(texts: string[], to: string, from?: string): Promise<TranslateResult[]>
 ```
+
 - `isConfigured()` — checks for key + endpoint + region
 - In-memory LRU cache (500 entries) to minimize API calls
 - Batch support (up to 100 items per API call)
 - 10,000 character limit per text; 8-second timeout
 
 ### Privacy
+
 - Only service record text (names, descriptions) is translated; no user PII.
 - Translation cache is server-side only.
 
@@ -249,6 +280,7 @@ async function translateBatch(texts: string[], to: string, from?: string): Promi
 ORAN defines an interface for potential 211 API integration. **No live 211 API is wired up without explicit configuration.**
 
 ### Interface (future)
+
 ```typescript
 interface TwoOneOneService {
   search(params: { zip: string; category: string }): Promise<ExternalService[]>;
@@ -257,6 +289,7 @@ interface TwoOneOneService {
 ```
 
 ### Policy
+
 - Results from 211 API must go through the same staging/validation pipeline as CSV imports
 - Never served directly to seekers from external API without verification step
 - Feature flag `use_211_api` must be enabled

@@ -27,12 +27,14 @@ This runbook addresses Azure Storage Queue backlog growth, poison queue accumula
 - `ingestion-route` -> `routeToAdmin`
 
 Bindings are defined in:
+
 - `functions/fetchPage/function.json`
 - `functions/extractService/function.json`
 - `functions/verifyCandidate/function.json`
 - `functions/routeToAdmin/function.json`
 
 Queue runtime defaults in `functions/host.json`:
+
 - `batchSize: 4`
 - `maxDequeueCount: 3`
 - `visibilityTimeout: 00:05:00`
@@ -54,17 +56,23 @@ Queue runtime defaults in `functions/host.json`:
 ## Diagnosis
 
 1. List queue depths:
-```bash
-az storage queue list --account-name <storage> --query "[].{name:name,count:approximateMessageCount}" -o table
-```
+
+   ```bash
+   az storage queue list --account-name <storage> --query "[].{name:name,count:approximateMessageCount}" -o table
+   ```
+
 2. Inspect poison queues:
-```bash
-az storage queue list --account-name <storage> --query "[?contains(name,'poison')].{name:name,count:approximateMessageCount}" -o table
-```
+
+   ```bash
+   az storage queue list --account-name <storage> --query "[?contains(name,'poison')].{name:name,count:approximateMessageCount}" -o table
+   ```
+
 3. Check function app state:
-```bash
-az functionapp show --resource-group <rg> --name <func-app> --query state
-```
+
+   ```bash
+   az functionapp show --resource-group <rg> --name <func-app> --query state
+   ```
+
 4. Check recent errors in Application Insights for failing stage.
 
 ## Mitigation Paths
@@ -84,12 +92,14 @@ az functionapp show --resource-group <rg> --name <func-app> --query state
 ### C. Full Backlog Risk
 
 1. Pause scheduled crawl to stop backlog growth:
-```bash
-az functionapp config appsettings set \
-  --resource-group <rg> \
-  --name <func-app> \
-  --settings "AzureWebJobs.scheduledCrawl.Disabled=true"
-```
+
+   ```bash
+   az functionapp config appsettings set \
+     --resource-group <rg> \
+     --name <func-app> \
+     --settings "AzureWebJobs.scheduledCrawl.Disabled=true"
+   ```
+
 2. Drain existing backlog.
 3. Re-enable timer once throughput recovers.
 
@@ -109,6 +119,7 @@ Use `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md` if deployment regression is s
 4. Admin routing receives newly verified candidates.
 
 Validation metrics to capture:
+
 - Queue depth at start vs end of incident window.
 - Time to first sustained downward trend.
 - Poison queue growth delta.

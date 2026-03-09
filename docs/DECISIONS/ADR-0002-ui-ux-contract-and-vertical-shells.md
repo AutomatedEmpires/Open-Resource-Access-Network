@@ -29,12 +29,14 @@ Adopt a sitewide UI/UX contract and implement role-based “vertical shells”:
 ## Consequences
 
 Positive:
+
 - Pages become consistent by default (mobile-first, accessible, standardized states).
 - Reduced rework and fewer UI regressions.
 - Clearer information architecture per role.
 - Safety messaging (crisis/eligibility/trust) remains consistent across surfaces.
 
 Tradeoffs:
+
 - Slight overhead for each PR to meet the checklist.
 - Some refactors may be required to align existing pages with tokens/shells.
 

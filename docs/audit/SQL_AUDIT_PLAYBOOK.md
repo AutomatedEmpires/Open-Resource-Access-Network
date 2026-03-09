@@ -18,10 +18,12 @@ This document is a **self-audit prompt** for reviewing every `.sql` file in this
 ## Scope
 
 Included:
+
 - `db/migrations/**/*.sql`
 - `db/seed/**/*.sql`
 
 Excluded (but cross-check for usage):
+
 - SQL embedded in TypeScript and query builders (reviewed during cross-check phase).
 
 ## Output artifacts (what you must produce while auditing)
@@ -33,9 +35,11 @@ Excluded (but cross-check for usage):
 5) **Decision log** (what changed vs what stayed; follow-ups)
 
 Recommended file for findings (create/update as you go):
+
 - `docs/audit/SQL_AUDIT_FINDINGS.md`
 
 If changes affect contracts or behavior (DB schema → API/contracts), append a short UTC entry to:
+
 - `docs/ENGINEERING_LOG.md`
 
 ## Working definition: “Align to real data”
@@ -52,6 +56,7 @@ A table/column “aligns to real data” if:
 ### Phase 0 — Inventory
 
 For each SQL file:
+
 - Record path + purpose (migration number + summary).
 - Identify whether it is DDL (schema), DML (seed), or both.
 - Note dependencies: extensions (PostGIS), triggers, functions.
@@ -59,6 +64,7 @@ For each SQL file:
 ### Phase 1 — Extract the schema delta
 
 From the SQL file, extract and list:
+
 - Tables created/altered/dropped
 - Columns added/changed (type/nullability/default)
 - Constraints (PK, FK, UNIQUE, CHECK)
@@ -115,6 +121,7 @@ Create a mini row for each column (especially new/changed):
 ### Phase 3 — Cross-file consistency checks
 
 Across *all* migrations:
+
 - Naming consistency: `snake_case`, `*_id` conventions, timestamps, status enums.
 - Timestamp consistency: `created_at`, `updated_at` triggers, time zone usage.
 - Geography consistency: location fields (lat/lon/geometry), SRID, coverage areas.
@@ -124,6 +131,7 @@ Across *all* migrations:
 ### Phase 4 — Cross-check against code and docs (alignment)
 
 For each table/column:
+
 - Find where it’s referenced in the app:
   - SQL queries in `src/app/api/**`
   - Search logic in `src/services/search/**`
@@ -137,6 +145,7 @@ For each table/column:
   - Any ADRs in `docs/DECISIONS/**`
 
 Record any drift:
+
 - Column exists in DB but unused in code/docs
 - Code expects column that doesn’t exist
 - Docs define semantics that don’t match constraints/types
@@ -144,6 +153,7 @@ Record any drift:
 ### Phase 5 — Risk review (must do)
 
 For each table, ask:
+
 - Does it store PII? If yes, is it necessary? Is access controlled?
 - Are there audit logs for admin actions on sensitive records?
 - Are we logging any sensitive values in app code/telemetry?
@@ -159,6 +169,7 @@ Every issue must be categorized and resolved to a disposition:
 - **Remove**: unused / incorrect / hazardous.
 
 Each finding must include:
+
 - What’s wrong
 - Why it matters (use-case impact)
 - Evidence (file + object names; code usage)

@@ -42,11 +42,13 @@ For “nationwide immediately”, the safe default is:
 - everything else: quarantine unless explicitly added as allowlisted
 
 Rationale:
+
 - `*.gov` covers most federal/state/county/city official programs.
 - `*.edu` often hosts official student/basic-needs resources and campus/community programs, but still requires verification.
 - `*.mil` can be relevant for veteran resources, but should be treated as restricted: allowed for seeded ingestion, flagged for admin review, and never expanded automatically.
 
 Note on “city sites”:
+
 - Many large-city sites are already `*.gov` (e.g., `nyc.gov`) and are covered.
 - City/municipal sites that are not `*.gov` should be added explicitly as Source Registry entries (usually as `quarantine` first, then promoted).
 

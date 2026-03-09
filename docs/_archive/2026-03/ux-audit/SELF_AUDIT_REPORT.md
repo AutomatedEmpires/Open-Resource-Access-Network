@@ -5,6 +5,7 @@ Archived on 2026-03-05.
 Reason: superseded by newer audits; keep for historical reference only.
 
 Replacement:
+
 - `docs/audit/AUDIT_SEEKER_UX.md`
 - `docs/audit/AUDIT_REPORT.md`
 
@@ -343,12 +344,14 @@ Phase 5 (ORAN Admin) is approved to proceed.
 ## Appendix A: File Manifest
 
 ### Layouts (4)
+
 - `src/app/(seeker)/layout.tsx` — Skip link, sticky header, bottom nav
 - `src/app/(host)/layout.tsx` — Skip link, horizontal nav
 - `src/app/(community-admin)/layout.tsx` — Skip link, admin nav
 - `src/app/(oran-admin)/layout.tsx` — Skip link, admin nav
 
 ### UI Components (6)
+
 - `src/components/ui/button.tsx` — CVA variants
 - `src/components/ui/badge.tsx` — Confidence bands
 - `src/components/ui/dialog.tsx` — Radix wrapper
@@ -356,12 +359,14 @@ Phase 5 (ORAN Admin) is approved to proceed.
 - `src/components/ui/error-boundary.tsx` — Error catching
 
 ### Domain Components (3)
+
 - `src/components/chat/ChatWindow.tsx` — Chat interface
 - `src/components/chat/ChatServiceCard.tsx` — Compact service card
 - `src/components/directory/ServiceCard.tsx` — Full service card
 - `src/components/map/MapContainer.tsx` — Azure Maps
 
 ### Seeker Pages (5)
+
 - `src/app/(seeker)/chat/page.tsx`
 - `src/app/(seeker)/directory/page.tsx`
 - `src/app/(seeker)/map/page.tsx`
@@ -369,6 +374,7 @@ Phase 5 (ORAN Admin) is approved to proceed.
 - `src/app/(seeker)/profile/page.tsx`
 
 ### Host Pages (5)
+
 - `src/app/(host)/claim/page.tsx`
 - `src/app/(host)/org/page.tsx`
 - `src/app/(host)/services/page.tsx`
@@ -376,11 +382,13 @@ Phase 5 (ORAN Admin) is approved to proceed.
 - `src/app/(host)/admins/page.tsx`
 
 ### Community Admin Pages (3)
+
 - `src/app/(community-admin)/queue/page.tsx`
 - `src/app/(community-admin)/verify/page.tsx`
 - `src/app/(community-admin)/coverage/page.tsx`
 
 ### ORAN Admin Pages (4) — Phase 5
+
 - `src/app/(oran-admin)/approvals/page.tsx` — Placeholder
 - `src/app/(oran-admin)/rules/page.tsx` — Placeholder
 - `src/app/(oran-admin)/audit/page.tsx` — Placeholder

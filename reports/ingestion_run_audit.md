@@ -338,6 +338,346 @@ Recommended rule:
 - scraped pages should only create service candidates when they meet the service-detail contract
 - taxonomy mapping should be `external term -> canonical concept -> ORAN tags`
 
+### 211 / NDP schema audit
+
+Audited against `211_info_001.md`, the 211 NDP v2 organization export is not a single record. It is a structured bundle containing:
+
+- `organization`
+- `services[]`
+- `programs[]`
+- `locations[]`
+- `servicesAtLocations[]`
+- bundle-level `dataOwner` and `dataSteward`
+- per-entity `meta`
+- per-service `taxonomy[]` with AIRS code, label, hierarchy levels 1-6, and `targets[]`
+- per-service `serviceAreas[]` with typed geography, geo-components, and optional geoJson
+
+This matters because ORAN currently has the right high-level federation direction, but not yet a clean operational contract for this bundle shape.
+
+### What 211 gives us that we must preserve exactly
+
+- source-native IDs for organization, service, location, and service-at-location
+- `dataOwner` and `dataSteward`
+- `meta.status`, `meta.reasonInactive`, `meta.lastUpdated`, `meta.lastVerified`, `meta.created`, `meta.temporaryMessage`
+- taxonomy code, label, hierarchy path, and targets
+- access controls on phones, contacts, and addresses
+- service areas with both typed geography and optional geometry
+- service-at-location overrides for contact, phone, schedule, url, and email
+
+If we flatten these too early, we lose replayability, taxonomy fidelity, and clean per-service approval.
+
+### Current ORAN fit
+
+Already aligned:
+
+- source-system lineage via `source_systems` and `source_feeds`
+- immutable assertion capture via `source_records`
+- external ID retention via `entity_identifiers`
+- canonical organization / service / location layer
+- HSDS export versioning via `hsds_export_snapshots`
+- field-level lineage direction via `canonical_provenance`
+
+Currently lossy or under-modeled:
+
+- `source_record_taxonomy` is too thin for full AIRS hierarchy plus `targets[]`
+- `canonical_service_locations` is only a thin junction, but 211 `serviceAtLocation` is a real resource
+- ORAN phones / contacts / schedules cannot attach to a specific service-location pair
+- the current pipeline artifact model still assumes one candidate per page/run
+
+### Required schema changes for clean 211 ingest
+
+I would explicitly add these before calling the integration "clean":
+
+1. `source_record_edges` or `parent_source_record_id`
+   Needed so one raw 211 bundle can be decomposed into child source records without losing bundle lineage.
+
+2. richer source taxonomy retention
+   Either extend `source_record_taxonomy` or add companion tables so ORAN keeps:
+   `taxonomy_code`, `taxonomy_term`, full level path, target terms, and raw taxonomy snapshot JSON.
+
+3. service-at-location overlay support
+   Add pair-level storage for:
+   `url`, `email`, `phones`, `contacts`, `schedules`, `meta`, and optional override notes.
+
+4. crosswalk tables
+   Add:
+   - `taxonomy_registries`
+   - `canonical_taxonomy_concepts`
+   - `taxonomy_crosswalks`
+   - optional `crosswalk_versions`
+
+Without these, ORAN can ingest 211 data, but not with the fidelity and auditability you asked for.
+
+### Clean mapping contract
+
+The cleanest contract is three layers, always in this order:
+
+1. Assertion layer
+   Preserve exact upstream data.
+
+2. Canonical ORAN layer
+   Normalize for dedupe, review, trust, and publish decisions.
+
+3. Published ORAN display layer
+   Render imported and non-imported data through the same ORAN-native service model sitewide.
+
+### Source-to-ORAN mapping
+
+| 211 / NDP object | Preserve exactly in source assertion | Normalize into ORAN canonical | Publish / display in ORAN |
+|---|---|---|---|
+| `organization` | raw object, source ID, `dataOwner`, `dataSteward`, `meta`, contacts, phones | `canonical_organizations` + `entity_identifiers` | `organizations`, public phones/contacts, provenance badge |
+| `service` | raw object, source ID, taxonomy, eligibility, fees, serviceAreas, documents, `locationIds`, `meta` | `canonical_services` + taxonomy crosswalk outputs | `services`, `eligibility`, `required_documents`, `service_areas`, `languages`, tags |
+| `location` | raw object, source ID, addresses, geocode, accessibility, languages, `serviceIds`, `meta` | `canonical_locations` + `entity_identifiers` | `locations`, `addresses`, `accessibility`, `languages` |
+| `serviceAtLocation` | raw object, source ID, phones, contacts, schedules, url, email, `meta` | `canonical_service_locations` plus new pair-level override data | location-specific delivery card / detail panel with override precedence |
+| `taxonomy[]` | exact AIRS code, label, level1-6, targets, raw snapshot | taxonomy registry + canonical concept mapping + `service_taxonomy` | ORAN seeker tags, facets, and optional admin taxonomy breadcrumbs |
+| `meta` | exact raw lifecycle/access snapshot | freshness, active/inactive state, anomaly signals, temporary availability notes | publish gating, stale badges, temporary message display where allowed |
+
+### Recommended ingest method for the 211 API
+
+For a 211 export payload:
+
+1. Persist the entire organization export response as one immutable bundle source record.
+   Type example:
+   `211_ndp.organization_export_bundle`
+
+2. Decompose that bundle into child source records:
+   - `211_ndp.organization`
+   - `211_ndp.service`
+   - `211_ndp.location`
+   - `211_ndp.service_at_location`
+   - `211_ndp.program`
+
+3. Preserve source IDs and relationships as identifiers and edges.
+
+4. Normalize child records into canonical org/service/location entities.
+
+5. Materialize pair-level delivery data from `serviceAtLocation` without overwriting the base service.
+
+6. Run deterministic taxonomy crosswalks.
+
+7. Publish only from canonical entities after dedupe, anomaly checks, and lane assignment.
+
+This is the cleanest method because it preserves the upstream contract and still honors your requirement that review and publish happen per service.
+
+### Source system and feed modeling
+
+I would model 211 ingestion this way:
+
+- one `source_system` per approved 211 center / data owner
+  Example:
+  `211 Monterey`, `211 Ventura`
+
+- one or more `source_feeds` under that source system
+  Example:
+  `ndp_export_organizations`, `ndp_query_locations`, `ndp_query_services_at_locations`
+
+- the network-level fact that these are served through 211 NDP is retained in notes/profile/feed metadata
+
+Justification:
+
+- trust may differ by center
+- jurisdiction is center-specific
+- `dataOwner` is operationally meaningful
+- replay, troubleshooting, and suspension decisions are cleaner per center than at one giant national bucket
+
+### Taxonomy retention and crosswalk method
+
+This part needs to be deterministic and versioned.
+
+For every 211 taxonomy assertion:
+
+1. Preserve the exact external record
+   Keep code, term, level path, targets, and raw taxonomy JSON.
+
+2. Register the exact external term
+   Create or reuse a `taxonomy_terms` entry for the AIRS code/path.
+
+3. Map to an ORAN canonical concept
+   Crosswalk example:
+   `LF-4900.1700` -> canonical concept `diabetes_screening`
+
+4. Derive ORAN seeker-facing tags
+   Example:
+   canonical concept `diabetes_screening` may derive:
+   - category: `healthcare`
+   - service attribute / program concepts as applicable
+   - audience tags from `targets[]`
+
+5. Keep crosswalk provenance
+   For every derived concept/tag, record:
+   - source taxonomy code
+   - crosswalk version
+   - mapping type: `exact | narrower | broader | manual`
+   - confidence
+
+Recommended rule:
+
+- external taxonomy is never overwritten
+- ORAN canonical concepts are the seeker-facing authority
+- every derived ORAN tag must be traceable back to source taxonomy and crosswalk version
+
+### Clean taxonomy handling by field
+
+- `taxonomy.taxonomyCode`
+  Primary external classification key. Preserve exactly and attach to the service source record.
+
+- `taxonomy.taxonomyTermLevel1..6`
+  Preserve as hierarchy path; do not discard after deriving top-level ORAN category.
+
+- `taxonomy.targets[]`
+  Treat as source audience assertions. Crosswalk to ORAN audience/population tags, but preserve exact Y code and term.
+
+- `eligibility.types[]`
+  Map to ORAN eligibility signals and/or service-attribute tags through explicit crosswalks.
+  Example:
+  `veteran`, `senior`, `low_income`, `homelessness`
+
+- `fees.type`
+  Map to ORAN cost concepts.
+  Example:
+  `no_fee` -> `free`
+  `partial_fee` -> fee-required partial support concept
+  `full_fee` -> fee-required concept
+
+- `documents.types[]`
+  Write to `required_documents`, and optionally derive access-friction tags only through explicit rules.
+
+- `languages.codes[]`
+  Normalize into ORAN `languages` records and search/display filters.
+
+- `meta.tags[]`
+  Preserve as source metadata, not as authoritative seeker taxonomy.
+
+### Service area mapping
+
+`serviceAreas[]` is one of the most valuable parts of the 211 payload and should drive routing and display.
+
+Recommended mapping:
+
+- `postal_code` -> ORAN service area extent `postal_code`
+- `locality` / `place` -> ORAN extent `city`
+- `county` -> ORAN extent `county`
+- `state` -> ORAN extent `state`
+- `country` -> ORAN extent `national` or country-level scope depending on source
+
+Also preserve:
+
+- original `value`
+- all `geoComponents`
+- optional `geoJson`
+
+Use `geoComponents` for admin routing and normalized display.
+Use `geoJson` for map/coverage only when trusted and valid.
+
+### Meta and access mapping
+
+`meta` and `access` should affect trust and display, not just sit in raw JSON.
+
+Recommended rules:
+
+- `meta.status = active`
+  eligible for fast-track, subject to other checks
+
+- `meta.status in (inactive, deleted, draft)`
+  never auto-publish
+
+- `meta.reasonInactive`
+  preserve as lifecycle note and seeker-facing status only when appropriate
+
+- `meta.lastVerified` and `meta.lastUpdated`
+  feed freshness and reverification timers
+
+- `meta.temporaryMessage`
+  store as time-bounded operational message; can surface on service/location views if still valid
+
+- `access = public`
+  eligible for seeker-facing use
+
+- `access = private`
+  preserve for admins only, do not publish
+
+- `access in (referral, directory, research, website)`
+  preserve as source metadata; do not treat as verified public contactability by default
+
+### Service-at-location precedence rules
+
+To make imported data display correctly sitewide while still matching ORAN schemas, I would use this precedence when rendering a service for a specific location:
+
+1. service-at-location override
+2. service-level value
+3. location-level value
+4. organization-level fallback
+
+Apply that precedence to:
+
+- url
+- email
+- phone/contact
+- schedules
+- temporary operational message
+
+Do not overwrite the base canonical service with location-specific overrides.
+Keep them as delivery-context data.
+
+### Sitewide ORAN display contract
+
+Imported 211 / HSDS data should never render directly from source payload JSON on seeker surfaces.
+
+Instead:
+
+- all seeker-facing pages query ORAN-native published schemas and view models
+- imported data populates those schemas through the same canonical publish projector as scraped/manual data
+- raw 211-specific details remain available in admin/audit panels and provenance views
+
+This gives you:
+
+- one consistent UI contract sitewide
+- one search/filter model
+- one review/publish workflow
+- source fidelity without source-shaped UI leakage
+
+### Fast-track scoring for approved 211 APIs
+
+For approved structured sources, confidence should come from structured-source integrity, not page heuristics.
+
+I would compute fast-track confidence from:
+
+- schema validity: 20
+- referential integrity across org/service/location/service-at-location IDs: 20
+- canonical URL / public contact verification: 15
+- taxonomy resolution coverage: 15
+- freshness from `lastVerified` / `lastUpdated`: 10
+- dedupe certainty: 10
+- mapping completeness into ORAN canonical fields: 10
+
+Total: 100
+
+This makes the `>= 92` auto-publish threshold defensible.
+It is not a vibes score; it is a structural integrity score.
+
+### Hard anomalies for 211 / HSDS imports
+
+These should force light review or full review even for approved APIs:
+
+- source bundle fails schema validation
+- child entity IDs conflict or relationships break
+- `serviceAtLocation` references missing service or location
+- canonical URL cannot be verified
+- only private/referral/directory contacts are present
+- taxonomy code is present but crosswalk is missing or ambiguous
+- service area is missing or contradictory
+- `meta.status` is inactive/deleted/draft
+- dedupe conflicts with a published ORAN entity
+- source payload changes in a way that removes previously published required data
+
+### Why this is the cleanest approach
+
+- It keeps the upstream 211 contract lossless.
+- It preserves per-service review and publish, which matches your workflow.
+- It lets imported data appear sitewide through ORAN-native schemas instead of bespoke 211 render paths.
+- It makes taxonomy explainable and reproducible.
+- It supports round-trip HSDS export without throwing away ORAN review/trust logic.
+
 ### Fast-track policy for approved APIs / feeds
 
 For approved structured publishers, I would add three lanes:
@@ -488,6 +828,12 @@ This should become the main reproducibility harness.
 6. Wire structured 211 / HSDS intake into the same packet contract.
 7. Update community-admin review UI to consume the new packet.
 
-## Remaining Open Question
+## Taxonomy Authority Recommendation
 
-When external HSDS / 211 taxonomy conflicts with ORAN tags, I recommend preserving the external term exactly, but using ORAN canonical concepts as the seeker-facing authority. If you want the opposite behavior, that should be an explicit product decision.
+Preserve the external HSDS / 211 taxonomy exactly, but use ORAN canonical concepts and ORAN seeker-facing tags as the display/search authority sitewide.
+
+That is the cleanest boundary:
+
+- source taxonomy remains lossless and exportable
+- ORAN display remains consistent across imported, scraped, and manual data
+- every displayed ORAN tag remains explainable back to the original source assertion

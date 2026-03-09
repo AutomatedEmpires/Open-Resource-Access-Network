@@ -89,6 +89,7 @@ Queue architecture: `ingestion-fetch` → `ingestion-extract` → `ingestion-ver
 Verify → Score → BuildCandidate → RouteToAdmin`
 
 8 automated verification checks:
+
 - Domain allowlist match
 - Phone format (US)
 - Email format
@@ -122,26 +123,31 @@ Verify → Score → BuildCandidate → RouteToAdmin`
 ## Phase 7: Deployment & Ops ✅ Complete
 
 ### 7.1 Infrastructure Provisioning ✅
+
 - Bicep IaC templates (`infra/main.bicep`): App Service, Function App (Consumption), Storage + queues, Key Vault (RBAC), PostgreSQL Flexible Server + PostGIS, Application Insights + Log Analytics, Azure Communication Services, Azure Cache for Redis
 - Production parameters (`infra/main.prod.bicepparam`)
 - Environment variables documented in `.env.example`
 
 ### 7.2 CI/CD Pipeline ✅
+
 - GitHub Actions workflows: Functions deploy (`deploy-azure-functions.yml`), DB migration (`db-migrate.yml`), infrastructure deploy (`deploy-infra.yml`)
 - Existing App Service deploy workflow (`deploy-azure-appservice.yml`)
 - OIDC-based authentication to Azure (no stored secrets)
 
 ### 7.3 Monitoring & Alerting ✅
+
 - Azure Monitor alert rules (`infra/monitoring.bicep`): web 5xx, web latency, function failures, SLA breaches, queue backlog, coverage gaps
 - KQL query reference (`docs/ops/monitoring/MONITORING_QUERIES.md`): 14+ queries across 6 sections
 - Wired to `checkSlaBreaches` and `alertCoverageGaps` functions
 
 ### 7.4 Runbooks ✅
+
 - `docs/ops/services/RUNBOOK_INGESTION.md` — Pipeline troubleshooting
 - `docs/ops/services/RUNBOOK_ADMIN_ROUTING.md` — Routing failures + emergency procedures
 - `docs/ops/services/RUNBOOK_LLM_OUTAGE.md` — Azure OpenAI outage handling
 
 ### 7.5 Load & Scale Testing ✅
+
 - Queue concurrency tuned in `functions/host.json` (batchSize=4, maxDequeueCount=3)
 - DB connection pool sized in `src/db/index.ts` (max=10)
 - Load test script: `scripts/load-test.mjs`
@@ -152,22 +158,26 @@ Verify → Score → BuildCandidate → RouteToAdmin`
 ## Phase 8: Internationalisation (i18n) ✅ Complete
 
 ### 8.1 File-based Locale Bundles ✅
+
 - `src/locales/en.json` — canonical English strings (extracted from previous in-code dict)
 - `src/locales/{es,zh,ar,vi,fr}.json` — English-fallback placeholders; ready for translator hand-off
 - `src/services/i18n/i18n.ts` — loads from static JSON imports (bundled at build time, zero runtime I/O)
 - `localeCache` pre-populated with all 6 supported locales on module load
 
 ### 8.2 Server-side Locale Detection ✅
+
 - `src/lib/locale.ts` — `resolveLocale()` async Server Component helper
 - Resolution order: `NEXT_LOCALE` cookie → `Accept-Language` header → `DEFAULT_LOCALE` ('en')
 - Profile locale preference stored via `NEXT_LOCALE` cookie on save
 
 ### 8.3 RTL-ready `<html>` Attributes ✅
+
 - `src/app/layout.tsx` — now async; calls `resolveLocale()` and sets `<html lang={locale} dir={dir}>`
 - Arabic (`ar`) gets `dir="rtl"` enabling Tailwind's `rtl:` variant prefix
 - `isRTL(locale)` helper available from `@/services/i18n/i18n`
 
 ### Still Pending
+
 - Actual human translations for es / zh / ar / vi / fr (translator hand-off)
 - Missing-key telemetry integration (no PII)
 

@@ -3,6 +3,7 @@
 **Last updated (UTC):** 2026-03-05
 
 This document is the running, meticulous record of **all AI/Foundry-related integrations** in ORAN:
+
 - what exists vs. what’s wired vs. what’s enabled
 - where the code lives
 - which Azure resources back it
@@ -10,6 +11,7 @@ This document is the running, meticulous record of **all AI/Foundry-related inte
 - what’s next (owners, rollout, evaluation)
 
 ORAN is **safety-critical** and **retrieval-first**:
+
 - **No LLM** may participate in retrieval or ranking.
 - Any LLM output (if enabled) must be constrained to **summarize already retrieved records** and must **not add facts**.
 - If imminent-risk indicators are detected, the system must route to **911 / 988 / 211** before anything else.
@@ -34,6 +36,7 @@ ORAN is **safety-critical** and **retrieval-first**:
 - **Foundry Project Endpoint:** `https://oran-foundry-resource.services.ai.azure.com//api/projects/ORAN_FOUNDRY`
 
 **Deployed models:**
+
 - **Phi-4-mini-instruct** (deployment: `phi-4-mini-instruct`)
   - Intended use: fast/cheap summarization, extraction helpers, brief generation.
 - **Cohere-embed-v3-multilingual**
@@ -53,6 +56,7 @@ Resource Group: `oranhf57ir-prod-rg`
 ### 1.3 Secrets + configuration (no plaintext)
 
 Stored in Key Vault and referenced via `@Microsoft.KeyVault(...)`:
+
 - `azure-communication-connection-string`
 - `redis-url`
 - `internal-api-key`
@@ -68,6 +72,7 @@ Stored in Key Vault and referenced via `@Microsoft.KeyVault(...)`:
 ### 2.1 Chat pipeline (retrieval-first)
 
 Core orchestration is implemented as a deterministic pipeline:
+
 - Crisis detection: always-on keyword gate
 - (Optional) Azure Content Safety distress gate: implemented, flag-controlled
 - Intent detection: deterministic keyword/pattern rules
@@ -75,6 +80,7 @@ Core orchestration is implemented as a deterministic pipeline:
 - (Optional) LLM summarization: flag-controlled
 
 **Key files:**
+
 - `src/services/chat/orchestrator.ts`
 - `docs/CHAT_ARCHITECTURE.md`
 
@@ -83,6 +89,7 @@ Core orchestration is implemented as a deterministic pipeline:
 Extraction/categorization/verification pipeline exists in-process, with serverless stubs present for future activation.
 
 **Key files:**
+
 - `src/agents/ingestion/**`
 - `functions/**` (stubs for ingestion queues/timers)
 
@@ -149,18 +156,21 @@ These are designed to **strengthen ORAN’s trust moat** while respecting retrie
 #### A) Safety + governance (highest leverage)
 
 1) **Policy-as-code “no new facts” evaluator**
+
 - Goal: automatically fail any LLM-produced summary/brief that contains information not present in retrieved records/evidence.
 - Why: makes it safe to ship summarization/briefing features faster.
 - Where: add a shared validator in `src/services/ai/` (new) and run in summarization & briefs.
 - State: Planned.
 
-2) **Adversarial crisis red-team harness**
+1) **Adversarial crisis red-team harness**
+
 - Goal: regression suite for crisis and safety gating (including multilingual tricky phrasing).
 - Why: safety-critical, prevents regressions.
 - Where: `src/__tests__/` + evaluation dataset under `docs/evals/` or `testdata/`.
 - State: Planned.
 
-3) **Grounded verification packets (evidence-only)**
+1) **Grounded verification packets (evidence-only)**
+
 - Goal: generate admin-facing packets that are strictly a digest of stored evidence, with citations/snippets.
 - Why: reduces admin work without automating decisions.
 - Where: ingestion/admin workflows; UI consumption in admin portals.
@@ -168,13 +178,15 @@ These are designed to **strengthen ORAN’s trust moat** while respecting retrie
 
 #### B) Ops flywheel
 
-4) **Confidence regression alerts → tasks**
+1) **Confidence regression alerts → tasks**
+
 - Goal: if trust score drops or key checks fail, create tasks and notify owners.
 - Why: turns scoring into an operational feedback loop.
 - Where: workflow engine + notifications.
 - State: Planned.
 
-5) **Queue triage by risk & impact**
+1) **Queue triage by risk & impact**
+
 - Goal: prioritize reviews by service traffic, risk signals, staleness likelihood.
 - Why: best use of scarce admin time.
 - Where: admin queue ordering + lightweight summaries.
@@ -182,13 +194,15 @@ These are designed to **strengthen ORAN’s trust moat** while respecting retrie
 
 #### C) Data quality + coverage
 
-6) **Feedback clustering (embeddings on feedback only)**
+1) **Feedback clustering (embeddings on feedback only)**
+
 - Goal: cluster reports like “closed/moved/wrong hours” to drive targeted reverification.
 - Why: reduces repeated manual triage.
 - Where: background job; store cluster IDs.
 - State: Planned.
 
-7) **Coverage gap-finding map**
+1) **Coverage gap-finding map**
+
 - Goal: identify underserved geos/categories (no shelters within X miles, etc.).
 - Why: guides ingestion/outreach.
 - Where: analytics queries + admin dashboard.
@@ -196,13 +210,15 @@ These are designed to **strengthen ORAN’s trust moat** while respecting retrie
 
 #### D) Accessibility expansion (still retrieval-first)
 
-8) **SMS service-card delivery**
+1) **SMS service-card delivery**
+
 - Goal: deliver retrieved services via SMS for low-bandwidth users.
 - Why: increases reach.
 - Where: notifications + SMS provider integration.
 - State: Planned.
 
-9) **Voice/IVR routing (deterministic)**
+1) **Voice/IVR routing (deterministic)**
+
 - Goal: allow phone-based seekers; optional STT for routing only.
 - Why: accessibility.
 - Where: telephony integration + retrieval.

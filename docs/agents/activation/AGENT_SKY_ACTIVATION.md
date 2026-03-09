@@ -21,6 +21,7 @@ You MUST read these before touching any file:
 8. `src/app/globals.css` — CSS custom properties and global rules
 
 **Architecture map:**
+
 - Seeker pages: `src/app/(seeker)/`
 - Admin pages: `src/app/(oran-admin)/`, `src/app/(community-admin)/`, `src/app/(host)/`
 - Shared UI primitives: `src/components/ui/`
@@ -28,6 +29,7 @@ You MUST read these before touching any file:
 - Design tokens doc: `docs/ui/UI_UX_TOKENS.md`
 
 **Validation commands to run after every task:**
+
 ```bash
 npx tsc --noEmit             # must produce 0 errors in src/ (test files excluded)
 npm run lint                 # must produce 0 new errors
@@ -39,21 +41,26 @@ npm run test                 # 788+ passing, 0 new failures
 ## CRITICAL BUGS — Fix These First (Blockers)
 
 ### BUG-1 · Production Build Broken [VALID-2026-03-03]
+
 **Severity:** 🚨 P0 — no deployment is possible
 **Evidence:** `npm run build` fails with Turbopack error:
+
 ```
 Module not found: Can't resolve <dynamic>
   diagnostic-channel-publishers/dist/src/mysql.pub.js
   ↳ applicationinsights → src/instrumentation.ts
 ```
+
 **Root cause:** The `applicationinsights` package (Azure Monitor SDK v3) contains a MySQL diagnostics publisher that uses `require(path.dirname(...) + "/lib/Connection")` — a dynamic `require()` that Turbopack cannot statically analyze.
 
 **Also present:** `@sentry/nextjs` dynamic import in `src/services/telemetry/sentry.ts:106` resolves to a warning.
 
 **Fix instructions:**
+
 1. Open `next.config.mjs`.
 2. Add `serverExternalPackages: ['applicationinsights', 'diagnostic-channel-publishers']` to the Next.js config object. This tells Next.js to treat these as external Node.js packages (not bundled by Turbopack), which allows the dynamic `require()` calls to work normally at runtime.
 3. Example:
+
    ```js
    const nextConfig = {
      output: 'standalone',
@@ -61,6 +68,7 @@ Module not found: Can't resolve <dynamic>
      // ... rest of config
    };
    ```
+
 4. Run `npm run build` and confirm it succeeds with bundle size output.
 5. After build succeeds — record the ACTUAL bundle sizes in `docs/agents/status/STATUS_OMEGA.md` (replacing the fabricated numbers).
 
@@ -69,11 +77,13 @@ Module not found: Can't resolve <dynamic>
 ---
 
 ### BUG-2 · `middleware.ts` File Convention Deprecated [VALID-2026-03-03]
+
 **Severity:** 🟡 P1 — Next.js 16.1.6 prints warning on every build
 **Evidence:** Build output: `"The 'middleware' file convention is deprecated. Please use 'proxy' instead."`
 **File:** `src/middleware.ts`
 
 **Fix instructions:**
+
 1. Rename `src/middleware.ts` → `src/proxy.ts`
 2. The exported function name stays `middleware` (only the filename changes per Next.js docs)
 3. Update `src/__tests__/middleware.test.ts` import path to match new filename
@@ -84,8 +94,10 @@ Module not found: Can't resolve <dynamic>
 ---
 
 ### BUG-3 · 3 TypeScript Errors in Test Files [VALID-2026-03-03]
+
 **Severity:** 🟡 P1 — `npx tsc --noEmit` reports 3 errors
 **Evidence:**
+
 ```
 src/services/auth/__tests__/session.test.ts(26,10): error TS2704
   The operand of a 'delete' operator cannot be a read-only property.
@@ -94,15 +106,19 @@ src/services/auth/__tests__/session.test.ts(146,17): error TS2540
 src/services/auth/__tests__/session.test.ts(153,17): error TS2540
   Cannot assign to 'NODE_ENV' because it is a read-only property.
 ```
+
 **File:** `src/services/auth/__tests__/session.test.ts` lines 26, 146, 153
 **Root cause:** Test is mutating `process.env.NODE_ENV` directly, which TypeScript strict mode forbids.
 
 **Fix instructions:**
+
 1. Open `src/services/auth/__tests__/session.test.ts`
 2. Replace direct `process.env.NODE_ENV = 'production'` assignments with:
+
    ```ts
    Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', writable: true, configurable: true });
    ```
+
    Or use `vi.stubEnv('NODE_ENV', 'production')` (Vitest's official API for stubbing env vars)
 3. For the `delete` operator issue on line 26, replace `delete process.env.SOME_KEY` with `process.env.SOME_KEY = undefined` cast or use `vi.unstubAllEnvs()` in afterEach
 4. Run `npx tsc --noEmit` and confirm 0 errors
@@ -112,6 +128,7 @@ src/services/auth/__tests__/session.test.ts(153,17): error TS2540
 ---
 
 ### BUG-4 · Real WCAG 2.5.5 Violations Found (Touch Target < 44px) [VALID-2026-03-03]
+
 **Severity:** 🟠 P1 — contradicts ORAN's WCAG AA commitment
 **Evidence (grep-verified):**
 
@@ -123,14 +140,17 @@ src/services/auth/__tests__/session.test.ts(153,17): error TS2540
 **Fix instructions:**
 
 For `ChatServiceCard.tsx` line 76:
+
 - Change `min-w-[32px] min-h-[32px]` → `min-w-[44px] min-h-[44px]`
 
 For `DirectoryPageClient.tsx` line 338 (sort select):
+
 - This is a styled `<select>` input — inputs are not tap targets in the same sense (they expand on tap), so `min-h-[32px]` is acceptable for a select element within a dense filter panel
 - HOWEVER: mark this as a documented exception in `docs/ui/UI_UX_TOKENS.md` with justification
 - Add a comment in the JSX: `{/* select inputs: min-h-[32px] is acceptable per UI_UX_TOKENS.md §select-exception */}`
 
 **Definition of Done:**
+
 - `ChatServiceCard.tsx` save button is 44×44px minimum
 - Exception documented for sort select
 
@@ -141,6 +161,7 @@ For `DirectoryPageClient.tsx` line 338 (sort select):
 ---
 
 ### TASK-01 · Wire axe into Tests — A11y Gate [OMEGA-2026-03-03] [VALID-2026-03-03]
+
 **Priority:** P0
 **Why:** `axe-core`, `vitest-axe`, `@axe-core/react` are installed as dependencies but are NEVER called in any test file. Currently zero automated a11y verification exists. All accessibility claims in STATUS_OMEGA.md are unvalidated.
 
@@ -165,6 +186,7 @@ For `DirectoryPageClient.tsx` line 338 (sort select):
    - Add a render + axe scan for the static portion of each page wrapper
 
 **Setup required:**
+
 ```ts
 // vitest.setup.ts (or vitest.config.ts setupFiles)
 import { configureAxe } from 'vitest-axe';
@@ -177,6 +199,7 @@ expect.extend({ toHaveNoViolations: axe.toHaveNoViolations });
 ```
 
 **Definition of Done:**
+
 - `npm run test` includes axe scan results
 - If any violation is found, the test FAILS (build breaks)
 - Zero violations in all covered components
@@ -184,6 +207,7 @@ expect.extend({ toHaveNoViolations: axe.toHaveNoViolations });
 ---
 
 ### TASK-02 · Dark Mode (Token-Based) [OMEGA-2026-03-03]
+
 **Priority:** P1
 **Constraint:** Must NOT use arbitrary color overrides. All dark mode colors must be CSS custom properties defined in `src/app/globals.css`. No `dark:bg-[#1a1a1a]` arbitrary values.
 
@@ -194,6 +218,7 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
 
 1. **`src/app/globals.css`**
    - Add dark mode tokens under a `[data-theme="dark"]` or `.dark` selector:
+
      ```css
      :root {
        --bg-page: #f9fafb;        /* gray-50 */
@@ -216,6 +241,7 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
        --ring: #60a5fa;           /* blue-400 */
      }
      ```
+
    - Crisis red must remain highly visible in dark mode: keep `bg-red-700`
 
 2. **`src/components/ui/button.tsx`**, **`badge.tsx`**, **`skeleton.tsx`**, **`dialog.tsx`**, **`error-boundary.tsx`**
@@ -227,6 +253,7 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
 
 4. **`src/app/(seeker)/profile/ProfilePageClient.tsx`**
    - Add dark mode toggle to the Profile page in a new section "Display":
+
      ```tsx
      <section ...>
        <h2>Display</h2>
@@ -235,6 +262,7 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
        </button>
      </section>
      ```
+
    - Persist choice in `localStorage` under `oran:preferences.theme`
    - On mount: read pref and apply `document.documentElement.classList.toggle('dark', isDark)`
 
@@ -244,6 +272,7 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
 **DO NOT touch:** Crisis banners (must stay `bg-red-700` in all themes)
 
 **Definition of Done:**
+
 - Toggle in Profile page works
 - Preference persists across browser sessions
 - All seeker surfaces readable in dark mode
@@ -253,6 +282,7 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
 ---
 
 ### TASK-03 · Lazy-Load Azure Maps SDK [OMEGA-2026-03-03]
+
 **Priority:** P1
 **Why:** Azure Maps SDK (~220 kB) is bundled into the Map page initial JS. This is the single largest client-side load cost, and it blocks FCP on `/map`.
 
@@ -260,6 +290,7 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
 
 1. **`src/components/map/MapContainer.tsx`**
    - This is already a `'use client'` component — add dynamic import of the SDK:
+
      ```tsx
      'use client';
      import dynamic from 'next/dynamic';
@@ -267,13 +298,16 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
      // Option A: entire MapContainer behind next/dynamic from parent
      // Option B: lazy import atlas inside MapContainer's useEffect
      ```
+
    - Recommended approach: In `src/app/(seeker)/map/MapPageClient.tsx`, wrap MapContainer in `next/dynamic`:
+
      ```tsx
      const MapContainer = dynamic(() => import('@/components/map/MapContainer'), {
        ssr: false,
        loading: () => <div className="w-full h-[60vh] rounded-lg bg-gray-100 animate-pulse flex items-center justify-center text-gray-400 text-sm">Loading map…</div>,
      });
      ```
+
    - This delays SDK loading until the Map page is actually visited
 
 2. **`src/app/(seeker)/map/MapPageClient.tsx`**
@@ -281,6 +315,7 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
    - The `loading` prop provides a skeleton during SDK initialization
 
 **Definition of Done:**
+
 - `/map` page builds and the Azure Maps JS is in a separate chunk, not the page's First Load JS
 - Bundle size for `/map` first load is visibly smaller in `npm run build` output
 - Map still renders and functions identically after lazy loading
@@ -288,8 +323,10 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
 ---
 
 ### TASK-04 · Formalize Z-Index Scale [OMEGA-2026-03-03]
+
 **Priority:** P2
 **Current state:** Z-index values are ad-hoc across the codebase:
+
 - `z-40` — top bar, bottom nav
 - `z-40` — mobile nav
 - `z-50` — modals/dialogs
@@ -299,6 +336,7 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
 
 1. **`src/app/globals.css`**
    Add named z-index layer CSS vars:
+
    ```css
    :root {
      --z-skip-link: 100;
@@ -320,6 +358,7 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
    → Replace `z-40`, `z-50`, `z-[100]` with `z-[var(--z-nav)]` etc.
 
 **Definition of Done:**
+
 - All z-index values reference named CSS vars
 - Docs updated
 - No `z-[100]` or other arbitrary z-index values remain except where semantically clearest
@@ -327,12 +366,14 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
 ---
 
 ### TASK-05 · Infinite Scroll with URL-State Preservation [OMEGA-2026-03-03]
+
 **Priority:** P1
 **Why:** Directory pagination uses Prev/Next buttons. Mobile best practice is infinite scroll (no button hunting). Must preserve URL state for shareability.
 
 **File:** `src/app/(seeker)/directory/DirectoryPageClient.tsx`
 
 **Implementation approach:**
+
 1. Add an `IntersectionObserver` that watches a sentinel `<div>` placed after the last result card
 2. When sentinel becomes visible AND `data.hasMore` is true AND not loading → auto-fetch next page and append results (do NOT replace, append)
 3. Keep URL state synced: `pushUrlState` should update `page` param as user scrolls
@@ -341,6 +382,7 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
 6. Add `aria-live="polite"` to results container — screen readers announce "Loading more results" when fetch starts
 
 **Definition of Done:**
+
 - Scrolling to bottom of results auto-loads next page
 - URL `page` param increments as user scrolls
 - Deep links with `?page=3` work
@@ -350,27 +392,32 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
 ---
 
 ### TASK-06 · Keyboard Navigation for Map Page [OMEGA-2026-03-03]
+
 **Priority:** P1
 **File:** `src/components/map/MapContainer.tsx`
 
 **Problem:** Azure Maps SDK provides no native keyboard navigation for map canvas (arrow keys don't pan, +/- don't zoom). This is a WCAG 2.1.1 partial failure (the map canvas is the main feature of the map page but inaccessible to keyboard users — mitigated only by the results list below).
 
 **Implementation:**
+
 1. Add a keyboard shortcut handler on the map container `<div>`:
    - Arrow keys → `map.setCamera({ center: [lng ± delta, lat ± delta] })`
    - `+` / `-` → `map.setCamera({ zoom: zoom ± 1 })`
    - `R` → reset to initial view
 2. Add an accessible hint panel:
+
    ```tsx
    <p className="text-xs text-gray-500 mt-1">
      Keyboard: Arrow keys to pan, + / - to zoom.
      <a href="#map-results" className="underline">Skip to results</a>
    </p>
    ```
+
 3. Add `role="application"` and `aria-label="Interactive service map"` to the map div — informs screen readers this is a live interactive region
 4. Add `tabIndex={0}` to map div so it receives keyboard focus
 
 **Definition of Done:**
+
 - Arrow keys pan the map
 - `+/-` keys zoom
 - Hint text visible below map
@@ -380,10 +427,12 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
 ---
 
 ### TASK-07 · Command Palette (⌘K / Ctrl+K) [OMEGA-2026-03-03]
+
 **Priority:** P2
 **Scope:** Seeker surfaces only. No admin commands.
 
 **Files:**
+
 1. **Create** `src/components/command/CommandPalette.tsx`
    - Built on `<Dialog>` from `src/components/ui/dialog.tsx`
    - Opens on `⌘K` (Mac) or `Ctrl+K` (Windows/Linux), closes on `Esc`
@@ -404,12 +453,14 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
    - Add keyboard listener for `⌘K`/`Ctrl+K` that opens the palette
 
 **Accessibility:**
+
 - Dialog must trap focus
 - `aria-label="Command palette"` on the dialog
 - `role="option"` on each command item
 - `aria-activedescendant` tracks which is highlighted
 
 **Definition of Done:**
+
 - `⌘K` / `Ctrl+K` opens palette in seeker layout
 - Keyboard navigation works (Up/Down/Enter/Esc)
 - Screen reader announces options correctly
@@ -418,14 +469,17 @@ Use Tailwind v4's `@variant dark` with `class` strategy (toggle `dark` class on 
 ---
 
 ### TASK-08 · Visual Regression Suite (Playwright + Screenshots) [OMEGA-2026-03-03]
+
 **Priority:** P1
 **Why:** There is zero visual regression coverage. Color changes, layout shifts, or component regressions can ship silently.
 
 **Setup:**
+
 1. Install: `npm install --save-dev @playwright/test`
 2. Run: `npx playwright install chromium` (CI: add to devcontainer or CI workflow)
 
 **Create** `playwright/` directory with:
+
 ```
 playwright/
   visual/
@@ -440,6 +494,7 @@ playwright/
 ```
 
 **Each spec:**
+
 ```ts
 import { test, expect } from '@playwright/test';
 test('landing page visual', async ({ page }) => {
@@ -449,16 +504,19 @@ test('landing page visual', async ({ page }) => {
 ```
 
 **`playwright.config.ts`:**
+
 - Snapshot update command: `npx playwright test --update-snapshots`
 - Viewports to test: 390px (mobile), 768px (tablet), 1440px (desktop)
 - Store snapshots in `playwright/snapshots/`
 
 **GitHub Actions:**
+
 - Create `.github/workflows/visual-regression.yml`
 - Run on: `push` to any branch, PRs
 - Upload diff artifacts on failure
 
 **Definition of Done:**
+
 - `npx playwright test` runs successfully
 - Baseline screenshots committed to repo
 - CI workflow defined
@@ -466,12 +524,14 @@ test('landing page visual', async ({ page }) => {
 ---
 
 ### TASK-09 · Automated A11y CI Gate [OMEGA-2026-03-03]
+
 **Priority:** P0
 **Why:** Zero automated accessibility checks in CI. The build will happily ship WCAG violations.
 
 **Files to create:**
 
 1. **`.github/workflows/a11y.yml`**
+
    ```yaml
    name: Accessibility Gate
    on: [push, pull_request]
@@ -485,11 +545,13 @@ test('landing page visual', async ({ page }) => {
    ```
 
 2. **Vitest config** — ensure `vitest-axe` is configured in `vitest.config.ts`:
+
    ```ts
    setupFiles: ['./vitest.setup.ts']
    ```
 
 3. **`vitest.setup.ts`** (create if not exists):
+
    ```ts
    import { configureAxe, toHaveNoViolations } from 'vitest-axe';
    import { expect } from 'vitest';
@@ -499,17 +561,20 @@ test('landing page visual', async ({ page }) => {
    ```
 
 **Definition of Done:**
+
 - CI fails if any axe violation is introduced
 - All existing components pass the gate
 
 ---
 
 ### TASK-10 · Performance Budget Enforcement [OMEGA-2026-03-03]
+
 **Priority:** P1
 **Why:** Bundle sizes were fabricated in the audit report because the build was broken. After fixing BUG-1, real budgets must be enforced.
 
 **Budgets (set after real build output is measured):**
 Suggested starting points based on Next.js best practices:
+
 - Landing page First Load JS: ≤ 100 kB
 - Chat page First Load JS: ≤ 160 kB
 - Directory page First Load JS: ≤ 160 kB
@@ -519,11 +584,13 @@ Suggested starting points based on Next.js best practices:
 
 1. **`.bundlesize.json`** (using `bundlesize` npm package) OR use Next.js built-in:
    - Add to `next.config.mjs`:
+
      ```js
      experimental: {
        bundlePagesRouterDependencies: true,
      }
      ```
+
    - Alternatively, create `scripts/check-bundle-sizes.js` that parses `.next/build-manifest.json` and fails if any seeker route exceeds budget
 
 2. **`.github/workflows/bundle-size.yml`**
@@ -531,6 +598,7 @@ Suggested starting points based on Next.js best practices:
    - Fail job if any route exceeds budget
 
 **Definition of Done:**
+
 - Budget check runs in CI
 - Failing build if route exceeds budget
 - Real budgets committed to config after BUG-1 is resolved
@@ -538,13 +606,16 @@ Suggested starting points based on Next.js best practices:
 ---
 
 ### TASK-11 · UI Telemetry for Interaction Friction (Privacy-Safe) [OMEGA-2026-03-03]
+
 **Priority:** P2
 **Constraints from `docs/SECURITY_PRIVACY.md`:**
+
 - NO PII in telemetry (no user IDs, no search queries, no service names)
 - Only anonymous, aggregated interaction signals
 - Must be gated behind a feature flag
 
 **What to track:**
+
 - Page views (route only, no query params)
 - "Search submitted" event (no query text, just that a search happened)
 - "Crisis banner shown" event (critical for safety monitoring)
@@ -567,6 +638,7 @@ Suggested starting points based on Next.js best practices:
    - `CrisisBanner` → `trackInteraction('crisis_banner_shown')` on mount
 
 **Definition of Done:**
+
 - Feature flag gates all telemetry
 - No PII in any tracked event
 - Application Insights receives events in production (when APPLICATIONINSIGHTS_CONNECTION_STRING is set)
@@ -575,12 +647,14 @@ Suggested starting points based on Next.js best practices:
 ---
 
 ### TASK-12 · Print Stylesheet for Service Detail [OMEGA-2026-03-03]
+
 **Priority:** P3
 **Why:** Service seekers may want to print a service record to take with them (no smartphone, paper reference).
 
 **File:** `src/app/globals.css`
 
 Add print media query:
+
 ```css
 @media print {
   /* Hide navigation, bottom nav, skip links, feedback buttons */
@@ -602,6 +676,7 @@ Add print media query:
 ```
 
 Add `print-hide` class to:
+
 - Navigation chrome (`src/app/(seeker)/layout.tsx`)
 - Pagination buttons
 - "Give feedback" button in `ServiceCard.tsx`
@@ -609,6 +684,7 @@ Add `print-hide` class to:
 Add `print-disclaimer` class to the eligibility disclaimer paragraph in `ServiceCard.tsx`.
 
 **Definition of Done:**
+
 - Service detail page prints cleanly (no nav chrome)
 - Phone number shows as text after the link
 - Eligibility disclaimer is prominent in print
@@ -616,16 +692,20 @@ Add `print-disclaimer` class to the eligibility disclaimer paragraph in `Service
 ---
 
 ### TASK-13 · Design Token Enforcement via ESLint Rule [OMEGA-2026-03-03]
+
 **Priority:** P2
 **Why:** Nothing prevents future developers from using arbitrary Tailwind values that drift from the token system.
 
 **Approach:**
+
 1. Install `eslint-plugin-tailwindcss`:
+
    ```bash
    npm install --save-dev eslint-plugin-tailwindcss
    ```
 
 2. Configure in `eslint.config.mjs`:
+
    ```js
    import tailwindPlugin from 'eslint-plugin-tailwindcss';
    // add to rules:
@@ -642,6 +722,7 @@ Add `print-disclaimer` class to the eligibility disclaimer paragraph in `Service
 3. Document the approved exceptions list in `docs/ui/UI_UX_TOKENS.md` §8 "Approved Arbitrary Values".
 
 **Definition of Done:**
+
 - New arbitrary values in PRs trigger ESLint warnings
 - All existing approved values are in the ignore list
 - `npm run lint` still exits 0 on current codebase
@@ -649,12 +730,14 @@ Add `print-disclaimer` class to the eligibility disclaimer paragraph in `Service
 ---
 
 ### TASK-14 · Reduced-Motion Micro-Interaction Layer [OMEGA-2026-03-03]
+
 **Priority:** P2
 **Why:** The audit noted "minimal animations" as good, but that currently means ZERO delightful motion. A proper reduced-motion layer means: full motion for users who want it, zero motion for users who have `prefers-reduced-motion: reduce`.
 
 **Files:**
 
 1. **`src/app/globals.css`** — add motion tokens:
+
    ```css
    :root {
      --transition-fast: 150ms ease;
@@ -676,6 +759,7 @@ Add `print-disclaimer` class to the eligibility disclaimer paragraph in `Service
    - Use `transition-opacity duration-[var(--transition-standard)]` on main content
 
 4. **`src/components/directory/ServiceCard.tsx`** — add card entrance animation:
+
    ```css
    @keyframes card-enter {
      from { opacity: 0; transform: translateY(4px); }
@@ -688,6 +772,7 @@ Add `print-disclaimer` class to the eligibility disclaimer paragraph in `Service
 **DO NOT add motion to:** Crisis banners, error states, loading skeletons (intentionally visible immediately).
 
 **Definition of Done:**
+
 - Motion present for users without `prefers-reduced-motion`
 - Instant for users with `prefers-reduced-motion: reduce`
 - Sentry/telemetry emit no new errors
@@ -695,10 +780,12 @@ Add `print-disclaimer` class to the eligibility disclaimer paragraph in `Service
 ---
 
 ### TASK-15 · UI Consistency Drift Detector [OMEGA-2026-03-03]
+
 **Priority:** P3
 **Why:** As the codebase grows, components may be re-implemented ad-hoc rather than using the shared system.
 
 **Implementation:**
+
 1. **Create** `scripts/audit-ui-consistency.ts`
    - Scan `src/app/**/*.tsx` for patterns that should use shared components but don't:
      - `<button` that doesn't import from `@/components/ui/button` → report as drift
@@ -707,16 +794,19 @@ Add `print-disclaimer` class to the eligibility disclaimer paragraph in `Service
    - Output a markdown summary of findings
 
 2. **`package.json`** — add script:
+
    ```json
    "audit:ui": "npx ts-node scripts/audit-ui-consistency.ts"
    ```
 
 3. **Run in CI** (optional, non-blocking in v1 — report only):
+
    ```yaml
    - run: npm run audit:ui >> $GITHUB_STEP_SUMMARY
    ```
 
 **Definition of Done:**
+
 - Script runs without crashing
 - Reports all drift accurately
 - CI step uploads summary to GitHub Actions
@@ -724,6 +814,7 @@ Add `print-disclaimer` class to the eligibility disclaimer paragraph in `Service
 ---
 
 ### TASK-16 · Full Audit of Un-Audited Admin Surfaces [VALID-2026-03-03]
+
 **Priority:** P1
 **Context:** The OMEGA audit explicitly covered only the `(seeker)` route group. These surfaces have NEVER been audited:
 
@@ -735,6 +826,7 @@ Add `print-disclaimer` class to the eligibility disclaimer paragraph in `Service
 | Shared authenticated layout | `src/app/(oran-admin)/layout.tsx`, etc. | |
 
 **What to audit for each:**
+
 1. Does every page have exactly one `<h1>`?
 2. Do all forms have proper `<label>` or `aria-label`?
 3. Are all data tables using `<th scope="col">` and `<caption>`?
@@ -744,6 +836,7 @@ Add `print-disclaimer` class to the eligibility disclaimer paragraph in `Service
 7. Do all interactive elements meet 44px minimum touch target?
 
 **Files to check:**
+
 - `src/app/(oran-admin)/approvals/page.tsx`
 - `src/app/(oran-admin)/audit/page.tsx`
 - `src/app/(oran-admin)/rules/page.tsx`
@@ -758,20 +851,24 @@ Add `print-disclaimer` class to the eligibility disclaimer paragraph in `Service
 - `src/app/(host)/services/page.tsx`
 
 **Definition of Done:**
+
 - All violations documented and fixed
 - All admin surfaces pass the same accessibility checklist as seeker surfaces
 
 ---
 
 ### TASK-17 · Validate i18n Dynamic `lang` Switching with Screen Readers [OMEGA-2026-03-03]
+
 **Priority:** P2
 
 **Current state:**
+
 - Profile page changes `document.documentElement.lang` when language pref is saved
 - This is done via `updateHtmlLang(code)` in `ProfilePageClient.tsx`
 - NEVER verified that screen readers (NVDA/JAWS/VoiceOver) actually re-announce content in the new language
 
 **What to test:**
+
 1. Set language to Spanish in Profile page
 2. Navigate to Chat page
 3. Verify `<html lang="es">` is set
@@ -781,6 +878,7 @@ Add `print-disclaimer` class to the eligibility disclaimer paragraph in `Service
 **Current gap:** `lang` attribute changes but the UI text remains in English. This means `lang="es"` on `<html>` with English text content is actually WORSE for screen readers (wrong pronunciation engine applied).
 
 **Fix:** Either:
+
 - Option A: Only update `lang` attribute if translated strings are served (requires i18n integration)
 - Option B: Update value to include the `Subtag` for script (e.g., `zh-Hant`) for accuracy
 - Option C: Remove `lang` attribute mutation until i18n is actually implemented
@@ -792,6 +890,7 @@ Add `print-disclaimer` class to the eligibility disclaimer paragraph in `Service
 ## AFTER ALL TASKS — Final Validation Checklist
 
 Run in this exact order:
+
 ```bash
 npx tsc --noEmit                    # must be 0 errors
 npm run lint                        # must be 0 errors
@@ -802,6 +901,7 @@ npm run audit:ui                    # run drift report (non-blocking)
 ```
 
 Update `docs/agents/status/STATUS_OMEGA.md`:
+
 - Replace ALL fabricated metrics (bundle sizes, LCP, CLS, TTI) with ACTUAL numbers from build output and Playwright measurements
 - Mark each completed task with `[x]` in the Definition of Done checklist
 

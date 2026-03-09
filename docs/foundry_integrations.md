@@ -345,31 +345,38 @@ This document is the single source of truth for every Azure AI / Foundry integra
 ## Implementation Priority Order
 
 ### Phase 1 — Already done (2026-03-05)
+
 - ✅ Idea 2: Content Safety crisis gate (retrieval-safety, highest priority)
 - ✅ Idea 1: Chat LLM summarization (seeker UX, immediate value)
 - ✅ Azure resources provisioned: `gpt-4o-mini`, `phi-4-mini-instruct`, `cohere-embed-v3-multilingual`, Content Safety
 - ✅ KV secrets wired to App Service + Function App
 
 ### Phase 2 — Ingestion pipeline ✅ COMPLETE (2026-03-07)
+
 Complete the pipeline so new services can be imported without manual data entry:
+
 1. **Idea 3** — Wire `extractService` to `llmExtractStage`
 2. **Idea 11** — Wire `scheduledCrawl` → `fetchPage` → `extractService` full cycle
 3. **Idea 4** — Wire `verifyCandidate` with Phi-4 discrepancy check
 4. **Idea 16** — Add telemetry to AI service call sites
 
 ### Phase 3 — Search quality
+
 Improve retrieval relevance:
+
 1. **Idea 5** — pgvector migration + Cohere embedding service + vector search
 2. **Idea 6** — Deduplication batch job (depends on Idea 5)
 3. **Idea 12** — Confidence calibration from embedding similarity (depends on Idea 5)
 
 ### Phase 4 — Seeker UX & accessibility ✅ COMPLETE (2026-03-06)
+
 1. **Idea 8** — Multilingual descriptions (wire `translator.ts` to response assembly)
 2. **Idea 9** — Import-time batch geocoding in ingestion pipeline
 3. **Idea 10** — Intent enrichment (evaluate need vs cost first)
 4. **Idea 15** — TTS summaries (accessibility win; budget before enabling)
 
 ### Phase 5 — Admin tooling & feedback ✅ COMPLETE (2026-03-07)
+
 1. **Idea 7** — Admin review assist
 2. **Idea 14** — Feedback triage
 3. **Idea 13** — Document Intelligence for PDF intakes

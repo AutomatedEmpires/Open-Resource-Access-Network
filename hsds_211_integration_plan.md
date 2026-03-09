@@ -464,7 +464,20 @@ Each canonical entity should include:
 - new normalization services under `src/services/ingestion` or `src/agents/ingestion/normalization`
 - adapt publish flow so canonical entities become the source of truth for live publication
 
-## Phase 3: Taxonomy Federation
+## Phase 3: Taxonomy Federation ✅ COMPLETE
+
+### Phase 3 status
+
+**Completed** — all deliverables implemented, audited, and validated.
+
+- **Migration**: `db/migrations/0037_taxonomy_federation_layer.sql` — 5 tables (`taxonomy_registries`, `taxonomy_terms_ext`, `canonical_concepts`, `taxonomy_crosswalks`, `concept_tag_derivations`) with unique indexes, FK cascades, and audit indexes.
+- **Drizzle schema**: 5 table definitions, 10 type exports (Row + NewRow), 5 relation definitions in `src/db/schema.ts`.
+- **Store interfaces**: 5 new store interfaces added to `src/agents/ingestion/stores.ts` + `IngestionStores` composite updated (now 32 stores).
+- **Persistence**: 5 new Drizzle store files (`taxonomyRegistryStore.ts`, `taxonomyTermExtStore.ts`, `canonicalConceptStore.ts`, `taxonomyCrosswalkStore.ts`, `conceptTagDerivationStore.ts`).
+- **Factory + exports**: `storeFactory.ts` and `persistence/index.ts` updated.
+- **Crosswalk resolver**: `taxonomyCrosswalkResolver.ts` — full resolver with deduplication, inactive-concept skipping, audit-trail recording via `concept_tag_derivations`.
+- **Tests**: 26 new persistence unit tests across 5 test files + 15 schema tests + 7 crosswalk resolver tests (48 total new tests).
+- **Audit**: 1 gap fixed (missing re-exports in `persistence/index.ts`). No code quality issues found.
 
 ### Phase 3 goal
 
@@ -492,7 +505,17 @@ Add explicit support for external taxonomies and ORAN crosswalks.
 - no raw taxonomy term should automatically override ORAN field evidence
 - HSDS export taxonomy is generated from canonical concepts plus preserved external mappings
 
-## Phase 4: Resolution and Clustering
+## Phase 4: Resolution and Clustering ✅ COMPLETE
+
+> **Status (2025-06-25)**: All Phase 4 deliverables implemented.
+>
+> - Migration `0038_resolution_clustering_layer.sql` — 4 tables: `entity_clusters`, `entity_cluster_members`, `resolution_candidates`, `resolution_decisions` with CHECK constraints, FK cascades, and indexes.
+> - Drizzle schema: 28 references in `schema.ts`.
+> - Store interfaces: `EntityClusterStore`, `EntityClusterMemberStore`, `ResolutionCandidateStore`, `ResolutionDecisionStore` in `stores.ts`.
+> - Persistence: 4 store implementations, all clean (no TODO/FIXME/console/as-any).
+> - Factory wiring: 4 store creators in `storeFactory.ts`.
+> - Index exports: All 4 exported from `persistence/index.ts`.
+> - Tests: 4 persistence test files + storeFactory integration tests (16 Phase 4 references). All passing.
 
 ### Phase 4 goal
 
@@ -531,7 +554,19 @@ Add later behind review gates:
 - extend `src/services/merge/service.ts`
 - add resolution service under `src/services/merge` or `src/services/community`
 
-## Phase 5: Verification and Publish Integration
+## Phase 5: Verification and Publish Integration ✅ COMPLETE
+
+> **Status (2025-06-25)**: All Phase 5 deliverables implemented.
+>
+> - 3 new verification signals added: `identifier_strength`, `source_license_ok`, `taxonomy_mapping_reviewed`.
+> - Signal types registered in `contracts.ts` (Zod enum) and `pipeline/types.ts` (TypeScript union).
+> - Check implementations in `pipeline/stages.ts` (Checks 7-9).
+> - Orchestrator updated in `pipeline/orchestrator.ts` to use typed reference instead of hard-coded union.
+> - Pre-existing `cross_source_agreement` signal preserved (Check 3).
+> - 4 new edge-case tests added to `pipeline.test.ts`. Total pipeline tests: 63, all passing.
+> - Existing publish contracts (`publish.ts`, `autoPublish.ts`, `promoteToLive.ts`) preserved — canonical-only publication enforced.
+> - Source assertions never auto-publish (autoPublish gates on trust tier + lifecycle + publication status).
+> - Publication readiness remains deterministic via `computeReadiness()` + `isReadyForPublish()`.
 
 ### Phase 5 goal
 
@@ -557,7 +592,17 @@ Feed federated canonical entities into ORAN's current publish controls.
 - `source_license_ok`
 - `taxonomy_mapping_reviewed`
 
-## Phase 6: HSDS Profile Publication
+## Phase 6: HSDS Profile Publication ✅ COMPLETE
+
+> **Status (2025-06-25)**: All Phase 6 deliverables implemented.
+>
+> - Profile root endpoint: `GET /api/hsds/profile` — returns ORAN HSDS profile metadata (profile URI, version, endpoints, publication policy).
+> - Read-only HSDS endpoints: `GET /api/hsds/services`, `GET /api/hsds/services/{id}`, `GET /api/hsds/organizations`, `GET /api/hsds/organizations/{id}` — all returning published live data only.
+> - Export pipeline: `hsdsExportPipeline.ts` — canonical → HSDS JSON export.
+> - Feed connector: `hsdsFeedConnector.ts` — HSDS feed ingestion.
+> - Promotion pipeline: `promoteToLive.ts` — canonical → live tables with HSDS snapshots, lifecycle events.
+> - Publication policy enforced: only canonical approved records published, never raw `source_records` or `extracted_candidates`.
+> - Tests: 28 HSDS API tests (5 files) + export/feed/promote tests, all passing.
 
 ### Phase 6 goal
 

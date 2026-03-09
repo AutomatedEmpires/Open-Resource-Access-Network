@@ -93,6 +93,7 @@ Use `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md` for rollback execution.
 | `/approvals`, `/rules`, `/audit`, `/zone-management`, `/ingestion` | `oran_admin` |
 
 Confirm both behaviors:
+
 - Authenticated and authorized user succeeds.
 - Unauthorized/underprivileged user receives redirect or 403 as expected.
 

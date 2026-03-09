@@ -119,6 +119,7 @@ ships without Zod validation, appropriate auth gating, and rate limiting. This a
 the prerequisite for all hardening work.
 
 ### 3.1 API Route Inventory
+
 - Read every file under `src/app/api/` and build a complete table in `docs/agents/status/STATUS_SIGMA.md`
   with the following columns for each route:
   - HTTP method + path
@@ -130,6 +131,7 @@ the prerequisite for all hardening work.
 - Every column must be filled with the truth — not aspirations. If you are not sure, read the code.
 
 ### 3.2 Zod Validation Completeness
+
 - For every route that accepts a request body, query params, or path params with non-trivial
   shape, verify a Zod schema validates them on entry.
 - Missing Zod validation is a **bug** — implement it immediately. Follow the pattern established
@@ -140,6 +142,7 @@ the prerequisite for all hardening work.
   business logic.
 
 ### 3.3 Rate Limiting Completeness
+
 - Audit `src/services/security/` for the rate limiting implementation.
 - Identify which routes currently apply rate limiting (`/api/chat`, `/api/search`, `/api/feedback`
   are known; everything else is unknown — audit it).
@@ -153,6 +156,7 @@ the prerequisite for all hardening work.
 - Verify rate limit responses return HTTP 429 with a `Retry-After` header.
 
 ### 3.4 Auth Gating on API Routes
+
 - Every route that requires authentication must explicitly validate the session server-side
   using NextAuth.js's server-side session helper (`getServerSession` or equivalent for App Router).
 - "Auth gating only in middleware" is insufficient — API routes must not trust that middleware
@@ -169,6 +173,7 @@ the prerequisite for all hardening work.
 Role enforcement must be real — not a stub waiting to be completed.
 
 ### 4.1 Middleware Role Enforcement (`src/middleware.ts`)
+
 - Read the current file in full. Understand what it does today.
 - Verify the middleware:
   1. Reads the NextAuth.js JWT via `getToken()` from `next-auth/jwt` (works in Edge runtime).
@@ -195,6 +200,7 @@ Role enforcement must be real — not a stub waiting to be completed.
   - Dev mode (no Entra config) → pass-through
 
 ### 4.2 Role Hierarchy Completeness
+
 - Read `docs/governance/ROLES_PERMISSIONS.md` and map every defined role to the `OranRole` type.
 - If any role in the spec is absent from the code, add it.
 - If any role in the code is absent from the spec, add it to the spec.
@@ -205,6 +211,7 @@ Role enforcement must be real — not a stub waiting to be completed.
   as you complete them.
 
 ### 4.3 Session Validation in API Route Handlers
+
 - Audit every protected API route for server-side session validation.
 - Implement a shared helper `src/services/auth/session.ts` (or extend `guards.ts`) that:
   - Extracts and validates the NextAuth.js session in App Router route handlers.
@@ -220,6 +227,7 @@ Role enforcement must be real — not a stub waiting to be completed.
 All API contracts must be documented for consumers (OMEGA and APEX).
 
 ### 5.1 Feature Flag Audit (`src/services/flags/`)
+
 - Read the full flag implementation.
 - Identify every feature flag key defined in the codebase (search for flag name strings across
   the entire codebase).
@@ -236,6 +244,7 @@ All API contracts must be documented for consumers (OMEGA and APEX).
 - Add a `src/services/flags/README.md` if absent.
 
 ### 5.2 Telemetry + Sentry Audit (`src/services/telemetry/`, `src/instrumentation.ts`)
+
 - Verify Sentry initialization in `src/instrumentation.ts` only initializes when
   `SENTRY_DSN` is defined (gracefully skips in local dev / test environments).
 - Audit all Sentry `captureException` and `captureMessage` calls across the codebase.
@@ -252,6 +261,7 @@ All API contracts must be documented for consumers (OMEGA and APEX).
   `query`, `message`) are stripped from event data.
 
 ### 5.3 API Contract Documentation
+
 - Create or update `src/app/api/README.md` with a complete table of all routes:
   - Method, path, auth requirement, rate limit, request schema, response shape, error codes.
 - For each route that is missing a `README.md` in its subdirectory, create one.
@@ -260,6 +270,7 @@ All API contracts must be documented for consumers (OMEGA and APEX).
   update the documentation and append to `docs/ENGINEERING_LOG.md`.
 
 ### 5.4 Content Security Policy (CSP)
+
 - Audit the current CSP configuration (look in `next.config.mjs`, middleware headers, or
   any `headers()` configuration).
 - If no CSP is defined, implement a restrictive baseline CSP as a response header set in
@@ -276,6 +287,7 @@ All API contracts must be documented for consumers (OMEGA and APEX).
   justifications.
 
 ### 5.5 CORS Configuration
+
 - Audit CORS headers on all API routes.
 - Verify that no API route responds with `Access-Control-Allow-Origin: *`.
 - Define an explicit allowlist of origins from environment configuration.

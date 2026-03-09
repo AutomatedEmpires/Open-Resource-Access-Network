@@ -56,6 +56,7 @@ This runbook standardizes shift handoffs to prevent context loss, missed risks, 
 ## Validation
 
 Incoming on-call must confirm:
+
 1. Access to required systems.
 2. Understanding of active priorities.
 3. Acknowledgment of open risks.

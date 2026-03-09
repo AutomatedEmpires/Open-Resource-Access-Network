@@ -5,9 +5,11 @@ This document describes the intended import workflow. Parts of it are **Planned*
 ## Implementation Status (Truth Contract)
 
 Implemented today:
+
 - A CSV importer script exists that validates HSDS-ish rows with Zod and produces an error report: db/import/hsds-csv-importer.ts
 
 Planned / not yet implemented:
+
 - Staging inserts/diff/publish wiring (schema exists; app wiring still pending).
 - Diff detection.
 - Admin review UI.
@@ -79,22 +81,26 @@ ORAN accepts HSDS-compliant CSV exports. The minimum required files for a comple
 ## Validation Rules
 
 ### Organization
+
 - `name` required, max 255 chars
 - `url` must be valid URL if present
 - `email` must be valid email format if present
 - `tax_id` format: `XX-XXXXXXX` (EIN format) if present
 
 ### Location
+
 - `organization_id` must reference existing org or staged org in same batch
 - `latitude` must be valid WGS84 latitude (-90 to 90) if present
 - `longitude` must be valid WGS84 longitude (-180 to 180) if present
 
 ### Service
+
 - `name` required, max 255 chars
 - `status` must be one of: `active`, `inactive`, `defunct`
 - `organization_id` must reference existing or staged org
 
 ### Address
+
 - `address_1` required
 - `city` required
 - `state_province` required
@@ -106,6 +112,7 @@ ORAN accepts HSDS-compliant CSV exports. The minimum required files for a comple
 ## Staging Tables (Planned)
 
 Staging tables mirror live tables with additional columns:
+
 - `import_batch_id` — UUID linking rows to an import batch
 - `import_status` — `pending`, `approved`, `rejected`
 - `import_diff` — JSONB diff vs. existing record (if updating)
@@ -117,6 +124,7 @@ Staging tables mirror live tables with additional columns:
 ## Diff Detection (Planned)
 
 For each staged record:
+
 1. Attempt to match to existing record by `id` (if present) or by name+address fuzzy match
 2. If match found: compute field-level diff and store in `import_diff`
 3. If no match: mark as `NEW`

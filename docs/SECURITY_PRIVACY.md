@@ -7,6 +7,7 @@
 This document includes both **Implemented** and **Planned** controls. When this file conflicts with executable behavior, follow docs/SSOT.md.
 
 Implemented today:
+
 - Zod validation at API boundaries for all endpoints (all 34+ API routes).
 - Chat pipeline includes crisis-first gate (before quota and rate limiting), quota/rate limiting logic.
 - Rate limiting on all API routes, including auth endpoints, with `Retry-After` headers on 429 responses.
@@ -21,6 +22,7 @@ Implemented today:
 - DB schema exists in db/migrations/** (including feature_flags and verification_queue).
 
 Planned / not yet enforced end-to-end:
+
 - Comprehensive audit logging with before/after snapshots.
 - Nonce-based CSP to replace `script-src 'unsafe-inline'` (see ADR-0005).
 - Redis-backed rate limiting for multi-instance deployments.
@@ -30,6 +32,7 @@ Planned / not yet enforced end-to-end:
 ORAN uses **Microsoft Entra ID** for identity management via NextAuth.js with the Azure AD provider. Some environments may run without Entra configured.
 
 ### Session Validation
+
 - Implemented: protected UI routes are gated by middleware when Entra is configured (`AZURE_AD_CLIENT_ID`).
 - Implemented: in production, protected routes fail closed if auth is misconfigured or temporarily unavailable (middleware returns 503; API routes return 401).
 - Implemented: protected API routes validate NextAuth.js session server-side via `getAuthContext()`.
@@ -37,6 +40,7 @@ ORAN uses **Microsoft Entra ID** for identity management via NextAuth.js with th
 - Implemented: role checks return HTTP 403 for insufficient permissions.
 
 ### Role Enforcement
+
 - Implemented: middleware extracts JWT via `getToken()` and enforces role-based route-level access via `isRoleAtLeast()`.
 - Implemented: API handlers enforce resource-level permissions via `requireMinRole()`, `requireOrgAccess()`, `requireOrgRole()`.
 - Planned: roles provisioned as Entra ID app roles (currently derived from org memberships).
@@ -57,12 +61,14 @@ ORAN uses **Microsoft Entra ID** for identity management via NextAuth.js with th
 ## PII Handling
 
 ### What ORAN Stores
+
 - Entra Object ID (pseudonymous identifier, not PII by itself)
 - Approximate location preference (city/county level, not precise coordinates)
 - Service category preferences
 - Feedback ratings (no identifying info required)
 
 ### What ORAN Does NOT Store (current implementation)
+
 - Full name (managed by Entra ID)
 - Email address in ORAN DB (managed by Entra ID)
 - Precise GPS coordinates of seekers (see Approximate Location section)
@@ -74,7 +80,9 @@ ORAN uses **Microsoft Entra ID** for identity management via NextAuth.js with th
 > published Privacy Policy.
 
 ### Prohibited Inferences
+
 ORAN explicitly prohibits:
+
 - Inferring immigration status from service queries
 - Inferring health conditions from service categories
 - Profiling users based on chat history
@@ -85,17 +93,24 @@ ORAN explicitly prohibits:
 ## Consent Flows
 
 ### Location Consent
+
 - Approximate location (city/ZIP level) shown to user before use
 - User must explicitly grant or deny location sharing
 - IP-based geolocation: city-level only, never stored
 - Device geolocation: requested only on explicit user action, used in-session only, never stored
 
 ### Profile Save Consent
+
 - Profile saving is **opt-in**, not default
 - Consent toggle clearly labeled: "Save my preferences to improve future results"
+- Signed-in users remain local-only until they explicitly enable cross-device sync
+- Enabling sync performs a best-effort save of current city, locale, and seeker profile context to the authenticated account
+- Disabling sync stops future `/api/profile` writes from the current device without silently deleting existing account data
+- Saved-service bookmarks follow the same device consent boundary: local by default, optional `/api/saved` sync only after cross-device sync is enabled
 - User can delete saved profile at any time via `/profile` → "Delete My Data"
 
 ### Cookie Consent
+
 - Session cookies: required for functionality, no consent prompt needed
 - Analytics cookies: require explicit consent
 - No third-party tracking cookies
@@ -125,6 +140,7 @@ Status: Planned (not yet enforced uniformly in API responses).
 Status: Planned.
 
 Design intent (not yet implemented end-to-end):
+
 - Log write operations with user identifier, action, resource identifiers, and timestamps.
 - Avoid storing raw IP addresses; if needed, store a privacy-preserving digest.
 
@@ -135,28 +151,28 @@ Design intent (not yet implemented end-to-end):
 Status: Implemented.
 
 - Implemented: in-memory sliding-window rate limiting on all API routes, including:
-	- POST /api/chat (via orchestrator, after crisis+quota)
-	- GET /api/search
-	- POST /api/feedback
-	- GET /api/services
-	- GET /api/maps/token
-	- GET/PUT /api/profile
-	- GET/POST/DELETE /api/saved
-	- GET/POST /api/auth/[...nextauth]
-	- All /api/admin/** routes
-	- All /api/community/** routes
-	- All /api/host/** routes
-	- GET/POST /api/admin/scopes (platform scope management)
-	- GET/POST /api/admin/scopes/grants (scope grant requests)
-	- GET/PUT/DELETE /api/admin/scopes/grants/[id] (grant decisions)
-	- GET /api/user/scopes (user scope listing)
-	- GET /api/user/notifications (notification listing)
-	- PUT /api/user/notifications/[id]/read (mark read)
-	- PUT /api/user/notifications/read-all (mark all read)
-	- GET/PUT /api/user/notifications/preferences (notification preferences)
-	- GET/POST /api/admin/appeals (appeal review queue + decisions)
-	- POST/GET /api/submissions/appeal (submit appeal + list own appeals)
-	- POST/GET /api/submissions/report (listing reports; POST allows anonymous, GET requires auth)
+  - POST /api/chat (via orchestrator, after crisis+quota)
+  - GET /api/search
+  - POST /api/feedback
+  - GET /api/services
+  - GET /api/maps/token
+  - GET/PUT /api/profile
+  - GET/POST/DELETE /api/saved
+  - GET/POST /api/auth/[...nextauth]
+  - All /api/admin/** routes
+  - All /api/community/** routes
+  - All /api/host/** routes
+  - GET/POST /api/admin/scopes (platform scope management)
+  - GET/POST /api/admin/scopes/grants (scope grant requests)
+  - GET/PUT/DELETE /api/admin/scopes/grants/[id] (grant decisions)
+  - GET /api/user/scopes (user scope listing)
+  - GET /api/user/notifications (notification listing)
+  - PUT /api/user/notifications/[id]/read (mark read)
+  - PUT /api/user/notifications/read-all (mark all read)
+  - GET/PUT /api/user/notifications/preferences (notification preferences)
+  - GET/POST /api/admin/appeals (appeal review queue + decisions)
+  - POST/GET /api/submissions/appeal (submit appeal + list own appeals)
+  - POST/GET /api/submissions/report (listing reports; POST allows anonymous, GET requires auth)
 - Implemented: all 429 responses include `Retry-After` header with seconds until window reset.
 - Planned: Redis-backed rate limiting for multi-instance deployments.
 
@@ -165,10 +181,12 @@ Status: Implemented.
 ## OWASP Notes
 
 ### Injection Prevention
+
 - Implemented: input validation via Zod before processing.
 - Planned: end-to-end DB execution wiring with consistent parameterization guarantees.
 
 ### Authentication & Authorization
+
 - Implemented: write endpoints require valid Entra ID / NextAuth.js session via `getAuthContext()`.
 - Implemented: role-based access control via `isRoleAtLeast()`, `requireMinRole()`, `requireOrgRole()`.
 - Implemented: scope-based access control via `platform_scopes`, `user_scope_grants`, and two-person approval workflow.
@@ -177,12 +195,15 @@ Status: Implemented.
 - Planned: extend same-origin/CSRF-style protection to any future authenticated write routes that fall outside the current protected prefixes.
 
 ### Sensitive Data Exposure
+
 - All API responses exclude internal scoring detail from seeker-facing endpoints
 - Database connection strings never in client-side code
 - Environment variables validated at startup
 
 ### Security Headers
+
 Configured in `next.config.mjs`:
+
 - `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` (HSTS — enforces HTTPS for 2 years with preload eligibility)
 - `X-Frame-Options: DENY`
 - `X-Content-Type-Options: nosniff`
@@ -190,12 +211,15 @@ Configured in `next.config.mjs`:
 - `Permissions-Policy`: disables camera/mic and other sensitive capabilities by default; allows geolocation for same-origin consent-based flows
 
 Planned:
+
 - Nonce-based `Content-Security-Policy` (see ADR-0005 for current baseline CSP).
 
 Implemented:
+
 - `Content-Security-Policy` with restrictive baseline (see ADR-0005 and `next.config.mjs`).
 
 ### Dependency Management
+
 - Planned: automated security scanning (`npm audit`) in CI.
 - Planned: Dependabot alerts (repository setting).
 

@@ -14,10 +14,12 @@ Complete inventory of all UI routes, access control, and component hierarchy.
 ## Public Entry Routes
 
 ### `/` — Landing / Entry ✅
+
 **Access**: Public
 **Purpose**: Explain ORAN's trust model ("verified records"), route into seeker discovery
 
 Component hierarchy:
+
 ```
 HomePage
 ├── TopBar (ORAN brand + Sign in)
@@ -31,10 +33,12 @@ HomePage
 ## Seeker Routes (public-facing)
 
 ### `/chat` — Chatbot Interface ✅
+
 **Access**: Public (anonymous or authenticated)
 **Purpose**: Primary interface for finding services conversationally
 
 Component hierarchy:
+
 ```
 ChatPage
 └── ChatWindow
@@ -53,10 +57,12 @@ ChatPage
 ```
 
 ### `/map` — Interactive Map ✅
+
 **Access**: Public
 **Purpose**: Geographic browse and filter of services
 
 Component hierarchy:
+
 ```
 MapPage
 ├── SearchBar (text input + submit)
@@ -71,10 +77,12 @@ MapPage
 ```
 
 ### `/directory` — Searchable Directory ✅
+
 **Access**: Public
 **Purpose**: Fast text search + filter of all services
 
 Component hierarchy:
+
 ```
 DirectoryPage
 ├── SearchBar (text input + submit)
@@ -91,10 +99,12 @@ DirectoryPage
 ```
 
 ### `/saved` — Saved Services ✅
+
 **Access**: Public (localStorage-based, no auth required)
 **Purpose**: Bookmarked services stored on-device only (privacy-first)
 
 Component hierarchy:
+
 ```
 SavedPage
 ├── Header (title + Clear All button)
@@ -108,10 +118,12 @@ SavedPage
 ```
 
 ### `/profile` — Seeker Profile ✅
+
 **Access**: Public (localStorage-based, no auth required for local prefs)
 **Purpose**: Manage preferences, view privacy posture, delete local data
 
 Component hierarchy:
+
 ```
 ProfilePage
 ├── ApproximateLocation section (city input, device-only)
@@ -123,10 +135,12 @@ ProfilePage
 ```
 
 ### `/appeal` — Appeal a Decision ✅
+
 **Access**: Authenticated seeker
 **Purpose**: Appeal a service record rejection or flag incorrect data
 
 Component hierarchy:
+
 ```
 AppealPage
 ├── AppealForm
@@ -139,10 +153,12 @@ AppealPage
 ```
 
 ### `/notifications` — Notification Preferences ✅
+
 **Access**: Authenticated seeker
 **Purpose**: Manage notification delivery preferences
 
 Component hierarchy:
+
 ```
 NotificationsPage
 ├── NotificationPrefForm
@@ -154,10 +170,12 @@ NotificationsPage
 ```
 
 ### `/report` — Report a Service ✅
+
 **Access**: Public (anonymous or authenticated)
 **Purpose**: Seeker reports incorrect or misleading service information
 
 Component hierarchy:
+
 ```
 ReportPage
 ├── ReportForm
@@ -174,10 +192,12 @@ ReportPage
 ## Host Routes (organization management)
 
 ### `/claim` — Claim Organization ✅
+
 **Access**: Authenticated
 **Purpose**: Submit organization ownership claim for review
 
 Component hierarchy:
+
 ```
 ClaimPage
 ├── ClaimHeader (title + description)
@@ -194,10 +214,12 @@ ClaimPage
 ```
 
 ### `/org` — Organization Dashboard ✅
+
 **Access**: host_member, host_admin
 **Purpose**: Overview of organization status and pending tasks
 
 Component hierarchy:
+
 ```
 OrgDashboardPage
 ├── OrgHeader (title + "Claim new" link)
@@ -218,10 +240,12 @@ OrgDashboardPage
 ```
 
 ### `/locations` — Location Management ✅
+
 **Access**: host_member (read), host_admin (write)
 **Purpose**: Manage physical and virtual service locations
 
 Component hierarchy:
+
 ```
 LocationsPage
 ├── LocationHeader (title + Add button)
@@ -247,10 +271,12 @@ LocationsPage
 ```
 
 ### `/services` — Service Management ✅
+
 **Access**: host_member (read), host_admin (write)
 **Purpose**: Manage service listings
 
 Component hierarchy:
+
 ```
 ServicesPage
 ├── ServiceHeader (title + Add button)
@@ -276,10 +302,12 @@ ServicesPage
 ```
 
 ### `/admins` — Team Management ✅
+
 **Access**: host_admin only
 **Purpose**: Manage host_member access
 
 Component hierarchy:
+
 ```
 AdminsPage
 ├── TeamHeader (title + description)
@@ -304,10 +332,12 @@ AdminsPage
 ## Community Admin Routes
 
 ### `/queue` — Verification Queue ✅
+
 **Access**: community_admin
 **Purpose**: Review and act on pending verification submissions
 
 Component hierarchy:
+
 ```
 QueuePage
 ├── QueueHeader (title + refresh button)
@@ -329,10 +359,12 @@ QueuePage
 ```
 
 ### `/verify` — Record Verification ✅
+
 **Access**: community_admin
 **Purpose**: Deep-review individual service records and submit decisions
 
 Component hierarchy:
+
 ```
 VerifyPage
 ├── NoEntryState (no ?id= param → link to /queue)
@@ -363,10 +395,12 @@ VerifyPage
 ```
 
 ### `/coverage` (community-admin) — Zone Management ✅
+
 **Access**: community_admin
 **Purpose**: View verification metrics and activity for assigned zone
 
 Component hierarchy:
+
 ```
 CoveragePage
 ├── CoverageHeader (title + refresh button)
@@ -394,23 +428,33 @@ CoveragePage
 ## ORAN Admin Routes
 
 ### `/approvals` — Claim Approvals ✅
+
 **Access**: oran_admin
 **Purpose**: Approve or deny host organization claims
 
 Component hierarchy:
+
 ```
 ApprovalsPage
-└── ApprovalsLayout
-    ├── ClaimTable
-    │   └── ClaimRow (×N)
-    └── ClaimDetailDialog
+├── ApprovalsHeader (counts + refresh)
+├── StatusFilterTabs
+├── EmptyState or ClaimTable
+│   └── ClaimRow (×N)
+│       ├── CardReviewLink (→ /approvals/[id])
+│       └── QuickActionPanel (inline approve or deny controls)
+└── Pagination
+
+/approvals/[id]
+└── ResourceSubmissionWorkspace (shared claim review detail)
 ```
 
 ### `/rules` — Scoring & System Rules ✅
+
 **Access**: oran_admin
 **Purpose**: Configure confidence scoring weights, feature flags
 
 Component hierarchy:
+
 ```
 RulesPage
 └── RulesLayout
@@ -420,10 +464,12 @@ RulesPage
 ```
 
 ### `/audit` — Audit Log ✅
+
 **Access**: oran_admin
 **Purpose**: Full system audit trail
 
 Component hierarchy:
+
 ```
 AuditPage
 └── AuditLayout
@@ -434,10 +480,12 @@ AuditPage
 ```
 
 ### `/zone-management` (oran-admin) — Coverage Zone Admin ✅
+
 **Access**: oran_admin
 **Purpose**: Manage all coverage zones and community admin assignments
 
 Component hierarchy:
+
 ```
 CoveragePage
 └── CoverageAdminLayout
@@ -448,10 +496,12 @@ CoveragePage
 ```
 
 ### `/ingestion` (oran-admin) — Ingestion Job Monitor ✅
+
 **Access**: oran_admin
 **Purpose**: Monitor ingestion pipeline jobs, view extraction status, retry errors
 
 Component hierarchy:
+
 ```
 IngestionPage
 ├── JobTable (status, source URL, extracted fields, confidence)
@@ -467,10 +517,12 @@ IngestionPage
 ```
 
 ### `/scopes` (oran-admin) — Platform Scope Management ✅
+
 **Access**: oran_admin
 **Purpose**: Manage platform scopes and review scope grant requests
 
 Component hierarchy:
+
 ```
 ScopesPage
 ├── ScopeTable

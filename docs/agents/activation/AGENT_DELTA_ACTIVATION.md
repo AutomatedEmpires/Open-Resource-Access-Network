@@ -115,6 +115,7 @@ Before starting any work, read these files in full:
 Nothing else proceeds until this audit is complete and its findings are resolved or itemized.
 
 ### 3.1 Migration Sequence Audit
+
 - Open every file in `db/migrations/` and read them sequentially.
 - Verify: numbering is sequential with no gaps in the non-deprecated files.
 - Verify: every `CREATE TABLE` has a corresponding `PRIMARY KEY`.
@@ -126,6 +127,7 @@ Nothing else proceeds until this audit is complete and its findings are resolved
 - Check `db/README.md` reflects the current migration count and schema summary.
 
 ### 3.2 Drizzle Schema vs. Migration Alignment
+
 - Map every table in `src/db/schema.ts` to its corresponding `CREATE TABLE` in migrations.
 - Every column in the Drizzle schema must match the migration column (name, type, nullability,
   default). Document any mismatch as a finding and resolve it — either correct the schema or
@@ -134,6 +136,7 @@ Nothing else proceeds until this audit is complete and its findings are resolved
 - Verify all `updated_at` trigger-managed columns are properly reflected.
 
 ### 3.3 Domain Types vs. Schema Alignment
+
 - Every table that has a TypeScript domain type in `src/domain/types.ts` must have matching
   field names and types. Mismatches are bugs — fix them.
 - Every enum type in `src/domain/types.ts` must correspond to a defined `CHECK` constraint or
@@ -145,6 +148,7 @@ Nothing else proceeds until this audit is complete and its findings are resolved
   exactly. If they diverge, the code is authoritative and you must update the doc.
 
 ### 3.4 Index + Performance Audit
+
 - For every table that is queried in `src/services/search/` or `src/services/scoring/`,
   verify that columns used in `WHERE`, `ORDER BY`, and `JOIN` conditions have indexes.
 - Specifically verify:
@@ -157,6 +161,7 @@ Nothing else proceeds until this audit is complete and its findings are resolved
 - Document all added indexes in `docs/DATA_MODEL.md` and `docs/ENGINEERING_LOG.md`.
 
 ### 3.5 Update DATA_MODEL.md
+
 - Rewrite `docs/DATA_MODEL.md` to accurately reflect the current schema — every table,
   every column, every relationship. Mark anything that is "planned" but not yet migrated.
 - This document becomes the authoritative reference for all other agents.
@@ -169,6 +174,7 @@ Nothing else proceeds until this audit is complete and its findings are resolved
 The scoring engine must match its specification exactly.
 
 ### 4.1 Ingestion Pipeline Audit (`src/agents/ingestion/`, `src/services/ingestion/`)
+
 - Read the full pipeline code end to end. Map every step to `docs/agents/AGENTS_INGESTION_PIPELINE.md`.
 - For every step not covered by the spec doc, add it to the spec doc.
 - Identify and fix:
@@ -189,6 +195,7 @@ The scoring engine must match its specification exactly.
 - Update `docs/agents/AGENTS_INGESTION_PIPELINE.md` to match actual behavior.
 
 ### 4.2 HSDS CSV Importer (`db/import/hsds-csv-importer.ts`)
+
 - Audit the importer end to end. Verify it handles:
   - Malformed rows without crashing (log and skip, never throw uncaught)
   - Missing required HSDS fields (service name, org name) fail with a clear error
@@ -199,6 +206,7 @@ The scoring engine must match its specification exactly.
   expected output, error log format.
 
 ### 4.3 Scoring Engine (`src/services/scoring/`)
+
 - Read `docs/SCORING_MODEL.md` in full.
 - Audit every scoring dimension defined in the spec against the implementation.
 - For each dimension: verify the weight, the input fields, the normalization, and the clamp.
@@ -217,6 +225,7 @@ The scoring engine must match its specification exactly.
 - Update `docs/SCORING_MODEL.md` to match the actual implementation.
 
 ### 4.4 Geocoding Service (`src/services/geocoding/`)
+
 - Verify the service handles all failure modes:
   - API timeout → log warning, return null (never throw)
   - API rate limit (429) → exponential backoff + retry up to configured max
@@ -238,6 +247,7 @@ The scoring engine must match its specification exactly.
 **Goal**: Local development must be reliable. All documentation must be provably accurate.
 
 ### 5.1 Seed Data (`db/seed/demo.sql`)
+
 - Run against a fresh local DB (via `db/docker-compose.yml`) and verify zero errors.
 - Verify seed data covers all major entity types: organizations, locations, services, programs,
   contacts, service_areas, languages, accessibility features, feature_flags rows.
@@ -248,6 +258,7 @@ The scoring engine must match its specification exactly.
 - If any seed data violates current schema constraints, fix the seed data.
 
 ### 5.2 Migration Hygiene
+
 - Ensure the migration runner (Drizzle) applies migrations in correct order by running
   `npx drizzle-kit migrate` against a clean local DB with zero errors.
 - Verify every migration is idempotent where possible (use `IF NOT EXISTS`, `IF EXISTS`).
@@ -255,6 +266,7 @@ The scoring engine must match its specification exactly.
   how deprecated migrations are handled, how to run migrations locally and in production.
 
 ### 5.3 Documentation Completeness
+
 - Every service under `src/services/db/`, `src/services/ingestion/`, `src/services/scoring/`,
   `src/services/geocoding/` must have a `README.md` covering:
   - Purpose and responsibility

@@ -16,23 +16,31 @@ The migration to the unified `submissions` workflow is **complete and internally
 ## Issues Discovered & Resolutions
 
 ### Issue 1 — RESOLVED (High)
+
 **Community queue claim request key mismatch** (`queueEntryId` vs `submissionId`)
+
 - Fixed in `src/app/(community-admin)/queue/page.tsx`: sends `submissionId`
 - Test updated: `src/app/(community-admin)/__tests__/queue-page.test.tsx`
 
 ### Issue 2 — RESOLVED (High)
+
 **Community verify decision enum mismatch** (`verified/rejected` vs `approved/denied`)
+
 - Fixed in `src/app/(community-admin)/verify/page.tsx`: Decision type, radio values, disabled/hint logic all use `approved/denied`
 - Comment updated: references `submissionId` not `queueEntryId`
 - Test updated: `src/app/(community-admin)/__tests__/verify-page.test.tsx`
 
 ### Issue 3 — RESOLVED (High)
+
 **ORAN admin approvals POST key mismatch** (`queueEntryId` vs `submissionId`)
+
 - Fixed in `src/app/(oran-admin)/approvals/page.tsx`: sends `submissionId`
 - Test updated: `src/app/(oran-admin)/__tests__/approvals-page.test.tsx`
 
 ### Issue 4 — RESOLVED (High)
+
 **UI filters use legacy statuses** (`pending/in_review/verified/rejected`)
+
 - Fixed in all three UI pages: queue, verify, approvals
 - Import changed from `VerificationStatus` → `SubmissionStatus`
 - STATUS_TABS updated: `pending→submitted`, `in_review→under_review`, `verified→approved`, `rejected→denied`
@@ -40,33 +48,45 @@ The migration to the unified `submissions` workflow is **complete and internally
 - Labels standardized across pages (`Submitted`, `Under Review`, `Approved`, `Denied`)
 
 ### Issue 5 — RESOLVED (Medium)
+
 **Lock can remain after failed claim transition**
+
 - Fixed in `src/app/api/community/queue/route.ts`
 - Added `releaseLock()` import and calls in both the advance-failure (409) path and the catch block
 
 ### Issue 6 — RESOLVED (Medium)
+
 **Host claim phone field has no persistence path**
+
 - `src/app/(host)/claim/page.tsx`: added `phone` to submission body
 - `src/app/api/host/claim/route.ts`: added `phone` to Zod schema and `payload` column to INSERT
 
 ### Issue 7 — RESOLVED (Medium)
+
 **DB/app enum drift** (`system` target type; `high` vs `elevated` risk level)
+
 - `src/domain/types.ts`: added `'system'` to `SubmissionTargetType`
 - `src/domain/constants.ts`: added `'system'` to `SUBMISSION_TARGET_TYPES`
 - Created `db/migrations/0023_enum_alignment.sql`: migrates `high` → `elevated` and realigns CHECK constraint
 
 ### Issue 8 — RESOLVED (Medium)
+
 **Ingestion pipeline parallel model not bridged to submissions**
+
 - `src/app/api/admin/ingestion/candidates/[id]/publish/route.ts`: now creates a `submissions` record (`submission_type='service_verification'`, `status='approved'`) when a candidate is published
 - This bridges the ingestion pipeline into the unified submissions workflow for audit/reporting purposes
 - Test updated: `src/app/api/admin/ingestion/__tests__/candidate-actions.test.ts` — added `executeQuery` mock
 
 ### Issue 9 — RESOLVED (Test)
+
 **Test suite unhandled error** (`window is not defined`)
+
 - No longer reproduces. Full suite runs cleanly.
 
 ### DB Inconsistency: Nullable auth for submitted_by_user_id — RESOLVED
+
 **`submitted_by_user_id NOT NULL` vs `authCtx?.userId ?? null`**
+
 - `src/app/api/host/services/route.ts`: POST handler now requires auth unconditionally (the conditional `shouldEnforceAuth()` bypass was removed for the write endpoint since inserting null into a NOT NULL column would 500 anyway)
 - Updated `authCtx?.userId ?? null` → `authCtx.userId` (safe since authCtx is guaranteed non-null)
 - Test updated: `src/app/api/host/__tests__/host-routes.test.ts` — validation test now provides auth context
@@ -84,6 +104,7 @@ Issues caught during self-audit of the first fix pass:
 ## Files Modified
 
 ### Source files
+
 - `src/app/(community-admin)/queue/page.tsx` — SubmissionStatus, submissionId, STATUS_TABS/STYLES
 - `src/app/(community-admin)/verify/page.tsx` — Decision enum, SubmissionStatus, STATUS_STYLES, comment
 - `src/app/(oran-admin)/approvals/page.tsx` — SubmissionStatus, submissionId, STATUS_TABS/STYLES labels
@@ -96,6 +117,7 @@ Issues caught during self-audit of the first fix pass:
 - `src/domain/constants.ts` — `'system'` in SUBMISSION_TARGET_TYPES
 
 ### Test files
+
 - `src/app/(community-admin)/__tests__/queue-page.test.tsx`
 - `src/app/(community-admin)/__tests__/verify-page.test.tsx`
 - `src/app/(oran-admin)/__tests__/approvals-page.test.tsx`
@@ -104,6 +126,7 @@ Issues caught during self-audit of the first fix pass:
 - `src/app/api/host/__tests__/host-routes.test.ts`
 
 ### New files
+
 - `db/migrations/0023_enum_alignment.sql`
 
 ## Final Assessment
@@ -117,6 +140,7 @@ The system is **production-ready for the unified submissions workflow**.
 - Auth is enforced unconditionally on write endpoints that insert into NOT NULL auth columns.
 
 Remaining known items (not bugs):
+
 - `VerificationStatus` type and `LEGACY_STATUS_MAP` remain in domain code for migration compatibility — these are intentionally retained.
 - `VerificationQueueEntry`/`VerificationEvidence` interfaces remain in types.ts — legacy types for backward compatibility.
 - Verify page uses placeholder `reviewerUserId: 'current-user'` — pre-existing, requires auth context integration.
@@ -132,6 +156,7 @@ Date: 2026-03-05 (follow-up pass)
 ### Problem
 
 8 admin/seeker pages independently defined identical or near-identical:
+
 - `STATUS_STYLES` constant (4 duplicate definitions with inconsistent labels)
 - `DEFAULT_STATUS_STYLE` constant (4 duplicate definitions)
 - `StatusBadge` component (3 duplicate definitions)

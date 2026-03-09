@@ -18,9 +18,11 @@ This doc explains where agent code lives, how it is developed independently from
 ## Ingestion Pipeline — Built Inventory
 
 ### 9-stage stateless orchestrator
+
 `SourceCheck → FetchPage → ExtractHtml → LlmExtract → LlmCategorize → Verify → Score → BuildCandidate → RouteToAdmin`
 
 ### Core modules
+
 | Module | Path |
 |---|---|
 | LLM client + Azure OpenAI | `src/agents/ingestion/llm/` |
@@ -38,15 +40,19 @@ This doc explains where agent code lives, how it is developed independently from
 | Domain types + contracts | `src/agents/ingestion/contracts.ts` |
 
 ### Database layer
+
 - 16 Drizzle ORM store implementations under `src/db/`
 - 27 SQL migrations under `db/migrations/`
 
 ### API endpoints (admin)
+
 - `src/app/api/admin/**` — ORAN admin: approvals, audit, rules, zones, ingestion jobs, scopes
 - `src/app/api/community/**` — Community admin: queue, verify, coverage
 
 ### Test coverage
+
 19 test files covering:
+
 - All pipeline stage contracts
 - LLM parser edge cases (missing fields, null values, schema mismatches)
 - Verification check logic

@@ -1,6 +1,6 @@
 # ORAN Roadmap — single Project board (one board for everything)
 
-**Project (ORAN Roadmap):** https://github.com/users/AutomatedEmpires/projects/3
+**Project (ORAN Roadmap):** <https://github.com/users/AutomatedEmpires/projects/3>
 
 This runbook is meant to be “do these two things once, then everything just works.”
 
@@ -15,8 +15,9 @@ If the Action log says “PROJECT_TOKEN cannot access the ORAN Roadmap Project�
 3. Re-run the workflow.
 
 Most common confusion:
+
 - Setting `export GH_TOKEN=...` in your terminal does **nothing** for GitHub Actions.
-- GitHub Actions only reads the repo secret at: https://github.com/AutomatedEmpires/Open-Resource-Access-Network/settings/secrets/actions
+- GitHub Actions only reads the repo secret at: <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/settings/secrets/actions>
 
 ---
 
@@ -41,9 +42,10 @@ You have two options. Use **Option A** if you can; it’s the most “scoped.”
 
 #### Option A (preferred): Fine-grained PAT
 
-Open: https://github.com/settings/personal-access-tokens
+Open: <https://github.com/settings/personal-access-tokens>
 
 Then:
+
 1. Click **Generate new token** → **Fine-grained token**.
 2. **Token name:** `ORAN Project Sync` (anything is fine).
 3. **Expiration:** pick something reasonable (e.g., 90 days) so it rotates.
@@ -63,9 +65,10 @@ Then:
 
 Use this only if fine-grained doesn’t expose Projects permissions for you.
 
-Open: https://github.com/settings/tokens/new
+Open: <https://github.com/settings/tokens/new>
 
 Select scopes:
+
 - `project`
 - plus enough repo scopes to read issues/PRs (often `repo` for private repos, or none for public repos)
 
@@ -88,16 +91,17 @@ If CLI feels annoying: skip this section and just use the workflow run logs — 
 
 - `export GH_TOKEN='<paste token here>'`
 
-2. Run a Projects query (in Codespaces, strip injected tokens so your GH_TOKEN is used):
+1. Run a Projects query (in Codespaces, strip injected tokens so your GH_TOKEN is used):
 
 - `env -u GITHUB_TOKEN gh api graphql -f query='query($id:ID!){ node(id:$id){ __typename ... on ProjectV2 { title } } }' -F id='PVT_kwHODJLGp84BQzJl'`
 
 Expected success output:
+
 - `__typename` is `ProjectV2` and you see a `title`.
 
 If you see an error like “Resource not accessible by personal access token”, the token is missing Projects permission (fix Step 1).
 
-3. Clean up:
+1. Clean up:
 
 - `unset GH_TOKEN`
 
@@ -106,7 +110,8 @@ If you see an error like “Resource not accessible by personal access token”,
 ## Security note (important)
 
 If you ever paste a token into chat, screenshots, or logs, assume it’s compromised.
-- Revoke it immediately: https://github.com/settings/personal-access-tokens
+
+- Revoke it immediately: <https://github.com/settings/personal-access-tokens>
 - Generate a new one and update `PROJECT_TOKEN` again.
 
 ---
@@ -115,9 +120,10 @@ If you ever paste a token into chat, screenshots, or logs, assume it’s comprom
 
 Open your repo’s Actions secrets page:
 
-- https://github.com/AutomatedEmpires/Open-Resource-Access-Network/settings/secrets/actions
+- <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/settings/secrets/actions>
 
 Then:
+
 1. Click **New repository secret**.
 2. **Name:** `PROJECT_TOKEN`
 3. **Secret:** paste the token from Step 1.
@@ -130,13 +136,13 @@ Then:
 ## Verify it’s working (30 seconds)
 
 1. Open the workflow page:
-   - https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/project-sync.yml
+   - <https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/project-sync.yml>
 2. Click **Run workflow**.
-  - Default mode is `backfill-open` (adds/syncs up to `limit` recently-updated open issues/PRs).
-  - If you want to test one item only, set:
-    - `mode`: `single`
-    - `kind`: `issue` or `pr`
-    - `number`: the issue/PR number
+   - Default mode is `backfill-open` (adds/syncs up to `limit` recently-updated open issues/PRs).
+   - If you want to test one item only, set:
+     - `mode`: `single`
+     - `kind`: `issue` or `pr`
+     - `number`: the issue/PR number
 3. Open an issue, add a label like `status:in-progress`, and confirm:
    - the issue is added to the Project
    - Project **Status** becomes `In progress`
@@ -164,7 +170,7 @@ If it doesn’t update, jump to Troubleshooting below.
 
 The public API available here doesn’t let us create/rename Project views programmatically, so do this once in the UI:
 
-1. Open the Project: https://github.com/users/AutomatedEmpires/projects/3
+1. Open the Project: <https://github.com/users/AutomatedEmpires/projects/3>
 2. Rename the existing view `View 1` → `Table`.
 3. Create a new view → choose **Board**.
 4. In the Board view, set **Group by → Status**.
@@ -194,14 +200,17 @@ That’s it — fields/labels are still automated.
 Workflow file: `.github/workflows/project-sync.yml`
 
 Triggers:
+
 - issue + PR open/edit/label/unlabel/close
 - manual run (`workflow_dispatch`)
 
 What it does:
+
 - Ensures the issue/PR is in the Project.
 - Updates Project fields based on the label prefixes above.
 
 Safety:
+
 - If `PROJECT_TOKEN` is missing, it exits early and does nothing (by design).
 
 ---
@@ -227,7 +236,7 @@ This means the token does not have Projects access.
 - Regenerate `PROJECT_TOKEN` so it has:
   - Fine-grained: **Account permissions → Projects: Read and write**
   - or Classic: scope `project`
-- Make sure the token’s owner can access the Project at https://github.com/users/AutomatedEmpires/projects/3
+- Make sure the token’s owner can access the Project at <https://github.com/users/AutomatedEmpires/projects/3>
 
 ### Codespaces / CLI weirdness (“Resource not accessible by integration”)
 
@@ -237,4 +246,3 @@ Codespaces injects `GITHUB_TOKEN` which can force “integration-like” auth.
 Prefer:
 
 - `env -u GITHUB_TOKEN -u GH_TOKEN gh api graphql ...`
-

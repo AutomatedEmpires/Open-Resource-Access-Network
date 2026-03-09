@@ -21,22 +21,28 @@ Handle Azure Function App failures affecting ingestion, timers, and workflow aut
 ## Triage Steps
 
 1. Check function app state:
-```bash
-az functionapp show --resource-group <rg> --name <func-app> --query state
-```
+
+   ```bash
+   az functionapp show --resource-group <rg> --name <func-app> --query state
+   ```
+
 2. Check logs for startup/runtime errors:
-```bash
-az webapp log tail --resource-group <rg> --name <func-app>
-```
+
+   ```bash
+   az webapp log tail --resource-group <rg> --name <func-app>
+   ```
+
 3. Check queue depths and poison growth.
 4. Confirm critical timer schedules are active (`functions/*/function.json`).
 
 ## Mitigation
 
 1. Restart Function App:
-```bash
-az functionapp restart --resource-group <rg> --name <func-app>
-```
+
+   ```bash
+   az functionapp restart --resource-group <rg> --name <func-app>
+   ```
+
 2. If ingestion pressure is high, pause scheduled crawl temporarily.
 3. If failure follows deployment, rollback function deployment.
 

@@ -9,11 +9,12 @@
 ## Table of Contents
 
 ### Seeker Flows
+
 1. [Chat Search](#1-chat-search)
 2. [Directory Browse](#2-directory-browse)
 3. [Map View](#3-map-view)
 4. [Service Detail — Save/Unsave](#4-service-detail--saveunsave)
-5. [Service Detail — Report Problem (Legacy Dialog)](#5-service-detail--report-problem-legacy-dialog)
+5. [Service Detail — Report Problem Dialog](#5-service-detail--report-problem-dialog)
 6. [Service Detail — Feedback Form](#6-service-detail--feedback-form)
 7. [Report a Listing (Universal Pipeline)](#7-report-a-listing-universal-pipeline)
 8. [Appeal a Denied Submission](#8-appeal-a-denied-submission)
@@ -22,46 +23,53 @@
 11. [Notification Preferences](#11-notification-preferences)
 
 ### Host Flows
-12. [Organization Claim (3-Step Wizard)](#12-organization-claim-3-step-wizard)
-13. [Organization Edit/Delete](#13-organization-editdelete)
-14. [Service Create/Edit/Delete](#14-service-createeditdelete)
-15. [Location Create/Edit/Delete](#15-location-createeditdelete)
-16. [Team Management (Admins)](#16-team-management-admins)
+
+1. [Organization Claim (3-Step Wizard)](#12-organization-claim-3-step-wizard)
+2. [Organization Edit/Delete](#13-organization-editdelete)
+3. [Service Create/Edit/Delete](#14-service-createeditdelete)
+4. [Location Create/Edit/Delete](#15-location-createeditdelete)
+5. [Team Management (Admins)](#16-team-management-admins)
 
 ### Community Admin Flows
-17. [Verification Queue — Claim](#17-verification-queue--claim)
-18. [Verification — Review & Decide](#18-verification--review--decide)
-19. [Coverage Dashboard](#19-coverage-dashboard)
+
+1. [Verification Queue — Claim](#17-verification-queue--claim)
+2. [Verification — Review & Decide](#18-verification--review--decide)
+3. [Coverage Dashboard](#19-coverage-dashboard)
 
 ### ORAN Admin Flows
-20. [Org Claim Approvals](#20-org-claim-approvals)
-21. [Appeal Decisions](#21-appeal-decisions)
-22. [Scope Management](#22-scope-management)
-23. [Scope Grant — Two-Person Approval](#23-scope-grant--two-person-approval)
-24. [Zone Management](#24-zone-management)
-25. [Feature Flags / Rules](#25-feature-flags--rules)
-26. [Audit Trail](#26-audit-trail)
-27. [Ingestion Pipeline](#27-ingestion-pipeline)
+
+1. [Org Claim Approvals](#20-org-claim-approvals)
+2. [Appeal Decisions](#21-appeal-decisions)
+3. [Scope Management](#22-scope-management)
+4. [Scope Grant — Two-Person Approval](#23-scope-grant--two-person-approval)
+5. [Zone Management](#24-zone-management)
+6. [Feature Flags / Rules](#25-feature-flags--rules)
+7. [Audit Trail](#26-audit-trail)
+8. [Ingestion Pipeline](#27-ingestion-pipeline)
 
 ### Cross-Cutting Systems
-28. [Workflow Engine](#28-workflow-engine)
-29. [Notification Service](#29-notification-service)
-30. [SLA Enforcement](#30-sla-enforcement)
-31. [Crisis Detection](#31-crisis-detection)
+
+1. [Workflow Engine](#28-workflow-engine)
+2. [Notification Service](#29-notification-service)
+3. [SLA Enforcement](#30-sla-enforcement)
+4. [Crisis Detection](#31-crisis-detection)
 
 ### Gap Analysis
-32. [Unified Gap List](#32-unified-gap-list)
+
+1. [Unified Gap List](#32-unified-gap-list)
 
 ---
 
 ## 1. Chat Search
 
 ### How do I find it?
+
 - Top nav → **Chat** (`/chat`)
 - Landing page CTA → "Chat with ORAN"
 - Always visible in `AppNav` for all users (no auth required)
 
 ### What do I see?
+
 - `ChatPageClient.tsx` → `ChatWindow.tsx`
 - Message input at bottom, conversation history above
 - Suggestion chips for first-time users (pre-fill prompts)
@@ -96,18 +104,22 @@ UI renders ServiceCards with Save + Feedback buttons
 ```
 
 ### Where does data go?
+
 - Messages are NOT persisted to the database
 - `sessionId` stored in `sessionStorage` key `oran_chat_session_id`
 - Feedback on results goes to `seeker_feedback` table (see [§6](#6-service-detail--feedback-form))
 
 ### Who gets notified?
+
 - Nobody — this is a read-only search operation
 
 ### Return communication
+
 - Inline results in the chat window
 - Crisis banner if triggered (non-dismissible)
 
 ### Gaps
+
 - ❌ No message history persistence (by design for privacy)
 - ❌ No per-message feedback — feedback is per-service-card only
 
@@ -116,11 +128,13 @@ UI renders ServiceCards with Save + Feedback buttons
 ## 2. Directory Browse
 
 ### How do I find it?
+
 - Top nav → **Directory** (`/directory`)
 - Landing page CTA
 - No auth required
 
 ### What do I see?
+
 - Search input + category filters + pagination
 - Grid of `ServiceCard` components
 - Each card has: name, org, description, status, "Save" button, "Feedback" toggle, "Report" button
@@ -149,9 +163,11 @@ UI renders paginated ServiceCard grid
 ```
 
 ### Where does data go?
+
 - Read-only — no writes
 
 ### Gaps
+
 - None — clean discovery interface
 
 ---
@@ -159,15 +175,18 @@ UI renders paginated ServiceCard grid
 ## 3. Map View
 
 ### How do I find it?
+
 - Top nav → **Map** (`/map`)
 - Gated by `map_enabled` feature flag
 
 ### What do I see?
+
 - `MapContainer` component with interactive map
 - Service pins based on location data
 - Click pin → service detail popup
 
 ### What do I fill in?
+
 - Pan/zoom/click — no form fields
 - Optional: location filter (bbox sent as query params)
 
@@ -179,6 +198,7 @@ Map token → GET /api/maps/token (if external map provider)
 ```
 
 ### Gaps
+
 - ❌ Feature-flagged — may not be visible to all users
 
 ---
@@ -186,10 +206,12 @@ Map token → GET /api/maps/token (if external map provider)
 ## 4. Service Detail — Save/Unsave
 
 ### How do I find it?
+
 - Click any service card (directory, chat, map) → `/service/[id]`
 - Direct URL with service UUID
 
 ### What do I see?
+
 - `ServiceDetailClient.tsx`
 - Full service info: name, org, description, phones, hours, locations, eligibility, accessibility, languages
 - **Save/Unsave** heart/bookmark button
@@ -220,10 +242,12 @@ Button toggles back to "Save" state
 ```
 
 ### Where does data go?
+
 - `localStorage` key `oran:saved-service-ids` (always)
 - `saved_services` table (authenticated users only)
 
 ### Gaps
+
 - ⚠️ Dual storage (localStorage + DB) means sync can drift if user clears browser data
 
 ---
@@ -231,11 +255,13 @@ Button toggles back to "Save" state
 ## 5. Service Detail — Report Problem Dialog
 
 ### How do I find it?
+
 - Service detail page → **"Report a problem"** button
 - Service card in directory → inline **"Report"** button
 - No auth required
 
 ### What do I see?
+
 - `ReportProblemDialog.tsx` — modal dialog
 - Grid of 9 radio-button reason types
 - Required details textarea (min 5 chars)
@@ -271,22 +297,27 @@ UI: Green celebration box "Thank you for your report!"
 ```
 
 ### Where does data go?
+
 - ✅ `submissions` table (type='community_report') — universal pipeline
 - ✅ `submission_transitions` (draft → submitted)
 - ✅ `notification_events` — all admins notified
 - ✅ `submission_slas` — deadline applied
 
 ### Who gets notified?
+
 - ✅ All community_admin and oran_admin users via `notification_events`
 - ✅ Email dispatch via Azure Communication Services (when configured + user preference enabled)
 
 ### Review path
+
 - Submission appears in `/community/queue` AND admins are notified immediately
 
 ### Return communication
+
 - ❌ No notification to reporter on outcome (same issue as anonymous reports — M2)
 
 ### Legacy endpoint
+
 - The old `/api/reports` endpoint is **deprecated** (marked 2026-03-05) and archived at `docs/_archive/2026-03/legacy-api/reports_route.ts`
 - It is no longer called by any UI component
 - ✅ **GAP C1: RESOLVED** — ReportProblemDialog migrated to modern endpoint with full notification pipeline
@@ -296,12 +327,14 @@ UI: Green celebration box "Thank you for your report!"
 ## 6. Service Detail — Feedback Form
 
 ### How do I find it?
+
 - Service detail page → **"Give feedback"** toggle
 - Chat service card → **"Feedback"** link
 - Directory card → **"Give feedback"** button
 - No auth required
 
 ### What do I see?
+
 - `FeedbackForm.tsx` — inline expandable panel (not a modal)
 - Star rating, contact success toggle, optional comment
 
@@ -333,16 +366,20 @@ UI: Green box "Thank you for your feedback!" → auto-close 2 seconds
 ```
 
 ### Where does data go?
+
 - `seeker_feedback` table
 - `contact_success` field feeds into confidence scoring
 
 ### Who gets notified?
+
 - Nobody directly — feedback aggregates influence confidence scores
 
 ### Return communication
+
 - Inline success message, auto-dismisses after 2 seconds
 
 ### Gaps
+
 - None — clean standalone flow
 
 ---
@@ -350,11 +387,13 @@ UI: Green box "Thank you for your feedback!" → auto-close 2 seconds
 ## 7. Report a Listing (Universal Pipeline)
 
 ### How do I find it?
+
 - Direct URL: `/report?serviceId=<uuid>`
 - **Not linked** in top nav (no AppNav item)
-- Intended entry: service detail page report flow (currently the dialog calls `/api/reports` — see [§5](#5-service-detail--report-problem-legacy-dialog))
+- Intended entry: service detail page report flow (currently the dialog calls `/api/reports` — see [§5](#5-service-detail--report-problem-dialog))
 
 ### What do I see?
+
 - `ReportPageClient.tsx` in `(seeker)/report/`
 - Reason dropdown (10 options), details textarea, optional email
 - "My Reports" section below the form (authenticated users only)
@@ -409,10 +448,12 @@ Report enters community admin queue at /community/queue
 | SLA deadline | `submissions` | `sla_deadline` |
 
 ### Who gets notified?
+
 - ✅ All `community_admin` + `oran_admin` via `notification_events` broadcast
 - Idempotency key: `new_report_{reportId}_{userId}`
 
 ### Review path
+
 1. Community admin sees report in `/community/queue`
 2. Claims it → POST `/api/community/queue` (lock + advance to `under_review`)
 3. Reviews at `/verify?id={submissionId}`
@@ -420,11 +461,13 @@ Report enters community admin queue at /community/queue
 5. Options: approve / deny / escalate / return / pending_second_approval
 
 ### Return communication
+
 - ✅ If authenticated: in-app notification on status change (via `fireStatusChangeNotification()`)
 - ❌ If anonymous: no way to notify (anon_{ip} is not a real user)
 - ❌ `contactEmail` stored but never used for email follow-up
 
 ### Gaps
+
 - ❌ No direct nav link to `/report` in AppNav
 - ❌ Anonymous reporters cannot be notified of outcome
 - ❌ `contactEmail` is captured but unused
@@ -434,11 +477,13 @@ Report enters community admin queue at /community/queue
 ## 8. Appeal a Denied Submission
 
 ### How do I find it?
+
 - Direct URL: `/appeal?submissionId=<uuid>`
 - **Denied submissions picker** on the appeal page (dropdown populated from API)
 - Auth required
 
 ### What do I see?
+
 - `AppealPageClient.tsx`
 - Denied submissions dropdown (fetched from `/api/submissions/denied`)
 - Manual submissionId input (disabled if prefilled from URL)
@@ -492,11 +537,13 @@ My Appeals list refreshes
 | Transition | `submission_transitions` | draft → submitted |
 
 ### Who gets notified?
+
 - ✅ Original reviewer (if the denied submission had `assigned_to_user_id`)
 - ✅ Admin pool broadcast (all community_admin + oran_admin)
 - Idempotency: `appeal_filed_{appealId}` + `new_appeal_{appealId}_{userId}`
 
 ### Review path
+
 1. Admin sees appeal in `/appeals` queue
 2. GET /api/admin/appeals lists appeals with status filter
 3. Admin clicks Review
@@ -509,10 +556,12 @@ My Appeals list refreshes
 7. Lock released on failure/completion
 
 ### Return communication
+
 - ✅ In-app notification to appeal submitter on any decision
 - ✅ Reviewer notes visible in "My Appeals" list
 
 ### Gaps
+
 - ❌ No nav link to `/appeal` in AppNav (user must know about it or go via profile)
 - ⚠️ Reason duplication: stored in both `notes` and `payload.appeal_reason`
 
@@ -521,10 +570,12 @@ My Appeals list refreshes
 ## 9. Saved Services
 
 ### How do I find it?
+
 - Top nav → **Saved** (`/saved`)
 - Always visible in AppNav
 
 ### What do I see?
+
 - `SavedPageClient.tsx`
 - Grid of saved service cards
 - Unsave button per card
@@ -556,6 +607,7 @@ Card removed from grid
 ```
 
 ### Gaps
+
 - ⚠️ localStorage / server sync can drift on browser data clear
 
 ---
@@ -563,10 +615,12 @@ Card removed from grid
 ## 10. Profile & Preferences
 
 ### How do I find it?
+
 - Top nav → **Profile** (`/profile`)
 - Always visible in AppNav
 
 ### What do I see?
+
 - `ProfilePageClient.tsx`
 - Approximate city input
 - Language preference dropdown (10 languages)
@@ -608,6 +662,7 @@ UI: Confirmation message
 ```
 
 ### Gaps
+
 - ❌ "Delete all data" only clears localStorage — does NOT delete server-side `user_profiles` or `saved_services` records
 - ❌ No GDPR-style data export
 
@@ -616,10 +671,12 @@ UI: Confirmation message
 ## 11. Notification Preferences
 
 ### How do I find it?
+
 - Profile page → **Notification Preferences** section (auth required)
 - No standalone page
 
 ### What do I see?
+
 - Grid of event types × channels (in_app, email)
 - Toggle switches per cell
 
@@ -653,6 +710,7 @@ Optimistic UI update (toggle moves immediately)
 ```
 
 ### Gaps
+
 - ❌ Email channel is stubbed — toggles are shown but email delivery does not exist
 - ❌ No notification bell/inbox in AppNav — user must go to profile to see preferences
 
@@ -661,11 +719,13 @@ Optimistic UI update (toggle moves immediately)
 ## 12. Organization Claim (3-Step Wizard)
 
 ### How do I find it?
+
 - Host nav → **Claim** (`/claim`)
 - Empty state on `/org` dashboard links to `/claim`
 - Auth required (host_member or above)
 
 ### What do I see?
+
 - 3-step `FormStepper` wizard inside `page.tsx`
 - Unsaved changes guard active
 
@@ -686,6 +746,7 @@ Optimistic UI update (toggle moves immediately)
 | claimNotes | textarea w/ charCount | No | — | 2000 |
 
 ### Step 2 — Review & Submit
+
 - Review card showing all entered values
 - "What happens next?" info box (3-bullet SLA explanation)
 - Submit button
@@ -726,9 +787,11 @@ UI: SuccessCelebration → Link to /org dashboard
 | SLA | `submissions` | `sla_deadline` |
 
 ### Who gets notified?
+
 - ✅ All community_admin + oran_admin via notification_events
 
 ### Review path
+
 1. ORAN admin sees claim in `/approvals` queue
 2. Also appears in `/community/queue` (community admins)
 3. Decision via POST /api/admin/approvals using WorkflowEngine.advance()
@@ -737,9 +800,11 @@ UI: SuccessCelebration → Link to /org dashboard
 6. On deny: submission denied, org/service remain (inactive/orphaned)
 
 ### Return communication
+
 - ✅ Submitter notified via fireStatusChangeNotification() on decision
 
 ### Gaps
+
 - ❌ Phone stored in `payload` JSON — not in `organizations` table. Lost after submission
 - ❌ On denial, org and placeholder service are not cleaned up (orphaned records)
 - ❌ Duplicate pathway: org claims appear in BOTH `/admin/approvals` AND `/community/queue`
@@ -749,6 +814,7 @@ UI: SuccessCelebration → Link to /org dashboard
 ## 13. Organization Edit/Delete
 
 ### How do I find it?
+
 - Host nav → **Organization** (`/org`)
 - Card grid with search + pagination
 - Click **Edit** on any org card → modal
@@ -798,9 +864,11 @@ UI: Card removed from list
 ```
 
 ### Who gets notified?
+
 - Nobody — this is direct CRUD
 
 ### Gaps
+
 - ⚠️ HSDS fields (taxStatus, taxId, yearIncorporated, legalStatus) appear in edit modal UI but may not be persisted by PUT endpoint (need to verify DB columns exist)
 
 ---
@@ -808,6 +876,7 @@ UI: Card removed from list
 ## 14. Service Create/Edit/Delete
 
 ### How do I find it?
+
 - Host nav → **Services** (`/services`)
 - Card grid with search + org filter + pagination
 - Click **Edit** → modal; or **+ Create** button → modal
@@ -854,9 +923,11 @@ UI: Modal closes, list refreshes with new service
 ```
 
 ### Who gets notified?
+
 - ⚠️ No explicit admin notification on service creation — it just appears in queue on next refresh
 
 ### Gaps
+
 - ⚠️ No explicit admin notification on service creation — it just appears in queue on next refresh
 
 ---
@@ -864,6 +935,7 @@ UI: Modal closes, list refreshes with new service
 ## 15. Location Create/Edit/Delete
 
 ### How do I find it?
+
 - Host nav → **Locations** (`/locations`)
 - Card grid with org filter + pagination
 - Click **Edit** → modal; or **+ Create** → modal
@@ -906,6 +978,7 @@ Response: 201 { location }
 ```
 
 ### Gaps
+
 - ⚠️ Coordinates labeled "Approximate, rounded for privacy" but rounding not enforced server-side
 
 ---
@@ -913,10 +986,12 @@ Response: 201 { location }
 ## 16. Team Management (Admins)
 
 ### How do I find it?
+
 - Host nav → **Team** (`/admins`)
 - Requires host_admin role for the org
 
 ### What do I see?
+
 - Org selector (if user has multiple orgs)
 - "Add team member" form
 - Member list with role badges + remove button
@@ -964,6 +1039,7 @@ DELETE /api/host/admins/{memberId}
 ```
 
 ### Gaps
+
 - ❌ Invite by UUID is user-hostile — admins must somehow know the target user's UUID
 - ❌ No email invite flow or username lookup
 
@@ -972,10 +1048,12 @@ DELETE /api/host/admins/{memberId}
 ## 17. Verification Queue — Claim
 
 ### How do I find it?
+
 - Community admin nav → **Queue** (`/queue`)
 - Requires community_admin role
 
 ### What do I see?
+
 - `QueuePageClient.tsx`
 - Status tabs: All / Submitted / Under Review / Approved / Denied / Escalated
 - Table: service name, organization, status badge, submitted date (amber warning if >14 days), assigned reviewer
@@ -1002,6 +1080,7 @@ UI: Status changes to "Under Review", shows reviewer name
 ```
 
 ### Who gets notified?
+
 - ✅ Submitter notified of status change (via fireStatusChangeNotification)
 
 ---
@@ -1009,15 +1088,18 @@ UI: Status changes to "Under Review", shows reviewer name
 ## 18. Verification — Review & Decide
 
 ### How do I find it?
+
 - `/verify?id={submissionId}` — linked from queue table
 - Requires community_admin role
 
 ### What do I see?
+
 - `VerifyPageClient.tsx`
 - **Left column**: Full read-only service detail (org, locations, phones, eligibility, documents, languages, accessibility)
 - **Right column**: Confidence score + decision form
 
 ### Confidence display
+
 - Overall score (0–100) with color indicator
 - Sub-scores: Verification %, Eligibility Match %, Constraint Fit %
 - Last computed timestamp
@@ -1066,6 +1148,7 @@ UI: Status updates, admin redirected to queue
 | pending_second_approval | under_review → pending_second_approval | Two-person gate; notifies other admins |
 
 ### Return communication
+
 - ✅ Submitter notified of status change (if actor ≠ submitter)
 - ✅ On pending_second_approval: broadcast to all community_admin + oran_admin (except actor)
 
@@ -1074,22 +1157,26 @@ UI: Status updates, admin redirected to queue
 ## 19. Coverage Dashboard
 
 ### How do I find it?
+
 - Community admin nav → **Coverage** (`/coverage`)
 - Read-only dashboard — no forms
 
 ### What do I see?
+
 - **7 stat cards**: pending, in-review, verified, rejected, escalated, total, stale (>14 days)
 - **Recent activity table**: daily breakdown of verified/rejected/escalated (past 30 days)
 - **Top organizations needing review**: org name + pending count
 - **Coverage zone map placeholder**: dashed border, not yet implemented
 
 ### Data source
+
 ```
 GET /api/community/coverage
 → { summary, recentActivity[], topOrganizations[] }
 ```
 
 ### Navigation
+
 - Stat cards link to `/queue?status=...` for drill-down
 
 ---
@@ -1097,10 +1184,12 @@ GET /api/community/coverage
 ## 20. Org Claim Approvals
 
 ### How do I find it?
+
 - ORAN admin nav → **Approvals** (`/approvals`)
 - Requires oran_admin role
 
 ### What do I see?
+
 - `ApprovalsPageClient.tsx`
 - Status filter tabs: submitted, under_review, approved, denied
 - Table: organization, claimed by, status, submitted date
@@ -1135,11 +1224,13 @@ UI: Status badge updates, row reflects new state
 ```
 
 ### Two-person approval
+
 - `org_claim` is in `TWO_PERSON_REQUIRED_TYPES`
 - WorkflowEngine enforces: final approver ≠ submitter, final approver ≠ all prior reviewers
 - Gated by `FEATURE_FLAGS.TWO_PERSON_APPROVAL`
 
 ### Gaps
+
 - ❌ No lock/claim mechanism — two admins could open the same claim simultaneously
 - ❌ Only approve/deny — no escalate, return, or request-more-info (unlike community queue)
 - ❌ Duplicate pathway: org claims appear in both `/admin/approvals` AND `/community/queue`
@@ -1149,10 +1240,12 @@ UI: Status badge updates, row reflects new state
 ## 21. Appeal Decisions
 
 ### How do I find it?
+
 - ORAN admin nav → **Appeals** (`/appeals`)
 - Requires community_admin or oran_admin role
 
 ### What do I see?
+
 - `AppealsPageClient.tsx`
 - Table: title, status, submitter, assigned to, priority badge
 - Decision panel for each row
@@ -1190,6 +1283,7 @@ Response: 200 { success, fromStatus, toStatus, transitionId }
 ```
 
 ### Return communication
+
 - ✅ Appeal submitter notified of decision (via WorkflowEngine)
 - ✅ Reviewer notes visible in "My Appeals" on appeal page
 
@@ -1198,6 +1292,7 @@ Response: 200 { success, fromStatus, toStatus, transitionId }
 ## 22. Scope Management
 
 ### How do I find it?
+
 - ORAN admin nav → **Scopes** (`/scopes`)
 - Tab 1 of 3: Scopes list + creation
 - Requires oran_admin role
@@ -1229,10 +1324,12 @@ UI: Scope appears in list with risk badge
 ## 23. Scope Grant — Two-Person Approval
 
 ### How do I find it?
+
 - `/scopes` → **Pending Grants** tab (Tab 2)
 - Shows grants awaiting a second person's decision
 
 ### What do I see?
+
 - Table: User ID, Scope, Requested By, Justification, Expires At
 - Expand row → decision form
 
@@ -1263,6 +1360,7 @@ Response: 200 { success }
 ```
 
 ### Gaps
+
 - ❌ Audit log tab (Tab 3) is placeholder (endpoint pending)
 
 ---
@@ -1270,6 +1368,7 @@ Response: 200 { success }
 ## 24. Zone Management
 
 ### How do I find it?
+
 - ORAN admin nav → **Zones** (`/zone-management`)
 - Requires oran_admin role
 
@@ -1295,6 +1394,7 @@ UI: Zone appears/updates in list
 ```
 
 ### Delete flow
+
 ```
 DELETE /api/admin/zones/{id} → removes zone
 ```
@@ -1304,10 +1404,12 @@ DELETE /api/admin/zones/{id} → removes zone
 ## 25. Feature Flags / Rules
 
 ### How do I find it?
+
 - ORAN admin nav → **Rules** (`/rules`)
 - Requires oran_admin role
 
 ### What do I see?
+
 - Card per flag showing name, enabled toggle, rollout percentage
 - Click Edit → inline edit panel
 
@@ -1349,20 +1451,24 @@ UI: Card reflects new state
 ## 26. Audit Trail
 
 ### How do I find it?
+
 - ORAN admin nav → **Audit** (`/audit`)
 - Read-only view (no forms)
 - Requires oran_admin role
 
 ### What do I see?
+
 - `AuditPageClient.tsx`
 - Filters: action type dropdown (9 types), table name input
 - Paginated table: action badge, table, record ID, timestamp
 - Expandable rows: previous data / new data (JSON diff), user ID, IP
 
 ### Action types
+
 `create`, `update`, `delete`, `approve`, `deny`, `escalate`, `login`, `logout`, `flag_change`
 
 ### Data source
+
 ```
 GET /api/admin/audit?page=1&limit=25&action=&tableName=
 → { results: AuditRow[], total, page, hasMore }
@@ -1373,19 +1479,23 @@ GET /api/admin/audit?page=1&limit=25&action=&tableName=
 ## 27. Ingestion Pipeline
 
 ### How do I find it?
+
 - ORAN admin nav → **Ingestion** (`/ingestion`)
 - 4-tab interface, requires oran_admin role
 
 ### Tab 1 — Sources (read-only list)
+
 - Table: displayName, trustLevel badge, domainRules, updatedAt
 - `GET /api/admin/ingestion/sources`
 
 ### Tab 2 — Jobs (read-only list)
+
 - Status filter buttons: All / queued / running / completed / failed / cancelled
 - Table: jobType, status, URLs counts, candidates, errors, timing
 - `GET /api/admin/ingestion/jobs?limit=50&status=X`
 
 ### Tab 3 — Candidates (read-only list)
+
 - Filters: reviewStatus tabs + confidence tier tabs
 - Table: sourceUrl, status, tier, confidenceScore
 - Paginated (limit=20)
@@ -1419,10 +1529,12 @@ Results display as JSON or error alert.
 ## 28. Workflow Engine
 
 ### Location
+
 - `src/services/workflow/engine.ts`
 - Used by: community queue, admin approvals, admin appeals
 
 ### Core function: `advance()`
+
 ```
 advance({ submissionId, toStatus, actorUserId, actorRole, reason?, metadata? })
   ↓
@@ -1443,6 +1555,7 @@ advance({ submissionId, toStatus, actorUserId, actorRole, reason?, metadata? })
 ```
 
 ### State machine
+
 ```
 draft                   → submitted, withdrawn
 submitted               → auto_checking, needs_review, withdrawn
@@ -1474,9 +1587,11 @@ archived                → (terminal)
 ## 29. Notification Service
 
 ### Location
+
 - `src/services/notifications/service.ts`
 
 ### Functions
+
 - `send()` — single notification with idempotency key
 - `broadcast()` — send to multiple recipients
 - `getUnread()` / `listNotifications()` — read inbox
@@ -1484,6 +1599,7 @@ archived                → (terminal)
 - `getPreferences()` / `setPreferences()` — user prefs
 
 ### Channels
+
 - `in_app` — works (stored in notification_events table)
 - `email` — **stubbed** (writes record but no delivery)
 
@@ -1502,12 +1618,14 @@ archived                → (terminal)
 | Scope grant decided | decideGrant() | Requester + admins | Via scope service |
 
 ### Where is the inbox?
+
 - API endpoints exist: `GET /api/user/notifications`, `PUT /api/user/notifications/[id]/read`, `PUT /api/user/notifications/read-all`
 - Bell icon imported in ProfilePageClient (lucide-react)
 - **No standalone inbox page** — notifications are stored but users have no dedicated list view
 - No notification bell in AppNav header
 
 ### Gaps
+
 - ❌ No notification inbox/list UI page
 - ❌ No notification bell in AppNav header
 - ❌ Email delivery stubbed
@@ -1528,6 +1646,7 @@ On submission creation: applySla(submissionId, submissionType, jurisdictionState
 ```
 
 ### Which flows apply SLA?
+
 - ✅ Appeal: `applySla(appealId, 'appeal')`
 - ✅ Report: `applySla(reportId, 'community_report')`
 - ✅ Claim: `applySla(submissionId, 'org_claim')`
@@ -1545,6 +1664,7 @@ checkSlaBreaches() — scheduled or manual
 ```
 
 ### Gaps
+
 - ❌ No pre-breach warning (only fires after breach)
 - ❌ No visible SLA badge in queue UI
 - ❌ `checkSlaBreaches()` must be called externally (no cron/scheduler wired up)
@@ -1554,17 +1674,20 @@ checkSlaBreaches() — scheduled or manual
 ## 31. Crisis Detection
 
 ### How it works
+
 - Hardcoded `CRISIS_KEYWORDS` in `src/domain/constants.ts` (50+ keywords)
 - Checked on every chat message BEFORE any retrieval
 - Examples: "suicide", "suicidal", "kill myself", "self harm", "overdose", "being attacked", "domestic violence", "child abuse", "sleeping outside tonight", "mental breakdown", "withdrawals"
 - All are case-insensitive surface-level matches
 
 ### Response
+
 - Returns immediately: `{ isCrisis: true, crisisResources: { emergency: 911, crisisLine: 988, communityLine: 211 } }`
 - UI shows non-dismissible crisis banner with call links
 - **No further processing** — stops the pipeline
 
 ### Non-negotiable
+
 - This is a safety-critical hard gate per SSOT
 - Must never be disabled by feature flags
 

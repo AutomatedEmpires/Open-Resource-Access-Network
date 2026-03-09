@@ -2,9 +2,6 @@
 
 copilot dont delete - added by owner 03-04-2026!
 
-
-
-
 GitHub Student Dev Pack
 devcycle 1 year student
 dashline premium (6 mos code in email unused)
@@ -73,7 +70,6 @@ namecheap (unused.. )
 Zendesk 6 months
 webflow for startups
 
-
 complete:
 ArcGIS Enterprise (student $100/ yr)
 jetbrains student
@@ -129,7 +125,6 @@ maptitude student (+ code for live training)
 Google skills + 500 or so credit for certs
 Planet labs
 Zendesk 6mos
-
 
 paid subscriptions:
 GitHub copilot pro

@@ -30,4 +30,3 @@ Do NOT paste secrets into chat systems. Prefer storing secrets in Azure Key Vaul
 - Azure portal RG link:
 - Key Vault link:
 - App Service link:
-

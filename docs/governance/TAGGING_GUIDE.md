@@ -51,6 +51,7 @@ Most services have 1-3 delivery methods. Be specific:
 | Goes to encampments | `encampment_services` |
 
 **Example**: A food pantry with drive-through and delivery options:
+
 - ✅ `in_person`, `drive_through`, `delivery_available`
 
 ---
@@ -72,6 +73,7 @@ Be honest and complete. Seekers filter by what they can afford.
 | Free for veterans | `free_for_veterans` |
 
 **Example**: A sliding-scale clinic that takes Medicaid and uninsured patients:
+
 - ✅ `sliding_scale`, `medicaid`, `no_insurance_required`
 
 ---
@@ -97,6 +99,7 @@ Be honest and complete. Seekers filter by what they can afford.
 | Provides transportation | `transportation_provided` |
 
 **Example**: A shelter that requires intake but no ID:
+
 - ✅ `appointment_required`, `no_id_required`, `accepting_new_clients`
 
 ---
@@ -119,6 +122,7 @@ Only claim what you've earned. Don't tag `lgbtq_affirming` without actual traini
 | Serves Indigenous communities | `tribal_native` |
 
 **Example**: An LGBTQ+ youth drop-in center:
+
 - ✅ `lgbtq_affirming`, `youth_focused`, `peer_support`, `trauma_informed`
 
 ---
@@ -142,6 +146,7 @@ Use these tags when you have **specific programming** for a population, not just
 | DACA recipients | `daca` |
 
 **Example**: A job training program for formerly incarcerated women:
+
 - ✅ `reentry`, `gender_specific_women`
 
 ---
@@ -164,6 +169,7 @@ These tags tell seekers: "You're welcome here even if you're dealing with X."
 | Have criminal records | `criminal_record` |
 
 **Example**: A harm reduction service:
+
 - ✅ `substance_use_active`, `no_id_required`, `no_fixed_address`, `harm_reduction`
 
 ---
@@ -188,6 +194,7 @@ This is different from physical accessibility. A counseling service might be in 
 | Low literacy | `learning: low_literacy` |
 
 **Example**: A mental health clinic with ASL and autism accommodations:
+
 - ✅ `disability: deaf`, `disability: autism`, `disability: mental_health`
 
 ---
@@ -207,12 +214,14 @@ This is different from physical accessibility. A counseling service might be in 
 | Pet food | `pet_food` |
 
 Also specify **availability**:
+
 - `always` — Always available
 - `by_request` — Available with advance notice
 - `limited` — When donated/in stock
 - `seasonal` — Seasonal only
 
 **Example**: A food pantry with halal by request and always available vegetarian:
+
 - ✅ `halal (by_request)`, `vegetarian (always)`, `fresh_produce (always)`
 
 ---
@@ -236,6 +245,7 @@ Also specify **availability**:
 ### Step 10: Transit & Parking
 
 **Transit access** (array, select all that apply):
+
 - `bus_stop_nearby`
 - `subway_nearby`
 - `paratransit_accessible`
@@ -243,6 +253,7 @@ Also specify **availability**:
 - `walkable`
 
 **Parking** (select one):
+
 - `yes` — Free parking on-site
 - `street_only` — Street parking only
 - `paid` — Paid parking
@@ -259,29 +270,37 @@ Also specify **availability**:
 ### Tagged as:
 
 **Delivery:**
+
 - `in_person`, `virtual`, `phone`
 
 **Cost:**
+
 - `sliding_scale`, `medicaid`, `no_insurance_required`, `free_for_children`
 
 **Access:**
+
 - `appointment_required`, `no_id_required`, `same_day`, `weekend_hours`, `evening_hours`, `interpreter_on_site`, `online_application`
 
 **Culture:**
+
 - `trauma_informed`, `immigrant_friendly`, `spanish_speaking_staff`, `lgbtq_affirming`, `peer_support`
 
 **Population:**
+
 - `immigrant`, `refugee`, `asylum_seeker`, `daca`, `undocumented_friendly`
 
 **Situation:**
+
 - `mental_health_crisis`, `fleeing_violence`, `language_barrier`
 
 **Service Adaptations:**
+
 - `disability: deaf` (ASL available)
 - `disability: mental_health`
 - `health_condition: substance_use` (co-occurring treatment)
 
 **Location:**
+
 - Accessibility: `wheelchair`, `accessible_restroom`, `elevator`, `service_animals_welcome`
 - Transit: `bus_stop_nearby`, `paratransit_accessible`
 - Parking: `street_only`
@@ -294,19 +313,24 @@ Also specify **availability**:
 ## Common Mistakes to Avoid
 
 ### ❌ Over-tagging
+
 Don't tag what you don't actually provide. If you don't have halal food, don't tag it.
 
 ### ❌ Under-tagging
+
 Don't assume people know. If you're open weekends, tag it explicitly.
 
 ### ❌ Confusing service vs. location accessibility
+
 - **Service adaptation**: "Our counselors can use ASL" → `disability: deaf`
 - **Location accessibility**: "Our building has a ramp" → `wheelchair`
 
 ### ❌ Tagging only aspirational features
+
 Only tag what exists TODAY, not what you plan to add.
 
 ### ❌ Ignoring situational barriers
+
 If you serve unhoused people, tag `no_fixed_address`. Don't make them guess.
 
 ---
@@ -314,10 +338,12 @@ If you serve unhoused people, tag `no_fixed_address`. Don't make them guess.
 ## For LLM Ingestion Agents
 
 If you're an AI agent processing scraped service data, see:
+
 - **Machine-readable taxonomy**: `src/domain/taxonomy.ts`
 - **LLM prompt template**: `src/services/ingestion/tagging-prompt.ts`
 
 The taxonomy file contains all valid tags with descriptions. Use it to:
+
 1. Extract signals from unstructured text
 2. Map to valid ORAN tags
 3. Validate tags before insertion

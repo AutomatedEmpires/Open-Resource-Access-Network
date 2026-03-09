@@ -4,6 +4,8 @@ Start here if you’re new to the repo.
 
 ## Guided experiences
 
+- Investor and partner brief: [docs/INVESTOR_PARTNER_BRIEF.md](INVESTOR_PARTNER_BRIEF.md)
+- Enterprise platform strategy: [docs/platform/ENTERPRISE_EVOLUTION_STRATEGY.md](platform/ENTERPRISE_EVOLUTION_STRATEGY.md)
 - Start-here role lanes: [START_HERE.md](../START_HERE.md)
 - Hackathon onboarding command center: [docs/HACKATHON_ONBOARDING.md](HACKATHON_ONBOARDING.md)
 - Ownership and skills matrix: [docs/OWNERSHIP_SKILLS_MATRIX.md](OWNERSHIP_SKILLS_MATRIX.md)
@@ -16,6 +18,7 @@ Start here if you’re new to the repo.
 
 ## Mission and non-negotiables
 
+- Investor, partner, and collaborator brief: `docs/INVESTOR_PARTNER_BRIEF.md`
 - Vision (what we’re building and why): `docs/VISION.md`
 - SSOT hierarchy (what’s authoritative when things disagree): `docs/SSOT.md`
 - Operating model (how we change safely): `docs/governance/OPERATING_MODEL.md`
@@ -27,6 +30,7 @@ Start here if you’re new to the repo.
 ## Platform and deployment (Azure-first)
 
 - Platform direction SSOT: `docs/platform/PLATFORM_AZURE.md`
+- Enterprise platform strategy: `docs/platform/ENTERPRISE_EVOLUTION_STRATEGY.md`
 - Deployment runbook: `docs/platform/DEPLOYMENT_AZURE.md`
 - Integrations SSOT: `docs/platform/INTEGRATIONS.md`
 - Dev Pack / credits mapping: `docs/platform/INTEGRATION_CATALOG.md`
@@ -38,6 +42,13 @@ Start here if you’re new to the repo.
 - Scoring contract: `docs/SCORING_MODEL.md`
 - Import workflow: `docs/solutions/IMPORT_PIPELINE.md`
 - Security and privacy controls: `docs/SECURITY_PRIVACY.md`
+
+## UI and product shell
+
+- UI / UX contract: `docs/ui/UI_UX_CONTRACT.md`
+- UI shell specification: `docs/ui/UI_SHELL_SPEC.md`
+- UI surface map: `docs/ui/UI_SURFACE_MAP.md`
+- UX flows: `docs/ui/UX_FLOWS.md`
 
 ## Contracts and guarantees
 

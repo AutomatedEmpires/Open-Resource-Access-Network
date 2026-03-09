@@ -1,0 +1,48 @@
+{
+  // ── Line length ────────────────────────────────────────────
+  // Disabled: prose and tables routinely exceed 80 chars.
+  "MD013": false,
+
+  // ── Blank-line spacing (auto-fixable) ──────────────────────
+  "MD012": true,
+  "MD022": true,
+  "MD031": true,
+  "MD032": true,
+
+  // ── Duplicate headings ─────────────────────────────────────
+  // Allow siblings with same text (e.g. repeated "Pros" / "Cons").
+  "MD024": { "siblings_only": true },
+
+  // ── Bare URLs ──────────────────────────────────────────────
+  "MD034": true,
+
+  // ── Inline HTML ────────────────────────────────────────────
+  // Allowed: docs use <details>, <summary>, <br>, etc.
+  "MD033": false,
+
+  // ── First line heading ─────────────────────────────────────
+  // Not all files start with a heading (e.g. reports, notes).
+  "MD041": false,
+
+  // ── Emphasis as heading ────────────────────────────────────
+  // Allowed in doc-style files for visual separation.
+  "MD036": false,
+
+  // ── Table column style ─────────────────────────────────────
+  // Disabled: project uses mixed compact/padded tables across
+  // hundreds of doc and report files. Tables render correctly.
+  "MD060": false,
+
+  // ── Fenced code block language ─────────────────────────────
+  // Disabled: many code blocks intentionally omit language
+  // (plain text, pseudo-code, output examples).
+  "MD040": false,
+
+  // ── Heading trailing punctuation ───────────────────────────
+  // Allow colons in headings (common in doc headers).
+  "MD026": { "punctuation": ".,;!" },
+
+  // ── Ordered list prefix ────────────────────────────────────
+  // Allow both ordered and "1." prefix styles.
+  "MD029": { "style": "one_or_ordered" }
+}

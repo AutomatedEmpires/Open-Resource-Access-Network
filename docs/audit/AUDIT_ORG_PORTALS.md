@@ -42,6 +42,7 @@
 ```ts
 seeker: 0 < host_member: 1 < host_admin: 2 < community_admin: 3 < oran_admin: 4
 ```
+
 Evidence: `src/services/auth/guards.ts` L17–24
 
 **`AuthContext` is well-typed** with `orgIds: string[]` + `orgRoles: Map<string, 'host_member'|'host_admin'>` for per-org granularity.
@@ -50,9 +51,11 @@ Evidence: `src/services/auth/guards.ts` L17–24
 Evidence: `src/app/api/host/organizations/[id]/route.ts` L64–67
 
 **Team management locked** to `host_admin` (not just `host_member`):
+
 ```ts
 if (!requireOrgRole(auth, organizationId, 'host_admin') && !isOranAdmin(auth))
 ```
+
 Evidence: `src/app/api/host/admins/route.ts` L84–86
 
 ### Issues
@@ -313,7 +316,7 @@ This is the most information-dense page in the entire application (767 lines, 20
 | ADM-ZON-1 | **High** | `assigned_user_id` is a free-form UUID input. There's no user picker, no validation that the UUID belongs to a `community_admin`, and no lookup of the user's name. An ORAN admin must paste a UUID with no confirmation of who they're assigning. |
 | ADM-ZON-2 | High | Zone has `name` + `description` but no actual geographic boundary (no polygon, no bounding box, no PostGIS geometry). Coverage zones are purely nominal labels. The system cannot enforce "Community Admin A only sees services in Zone 3." This is the root cause of `COM-COV-1`. |
 | ADM-ZON-3 | Medium | No map visualization for zones. For civic coverage planning, a map showing zone boundaries and their assigned admins is essential. Azure Maps integration exists but is not used here. |
-| ADM-ZON-4 | Low | `status: 'active' | 'inactive'` — no lifecycle explanation. Deactivating a zone while it has assigned items (queue entries, admins) has undocumented side effects. |
+| ADM-ZON-4 | Low | `status: 'active' \| 'inactive'` — no lifecycle explanation. Deactivating a zone while it has assigned items (queue entries, admins) has undocumented side effects. |
 
 ---
 
@@ -376,9 +379,9 @@ This is the most information-dense page in the entire application (767 lines, 20
 | ID | Severity | Finding |
 |----|----------|---------|
 | SEC-1 | **High** | `POST /api/host/claim` unauthenticated path (see `AUTH-1`). |
-| SEC-2 | Medium | `window.location.origin` in client components risks open-redirect scenarios if CSP is not set. Calls like `fetch(\`${window.location.origin}/api/...\`)` should use relative paths (`fetch('/api/...')`). Found in at least `(host)/org/page.tsx`. |
+| SEC-2 | Medium | `window.location.origin` in client components risks open-redirect scenarios if CSP is not set. Calls like `fetch(\`${window.location.origin}/api/...\`)`should use relative paths (`fetch('/api/...')`). Found in at least`(host)/org/page.tsx`. |
 | SEC-3 | Medium | `old_data` / `new_data` in audit log may contain PII (user email, org contact info). The audit GET endpoint is `oran_admin` only but the data lands in the PostgreSQL `audit_logs` table with no field-level redaction. Confirm that PII fields (email, phone) are excluded from `new_data` JSON before storage. |
-| SEC-4 | Low | The `proxy.ts` route patterns use simple string regex without anchoring to specific app-router segment boundaries (e.g., `/^\/(claim|org|...)` could theoretically match `/claim-forms/public` if such a route were added). Patterns should be more specific where possible. |
+| SEC-4 | Low | The `proxy.ts` route patterns use simple string regex without anchoring to specific app-router segment boundaries (e.g., `/^\/(claim\|org\|...)` could theoretically match `/claim-forms/public` if such a route were added). Patterns should be more specific where possible. |
 
 ---
 
@@ -485,7 +488,7 @@ No P0 blocking bugs found.
 
 ### Medium (16 confirmed)
 
-AUTH-2, HOST-ORG-1, HOST-SVC-2, HOST-LOC-3, HOST-ADM-3, HOST-ADM-4, HOST-CLM-1, HOST-CLM-2, COM-Q-1, COM-V-2, COM-V-3, COM-COV-3, ADM-RUL-1, SEC-2, SEC-3, A11Y-3, A11Y-4, FORM-1, FORM-2, FORM-3, FLOW-3, FLOW-4 _(some counted above in High)_
+AUTH-2, HOST-ORG-1, HOST-SVC-2, HOST-LOC-3, HOST-ADM-3, HOST-ADM-4, HOST-CLM-1, HOST-CLM-2, COM-Q-1, COM-V-2, COM-V-3, COM-COV-3, ADM-RUL-1, SEC-2, SEC-3, A11Y-3, A11Y-4, FORM-1, FORM-2, FORM-3, FLOW-3, FLOW-4 *(some counted above in High)*
 
 ---
 
@@ -501,20 +504,20 @@ AUTH-2, HOST-ORG-1, HOST-SVC-2, HOST-LOC-3, HOST-ADM-3, HOST-ADM-4, HOST-CLM-1, 
 
 ### Sprint 2 — Core UX Repair
 
-6. **HOST-ADM-1/2**: Replace UUID invite with email-based invite token flow.
-7. **FORM-2**: Add `react-hook-form` + `zodResolver` to all host forms (at minimum: service, location, claim).
-8. **HOST-SVC-1/HOST-LOC-**: Break 12-field service and 13-field location Dialogs into multi-step forms or dedicated pages with grouped sections.
-9. **SEO-1**: Add `<title>` metadata to all portal layouts.
-10. **ADM-ZON-1/2**: Add PostGIS polygon storage for zones + community_admin user picker for assignment.
+1. **HOST-ADM-1/2**: Replace UUID invite with email-based invite token flow.
+2. **FORM-2**: Add `react-hook-form` + `zodResolver` to all host forms (at minimum: service, location, claim).
+3. **HOST-SVC-1/HOST-LOC-**: Break 12-field service and 13-field location Dialogs into multi-step forms or dedicated pages with grouped sections.
+4. **SEO-1**: Add `<title>` metadata to all portal layouts.
+5. **ADM-ZON-1/2**: Add PostGIS polygon storage for zones + community_admin user picker for assignment.
 
 ### Sprint 3 — Quality of Life
 
-11. **HOST-LOC-2/ADM-ZON-3**: Wire Azure Maps picker for location entry and zone boundary drawing.
-12. **FLOW-4**: Add email/webhook notifications at each flow transition (claim received, approved/denied, service verified).
-13. **COM-V-2**: Add `needs_more_info` decision state to reduce incorrect escalation.
-14. **COM-V-3**: Enforce `notes` required on `rejected`/`escalated` decisions client-side.
-15. **ADM-AUD-3**: Add date range + table_name + user_id filters to audit log.
-16. **FORM-4**: Add draft/autosave state to service and location forms.
+1. **HOST-LOC-2/ADM-ZON-3**: Wire Azure Maps picker for location entry and zone boundary drawing.
+2. **FLOW-4**: Add email/webhook notifications at each flow transition (claim received, approved/denied, service verified).
+3. **COM-V-2**: Add `needs_more_info` decision state to reduce incorrect escalation.
+4. **COM-V-3**: Enforce `notes` required on `rejected`/`escalated` decisions client-side.
+5. **ADM-AUD-3**: Add date range + table_name + user_id filters to audit log.
+6. **FORM-4**: Add draft/autosave state to service and location forms.
 
 ---
 

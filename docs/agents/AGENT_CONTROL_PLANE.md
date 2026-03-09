@@ -32,9 +32,11 @@ This endpoint is ORAN-admin only and returns:
 ### 1. Trust Guardian Operator
 
 Mission:
+
 - protect seekers with crisis-first routing, same-origin write protection, and fail-closed auth
 
 Backed by:
+
 - `src/services/security/contentSafety.ts`
 - `src/proxy.ts`
 - `src/app/api/health/route.ts`
@@ -42,9 +44,11 @@ Backed by:
 ### 2. Resource Alignment Operator
 
 Mission:
+
 - ingest, score, and route verified resources into a defensible civic resource graph
 
 Backed by:
+
 - `src/agents/ingestion/**`
 - `functions/**`
 - `docs/DECISIONS/ADR-0007-hsds-211-federation-canonical-model.md`
@@ -52,9 +56,11 @@ Backed by:
 ### 3. Governance Workbench Operator
 
 Mission:
+
 - keep automation subordinate to accountable human operators with scopes, SLAs, appeals, and approvals
 
 Backed by:
+
 - `src/app/api/admin/**`
 - `src/services/escalation/engine.ts`
 - `docs/governance/OPERATING_MODEL.md`
@@ -62,9 +68,11 @@ Backed by:
 ### 4. Access & Mobility Operator
 
 Mission:
+
 - expand access across geography, language, and interaction mode without bypassing verified records
 
 Backed by:
+
 - `src/services/geocoding/azureMaps.ts`
 - `src/services/i18n/translator.ts`
 - `src/services/tts/azureSpeech.ts`
@@ -72,9 +80,11 @@ Backed by:
 ### 5. Release Observatory Operator
 
 Mission:
+
 - make deployment, health, and telemetry posture continuously inspectable before operators trust a release
 
 Backed by:
+
 - `.github/workflows/deploy-azure-appservice.yml`
 - `.github/workflows/deploy-azure-functions.yml`
 - `src/services/runtime/envContract.ts`

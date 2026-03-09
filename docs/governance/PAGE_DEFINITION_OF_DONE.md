@@ -58,10 +58,12 @@ Use this file as the authoritative checklist in PRs.
 ## F) Testing (required)
 
 Minimums:
+
 - [ ] Non-trivial logic has a unit test (Vitest).
 - [ ] Any modified safety-critical logic has a focused test and doc alignment.
 
 Recommended (when we add tooling):
+
 - [ ] UI interaction test for the page (future: Playwright).
 
 ---

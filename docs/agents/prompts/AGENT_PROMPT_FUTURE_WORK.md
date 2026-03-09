@@ -28,6 +28,7 @@ You are a TypeScript agent for ORAN (Open Resource Access Network). Your scope i
 Currently, all 7 host API routes rely solely on Clerk middleware for auth. They have NO per-user ownership scoping — any authenticated user can CRUD any organization. Fix this.
 
 ### Files to modify:
+
 - `src/app/api/host/claim/route.ts`
 - `src/app/api/host/organizations/route.ts`
 - `src/app/api/host/organizations/[id]/route.ts`
@@ -39,6 +40,7 @@ Currently, all 7 host API routes rely solely on Clerk middleware for auth. They 
 ### Implementation:
 
 1. **Create `src/services/auth/session.ts`** — Helper to extract the authenticated user:
+
    ```ts
    import { auth } from '@clerk/nextjs/server';
 
@@ -50,11 +52,13 @@ Currently, all 7 host API routes rely solely on Clerk middleware for auth. They 
 
    export async function getAuthContext(): Promise<AuthContext | null> { ... }
    ```
+
    - Use `auth()` from Clerk to get the session
    - Look up the user's role and org memberships from the `organization_members` table (created by the SQL agent — table may not exist yet, so gracefully handle that case)
    - If no DB table yet, fall back to Clerk's `publicMetadata.role` or default to `'seeker'`
 
 2. **Create `src/services/auth/guards.ts`** — Route-level authorization checks:
+
    ```ts
    export function requireRole(ctx: AuthContext, ...roles: OranRole[]): boolean
    export function requireOrgAccess(ctx: AuthContext, orgId: string): boolean
@@ -70,6 +74,7 @@ Currently, all 7 host API routes rely solely on Clerk middleware for auth. They 
 4. **Update claim route**: Replace the SHA-256 IP hash in `submitted_by_user_id` with the actual Clerk user ID when available.
 
 ### Pattern to follow:
+
 ```ts
 const authCtx = await getAuthContext();
 if (!authCtx) {
@@ -89,11 +94,14 @@ if (!requireOrgAccess(authCtx, orgId) && !requireRole(authCtx, 'oran_admin')) {
 The `/admins` page exists (`src/app/(host)/admins/page.tsx`) but uses local state. Wire it to the database.
 
 ### Create:
+
 - `src/app/api/host/admins/route.ts` — GET (list members for user's org), POST (invite member)
 - `src/app/api/host/admins/[id]/route.ts` — PUT (change role), DELETE (remove member)
 
 ### Database table: `organization_members`
+
 The SQL agent is creating this table with columns:
+
 - `id` UUID PK
 - `organization_id` UUID FK → organizations
 - `user_id` TEXT (Entra/Clerk ID)
@@ -105,11 +113,13 @@ The SQL agent is creating this table with columns:
 - Standard audit fields
 
 ### Auth rules:
+
 - Only `host_admin` of the same org can invite/remove/change roles
 - `oran_admin` can manage any org's team
 - Cannot remove the last `host_admin` from an org
 
 ### Update the UI page:
+
 - Modify `src/app/(host)/admins/page.tsx` to fetch from `/api/host/admins` instead of local state
 - Wire the invite form to POST
 - Add remove/role-change functionality
@@ -121,25 +131,30 @@ The SQL agent is creating this table with columns:
 Currently all DELETE handlers do hard deletes. Change to soft-delete:
 
 ### For organizations:
+
 - The SQL agent will add `status` column if missing. Use `status = 'defunct'` for deleted orgs.
 - Change DELETE to: `UPDATE organizations SET status = 'defunct', updated_at = now() WHERE id = $1`
 - Filter all GET queries to exclude `WHERE status != 'defunct'` (or `WHERE status = 'active'`)
 - Return 200 with `{ archived: true }` instead of `{ deleted: true }`
 
 ### For services:
+
 - Already has `status` column with 'defunct' value in CHECK constraint
 - Change DELETE to: `UPDATE services SET status = 'defunct' WHERE id = $1`
 
 ### For locations:
+
 - SQL agent may add `status` column. If not present, add `status TEXT DEFAULT 'active'` (coordinate with SQL agent on this)
 - Same soft-delete pattern
 
 ### For organization_members:
+
 - Use `status = 'deactivated'` instead of hard delete
 
 ## Validation Requirements
 
 After completing all changes:
+
 1. `npx tsc --noEmit` — 0 errors (excluding `src/agents`)
 2. `npm run lint` — clean
 3. `npm run test` — all tests pass
@@ -148,6 +163,7 @@ After completing all changes:
 ## Update-on-Touch Rules
 
 After making changes, update:
+
 - `docs/ENGINEERING_LOG.md` — append entry with UTC timestamp
 - `src/app/api/README.md` — add `/api/host/admins` endpoint
 - `docs/ui/UI_SURFACE_MAP.md` — update `/admins` hierarchy if UI changes

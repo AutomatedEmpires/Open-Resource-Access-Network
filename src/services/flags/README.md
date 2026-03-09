@@ -28,6 +28,7 @@ const enabled = await flagService.isEnabled(FEATURE_FLAGS.LLM_SUMMARIZE);
 ## Runtime Semantics
 
 The flag service preserves a few hard guarantees:
+
 - Unknown flag name -> `false`
 - Partial rollout without a subject key -> `false`
 - `llm_summarize` defaults to `false` / 0 %
@@ -43,6 +44,7 @@ record so feature flag changes become attributable.
 ## Seed Data
 
 Flags are seeded in three places:
+
 1. **Migration** (`db/migrations/0000_initial_schema.sql`): `INSERT INTO feature_flags ... ON CONFLICT DO NOTHING`
 2. **Catalog migration** (`db/migrations/0035_feature_flag_catalog.sql`): expands descriptions and backfills the enterprise catalog
 3. **Demo seed** (`db/seed/demo.sql`): Same baseline values for local development

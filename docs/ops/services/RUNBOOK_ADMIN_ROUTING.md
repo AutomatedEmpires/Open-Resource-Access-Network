@@ -68,6 +68,7 @@ ORDER BY c.created_at ASC;
 ### Resolution
 
 1. **Check admin coverage**: Are there any admins with coverage zones overlapping the candidate's location?
+
    ```sql
    SELECT arp.user_id, arp.coverage_states, arp.coverage_counties,
           arp.pending_count, arp.max_pending, arp.is_accepting_new, arp.is_active
@@ -79,6 +80,7 @@ ORDER BY c.created_at ASC;
 2. **If no admins cover the area**:
    - The coverage gap alerting function should have flagged this (daily at 8 AM UTC)
    - Manually assign an ORAN admin:
+
      ```sql
      INSERT INTO candidate_admin_assignments (candidate_id, admin_profile_id, status, sla_deadline)
      SELECT '<candidate-id>', id, 'pending', NOW() + INTERVAL '48 hours'
@@ -89,19 +91,24 @@ ORDER BY c.created_at ASC;
 
 3. **If admins exist but are at capacity**:
    - Check capacity status via the admin capacity API:
+
      ```bash
      curl "https://<web-app>.azurewebsites.net/api/admin/capacity" \
        -H "Authorization: Bearer <admin-token>"
      ```
+
    - Consider temporarily increasing `max_pending` for an ORAN admin:
+
      ```sql
      UPDATE admin_review_profiles SET max_pending = 60 WHERE user_id = '<oran-admin-id>';
      ```
+
    - The auto-capacity scaling may help fast reviewers take on more if they have > 20 completed reviews
 
 4. **If auto-pause triggered**:
    - `shouldToggleAcceptingNew()` pauses admins at capacity and resumes at 80% utilization
    - Check if admins are paused:
+
      ```sql
      SELECT user_id, is_accepting_new, pending_count, max_pending
      FROM admin_review_profiles
@@ -131,12 +138,14 @@ traces
 ### Resolution
 
 The escalation engine handles breaches automatically in tiers:
+
 - T+0h: Notify assignee
 - T+12h: Re-notify assignee + alert org host_admins
 - T+24h: Auto-reassign to next available admin
 - T+48h: Escalate to ORAN admin queue
 
 If breaches persist past T+48h with no resolution:
+
 1. Check if any ORAN admins are active and accepting
 2. Manually review and resolve the oldest breached candidates
 3. Consider onboarding more community admins for the affected areas
@@ -148,6 +157,7 @@ If breaches persist past T+48h with no resolution:
 ### Diagnosis
 
 Check the coverage gap report:
+
 ```bash
 curl -X POST "https://<web-app>.azurewebsites.net/api/internal/coverage-gaps" \
   -H "Authorization: Bearer <INTERNAL_API_KEY>" \
@@ -169,11 +179,13 @@ curl -X POST "https://<web-app>.azurewebsites.net/api/internal/coverage-gaps" \
 If no admin can accept assignments:
 
 1. **Assess scope**: How many candidates are waiting?
+
    ```sql
    SELECT COUNT(*) FROM ingestion_candidates WHERE status = 'pending_review';
    ```
 
 2. **Temporary measure**: Create a temporary ORAN admin profile for a trusted team member
+
    ```sql
    INSERT INTO admin_review_profiles (user_id, role, max_pending, max_in_review, is_active, is_accepting_new, coverage_states)
    VALUES ('<user-id>', 'oran_admin', 50, 20, true, true, ARRAY['*']);

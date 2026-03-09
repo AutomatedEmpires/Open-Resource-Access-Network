@@ -15,11 +15,13 @@ This document is the **system specification** for the ingestion agent(s) that lo
 ### 1) Locate candidates (non-user-facing)
 
 Input examples:
+
 - Curated source lists (official directories, government listings, partner feeds)
 - Manual submissions (staff/partner)
 - Allowed scrapes (allowlist)
 
 Output:
+
 - A **Candidate** record + evidence pointer(s), in a staging area.
 
 ### 2) Fetch evidence (immutable snapshot)
@@ -285,6 +287,7 @@ Every step emits an audit event with:
 The agent should publish state transitions so the admin UI can update in near-real-time.
 
 Recommended pattern:
+
 - DB state tables + status columns
 - Optional: Postgres `LISTEN/NOTIFY` or Service Bus topic for UI workers
 
@@ -293,6 +296,7 @@ Recommended pattern:
 The agent writes ONLY to staging + audit tables unless a human approves publish.
 
 Design intent tables (names are illustrative):
+
 - `import_candidates`
 - `import_evidence`
 - `import_extractions`
@@ -300,6 +304,7 @@ Design intent tables (names are illustrative):
 - `audit_log`
 
 The SQL agent should implement schema + constraints to enforce:
+
 - unique `extractKey`
 - append-only audit log
 - foreign key integrity between candidate/evidence/extraction
@@ -343,6 +348,7 @@ The SQL agent should implement schema + constraints to enforce:
 | `admin_routing_rules` | Maps jurisdictions to admin reviewers |
 
 Key features:
+
 - `extracted_candidates.confidence_tier` is a **generated column** that auto-updates based on `confidence_score`
 - All tables have appropriate indexes for query performance
 - Audit log is append-only with correlation ID linking
@@ -431,12 +437,14 @@ The admin review pipeline extends the ingestion pipeline with capacity-limited r
 #### Key features
 
 **Geographic routing with capacity limits**:
+
 - Each candidate is routed to ~5 closest admins based on jurisdiction
 - Admins have a max pending reviews limit (default: 10)
 - Priority: exact county match > state match > zone match > fallback
 - SQL functions: `find_nearest_admins()`, `assign_candidate_to_admins()`
 
 **Tag confidence colors**:
+
 - Tags extracted with low confidence go to a confirmation queue
 - Color-coded by tier: green (≥80), yellow (60-79), orange (40-59), red (<40)
 - `confidence_color` is a generated column (auto-updates)
@@ -444,17 +452,20 @@ The admin review pipeline extends the ingestion pipeline with capacity-limited r
 - Category + geographic tags always require human confirmation
 
 **Field suggestions (LLM-assisted gap filling)**:
+
 - When fields are missing, the agent stores LLM suggestions
 - Suggestions include: `suggestedValue`, `reasoning`, `evidenceRefs`
 - Admins accept (one click), modify (edit), or reject
 - Never auto-applied; always requires human action
 
 **Field-level provenance (lightweight proof)**:
+
 - Instead of full snapshots, store per-field provenance
 - Includes: `source_url`, `content_hash`, `css_selector`, `extracted_text`
 - Reproducible verification without expensive blob storage
 
 **Publish readiness (deterministic threshold)**:
+
 - `publish_readiness` table tracks all criteria
 - `is_ready_for_publish` is a generated column (auto-computed)
 - Required criteria:
@@ -469,6 +480,7 @@ The admin review pipeline extends the ingestion pipeline with capacity-limited r
 - SQL function: `compute_publish_readiness()`
 
 **Admin decision flow**:
+
 1. Admin sees candidate in their queue (assignment status: `pending`)
 2. Admin claims assignment (status: `pending` → `claimed`)
 3. Admin reviews: confirms tags, accepts field suggestions
@@ -477,6 +489,7 @@ The admin review pipeline extends the ingestion pipeline with capacity-limited r
 6. Live DB feeds seekers + LLM recommendations
 
 **Views for common queries**:
+
 - `v_available_admins` — admins with capacity
 - `v_candidates_ready` — ready for publish
 - `v_pending_tags_by_color` — tag counts by color per candidate
@@ -513,6 +526,7 @@ The ingestion agent **writes to DB**. The chat interface **reads from DB**.
 ```
 
 The chat service queries `verified_service_links` filtered by:
+
 - `service_id` (must be published)
 - `is_verified = true`
 - `is_link_alive = true`

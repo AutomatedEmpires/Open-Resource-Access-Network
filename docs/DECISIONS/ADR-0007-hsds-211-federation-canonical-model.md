@@ -26,8 +26,8 @@ Without an explicit architecture decision, implementation risks splitting into s
 
 `external taxonomy term -> ORAN canonical concept -> ORAN seeker tags and scoring signals`
 
-6. Round-trip fidelity is required. Preserve source identifiers, taxonomy references, and field lineage wherever licensing permits.
-7. No intake path may write directly to canonical entities or live ORAN service rows.
+1. Round-trip fidelity is required. Preserve source identifiers, taxonomy references, and field lineage wherever licensing permits.
+2. No intake path may write directly to canonical entities or live ORAN service rows.
 
 ## Consequences
 

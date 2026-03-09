@@ -72,4 +72,19 @@ describe('retrievalProfile', () => {
       cultureTags: undefined,
     });
   });
+
+  it('preserves browse-compatible attribute filters in chat retrieval queries', () => {
+    const query = buildChatSearchQuery(baseIntent, baseContext, {
+      attributeFilters: {
+        delivery: ['virtual'],
+        access: ['walk_in'],
+      },
+      limit: 5,
+    });
+
+    expect(query.filters.attributeFilters).toEqual({
+      delivery: ['virtual'],
+      access: ['walk_in'],
+    });
+  });
 });

@@ -10,7 +10,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Scale, Send, Loader2, CheckCircle2, ArrowLeft, Clock, FileText, Plus, Trash2 } from 'lucide-react';
+import { Scale, Send, Loader2, CheckCircle2, ArrowLeft, Clock, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 
@@ -18,7 +18,8 @@ import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormField } from '@/components/ui/form-field';
 import { FormAlert } from '@/components/ui/form-alert';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { FormSection } from '@/components/ui/form-section';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import type { SubmissionStatus } from '@/domain/types';
 import { formatDate } from '@/lib/format';
 
@@ -44,7 +45,7 @@ interface DeniedSubmission {
 }
 
 interface EvidenceItem {
-  type: string;
+  type: 'document' | 'screenshot' | 'provider_email' | 'public_notice' | 'other';
   description: string;
   fileUrl: string;
 }
@@ -68,6 +69,14 @@ const STATUS_STYLES: Record<string, { color: string; label: string }> = {
   expired:                { color: 'bg-gray-100 text-gray-500',     label: 'Expired' },
   archived:               { color: 'bg-gray-50 text-gray-400',      label: 'Archived' },
 };
+
+const EVIDENCE_TYPE_OPTIONS: Array<{ value: EvidenceItem['type']; label: string }> = [
+  { value: 'document', label: 'Document' },
+  { value: 'screenshot', label: 'Screenshot' },
+  { value: 'provider_email', label: 'Provider email' },
+  { value: 'public_notice', label: 'Public notice' },
+  { value: 'other', label: 'Other' },
+];
 
 // ============================================================
 // PAGE
@@ -182,9 +191,16 @@ function AppealPageInner() {
     return (
       <main className="container mx-auto max-w-xl px-4 py-8">
         <PageHeader
+          eyebrow="Decision review"
           title="Appeal a Decision"
           icon={<Scale className="h-6 w-6" aria-hidden="true" />}
           subtitle="Submit an appeal for a denied submission to request reconsideration."
+          badges={(
+            <>
+              <PageHeaderBadge tone="trust">Authenticated workflow</PageHeaderBadge>
+              <PageHeaderBadge tone="accent">Evidence-based review</PageHeaderBadge>
+            </>
+          )}
         />
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center">
           <Scale className="h-8 w-8 text-amber-500 mx-auto mb-3" aria-hidden="true" />
@@ -193,7 +209,7 @@ function AppealPageInner() {
             You must be signed in to submit or view appeals.
           </p>
           <Link
-            href="/api/auth/signin"
+            href="/auth/signin?callbackUrl=/appeal"
             className="inline-flex items-center gap-1.5 rounded-md bg-action-base px-4 py-2 text-sm font-medium text-white hover:bg-action-strong"
           >
             Sign in
@@ -216,9 +232,17 @@ function AppealPageInner() {
       </div>
 
       <PageHeader
+        eyebrow="Decision review"
         title="Appeal a Decision"
         icon={<Scale className="h-6 w-6" aria-hidden="true" />}
         subtitle="Submit an appeal for a denied submission to request reconsideration."
+        badges={(
+          <>
+            <PageHeaderBadge tone="trust">Authenticated workflow</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Evidence-based review</PageHeaderBadge>
+            <PageHeaderBadge>{myAppeals.length > 0 ? `${myAppeals.length} appeals on file` : 'No appeals on file'}</PageHeaderBadge>
+          </>
+        )}
       />
 
       {result && (
@@ -234,64 +258,84 @@ function AppealPageInner() {
       {/* Appeal form */}
       {!result?.success && (
         <form onSubmit={handleSubmit} className="space-y-5 mb-8">
-          {/* Denied submissions picker */}
-          {deniedSubmissions.length > 0 && (
-            <FormField id="denied-picker" label="Select a denied submission" hint="Choose the submission you want to appeal">
-              <select
-                id="denied-picker"
+          <FormSection
+            title="Decision to review"
+            description="Select the denied submission you want reviewed again, or paste the submission ID you were given."
+          >
+            {deniedSubmissions.length > 0 && (
+              <FormField id="denied-picker" label="Select a denied submission" hint="Choose the submission you want to appeal">
+                <select
+                  id="denied-picker"
+                  value={submissionId}
+                  onChange={(e) => setSubmissionId(e.target.value)}
+                  aria-label="Select a denied submission to appeal"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                >
+                  <option value="">Select a submission…</option>
+                  {deniedSubmissions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.title ?? s.submission_type} — {formatDate(s.created_at)}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            )}
+
+            <FormField
+              id="submission-id"
+              label="Submission ID"
+              hint="The denied submission you are appealing"
+              error={!isValidUuid && submissionId.trim().length > 0 ? 'Please enter a valid UUID format.' : undefined}
+            >
+              <input
+                id="submission-id"
+                type="text"
                 value={submissionId}
                 onChange={(e) => setSubmissionId(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-              >
-                <option value="">Select a submission…</option>
-                {deniedSubmissions.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.title ?? s.submission_type} — {formatDate(s.created_at)}
-                  </option>
-                ))}
-              </select>
+                disabled={!!prefilledId}
+                required
+                className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                    prefilledId ? 'border-gray-300 bg-gray-50 text-gray-500' : 'border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-action'
+                } ${!isValidUuid && submissionId.trim().length > 0 ? 'border-error-accent ring-1 ring-error-accent' : ''}`}
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              />
             </FormField>
-          )}
 
-          <FormField id="submission-id" label="Submission ID" hint="The denied submission you are appealing">
-            <input
-              id="submission-id"
-              type="text"
-              value={submissionId}
-              onChange={(e) => setSubmissionId(e.target.value)}
-              disabled={!!prefilledId}
-              className={`w-full rounded-lg border px-3 py-2 text-sm ${
-                  prefilledId ? 'border-gray-300 bg-gray-50 text-gray-500' : 'border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-action'
-              } ${!isValidUuid && submissionId.trim().length > 0 ? 'border-error-accent ring-1 ring-error-accent' : ''}`}
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-            />
-            {!isValidUuid && submissionId.trim().length > 0 && (
-              <p className="text-xs text-error-base mt-1">Please enter a valid UUID format</p>
+            {deniedSubmissions.length === 0 && (
+              <p className="text-xs text-gray-500">
+                No denied submissions were found on your account. You can still paste a valid submission ID if support directed you to appeal manually.
+              </p>
             )}
-          </FormField>
+          </FormSection>
 
-          <FormField
-            id="appeal-reason"
-            label="Reason for appeal"
-            hint="Explain why you believe the decision should be reconsidered (min. 10 characters)"
-            charCount={reason.length}
-            maxChars={2000}
+          <FormSection
+            title="Appeal statement"
+            description="Explain why the decision should be reconsidered and what a reviewer should verify."
           >
-            <textarea
+            <FormField
               id="appeal-reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              rows={4}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-              placeholder="Provide details about why this submission should be reconsidered..."
-              maxLength={2000}
-            />
-          </FormField>
+              label="Reason for appeal"
+              hint="Explain why you believe the decision should be reconsidered (min. 10 characters)"
+              charCount={reason.length}
+              maxChars={2000}
+            >
+              <textarea
+                id="appeal-reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={4}
+                required
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+                placeholder="Provide details about why this submission should be reconsidered..."
+                maxLength={2000}
+              />
+            </FormField>
+          </FormSection>
 
-          {/* Evidence upload section */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700">Supporting evidence (optional)</label>
+          <FormSection
+            title="Supporting evidence"
+            description="Optional documents, screenshots, or provider links can help a reviewer verify your appeal faster."
+            action={
               <Button
                 type="button"
                 variant="outline"
@@ -303,9 +347,10 @@ function AppealPageInner() {
                 <Plus className="h-3 w-3" aria-hidden="true" />
                 Add evidence
               </Button>
-            </div>
+            }
+          >
             {evidence.map((item, idx) => (
-              <div key={idx} className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+              <div key={idx} className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-gray-500">Evidence #{idx + 1}</span>
                   <button
@@ -317,23 +362,41 @@ function AppealPageInner() {
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
-                <input
-                  type="text"
-                  value={item.description}
-                  onChange={(e) => updateEvidenceItem(idx, 'description', e.target.value)}
-                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-action"
-                  placeholder="Description of this evidence"
-                />
-                <input
-                  type="url"
-                  value={item.fileUrl}
-                  onChange={(e) => updateEvidenceItem(idx, 'fileUrl', e.target.value)}
-                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-action"
-                  placeholder="URL to document or screenshot (https://...)"
-                />
+                <FormField id={`evidence-${idx}-description`} label={`Evidence ${idx + 1} description`} srOnlyLabel>
+                  <input
+                    aria-label={`Evidence ${idx + 1} description`}
+                    type="text"
+                    value={item.description}
+                    onChange={(e) => updateEvidenceItem(idx, 'description', e.target.value)}
+                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-action"
+                    placeholder="Description of this evidence"
+                  />
+                </FormField>
+                <FormField id={`evidence-${idx}-type`} label={`Evidence ${idx + 1} type`} srOnlyLabel>
+                  <select
+                    aria-label={`Evidence ${idx + 1} type`}
+                    value={item.type}
+                    onChange={(e) => updateEvidenceItem(idx, 'type', e.target.value as EvidenceItem['type'])}
+                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-action"
+                  >
+                    {EVIDENCE_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField id={`evidence-${idx}-url`} label={`Evidence ${idx + 1} URL`} srOnlyLabel>
+                  <input
+                    aria-label={`Evidence ${idx + 1} URL`}
+                    type="url"
+                    value={item.fileUrl}
+                    onChange={(e) => updateEvidenceItem(idx, 'fileUrl', e.target.value)}
+                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-action"
+                    placeholder="URL to document or screenshot (https://...)"
+                  />
+                </FormField>
               </div>
             ))}
-          </div>
+          </FormSection>
 
           <Button
             type="submit"
@@ -358,13 +421,23 @@ function AppealPageInner() {
         </div>
       )}
 
-      {/* My appeals */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-4">
-          <FileText className="h-5 w-5 text-gray-400" aria-hidden="true" />
-          My Appeals
-        </h2>
+      <FormSection
+        title="How appeals are reviewed"
+        description="Appeals are reconsidered using the original submission, reviewer notes, and any supporting evidence you provide."
+        className="mb-8"
+      >
+        <ul className="space-y-2 text-sm text-gray-600">
+          <li>Use the appeal statement to explain what changed or what was missed.</li>
+          <li>Attach only evidence that can be verified by the review team.</li>
+          <li>Approval is not guaranteed and may require additional reviewer follow-up.</li>
+        </ul>
+      </FormSection>
 
+      {/* My appeals */}
+      <FormSection
+        title="My Appeals"
+        description="Track active and prior appeals from the same seeker account."
+      >
         {isLoadingAppeals && (
           <p className="text-sm text-gray-400">Loading…</p>
         )}
@@ -408,7 +481,7 @@ function AppealPageInner() {
             })}
           </div>
         )}
-      </section>
+      </FormSection>
     </main>
   );
 }

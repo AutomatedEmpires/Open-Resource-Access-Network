@@ -62,6 +62,7 @@ const cardFixture = {
     { url: 'https://example.org/more', label: 'More', kind: 'other' as const },
   ],
   eligibilityHint: 'You may qualify based on your county and household size.',
+  matchReasons: ['Offers phone support', 'Does not require ID'],
 };
 
 beforeEach(() => {
@@ -88,6 +89,9 @@ describe('ChatServiceCard interactions', () => {
     expect(screen.getByText('Helping Hands')).toBeInTheDocument();
     expect(screen.getByText('Trust: High')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Call Food Pantry at 555-0100/i })).toHaveAttribute('href', 'tel:555-0100');
+    expect(screen.getByText('Why this may fit')).toBeInTheDocument();
+    expect(screen.getByText('Offers phone support')).toBeInTheDocument();
+    expect(screen.getByText('Does not require ID')).toBeInTheDocument();
 
     const externalLinks = screen.getAllByRole('link').filter((link) =>
       link.getAttribute('href')?.startsWith('https://'),
@@ -97,6 +101,32 @@ describe('ChatServiceCard interactions', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Save this service' }));
     expect(onToggleSave).toHaveBeenCalledWith('svc-1');
+  });
+
+  it('preserves canonical discovery context in detail and report links when provided', () => {
+    render(
+      <ChatServiceCard
+        card={cardFixture}
+        discoveryContext={{
+          text: 'food',
+          needId: 'food_assistance',
+          confidenceFilter: 'HIGH',
+          sortBy: 'name_desc',
+          taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
+          attributeFilters: { delivery: ['virtual'], access: ['walk_in'] },
+          page: 3,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'Food Pantry' })).toHaveAttribute(
+      'href',
+      '/service/svc-1?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=a1000000-4000-4000-8000-000000000001&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%2C%22access%22%3A%5B%22walk_in%22%5D%7D&page=3',
+    );
+    expect(screen.getByRole('link', { name: 'Report data issue' })).toHaveAttribute(
+      'href',
+      '/report?serviceId=svc-1&q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=a1000000-4000-4000-8000-000000000001&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%2C%22access%22%3A%5B%22walk_in%22%5D%7D&page=3',
+    );
   });
 
   it('opens feedback using existing session id and closes back to button state', () => {

@@ -10,7 +10,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Bell, Check, CheckCheck, ExternalLink, Inbox } from 'lucide-react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { FormSection } from '@/components/ui/form-section';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 
 // ============================================================
@@ -126,6 +127,17 @@ export default function NotificationsPageClient() {
   if (isAuthenticated === false) {
     return (
       <main className="container mx-auto max-w-2xl px-4 py-12 text-center">
+        <PageHeader
+          eyebrow="Account activity"
+          title="Notifications"
+          subtitle="Your notification inbox is private to your authenticated seeker account."
+          badges={(
+            <>
+              <PageHeaderBadge tone="trust">Private inbox</PageHeaderBadge>
+              <PageHeaderBadge tone="accent">Account required</PageHeaderBadge>
+            </>
+          )}
+        />
         <Bell className="h-12 w-12 text-gray-300 mx-auto mb-4" aria-hidden="true" />
         <h1 className="text-lg font-semibold text-gray-900 mb-2">Sign in to view notifications</h1>
         <p className="text-sm text-gray-500 mb-4">
@@ -141,135 +153,142 @@ export default function NotificationsPageClient() {
   return (
     <main className="container mx-auto max-w-2xl px-4 py-8">
       <PageHeader
+        eyebrow="Account activity"
         title="Notifications"
         icon={<Bell className="h-6 w-6" aria-hidden="true" />}
         subtitle={unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+        badges={(
+          <>
+            <PageHeaderBadge tone="trust">Private inbox</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Verified workflow links only</PageHeaderBadge>
+            <PageHeaderBadge>{unreadCount > 0 ? `${unreadCount} unread` : 'Up to date'}</PageHeaderBadge>
+          </>
+        )}
       />
 
-      {/* Toolbar */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setFilter('all')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              filter === 'all'
-                ? 'bg-info-subtle text-action-strong'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            All ({total})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter('unread')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              filter === 'unread'
-                ? 'bg-info-subtle text-action-strong'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            Unread ({unreadCount})
-          </button>
-        </div>
-        {unreadCount > 0 && (
-          <button
-            type="button"
-            onClick={markAllRead}
-            className="inline-flex items-center gap-1.5 text-xs text-action-base hover:text-action-deep font-medium"
-          >
-            <CheckCheck className="h-3.5 w-3.5" />
-            Mark all read
-          </button>
-        )}
-      </div>
-
-      {/* List */}
-      {loading && isAuthenticated === null ? (
-        <div className="text-center py-12 text-sm text-gray-400">Loading notifications…</div>
-      ) : notifications.length === 0 ? (
-        <div className="text-center py-12">
-          <Inbox className="h-10 w-10 text-gray-200 mx-auto mb-3" aria-hidden="true" />
-          <p className="text-sm text-gray-400">
-            {filter === 'unread' ? 'No unread notifications.' : 'No notifications yet.'}
-          </p>
-        </div>
-      ) : (
-        <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 bg-white">
-          {notifications.map((n) => (
-            <div
-              key={n.id}
-              className={`px-4 py-3 flex items-start gap-3 transition-colors ${
-                !n.read_at ? 'bg-info-subtle/30' : ''
+      <FormSection
+        title="Inbox"
+        description="Notifications route you back to authenticated workflows and never expose profile details publicly."
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setFilter('all')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                filter === 'all'
+                  ? 'bg-info-subtle text-action-strong'
+                  : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
-              {/* Unread dot */}
-              <div className="mt-1.5 flex-shrink-0">
-                {!n.read_at ? (
-                  <span className="block h-2 w-2 rounded-full bg-action" aria-label="Unread" />
-                ) : (
-                  <span className="block h-2 w-2" />
-                )}
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm ${!n.read_at ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
-                  {n.title}
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">{n.body}</p>
-                <p className="text-[10px] text-gray-400 mt-1">{formatDate(n.created_at)}</p>
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
-                {!n.read_at && (
-                  <button
-                    type="button"
-                    onClick={() => markOneRead(n.id)}
-                    className="p-1.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
-                    aria-label={`Mark "${n.title}" as read`}
-                  >
-                    <Check className="h-4 w-4" />
-                  </button>
-                )}
-                {n.action_url && (
-                  <Link
-                    href={n.action_url}
-                    className="p-1.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
-                    aria-label={`View ${n.title}`}
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </Link>
-                )}
-              </div>
-            </div>
-          ))}
+              All ({total})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilter('unread')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                filter === 'unread'
+                  ? 'bg-info-subtle text-action-strong'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Unread ({unreadCount})
+            </button>
+          </div>
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={markAllRead}
+              className="inline-flex items-center gap-1.5 text-xs text-action-base hover:text-action-deep font-medium"
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+              Mark all read
+            </button>
+          )}
         </div>
-      )}
 
-      {/* Pagination */}
-      {(page > 1 || hasMore) && (
-        <div className="flex items-center justify-between mt-4">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => fetchPage(page - 1, filter)}
-          >
-            Previous
-          </Button>
-          <span className="text-xs text-gray-400">Page {page}</span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!hasMore}
-            onClick={() => fetchPage(page + 1, filter)}
-          >
-            Next
-          </Button>
-        </div>
-      )}
+        {loading && isAuthenticated === null ? (
+          <div className="text-center py-12 text-sm text-gray-400">Loading notifications…</div>
+        ) : notifications.length === 0 ? (
+          <div className="text-center py-12">
+            <Inbox className="h-10 w-10 text-gray-200 mx-auto mb-3" aria-hidden="true" />
+            <p className="text-sm text-gray-400">
+              {filter === 'unread' ? 'No unread notifications.' : 'No notifications yet.'}
+            </p>
+          </div>
+        ) : (
+          <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 bg-white">
+            {notifications.map((n) => (
+              <div
+                key={n.id}
+                className={`px-4 py-3 flex items-start gap-3 transition-colors ${
+                  !n.read_at ? 'bg-info-subtle/30' : ''
+                }`}
+              >
+                <div className="mt-1.5 flex-shrink-0">
+                  {!n.read_at ? (
+                    <span className="block h-2 w-2 rounded-full bg-action" aria-label="Unread" />
+                  ) : (
+                    <span className="block h-2 w-2" />
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm ${!n.read_at ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                    {n.title}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">{n.body}</p>
+                  <p className="text-[10px] text-gray-400 mt-1">{formatDate(n.created_at)}</p>
+                </div>
+
+                <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+                  {!n.read_at && (
+                    <button
+                      type="button"
+                      onClick={() => markOneRead(n.id)}
+                      className="p-1.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
+                      aria-label={`Mark "${n.title}" as read`}
+                    >
+                      <Check className="h-4 w-4" />
+                    </button>
+                  )}
+                  {n.action_url && (
+                    <Link
+                      href={n.action_url}
+                      className="p-1.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
+                      aria-label={`View ${n.title}`}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {(page > 1 || hasMore) && (
+          <div className="flex items-center justify-between mt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => fetchPage(page - 1, filter)}
+            >
+              Previous
+            </Button>
+            <span className="text-xs text-gray-400">Page {page}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!hasMore}
+              onClick={() => fetchPage(page + 1, filter)}
+            >
+              Next
+            </Button>
+          </div>
+        )}
+      </FormSection>
     </main>
   );
 }

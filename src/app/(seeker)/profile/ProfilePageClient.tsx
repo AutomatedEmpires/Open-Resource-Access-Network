@@ -13,7 +13,7 @@
 
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   User, MapPin, Globe, Sun, Moon, Bell, Shield, Bookmark,
@@ -21,39 +21,55 @@ import {
   Phone, Mail, Info,
   UserCheck, Star, Trash2, LogOut, AlertCircle,
 } from 'lucide-react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormField } from '@/components/ui/form-field';
+import { FormSection } from '@/components/ui/form-section';
 import { useToast } from '@/components/ui/toast';
+import { DISCOVERY_NEEDS } from '@/domain/discoveryNeeds';
 import type { NotificationChannel, NotificationEventType } from '@/domain/types';
 import {
   ACCENT_THEME_VALUES,
   EMPTY_SEEKER_PROFILE,
   hasMeaningfulSeekerProfile,
   normalizeSeekerProfile,
+  type AccessibilityNeedId,
+  type AgeGroupId,
+  type CurrentServiceId,
   type DeliveryModeId,
   type DocumentationBarrierId,
+  type HouseholdTypeId,
+  type HousingSituationId,
+  type SelfIdentifierId,
   type ServiceInterestId,
   type SeekerProfile,
   type UrgencyWindowId,
 } from '@/services/profile/contracts';
+import { buildSeekerDiscoveryProfile } from '@/services/profile/discoveryProfile';
+import {
+  clearStoredProfilePreferences,
+  readStoredProfilePreferences,
+  resolveProfileSyncConsent,
+  writeStoredProfilePreferences,
+  type ProfilePreferences as Preferences,
+} from '@/services/profile/syncPreference';
+import {
+  clearStoredSeekerProfile,
+  readStoredSeekerProfile,
+  writeStoredSeekerProfile,
+} from '@/services/profile/clientContext';
+import {
+  readStoredSavedServiceCount,
+  SAVED_SERVICES_UPDATED_EVENT,
+  writeStoredSavedServiceIds,
+} from '@/services/saved/client';
+import { buildDiscoveryHref } from '@/services/search/discovery';
 
 // ============================================================
 // STORAGE KEYS
 // ============================================================
-const PREFS_KEY = 'oran:preferences';
-const SAVED_KEY = 'oran:saved-service-ids';
 const THEME_KEY = 'oran-theme';
-const SEEKER_KEY = 'oran:seeker-context';
-
-// ============================================================
-// TYPES
-// ============================================================
-interface Preferences {
-  approximateCity?: string;
-  language?: string;
-}
 
 interface AccountProfile {
   displayName: string;
@@ -77,25 +93,30 @@ interface ServerProfile {
   seekerProfile: SeekerContext | null;
 }
 
+function hasMeaningfulServerProfile(profile: ServerProfile | null): boolean {
+  if (!profile) return false;
+
+  return Boolean(
+    profile.displayName?.trim() ||
+    profile.phone?.trim() ||
+    profile.preferredLocale?.trim() ||
+    profile.approximateCity?.trim() ||
+    hasMeaningfulSeekerProfile(profile.seekerProfile),
+  );
+}
+
 // ============================================================
 // PROFILE DATA CONSTANTS
 // ============================================================
-const SERVICE_INTEREST_OPTIONS: ReadonlyArray<{ id: ServiceInterestId; label: string; icon: string; color: string }> = [
-  { id: 'food_assistance', label: 'Food', icon: '🍎', color: 'bg-green-50 border-green-200 text-green-800' },
-  { id: 'housing', label: 'Housing', icon: '🏠', color: 'bg-blue-50 border-blue-200 text-blue-800' },
-  { id: 'mental_health', label: 'Mental Health', icon: '🧠', color: 'bg-purple-50 border-purple-200 text-purple-800' },
-  { id: 'healthcare', label: 'Healthcare', icon: '🏥', color: 'bg-red-50 border-red-200 text-red-800' },
-  { id: 'employment', label: 'Employment', icon: '💼', color: 'bg-amber-50 border-amber-200 text-amber-800' },
-  { id: 'childcare', label: 'Childcare', icon: '👶', color: 'bg-pink-50 border-pink-200 text-pink-800' },
-  { id: 'transportation', label: 'Transportation', icon: '🚌', color: 'bg-cyan-50 border-cyan-200 text-cyan-800' },
-  { id: 'legal_aid', label: 'Legal Aid', icon: '⚖️', color: 'bg-indigo-50 border-indigo-200 text-indigo-800' },
-  { id: 'utility_assistance', label: 'Utilities', icon: '💡', color: 'bg-yellow-50 border-yellow-200 text-yellow-800' },
-  { id: 'substance_use', label: 'Substance Use', icon: '🤝', color: 'bg-teal-50 border-teal-200 text-teal-800' },
-  { id: 'domestic_violence', label: 'Safety / DV', icon: '🛡️', color: 'bg-orange-50 border-orange-200 text-orange-800' },
-  { id: 'education', label: 'Education', icon: '📚', color: 'bg-lime-50 border-lime-200 text-lime-800' },
-];
+const SERVICE_INTEREST_OPTIONS: ReadonlyArray<{ id: ServiceInterestId; label: string; icon: string; color: string }> =
+  DISCOVERY_NEEDS.map((need) => ({
+    id: need.id,
+    label: need.label,
+    icon: need.icon,
+    color: need.profileColorClass,
+  }));
 
-const AGE_GROUP_OPTIONS = [
+const AGE_GROUP_OPTIONS: ReadonlyArray<{ id: AgeGroupId; label: string }> = [
   { id: 'under18', label: 'Under 18' },
   { id: '18_24', label: '18–24' },
   { id: '25_54', label: '25–54' },
@@ -104,7 +125,7 @@ const AGE_GROUP_OPTIONS = [
   { id: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
 
-const HOUSEHOLD_TYPE_OPTIONS = [
+const HOUSEHOLD_TYPE_OPTIONS: ReadonlyArray<{ id: HouseholdTypeId; label: string }> = [
   { id: 'single', label: 'Single adult' },
   { id: 'couple', label: 'Couple / partners' },
   { id: 'family_with_children', label: 'Family with children' },
@@ -113,7 +134,7 @@ const HOUSEHOLD_TYPE_OPTIONS = [
   { id: 'other', label: 'Other' },
 ];
 
-const HOUSING_SITUATION_OPTIONS = [
+const HOUSING_SITUATION_OPTIONS: ReadonlyArray<{ id: HousingSituationId; label: string }> = [
   { id: 'housed_stable', label: 'Stably housed' },
   { id: 'at_risk', label: 'At risk of housing loss' },
   { id: 'unhoused', label: 'Currently unhoused' },
@@ -121,7 +142,7 @@ const HOUSING_SITUATION_OPTIONS = [
   { id: 'couch_surfing', label: 'Staying with others temporarily' },
 ];
 
-const SELF_IDENTIFIER_OPTIONS = [
+const SELF_IDENTIFIER_OPTIONS: ReadonlyArray<{ id: SelfIdentifierId; label: string; group: string }> = [
   { id: 'veteran', label: 'Veteran', group: 'identity' },
   { id: 'senior_65plus', label: 'Senior (65+)', group: 'identity' },
   { id: 'disability', label: 'Person with disability', group: 'identity' },
@@ -135,7 +156,7 @@ const SELF_IDENTIFIER_OPTIONS = [
   { id: 'refugee', label: 'Refugee / asylum seeker', group: 'identity' },
 ];
 
-const CURRENT_SERVICES_OPTIONS = [
+const CURRENT_SERVICES_OPTIONS: ReadonlyArray<{ id: CurrentServiceId; label: string }> = [
   { id: 'snap', label: 'SNAP (food stamps)' },
   { id: 'medicaid', label: 'Medicaid / Medi-Cal' },
   { id: 'medicare', label: 'Medicare' },
@@ -149,7 +170,7 @@ const CURRENT_SERVICES_OPTIONS = [
   { id: 'liheap', label: 'LIHEAP (energy assistance)' },
 ];
 
-const ACCESSIBILITY_OPTIONS = [
+const ACCESSIBILITY_OPTIONS: ReadonlyArray<{ id: AccessibilityNeedId; label: string }> = [
   { id: 'wheelchair_access', label: 'Wheelchair accessible' },
   { id: 'hearing_support', label: 'Hearing support / captions' },
   { id: 'vision_support', label: 'Large print / low-vision support' },
@@ -222,34 +243,12 @@ const LANGUAGE_OPTIONS = [
   { code: 'ru', label: 'Русский' },
 ];
 
-// ============================================================
-// STORAGE HELPERS
-// ============================================================
-function readPrefs(): Preferences {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(PREFS_KEY);
-    return raw ? (JSON.parse(raw) as Preferences) : {};
-  } catch { return {}; }
-}
-
-function writePrefs(prefs: Preferences) {
-  if (typeof window === 'undefined') return;
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* quota */ }
-}
-
 function readSeekerContext(): SeekerContext {
-  if (typeof window === 'undefined') return { ...DEFAULT_SEEKER_CONTEXT };
-  try {
-    const raw = localStorage.getItem(SEEKER_KEY);
-    if (!raw) return { ...DEFAULT_SEEKER_CONTEXT };
-    return normalizeSeekerProfile(JSON.parse(raw) as SeekerContext);
-  } catch { return { ...DEFAULT_SEEKER_CONTEXT }; }
+  return readStoredSeekerProfile();
 }
 
 function writeSeekerContext(ctx: SeekerContext) {
-  if (typeof window === 'undefined') return;
-  try { localStorage.setItem(SEEKER_KEY, JSON.stringify(ctx)); } catch { /* quota */ }
+  writeStoredSeekerProfile(ctx);
 }
 
 async function fetchServerProfile(): Promise<ServerProfile | null> {
@@ -314,44 +313,46 @@ interface SectionProps {
 }
 
 function CollapsibleSection({ id, title, subtitle, icon, accentColor, badge, isOpen, onToggle, children }: SectionProps) {
-  return (
-    <section
-      className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-      aria-labelledby={`section-${id}-heading`}
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-gray-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-        aria-expanded={isOpen}
-        aria-controls={`section-${id}-body`}
-      >
-        <div className={`flex-none flex items-center justify-center w-9 h-9 rounded-lg ${accentColor} text-white`}>
-          {icon}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span id={`section-${id}-heading`} className="font-semibold text-gray-900 text-sm">{title}</span>
-            {badge && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
-                <Sparkles className="h-3 w-3" aria-hidden="true" />
-                {badge}
-              </span>
-            )}
-          </div>
-          {subtitle && <p className="text-xs text-gray-500 mt-0.5 truncate">{subtitle}</p>}
-        </div>
-        <div className="flex-none text-gray-400">
-          {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </div>
-      </button>
+  const headingId = `section-${id}-heading`;
+  const subtitleId = subtitle ? `section-${id}-subtitle` : undefined;
 
-      {isOpen && (
-        <div id={`section-${id}-body`} className="px-5 pb-5 border-t border-gray-100 pt-4">
-          {children}
-        </div>
-      )}
-    </section>
+  return (
+    <FormSection
+      className="overflow-hidden p-0 hover:shadow-md transition-shadow"
+      contentClassName="border-t border-gray-100 px-5 pb-5 pt-4"
+      header={
+        <button
+          type="button"
+          onClick={onToggle}
+          className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-gray-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          aria-expanded={isOpen}
+          aria-controls={`section-${id}-body`}
+        >
+          <div className={`flex-none flex items-center justify-center w-9 h-9 rounded-lg ${accentColor} text-white`}>
+            {icon}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span id={headingId} className="font-semibold text-gray-900 text-sm">{title}</span>
+              {badge && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                  <Sparkles className="h-3 w-3" aria-hidden="true" />
+                  {badge}
+                </span>
+              )}
+            </div>
+            {subtitle && <p id={subtitleId} className="text-xs text-gray-500 mt-0.5 truncate">{subtitle}</p>}
+          </div>
+          <div className="flex-none text-gray-400">
+            {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </div>
+        </button>
+      }
+      labelledBy={headingId}
+      describedBy={subtitleId}
+    >
+      {isOpen ? <div id={`section-${id}-body`}>{children}</div> : null}
+    </FormSection>
   );
 }
 
@@ -520,7 +521,7 @@ function NotificationPreferencesSection() {
 // ============================================================
 export default function ProfilePage() {
   // ── State ──────────────────────────────────────────────────
-  const [prefs, setPrefs] = useState<Preferences>(() => readPrefs());
+  const [prefs, setPrefs] = useState<Preferences>(() => readStoredProfilePreferences());
   const [seeker, setSeeker] = useState<SeekerContext>(() => readSeekerContext());
   const [account, setAccount] = useState<AccountProfile>({
     displayName: '',
@@ -528,22 +529,15 @@ export default function ProfilePage() {
     phone: '',
     authProvider: '',
   });
-  const [city, setCity] = useState(() => readPrefs().approximateCity ?? '');
-  const [language, setLanguage] = useState(() => readPrefs().language ?? 'en');
+  const [city, setCity] = useState(() => readStoredProfilePreferences().approximateCity ?? '');
+  const [language, setLanguage] = useState(() => readStoredProfilePreferences().language ?? 'en');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasLoadedServerProfile, setHasLoadedServerProfile] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
-  const [savedCount, setSavedCount] = useState(() => {
-    if (typeof window === 'undefined') return 0;
-    try {
-      const raw = localStorage.getItem(SAVED_KEY);
-      if (raw) { const ids = JSON.parse(raw) as unknown; if (Array.isArray(ids)) return ids.length; }
-    } catch { /* no-op */ }
-    return 0;
-  });
+  const [savedCount, setSavedCount] = useState(() => readStoredSavedServiceCount());
   const [isDark, setIsDark] = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -559,7 +553,30 @@ export default function ProfilePage() {
   );
 
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
+  const shouldSkipNextSeekerSyncRef = useRef(true);
   const { toast } = useToast();
+  const discoveryProfile = useMemo(() => buildSeekerDiscoveryProfile(seeker, { locale: language }), [language, seeker]);
+  const isServerSyncEnabled = isAuthenticated && prefs.serverSyncEnabled === true;
+  const browseDirectoryHref = useMemo(() => {
+    return buildDiscoveryHref('/directory', discoveryProfile.browseState);
+  }, [discoveryProfile.browseState]);
+  const browseChatHref = useMemo(() => buildDiscoveryHref('/chat', discoveryProfile.browseState), [discoveryProfile.browseState]);
+  const browseMapHref = useMemo(() => buildDiscoveryHref('/map', discoveryProfile.browseState), [discoveryProfile.browseState]);
+
+  useEffect(() => {
+    const refreshSavedCount = () => {
+      setSavedCount(readStoredSavedServiceCount());
+    };
+
+    refreshSavedCount();
+    window.addEventListener('storage', refreshSavedCount);
+    window.addEventListener(SAVED_SERVICES_UPDATED_EVENT, refreshSavedCount as EventListener);
+
+    return () => {
+      window.removeEventListener('storage', refreshSavedCount);
+      window.removeEventListener(SAVED_SERVICES_UPDATED_EVENT, refreshSavedCount as EventListener);
+    };
+  }, []);
 
   // ── Hydrate on mount ────────────────────────────────────────
   useEffect(() => {
@@ -567,6 +584,11 @@ export default function ProfilePage() {
     void (async () => {
       const serverProfile = await fetchServerProfile();
       if (serverProfile) {
+        const storedPrefs = readStoredProfilePreferences();
+        const derivedServerSyncEnabled = resolveProfileSyncConsent(
+          storedPrefs,
+          hasMeaningfulServerProfile(serverProfile),
+        );
         setIsAuthenticated(true);
         // Also open notifications and privacy sections for authenticated users
         setOpenSections(prev => new Set([...prev, 'notifications', 'privacy']));
@@ -580,9 +602,13 @@ export default function ProfilePage() {
         });
         setCity(sc);
         setLanguage(sl);
-        const merged = { approximateCity: sc || undefined, language: sl };
+        const merged = {
+          approximateCity: sc || undefined,
+          language: sl,
+          serverSyncEnabled: derivedServerSyncEnabled,
+        };
         setPrefs(merged);
-        writePrefs(merged);
+        writeStoredProfilePreferences(merged);
 
         if (serverProfile.seekerProfile && hasMeaningfulSeekerProfile(serverProfile.seekerProfile)) {
           const normalized = normalizeSeekerProfile(serverProfile.seekerProfile);
@@ -595,14 +621,19 @@ export default function ProfilePage() {
   }, []);
 
   useEffect(() => {
-    if (!isAuthenticated || !hasLoadedServerProfile) return;
+    if (!isAuthenticated || !hasLoadedServerProfile || !prefs.serverSyncEnabled) return;
+
+    if (shouldSkipNextSeekerSyncRef.current) {
+      shouldSkipNextSeekerSyncRef.current = false;
+      return;
+    }
 
     const timeoutId = window.setTimeout(() => {
       void updateServerProfile({ seekerProfile: seeker });
     }, 500);
 
     return () => window.clearTimeout(timeoutId);
-  }, [hasLoadedServerProfile, isAuthenticated, seeker]);
+  }, [hasLoadedServerProfile, isAuthenticated, prefs.serverSyncEnabled, seeker]);
 
   // ── Section toggle ──────────────────────────────────────────
   const toggleSection = useCallback((id: string) => {
@@ -631,7 +662,7 @@ export default function ProfilePage() {
     });
   }, []);
 
-  const toggleAccessibilityNeed = useCallback((id: string) => {
+  const toggleAccessibilityNeed = useCallback((id: AccessibilityNeedId) => {
     setSeeker(prev => {
       const next = prev.accessibilityNeeds.includes(id)
         ? prev.accessibilityNeeds.filter(item => item !== id)
@@ -647,24 +678,46 @@ export default function ProfilePage() {
     const trimmed = city.trim();
     const updated = { ...prefs, approximateCity: trimmed || undefined };
     setPrefs(updated);
-    writePrefs(updated);
-    void updateServerProfile({ approximateCity: trimmed || undefined });
-    toast('success', trimmed ? `Location set to ${trimmed}` : 'Location cleared');
-  }, [city, prefs, toast]);
+    writeStoredProfilePreferences(updated);
+    if (isServerSyncEnabled) {
+      void updateServerProfile({ approximateCity: trimmed || undefined });
+    }
+    toast(
+      'success',
+      trimmed
+        ? isServerSyncEnabled
+          ? `Location set to ${trimmed} and syncing across devices`
+          : `Location set to ${trimmed} on this device`
+        : isServerSyncEnabled
+          ? 'Location cleared and syncing across devices'
+          : 'Location cleared from this device',
+    );
+  }, [city, isServerSyncEnabled, prefs, toast]);
 
   // ── Language save ───────────────────────────────────────────
   const saveLanguage = useCallback((code: string) => {
     setLanguage(code);
     const updated = { ...prefs, language: code };
     setPrefs(updated);
-    writePrefs(updated);
-    void updateServerProfile({ preferredLocale: code });
-    toast('success', `Language set to ${LANGUAGE_OPTIONS.find(l => l.code === code)?.label ?? code}`);
-  }, [prefs, toast]);
+    writeStoredProfilePreferences(updated);
+    if (isServerSyncEnabled) {
+      void updateServerProfile({ preferredLocale: code });
+    }
+    toast(
+      'success',
+      isServerSyncEnabled
+        ? `Language set to ${LANGUAGE_OPTIONS.find(l => l.code === code)?.label ?? code} and syncing across devices`
+        : `Language set to ${LANGUAGE_OPTIONS.find(l => l.code === code)?.label ?? code} on this device`,
+    );
+  }, [isServerSyncEnabled, prefs, toast]);
 
   const saveAccountProfile = useCallback(async () => {
     if (!isAuthenticated) {
       toast('info', 'Sign in to save account details across devices.');
+      return;
+    }
+    if (!prefs.serverSyncEnabled) {
+      toast('info', 'Turn on cross-device sync before saving account details to ORAN.');
       return;
     }
 
@@ -673,7 +726,7 @@ export default function ProfilePage() {
       phone: account.phone.trim() || undefined,
     });
     toast('success', 'Account details updated');
-  }, [account.displayName, account.phone, isAuthenticated, toast]);
+  }, [account.displayName, account.phone, isAuthenticated, prefs.serverSyncEnabled, toast]);
 
   // ── Theme toggle ────────────────────────────────────────────
   const toggleTheme = useCallback((dark: boolean) => {
@@ -687,8 +740,36 @@ export default function ProfilePage() {
   // ── Contact save (local only) ───────────────────────────────
   const saveContact = useCallback(() => {
     writeSeekerContext(seeker);
-    toast('success', isAuthenticated ? 'Contact info saved to this device and your account' : 'Contact info saved on this device');
-  }, [isAuthenticated, seeker, toast]);
+    toast(
+      'success',
+      isServerSyncEnabled ? 'Contact info saved to this device and syncing to your account' : 'Contact info saved on this device',
+    );
+  }, [isServerSyncEnabled, seeker, toast]);
+
+  const toggleServerSync = useCallback(async (enabled: boolean) => {
+    const updated = { ...prefs, serverSyncEnabled: enabled };
+    setPrefs(updated);
+    writeStoredProfilePreferences(updated);
+
+    if (!isAuthenticated) {
+      toast('info', 'Sign in to enable cross-device sync.');
+      return;
+    }
+
+    if (enabled) {
+      await updateServerProfile({
+        approximateCity: city.trim() || undefined,
+        preferredLocale: language,
+        displayName: account.displayName.trim() || undefined,
+        phone: account.phone.trim() || undefined,
+        seekerProfile: seeker,
+      });
+      toast('success', 'Cross-device sync enabled. Your current profile is now saved to your account.');
+      return;
+    }
+
+    toast('info', 'Cross-device sync is now off. Existing account data remains until you delete it.');
+  }, [account.displayName, account.phone, city, isAuthenticated, language, prefs, seeker, toast]);
 
   const updatePassword = useCallback(async () => {
     if (!isAuthenticated) {
@@ -740,9 +821,9 @@ export default function ProfilePage() {
         if (!res.ok) { toast('error', 'Failed to delete server data. Please try again.'); return; }
       } catch { toast('error', 'Failed to delete server data. Please try again.'); return; }
     }
-    localStorage.removeItem(PREFS_KEY);
-    localStorage.removeItem(SAVED_KEY);
-    localStorage.removeItem(SEEKER_KEY);
+    clearStoredProfilePreferences();
+    writeStoredSavedServiceIds([]);
+    clearStoredSeekerProfile();
     setPrefs({});
     setCity('');
     setLanguage('en');
@@ -801,11 +882,23 @@ export default function ProfilePage() {
   return (
     <main className="container mx-auto max-w-2xl px-4 py-8">
       <PageHeader
+        eyebrow="Private seeker profile"
         title="Profile"
         icon={<User className="h-6 w-6" aria-hidden="true" />}
         subtitle={isAuthenticated
-          ? `${account.displayName ? `${account.displayName}, ` : ''}your signed-in profile syncs across ORAN so chat, saved services, and future dashboards can use the same context.`
+          ? isServerSyncEnabled
+            ? `${account.displayName ? `${account.displayName}, ` : ''}your signed-in profile syncs across ORAN so chat, saved services, and future dashboards can use the same context.`
+            : `${account.displayName ? `${account.displayName}, ` : ''}you are signed in, but this profile stays local on this device until you opt in to cross-device sync.`
           : 'Your profile helps ORAN find the most relevant services for you. Signed-out preferences stay on this device.'}
+        badges={(
+          <>
+            <PageHeaderBadge tone="trust">Private by default</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Approximate location only</PageHeaderBadge>
+            <PageHeaderBadge>
+              {isAuthenticated ? (isServerSyncEnabled ? 'Sync enabled' : 'Local-only until you opt in') : 'Local-only until sign-in'}
+            </PageHeaderBadge>
+          </>
+        )}
       />
 
       <ErrorBoundary>
@@ -813,14 +906,30 @@ export default function ProfilePage() {
 
           {/* ── Authenticated banner ─────────────────────────── */}
           {isAuthenticated && (
-            <div className="flex items-start justify-between gap-3 rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">
+            <div
+              className={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+                isServerSyncEnabled
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-amber-200 bg-amber-50 text-amber-900'
+              }`}
+            >
               <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600 flex-none" aria-hidden="true" />
-                <span>{account.displayName ? `${account.displayName}, you are signed in. Your preferences are syncing across devices.` : 'You are signed in. Your preferences are syncing across devices.'}</span>
+                <CheckCircle className={`h-4 w-4 flex-none ${isServerSyncEnabled ? 'text-green-600' : 'text-amber-600'}`} aria-hidden="true" />
+                <span>
+                  {isServerSyncEnabled
+                    ? account.displayName
+                      ? `${account.displayName}, you are signed in. Your preferences are syncing across devices.`
+                      : 'You are signed in. Your preferences are syncing across devices.'
+                    : account.displayName
+                      ? `${account.displayName}, you are signed in. Profile changes stay on this device until you turn on cross-device sync.`
+                      : 'You are signed in. Profile changes stay on this device until you turn on cross-device sync.'}
+                </span>
               </div>
               <Link
                 href="/api/auth/signout"
-                className="flex-none inline-flex items-center gap-1 text-xs text-green-700 hover:text-red-700 transition-colors whitespace-nowrap font-medium underline underline-offset-2 hover:no-underline min-h-[44px] px-2"
+                className={`flex-none inline-flex min-h-[44px] items-center gap-1 whitespace-nowrap px-2 text-xs font-medium underline underline-offset-2 transition-colors hover:no-underline ${
+                  isServerSyncEnabled ? 'text-green-700 hover:text-red-700' : 'text-amber-800 hover:text-red-700'
+                }`}
               >
                 <LogOut className="h-3 w-3" aria-hidden="true" />
                 Sign out
@@ -938,7 +1047,7 @@ export default function ProfilePage() {
               <RadioPillGroup
                 options={AGE_GROUP_OPTIONS}
                 selected={seeker.ageGroup}
-                onChange={v => updateSeeker('ageGroup', v)}
+                onChange={v => updateSeeker('ageGroup', v as SeekerContext['ageGroup'])}
                 name="Age group"
               />
             </div>
@@ -949,7 +1058,7 @@ export default function ProfilePage() {
               <RadioPillGroup
                 options={HOUSEHOLD_TYPE_OPTIONS}
                 selected={seeker.householdType}
-                onChange={v => updateSeeker('householdType', v)}
+                onChange={v => updateSeeker('householdType', v as SeekerContext['householdType'])}
                 name="Household type"
               />
             </div>
@@ -960,7 +1069,7 @@ export default function ProfilePage() {
               <RadioPillGroup
                 options={HOUSING_SITUATION_OPTIONS}
                 selected={seeker.housingSituation}
-                onChange={v => updateSeeker('housingSituation', v)}
+                onChange={v => updateSeeker('housingSituation', v as SeekerContext['housingSituation'])}
                 name="Housing situation"
               />
             </div>
@@ -1121,7 +1230,7 @@ export default function ProfilePage() {
           >
             <p className="text-xs text-gray-500 mb-3">
               Select what applies to you. This helps surface specialized programs designed for your community.
-              This is entirely optional. When signed in, it syncs to your account so chat and saved workflows can use the same context.
+              This is entirely optional. It stays on this device unless you explicitly enable cross-device sync.
             </p>
             <div className="flex flex-wrap gap-2">
               {SELF_IDENTIFIER_OPTIONS.map(opt => (
@@ -1203,7 +1312,10 @@ export default function ProfilePage() {
           >
             <p className="text-xs text-gray-500 mb-3">
               Enter a city or region to improve search results. ORAN <strong>never</strong> requests precise GPS location.
-              When signed in, this approximate location syncs to your account. ORAN never stores street-level location here.
+              {isServerSyncEnabled
+                ? ' Cross-device sync is on, so this approximate location also saves to your account.'
+                : ' This location stays on this device unless you turn on cross-device sync.'}
+              {' '}ORAN never stores street-level location here.
             </p>
             <form onSubmit={e => { e.preventDefault(); saveCity(); }} className="flex gap-2">
               <FormField label="City or region" htmlFor="approx-city" srOnlyLabel>
@@ -1235,7 +1347,7 @@ export default function ProfilePage() {
             onToggle={() => toggleSection('language')}
           >
             <p className="text-xs text-gray-500 mb-3">
-              Choose your preferred language. When signed in, this preference syncs across your ORAN experience.
+              Choose your preferred language. It stays on this device unless you turn on cross-device sync.
             </p>
             <FormField label="Language" htmlFor="pref-language" srOnlyLabel>
               <select
@@ -1364,9 +1476,17 @@ export default function ProfilePage() {
               <div className="text-center py-6">
                 <Bookmark className="h-8 w-8 text-gray-200 mx-auto mb-2" aria-hidden="true" />
                 <p className="text-sm text-gray-500 mb-3">No saved services yet.</p>
-                <Link href="/directory">
-                  <Button variant="secondary" size="sm">Browse services</Button>
-                </Link>
+                <div className="flex flex-col items-center justify-center gap-2 sm:flex-row">
+                  <Link href={browseDirectoryHref}>
+                    <Button variant="secondary" size="sm">Browse services</Button>
+                  </Link>
+                  <Link href={browseChatHref}>
+                    <Button variant="outline" size="sm">Ask chat</Button>
+                  </Link>
+                  <Link href={browseMapHref}>
+                    <Button variant="outline" size="sm">Map view</Button>
+                  </Link>
+                </div>
               </div>
             )}
           </CollapsibleSection>
@@ -1548,11 +1668,35 @@ export default function ProfilePage() {
                   <Shield className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
                   Your privacy commitments
                 </p>
-                <p className="flex items-start gap-2"><CheckCircle className="h-3.5 w-3.5 text-emerald-600 mt-0.5 flex-none" aria-hidden="true" /><span>{isAuthenticated ? 'Signed-in profile data syncs to your account so it can be reused across ORAN surfaces.' : 'Signed-out profile data lives in your browser only.'}</span></p>
+                <p className="flex items-start gap-2"><CheckCircle className="h-3.5 w-3.5 text-emerald-600 mt-0.5 flex-none" aria-hidden="true" /><span>{isAuthenticated ? (isServerSyncEnabled ? 'You explicitly enabled cross-device sync, so profile data can be reused across ORAN surfaces.' : 'Signed-in profile data still stays local until you explicitly enable cross-device sync.') : 'Signed-out profile data lives in your browser only.'}</span></p>
                 <p className="flex items-start gap-2"><CheckCircle className="h-3.5 w-3.5 text-emerald-600 mt-0.5 flex-none" aria-hidden="true" /><span>Location is city-level approximate — ORAN <strong>never</strong> requests GPS or precise location.</span></p>
                 <p className="flex items-start gap-2"><CheckCircle className="h-3.5 w-3.5 text-emerald-600 mt-0.5 flex-none" aria-hidden="true" /><span>Your data is <strong>never sold or shared</strong> with third parties.</span></p>
                 <p className="flex items-start gap-2"><CheckCircle className="h-3.5 w-3.5 text-emerald-600 mt-0.5 flex-none" aria-hidden="true" /><span>One-tap delete removes everything — no waiting period.</span></p>
               </div>
+
+              {isAuthenticated ? (
+                <div className="rounded-lg border border-gray-200 bg-white p-4">
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={prefs.serverSyncEnabled === true}
+                      onChange={(event) => void toggleServerSync(event.target.checked)}
+                      className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      aria-label="Save my preferences to improve future results across devices"
+                    />
+                    <span className="space-y-1">
+                      <span className="block text-sm font-medium text-gray-900">
+                        Save my preferences to improve future results across devices
+                      </span>
+                      <span className="block text-xs text-gray-500">
+                        {isServerSyncEnabled
+                          ? 'Cross-device sync is on. New profile changes will save to your ORAN account.'
+                          : 'Cross-device sync is off. Profile changes stay local until you turn this on.'}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              ) : null}
 
               {!showDeleteConfirm ? (
                 <button

@@ -1,6 +1,7 @@
 import { executeQuery } from '@/services/db/postgres';
 import type { ChatContext, UserProfile } from '@/services/chat/types';
 import { normalizeSeekerProfile, type SeekerProfile, type ServiceInterestId } from './contracts';
+import { buildSeekerDiscoveryProfile } from './discoveryProfile';
 
 interface ChatHydrationRow {
   user_id: string;
@@ -64,24 +65,30 @@ export async function hydrateChatContext(
 
     const seekerProfile = normalizeSeekerProfile({
       serviceInterests: row.service_interests as ServiceInterestId[] | undefined ?? undefined,
-      ageGroup: row.age_group ?? undefined,
-      householdType: row.household_type ?? undefined,
-      housingSituation: row.housing_situation ?? undefined,
-      selfIdentifiers: row.self_identifiers ?? undefined,
-      currentServices: row.current_services ?? undefined,
-      accessibilityNeeds: row.accessibility_needs ?? undefined,
+      ageGroup: row.age_group as SeekerProfile['ageGroup'] | undefined ?? undefined,
+      householdType: row.household_type as SeekerProfile['householdType'] | undefined ?? undefined,
+      housingSituation: row.housing_situation as SeekerProfile['housingSituation'] | undefined ?? undefined,
+      selfIdentifiers: row.self_identifiers as SeekerProfile['selfIdentifiers'] | undefined ?? undefined,
+      currentServices: row.current_services as SeekerProfile['currentServices'] | undefined ?? undefined,
+      accessibilityNeeds: row.accessibility_needs as SeekerProfile['accessibilityNeeds'] | undefined ?? undefined,
       transportationBarrier: row.transportation_barrier ?? undefined,
       preferredDeliveryModes: (row.preferred_delivery_modes as SeekerProfile['preferredDeliveryModes'] | undefined) ?? undefined,
       urgencyWindow: (row.urgency_window as SeekerProfile['urgencyWindow'] | undefined) ?? undefined,
       documentationBarriers: (row.documentation_barriers as SeekerProfile['documentationBarriers'] | undefined) ?? undefined,
       digitalAccessBarrier: row.digital_access_barrier ?? undefined,
     });
+    const discoveryProfile = buildSeekerDiscoveryProfile(seekerProfile, { locale: context.locale });
 
     const userProfile: UserProfile = {
       ...(context.userProfile ?? { userId: context.userId }),
       userId: context.userId,
       locationCity: row.approximate_city ?? context.userProfile?.locationCity,
       categoryPreferences: seekerProfile.serviceInterests,
+      primaryNeedId: discoveryProfile.primaryNeedId ?? context.userProfile?.primaryNeedId,
+      browsePreference: {
+        needId: discoveryProfile.browseState.needId,
+        attributeFilters: discoveryProfile.browseState.attributeFilters,
+      },
       accessibilityNeeds: seekerProfile.accessibilityNeeds,
       audienceTags: seekerProfile.selfIdentifiers,
       serviceInterests: seekerProfile.serviceInterests,

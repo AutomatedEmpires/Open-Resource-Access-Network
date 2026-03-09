@@ -41,12 +41,14 @@ import {
   INTENT_CATEGORIES,
   enrichedServiceToCard,
 } from './types';
+import type { ChatRetrievalResult, ChatRetrievalStatus, SearchInterpretation } from './types';
 import {
   checkQuota as checkQuotaPersistent,
   incrementQuota as incrementQuotaPersistent,
   checkQuotaSync,
   resetSessionQuotasForTests as resetQuotasInternal,
 } from './quota';
+import { buildSeekerDiscoveryProfile } from '@/services/profile/discoveryProfile';
 
 // ============================================================
 // CRISIS DETECTION
@@ -231,18 +233,19 @@ export function assembleResponse(
   services: EnrichedService[],
   intent: Intent,
   context: ChatContext,
-  options?: { llmSummarized?: boolean }
+  options?: {
+    llmSummarized?: boolean;
+    retrievalStatus?: ChatRetrievalStatus;
+    searchInterpretation?: SearchInterpretation;
+  }
 ): ChatResponse {
   const quota = checkQuota(context.sessionId);
   const cards: ServiceCard[] = services
     .slice(0, MAX_SERVICES_PER_RESPONSE)
     .map((s) => enrichedServiceToCard(s, { intent, context }));
 
-  const message =
-    services.length === 0
-      ? `I wasn't able to find services matching your request in the database. ` +
-        `Please try rephrasing or contact 211 for local assistance.`
-      : `I found ${cards.length} service${cards.length !== 1 ? 's' : ''} that may help with your ${intent.category.replace('_', ' ')} needs.`;
+  const retrievalStatus = options?.retrievalStatus ?? (services.length > 0 ? 'results' : 'no_match');
+  const message = buildResponseMessage(retrievalStatus, intent, cards.length);
 
   return {
     message,
@@ -253,6 +256,8 @@ export function assembleResponse(
     quotaRemaining: quota.remaining,
     eligibilityDisclaimer: ELIGIBILITY_DISCLAIMER,
     llmSummarized: options?.llmSummarized ?? false,
+    retrievalStatus,
+    searchInterpretation: options?.searchInterpretation,
   };
 }
 
@@ -277,13 +282,152 @@ export function assembleCrisisResponse(
   };
 }
 
+export function assembleOutOfScopeResponse(
+  intent: Intent,
+  context: ChatContext
+): ChatResponse {
+  const quota = checkQuota(context.sessionId);
+
+  return {
+    message:
+      'I can help find services and community resources. Tell me what kind of help you need, such as housing, food, healthcare, mental health, transportation, childcare, employment, legal help, or utility assistance.',
+    services: [],
+    isCrisis: false,
+    intent,
+    sessionId: context.sessionId,
+    quotaRemaining: quota.remaining,
+    eligibilityDisclaimer: ELIGIBILITY_DISCLAIMER,
+    llmSummarized: false,
+    retrievalStatus: 'out_of_scope',
+    searchInterpretation: buildSearchInterpretation(intent, context),
+  };
+}
+
+function formatIntentCategoryLabel(category: Intent['category']): string {
+  return category === 'general' ? 'general help' : category.replace(/_/g, ' ');
+}
+
+function formatActionLabel(action: Intent['actionQualifier']): string | null {
+  switch (action) {
+    case 'apply':
+      return 'application details prioritized';
+    case 'contact':
+      return 'contact details prioritized';
+    case 'eligibility':
+      return 'eligibility details prioritized';
+    case 'hours':
+      return 'hours information prioritized';
+    case 'website':
+      return 'website links prioritized';
+    default:
+      return null;
+  }
+}
+
+function buildProfileSignalSummary(context: ChatContext, intent: Intent): string[] {
+  if (!context.userProfile || context.profileShapingDisabled) {
+    return [];
+  }
+
+  const profile = context.userProfile;
+  const signals: string[] = [];
+
+  if (context.approximateLocation?.city || profile.locationCity) {
+    signals.push('city bias applied');
+  }
+
+  if (intent.category === 'general' && (profile.serviceInterests?.length ?? 0) > 0) {
+    signals.push('saved service interests used');
+  }
+
+  const discoveryProfile = buildSeekerDiscoveryProfile(profile, { locale: context.locale });
+  if (profile.urgencyWindow === 'same_day' || profile.urgencyWindow === 'next_day') {
+    signals.push('urgent availability prioritized');
+  }
+  if (profile.transportationBarrier) {
+    signals.push('transportation-friendly results prioritized');
+  }
+  if (profile.preferredDeliveryModes && profile.preferredDeliveryModes.length > 0) {
+    signals.push('delivery preferences applied');
+  }
+  if (profile.accessibilityNeeds?.includes('language_interpretation') || context.locale !== 'en') {
+    signals.push('language support prioritized');
+  }
+
+  if (!discoveryProfile.profileSignals && signals.length === 0) {
+    return [];
+  }
+
+  return Array.from(new Set(signals)).slice(0, 4);
+}
+
+function buildSearchInterpretation(intent: Intent, context: ChatContext): SearchInterpretation {
+  const summaryParts = [`Interpreted as ${formatIntentCategoryLabel(intent.category)}`];
+  if (intent.urgencyQualifier === 'urgent') {
+    summaryParts.push('urgent');
+  }
+
+  const actionLabel = formatActionLabel(intent.actionQualifier);
+  if (actionLabel) {
+    summaryParts.push(actionLabel);
+  }
+
+  const profileSignals = buildProfileSignalSummary(context, intent);
+
+  return {
+    category: intent.category,
+    categoryLabel: formatIntentCategoryLabel(intent.category),
+    urgencyQualifier: intent.urgencyQualifier,
+    actionQualifier: intent.actionQualifier,
+    summary: summaryParts.join(', '),
+    usedProfileShaping: profileSignals.length > 0,
+    ignoredProfileShaping: Boolean(context.profileShapingDisabled),
+    profileSignals,
+  };
+}
+
+function buildResponseMessage(
+  retrievalStatus: ChatRetrievalStatus,
+  intent: Intent,
+  cardCount: number
+): string {
+  switch (retrievalStatus) {
+    case 'results':
+      return `I found ${cardCount} service${cardCount !== 1 ? 's' : ''} that may help with your ${intent.category.replace('_', ' ')} needs.`;
+    case 'catalog_empty_for_scope':
+      return 'I could not find services in the current database for this search scope yet. Try broadening the filters or contact 211 for local assistance.';
+    case 'temporarily_unavailable':
+      return 'Search is temporarily unavailable right now. Please try again in a few minutes, or contact 211 for local assistance.';
+    case 'no_match':
+    default:
+      return 'I could not find a close match for that request in the current database. Try rephrasing, broadening the filters, or contact 211 for local assistance.';
+  }
+}
+
+const OUT_OF_SCOPE_PATTERNS: RegExp[] = [
+  /\b(weather|temperature|forecast)\b/i,
+  /\b(stock price|stocks|crypto|bitcoin|market news)\b/i,
+  /\b(tell me a joke|write a poem|write a story|tell me a story)\b/i,
+  /\b(write code|debug this code|python code|javascript code|typescript code)\b/i,
+  /\b(system prompt|prompt injection|ignore previous instructions|what model are you|who are you)\b/i,
+  /\b(translate this|summarize this article|capital of|sports score|recipe)\b/i,
+];
+
+function isOutOfScopeRequest(message: string, intent: Intent): boolean {
+  if (intent.category !== 'general') {
+    return false;
+  }
+
+  return OUT_OF_SCOPE_PATTERNS.some((pattern) => pattern.test(message));
+}
+
 // ============================================================
 // MAIN ORCHESTRATOR
 // ============================================================
 
 export interface OrchestratorDeps {
   /** Fetch services from DB based on intent and context — pure SQL, no LLM */
-  retrieveServices: (intent: Intent, context: ChatContext) => Promise<EnrichedService[]>;
+  retrieveServices: (intent: Intent, context: ChatContext) => Promise<ChatRetrievalResult>;
   /** Check if a feature flag is enabled */
   isFlagEnabled: (flagName: string) => Promise<boolean>;
   /** Optional: server-side profile hydration for authenticated users. Must fail open. */
@@ -369,16 +513,26 @@ export async function orchestrateChat(
     context = await deps.hydrateContext(context);
   }
 
+  if (isOutOfScopeRequest(message, intent)) {
+    const response = assembleOutOfScopeResponse(intent, context);
+    await incrementQuota(sessionId, userId);
+    return response;
+  }
+
   // Stage 6: Retrieval — pure SQL, no LLM
-  const services = await deps.retrieveServices(intent, context);
+  const retrieval = await deps.retrieveServices(intent, context);
+  const services = retrieval.services;
 
   // Stage 7: Response assembly
-  let response = assembleResponse(services, intent, context);
+  let response = assembleResponse(services, intent, context, {
+    retrievalStatus: retrieval.retrievalStatus,
+    searchInterpretation: buildSearchInterpretation(intent, context),
+  });
 
   // Stage 8: LLM summarization gate
   // ONLY activate if: (a) flag is enabled AND (b) there are services to summarize
   const llmEnabled = await deps.isFlagEnabled(FEATURE_FLAGS.LLM_SUMMARIZE);
-  if (llmEnabled && services.length > 0 && deps.summarizeWithLLM) {
+  if (llmEnabled && retrieval.retrievalStatus === 'results' && services.length > 0 && deps.summarizeWithLLM) {
     try {
       const summary = await deps.summarizeWithLLM(services, intent);
       response = { ...response, message: summary, llmSummarized: true };
@@ -388,7 +542,9 @@ export async function orchestrateChat(
   }
 
   // Increment quota after successful response (DB-backed when configured)
-  await incrementQuota(sessionId, userId);
+  if (retrieval.retrievalStatus !== 'temporarily_unavailable') {
+    await incrementQuota(sessionId, userId);
+  }
 
   return response;
 }

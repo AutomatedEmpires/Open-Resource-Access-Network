@@ -7,13 +7,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { MAX_SERVICES_PER_RESPONSE, FEATURE_FLAGS } from '@/domain/constants';
-import type { EnrichedService } from '@/domain/types';
+import { cookies } from 'next/headers';
+import { MAX_SERVICES_PER_RESPONSE, FEATURE_FLAGS, CHAT_DEVICE_COOKIE } from '@/domain/constants';
 import { getAuthContext } from '@/services/auth/session';
+import { checkQuotaByIdentity, incrementQuotaByIdentity } from '@/services/chat/quota';
 import { orchestrateChat, ChatRateLimitExceededError } from '@/services/chat/orchestrator';
 import { buildChatSearchQuery } from '@/services/chat/retrievalProfile';
 import { ChatRequestSchema } from '@/services/chat/types';
-import type { ChatContext, Intent } from '@/services/chat/types';
+import type { ChatContext, ChatRetrievalResult, Intent } from '@/services/chat/types';
 import { executeCount, executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { flagService } from '@/services/flags/flags';
 import { summarizeWithLLM } from '@/services/chat/llm';
@@ -28,6 +29,20 @@ import { captureException } from '@/services/telemetry/sentry';
 
 const RequestSchema = ChatRequestSchema;
 const engine = new ServiceSearchEngine({ executeQuery, executeCount });
+
+function stripProfileShaping(context: ChatContext): ChatContext {
+  return {
+    ...context,
+    profileShapingDisabled: true,
+    approximateLocation: undefined,
+    userProfile: context.userProfile
+      ? {
+          userId: context.userProfile.userId,
+          browsePreference: context.userProfile.browsePreference,
+        }
+      : undefined,
+  };
+}
 
 export async function POST(req: NextRequest) {
   let body: unknown;
@@ -45,36 +60,117 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { message, sessionId, locale, filters } = parsed.data;
+  const { message, sessionId, locale, filters, profileMode } = parsed.data;
 
   const authCtx = await getAuthContext();
   const effectiveUserId = authCtx?.userId;
 
+  // ---- Device identity (for 24-hr quota and logout-bypass prevention) ----
+  const cookieStore = await cookies();
+  let deviceId = cookieStore.get(CHAT_DEVICE_COOKIE)?.value;
+  // Validate: must be a UUID-shaped string to prevent injection
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (deviceId && !UUID_RE.test(deviceId)) deviceId = undefined;
+  const needsDeviceCookie = !deviceId;
+  if (needsDeviceCookie) deviceId = crypto.randomUUID();
+
+  // ---- 24-hour quota check (cross-session, cross-device) ----
+  const windowQuota = await checkQuotaByIdentity(deviceId, effectiveUserId);
+  if (windowQuota.exceeded) {
+    return NextResponse.json(
+      {
+        error: 'Daily message limit reached.',
+        quotaRemaining: 0,
+        quotaResetAt: windowQuota.resetAt?.toISOString() ?? null,
+      },
+      {
+        status: 429,
+        headers: {
+          'Cache-Control': 'private, no-store',
+          ...(windowQuota.resetAt
+            ? { 'Retry-After': String(Math.ceil((windowQuota.resetAt.getTime() - Date.now()) / 1000)) }
+            : {}),
+        },
+      },
+    );
+  }
+
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   const rateLimitKey = effectiveUserId ? `chat:user:${effectiveUserId}` : `chat:ip:${ip}`;
 
-  async function retrieveServices(intent: Intent, context: ChatContext): Promise<EnrichedService[]> {
+  async function retrieveServices(intent: Intent, context: ChatContext): Promise<ChatRetrievalResult> {
     if (!isDatabaseConfigured()) {
-      return [];
+      return {
+        services: [],
+        retrievalStatus: 'temporarily_unavailable',
+      };
     }
 
     const trust = filters?.trust;
     const minConfidenceScore = trust === 'HIGH' ? 80 : trust === 'LIKELY' ? 60 : undefined;
 
-    const query = buildChatSearchQuery(intent, context, {
-      taxonomyTermIds: filters?.taxonomyTermIds,
-      minConfidenceScore,
-      limit: MAX_SERVICES_PER_RESPONSE,
-    });
+    try {
+      const query = buildChatSearchQuery(intent, context, {
+        taxonomyTermIds: filters?.taxonomyTermIds,
+        attributeFilters: filters?.attributeFilters,
+        minConfidenceScore,
+        limit: MAX_SERVICES_PER_RESPONSE,
+      });
 
-    const response = await cachedSearch(engine, query);
-    return response.results.map((result) => result.service);
+      const response = await cachedSearch(engine, query);
+      const services = response.results.map((result) => result.service);
+      if (services.length > 0) {
+        return {
+          services,
+          retrievalStatus: 'results',
+        };
+      }
+
+      const scopeResponse = await cachedSearch(engine, {
+        ...query,
+        text: undefined,
+        pagination: {
+          page: 1,
+          limit: 1,
+        },
+      });
+
+      return {
+        services: [],
+        retrievalStatus: scopeResponse.total === 0 ? 'catalog_empty_for_scope' : 'no_match',
+      };
+    } catch {
+      return {
+        services: [],
+        retrievalStatus: 'temporarily_unavailable',
+      };
+    }
   }
 
   try {
     let response = await orchestrateChat(message, sessionId, effectiveUserId, locale, rateLimitKey, {
       retrieveServices,
-      hydrateContext: (context) => hydrateChatContext(context, { executeQuery }),
+      hydrateContext: async (context) => {
+        const hydrated = await hydrateChatContext(context, { executeQuery });
+        const hasBrowseFilters = Boolean(filters?.taxonomyTermIds?.length) || Boolean(filters?.attributeFilters);
+        const merged = !hasBrowseFilters
+          ? hydrated
+          : {
+              ...hydrated,
+              userProfile: {
+                ...(hydrated.userProfile ?? { userId: hydrated.userId ?? 'guest' }),
+                browsePreference: {
+                  ...(hydrated.userProfile?.browsePreference ?? {}),
+                  ...(filters?.taxonomyTermIds?.length ? { taxonomyTermIds: filters.taxonomyTermIds } : {}),
+                  ...(filters?.attributeFilters ? { attributeFilters: filters.attributeFilters } : {}),
+                },
+              },
+            };
+
+        return profileMode === 'ignore'
+          ? stripProfileShaping(merged)
+          : merged;
+      },
       isFlagEnabled: (flagName) => flagService.isEnabled(flagName),
       summarizeWithLLM,
       enrichIntent,
@@ -103,9 +199,32 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json(response, {
+    // Increment the 24-hr window quota after a successful response
+    await incrementQuotaByIdentity(deviceId, effectiveUserId);
+    const updatedWindowQuota = await checkQuotaByIdentity(deviceId, effectiveUserId);
+
+    const finalResponse = {
+      ...response,
+      quotaRemaining: updatedWindowQuota.remaining,
+      quotaResetAt: updatedWindowQuota.resetAt?.toISOString() ?? undefined,
+    };
+
+    const res = NextResponse.json(finalResponse, {
       headers: { 'Cache-Control': 'private, no-store' },
     });
+
+    // Set (or refresh) the HttpOnly device-identity cookie
+    if (needsDeviceCookie) {
+      res.cookies.set(CHAT_DEVICE_COOKIE, deviceId!, {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 365 * 24 * 60 * 60, // 1 year
+        secure: process.env.NODE_ENV === 'production',
+      });
+    }
+
+    return res;
   } catch (error) {
     if (error instanceof ChatRateLimitExceededError) {
       return NextResponse.json(

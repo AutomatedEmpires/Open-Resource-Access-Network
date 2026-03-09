@@ -6,83 +6,59 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, X, AlertTriangle, ArrowLeft, ArrowRight, MapPin, ChevronDown, ChevronUp } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { DEFAULT_SEARCH_RADIUS_METERS } from '@/domain/constants';
 import { SERVICE_ATTRIBUTES_TAXONOMY } from '@/domain/taxonomy';
+import {
+  type DiscoveryNeedId,
+  getDiscoveryNeedLabel,
+  getDiscoveryNeedSearchText,
+  isDiscoveryNeedSearchText,
+  resolveDiscoveryNeedId,
+} from '@/domain/discoveryNeeds';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { FormField } from '@/components/ui/form-field';
+import { FormSection } from '@/components/ui/form-section';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { ServiceCard } from '@/components/directory/ServiceCard';
+import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
+import { SeekerAppliedFilters, type SeekerAppliedFilterItem } from '@/components/seeker/SeekerAppliedFilters';
+import { SeekerDiscoveryFilters } from '@/components/seeker/SeekerDiscoveryFilters';
+import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
+import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
+import {
+  addServerSaved,
+  readStoredSavedServiceIdSet,
+  removeServerSaved,
+  writeStoredSavedServiceIds,
+} from '@/services/saved/client';
+import { getSavedTogglePresentation } from '@/services/saved/presentation';
+import {
+  buildDiscoveryHref,
+  buildDiscoveryUrlParams,
+  buildSearchApiParamsFromDiscovery,
+  DISCOVERY_CONFIDENCE_OPTIONS,
+  DISCOVERY_SORT_OPTIONS,
+  hasMeaningfulDiscoveryState,
+  parseDiscoveryUrlState,
+  resolveDiscoverySearchText,
+  type DiscoveryConfidenceFilter,
+  type DiscoverySortOption,
+} from '@/services/search/discovery';
+import { DISCOVERY_ATTRIBUTE_LABELS } from '@/services/search/discoveryPresentation';
 import type { SearchResponse } from '@/services/search/types';
 import { useToast } from '@/components/ui/toast';
 import { trackInteraction } from '@/services/telemetry/sentry';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 
 const DEFAULT_LIMIT = 12;
-const SAVED_KEY = 'oran:saved-service-ids';
+type ConfidenceFilter = DiscoveryConfidenceFilter;
+type SortOption = DiscoverySortOption;
 
-/** Trust filter options — 'all' shows everything */
-type ConfidenceFilter = 'all' | 'HIGH' | 'LIKELY';
-
-const CONFIDENCE_OPTIONS: { value: ConfidenceFilter; label: string; minScore?: number }[] = [
-  { value: 'all', label: 'All results' },
-  { value: 'LIKELY', label: 'Likely or higher', minScore: 60 },
-  { value: 'HIGH', label: 'High confidence only', minScore: 80 },
-];
-
-/** Sort options available to the directory */
-type SortOption = 'relevance' | 'trust' | 'name_asc' | 'name_desc';
-
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: 'relevance', label: 'Relevance' },
-  { value: 'trust', label: 'Trust (highest)' },
-  { value: 'name_asc', label: 'Name (A–Z)' },
-  { value: 'name_desc', label: 'Name (Z–A)' },
-];
-
-/** Quick category chips for common service needs */
+const CONFIDENCE_OPTIONS = DISCOVERY_CONFIDENCE_OPTIONS;
+const SORT_OPTIONS = DISCOVERY_SORT_OPTIONS;
 
 /** Seeker-facing attribute dimensions — show common tags as quick filter chips */
 const SEEKER_ATTRIBUTE_DIMENSIONS = ['delivery', 'cost', 'access'] as const;
-
-const ATTRIBUTE_CHIP_LABELS: Record<string, string> = {
-  // Delivery
-  in_person: 'In-Person',
-  virtual: 'Virtual',
-  phone: 'By Phone',
-  home_delivery: 'Home Delivery',
-  // Cost
-  free: 'Free',
-  sliding_scale: 'Sliding Scale',
-  medicaid: 'Medicaid',
-  medicare: 'Medicare',
-  no_insurance_required: 'No Insurance Needed',
-  ebt_snap: 'EBT/SNAP',
-  // Access
-  walk_in: 'Walk-In',
-  no_id_required: 'No ID Required',
-  no_referral_needed: 'No Referral',
-  drop_in: 'Drop-In',
-  accepting_new_clients: 'Accepting New Clients',
-  weekend_hours: 'Weekend Hours',
-  evening_hours: 'Evening Hours',
-};
-
-const CATEGORY_CHIPS: { value: string; label: string }[] = [
-  { value: 'food', label: 'Food' },
-  { value: 'housing', label: 'Housing' },
-  { value: 'healthcare', label: 'Healthcare' },
-  { value: 'mental health', label: 'Mental Health' },
-  { value: 'employment', label: 'Employment' },
-  { value: 'legal aid', label: 'Legal Aid' },
-  { value: 'childcare', label: 'Childcare' },
-  { value: 'transportation', label: 'Transportation' },
-];
 
 /** Human-readable labels for taxonomy dimension keys */
 const DIMENSION_LABELS: Record<string, string> = {
@@ -110,6 +86,7 @@ function isUuid(value: string): boolean {
 export default function DirectoryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const initialCategoryFromUrl = resolveDiscoveryNeedId(searchParams.get('category'));
 
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -119,7 +96,11 @@ export default function DirectoryPage() {
   }, []);
 
   // ── Seed state from URL params so filters are linkable/shareable ──
-  const [query, setQuery] = useState(() => searchParams.get('q') ?? '');
+  const [query, setQuery] = useState(() => {
+    const urlQuery = searchParams.get('q');
+    if (urlQuery) return urlQuery;
+    return getDiscoveryNeedSearchText(initialCategoryFromUrl) ?? '';
+  });
   const [page, setPage] = useState(() => {
     const p = parseInt(searchParams.get('page') ?? '1', 10);
     return isNaN(p) || p < 1 ? 1 : p;
@@ -136,7 +117,7 @@ export default function DirectoryPage() {
     const valid: SortOption[] = ['relevance', 'trust', 'name_asc', 'name_desc'];
     return valid.includes(v as SortOption) ? (v as SortOption) : 'relevance';
   });
-  const [activeCategory, setActiveCategory] = useState<string | null>(() => searchParams.get('category'));
+  const [activeCategory, setActiveCategory] = useState<DiscoveryNeedId | null>(initialCategoryFromUrl);
 
   const [taxonomyDialogOpen, setTaxonomyDialogOpen] = useState(false);
   const [taxonomyTerms, setTaxonomyTerms] = useState<TaxonomyTermDTO[]>([]);
@@ -176,11 +157,13 @@ export default function DirectoryPage() {
   const [deviceLocation, setDeviceLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [savedSyncEnabled] = useState(() => isServerSyncEnabledOnDevice());
   const savedIdsRef = useRef<Set<string>>(new Set());
   const { success, error: toastError, info } = useToast();
 
   // Ref for focus management after search
   const resultsContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   // Accumulated results across infinite-scroll pages
   const [allResults, setAllResults] = useState<SearchResponse['results']>([]);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -189,42 +172,48 @@ export default function DirectoryPage() {
 
   const inFlightControllerRef = useRef<AbortController | null>(null);
 
+  const hasSearchContext = useCallback((
+    nextQuery: string,
+    nextCategory: DiscoveryNeedId | null,
+    nextLocation: { lat: number; lng: number } | null,
+    nextTaxonomyIds: string[],
+    nextAttributes: Record<string, string[]>,
+  ) => {
+    return Boolean(resolveDiscoverySearchText(nextQuery, nextCategory))
+      || nextLocation != null
+      || nextTaxonomyIds.length > 0
+      || Object.keys(nextAttributes).length > 0;
+  }, []);
+
   /** Push current filter state to the URL without adding history entries */
   const pushUrlState = useCallback((
     q: string,
     confidence: ConfidenceFilter,
     sort: SortOption,
-    category: string | null,
+    category: DiscoveryNeedId | null,
     taxonomyIds: string[],
     p: number,
     attributes?: Record<string, string[]>,
   ) => {
-    const params = new URLSearchParams();
-    if (q) params.set('q', q);
-    if (confidence !== 'all') params.set('confidence', confidence);
-    if (sort !== 'relevance') params.set('sort', sort);
-    if (category) params.set('category', category);
-    if (taxonomyIds.length > 0) params.set('taxonomyIds', taxonomyIds.join(','));
     const attrs = attributes ?? selectedAttributes;
-    if (Object.keys(attrs).length > 0) params.set('attributes', JSON.stringify(attrs));
-    if (p > 1) params.set('page', String(p));
+    const params = buildDiscoveryUrlParams({
+      text: q,
+      needId: category,
+      confidenceFilter: confidence,
+      sortBy: sort,
+      taxonomyTermIds: taxonomyIds,
+      attributeFilters: attrs,
+      page: p,
+    });
     const qs = params.toString();
     router.replace(qs ? `/directory?${qs}` : '/directory', { scroll: false });
   }, [router, selectedAttributes]);
 
   // Load saved IDs from localStorage on mount
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SAVED_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as unknown;
-        if (Array.isArray(parsed)) {
-          const next = new Set(parsed.filter((v): v is string => typeof v === 'string'));
-          savedIdsRef.current = next;
-          setSavedIds(next);
-        }
-      }
-    } catch { /* ignore */ }
+    const next = readStoredSavedServiceIdSet();
+    savedIdsRef.current = next;
+    setSavedIds(next);
   }, []);
 
   // Keep ref in sync in case savedIds is updated elsewhere.
@@ -233,28 +222,35 @@ export default function DirectoryPage() {
   }, [savedIds]);
 
   const toggleSave = useCallback((serviceId: string) => {
-    // Read from ref so this callback never goes stale — no savedIds in dep array.
     const wasSaved = savedIdsRef.current.has(serviceId);
+    const toggleCopy = getSavedTogglePresentation(wasSaved, savedSyncEnabled);
     setSavedIds((prev) => {
       const next = new Set(prev);
       if (next.has(serviceId)) { next.delete(serviceId); } else { next.add(serviceId); }
       savedIdsRef.current = next;
-      try { localStorage.setItem(SAVED_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      writeStoredSavedServiceIds(next);
       return next;
     });
-    success(wasSaved ? 'Removed from saved' : 'Saved');
-  }, [success]);
+    if (savedSyncEnabled) {
+      if (wasSaved) {
+        void removeServerSaved(serviceId);
+      } else {
+        void addServerSaved(serviceId);
+      }
+    }
+    success(toggleCopy.toastMessage);
+  }, [savedSyncEnabled, success]);
 
   const canSearch = useMemo(() => {
-    return query.trim().length > 0 || deviceLocation != null || selectedTaxonomyIds.length > 0 || Object.keys(selectedAttributes).length > 0;
-  }, [query, deviceLocation, selectedTaxonomyIds.length, selectedAttributes]);
+    return hasSearchContext(query, activeCategory, deviceLocation, selectedTaxonomyIds, selectedAttributes);
+  }, [activeCategory, deviceLocation, hasSearchContext, query, selectedAttributes, selectedTaxonomyIds]);
 
   const resetResultsToEmpty = useCallback(() => {
     setData(null);
     setAllResults([]);
     setError(null);
     setPage(1);
-    pushUrlState('', 'all', 'relevance', null, [], 1);
+    pushUrlState('', 'all', 'relevance', null, [], 1, {});
   }, [pushUrlState]);
 
   const roundForPrivacy = useCallback((value: number): number => {
@@ -262,25 +258,70 @@ export default function DirectoryPage() {
     return Math.round(value * 100) / 100;
   }, []);
 
+  const mapHref = useMemo(() => {
+    if (!resolveDiscoverySearchText(query, activeCategory)) {
+      return '/map';
+    }
+
+    const params = buildDiscoveryUrlParams({
+      text: query,
+      needId: activeCategory,
+      confidenceFilter,
+      sortBy,
+      taxonomyTermIds: selectedTaxonomyIds,
+      attributeFilters: selectedAttributes,
+    });
+    const qs = params.toString();
+    return qs ? `/map?${qs}` : '/map';
+  }, [activeCategory, confidenceFilter, query, selectedAttributes, selectedTaxonomyIds, sortBy]);
+
+  const chatHref = useMemo(() => {
+    return buildDiscoveryHref('/chat', {
+      text: query,
+      needId: activeCategory,
+      confidenceFilter,
+      sortBy,
+      taxonomyTermIds: selectedTaxonomyIds,
+      attributeFilters: selectedAttributes,
+    });
+  }, [activeCategory, confidenceFilter, query, selectedAttributes, selectedTaxonomyIds, sortBy]);
+
+  const directoryDiscoveryContext = useMemo(() => {
+    return {
+      text: query,
+      needId: activeCategory,
+      confidenceFilter,
+      sortBy,
+      taxonomyTermIds: selectedTaxonomyIds,
+      attributeFilters: selectedAttributes,
+      page,
+    };
+  }, [activeCategory, confidenceFilter, page, query, selectedAttributes, selectedTaxonomyIds, sortBy]);
+
+  const buildServiceDetailHref = useCallback((serviceId: string) => {
+    return buildDiscoveryHref(`/service/${serviceId}`, directoryDiscoveryContext);
+  }, [directoryDiscoveryContext]);
+
   const runSearch = useCallback(async (
     nextPage: number,
     confidence: ConfidenceFilter = confidenceFilter,
     sort: SortOption = sortBy,
     searchText?: string,
-    category?: string | null,
+    category?: DiscoveryNeedId | null,
     locationOverride?: { lat: number; lng: number } | null,
     taxonomyOverride?: string[],
     append = false,
     attributesOverride?: Record<string, string[]>,
   ) => {
-    const trimmed = (searchText ?? query).trim();
-
     const effectiveLocation = locationOverride !== undefined ? locationOverride : deviceLocation;
     const effectiveTaxonomyIds = taxonomyOverride !== undefined ? taxonomyOverride : selectedTaxonomyIds;
     const effectiveAttributes = attributesOverride !== undefined ? attributesOverride : selectedAttributes;
-    if (!trimmed && !effectiveLocation && effectiveTaxonomyIds.length === 0 && Object.keys(effectiveAttributes).length === 0) return;
-
     const effectiveCategory = category !== undefined ? category : activeCategory;
+    const categorySearchText = getDiscoveryNeedSearchText(effectiveCategory) ?? '';
+    const trimmed = (searchText ?? query).trim();
+    const effectiveSearchText = trimmed || categorySearchText;
+
+    if (!effectiveSearchText && !effectiveLocation && effectiveTaxonomyIds.length === 0 && Object.keys(effectiveAttributes).length === 0) return;
 
     if (append) {
       setIsFetchingMore(true);
@@ -295,33 +336,24 @@ export default function DirectoryPage() {
     inFlightControllerRef.current = controller;
 
     try {
-      const params = new URLSearchParams({ status: 'active', page: String(nextPage), limit: String(DEFAULT_LIMIT) });
-
-      if (trimmed) {
-        params.set('q', trimmed);
-      }
-
-      if (effectiveLocation) {
-        params.set('lat', String(effectiveLocation.lat));
-        params.set('lng', String(effectiveLocation.lng));
-      }
-
-      if (effectiveTaxonomyIds.length > 0) {
-        params.set('taxonomyIds', effectiveTaxonomyIds.join(','));
-      }
-
-      if (Object.keys(effectiveAttributes).length > 0) {
-        params.set('attributes', JSON.stringify(effectiveAttributes));
-      }
-
-      if (sort !== 'relevance') {
-        params.set('sortBy', sort);
-      }
-
-      const option = CONFIDENCE_OPTIONS.find((o) => o.value === confidence);
-      if (option?.minScore) {
-        params.set('minConfidenceScore', String(option.minScore));
-      }
+      const params = buildSearchApiParamsFromDiscovery({
+        text: effectiveSearchText,
+        needId: effectiveCategory,
+        taxonomyTermIds: effectiveTaxonomyIds,
+        attributeFilters: effectiveAttributes,
+        confidenceFilter: confidence,
+        sortBy: sort,
+        page: nextPage,
+        limit: DEFAULT_LIMIT,
+        geo: effectiveLocation
+          ? {
+              type: 'radius',
+              lat: effectiveLocation.lat,
+              lng: effectiveLocation.lng,
+              radiusMeters: DEFAULT_SEARCH_RADIUS_METERS,
+            }
+          : undefined,
+      });
 
       const res = await fetch(`/api/search?${params.toString()}`, {
         method: 'GET',
@@ -352,7 +384,7 @@ export default function DirectoryPage() {
         });
       }
       // Sync filter state to URL so results are shareable
-      pushUrlState(trimmed, confidence, sort, effectiveCategory, effectiveTaxonomyIds, nextPage, effectiveAttributes);
+      pushUrlState(effectiveSearchText, confidence, sort, effectiveCategory, effectiveTaxonomyIds, nextPage, effectiveAttributes);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') {
         return;
@@ -387,6 +419,20 @@ export default function DirectoryPage() {
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, []); // empty: all state access goes via loadMoreRef
+
+  // Keyboard shortcut: "/" focuses the search input (standard for search-centric pages)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleUseMyLocation = useCallback(() => {
     if (isLocating) return;
@@ -430,19 +476,44 @@ export default function DirectoryPage() {
   const didAutoRun = useRef(false);
   useEffect(() => {
     if (didAutoRun.current) return;
-    const urlQuery = searchParams.get('q');
-    const urlTaxonomyIds = searchParams.get('taxonomyIds');
-    const parsedTaxonomyIds = urlTaxonomyIds
-      ? urlTaxonomyIds.split(',').map((s) => s.trim()).filter((s) => s && isUuid(s))
-      : [];
-    if (parsedTaxonomyIds.length > 0) {
-      setSelectedTaxonomyIds(parsedTaxonomyIds);
-    }
+    const urlDiscoveryIntent = parseDiscoveryUrlState(searchParams);
+    const storedDiscoveryIntent = hasMeaningfulDiscoveryState(urlDiscoveryIntent)
+      ? {}
+      : readStoredDiscoveryPreference();
+    const effectiveDiscoveryIntent = hasMeaningfulDiscoveryState(urlDiscoveryIntent)
+      ? urlDiscoveryIntent
+      : storedDiscoveryIntent;
+    const effectiveCategory = effectiveDiscoveryIntent.needId ?? null;
+    const effectiveQuery = resolveDiscoverySearchText(effectiveDiscoveryIntent.text, effectiveCategory);
+    const effectiveConfidence = effectiveDiscoveryIntent.confidenceFilter ?? confidenceFilter;
+    const effectiveSort = effectiveDiscoveryIntent.sortBy ?? sortBy;
+    const effectiveTaxonomyIds = (effectiveDiscoveryIntent.taxonomyTermIds ?? []).filter((value) => isUuid(value));
+    const effectiveAttributes = effectiveDiscoveryIntent.attributeFilters ?? {};
+    const effectivePage = hasMeaningfulDiscoveryState(urlDiscoveryIntent)
+      ? urlDiscoveryIntent.page
+      : (effectiveDiscoveryIntent.page ?? 1);
 
-    if (urlQuery?.trim() || parsedTaxonomyIds.length > 0 || Object.keys(selectedAttributes).length > 0) {
-      didAutoRun.current = true;
-      void runSearch(page, confidenceFilter, sortBy, urlQuery?.trim() ?? '', activeCategory, undefined, parsedTaxonomyIds);
-    }
+    if (!hasMeaningfulDiscoveryState(effectiveDiscoveryIntent)) return;
+
+    didAutoRun.current = true;
+    setQuery(effectiveQuery);
+    setActiveCategory(effectiveCategory);
+    setConfidenceFilter(effectiveConfidence);
+    setSortBy(effectiveSort);
+    setPage(effectivePage);
+    setSelectedTaxonomyIds(effectiveTaxonomyIds);
+    setSelectedAttributes(effectiveAttributes);
+    void runSearch(
+      effectivePage,
+      effectiveConfidence,
+      effectiveSort,
+      effectiveQuery,
+      effectiveCategory,
+      undefined,
+      effectiveTaxonomyIds,
+      false,
+      effectiveAttributes,
+    );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -573,23 +644,23 @@ export default function DirectoryPage() {
   const toggleTaxonomyId = useCallback((id: string) => {
     setSelectedTaxonomyIds((prev) => {
       const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-      if (next.length === 0 && !query.trim() && !deviceLocation) {
+      if (!hasSearchContext(query, activeCategory, deviceLocation, next, selectedAttributes)) {
         resetResultsToEmpty();
       } else {
         void runSearch(1, confidenceFilter, sortBy, undefined, undefined, undefined, next);
       }
       return next;
     });
-  }, [confidenceFilter, deviceLocation, query, resetResultsToEmpty, runSearch, sortBy]);
+  }, [activeCategory, confidenceFilter, deviceLocation, hasSearchContext, query, resetResultsToEmpty, runSearch, selectedAttributes, sortBy]);
 
   const clearTaxonomyFilters = useCallback(() => {
     setSelectedTaxonomyIds([]);
-    if (!query.trim() && !deviceLocation) {
+    if (!hasSearchContext(query, activeCategory, deviceLocation, [], selectedAttributes)) {
       resetResultsToEmpty();
       return;
     }
     void runSearch(1, confidenceFilter, sortBy, undefined, undefined, undefined, []);
-  }, [confidenceFilter, deviceLocation, query, resetResultsToEmpty, runSearch, sortBy]);
+  }, [activeCategory, confidenceFilter, deviceLocation, hasSearchContext, query, resetResultsToEmpty, runSearch, selectedAttributes, sortBy]);
 
   const toggleAttribute = useCallback((dimension: string, tag: string) => {
     setSelectedAttributes((prev) => {
@@ -609,23 +680,25 @@ export default function DirectoryPage() {
 
   const clearAttributes = useCallback(() => {
     setSelectedAttributes({});
-    if (!query.trim() && !deviceLocation && selectedTaxonomyIds.length === 0) {
+    if (!hasSearchContext(query, activeCategory, deviceLocation, selectedTaxonomyIds, {})) {
       resetResultsToEmpty();
       return;
     }
     void runSearch(1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, false, {});
-  }, [confidenceFilter, deviceLocation, query, resetResultsToEmpty, runSearch, selectedTaxonomyIds.length, sortBy]);
+  }, [activeCategory, confidenceFilter, deviceLocation, hasSearchContext, query, resetResultsToEmpty, runSearch, selectedTaxonomyIds, sortBy]);
 
   const hasActiveAttributes = useMemo(() => Object.keys(selectedAttributes).length > 0, [selectedAttributes]);
 
   const clearCategory = useCallback(() => {
+    const nextQuery = isDiscoveryNeedSearchText(activeCategory, query) ? '' : query;
     setActiveCategory(null);
-    if (!query.trim() && !deviceLocation && selectedTaxonomyIds.length === 0) {
+    setQuery(nextQuery);
+    if (!hasSearchContext(nextQuery, null, deviceLocation, selectedTaxonomyIds, selectedAttributes)) {
       resetResultsToEmpty();
       return;
     }
-    void runSearch(1, confidenceFilter, sortBy, undefined, null);
-  }, [confidenceFilter, deviceLocation, query, resetResultsToEmpty, runSearch, selectedTaxonomyIds.length, sortBy]);
+    void runSearch(1, confidenceFilter, sortBy, nextQuery, null);
+  }, [activeCategory, confidenceFilter, deviceLocation, hasSearchContext, query, resetResultsToEmpty, runSearch, selectedAttributes, selectedTaxonomyIds, sortBy]);
 
   const clearTrust = useCallback(() => {
     setConfidenceFilter('all');
@@ -641,8 +714,17 @@ export default function DirectoryPage() {
     }
   }, [confidenceFilter, data, runSearch]);
 
+  const clearDeviceLocation = useCallback(() => {
+    setDeviceLocation(null);
+    if (!hasSearchContext(query, activeCategory, null, selectedTaxonomyIds, selectedAttributes)) {
+      resetResultsToEmpty();
+      return;
+    }
+    void runSearch(1, confidenceFilter, sortBy, undefined, undefined, null);
+  }, [activeCategory, confidenceFilter, hasSearchContext, query, resetResultsToEmpty, runSearch, selectedAttributes, selectedTaxonomyIds, sortBy]);
+
   const clearAllFilters = useCallback(() => {
-    const nextQuery = (activeCategory && query.trim().toLowerCase() === activeCategory.toLowerCase())
+    const nextQuery = isDiscoveryNeedSearchText(activeCategory, query)
       ? ''
       : query;
 
@@ -662,6 +744,115 @@ export default function DirectoryPage() {
     setQuery(nextQuery);
     void runSearch(1, 'all', 'relevance', nextQuery, null, null, [], false, {});
   }, [activeCategory, query, resetResultsToEmpty, runSearch]);
+
+  const appliedFilterItems = useMemo<SeekerAppliedFilterItem[]>(() => {
+    const items: SeekerAppliedFilterItem[] = [];
+
+    if (deviceLocation) {
+      items.push({
+        id: 'location',
+        label: 'Near you (approx.)',
+        onClick: clearDeviceLocation,
+        ariaLabel: 'Clear location filter',
+      });
+    }
+
+    if (activeCategory) {
+      items.push({
+        id: 'category',
+        label: `Category: ${getDiscoveryNeedLabel(activeCategory) ?? activeCategory}`,
+        onClick: clearCategory,
+        ariaLabel: 'Clear category filter',
+      });
+    }
+
+    appliedTagChips.chips.forEach((tag) => {
+      items.push({
+        id: `tag-${tag.id}`,
+        label: `Tag: ${tag.term}`,
+        onClick: () => toggleTaxonomyId(tag.id),
+        ariaLabel: `Remove tag ${tag.term}`,
+        title: 'Remove tag',
+      });
+    });
+
+    if (appliedTagChips.remaining > 0) {
+      items.push({
+        id: 'tags-more',
+        label: `+${appliedTagChips.remaining} more`,
+        onClick: () => handleTaxonomyOpenChange(true),
+        ariaLabel: `View ${appliedTagChips.remaining} more tag filters`,
+        title: 'View more tags',
+        showRemoveIcon: false,
+      });
+    }
+
+    if (appliedTagChips.hasUnknown && appliedTagChips.chips.length === 0) {
+      items.push({
+        id: 'tags-summary',
+        label: selectedTagLabel ?? `Tags: ${selectedTaxonomyIds.length}`,
+        onClick: () => handleTaxonomyOpenChange(true),
+        ariaLabel: `View tag filters (${selectedTaxonomyIds.length})`,
+        title: 'View tag filters',
+        showRemoveIcon: false,
+      });
+    }
+
+    if (hasActiveAttributes) {
+      items.push({
+        id: 'service-type',
+        label: `Service type (${Object.values(selectedAttributes).flat().length})`,
+        onClick: clearAttributes,
+        ariaLabel: 'Clear service type filters',
+      });
+    }
+
+    if (confidenceFilter !== 'all') {
+      items.push({
+        id: 'trust',
+        label: `Trust: ${confidenceFilter === 'HIGH' ? 'High' : 'Likely+'}`,
+        onClick: clearTrust,
+        ariaLabel: 'Clear trust filter',
+      });
+    }
+
+    if (sortBy !== 'relevance') {
+      items.push({
+        id: 'sort',
+        label: `Sort: ${SORT_OPTIONS.find((option) => option.value === sortBy)?.label ?? sortBy}`,
+        onClick: clearSort,
+        ariaLabel: 'Clear sort option',
+      });
+    }
+
+    return items;
+  }, [
+    activeCategory,
+    appliedTagChips.chips,
+    appliedTagChips.hasUnknown,
+    appliedTagChips.remaining,
+    clearAttributes,
+    clearCategory,
+    clearDeviceLocation,
+    clearSort,
+    clearTrust,
+    confidenceFilter,
+    deviceLocation,
+    handleTaxonomyOpenChange,
+    hasActiveAttributes,
+    selectedAttributes,
+    selectedTagLabel,
+    selectedTaxonomyIds.length,
+    sortBy,
+    toggleTaxonomyId,
+  ]);
+
+  const taxonomyLabelById = useMemo<Record<string, string>>(() => {
+    return taxonomyTerms.reduce<Record<string, string>>((acc, term) => {
+      acc[term.id] = term.term;
+      return acc;
+    }, {});
+  }, [taxonomyTerms]);
 
   // Focus results container after search completes with results
   useEffect(() => {
@@ -695,100 +886,111 @@ export default function DirectoryPage() {
     }
   };
 
-  const handleCategoryClick = (category: string) => {
+  const handleCategoryClick = (category: DiscoveryNeedId) => {
     if (activeCategory === category) {
-      // Deselect — clear category and push URL
+      const nextQuery = isDiscoveryNeedSearchText(activeCategory, query) ? '' : query;
       setActiveCategory(null);
-      setQuery('');
-      pushUrlState('', confidenceFilter, sortBy, null, selectedTaxonomyIds, 1);
+      setQuery(nextQuery);
+      if (!hasSearchContext(nextQuery, null, deviceLocation, selectedTaxonomyIds, selectedAttributes)) {
+        resetResultsToEmpty();
+        return;
+      }
+      void runSearch(1, confidenceFilter, sortBy, nextQuery, null);
     } else {
+      const searchText = getDiscoveryNeedSearchText(category) ?? '';
       setActiveCategory(category);
-      setQuery(category);
-      void runSearch(1, confidenceFilter, sortBy, category, category);
+      setQuery(searchText);
+      void runSearch(1, confidenceFilter, sortBy, searchText, category);
     }
   };
 
   const handleClearSearch = useCallback(() => {
     setQuery('');
-    setData(null);
-    setAllResults([]);
-    setError(null);
-    setPage(1);
     setActiveCategory(null);
-    setSelectedTaxonomyIds([]);
-    setSelectedAttributes({});
-    pushUrlState('', confidenceFilter, sortBy, null, [], 1, {});
-  }, [confidenceFilter, sortBy, pushUrlState]);
-
-  const clearDeviceLocation = useCallback(() => {
-    setDeviceLocation(null);
-    if (!query.trim() && selectedTaxonomyIds.length === 0) {
+    if (!hasSearchContext('', null, deviceLocation, selectedTaxonomyIds, selectedAttributes)) {
       resetResultsToEmpty();
       return;
     }
-    void runSearch(1);
-  }, [query, resetResultsToEmpty, runSearch, selectedTaxonomyIds.length]);
+    void runSearch(1, confidenceFilter, sortBy, '', null);
+  }, [confidenceFilter, deviceLocation, hasSearchContext, resetResultsToEmpty, runSearch, selectedAttributes, selectedTaxonomyIds, sortBy]);
 
   return (
     <main className="container mx-auto max-w-6xl px-4 py-8">
       <PageHeader
+        eyebrow="Verified discovery"
         title="Service Directory"
         subtitle={
           <>
             Search verified listings. Also try{' '}
-            <Link href="/chat" className="text-action-base hover:underline">Chat</Link>
+            <Link href={chatHref} className="text-action-base hover:underline">Chat</Link>
             {' '}or{' '}
-            <Link href="/map" className="text-action-base hover:underline">Map view</Link>.
+            <Link href={mapHref} className="text-action-base hover:underline">Map view</Link>.
           </>
         }
+        badges={(
+          <>
+            <PageHeaderBadge tone="trust">Trust-aware results</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">{deviceLocation ? 'Approximate location active' : 'Location optional'}</PageHeaderBadge>
+            <PageHeaderBadge>{selectedTaxonomyIds.length + Object.keys(selectedAttributes).length > 0 ? 'Filters applied' : 'Browse and compare'}</PageHeaderBadge>
+            <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync to your account' : 'Saves stay on this device'}</PageHeaderBadge>
+          </>
+        )}
       />
 
       <ErrorBoundary>
         {/* Search + filters */}
-        <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-center mb-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
-            <input
-              value={query}
-              onChange={(e) => {
-              setQuery(e.target.value);
-              // Clear the active category chip when the user manually edits the
-              // query so the highlighted chip doesn't go stale.
-              if (activeCategory && e.target.value.trim().toLowerCase() !== activeCategory.toLowerCase()) {
-                setActiveCategory(null);
-              }
-            }}
-              type="search"
-              placeholder="Search for services (e.g., rent help, food pantry, job training)"
-              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-              aria-label="Search services"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={handleClearSearch}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-action"
-                aria-label="Clear search"
-              >
-                <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            )}
-          </div>
-          <Button type="submit" disabled={!canSearch || isLoading}>
-            Search
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleUseMyLocation}
-            disabled={isLocating}
-            title="Opt-in: uses device location in-session only; not stored"
-            className="gap-1.5"
-          >
-            <MapPin className="h-4 w-4" aria-hidden="true" />
-            {isLocating ? 'Locating…' : 'Use my location'}
-          </Button>
-        </form>
+        <FormSection
+          title="Search the directory"
+          description="Search verified listings, then refine sort order and location-aware discovery without leaving the page."
+          className="mb-3"
+        >
+          <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end">
+            <FormField id="directory-search" label="Search services" className="flex-1 basis-64">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
+                <input
+                  ref={searchInputRef}
+                  id="directory-search"
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    if (activeCategory && !isDiscoveryNeedSearchText(activeCategory, e.target.value)) {
+                      setActiveCategory(null);
+                    }
+                  }}
+                  type="search"
+                  placeholder="Search for services (e.g., rent help, food pantry, job training)"
+                  className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                  aria-label="Search services"
+                />
+                {query && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-action"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            </FormField>
+            <Button type="submit" disabled={!canSearch || isLoading}>
+              Search
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleUseMyLocation}
+              disabled={isLocating}
+              title="Opt-in: uses device location in-session only; not stored"
+              className="gap-1.5"
+            >
+              <MapPin className="h-4 w-4" aria-hidden="true" />
+              {isLocating ? 'Locating…' : 'Use my location'}
+            </Button>
+          </form>
+        </FormSection>
 
         <p className="-mt-2 mb-3 text-xs text-gray-600">
           Location is optional. If you choose “Use my location”, ORAN uses an approximate location to show nearby results in-session only and does not store it.
@@ -809,141 +1011,24 @@ export default function DirectoryPage() {
           </div>
         )}
 
-        {/* Category chips */}
-        <div className="mb-2 flex flex-wrap items-center gap-2" role="group" aria-label="Quick category filters">
-          <span className="text-xs font-medium text-gray-500">Categories:</span>
-          {CATEGORY_CHIPS.map((cat) => (
-            <button
-              key={cat.value}
-              type="button"
-              onClick={() => handleCategoryClick(cat.value)}
-              className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
-                activeCategory === cat.value
-                  ? 'bg-action-base text-white'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
-              }`}
-              aria-pressed={activeCategory === cat.value}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Taxonomy tag filters (multi-select) */}
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-gray-500">Tags:</span>
-
-          {taxonomyError && taxonomyTerms.length === 0 && (
-            <span className="text-xs text-error-strong" role="status">Filters unavailable</span>
-          )}
-
-          {!taxonomyError && !isLoadingTaxonomy && topTaxonomyTerms.length > 0 && (
-            <div className="flex overflow-x-auto items-center gap-2 pb-1" role="group" aria-label="Top tags">
-              {topTaxonomyTerms.map((t) => {
-                const selected = selectedTaxonomyIds.includes(t.id);
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => toggleTaxonomyId(t.id)}
-                    className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
-                      selected
-                        ? 'bg-action-base text-white'
-                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
-                    }`}
-                    aria-pressed={selected}
-                    title={`${t.serviceCount} services`}
-                  >
-                    {t.term}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <Dialog open={taxonomyDialogOpen} onOpenChange={handleTaxonomyOpenChange}>
-            <DialogTrigger asChild>
-              <Button type="button" variant="outline" size="sm">
-                More filters{selectedTaxonomyIds.length > 0 ? ` (${selectedTaxonomyIds.length})` : ''}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Filter by service tags</DialogTitle>
-                <DialogDescription>
-                  Tags come from stored taxonomy terms. You may need to confirm details with the provider.
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <input
-                    value={taxonomySearch}
-                    onChange={(e) => setTaxonomySearch(e.target.value)}
-                    type="search"
-                    placeholder="Search tags…"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-                    aria-label="Search service tags"
-                  />
-                  {selectedTaxonomyIds.length > 0 && (
-                    <Button type="button" variant="outline" onClick={clearTaxonomyFilters}>
-                      Clear
-                    </Button>
-                  )}
-                </div>
-
-                {taxonomyError && (
-                  <p className="text-sm text-error-strong" role="alert">{taxonomyError}</p>
-                )}
-
-                {isLoadingTaxonomy ? (
-                  <p className="text-sm text-gray-600">Loading tags…</p>
-                ) : (
-                  <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 p-3 space-y-4">
-                    {visibleTaxonomyTerms.length === 0 && (
-                      <p className="text-sm text-gray-600 p-2">No matching tags.</p>
-                    )}
-                    {Object.entries(groupedTaxonomyTerms).map(([dim, terms]) => (
-                      <div key={dim}>
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                          {DIMENSION_LABELS[dim] ?? dim}
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {terms.map((t) => {
-                            const selected = selectedTaxonomyIds.includes(t.id);
-                            return (
-                              <Button
-                                key={t.id}
-                                type="button"
-                                size="sm"
-                                variant={selected ? 'secondary' : 'outline'}
-                                onClick={() => toggleTaxonomyId(t.id)}
-                                title={t.description ?? undefined}
-                                className="text-xs"
-                              >
-                                {t.term}
-                              </Button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          {selectedTaxonomyIds.length > 0 && (
-            <button
-              type="button"
-              onClick={clearTaxonomyFilters}
-              className="text-xs text-action-strong hover:underline"
-            >
-              Clear tags
-            </button>
-          )}
-        </div>
+        <SeekerDiscoveryFilters
+          activeCategory={activeCategory}
+          onCategoryClick={handleCategoryClick}
+          taxonomyError={taxonomyError}
+          taxonomyTerms={taxonomyTerms}
+          isLoadingTaxonomy={isLoadingTaxonomy}
+          quickTaxonomyTerms={topTaxonomyTerms}
+          selectedTaxonomyIds={selectedTaxonomyIds}
+          onToggleTaxonomyId={toggleTaxonomyId}
+          taxonomyDialogOpen={taxonomyDialogOpen}
+          onTaxonomyOpenChange={handleTaxonomyOpenChange}
+          taxonomySearch={taxonomySearch}
+          onTaxonomySearchChange={setTaxonomySearch}
+          onClearTaxonomyFilters={clearTaxonomyFilters}
+          groupedTaxonomyTerms={groupedTaxonomyTerms}
+          visibleTaxonomyTermsCount={visibleTaxonomyTerms.length}
+          dimensionLabels={DIMENSION_LABELS}
+        />
 
         {/* Service attribute dimension filters (delivery, cost, access) */}
         <div className="mb-4">
@@ -991,7 +1076,7 @@ export default function DirectoryPage() {
                           aria-pressed={isActive}
                           title={t.description}
                         >
-                          {ATTRIBUTE_CHIP_LABELS[t.tag] ?? t.tag.replace(/_/g, ' ')}
+                          {DISCOVERY_ATTRIBUTE_LABELS[t.tag] ?? t.tag.replace(/_/g, ' ')}
                         </button>
                       );
                     })}
@@ -1012,7 +1097,12 @@ export default function DirectoryPage() {
         </div>
 
         {/* Confidence + sort controls — always visible, no toggle required */}
-        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <FormSection
+          title="Trust and sort"
+          description="Adjust confidence and result order while keeping the current search and filters intact."
+          className="mb-4"
+        >
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Trust filter">
             <span className="text-xs font-medium text-gray-500">Trust:</span>
             {CONFIDENCE_OPTIONS.map((opt) => (
@@ -1032,142 +1122,32 @@ export default function DirectoryPage() {
             ))}
           </div>
           <div className="flex items-center gap-2 ml-auto">
-            <label htmlFor="sort-select" className="text-xs font-medium text-gray-500 whitespace-nowrap">
-              Sort:
-            </label>
-            <select
-              id="sort-select"
-              value={sortBy}
-              onChange={handleSortChange}
-              className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-            >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {(deviceLocation || activeCategory || selectedTaxonomyIds.length > 0 || hasActiveAttributes || confidenceFilter !== 'all' || sortBy !== 'relevance') && (
-          <div
-            className="mb-4 flex flex-nowrap items-center gap-2 overflow-x-auto md:flex-wrap md:overflow-visible"
-            aria-label="Applied filters"
-          >
-            <span className="text-xs font-medium text-gray-500">Applied:</span>
-
-            {deviceLocation && (
-              <button
-                type="button"
-                onClick={clearDeviceLocation}
-                className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                aria-label="Clear location filter"
+              <FormField id="sort-select" label="Sort:" className="w-44 max-w-full">
+              <select
+                id="sort-select"
+                value={sortBy}
+                onChange={handleSortChange}
+                className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
               >
-                Near you (approx.)
-                <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            )}
-
-            {activeCategory && (
-              <button
-                type="button"
-                onClick={clearCategory}
-                className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                aria-label="Clear category filter"
-              >
-                Category: {activeCategory}
-                <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            )}
-
-            {selectedTaxonomyIds.length > 0 && (
-              <>
-                {appliedTagChips.chips.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => toggleTaxonomyId(t.id)}
-                    className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                    aria-label={`Remove tag ${t.term}`}
-                    title="Remove tag"
-                  >
-                    Tag: {t.term}
-                    <X className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
                 ))}
-
-                {appliedTagChips.remaining > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => handleTaxonomyOpenChange(true)}
-                    className="inline-flex flex-shrink-0 items-center rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                    aria-label={`View ${appliedTagChips.remaining} more tag filters`}
-                    title="View more tags"
-                  >
-                    +{appliedTagChips.remaining} more
-                  </button>
-                )}
-
-                {appliedTagChips.hasUnknown && appliedTagChips.chips.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={() => handleTaxonomyOpenChange(true)}
-                    className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                    aria-label={`View tag filters (${selectedTaxonomyIds.length})`}
-                    title="View tag filters"
-                  >
-                    {selectedTagLabel ?? `Tags: ${selectedTaxonomyIds.length}`}
-                  </button>
-                )}
-              </>
-            )}
-
-            {hasActiveAttributes && (
-              <button
-                type="button"
-                onClick={clearAttributes}
-                className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                aria-label="Clear service type filters"
-              >
-                Service type ({Object.values(selectedAttributes).flat().length})
-                <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            )}
-
-            {confidenceFilter !== 'all' && (
-              <button
-                type="button"
-                onClick={clearTrust}
-                className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                aria-label="Clear trust filter"
-              >
-                Trust: {confidenceFilter === 'HIGH' ? 'High' : 'Likely+'}
-                <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            )}
-
-            {sortBy !== 'relevance' && (
-              <button
-                type="button"
-                onClick={clearSort}
-                className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                aria-label="Clear sort option"
-              >
-                Sort: {SORT_OPTIONS.find((s) => s.value === sortBy)?.label ?? sortBy}
-                <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              className="ml-auto text-xs text-action-strong hover:underline"
-            >
-              Clear all
-            </button>
+              </select>
+            </FormField>
           </div>
-        )}
+          </div>
+        </FormSection>
+
+        <SeekerAppliedFilters items={appliedFilterItems} onClearAll={clearAllFilters} />
+        <DiscoveryContextPanel
+          discoveryContext={directoryDiscoveryContext}
+          taxonomyLabelById={taxonomyLabelById}
+          title="Current search scope"
+          description="Results stay inside this trust and filter scope until you change or clear it."
+          className="mb-4"
+        />
 
         {error && (
           <div
@@ -1279,7 +1259,7 @@ export default function DirectoryPage() {
                       Clear location
                     </Button>
                   )}
-                  <Link href="/chat" className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                  <Link href={chatHref} className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
                     Try Chat
                   </Link>
                 </div>
@@ -1293,7 +1273,9 @@ export default function DirectoryPage() {
                       enriched={r.service}
                       isSaved={savedIds.has(r.service.service.id)}
                       onToggleSave={toggleSave}
-                      href={`/service/${r.service.service.id}`}
+                      savedSyncEnabled={savedSyncEnabled}
+                      href={buildServiceDetailHref(r.service.service.id)}
+                      discoveryContext={directoryDiscoveryContext}
                     />
                   ))}
                 </div>

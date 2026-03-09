@@ -19,6 +19,7 @@ vi.mock('@/components/ui/PageHeader', () => ({
       <p>{subtitle}</p>
     </header>
   ),
+  PageHeaderBadge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }));
 
 vi.mock('@/components/ui/button', () => ({

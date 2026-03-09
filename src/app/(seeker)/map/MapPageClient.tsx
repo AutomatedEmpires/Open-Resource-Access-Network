@@ -3,24 +3,52 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { Search, MapPin, List, AlertTriangle, X } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Search, MapPin, List, AlertTriangle, X, ChevronDown, ChevronUp } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  type DiscoveryNeedId,
+  resolveDiscoveryNeedId,
+  isDiscoveryNeedSearchText,
+  getDiscoveryNeedSearchText,
+} from '@/domain/discoveryNeeds';
+import { SERVICE_ATTRIBUTES_TAXONOMY } from '@/domain/taxonomy';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { ServiceCard } from '@/components/directory/ServiceCard';
+import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
+import { SeekerAppliedFilters, type SeekerAppliedFilterItem } from '@/components/seeker/SeekerAppliedFilters';
+import { SeekerDiscoveryFilters } from '@/components/seeker/SeekerDiscoveryFilters';
+import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
+import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
+import {
+  addServerSaved,
+  readStoredSavedServiceIdSet,
+  removeServerSaved,
+  writeStoredSavedServiceIds,
+} from '@/services/saved/client';
+import { getSavedTogglePresentation } from '@/services/saved/presentation';
+import {
+  buildDiscoveryHref,
+  buildDiscoveryUrlParams,
+  buildSearchApiParamsFromDiscovery,
+  DISCOVERY_CONFIDENCE_OPTIONS,
+  DISCOVERY_SORT_OPTIONS,
+  hasMeaningfulDiscoveryState,
+  parseDiscoveryAttributeFilters,
+  parseDiscoveryUrlState,
+  resolveDiscoverySearchText,
+  type DiscoveryConfidenceFilter,
+  type DiscoverySortOption,
+} from '@/services/search/discovery';
 import type { SearchResponse } from '@/services/search/types';
 import type { EnrichedService } from '@/domain/types';
+import { FormField } from '@/components/ui/form-field';
+import { FormSection } from '@/components/ui/form-section';
 import { useToast } from '@/components/ui/toast';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+import { DISCOVERY_ATTRIBUTE_LABELS } from '@/services/search/discoveryPresentation';
 
 // Azure Maps SDK accesses `window` at module evaluation time — must be loaded
 // client-side only. The ssr:false dynamic import prevents SSR prerender errors.
@@ -38,38 +66,14 @@ const MapContainer = dynamic(
 
 const DEFAULT_LIMIT = 12;
 const DEBOUNCE_MS = 600;
-const SAVED_KEY = 'oran:saved-service-ids';
+type ConfidenceFilter = DiscoveryConfidenceFilter;
+type SortOption = DiscoverySortOption;
 
-/** Trust filter options — 'all' shows everything */
-type ConfidenceFilter = 'all' | 'HIGH' | 'LIKELY';
+const CONFIDENCE_OPTIONS = DISCOVERY_CONFIDENCE_OPTIONS;
+const SORT_OPTIONS = DISCOVERY_SORT_OPTIONS;
 
-const CONFIDENCE_OPTIONS: { value: ConfidenceFilter; label: string; minScore?: number }[] = [
-  { value: 'all', label: 'All results' },
-  { value: 'LIKELY', label: 'Likely or higher', minScore: 60 },
-  { value: 'HIGH', label: 'High confidence only', minScore: 80 },
-];
-
-/** Sort options */
-type SortOption = 'relevance' | 'trust' | 'name_asc' | 'name_desc';
-
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: 'relevance', label: 'Relevance' },
-  { value: 'trust', label: 'Trust (highest)' },
-  { value: 'name_asc', label: 'Name (A–Z)' },
-  { value: 'name_desc', label: 'Name (Z–A)' },
-];
-
-/** Quick category chips for common service needs */
-const CATEGORY_CHIPS: { value: string; label: string }[] = [
-  { value: 'food', label: 'Food' },
-  { value: 'housing', label: 'Housing' },
-  { value: 'healthcare', label: 'Healthcare' },
-  { value: 'mental health', label: 'Mental Health' },
-  { value: 'employment', label: 'Employment' },
-  { value: 'legal aid', label: 'Legal Aid' },
-  { value: 'childcare', label: 'Childcare' },
-  { value: 'transportation', label: 'Transportation' },
-];
+/** Seeker-facing attribute dimensions — show common tags as quick filter chips */
+const SEEKER_ATTRIBUTE_DIMENSIONS = ['delivery', 'cost', 'access'] as const;
 
 /** Human-readable labels for taxonomy dimension keys */
 const DIMENSION_LABELS: Record<string, string> = {
@@ -97,8 +101,20 @@ type TaxonomyTermDTO = {
   serviceCount: number;
 };
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export default function MapPage() {
-  const [query, setQuery] = useState('');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialCategoryFromUrl = resolveDiscoveryNeedId(searchParams.get('category'));
+
+  const [query, setQuery] = useState(() => {
+    const urlQuery = searchParams.get('q');
+    if (urlQuery) return urlQuery;
+    return getDiscoveryNeedSearchText(initialCategoryFromUrl) ?? '';
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<SearchResponse | null>(null);
@@ -113,23 +129,40 @@ export default function MapPage() {
   const [taxonomyTerms, setTaxonomyTerms] = useState<TaxonomyTermDTO[]>([]);
   const [isLoadingTaxonomy, setIsLoadingTaxonomy] = useState(false);
   const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
-  const [selectedTaxonomyIds, setSelectedTaxonomyIds] = useState<string[]>([]);
+  const [selectedTaxonomyIds, setSelectedTaxonomyIds] = useState<string[]>(() => {
+    const raw = searchParams.get('taxonomyIds');
+    if (!raw) return [];
+    return raw.split(',').map((s) => s.trim()).filter((s) => s && isUuid(s));
+  });
+  const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string[]>>(
+    () => parseDiscoveryAttributeFilters(searchParams.get('attributes')) ?? {},
+  );
+  const [attributeSectionOpen, setAttributeSectionOpen] = useState(false);
   const [taxonomyDialogOpen, setTaxonomyDialogOpen] = useState(false);
   const [taxonomySearch, setTaxonomySearch] = useState('');
 
   // Track latest bounds from the map for bbox-on-pan queries
   const boundsRef = useRef<Bounds | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [isAreaDirty, setIsAreaDirty] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [savedSyncEnabled] = useState(() => isServerSyncEnabledOnDevice());
   const savedIdsRef = useRef<Set<string>>(new Set());
   const resultsContainerRef = useRef<HTMLDivElement>(null);
   /** Mobile-only toggle between map and list view */
   const [mobileView, setMobileView] = useState<'map' | 'list'>('map');
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter>('all');
-  const [sortBy, setSortBy] = useState<SortOption>('relevance');
+  const [activeCategory, setActiveCategory] = useState<DiscoveryNeedId | null>(initialCategoryFromUrl);
+  const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter>(() => {
+    const value = searchParams.get('confidence');
+    return value === 'HIGH' || value === 'LIKELY' ? value : 'all';
+  });
+  const [sortBy, setSortBy] = useState<SortOption>(() => {
+    const value = searchParams.get('sort');
+    const valid: SortOption[] = ['relevance', 'trust', 'name_asc', 'name_desc'];
+    return valid.includes(value as SortOption) ? (value as SortOption) : 'relevance';
+  });
   const { success, error: toastError, info } = useToast();
 
   useEffect(() => {
@@ -221,17 +254,9 @@ export default function MapPage() {
 
   // Load saved IDs from localStorage on mount
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SAVED_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as unknown;
-        if (Array.isArray(parsed)) {
-          const next = new Set(parsed.filter((v): v is string => typeof v === 'string'));
-          savedIdsRef.current = next;
-          setSavedIds(next);
-        }
-      }
-    } catch { /* ignore */ }
+    const next = readStoredSavedServiceIdSet();
+    savedIdsRef.current = next;
+    setSavedIds(next);
   }, []);
 
   // Keep ref in sync in case savedIds is updated elsewhere.
@@ -240,19 +265,80 @@ export default function MapPage() {
   }, [savedIds]);
 
   const toggleSave = useCallback((serviceId: string) => {
-    // Read from ref so this callback never goes stale — no savedIds in dep array.
     const wasSaved = savedIdsRef.current.has(serviceId);
+    const toggleCopy = getSavedTogglePresentation(wasSaved, savedSyncEnabled);
     setSavedIds((prev) => {
       const next = new Set(prev);
       if (next.has(serviceId)) { next.delete(serviceId); } else { next.add(serviceId); }
       savedIdsRef.current = next;
-      try { localStorage.setItem(SAVED_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      writeStoredSavedServiceIds(next);
       return next;
     });
-    success(wasSaved ? 'Removed from saved' : 'Saved');
-  }, [success]);
+    if (savedSyncEnabled) {
+      if (wasSaved) {
+        void removeServerSaved(serviceId);
+      } else {
+        void addServerSaved(serviceId);
+      }
+    }
+    success(toggleCopy.toastMessage);
+  }, [savedSyncEnabled, success]);
 
-  const canSearch = useMemo(() => query.trim().length > 0, [query]);
+  const hasSearchContext = useCallback((
+    nextQuery: string,
+    nextCategory: DiscoveryNeedId | null,
+    nextTaxonomyIds: string[],
+    nextAttributes: Record<string, string[]>,
+    hasBounds = false,
+  ) => {
+    return Boolean(resolveDiscoverySearchText(nextQuery, nextCategory))
+      || nextTaxonomyIds.length > 0
+      || Object.keys(nextAttributes).length > 0
+      || hasBounds;
+  }, []);
+
+  const hasShareableIntent = useCallback((
+    nextQuery: string,
+    nextCategory: DiscoveryNeedId | null,
+    nextTaxonomyIds: string[],
+    nextAttributes: Record<string, string[]>,
+  ) => hasSearchContext(nextQuery, nextCategory, nextTaxonomyIds, nextAttributes, false), [hasSearchContext]);
+
+  const pushUrlState = useCallback((
+    nextQuery: string,
+    nextConfidence: ConfidenceFilter,
+    nextSort: SortOption,
+    nextCategory: DiscoveryNeedId | null,
+    nextTaxonomyIds: string[],
+    nextAttributes: Record<string, string[]>,
+  ) => {
+    if (!hasShareableIntent(nextQuery, nextCategory, nextTaxonomyIds, nextAttributes)) {
+      router.replace('/map', { scroll: false });
+      return;
+    }
+
+    const params = buildDiscoveryUrlParams({
+      text: nextQuery,
+      needId: nextCategory,
+      confidenceFilter: nextConfidence,
+      sortBy: nextSort,
+      taxonomyTermIds: nextTaxonomyIds,
+      attributeFilters: nextAttributes,
+    });
+    const qs = params.toString();
+    router.replace(qs ? `/map?${qs}` : '/map', { scroll: false });
+  }, [hasShareableIntent, router]);
+
+  const resetResultsToEmpty = useCallback(() => {
+    setData(null);
+    setError(null);
+    pushUrlState('', 'all', 'relevance', null, [], {});
+  }, [pushUrlState]);
+
+  const canSearch = useMemo(
+    () => hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false),
+    [activeCategory, hasSearchContext, query, selectedAttributes, selectedTaxonomyIds],
+  );
 
   const taxonomyIdsParam = useMemo(() => {
     return selectedTaxonomyIds.length > 0 ? selectedTaxonomyIds.join(',') : '';
@@ -290,46 +376,138 @@ export default function MapPage() {
     [services],
   );
 
+  const directoryHref = useMemo(() => {
+    const params = buildDiscoveryUrlParams({
+      text: query,
+      needId: activeCategory,
+      confidenceFilter,
+      sortBy,
+      taxonomyTermIds: selectedTaxonomyIds,
+      attributeFilters: selectedAttributes,
+    });
+    const qs = params.toString();
+    return qs ? `/directory?${qs}` : '/directory';
+  }, [activeCategory, confidenceFilter, query, selectedAttributes, selectedTaxonomyIds, sortBy]);
+
+  const selectedTagLabel = useMemo(() => {
+    if (selectedTaxonomyIds.length === 0) return null;
+    const byId = new Map(taxonomyTerms.map((term) => [term.id, term.term] as const));
+    const names = selectedTaxonomyIds.map((id) => byId.get(id)).filter((value): value is string => Boolean(value));
+    const total = selectedTaxonomyIds.length;
+
+    if (names.length === 0) return `Tags: ${total}`;
+    if (total === 1) return `Tag: ${names[0]}`;
+    if (names.length === 1) return `Tags: ${names[0]} +${total - 1}`;
+    if (total === 2) return `Tags: ${names[0]}, ${names[1]}`;
+    return `Tags: ${names[0]}, ${names[1]} +${total - 2}`;
+  }, [selectedTaxonomyIds, taxonomyTerms]);
+
+  const selectedTagsKnown = useMemo(() => {
+    if (selectedTaxonomyIds.length === 0) return [] as Array<{ id: string; term: string }>;
+    const byId = new Map(taxonomyTerms.map((term) => [term.id, term.term] as const));
+    return selectedTaxonomyIds
+      .map((id) => {
+        const term = byId.get(id);
+        return term ? { id, term } : null;
+      })
+      .filter((value): value is { id: string; term: string } => Boolean(value));
+  }, [selectedTaxonomyIds, taxonomyTerms]);
+
+  const appliedTagChips = useMemo(() => {
+    if (selectedTaxonomyIds.length === 0) {
+      return {
+        chips: [] as Array<{ id: string; term: string }>,
+        remaining: 0,
+        hasUnknown: false,
+      };
+    }
+
+    const chips = selectedTagsKnown.slice(0, 2);
+    const unknown = selectedTaxonomyIds.length - selectedTagsKnown.length;
+    return {
+      chips,
+      remaining: Math.max(0, selectedTaxonomyIds.length - chips.length),
+      hasUnknown: unknown > 0,
+    };
+  }, [selectedTagsKnown, selectedTaxonomyIds.length]);
+
+  const mapDiscoveryContext = useMemo(() => {
+    return {
+      text: query,
+      needId: activeCategory,
+      confidenceFilter,
+      sortBy,
+      taxonomyTermIds: selectedTaxonomyIds,
+      attributeFilters: selectedAttributes,
+    };
+  }, [activeCategory, confidenceFilter, query, selectedAttributes, selectedTaxonomyIds, sortBy]);
+
+  const chatHref = useMemo(() => {
+    return buildDiscoveryHref('/chat', mapDiscoveryContext);
+  }, [mapDiscoveryContext]);
+
+  const taxonomyLabelById = useMemo<Record<string, string>>(() => {
+    return taxonomyTerms.reduce<Record<string, string>>((acc, term) => {
+      acc[term.id] = term.term;
+      return acc;
+    }, {});
+  }, [taxonomyTerms]);
+
+  const buildServiceDetailHref = useCallback((serviceId: string) => {
+    return buildDiscoveryHref(`/service/${serviceId}`, mapDiscoveryContext);
+  }, [mapDiscoveryContext]);
+
   // ── fetch services (text OR bbox) ─────────────────────────
   const runSearch = useCallback(
-    async (opts?: { bbox?: Bounds; taxonomyIds?: string; confidence?: ConfidenceFilter; sort?: SortOption; category?: string | null }) => {
-      const trimmed = query.trim();
+    async (opts?: {
+      bbox?: Bounds;
+      taxonomyIds?: string;
+      attributes?: Record<string, string[]>;
+      confidence?: ConfidenceFilter;
+      sort?: SortOption;
+      category?: DiscoveryNeedId | null;
+      text?: string;
+    }) => {
+      const trimmed = (opts?.text ?? query).trim();
       const bbox = opts?.bbox;
       const taxonomyIds = opts?.taxonomyIds;
+      const effectiveAttributes = opts?.attributes ?? selectedAttributes;
       const effectiveConfidence = opts?.confidence !== undefined ? opts.confidence : confidenceFilter;
       const effectiveSort = opts?.sort !== undefined ? opts.sort : sortBy;
       // category is passed explicitly when a chip is toggled so the state update
       // and the fetch are always in sync
       const effectiveCategory = opts?.category !== undefined ? opts.category : activeCategory;
-
-      // Need either text, category, or bbox
-      if (!trimmed && !effectiveCategory && !bbox) return;
+      const categorySearchText = getDiscoveryNeedSearchText(effectiveCategory) ?? '';
 
       setIsLoading(true);
       setError(null);
 
       try {
-        const params = new URLSearchParams({ status: 'active', limit: String(DEFAULT_LIMIT), page: '1' });
-
-        const searchText = trimmed || effectiveCategory || '';
-        if (searchText) params.set('q', searchText);
-
-        if (bbox) {
-          params.set('minLat', String(bbox.minLat));
-          params.set('minLng', String(bbox.minLng));
-          params.set('maxLat', String(bbox.maxLat));
-          params.set('maxLng', String(bbox.maxLng));
-        }
-
         const effectiveTaxonomyIds = taxonomyIds ?? taxonomyIdsParam;
-        if (effectiveTaxonomyIds) {
-          params.set('taxonomyIds', effectiveTaxonomyIds);
+        const effectiveTaxonomyIdList = effectiveTaxonomyIds ? effectiveTaxonomyIds.split(',').filter(Boolean) : [];
+        if (!hasSearchContext(trimmed, effectiveCategory, effectiveTaxonomyIdList, effectiveAttributes, Boolean(bbox))) {
+          setIsLoading(false);
+          return;
         }
-
-        const minScore = CONFIDENCE_OPTIONS.find(c => c.value === effectiveConfidence)?.minScore;
-        if (minScore !== undefined) params.set('minConfidenceScore', String(minScore));
-
-        if (effectiveSort !== 'relevance') params.set('sortBy', effectiveSort);
+        const params = buildSearchApiParamsFromDiscovery({
+          text: trimmed || categorySearchText,
+          needId: effectiveCategory,
+          taxonomyTermIds: effectiveTaxonomyIdList,
+          attributeFilters: effectiveAttributes,
+          confidenceFilter: effectiveConfidence,
+          sortBy: effectiveSort,
+          page: 1,
+          limit: DEFAULT_LIMIT,
+          geo: bbox
+            ? {
+                type: 'bbox',
+                minLat: bbox.minLat,
+                minLng: bbox.minLng,
+                maxLat: bbox.maxLat,
+                maxLng: bbox.maxLng,
+              }
+            : undefined,
+        });
 
         const res = await fetch(`/api/search?${params.toString()}`, {
           method: 'GET',
@@ -344,6 +522,14 @@ export default function MapPage() {
         const json = (await res.json()) as SearchResponse;
         setData(json);
         setIsAreaDirty(false);
+        pushUrlState(
+          trimmed || categorySearchText,
+          effectiveConfidence,
+          effectiveSort,
+          effectiveCategory,
+          effectiveTaxonomyIdList,
+          effectiveAttributes,
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Search failed');
         setData(null);
@@ -351,7 +537,7 @@ export default function MapPage() {
         setIsLoading(false);
       }
     },
-    [query, taxonomyIdsParam, confidenceFilter, sortBy, activeCategory],
+    [activeCategory, confidenceFilter, hasSearchContext, pushUrlState, query, selectedAttributes, sortBy, taxonomyIdsParam],
   );
 
   const toggleTaxonomyId = useCallback((id: string) => {
@@ -362,31 +548,223 @@ export default function MapPage() {
       // Re-run the current search context so filters feel immediate.
       if (boundsRef.current) {
         void runSearch({ bbox: boundsRef.current, taxonomyIds: nextParam });
-      } else if (query.trim()) {
+      } else if (hasSearchContext(query, activeCategory, next, selectedAttributes, false)) {
         void runSearch({ taxonomyIds: nextParam });
       }
 
       return next;
     });
-  }, [query, runSearch]);
+  }, [activeCategory, hasSearchContext, query, runSearch, selectedAttributes]);
 
   const clearTaxonomyFilters = useCallback(() => {
     setSelectedTaxonomyIds([]);
     if (boundsRef.current) {
       void runSearch({ bbox: boundsRef.current, taxonomyIds: '' });
-    } else if (query.trim()) {
+    } else if (hasSearchContext(query, activeCategory, [], selectedAttributes, false)) {
       void runSearch({ taxonomyIds: '' });
     }
-  }, [query, runSearch]);
+  }, [activeCategory, hasSearchContext, query, runSearch, selectedAttributes]);
 
-  const handleCategoryClick = useCallback((category: string) => {
+  const clearCategory = useCallback(() => {
+    setActiveCategory(null);
+    if (!hasSearchContext(query, null, selectedTaxonomyIds, selectedAttributes, Boolean(boundsRef.current))) {
+      resetResultsToEmpty();
+      return;
+    }
+    if (boundsRef.current) {
+      void runSearch({ bbox: boundsRef.current, category: null, attributes: selectedAttributes });
+      return;
+    }
+    void runSearch({ category: null, attributes: selectedAttributes });
+  }, [hasSearchContext, query, resetResultsToEmpty, runSearch, selectedAttributes, selectedTaxonomyIds]);
+
+  const clearTrust = useCallback(() => {
+    setConfidenceFilter('all');
+    if (boundsRef.current) {
+      void runSearch({ bbox: boundsRef.current, confidence: 'all' });
+    } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false)) {
+      void runSearch({ confidence: 'all' });
+    }
+  }, [activeCategory, hasSearchContext, query, runSearch, selectedAttributes, selectedTaxonomyIds]);
+
+  const clearSort = useCallback(() => {
+    setSortBy('relevance');
+    if (boundsRef.current) {
+      void runSearch({ bbox: boundsRef.current, sort: 'relevance' });
+    } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false)) {
+      void runSearch({ sort: 'relevance' });
+    }
+  }, [activeCategory, hasSearchContext, query, runSearch, selectedAttributes, selectedTaxonomyIds]);
+
+  const clearAttributes = useCallback(() => {
+    setSelectedAttributes({});
+    if (!hasSearchContext(query, activeCategory, selectedTaxonomyIds, {}, Boolean(boundsRef.current))) {
+      resetResultsToEmpty();
+      return;
+    }
+    if (boundsRef.current) {
+      void runSearch({ bbox: boundsRef.current, attributes: {} });
+      return;
+    }
+    void runSearch({ attributes: {} });
+  }, [activeCategory, hasSearchContext, query, resetResultsToEmpty, runSearch, selectedTaxonomyIds]);
+
+  const toggleAttribute = useCallback((dimension: string, tag: string) => {
+    setSelectedAttributes((prev) => {
+      const current = prev[dimension] ?? [];
+      const hasTag = current.includes(tag);
+      const nextTags = hasTag ? current.filter((t) => t !== tag) : [...current, tag];
+      const next = { ...prev };
+      if (nextTags.length === 0) {
+        delete next[dimension];
+      } else {
+        next[dimension] = nextTags;
+      }
+      if (boundsRef.current) {
+        void runSearch({ bbox: boundsRef.current, attributes: next });
+      } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, next, false)) {
+        void runSearch({ attributes: next });
+      }
+      return next;
+    });
+  }, [activeCategory, hasSearchContext, query, runSearch, selectedTaxonomyIds]);
+
+  const hasActiveAttributes = useMemo(() => Object.keys(selectedAttributes).length > 0, [selectedAttributes]);
+
+  // Keyboard shortcut: "/" focuses the search input (standard for search-centric pages)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const clearAllFilters = useCallback(() => {
+    setQuery('');
+    setActiveCategory(null);
+    setSelectedTaxonomyIds([]);
+    setSelectedAttributes({});
+    setTaxonomySearch('');
+    setConfidenceFilter('all');
+    setSortBy('relevance');
+    if (boundsRef.current) {
+      void runSearch({
+        bbox: boundsRef.current,
+        text: '',
+        category: null,
+        taxonomyIds: '',
+        attributes: {},
+        confidence: 'all',
+        sort: 'relevance',
+      });
+      return;
+    }
+    resetResultsToEmpty();
+  }, [resetResultsToEmpty, runSearch]);
+
+  const appliedFilterItems = useMemo<SeekerAppliedFilterItem[]>(() => {
+    const items: SeekerAppliedFilterItem[] = [];
+
+    if (activeCategory) {
+      items.push({
+        id: 'category',
+        label: `Category: ${activeCategory.replace(/_/g, ' ')}`,
+        onClick: clearCategory,
+        ariaLabel: 'Clear category filter',
+      });
+    }
+
+    appliedTagChips.chips.forEach((tag) => {
+      items.push({
+        id: `tag-${tag.id}`,
+        label: `Tag: ${tag.term}`,
+        onClick: () => toggleTaxonomyId(tag.id),
+        ariaLabel: `Remove tag ${tag.term}`,
+        title: 'Remove tag',
+      });
+    });
+
+    if (appliedTagChips.remaining > 0) {
+      items.push({
+        id: 'tags-more',
+        label: `+${appliedTagChips.remaining} more`,
+        onClick: () => setTaxonomyDialogOpen(true),
+        ariaLabel: `View ${appliedTagChips.remaining} more tag filters`,
+        title: 'View more tags',
+        showRemoveIcon: false,
+      });
+    }
+
+    if (appliedTagChips.hasUnknown && appliedTagChips.chips.length === 0) {
+      items.push({
+        id: 'tags-summary',
+        label: selectedTagLabel ?? `Tags: ${selectedTaxonomyIds.length}`,
+        onClick: () => setTaxonomyDialogOpen(true),
+        ariaLabel: `View tag filters (${selectedTaxonomyIds.length})`,
+        title: 'View tag filters',
+        showRemoveIcon: false,
+      });
+    }
+
+    if (Object.keys(selectedAttributes).length > 0) {
+      items.push({
+        id: 'service-filters',
+        label: `Service filters (${Object.values(selectedAttributes).flat().length})`,
+        onClick: clearAttributes,
+        ariaLabel: 'Clear service filters',
+      });
+    }
+
+    if (confidenceFilter !== 'all') {
+      items.push({
+        id: 'trust',
+        label: `Trust: ${confidenceFilter === 'HIGH' ? 'High' : 'Likely+'}`,
+        onClick: clearTrust,
+        ariaLabel: 'Clear trust filter',
+      });
+    }
+
+    if (sortBy !== 'relevance') {
+      items.push({
+        id: 'sort',
+        label: `Sort: ${SORT_OPTIONS.find((option) => option.value === sortBy)?.label ?? sortBy}`,
+        onClick: clearSort,
+        ariaLabel: 'Clear sort option',
+      });
+    }
+
+    return items;
+  }, [
+    activeCategory,
+    appliedTagChips.chips,
+    appliedTagChips.hasUnknown,
+    appliedTagChips.remaining,
+    clearAttributes,
+    clearCategory,
+    clearSort,
+    clearTrust,
+    confidenceFilter,
+    selectedAttributes,
+    selectedTagLabel,
+    selectedTaxonomyIds.length,
+    sortBy,
+    toggleTaxonomyId,
+  ]);
+
+  const handleCategoryClick = useCallback((category: DiscoveryNeedId) => {
     const next = activeCategory === category ? null : category;
     setActiveCategory(next);
     setQuery('');
     if (boundsRef.current) {
-      void runSearch({ bbox: boundsRef.current, category: next });
+      void runSearch({ bbox: boundsRef.current, category: next, text: '' });
     } else {
-      void runSearch({ category: next });
+      void runSearch({ category: next, text: '' });
     }
   }, [activeCategory, runSearch]);
 
@@ -442,225 +820,295 @@ export default function MapPage() {
     }
   }, [data, isLoading]);
 
+  const didAutoRun = useRef(false);
+  useEffect(() => {
+    if (didAutoRun.current) return;
+    const urlDiscoveryIntent = parseDiscoveryUrlState(searchParams);
+    const storedDiscoveryIntent = hasMeaningfulDiscoveryState(urlDiscoveryIntent)
+      ? {}
+      : readStoredDiscoveryPreference();
+    const effectiveDiscoveryIntent = hasMeaningfulDiscoveryState(urlDiscoveryIntent)
+      ? urlDiscoveryIntent
+      : storedDiscoveryIntent;
+    const effectiveCategory = effectiveDiscoveryIntent.needId ?? null;
+    const effectiveQuery = resolveDiscoverySearchText(effectiveDiscoveryIntent.text, effectiveCategory);
+    const effectiveConfidence = effectiveDiscoveryIntent.confidenceFilter ?? confidenceFilter;
+    const effectiveSort = effectiveDiscoveryIntent.sortBy ?? sortBy;
+    const effectiveTaxonomyIds = (effectiveDiscoveryIntent.taxonomyTermIds ?? []).filter((value) => isUuid(value));
+    const effectiveAttributes = effectiveDiscoveryIntent.attributeFilters ?? {};
+    if (!hasSearchContext(effectiveQuery, effectiveCategory, effectiveTaxonomyIds, effectiveAttributes, false)) return;
+
+    didAutoRun.current = true;
+    setQuery(effectiveQuery);
+    setActiveCategory(effectiveCategory);
+    setConfidenceFilter(effectiveConfidence);
+    setSortBy(effectiveSort);
+    setSelectedTaxonomyIds(effectiveTaxonomyIds);
+    setSelectedAttributes(effectiveAttributes);
+    void runSearch({
+      text: effectiveQuery,
+      category: effectiveCategory,
+      taxonomyIds: effectiveTaxonomyIds.length > 0 ? effectiveTaxonomyIds.join(',') : undefined,
+      attributes: effectiveAttributes,
+      confidence: effectiveConfidence,
+      sort: effectiveSort,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleClearSearch = useCallback(() => {
+    setQuery('');
+    setActiveCategory(null);
+
+    if (!hasSearchContext('', null, selectedTaxonomyIds, selectedAttributes, Boolean(boundsRef.current))) {
+      resetResultsToEmpty();
+      return;
+    }
+
+    if (boundsRef.current) {
+      void runSearch({
+        bbox: boundsRef.current,
+        text: '',
+        category: null,
+        taxonomyIds: taxonomyIdsParam || undefined,
+        attributes: selectedAttributes,
+      });
+      return;
+    }
+
+    void runSearch({
+      text: '',
+      category: null,
+      taxonomyIds: taxonomyIdsParam || undefined,
+      attributes: selectedAttributes,
+    });
+  }, [hasSearchContext, resetResultsToEmpty, runSearch, selectedAttributes, selectedTaxonomyIds, taxonomyIdsParam]);
+
   return (
     <main className="container mx-auto max-w-6xl px-4 py-4 md:py-8">
       <PageHeader
+        eyebrow="Verified discovery"
         title="Service Map"
         subtitle={
           <>
             Search verified service locations. Prefer browsing?{' '}
-            <Link href="/directory" className="text-action-base hover:underline">Directory</Link>
+            <Link href={directoryHref} className="text-action-base hover:underline">Directory</Link>
             {' '}or{' '}
-            <Link href="/chat" className="text-action-base hover:underline">Chat</Link>.
+            <Link href={chatHref} className="text-action-base hover:underline">Chat</Link>.
           </>
         }
+        badges={(
+          <>
+            <PageHeaderBadge tone="trust">Verified listings only</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">{deviceCenter ? 'Approximate location active' : 'Location optional'}</PageHeaderBadge>
+            <PageHeaderBadge>{activeCategory ? 'Category view active' : 'Map and list stay in sync'}</PageHeaderBadge>
+            <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync to your account' : 'Saves stay on this device'}</PageHeaderBadge>
+          </>
+        )}
       />
 
       <ErrorBoundary>
         {/* Search bar */}
-        <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-center mb-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              type="search"
-              placeholder="Search for services (e.g., food bank, shelter)"
-              className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-              aria-label="Search services to plot"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-action"
-                aria-label="Clear search"
-              >
-                <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            )}
-          </div>
-          <Button type="submit" disabled={!canSearch || isLoading}>
-            Search
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleUseMyLocation}
-            disabled={isLocating}
-            title="Opt-in: uses device location in-session only; not stored"
-          >
-            {isLocating ? 'Locating…' : 'Use my location'}
-          </Button>
-        </form>
-
-        {/* Category chips */}
-        <div className="mb-2 flex overflow-x-auto gap-1.5 pb-1" role="group" aria-label="Filter by service category">
-          {CATEGORY_CHIPS.map((chip) => (
-            <button
-              key={chip.value}
+        <FormSection
+          title="Search the map"
+          description="Search verified listings, then refine trust and sort settings without leaving the map."
+          className="mb-3"
+        >
+          <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end">
+            <FormField id="map-search" label="Search services to plot" className="flex-1 basis-64">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
+                <input
+                  ref={searchInputRef}
+                  id="map-search"
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    if (activeCategory && !isDiscoveryNeedSearchText(activeCategory, e.target.value)) {
+                      setActiveCategory(null);
+                    }
+                  }}
+                  type="search"
+                  placeholder="Search for services (e.g., food bank, shelter)"
+                  className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                  aria-label="Search services to plot"
+                />
+                {query && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-action"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            </FormField>
+            <Button type="submit" disabled={!canSearch || isLoading}>
+              Search
+            </Button>
+            <Button
               type="button"
-              onClick={() => handleCategoryClick(chip.value)}
-              aria-pressed={activeCategory === chip.value}
-              className={`inline-flex items-center justify-center rounded-full border px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
-                activeCategory === chip.value
-                  ? 'border-action bg-action text-white'
-                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-              }`}
+              variant="outline"
+              onClick={handleUseMyLocation}
+              disabled={isLocating}
+              title="Opt-in: uses device location in-session only; not stored"
             >
-              {chip.label}
-            </button>
-          ))}
+              {isLocating ? 'Locating…' : 'Use my location'}
+            </Button>
+          </form>
+        </FormSection>
+
+        <SeekerDiscoveryFilters
+          activeCategory={activeCategory}
+          onCategoryClick={handleCategoryClick}
+          taxonomyError={taxonomyError}
+          taxonomyTerms={taxonomyTerms}
+          isLoadingTaxonomy={isLoadingTaxonomy}
+          quickTaxonomyTerms={quickTaxonomyTerms}
+          selectedTaxonomyIds={selectedTaxonomyIds}
+          onToggleTaxonomyId={toggleTaxonomyId}
+          taxonomyDialogOpen={taxonomyDialogOpen}
+          onTaxonomyOpenChange={setTaxonomyDialogOpen}
+          taxonomySearch={taxonomySearch}
+          onTaxonomySearchChange={setTaxonomySearch}
+          onClearTaxonomyFilters={clearTaxonomyFilters}
+          groupedTaxonomyTerms={groupedTaxonomyTerms}
+          visibleTaxonomyTermsCount={visibleTaxonomyTerms.length}
+          dimensionLabels={DIMENSION_LABELS}
+          categoryGroupLabel="Filter by service category"
+          showCategoryLabel={false}
+        />
+
+        {/* Service attribute dimension filters (delivery, cost, access) */}
+        <div className="mb-3">
+          <button
+            type="button"
+            onClick={() => setAttributeSectionOpen((v) => !v)}
+            className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 mb-2"
+            aria-expanded={attributeSectionOpen || hasActiveAttributes}
+          >
+            Service type filters
+            {hasActiveAttributes && (
+              <span className="ml-1 rounded-full bg-info-muted text-action-strong px-1.5 py-0.5 text-[10px] font-semibold">
+                {Object.values(selectedAttributes).flat().length}
+              </span>
+            )}
+            {attributeSectionOpen ? (
+              <ChevronUp className="h-3 w-3" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-3 w-3" aria-hidden="true" />
+            )}
+          </button>
+
+          {(attributeSectionOpen || hasActiveAttributes) && (
+            <div className="space-y-2">
+              {SEEKER_ATTRIBUTE_DIMENSIONS.map((dim) => {
+                const def = SERVICE_ATTRIBUTES_TAXONOMY[dim];
+                if (!def) return null;
+                const commonTags = def.tags.filter((t) => t.common);
+                const activeTags = selectedAttributes[dim] ?? [];
+                return (
+                  <div key={dim} className="flex flex-wrap items-center gap-2" role="group" aria-label={def.name}>
+                    <span className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">{def.name}:</span>
+                    {commonTags.map((t) => {
+                      const isActive = activeTags.includes(t.tag);
+                      return (
+                        <button
+                          key={t.tag}
+                          type="button"
+                          onClick={() => toggleAttribute(dim, t.tag)}
+                          className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
+                            isActive
+                              ? 'bg-action-base text-white'
+                              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                          }`}
+                          aria-pressed={isActive}
+                          title={t.description}
+                        >
+                          {DISCOVERY_ATTRIBUTE_LABELS[t.tag] ?? t.tag.replace(/_/g, ' ')}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              {hasActiveAttributes && (
+                <button
+                  type="button"
+                  onClick={clearAttributes}
+                  className="text-xs text-action-strong hover:underline"
+                >
+                  Clear service type filters
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Confidence + sort controls */}
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <label htmlFor="map-confidence" className="text-xs text-gray-500 whitespace-nowrap">Trust:</label>
-          <select
-            id="map-confidence"
-            value={confidenceFilter}
-            onChange={(e) => {
-              const next = e.target.value as ConfidenceFilter;
-              setConfidenceFilter(next);
-              if (boundsRef.current) {
-                void runSearch({ bbox: boundsRef.current, confidence: next });
-              } else if (query.trim() || activeCategory) {
-                void runSearch({ confidence: next });
-              }
-            }}
-            className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-          >
-            {CONFIDENCE_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-          <label htmlFor="map-sort" className="text-xs text-gray-500 whitespace-nowrap">Sort:</label>
-          <select
-            id="map-sort"
-            value={sortBy}
-            onChange={(e) => {
-              const next = e.target.value as SortOption;
-              setSortBy(next);
-              if (boundsRef.current) {
-                void runSearch({ bbox: boundsRef.current, sort: next });
-              } else if (query.trim() || activeCategory) {
-                void runSearch({ sort: next });
-              }
-            }}
-            className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-          >
-            {SORT_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Quick filters + full taxonomy dialog */}
-        {(isLoadingTaxonomy || taxonomyError || taxonomyTerms.length > 0) && (
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            {quickTaxonomyTerms.map((t) => {
-              const selected = selectedTaxonomyIds.includes(t.id);
-              return (
-                <Button
-                  key={t.id}
-                  type="button"
-                  size="sm"
-                  variant={selected ? 'secondary' : 'outline'}
-                  onClick={() => toggleTaxonomyId(t.id)}
-                  title={t.description ?? undefined}
-                  className="text-xs"
-                >
-                  {t.term}
-                </Button>
-              );
-            })}
-
-            <Dialog open={taxonomyDialogOpen} onOpenChange={setTaxonomyDialogOpen}>
-              <DialogTrigger asChild>
-                <Button type="button" size="sm" variant="outline" className="text-xs">
-                  More filters{selectedTaxonomyIds.length > 0 ? ` (${selectedTaxonomyIds.length})` : ''}
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>Filter by service tags</DialogTitle>
-                  <DialogDescription>
-                    Filters are based on stored taxonomy terms. You may need to confirm details with the provider.
-                  </DialogDescription>
-                </DialogHeader>
-
-                <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <input
-                      value={taxonomySearch}
-                      onChange={(e) => setTaxonomySearch(e.target.value)}
-                      type="search"
-                      placeholder="Search tags…"
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-                      aria-label="Search service tags"
-                    />
-                    {selectedTaxonomyIds.length > 0 && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={clearTaxonomyFilters}
-                      >
-                        Clear
-                      </Button>
-                    )}
-                  </div>
-
-                  {taxonomyError && (
-                    <p className="text-sm text-error-strong" role="alert">{taxonomyError}</p>
-                  )}
-
-                  {isLoadingTaxonomy ? (
-                    <p className="text-sm text-gray-600">Loading tags…</p>
-                  ) : (
-                    <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 p-3 space-y-4">
-                      {visibleTaxonomyTerms.length === 0 && (
-                        <p className="text-sm text-gray-600">No matching tags.</p>
-                      )}
-                      {Object.entries(groupedTaxonomyTerms).map(([dim, terms]) => (
-                        <div key={dim}>
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                            {DIMENSION_LABELS[dim] ?? dim}
-                          </p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {terms.map((t) => {
-                              const selected = selectedTaxonomyIds.includes(t.id);
-                              return (
-                                <Button
-                                  key={t.id}
-                                  type="button"
-                                  size="sm"
-                                  variant={selected ? 'secondary' : 'outline'}
-                                  onClick={() => toggleTaxonomyId(t.id)}
-                                  title={t.description ?? undefined}
-                                  className="text-xs"
-                                >
-                                  {t.term}
-                                </Button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-
-            {taxonomyError && taxonomyTerms.length === 0 && (
-              <span className="text-xs text-gray-600">Filters unavailable</span>
-            )}
+        <FormSection
+          title="Trust and sort"
+          description="Change the confidence threshold or list order without resetting the active map view."
+          className="mb-3"
+        >
+          <div className="flex flex-wrap items-end gap-3">
+            <FormField id="map-confidence" label="Trust:" className="w-40 max-w-full">
+              <select
+                id="map-confidence"
+                value={confidenceFilter}
+                onChange={(e) => {
+                  const next = e.target.value as ConfidenceFilter;
+                  setConfidenceFilter(next);
+                  if (boundsRef.current) {
+                    void runSearch({ bbox: boundsRef.current, confidence: next });
+                  } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false)) {
+                    void runSearch({ confidence: next });
+                  }
+                }}
+                className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+              >
+                {CONFIDENCE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </FormField>
+            <FormField id="map-sort" label="Sort:" className="w-44 max-w-full">
+              <select
+                id="map-sort"
+                value={sortBy}
+                onChange={(e) => {
+                  const next = e.target.value as SortOption;
+                  setSortBy(next);
+                  if (boundsRef.current) {
+                    void runSearch({ bbox: boundsRef.current, sort: next });
+                  } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false)) {
+                    void runSearch({ sort: next });
+                  }
+                }}
+                className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </FormField>
           </div>
-        )}
+        </FormSection>
 
         <p className="-mt-2 mb-3 text-xs text-gray-600">
           Location is optional. If you choose “Use my location”, ORAN uses an approximate location to center the map in-session only and does not store it.
         </p>
+
+        <SeekerAppliedFilters items={appliedFilterItems} onClearAll={clearAllFilters} />
+        <DiscoveryContextPanel
+          discoveryContext={mapDiscoveryContext}
+          taxonomyLabelById={taxonomyLabelById}
+          title="Current map scope"
+          description="The map and result list stay inside this trust and filter scope until you change it."
+          className="mb-3"
+        />
 
         {/* Mobile view toggle — only visible below md */}
         <div className="flex gap-1 mb-3 md:hidden">
@@ -717,6 +1165,7 @@ export default function MapPage() {
                 centerLng={deviceCenter?.lng}
                 zoom={deviceCenter ? 12 : undefined}
                 services={services}
+                discoveryContext={mapDiscoveryContext}
                 onBoundsChange={handleBoundsChange}
               />
 
@@ -812,7 +1261,9 @@ export default function MapPage() {
                             compact
                             isSaved={savedIds.has(r.service.service.id)}
                             onToggleSave={toggleSave}
-                            href={`/service/${r.service.service.id}`}
+                            savedSyncEnabled={savedSyncEnabled}
+                            href={buildServiceDetailHref(r.service.service.id)}
+                            discoveryContext={mapDiscoveryContext}
                           />
                         </div>
                       </div>

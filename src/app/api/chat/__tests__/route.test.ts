@@ -89,7 +89,7 @@ beforeEach(() => {
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
   dbMocks.executeQuery.mockResolvedValue([]);
   authMocks.getAuthContext.mockResolvedValue(null);
-  searchMock.mockResolvedValue({ results: [] });
+  searchMock.mockResolvedValue({ results: [], total: 0 });
   isEnabledMock.mockReturnValue(false);
   isTranslatorConfiguredMock.mockReturnValue(false);
   translateBatchMock.mockResolvedValue([]);
@@ -135,8 +135,14 @@ describe('api/chat route', () => {
   it('builds an IP-based rate-limit key for anonymous users', async () => {
     dbMocks.isDatabaseConfigured.mockReturnValue(false);
     orchestrateChatMock.mockImplementationOnce(async (_message, _sessionId, userId, _locale, rateLimitKey, deps) => {
-      const services = await deps.retrieveServices({ rawQuery: 'food' }, { userId });
-      return { rateLimitKey, userId, services, summaries: deps.isFlagEnabled('chat-summary') };
+      const retrieval = await deps.retrieveServices({ rawQuery: 'food' }, { userId });
+      return {
+        rateLimitKey,
+        userId,
+        services: retrieval.services,
+        retrievalStatus: retrieval.retrievalStatus,
+        summaries: deps.isFlagEnabled('chat-summary'),
+      };
     });
     const { POST } = await loadRoute();
 
@@ -147,6 +153,11 @@ describe('api/chat route', () => {
           message: 'food',
           sessionId: '11111111-1111-4111-8111-111111111111',
           locale: 'en',
+          filters: {
+            attributeFilters: {
+              delivery: ['virtual'],
+            },
+          },
         },
       }),
     );
@@ -156,6 +167,7 @@ describe('api/chat route', () => {
       rateLimitKey: 'chat:ip:203.0.113.20',
       userId: undefined,
       services: [],
+      retrievalStatus: 'temporarily_unavailable',
       summaries: false,
     });
   });
@@ -173,6 +185,7 @@ describe('api/chat route', () => {
           },
         },
       ],
+      total: 1,
     });
     hydrateChatContextMock.mockResolvedValueOnce({
       sessionId: '11111111-1111-4111-8111-111111111111',
@@ -204,8 +217,11 @@ describe('api/chat route', () => {
         messageCount: 0,
         userProfile: userId ? { userId } : undefined,
       });
-      const services = await deps.retrieveServices({ category: 'general', rawQuery: 'food', urgencyQualifier: 'standard' }, context ?? { sessionId, userId, locale, messageCount: 0 });
-      return { rateLimitKey, services };
+      const retrieval = await deps.retrieveServices(
+        { category: 'general', rawQuery: 'food', urgencyQualifier: 'standard' },
+        context ?? { sessionId, userId, locale, messageCount: 0 },
+      );
+      return { rateLimitKey, services: retrieval.services, retrievalStatus: retrieval.retrievalStatus };
     });
     const { POST } = await loadRoute();
 
@@ -215,6 +231,11 @@ describe('api/chat route', () => {
           message: 'food',
           sessionId: '11111111-1111-4111-8111-111111111111',
           locale: 'en',
+          filters: {
+            attributeFilters: {
+              delivery: ['virtual'],
+            },
+          },
         },
       }),
     );
@@ -224,8 +245,11 @@ describe('api/chat route', () => {
       {
         text: 'food housing',
         cachePolicy: 'skip',
+        geo: undefined,
         filters: {
+          attributeFilters: { delivery: ['virtual'] },
           minConfidenceScore: undefined,
+          organizationId: undefined,
           status: 'active',
           taxonomyTermIds: undefined,
         },
@@ -252,6 +276,7 @@ describe('api/chat route', () => {
           name: 'Food Pantry',
         },
       ],
+      retrievalStatus: 'results',
     });
   });
 
@@ -294,9 +319,20 @@ describe('api/chat route', () => {
 
   it('applies trust/taxonomy filters when provided', async () => {
     authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'user-filtered' });
+    searchMock.mockResolvedValueOnce({
+      results: [
+        {
+          service: {
+            id: 'svc-1',
+            name: 'Filtered Service',
+          },
+        },
+      ],
+      total: 1,
+    });
     orchestrateChatMock.mockImplementationOnce(async (_message, _sessionId, userId, _locale, _rateLimitKey, deps) => {
-      const services = await deps.retrieveServices({ rawQuery: 'food' }, { userId });
-      return { services };
+      const retrieval = await deps.retrieveServices({ rawQuery: 'food' }, { userId });
+      return { services: retrieval.services, retrievalStatus: retrieval.retrievalStatus };
     });
     const { POST } = await loadRoute();
 
@@ -330,6 +366,146 @@ describe('api/chat route', () => {
       },
       profileSignals: undefined,
       sortBy: 'relevance',
+    });
+  });
+
+  it('distinguishes no-match results from empty catalog scope', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'user-1' });
+    searchMock
+      .mockResolvedValueOnce({ results: [], total: 0 })
+      .mockResolvedValueOnce({ results: [], total: 3 });
+    orchestrateChatMock.mockImplementationOnce(async (_message, _sessionId, userId, _locale, _rateLimitKey, deps) => {
+      const retrieval = await deps.retrieveServices({ rawQuery: 'rent help' }, { userId });
+      return { retrievalStatus: retrieval.retrievalStatus, services: retrieval.services };
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          message: 'rent help',
+          sessionId: '11111111-1111-4111-8111-111111111111',
+          locale: 'en',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      retrievalStatus: 'no_match',
+      services: [],
+    });
+    expect(searchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('classifies profile-ignore requests without dropping active browse filters', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'user-1' });
+    hydrateChatContextMock.mockResolvedValueOnce({
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      userId: 'user-1',
+      locale: 'en',
+      messageCount: 0,
+      approximateLocation: { city: 'Denver' },
+      userProfile: {
+        userId: 'user-1',
+        serviceInterests: ['food_assistance'],
+      },
+    });
+    orchestrateChatMock.mockImplementationOnce(async (_message, sessionId, userId, locale, _rateLimitKey, deps) => {
+      const context = await deps.hydrateContext?.({
+        sessionId,
+        userId,
+        locale,
+        messageCount: 0,
+      });
+
+      return context;
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          message: 'food',
+          sessionId: '11111111-1111-4111-8111-111111111111',
+          locale: 'en',
+          profileMode: 'ignore',
+          filters: {
+            attributeFilters: {
+              delivery: ['phone'],
+            },
+          },
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      userId: 'user-1',
+      locale: 'en',
+      messageCount: 0,
+      profileShapingDisabled: true,
+      userProfile: {
+        userId: 'user-1',
+        browsePreference: {
+          attributeFilters: {
+            delivery: ['phone'],
+          },
+        },
+      },
+    });
+  });
+
+  it('merges active browse filters into hydrated chat context for deterministic result explanations', async () => {
+    hydrateChatContextMock.mockResolvedValueOnce({
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      userId: undefined,
+      locale: 'en',
+      messageCount: 0,
+    });
+    orchestrateChatMock.mockImplementationOnce(async (_message, sessionId, userId, locale, _rateLimitKey, deps) => {
+      const context = await deps.hydrateContext?.({
+        sessionId,
+        userId,
+        locale,
+        messageCount: 0,
+      });
+      return context;
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          message: 'food',
+          sessionId: '11111111-1111-4111-8111-111111111111',
+          locale: 'en',
+          filters: {
+            taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
+            attributeFilters: {
+              delivery: ['phone'],
+            },
+          },
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      userId: undefined,
+      locale: 'en',
+      messageCount: 0,
+      userProfile: {
+        userId: 'guest',
+        browsePreference: {
+          taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
+          attributeFilters: {
+            delivery: ['phone'],
+          },
+        },
+      },
     });
   });
 

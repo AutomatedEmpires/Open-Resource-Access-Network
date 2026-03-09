@@ -90,12 +90,12 @@ function mapSeekerProfileRow(row: SeekerProfileRow | undefined): SeekerProfile |
 
   return normalizeSeekerProfile({
     serviceInterests: (row.service_interests ?? EMPTY_SEEKER_PROFILE.serviceInterests) as SeekerProfile['serviceInterests'],
-    ageGroup: row.age_group ?? '',
-    householdType: row.household_type ?? '',
-    housingSituation: row.housing_situation ?? '',
-    selfIdentifiers: row.self_identifiers ?? EMPTY_SEEKER_PROFILE.selfIdentifiers,
-    currentServices: row.current_services ?? EMPTY_SEEKER_PROFILE.currentServices,
-    accessibilityNeeds: row.accessibility_needs ?? EMPTY_SEEKER_PROFILE.accessibilityNeeds,
+    ageGroup: (row.age_group ?? '') as SeekerProfile['ageGroup'],
+    householdType: (row.household_type ?? '') as SeekerProfile['householdType'],
+    housingSituation: (row.housing_situation ?? '') as SeekerProfile['housingSituation'],
+    selfIdentifiers: (row.self_identifiers ?? EMPTY_SEEKER_PROFILE.selfIdentifiers) as SeekerProfile['selfIdentifiers'],
+    currentServices: (row.current_services ?? EMPTY_SEEKER_PROFILE.currentServices) as SeekerProfile['currentServices'],
+    accessibilityNeeds: (row.accessibility_needs ?? EMPTY_SEEKER_PROFILE.accessibilityNeeds) as SeekerProfile['accessibilityNeeds'],
     transportationBarrier: row.transportation_barrier ?? false,
     preferredDeliveryModes: (row.preferred_delivery_modes ?? EMPTY_SEEKER_PROFILE.preferredDeliveryModes) as SeekerProfile['preferredDeliveryModes'],
     urgencyWindow: (row.urgency_window ?? '') as SeekerProfile['urgencyWindow'],

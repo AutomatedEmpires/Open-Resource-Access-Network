@@ -5,7 +5,8 @@
  * explicitly signs in and consents to server-side bookmarks.
  * No data leaves the device without consent.
  *
- * If authenticated, syncs with server-side saved services via /api/saved.
+ * If sync is enabled on this device and the user is authenticated,
+ * bookmarks also sync with /api/saved.
  */
 
 'use client';
@@ -16,38 +17,23 @@ import { Bookmark, Search, Trash2, MessageCircle, MapPin, AlertTriangle } from '
 
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { ServiceCard } from '@/components/directory/ServiceCard';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import type { EnrichedService } from '@/domain/types';
 import { useToast } from '@/components/ui/toast';
-
-const STORAGE_KEY = 'oran:saved-service-ids';
-
-// ============================================================
-// LOCAL STORAGE HELPERS
-// ============================================================
-
-function readSavedIds(): string[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeSavedIds(ids: string[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
-  } catch {
-    /* quota exceeded — fail silently */
-  }
-}
+import { buildDiscoveryHref } from '@/services/search/discovery';
+import { buildServiceFallbackDiscoveryState } from '@/services/search/discoveryFromService';
+import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
+import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
+import {
+  addServerSaved,
+  fetchServerSavedIds,
+  readStoredSavedServiceIds,
+  removeServerSaved,
+  writeStoredSavedServiceIds,
+} from '@/services/saved/client';
+import { getSavedTogglePresentation } from '@/services/saved/presentation';
 
 // ============================================================
 // SERVER-SIDE HELPERS (graceful fallback to localStorage)
@@ -56,10 +42,6 @@ function writeSavedIds(ids: string[]) {
 interface BatchServiceResponse {
   results: EnrichedService[];
   notFound?: string[];
-}
-
-interface ServerSavedResponse {
-  savedIds: string[];
 }
 
 /** Fetch services by IDs from batch endpoint */
@@ -89,55 +71,30 @@ async function fetchServicesByIds(ids: string[]): Promise<{ services: EnrichedSe
   };
 }
 
-/** Fetch server-side saved IDs (returns null if not authenticated) */
-async function fetchServerSavedIds(): Promise<string[] | null> {
-  try {
-    const res = await fetch('/api/saved', {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-    });
-
-    if (res.status === 401) {
-      // Not authenticated — that's okay, just use localStorage
-      return null;
-    }
-
-    if (!res.ok) {
-      return null;
-    }
-
-    const json = (await res.json()) as ServerSavedResponse;
-    return json.savedIds;
-  } catch {
-    return null;
-  }
-}
-
-/** Remove a service from server-side saves (best-effort, no error handling) */
-async function removeServerSaved(serviceId: string): Promise<void> {
-  try {
-    await fetch('/api/saved', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ serviceId }),
-    });
-  } catch {
-    // Best-effort, ignore errors
-  }
-}
-
 // ============================================================
 // PAGE
 // ============================================================
 
 export default function SavedPage() {
-  const [savedIds, setSavedIds] = useState<string[]>(readSavedIds);
+  const [savedIds, setSavedIds] = useState<string[]>(readStoredSavedServiceIds);
+  const [discoveryPreference] = useState(() => readStoredDiscoveryPreference());
+  const [serverSyncEnabled] = useState(() => isServerSyncEnabledOnDevice());
   const [services, setServices] = useState<EnrichedService[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [notFoundCount, setNotFoundCount] = useState(0);
   const { success } = useToast();
+
+  const chatHref = useMemo(() => buildDiscoveryHref('/chat', discoveryPreference), [discoveryPreference]);
+  const directoryHref = useMemo(() => buildDiscoveryHref('/directory', discoveryPreference), [discoveryPreference]);
+  const mapHref = useMemo(() => buildDiscoveryHref('/map', discoveryPreference), [discoveryPreference]);
+  const buildSavedServiceHref = useCallback((service: EnrichedService) => {
+    return buildDiscoveryHref(`/service/${service.service.id}`, {
+      ...discoveryPreference,
+      ...buildServiceFallbackDiscoveryState(service),
+    });
+  }, [discoveryPreference]);
 
   // Fetch details for saved IDs on mount and when IDs change
   useEffect(() => {
@@ -149,30 +106,24 @@ export default function SavedPage() {
       setNotFoundCount(0);
 
       try {
-        // First, merge server-side saved IDs (if authenticated)
-        const serverIds = await fetchServerSavedIds();
-        const localIds = readSavedIds();
-
+        const localIds = readStoredSavedServiceIds();
         let mergedIds: string[];
 
-        if (serverIds !== null) {
-          // Authenticated: server is source of truth.
-          // Push any local-only IDs to server, then use server set.
-          const localOnly = localIds.filter((id) => !serverIds.includes(id));
-          for (const id of localOnly) {
-            try {
-              await fetch('/api/saved', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ serviceId: id }),
-              });
-            } catch { /* best-effort */ }
+        if (serverSyncEnabled) {
+          const serverIds = await fetchServerSavedIds();
+
+          if (serverIds !== null) {
+            const localOnly = localIds.filter((id) => !serverIds.includes(id));
+            for (const id of localOnly) {
+              await addServerSaved(id);
+            }
+            mergedIds = [...new Set([...serverIds, ...localOnly])];
+            writeStoredSavedServiceIds(mergedIds);
+            setSavedIds(mergedIds);
+          } else {
+            mergedIds = localIds;
           }
-          mergedIds = [...new Set([...serverIds, ...localOnly])];
-          writeSavedIds(mergedIds);
-          setSavedIds(mergedIds);
         } else {
-          // Not authenticated: use localStorage only
           mergedIds = localIds;
         }
 
@@ -195,7 +146,7 @@ export default function SavedPage() {
         // If some IDs were not found, clean them from saved IDs
         if (notFound.length > 0) {
           const validIds = mergedIds.filter((id) => !notFound.includes(id));
-          writeSavedIds(validIds);
+          writeStoredSavedServiceIds(validIds);
           setSavedIds(validIds);
         }
       } catch (e) {
@@ -210,38 +161,56 @@ export default function SavedPage() {
     return () => {
       cancelled = true;
     };
-  }, []); // Run once on mount
+  }, [serverSyncEnabled]);
 
   const removeService = useCallback((serviceId: string) => {
+    const toggleCopy = getSavedTogglePresentation(true, serverSyncEnabled);
     setSavedIds((prev) => {
       const next = prev.filter((id) => id !== serviceId);
-      writeSavedIds(next);
+      writeStoredSavedServiceIds(next);
       return next;
     });
     setServices((prev) => prev.filter((s) => s.service.id !== serviceId));
-    // Best-effort server-side removal
-    void removeServerSaved(serviceId);
-    success('Removed from saved');
-  }, [success]);
+    if (serverSyncEnabled) {
+      void removeServerSaved(serviceId);
+    }
+    success(toggleCopy.toastMessage);
+  }, [serverSyncEnabled, success]);
 
   const clearAll = useCallback(() => {
-    // Clear localStorage
-    writeSavedIds([]);
+    writeStoredSavedServiceIds([]);
     setSavedIds([]);
     setServices([]);
     setShowClearConfirm(false);
-    // Best-effort: remove all from server
-    savedIds.forEach((id) => void removeServerSaved(id));
-  }, [savedIds]);
+    if (serverSyncEnabled) {
+      savedIds.forEach((id) => void removeServerSaved(id));
+    }
+  }, [savedIds, serverSyncEnabled]);
 
   const isEmpty = useMemo(() => savedIds.length === 0, [savedIds]);
 
   return (
     <main className="container mx-auto max-w-4xl px-4 py-8">
       <PageHeader
+        eyebrow="Your seeker workspace"
         title="Saved Services"
         icon={<Bookmark className="h-6 w-6" aria-hidden="true" />}
-        subtitle="Bookmarks are stored on your device. Sign in to sync across devices."
+        subtitle={
+          serverSyncEnabled
+            ? 'Bookmarks on this device can sync to your account when you are signed in.'
+            : 'Bookmarks stay on this device until you turn on cross-device sync in Profile.'
+        }
+        badges={(
+          <>
+            <PageHeaderBadge tone="accent">
+              {serverSyncEnabled ? 'Cross-device sync allowed' : 'Stored on this device'}
+            </PageHeaderBadge>
+            <PageHeaderBadge tone="trust">
+              {serverSyncEnabled ? 'Sync ready after sign-in' : 'Sync off on this device'}
+            </PageHeaderBadge>
+            {savedIds.length > 0 ? <PageHeaderBadge>{savedIds.length > 99 ? '99+' : savedIds.length} saved</PageHeaderBadge> : null}
+          </>
+        )}
         actions={
           savedIds.length > 0 ? (
             !showClearConfirm ? (
@@ -311,22 +280,24 @@ export default function SavedPage() {
             <Bookmark className="h-12 w-12 mx-auto text-gray-200 mb-4" aria-hidden="true" />
             <p className="text-gray-800 font-semibold text-base mb-1">No saved services yet</p>
             <p className="text-sm text-gray-500 mb-6 max-w-xs mx-auto">
-              Bookmark services to access them quickly. Saves stay on your device.
+              {serverSyncEnabled
+                ? 'Bookmark services to access them quickly. Saves on this device can sync to your account when you sign in.'
+                : 'Bookmark services to access them quickly. Saves stay on this device.'}
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
-              <Link href="/chat">
+              <Link href={chatHref}>
                 <Button size="sm" className="gap-1.5 w-full sm:w-auto">
                   <MessageCircle className="h-4 w-4" aria-hidden="true" />
                   Find services via Chat
                 </Button>
               </Link>
-              <Link href="/directory">
+              <Link href={directoryHref}>
                 <Button variant="outline" size="sm" className="gap-1.5 w-full sm:w-auto">
                   <Search className="h-4 w-4" aria-hidden="true" />
                   Browse directory
                 </Button>
               </Link>
-              <Link href="/map">
+              <Link href={mapHref}>
                 <Button variant="outline" size="sm" className="gap-1.5 w-full sm:w-auto">
                   <MapPin className="h-4 w-4" aria-hidden="true" />
                   Map view
@@ -353,9 +324,10 @@ export default function SavedPage() {
                 <ServiceCard
                   key={s.service.id}
                   enriched={s}
-                  href={`/service/${s.service.id}`}
+                  href={buildSavedServiceHref(s)}
                   isSaved
                   onToggleSave={removeService}
+                  savedSyncEnabled={serverSyncEnabled}
                 />
               ))}
             </div>

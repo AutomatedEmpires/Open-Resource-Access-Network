@@ -21,6 +21,9 @@ import { ReportProblemDialog } from '@/components/feedback/ReportProblemDialog';
 import type { EnrichedService } from '@/domain/types';
 import type { ConfidenceBand } from '@/domain/types';
 import { CONFIDENCE_BANDS, ORAN_CONFIDENCE_WEIGHTS } from '@/domain/constants';
+import type { DiscoveryLinkState } from '@/services/search/discovery';
+import { summarizeServiceAlignment } from '@/services/search/discoveryPresentation';
+import { getSavedTogglePresentation } from '@/services/saved/presentation';
 
 // ============================================================
 // HELPERS
@@ -86,9 +89,21 @@ interface ServiceCardProps {
   onToggleSave?: (serviceId: string) => void;
   /** Optional link href for service detail page */
   href?: string;
+  /** Optional discovery context used to explain current filter alignment */
+  discoveryContext?: DiscoveryLinkState;
+  /** Whether saves on this surface also sync to the signed-in account */
+  savedSyncEnabled?: boolean;
 }
 
-export function ServiceCard({ enriched, compact = false, isSaved, onToggleSave, href }: ServiceCardProps) {
+export function ServiceCard({
+  enriched,
+  compact = false,
+  isSaved,
+  onToggleSave,
+  href,
+  discoveryContext,
+  savedSyncEnabled,
+}: ServiceCardProps) {
   const [showFeedback, setShowFeedback] = useState(false);
   const [showReport, setShowReport] = useState(false);
 
@@ -105,6 +120,13 @@ export function ServiceCard({ enriched, compact = false, isSaved, onToggleSave, 
   const formattedAddress = formatAddress(address);
   const primaryPhone = phones[0];
   const primarySchedule = schedules[0];
+  const alignmentLabels = summarizeServiceAlignment(enriched, discoveryContext);
+  const savedToggleCopy = savedSyncEnabled == null
+    ? {
+        ariaLabel: isSaved ? 'Unsave this service' : 'Save this service',
+        title: isSaved ? 'Remove from saved' : 'Save for later',
+      }
+    : getSavedTogglePresentation(Boolean(isSaved), savedSyncEnabled);
 
   // Capacity status
   const capacity = service.capacityStatus
@@ -162,8 +184,8 @@ export function ServiceCard({ enriched, compact = false, isSaved, onToggleSave, 
             onClick={() => onToggleSave(service.id)}
             className="flex-shrink-0 flex items-center justify-center min-w-[44px] min-h-[44px] rounded-lg hover:bg-gray-100 transition-colors -mr-2 -mt-1"
             aria-pressed={isSaved ?? false}
-            aria-label={isSaved ? 'Unsave this service' : 'Save this service'}
-            title={isSaved ? 'Remove from saved' : 'Save for later'}
+            aria-label={savedToggleCopy.ariaLabel}
+            title={savedToggleCopy.title}
           >
             {isSaved
               ? <BookmarkCheck className="h-5 w-5 text-blue-600" aria-hidden="true" />
@@ -201,6 +223,13 @@ export function ServiceCard({ enriched, compact = false, isSaved, onToggleSave, 
           </span>
         )}
       </div>
+
+      {alignmentLabels.length > 0 && (
+        <div className="mb-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+          <span className="font-semibold">Aligned with current filters:</span>{' '}
+          {alignmentLabels.join(', ')}
+        </div>
+      )}
 
       {/* Description */}
       {!compact && service.description && (

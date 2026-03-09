@@ -92,9 +92,9 @@ describe('DELETE /api/user/data-delete', () => {
     await expect(res.json()).resolves.toEqual({
       message: 'All personal data has been deleted.',
     });
-    expect(clientQueryMock).toHaveBeenCalledTimes(11);
+    expect(clientQueryMock).toHaveBeenCalledTimes(12);
     expect(clientQueryMock.mock.calls[0]?.[0]).toContain('DELETE FROM saved_services');
-    expect(clientQueryMock.mock.calls[10]?.[0]).toContain('INSERT INTO audit_log');
+    expect(clientQueryMock.mock.calls[11]?.[0]).toContain('INSERT INTO audit_log');
   });
 
   it('returns 500 when transaction fails', async () => {

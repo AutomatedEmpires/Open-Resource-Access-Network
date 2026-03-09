@@ -18,12 +18,11 @@ import { usePathname } from 'next/navigation';
 import { MessageCircle, List, MapPin, Bookmark, User } from 'lucide-react';
 import { CommandPalette } from '@/components/command/CommandPalette';
 import { AppFooter } from '@/components/footer';
-
-// ============================================================
-// CONSTANTS
-// ============================================================
-
-const SAVED_KEY = 'oran:saved-service-ids';
+import { SeekerContextStrip } from '@/components/seeker/SeekerContextStrip';
+import {
+  readStoredSavedServiceCount,
+  SAVED_SERVICES_UPDATED_EVENT,
+} from '@/services/saved/client';
 
 const NAV_ITEMS = [
   { href: '/chat',      label: 'Find',      icon: MessageCircle },
@@ -34,30 +33,12 @@ const NAV_ITEMS = [
 ] as const;
 
 // ============================================================
-// HELPERS
-// ============================================================
-
-function readSavedCount(): number {
-  if (typeof window === 'undefined') return 0;
-  try {
-    const raw = localStorage.getItem(SAVED_KEY);
-    if (!raw) return 0;
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.length : 0;
-  } catch {
-    return 0;
-  }
-}
-
-// ============================================================
 // LAYOUT
 // ============================================================
 
 export default function SeekerLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
-  // Saved count badge — re-reads on every route change.
-  // Same-tab real-time updates wired in Phase 7 via custom event.
   const [savedCount, setSavedCount] = useState(0);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
@@ -75,11 +56,26 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setSavedCount(readSavedCount());
+      setSavedCount(readStoredSavedServiceCount());
     }, 0);
 
     return () => window.clearTimeout(timer);
   }, [pathname]);
+
+  useEffect(() => {
+    const refreshSavedCount = () => {
+      setSavedCount(readStoredSavedServiceCount());
+    };
+
+    refreshSavedCount();
+    window.addEventListener('storage', refreshSavedCount);
+    window.addEventListener(SAVED_SERVICES_UPDATED_EVENT, refreshSavedCount as EventListener);
+
+    return () => {
+      window.removeEventListener('storage', refreshSavedCount);
+      window.removeEventListener(SAVED_SERVICES_UPDATED_EVENT, refreshSavedCount as EventListener);
+    };
+  }, []);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + '/');
@@ -97,47 +93,65 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
         <div className="container mx-auto max-w-6xl flex items-center justify-between px-4 h-14">
 
           {/* Brand */}
-          <Link
-            href="/"
-            className="flex items-center gap-2 font-bold text-gray-900 text-lg tracking-tight hover:text-action-base transition-colors"
-          >
-            ORAN
-          </Link>
+          <div className="flex min-w-0 items-center gap-3">
+            <Link
+              href="/"
+              className="flex items-center gap-2 font-bold text-gray-900 text-lg tracking-tight hover:text-action-base transition-colors"
+            >
+              ORAN
+            </Link>
+            <span className="hidden rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-widest text-blue-700 md:inline-flex">
+              Verified records only
+            </span>
+          </div>
 
-          {/* Desktop nav — hidden on mobile (bottom nav takes over) */}
-          <nav className="hidden md:flex items-center gap-1" aria-label="Primary navigation">
-            {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-              const active = isActive(href);
-              const isSavedItem = href === '/saved';
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`relative flex items-center gap-1.5 px-3 py-2 rounded-md text-sm transition-colors min-h-[44px] ${
-                    active
-                      ? 'bg-info-subtle text-action-strong font-semibold'
-                      : 'font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                  }`}
-                  aria-current={active ? 'page' : undefined}
-                >
-                  <Icon className="h-4 w-4" aria-hidden="true" />
-                  {label}
-                  {isSavedItem && savedCount > 0 && (
-                    <span
-                      className={`ml-0.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold min-w-[16px] h-4 px-1 leading-none ${
-                        active ? 'bg-action-base text-white' : 'bg-gray-200 text-gray-700'
-                      }`}
-                      aria-label={`${savedCount} saved`}
-                    >
-                      {savedCount > 99 ? '99+' : savedCount}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
+          <div className="hidden items-center gap-2 md:flex">
+            <button
+              type="button"
+              onClick={() => setCommandPaletteOpen(true)}
+              className="inline-flex min-h-10 items-center rounded-md border border-[var(--border)] px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
+              aria-label="Open quick actions"
+            >
+              Quick actions
+            </button>
+
+            {/* Desktop nav — hidden on mobile (bottom nav takes over) */}
+            <nav className="flex items-center gap-1" aria-label="Primary navigation">
+              {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+                const active = isActive(href);
+                const isSavedItem = href === '/saved';
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`relative flex items-center gap-1.5 px-3 py-2 rounded-md text-sm transition-colors min-h-[44px] ${
+                      active
+                        ? 'bg-info-subtle text-action-strong font-semibold'
+                        : 'font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                    {label}
+                    {isSavedItem && savedCount > 0 && (
+                      <span
+                        className={`ml-0.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold min-w-[16px] h-4 px-1 leading-none ${
+                          active ? 'bg-action-base text-white' : 'bg-gray-200 text-gray-700'
+                        }`}
+                        aria-label={`${savedCount} saved`}
+                      >
+                        {savedCount > 99 ? '99+' : savedCount}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
         </div>
       </header>
+
+      <SeekerContextStrip pathname={pathname} />
 
       {/* ── Main content ────────────────────────────────── */}
       {/* pb-14 on mobile clears the fixed bottom nav (h-14 = 56px) */}

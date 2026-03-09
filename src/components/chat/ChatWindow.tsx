@@ -9,12 +9,30 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, AlertTriangle, Phone } from 'lucide-react';
+import { Send, AlertTriangle, Phone, Trash2, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ELIGIBILITY_DISCLAIMER } from '@/domain/constants';
-import type { ChatResponse, ServiceCard } from '@/services/chat/types';
+import type { DiscoveryNeedId } from '@/domain/discoveryNeeds';
+import type { ChatResponse, SearchInterpretation, ServiceCard } from '@/services/chat/types';
 import { ChatServiceCard } from '@/components/chat/ChatServiceCard';
+import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
+import { useToast } from '@/components/ui/toast';
+import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
+import {
+  addServerSaved,
+  readStoredSavedServiceIds,
+  removeServerSaved,
+  writeStoredSavedServiceIds,
+} from '@/services/saved/client';
+import { getSavedTogglePresentation } from '@/services/saved/presentation';
 import { trackInteraction } from '@/services/telemetry/sentry';
+import { DISCOVERY_CONFIDENCE_OPTIONS } from '@/services/search/discovery';
+import type {
+  DiscoveryConfidenceFilter,
+  DiscoveryLinkState,
+  DiscoverySortOption,
+} from '@/services/search/discovery';
+import type { SearchFilters } from '@/services/search/types';
 import {
   Dialog,
   DialogContent,
@@ -23,8 +41,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-
-const SAVED_KEY = 'oran:saved-service-ids';
 
 /** Trust filter options — 'all' shows everything */
 type TrustFilter = 'all' | 'HIGH' | 'LIKELY';
@@ -44,6 +60,13 @@ type TaxonomyTermDTO = {
   serviceCount: number;
 };
 
+function formatFilterLabel(value: string): string {
+  return value
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
@@ -62,56 +85,6 @@ const SUGGESTION_CHIPS = [
 ] as const;
 
 // ============================================================
-// LOCAL STORAGE HELPERS
-// ============================================================
-
-function readSavedIds(): string[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(SAVED_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeSavedIds(ids: string[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(SAVED_KEY, JSON.stringify(ids));
-  } catch {
-    /* quota exceeded — fail silently */
-  }
-}
-
-/** Add service to server-side saves (best-effort) */
-async function addServerSaved(serviceId: string): Promise<void> {
-  try {
-    await fetch('/api/saved', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ serviceId }),
-    });
-  } catch {
-    // Best-effort
-  }
-}
-
-/** Remove service from server-side saves (best-effort) */
-async function removeServerSaved(serviceId: string): Promise<void> {
-  try {
-    await fetch('/api/saved', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ serviceId }),
-    });
-  } catch {
-    // Best-effort
-  }
-}
-
 // ============================================================
 // CRISIS BANNER
 // ============================================================
@@ -173,9 +146,141 @@ interface AssistantMessage {
   timestamp: Date;
   services?: ServiceCard[];
   isCrisis?: boolean;
+  discoveryContext?: DiscoveryLinkState;
+  retrievalStatus?: ChatResponse['retrievalStatus'];
+  searchInterpretation?: SearchInterpretation;
 }
 
 type Message = UserMessage | AssistantMessage;
+
+/** Format timestamp as a short time string (e.g. "2:34 PM") */
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+/** Auto-resize a textarea to fit its content up to a max height */
+function autoResize(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+}
+
+/** localStorage key for persisting the quota-reset timestamp across page reloads */
+const QUOTA_RESET_KEY = 'oran:quota-reset-at';
+
+// ============================================================
+// QUOTA COOLDOWN DISPLAY
+// ============================================================
+
+/**
+ * Live countdown that ticks every second until `resetAt`.
+ * Displayed in place of the send button when quota is exhausted.
+ */
+function QuotaCooldown({ resetAt, onExpired }: { resetAt: Date; onExpired: () => void }) {
+  const [display, setDisplay] = useState('');
+
+  useEffect(() => {
+    function tick() {
+      const ms = resetAt.getTime() - Date.now();
+      if (ms <= 0) {
+        setDisplay('00:00:00');
+        onExpired();
+        return;
+      }
+      const h = Math.floor(ms / 3_600_000);
+      const m = Math.floor((ms % 3_600_000) / 60_000);
+      const s = Math.floor((ms % 60_000) / 1_000);
+      setDisplay(
+        `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`,
+      );
+    }
+    tick();
+    const id = setInterval(tick, 1_000);
+    return () => clearInterval(id);
+  }, [resetAt, onExpired]);
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label="Time until chat quota resets"
+      className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+    >
+      <Clock className="h-4 w-4 flex-shrink-0 text-amber-500" aria-hidden="true" />
+      <span>Daily limit reached — resets in</span>
+      <span className="font-mono font-semibold tabular-nums">{display}</span>
+    </div>
+  );
+}
+
+function RetrievalStatusNote({ status }: { status?: ChatResponse['retrievalStatus'] }) {
+  if (!status || status === 'results') return null;
+
+  const copy =
+    status === 'temporarily_unavailable'
+      ? 'Status: Search was temporarily unavailable for this request.'
+      : status === 'catalog_empty_for_scope'
+        ? 'Status: The current chat scope does not have matching records in the catalog yet.'
+        : status === 'out_of_scope'
+          ? 'Status: This request was outside the service-finding scope.'
+          : 'Status: No close match was found in the current catalog.';
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      {copy}
+    </div>
+  );
+}
+
+function SearchInterpretationPanel({
+  interpretation,
+  canToggleProfile,
+  onToggleProfile,
+}: {
+  interpretation?: SearchInterpretation;
+  canToggleProfile: boolean;
+  onToggleProfile?: () => void;
+}) {
+  if (!interpretation) return null;
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800">
+      <p className="font-medium text-slate-900">How this was interpreted</p>
+      <p className="mt-1">{interpretation.summary}</p>
+
+      {(interpretation.usedProfileShaping || interpretation.ignoredProfileShaping) && (
+        <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-2 text-blue-900">
+          <p className="font-medium">
+            {interpretation.ignoredProfileShaping
+              ? 'Saved profile shaping is off for this session.'
+              : 'Saved profile signals affected the search order.'}
+          </p>
+          {interpretation.profileSignals.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {interpretation.profileSignals.map((signal) => (
+                <span
+                  key={signal}
+                  className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-blue-900"
+                >
+                  {signal}
+                </span>
+              ))}
+            </div>
+          )}
+          {canToggleProfile && onToggleProfile && (
+            <button
+              type="button"
+              onClick={onToggleProfile}
+              className="mt-2 inline-flex items-center gap-1 rounded-full border border-blue-300 bg-white px-2.5 py-1 text-[11px] font-medium text-blue-900 hover:bg-blue-100"
+            >
+              {interpretation.ignoredProfileShaping ? 'Use saved profile again' : 'Ignore saved profile next time'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ============================================================
 // CHAT WINDOW
@@ -184,27 +289,64 @@ type Message = UserMessage | AssistantMessage;
 interface ChatWindowProps {
   sessionId: string;
   userId?: string;
+  initialPrompt?: string;
+  initialNeedId?: DiscoveryNeedId | null;
+  initialTrustFilter?: DiscoveryConfidenceFilter;
+  initialSortBy?: DiscoverySortOption;
+  initialPage?: number;
+  initialTaxonomyTermIds?: string[];
+  initialAttributeFilters?: SearchFilters['attributeFilters'];
 }
 
-export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
+export function ChatWindow({
+  sessionId,
+  userId,
+  initialPrompt,
+  initialNeedId,
+  initialTrustFilter,
+  initialSortBy,
+  initialPage,
+  initialTaxonomyTermIds,
+  initialAttributeFilters,
+}: ChatWindowProps) {
+  const initialHasSeededContext = Boolean(initialPrompt?.trim())
+    || Boolean(initialTrustFilter && initialTrustFilter !== 'all')
+    || (initialTaxonomyTermIds?.length ?? 0) > 0
+    || Object.keys(initialAttributeFilters ?? {}).length > 0;
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(initialPrompt?.trim() ?? '');
   const [isLoading, setIsLoading] = useState(false);
   const [quotaRemaining, setQuotaRemaining] = useState(50);
+  const [quotaResetAt, setQuotaResetAt] = useState<Date | null>(() => {
+    // Restore persisted reset timestamp from a previous session so the
+    // countdown is immediately visible after a page reload.
+    if (typeof window === 'undefined') return null;
+    const stored = localStorage.getItem(QUOTA_RESET_KEY);
+    if (!stored) return null;
+    const d = new Date(stored);
+    return d > new Date() ? d : null;
+  });
   const [hasCrisis, setHasCrisis] = useState(false);
   const [showVerifyTip, setShowVerifyTip] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [serverSyncEnabled] = useState(() => isServerSyncEnabledOnDevice());
+  const [ignoreProfileShaping, setIgnoreProfileShaping] = useState(false);
+  const { success } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Filters: trust tier + taxonomy term IDs
-  const [trustFilter, setTrustFilter] = useState<TrustFilter>('all');
+  const [trustFilter, setTrustFilter] = useState<TrustFilter>(initialTrustFilter ?? 'all');
   const [taxonomyDialogOpen, setTaxonomyDialogOpen] = useState(false);
   const [taxonomyTerms, setTaxonomyTerms] = useState<TaxonomyTermDTO[]>([]);
   const [isLoadingTaxonomy, setIsLoadingTaxonomy] = useState(false);
   const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
   const [taxonomySearch, setTaxonomySearch] = useState('');
-  const [selectedTaxonomyIds, setSelectedTaxonomyIds] = useState<string[]>([]);
+  const [selectedTaxonomyIds, setSelectedTaxonomyIds] = useState<string[]>(initialTaxonomyTermIds ?? []);
+  const [seededAttributeFilters, setSeededAttributeFilters] = useState<SearchFilters['attributeFilters']>(
+    initialAttributeFilters,
+  );
+  const [showSeededContext, setShowSeededContext] = useState(initialHasSeededContext);
   const hasLoadedTaxonomyRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
@@ -217,23 +359,55 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
 
   // Load saved IDs from localStorage on mount
   useEffect(() => {
-    setSavedIds(new Set(readSavedIds()));
+    setSavedIds(new Set(readStoredSavedServiceIds()));
+  }, []);
+
+  // Fetch the server-authoritative quota state on mount.
+  // This ensures the countdown and remaining count are accurate even after
+  // a page reload or cross-device navigation.
+  useEffect(() => {
+    fetch('/api/chat/quota', { method: 'GET', headers: { Accept: 'application/json' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { remaining: number; resetAt: string | null } | null) => {
+        if (!data) return;
+        setQuotaRemaining(data.remaining);
+        if (data.resetAt) {
+          const d = new Date(data.resetAt);
+          if (d > new Date()) {
+            setQuotaResetAt(d);
+            localStorage.setItem(QUOTA_RESET_KEY, d.toISOString());
+          } else {
+            setQuotaResetAt(null);
+            localStorage.removeItem(QUOTA_RESET_KEY);
+          }
+        }
+      })
+      .catch(() => {/* non-fatal — keep default quota display */});
+   
   }, []);
 
   const toggleSave = useCallback((serviceId: string) => {
     setSavedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(serviceId)) {
+      const isSyncedSurface = serverSyncEnabled && Boolean(userId);
+      const wasSaved = next.has(serviceId);
+      const toggleCopy = getSavedTogglePresentation(wasSaved, isSyncedSurface);
+      if (wasSaved) {
         next.delete(serviceId);
-        void removeServerSaved(serviceId);
+        if (isSyncedSurface) {
+          void removeServerSaved(serviceId);
+        }
       } else {
         next.add(serviceId);
-        void addServerSaved(serviceId);
+        if (isSyncedSurface) {
+          void addServerSaved(serviceId);
+        }
       }
-      writeSavedIds([...next]);
+      success(toggleCopy.toastMessage);
+      writeStoredSavedServiceIds(next);
       return next;
     });
-  }, []);
+  }, [serverSyncEnabled, success, userId]);
 
   const loadTaxonomyTermsIfNeeded = useCallback(async () => {
     if (hasLoadedTaxonomyRef.current) return;
@@ -283,9 +457,48 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
     setSelectedTaxonomyIds([]);
   }, []);
 
+  const seededAttributeLabels = useMemo(() => {
+    return Object.values(seededAttributeFilters ?? {})
+      .flat()
+      .map((value) => formatFilterLabel(value))
+      .slice(0, 4);
+  }, [seededAttributeFilters]);
+
+  const isSeededPromptActive = Boolean(initialPrompt?.trim()) && input.trim() === (initialPrompt?.trim() ?? '');
+  const hasSeededBrowseContext = showSeededContext && (
+    isSeededPromptActive
+    || trustFilter !== 'all'
+    || selectedTaxonomyIds.length > 0
+    || Object.keys(seededAttributeFilters ?? {}).length > 0
+  );
+  const seededContextDescription = isSeededPromptActive
+    ? 'Chat picked up your current search draft and filters. Edit the message below or send it as-is.'
+    : 'Chat picked up your current browse filters. Type a message below and it will stay scoped to them.';
+  const trustFilterLabel = DISCOVERY_CONFIDENCE_OPTIONS.find((option) => option.value === trustFilter)?.label;
+
+  const clearSeededBrowseContext = useCallback(() => {
+    setShowSeededContext(false);
+    setTrustFilter('all');
+    setSelectedTaxonomyIds([]);
+    setSeededAttributeFilters(undefined);
+    setInput((current) => (current.trim() === (initialPrompt?.trim() ?? '') ? '' : current));
+  }, [initialPrompt]);
+
   const sendMessage = useCallback(async (override?: string) => {
     const trimmed = (override ?? input).trim();
     if (!trimmed || isLoading) return;
+    const frozenDiscoveryContext: DiscoveryLinkState = {
+      text: trimmed,
+      needId: showSeededContext ? initialNeedId : undefined,
+      confidenceFilter: trustFilter,
+      sortBy: showSeededContext ? initialSortBy : undefined,
+      taxonomyTermIds: selectedTaxonomyIds.length > 0 ? selectedTaxonomyIds : undefined,
+      attributeFilters:
+        seededAttributeFilters && Object.keys(seededAttributeFilters).length > 0
+          ? seededAttributeFilters
+          : undefined,
+      page: showSeededContext && (initialPage ?? 1) > 1 ? initialPage : undefined,
+    };
 
     trackInteraction('chat_message_sent', { quota_remaining: quotaRemaining });
 
@@ -297,10 +510,18 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
     setIsLoading(true);
 
     try {
-      const requestBody: Record<string, unknown> = { message: trimmed, sessionId, userId };
+      const requestBody: Record<string, unknown> = {
+        message: trimmed,
+        sessionId,
+        userId,
+        profileMode: ignoreProfileShaping ? 'ignore' : 'use',
+      };
       const filterPayload: Record<string, unknown> = {};
       if (trustFilter !== 'all') filterPayload.trust = trustFilter;
       if (selectedTaxonomyIds.length > 0) filterPayload.taxonomyTermIds = selectedTaxonomyIds;
+      if (seededAttributeFilters && Object.keys(seededAttributeFilters).length > 0) {
+        filterPayload.attributeFilters = seededAttributeFilters;
+      }
       if (Object.keys(filterPayload).length > 0) requestBody.filters = filterPayload;
 
       const response = await fetch('/api/chat', {
@@ -326,6 +547,13 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
       }
 
       setQuotaRemaining(data.quotaRemaining);
+      if (data.quotaResetAt) {
+        const d = new Date(data.quotaResetAt);
+        if (d > new Date()) {
+          setQuotaResetAt(d);
+          localStorage.setItem(QUOTA_RESET_KEY, d.toISOString());
+        }
+      }
 
       // Show a one-time “what to verify” tip the first time we present service results.
       // Never show during crisis flow.
@@ -341,6 +569,9 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
           timestamp: new Date(),
           services: data.services,
           isCrisis: data.isCrisis,
+          discoveryContext: frozenDiscoveryContext,
+          retrievalStatus: data.retrievalStatus,
+          searchInterpretation: data.searchInterpretation,
         },
       ]);
     } catch {
@@ -356,7 +587,21 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
       setIsLoading(false);
       inputRef.current?.focus();
     }
-  }, [input, isLoading, quotaRemaining, selectedTaxonomyIds, sessionId, trustFilter, userId]);
+  }, [
+    initialNeedId,
+    initialPage,
+    initialSortBy,
+    input,
+    isLoading,
+    quotaRemaining,
+    seededAttributeFilters,
+    selectedTaxonomyIds,
+    sessionId,
+    showSeededContext,
+    trustFilter,
+    userId,
+    ignoreProfileShaping,
+  ]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -370,17 +615,59 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
     void sendMessage(prompt);
   }, [isLoading, quotaRemaining, sendMessage]);
 
+  const clearConversation = useCallback(() => {
+    setMessages([]);
+    setHasCrisis(false);
+    setShowVerifyTip(false);
+    setInput('');
+    inputRef.current?.focus();
+  }, []);
+
+  /** Called by QuotaCooldown when the countdown reaches zero — re-fetches to confirm reset */
+  const handleQuotaExpired = useCallback(() => {
+    setQuotaResetAt(null);
+    localStorage.removeItem(QUOTA_RESET_KEY);
+    fetch('/api/chat/quota', { method: 'GET', headers: { Accept: 'application/json' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { remaining: number; resetAt: string | null } | null) => {
+        if (!data) return;
+        setQuotaRemaining(data.remaining);
+        if (data.resetAt) {
+          const d = new Date(data.resetAt);
+          if (d > new Date()) {
+            setQuotaResetAt(d);
+            localStorage.setItem(QUOTA_RESET_KEY, d.toISOString());
+          }
+        }
+      })
+      .catch(() => {/* non-fatal */});
+  }, []);
+
   return (
     <div className="flex flex-col h-[calc(100dvh-13rem)] md:h-auto md:max-h-[80vh] bg-gray-50 rounded-lg border border-gray-200 shadow">
-      {/* Header — quota indicator only (page h1 owns the title) */}
+      {/* Header — quota indicator + actions */}
       <div className="px-4 py-2.5 border-b border-gray-200 bg-white rounded-t-lg">
         <div className="flex items-center justify-between">
           <p className="text-xs text-gray-500">Verified records only</p>
-          <p className={`text-xs font-medium tabular-nums ${
-            quotaRemaining <= 10 ? 'text-amber-600' : 'text-gray-400'
-          }`}>
-            {quotaRemaining} msg{quotaRemaining !== 1 ? 's' : ''} left
-          </p>
+          <div className="flex items-center gap-2">
+            {messages.length > 0 && (
+              <button
+                type="button"
+                onClick={clearConversation}
+                className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                title="Clear conversation"
+                aria-label="Clear conversation"
+              >
+                <Trash2 className="h-3 w-3" aria-hidden="true" />
+                Clear
+              </button>
+            )}
+            <p className={`text-xs font-medium tabular-nums ${
+              quotaRemaining <= 10 ? 'text-amber-600' : 'text-gray-400'
+            }`}>
+              {quotaRemaining} msg{quotaRemaining !== 1 ? 's' : ''} left
+            </p>
+          </div>
         </div>
         {/* Quota progress bar — visible when ≤ 40 remaining */}
         {quotaRemaining <= 40 && (
@@ -487,6 +774,21 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
               </div>
             </DialogContent>
           </Dialog>
+
+          {userId && (
+            <button
+              type="button"
+              onClick={() => setIgnoreProfileShaping((current) => !current)}
+              className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium min-h-[36px] ${
+                ignoreProfileShaping
+                  ? 'border-amber-300 bg-amber-50 text-amber-900'
+                  : 'border-blue-200 bg-blue-50 text-blue-900'
+              }`}
+              aria-pressed={ignoreProfileShaping}
+            >
+              {ignoreProfileShaping ? 'Saved profile off for this session' : 'Use saved profile signals'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -512,6 +814,46 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
 
         {messages.length === 0 && (
           <div className="flex flex-col items-center py-6 gap-5">
+            {hasSeededBrowseContext && (
+              <div className="w-full max-w-lg rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-left">
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-900">
+                  Using current browse context
+                </p>
+                <p className="mt-1 text-sm text-blue-900">
+                  {seededContextDescription}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {isSeededPromptActive && (
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-blue-900">
+                      Need: {input.trim()}
+                    </span>
+                  )}
+                  {trustFilter !== 'all' && trustFilterLabel && (
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-blue-900">
+                      Trust: {trustFilterLabel}
+                    </span>
+                  )}
+                  {selectedTaxonomyIds.length > 0 && (
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-blue-900">
+                      Tags: {selectedTaxonomyIds.length}
+                    </span>
+                  )}
+                  {seededAttributeLabels.map((label) => (
+                    <span
+                      key={label}
+                      className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-blue-900"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <Button type="button" variant="outline" size="sm" onClick={clearSeededBrowseContext}>
+                    Clear context
+                  </Button>
+                </div>
+              </div>
+            )}
             <div className="text-center">
               <p className="text-gray-800 font-medium text-base">What do you need help with?</p>
               <p className="text-xs mt-1 text-gray-400">
@@ -550,18 +892,39 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
               }`}
             >
               <p>{msg.content}</p>
+              {msg.role === 'assistant' && (
+                <div className="space-y-2 mt-2">
+                  <RetrievalStatusNote status={(msg as AssistantMessage).retrievalStatus} />
+                  <SearchInterpretationPanel
+                    interpretation={(msg as AssistantMessage).searchInterpretation}
+                    canToggleProfile={Boolean(userId)}
+                    onToggleProfile={() => setIgnoreProfileShaping((current) => !current)}
+                  />
+                </div>
+              )}
               {msg.role === 'assistant' && (msg as AssistantMessage).services && (
                 <div className="space-y-2 mt-2">
+                  <DiscoveryContextPanel
+                    discoveryContext={(msg as AssistantMessage).discoveryContext}
+                    title="Search scope used for these results"
+                    description="This response stayed inside the trust and filter scope active when you sent the message."
+                    className="border-blue-100 bg-blue-50"
+                  />
                   {(msg as AssistantMessage).services!.map((card) => (
                     <ChatServiceCard
                       key={card.serviceId}
                       card={card}
+                      discoveryContext={(msg as AssistantMessage).discoveryContext}
                       isSaved={savedIds.has(card.serviceId)}
                       onToggleSave={toggleSave}
+                      savedSyncEnabled={serverSyncEnabled && Boolean(userId)}
                     />
                   ))}
                 </div>
               )}
+              <span className={`block text-[10px] mt-1 select-none ${
+                msg.role === 'user' ? 'text-blue-200 text-right' : 'text-gray-400'
+              }`}>{formatTime(msg.timestamp)}</span>
             </div>
           </div>
         ))}
@@ -597,10 +960,10 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
           <textarea
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => { setInput(e.target.value); autoResize(e.target); }}
             onKeyDown={handleKeyDown}
             placeholder="Describe what you need help with..."
-            className="flex-1 resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px] max-h-[120px]"
+            className="flex-1 resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
             rows={1}
             aria-label="Chat message input"
             disabled={isLoading || quotaRemaining === 0}
@@ -615,10 +978,15 @@ export function ChatWindow({ sessionId, userId }: ChatWindowProps) {
             <Send className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
-        {quotaRemaining === 0 && (
-          <p className="text-xs text-red-600 mt-1" role="alert">
-            Message limit reached. Start a new session to continue.
-          </p>
+        {quotaRemaining === 0 && quotaResetAt && (
+          <QuotaCooldown resetAt={quotaResetAt} onExpired={handleQuotaExpired} />
+        )}
+        {quotaRemaining === 0 && !quotaResetAt && (
+          <div className="flex items-center gap-2 mt-1" role="alert">
+            <p className="text-xs text-red-600">
+              Message limit reached.
+            </p>
+          </div>
         )}
       </div>
     </div>

@@ -88,15 +88,18 @@ vi.mock('@/components/ui/dialog', () => {
 vi.mock('@/components/directory/ServiceCard', () => ({
   ServiceCard: ({
     enriched,
+    href,
     isSaved,
     onToggleSave,
   }: {
     enriched: { service: { id: string; name: string } };
+    href?: string;
     isSaved: boolean;
     onToggleSave: (id: string) => void;
   }) => (
     <div data-testid={`service-card-${enriched.service.id}`}>
       <p>{enriched.service.name}</p>
+      {href ? <a href={href}>details-{enriched.service.id}</a> : null}
       <p>{isSaved ? 'saved' : 'not-saved'}</p>
       <button type="button" onClick={() => onToggleSave(enriched.service.id)}>
         toggle-{enriched.service.id}
@@ -162,6 +165,9 @@ function setupFetchRoutes(options?: {
       if (!resp) throw new Error('Missing mocked search response');
       return resp;
     }
+    if (url === '/api/saved') {
+      return ok({});
+    }
     throw new Error(`Unexpected fetch: ${url}`);
   });
 }
@@ -209,6 +215,40 @@ describe('DirectoryPageClient', () => {
     });
   });
 
+  it('seeds a blank directory entry from the stored seeker discovery preference', async () => {
+    localStorage.setItem('oran:seeker-context', JSON.stringify({
+      serviceInterests: ['housing'],
+      preferredDeliveryModes: ['phone'],
+      documentationBarriers: ['no_id'],
+      urgencyWindow: 'same_day',
+    }));
+    setupFetchRoutes({
+      searchResponses: [ok(makeSearchResponse())],
+    });
+
+    renderWithToast(<DirectoryPage />);
+
+    await screen.findByText('Food Pantry');
+
+    const searchUrl = String(
+      fetchMock.mock.calls.find(([input]) => String(input).includes('/api/search?'))?.[0] ?? '',
+    );
+    expect(searchUrl).toContain('q=housing');
+    expect(searchUrl).toContain('attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D');
+    expect(replaceMock).toHaveBeenCalledWith(
+      '/directory?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
+      { scroll: false },
+    );
+    expect(screen.getByRole('link', { name: 'Map view' })).toHaveAttribute(
+      'href',
+      '/map?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
+    );
+    expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
+      'href',
+      '/chat?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
+    );
+  });
+
   it('fetches taxonomy terms on load for top tags', async () => {
     setupFetchRoutes({
       taxonomyTerms: [{
@@ -247,8 +287,36 @@ describe('DirectoryPageClient', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
 
     // It should appear as a removable applied chip.
-    await screen.findByText('Tag: Food Assistance');
-    expect(screen.getByRole('button', { name: /Remove tag Food Assistance/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Remove tag Food Assistance/i })).toBeInTheDocument();
+  });
+
+  it('renders the shared current search scope summary from canonical discovery state', async () => {
+    const taxonomyId = 'a1000000-0000-4000-8000-000000000001';
+    navigationState.searchParams = new URLSearchParams(
+      `q=rent%20help&category=housing&confidence=HIGH&sort=name_desc&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%5D%7D`,
+    );
+    setupFetchRoutes({
+      taxonomyTerms: [{
+        id: taxonomyId,
+        term: 'Housing Navigation',
+        description: null,
+        parentId: null,
+        taxonomy: 'demo',
+        serviceCount: 12,
+      }],
+      searchResponses: [ok(makeSearchResponse())],
+    });
+
+    renderWithToast(<DirectoryPage />);
+
+    await screen.findByText('Current search scope');
+    expect(screen.getByText('Need: Housing')).toBeInTheDocument();
+    expect(screen.getByText('Search: rent help')).toBeInTheDocument();
+    expect(screen.getAllByText('Trust: High confidence only').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Sort: Name (Z-A)').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Tag: Housing Navigation').length).toBeGreaterThan(0);
+    expect(screen.getByText('Delivery: By Phone')).toBeInTheDocument();
+    expect(screen.getByText('Access: No ID Required')).toBeInTheDocument();
   });
 
   it('shows the first two selected tag names plus +N', async () => {
@@ -288,8 +356,8 @@ describe('DirectoryPageClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Rent Help' }));
     fireEvent.click(screen.getByRole('button', { name: 'Job Training' }));
 
-    await screen.findByText('Tag: Food Assistance');
-    await screen.findByText('Tag: Rent Help');
+    expect(await screen.findByRole('button', { name: /Remove tag Food Assistance/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Remove tag Rent Help/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /View 1 more tag filters/i })).toBeInTheDocument();
   });
 
@@ -321,15 +389,15 @@ describe('DirectoryPageClient', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
     fireEvent.click(screen.getByRole('button', { name: 'Rent Help' }));
 
-    await screen.findByText('Tag: Food Assistance');
-    await screen.findByText('Tag: Rent Help');
+    expect(await screen.findByRole('button', { name: /Remove tag Food Assistance/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Remove tag Rent Help/i })).toBeInTheDocument();
 
     // Remove one tag directly from Applied.
     fireEvent.click(screen.getByRole('button', { name: /Remove tag Food Assistance/i }));
 
     await waitFor(() => {
-      expect(screen.queryByText('Tag: Food Assistance')).not.toBeInTheDocument();
-      expect(screen.getByText('Tag: Rent Help')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Remove tag Food Assistance/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Remove tag Rent Help/i })).toBeInTheDocument();
     });
   });
 
@@ -358,9 +426,26 @@ describe('DirectoryPageClient', () => {
     expect(searchUrl).toContain('minConfidenceScore=80');
 
     expect(replaceMock).toHaveBeenCalledWith(
-      '/directory?q=food&confidence=HIGH&sort=name_desc&category=food&page=2',
+      '/directory?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&page=2',
       { scroll: false },
     );
+  });
+
+  it('auto-runs category-only links by normalizing legacy category values', async () => {
+    navigationState.searchParams = new URLSearchParams('category=food');
+    setupFetchRoutes({
+      searchResponses: [ok(makeSearchResponse())],
+    });
+
+    renderWithToast(<DirectoryPage />);
+
+    await screen.findByText('Food Pantry');
+
+    const searchUrl = fetchMock.mock.calls
+      .map((c) => String(c?.[0]))
+      .find((u) => u.includes('/api/search?'));
+    expect(searchUrl).toContain('q=food');
+    expect(replaceMock).toHaveBeenCalledWith('/directory?q=food&category=food_assistance', { scroll: false });
   });
 
   it('runs manual searches, re-queries on filters/pagination, and toggles saved state', async () => {
@@ -412,6 +497,40 @@ describe('DirectoryPageClient', () => {
     expect(screen.getByText('saved')).toBeInTheDocument();
   }, 15000);
 
+  it('syncs bookmark toggles to the account when cross-device sync is enabled', async () => {
+    localStorage.setItem('oran:preferences', JSON.stringify({ serverSyncEnabled: true }));
+    setupFetchRoutes({
+      searchResponses: [ok(makeSearchResponse())],
+    });
+
+    renderWithToast(<DirectoryPage />);
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services' }), {
+      target: { value: 'food' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    await screen.findByText('Food Pantry');
+
+    fireEvent.click(screen.getByRole('button', { name: 'toggle-svc-1' }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/saved', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serviceId: 'svc-1' }),
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'toggle-svc-1' }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/saved', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serviceId: 'svc-1' }),
+      });
+    });
+  });
+
   it('shows API error responses in the inline alert', async () => {
     setupFetchRoutes({
       searchResponses: [bad({ error: 'backend unavailable' })],
@@ -445,12 +564,132 @@ describe('DirectoryPageClient', () => {
       expect(searchCalls.length).toBe(1);
       const url = String(searchCalls[0]);
       expect(url).toContain('q=food');
-      expect(replaceMock).toHaveBeenCalledWith('/directory?q=food&category=food', { scroll: false });
+      expect(replaceMock).toHaveBeenCalledWith('/directory?q=food&category=food_assistance', { scroll: false });
       expect(screen.getByRole('button', { name: 'Clear search' })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
     expect(replaceMock).toHaveBeenCalledWith('/directory', { scroll: false });
+  });
+
+  it('builds canonical map links from the current shareable discovery intent', async () => {
+    setupFetchRoutes({
+      searchResponses: [ok(makeSearchResponse())],
+    });
+
+    renderWithToast(<DirectoryPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    await screen.findByText('Food Pantry');
+
+    expect(screen.getByRole('link', { name: 'Map view' })).toHaveAttribute(
+      'href',
+      '/map?q=food&category=food_assistance',
+    );
+    expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
+      'href',
+      '/chat?q=food&category=food_assistance',
+    );
+    expect(screen.getByRole('link', { name: 'details-svc-1' })).toHaveAttribute(
+      'href',
+      '/service/svc-1?q=food&category=food_assistance',
+    );
+  });
+
+  it('preserves shareable attribute filters in map and chat handoff links', async () => {
+    navigationState.searchParams = new URLSearchParams(
+      'category=food&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
+    );
+    setupFetchRoutes({
+      searchResponses: [ok(makeSearchResponse())],
+    });
+
+    renderWithToast(<DirectoryPage />);
+
+    await screen.findByText('Food Pantry');
+
+    expect(screen.getByRole('link', { name: 'Map view' })).toHaveAttribute(
+      'href',
+      '/map?q=food&category=food_assistance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
+    );
+    expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
+      'href',
+      '/chat?q=food&category=food_assistance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
+    );
+  });
+
+  it('preserves non-search filters when clearing a category-backed query', async () => {
+    const taxonomyId = 'a1000000-0000-0000-0000-000000000001';
+    setupFetchRoutes({
+      taxonomyTerms: [{
+        id: taxonomyId,
+        term: 'Food Assistance',
+        description: null,
+        parentId: null,
+        taxonomy: 'demo',
+        serviceCount: 12,
+      }],
+      searchResponses: [
+        ok(makeSearchResponse()),
+        ok(makeSearchResponse()),
+        ok(makeSearchResponse()),
+      ],
+    });
+
+    renderWithToast(<DirectoryPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    await screen.findByText('Food Pantry');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+
+    await waitFor(() => {
+      const searchCalls = fetchMock.mock.calls
+        .map((c) => String(c?.[0]))
+        .filter((u) => u.includes('/api/search?'));
+      const latest = String(searchCalls.at(-1));
+      expect(latest).toContain(`taxonomyIds=${taxonomyId}`);
+      expect(latest).not.toContain('q=food');
+      expect(replaceMock).toHaveBeenCalledWith(`/directory?taxonomyIds=${taxonomyId}`, { scroll: false });
+    });
+  });
+
+  it('clears only the text/category portion of search and preserves active filters', async () => {
+    const taxonomyId = 'a1000000-0000-0000-0000-000000000001';
+    setupFetchRoutes({
+      taxonomyTerms: [{
+        id: taxonomyId,
+        term: 'Food Assistance',
+        description: null,
+        parentId: null,
+        taxonomy: 'demo',
+        serviceCount: 12,
+      }],
+      searchResponses: [
+        ok(makeSearchResponse()),
+        ok(makeSearchResponse()),
+        ok(makeSearchResponse()),
+      ],
+    });
+
+    renderWithToast(<DirectoryPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    await screen.findByText('Food Pantry');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+
+    await waitFor(() => {
+      const searchCalls = fetchMock.mock.calls
+        .map((c) => String(c?.[0]))
+        .filter((u) => u.includes('/api/search?'));
+      const latest = String(searchCalls.at(-1));
+      expect(latest).toContain(`taxonomyIds=${taxonomyId}`);
+      expect(latest).not.toContain('q=food');
+      expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
+    });
   });
 
   it('supports opt-in device location search without putting coordinates in the URL', async () => {

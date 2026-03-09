@@ -4,9 +4,11 @@
  * Seeker Error Boundary — catches errors in seeker pages.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { buildDiscoveryHref } from '@/services/search/discovery';
+import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
 
 export default function SeekerError({
   error,
@@ -15,11 +17,19 @@ export default function SeekerError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const [discoveryPreference, setDiscoveryPreference] = useState<ReturnType<typeof readStoredDiscoveryPreference>>({});
+
   useEffect(() => {
     import('@/services/telemetry/sentry').then(({ captureException }) => {
       captureException(error, { feature: 'seeker_error_boundary' });
     }).catch(() => {});
   }, [error]);
+
+  useEffect(() => {
+    setDiscoveryPreference(readStoredDiscoveryPreference());
+  }, []);
+
+  const chatHref = useMemo(() => buildDiscoveryHref('/chat', discoveryPreference), [discoveryPreference]);
 
   return (
     <main
@@ -48,7 +58,7 @@ export default function SeekerError({
       <div className="flex gap-3">
         <Button onClick={reset}>Try again</Button>
         <Link
-          href="/chat"
+          href={chatHref}
           className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
         >
           Search services

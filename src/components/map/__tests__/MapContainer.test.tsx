@@ -14,6 +14,7 @@ const boundingBoxFromPositionsMock = vi.hoisted(() =>
   vi.fn((positions: [number, number][]) => ({ kind: 'bounds', positions })),
 );
 const fetchMock = vi.hoisted(() => vi.fn());
+const leafletFallbackMock = vi.hoisted(() => vi.fn());
 
 vi.mock('react', async () => {
   const actual = await vi.importActual<typeof import('react')>('react');
@@ -114,6 +115,12 @@ vi.mock('azure-maps-control/dist/atlas.min.css', () => ({}));
 vi.mock('lucide-react', () => ({
   AlertTriangle: 'svg',
   Loader2: 'svg',
+}));
+vi.mock('../LeafletFallback', () => ({
+  LeafletFallback: (props: Record<string, unknown>) => {
+    leafletFallbackMock(props);
+    return <div data-testid="leaflet-fallback" />;
+  },
 }));
 
 async function loadMapContainer() {
@@ -241,12 +248,12 @@ describe('MapContainer', () => {
     expect(collectElements(errorElement, (child) => child.type === 'svg')).not.toHaveLength(0);
   });
 
-  it('initializes the map and sets error state when no token is available', async () => {
+  it('initializes the map and switches to the Leaflet fallback when no token is available', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,
     });
-    const setMapError = vi.fn();
     const setIsLoading = vi.fn();
+    const setUseLeafletFallback = vi.fn();
     const effects: Array<() => void | (() => void)> = [];
     useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
       effects.push(effect);
@@ -257,12 +264,13 @@ describe('MapContainer', () => {
     const popupRef = { current: null };
     queueRefs([containerRef, mapRef, markersRef, popupRef]);
     useStateMock
-      .mockImplementationOnce(() => [null, setMapError])
-      .mockImplementationOnce(() => [true, setIsLoading]);
+      .mockImplementationOnce(() => [null, vi.fn()])
+      .mockImplementationOnce(() => [true, setIsLoading])
+      .mockImplementationOnce(() => [false, setUseLeafletFallback]);
     const { MapContainer } = await loadMapContainer();
 
     MapContainer({ className: 'h-48' });
-  effects[1]();
+    effects[1]();
     await Promise.resolve();
     await Promise.resolve();
 
@@ -272,8 +280,8 @@ describe('MapContainer', () => {
         credentials: 'same-origin',
       }),
     );
-    expect(setMapError).toHaveBeenCalledWith('Azure Maps is not configured. Contact your administrator.');
     expect(setIsLoading).toHaveBeenCalledWith(false);
+    expect(setUseLeafletFallback).toHaveBeenCalledWith(true);
     expect(mapInstances).toHaveLength(0);
   });
 
@@ -604,8 +612,8 @@ describe('MapContainer', () => {
       ok: true,
       json: vi.fn().mockResolvedValue({}),
     });
-    const setMapError = vi.fn();
     const setIsLoading = vi.fn();
+    const setUseLeafletFallback = vi.fn();
     const effects: Array<() => void | (() => void)> = [];
     useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
       effects.push(effect);
@@ -617,8 +625,9 @@ describe('MapContainer', () => {
       { current: null },
     ]);
     useStateMock
-      .mockImplementationOnce(() => [null, setMapError])
-      .mockImplementationOnce(() => [true, setIsLoading]);
+      .mockImplementationOnce(() => [null, vi.fn()])
+      .mockImplementationOnce(() => [true, setIsLoading])
+      .mockImplementationOnce(() => [false, setUseLeafletFallback]);
     const { MapContainer } = await loadMapContainer();
 
     MapContainer({ className: 'h-48' });
@@ -628,8 +637,8 @@ describe('MapContainer', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(setMapError).toHaveBeenCalledWith('Azure Maps is not configured. Contact your administrator.');
     expect(setIsLoading).toHaveBeenCalledWith(false);
+    expect(setUseLeafletFallback).toHaveBeenCalledWith(true);
   });
 
   it('renders confidence tier marker classes and sanitizes popup logo URLs', async () => {
@@ -695,6 +704,15 @@ describe('MapContainer', () => {
           location: { latitude: 47.65, longitude: -122.29 },
         },
       ] as never,
+      discoveryContext: {
+        text: 'food',
+        needId: 'food_assistance',
+        confidenceFilter: 'HIGH',
+        sortBy: 'name_desc',
+        taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
+        attributeFilters: { delivery: ['virtual'] },
+        page: 3,
+      },
       className: 'h-48',
     });
     effects[2]();
@@ -719,6 +737,33 @@ describe('MapContainer', () => {
     expect(popupContents.some((content) => content.includes('<img src="https://cdn.example/logo.png"'))).toBe(true);
     expect(popupContents.some((content) => content.includes('javascript:alert'))).toBe(false);
     expect(popupContents.some((content) => content.includes('ORAN</div>'))).toBe(true);
+    expect(popupContents.some((content) => content.includes('/service/green?q=food&amp;confidence=HIGH&amp;sort=name_desc&amp;category=food_assistance&amp;taxonomyIds=a1000000-4000-4000-8000-000000000001&amp;attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D&amp;page=3'))).toBe(true);
+  });
+
+  it('passes discovery context through to the Leaflet fallback', async () => {
+    useStateMock
+      .mockImplementationOnce(() => [null, vi.fn()])
+      .mockImplementationOnce(() => [false, vi.fn()])
+      .mockImplementationOnce(() => [true, vi.fn()]);
+    const { MapContainer } = await loadMapContainer();
+
+    const element = MapContainer({
+      services: [] as never,
+      discoveryContext: {
+        text: 'food',
+        needId: 'food_assistance',
+        confidenceFilter: 'HIGH',
+        sortBy: 'name_desc',
+      },
+      className: 'h-48',
+    }) as React.ReactElement<any, any>;
+
+    expect(element.props.discoveryContext).toEqual({
+      text: 'food',
+      needId: 'food_assistance',
+      confidenceFilter: 'HIGH',
+      sortBy: 'name_desc',
+    });
   });
 
   it('skips marker rendering when no services have valid coordinates', async () => {

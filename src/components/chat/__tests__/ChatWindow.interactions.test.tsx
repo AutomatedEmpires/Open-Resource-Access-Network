@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fetchMock = vi.hoisted(() => vi.fn());
 const scrollIntoViewMock = vi.hoisted(() => vi.fn());
+const toastSuccessMock = vi.hoisted(() => vi.fn());
+const PREFS_KEY = 'oran:preferences';
 
 vi.mock('@/components/chat/ChatServiceCard', () => ({
   ChatServiceCard: ({
@@ -24,6 +26,16 @@ vi.mock('@/components/chat/ChatServiceCard', () => ({
       </button>
     </div>
   ),
+}));
+
+vi.mock('@/components/ui/toast', () => ({
+  useToast: () => ({
+    success: toastSuccessMock,
+    error: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+    toast: vi.fn(),
+  }),
 }));
 
 import { ChatWindow } from '@/components/chat/ChatWindow';
@@ -45,6 +57,7 @@ afterEach(() => {
 
 describe('ChatWindow interactions', () => {
   it('sends chat messages, renders service cards, and toggles save/unsave', async () => {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ serverSyncEnabled: true }));
     localStorage.setItem('oran:saved-service-ids', JSON.stringify(['existing-service']));
 
     fetchMock.mockImplementation(async (input: RequestInfo | URL, _init?: RequestInit) => {
@@ -98,6 +111,9 @@ describe('ChatWindow interactions', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/chat', expect.objectContaining({
       method: 'POST',
     }));
+    const chatCall = fetchMock.mock.calls.find((call) => String(call[0]) === '/api/chat');
+    const body = JSON.parse(String((chatCall?.[1] as { body: string }).body));
+    expect(body.profileMode).toBe('use');
     expect(screen.getByRole('note', { name: 'Verification tip' })).toBeInTheDocument();
     expect(screen.getByText('25 msgs left')).toBeInTheDocument();
     expect(screen.getByTestId('service-svc-1')).toBeInTheDocument();
@@ -109,6 +125,7 @@ describe('ChatWindow interactions', () => {
         method: 'POST',
       }));
     });
+    expect(toastSuccessMock).toHaveBeenCalledWith('Saved to this device and your synced account');
     expect(screen.getByRole('button', { name: 'Unsave' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Unsave' }));
@@ -117,6 +134,56 @@ describe('ChatWindow interactions', () => {
         method: 'DELETE',
       }));
     });
+    expect(toastSuccessMock).toHaveBeenCalledWith('Removed from this device and your synced account');
+  });
+
+  it('keeps chat save actions local-only when cross-device sync is off', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat') {
+        return {
+          ok: true,
+          json: async () => ({
+            message: 'Here are options near you.',
+            services: [
+              {
+                serviceId: 'svc-1',
+                serviceName: 'Food Pantry One',
+                organizationName: 'Helping Hands',
+                confidenceBand: 'HIGH',
+                confidenceScore: 90,
+              },
+            ],
+            isCrisis: false,
+            sessionId: 'session-1',
+            quotaRemaining: 25,
+            intent: { category: 'food_assistance', rawQuery: 'food', urgencyQualifier: 'standard' },
+            eligibilityDisclaimer: 'Always verify eligibility before visiting.',
+            llmSummarized: false,
+          }),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<ChatWindow sessionId="session-1" userId="user-1" />);
+
+    fireEvent.change(screen.getByLabelText('Chat message input'), {
+      target: { value: 'Need food support' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await screen.findByTestId('service-svc-1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Unsave' })).toBeInTheDocument();
+      expect(localStorage.getItem('oran:saved-service-ids')).toBe('["svc-1"]');
+    });
+    expect(toastSuccessMock).toHaveBeenCalledWith('Saved on this device');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('submits suggestion chips, renders crisis banner, and disables input at quota 0', async () => {
@@ -144,7 +211,7 @@ describe('ChatWindow interactions', () => {
 
     expect(screen.queryByRole('note', { name: 'Verification tip' })).not.toBeInTheDocument();
     expect(
-      screen.getByText('Message limit reached. Start a new session to continue.'),
+      screen.getByText('Message limit reached.'),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Chat message input')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();

@@ -5,12 +5,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const fetchMock = vi.hoisted(() => vi.fn());
-const searchParamGetMock = vi.hoisted(() => vi.fn());
+const navigationState = vi.hoisted(() => ({
+  searchParams: new URLSearchParams(),
+}));
 
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => ({
-    get: searchParamGetMock,
-  }),
+  useSearchParams: () => navigationState.searchParams,
 }));
 
 vi.mock('next/link', () => ({
@@ -43,6 +43,7 @@ vi.mock('@/components/ui/PageHeader', () => ({
       {subtitle && <p>{subtitle}</p>}
     </div>
   ),
+  PageHeaderBadge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }));
 
 import ReportPageContent from '@/app/(seeker)/report/ReportPageClient';
@@ -52,7 +53,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   fetchMock.mockReset();
   global.fetch = fetchMock as unknown as typeof fetch;
-  searchParamGetMock.mockImplementation((key: string) => (key === 'serviceId' ? 'svc-123' : null));
+  navigationState.searchParams = new URLSearchParams('serviceId=svc-123');
 });
 
 describe('ReportPageClient', () => {
@@ -136,11 +137,44 @@ describe('ReportPageClient', () => {
   });
 
   it('falls back to directory link when serviceId is missing', async () => {
-    searchParamGetMock.mockImplementation(() => null);
+    navigationState.searchParams = new URLSearchParams();
 
     render(<ReportPageContent />);
 
     expect(screen.getByRole('link', { name: 'Back to listing' })).toHaveAttribute('href', '/directory');
     expect(screen.getByRole('button', { name: 'Submit Report' })).toBeDisabled();
+  });
+
+  it('preserves canonical discovery state in listing and directory return links', async () => {
+    const taxonomyId = 'a1000000-4000-4000-8000-000000000001';
+    navigationState.searchParams = new URLSearchParams(
+      `serviceId=svc-123&category=food&confidence=HIGH&sort=name_desc&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D&page=2`,
+    );
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ reports: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ reportId: 'report-1' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ reports: [] }) });
+
+    render(<ReportPageContent />);
+
+    expect(screen.getByRole('link', { name: 'Back to listing' })).toHaveAttribute(
+      'href',
+      `/service/svc-123?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D&page=2`,
+    );
+
+    fireEvent.change(screen.getByLabelText('Reason for report'), {
+      target: { value: 'wrong_location' },
+    });
+    fireEvent.change(screen.getByLabelText('Details'), {
+      target: { value: 'Map pin is on the wrong block.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Report' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Return to directory' })).toHaveAttribute(
+        'href',
+        `/directory?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D&page=2`,
+      );
+    });
   });
 });

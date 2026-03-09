@@ -3,6 +3,9 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { writeStoredSeekerProfile } from '@/services/profile/clientContext';
+import { writeStoredProfilePreferences } from '@/services/profile/syncPreference';
+import { writeStoredSavedServiceIds } from '@/services/saved/client';
 
 const usePathnameMock = vi.hoisted(() => vi.fn());
 
@@ -35,6 +38,10 @@ vi.mock('@/components/command/CommandPalette', () => ({
   ),
 }));
 
+vi.mock('@/components/footer', () => ({
+  AppFooter: () => <div data-testid="app-footer" />,
+}));
+
 import SeekerLayout from '@/app/(seeker)/layout';
 
 beforeEach(() => {
@@ -49,6 +56,7 @@ describe('seeker layout shell', () => {
   it('toggles command palette with Ctrl/Cmd+K and closes through palette callback', () => {
     render(<SeekerLayout>Child</SeekerLayout>);
 
+    expect(screen.getByRole('button', { name: 'Open quick actions' })).toBeInTheDocument();
     expect(screen.getByTestId('palette-state')).toHaveTextContent('closed');
 
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
@@ -83,5 +91,67 @@ describe('seeker layout shell', () => {
     await waitFor(() => {
       expect(screen.queryByText('99+')).toBeNull();
     });
+  });
+
+  it('renders seeker context strip details from localStorage', async () => {
+    localStorage.setItem('oran:preferences', JSON.stringify({ approximateCity: 'Phoenix' }));
+    localStorage.setItem('oran:saved-service-ids', JSON.stringify(['svc-1', 'svc-2']));
+    localStorage.setItem(
+      'oran:seeker-context',
+      JSON.stringify({
+        serviceInterests: ['food_assistance', 'housing'],
+        profileHeadline: 'Parent seeking stable housing',
+      }),
+    );
+
+    render(<SeekerLayout>Child</SeekerLayout>);
+
+    await waitFor(() => {
+      expect(screen.getByText('Near Phoenix (approx.)')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Verified records. Private by default.')).toBeInTheDocument();
+    expect(screen.getByText('2 saved')).toBeInTheDocument();
+    expect(screen.getByText('2 interests set')).toBeInTheDocument();
+    expect(screen.getByText('Personalized profile')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Review your seeker context' })).toBeInTheDocument();
+  });
+
+  it('updates saved badges and context strip immediately when same-tab saved state changes', async () => {
+    usePathnameMock.mockReturnValue('/directory');
+
+    render(<SeekerLayout>Child</SeekerLayout>);
+
+    await waitFor(() => {
+      expect(screen.queryByText('1 saved')).toBeNull();
+    });
+
+    writeStoredSavedServiceIds(['svc-1']);
+
+    await waitFor(() => {
+      expect(screen.getByText('1 saved')).toBeInTheDocument();
+    });
+  });
+
+  it('updates profile context chips immediately when same-tab preferences change', async () => {
+    usePathnameMock.mockReturnValue('/profile');
+
+    render(<SeekerLayout>Child</SeekerLayout>);
+
+    expect(screen.getByText('Local-only')).toBeInTheDocument();
+
+    writeStoredProfilePreferences({ approximateCity: 'Tacoma', serverSyncEnabled: true });
+    writeStoredSeekerProfile({
+      serviceInterests: ['food_assistance'],
+      profileHeadline: 'Parent seeking support',
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Near Tacoma (approx.)')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('1 interests set')).toBeInTheDocument();
+    expect(screen.getByText('Personalized profile')).toBeInTheDocument();
+    expect(screen.getByText('Sync on')).toBeInTheDocument();
   });
 });

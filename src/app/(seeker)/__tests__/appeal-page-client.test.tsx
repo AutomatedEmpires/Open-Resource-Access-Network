@@ -55,6 +55,7 @@ vi.mock('@/components/ui/PageHeader', () => ({
       {subtitle && <p>{subtitle}</p>}
     </div>
   ),
+  PageHeaderBadge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }));
 
 vi.mock('next-auth/react', () => ({
@@ -98,7 +99,7 @@ describe('AppealPageClient', () => {
     render(<AppealPageContent />);
 
     await screen.findByText('Sign in required');
-    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/api/auth/signin');
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/auth/signin?callbackUrl=/appeal');
   });
 
   it('loads and renders existing appeals', async () => {

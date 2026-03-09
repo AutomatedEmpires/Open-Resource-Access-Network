@@ -5,6 +5,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const fetchMock = vi.hoisted(() => vi.fn());
+const replaceMock = vi.hoisted(() => vi.fn());
+const mapContainerMock = vi.hoisted(() => vi.fn());
+const navigationState = vi.hoisted(() => ({
+  searchParams: new URLSearchParams(),
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    replace: replaceMock,
+  }),
+  useSearchParams: () => navigationState.searchParams,
+}));
 
 vi.mock('next/dynamic', () => ({
   default: () => {
@@ -13,8 +25,10 @@ vi.mock('next/dynamic', () => ({
       centerLat?: number;
       centerLng?: number;
       zoom?: number;
+      discoveryContext?: Record<string, unknown>;
       onBoundsChange?: (bounds: { minLat: number; minLng: number; maxLat: number; maxLng: number }) => void;
     }) {
+      mapContainerMock(props);
       return (
         <div
           data-testid="map-container"
@@ -104,15 +118,18 @@ vi.mock('@/components/ui/dialog', () => {
 vi.mock('@/components/directory/ServiceCard', () => ({
   ServiceCard: ({
     enriched,
+    href,
     isSaved,
     onToggleSave,
   }: {
     enriched: { service: { id: string; name: string } };
+    href?: string;
     isSaved?: boolean;
     onToggleSave?: (id: string) => void;
   }) => (
     <div data-testid={`map-service-card-${enriched.service.id}`}>
       <span>{enriched.service.name}</span>
+      {href ? <a href={href}>details-{enriched.service.id}</a> : null}
       <span>{isSaved ? 'saved' : 'not-saved'}</span>
       <button type="button" onClick={() => onToggleSave?.(enriched.service.id)}>
         toggle-{enriched.service.id}
@@ -190,6 +207,13 @@ function mockApi(searchResponses: MockApiResponse[]) {
       } as Response;
     }
 
+    if (url === '/api/saved') {
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response;
+    }
+
     return {
       ok: false,
       json: async () => ({ error: `Unexpected request: ${url}` }),
@@ -206,6 +230,7 @@ beforeEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
   fetchMock.mockReset();
+  navigationState.searchParams = new URLSearchParams();
   localStorage.clear();
   global.fetch = fetchMock as unknown as typeof fetch;
   Object.defineProperty(global.navigator, 'geolocation', {
@@ -240,6 +265,127 @@ describe('MapPageClient', () => {
     expect(screen.getByRole('heading', { name: 'Service Map' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled();
     expect(screen.getByTestId('map-container')).toBeInTheDocument();
+  });
+
+  it('seeds a blank map entry from the stored seeker discovery preference', async () => {
+    localStorage.setItem('oran:seeker-context', JSON.stringify({
+      serviceInterests: ['housing'],
+      preferredDeliveryModes: ['phone'],
+      documentationBarriers: ['no_id'],
+      urgencyWindow: 'same_day',
+    }));
+    mockApi([{ ok: true, body: makeSearchResponse() }]);
+
+    renderWithToast(<MapPage />);
+
+    await screen.findByText('Shelter');
+
+    const searchUrl = String(getSearchCalls().at(-1)?.[0]);
+    expect(searchUrl).toContain('q=housing');
+    expect(searchUrl).toContain('attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D');
+    expect(replaceMock).toHaveBeenCalledWith(
+      '/map?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
+      { scroll: false },
+    );
+    expect(screen.getByRole('link', { name: 'Directory' })).toHaveAttribute(
+      'href',
+      '/directory?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
+    );
+    expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
+      'href',
+      '/chat?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
+    );
+  });
+
+  it('renders the shared current map scope summary from canonical discovery state', async () => {
+    const taxonomyId = 'a1000000-4000-4000-8000-000000000001';
+    navigationState.searchParams = new URLSearchParams(
+      `q=housing&category=housing&confidence=HIGH&sort=name_desc&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%7D`,
+    );
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.includes('/api/taxonomy/terms')) {
+        return {
+          ok: true,
+          json: async () => ({
+            terms: [{
+              id: taxonomyId,
+              term: 'Housing Navigation',
+              description: null,
+              parentId: null,
+              taxonomy: 'demo',
+              serviceCount: 12,
+            }],
+          }),
+        } as Response;
+      }
+
+      if (url.includes('/api/search?')) {
+        return {
+          ok: true,
+          json: async () => makeSearchResponse(),
+        } as Response;
+      }
+
+      return {
+        ok: false,
+        json: async () => ({ error: `Unexpected request: ${url}` }),
+      } as Response;
+    });
+
+    renderWithToast(<MapPage />);
+
+    await screen.findByText('Current map scope');
+    expect(screen.getByText('Need: Housing')).toBeInTheDocument();
+    expect(screen.getAllByText('Trust: High confidence only').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Sort: Name (Z-A)').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Tag: Housing Navigation').length).toBeGreaterThan(0);
+    expect(screen.getByText('Delivery: By Phone')).toBeInTheDocument();
+  });
+
+  it('auto-runs canonical map URLs and keeps the shareable filter state normalized', async () => {
+    const taxonomyId = 'a1000000-0000-4000-8000-000000000001';
+    navigationState.searchParams = new URLSearchParams(
+      `category=food&confidence=HIGH&sort=name_desc&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D`,
+    );
+    mockApi([{ ok: true, body: makeSearchResponse() }]);
+
+    renderWithToast(<MapPage />);
+
+    await screen.findByText('Shelter');
+
+    const searchUrl = String(getSearchCalls().at(-1)?.[0]);
+    expect(searchUrl).toContain('q=food');
+    expect(searchUrl).toContain('minConfidenceScore=80');
+    expect(searchUrl).toContain('sortBy=name_desc');
+    expect(searchUrl).toContain(`taxonomyIds=${taxonomyId}`);
+    expect(replaceMock).toHaveBeenCalledWith(
+      `/map?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D`,
+      { scroll: false },
+    );
+    expect(screen.getByRole('link', { name: 'Directory' })).toHaveAttribute(
+      'href',
+      `/directory?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D`,
+    );
+    expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
+      'href',
+      `/chat?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D`,
+    );
+    expect(screen.getByRole('link', { name: 'details-svc-1' })).toHaveAttribute(
+      'href',
+      `/service/svc-1?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D`,
+    );
+    expect(mapContainerMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      discoveryContext: {
+        text: 'food',
+        needId: 'food_assistance',
+        confidenceFilter: 'HIGH',
+        sortBy: 'name_desc',
+        taxonomyTermIds: [taxonomyId],
+        attributeFilters: { delivery: ['virtual'] },
+      },
+    }));
   });
 
   it('runs text search and shows pin coverage + mapped results', async () => {
@@ -341,6 +487,7 @@ describe('MapPageClient', () => {
     expect(screen.getByRole('button', { name: 'Clear search' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
     expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
+    expect(replaceMock).toHaveBeenCalledWith('/map', { scroll: false });
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
       target: { value: 'rare query' },
@@ -419,11 +566,43 @@ describe('MapPageClient', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'toggle-svc-1' }));
     expect(localStorage.getItem('oran:saved-service-ids')).toBe('[]');
-    expect(toastSuccessMock).toHaveBeenCalledWith('Removed from saved');
+    expect(toastSuccessMock).toHaveBeenCalledWith('Removed from this device');
 
     fireEvent.click(screen.getByRole('button', { name: 'toggle-svc-1' }));
     expect(localStorage.getItem('oran:saved-service-ids')).toBe('["svc-1"]');
-    expect(toastSuccessMock).toHaveBeenCalledWith('Saved');
+    expect(toastSuccessMock).toHaveBeenCalledWith('Saved on this device');
+  });
+
+  it('syncs map bookmark toggles to the account when cross-device sync is enabled', async () => {
+    localStorage.setItem('oran:preferences', JSON.stringify({ serverSyncEnabled: true }));
+    mockApi([{ ok: true, body: makeSearchResponse() }]);
+
+    renderWithToast(<MapPage />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+      target: { value: 'shelter' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await screen.findByText('Shelter');
+
+    fireEvent.click(screen.getByRole('button', { name: 'toggle-svc-1' }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/saved', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serviceId: 'svc-1' }),
+      });
+    });
+    expect(toastSuccessMock).toHaveBeenCalledWith('Saved to this device and your synced account');
+
+    fireEvent.click(screen.getByRole('button', { name: 'toggle-svc-1' }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/saved', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serviceId: 'svc-1' }),
+      });
+    });
+    expect(toastSuccessMock).toHaveBeenCalledWith('Removed from this device and your synced account');
   });
 
   it('centers map from opted-in geolocation and shows mobile search-area CTA', async () => {
@@ -490,7 +669,7 @@ describe('MapPageClient', () => {
     expect((await screen.findAllByText('Search failed')).length).toBeGreaterThan(0);
   });
 
-  it('does not run taxonomy or bbox searches when query and bounds are absent', async () => {
+  it('blocks empty submits but allows taxonomy-only search without requiring typed text', async () => {
     const taxonomyId = 'a1000000-0000-0000-0000-000000000001';
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -528,10 +707,13 @@ describe('MapPageClient', () => {
 
     const initialSearchCalls = getSearchCalls().length;
     fireEvent.submit(screen.getByRole('searchbox', { name: 'Search services to plot' }).closest('form')!);
-    fireEvent.click(screen.getByRole('button', { name: 'Food Assistance' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Search this area' }));
-
     expect(getSearchCalls().length).toBe(initialSearchCalls);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Food Assistance' }));
+    expect(getSearchCalls().length).toBe(initialSearchCalls + 1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search this area' }));
+    expect(getSearchCalls().length).toBe(initialSearchCalls + 1);
   });
 
   it('supports taxonomy dialog filtering, applying terms, and clearing applied terms', async () => {
@@ -601,10 +783,94 @@ describe('MapPageClient', () => {
       expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
     });
 
+    expect(screen.getByRole('button', { name: /Remove tag Food Assistance/i })).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     await waitFor(() => {
       const latest = String(getSearchCalls().at(-1)?.[0]);
       expect(latest).not.toContain('taxonomyIds=');
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /Remove tag Food Assistance/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it('re-runs taxonomy filtering when a category chip is the only active search driver', async () => {
+    const termId = 'a1000000-0000-0000-0000-000000000001';
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/taxonomy/terms')) {
+        return {
+          ok: true,
+          json: async () => ({
+            terms: [
+              {
+                id: termId,
+                term: 'Food Assistance',
+                description: null,
+                parentId: null,
+                taxonomy: 'demo',
+                serviceCount: 4,
+              },
+            ],
+          }),
+        } as Response;
+      }
+      if (url.includes('/api/search?')) {
+        return {
+          ok: true,
+          json: async () => makeSearchResponse(),
+        } as Response;
+      }
+      return {
+        ok: false,
+        json: async () => ({ error: `Unexpected request: ${url}` }),
+      } as Response;
+    });
+
+    renderWithToast(<MapPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    await screen.findByText('Shelter');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
+
+    await waitFor(() => {
+      const latest = String(getSearchCalls().at(-1)?.[0]);
+      expect(latest).toContain('q=food');
+      expect(latest).toContain(`taxonomyIds=${termId}`);
+    });
+  });
+
+  it('clears a stale category chip when the user types a different query', async () => {
+    renderWithToast(<MapPage />);
+
+    const categoryButton = screen.getByRole('button', { name: 'Food' });
+    fireEvent.click(categoryButton);
+    expect(categoryButton).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+      target: { value: 'legal aid' },
+    });
+
+    expect(categoryButton).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('uses the category query instead of stale typed text when a quick chip is selected', async () => {
+    mockApi([{ ok: true, body: makeSearchResponse() }]);
+
+    renderWithToast(<MapPage />);
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+      target: { value: 'rare typed query' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+
+    await waitFor(() => {
+      const latest = String(getSearchCalls().at(-1)?.[0]);
+      expect(latest).toContain('q=food');
+      expect(latest).not.toContain('rare+typed+query');
     });
   });
 

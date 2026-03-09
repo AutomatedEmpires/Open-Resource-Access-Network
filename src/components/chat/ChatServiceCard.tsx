@@ -18,6 +18,8 @@ import { MapPin, Phone, Clock, ExternalLink, Bookmark, BookmarkCheck, MessageSqu
 import { Badge } from '@/components/ui/badge';
 import { FeedbackForm } from '@/components/feedback/FeedbackForm';
 import type { ServiceCard } from '@/services/chat/types';
+import { buildDiscoveryHref, type DiscoveryLinkState } from '@/services/search/discovery';
+import { getSavedTogglePresentation } from '@/services/saved/presentation';
 
 function bandShortLabel(band: ServiceCard['confidenceBand']): string {
   switch (band) {
@@ -32,14 +34,31 @@ function bandShortLabel(band: ServiceCard['confidenceBand']): string {
 
 interface ChatServiceCardProps {
   card: ServiceCard;
+  discoveryContext?: DiscoveryLinkState;
   /** Whether this service is saved */
   isSaved?: boolean;
   /** Callback when save/unsave is toggled */
   onToggleSave?: (serviceId: string) => void;
+  /** Whether saves on this surface also sync to the signed-in account */
+  savedSyncEnabled?: boolean;
 }
 
-export function ChatServiceCard({ card, isSaved, onToggleSave }: ChatServiceCardProps) {
+export function ChatServiceCard({
+  card,
+  discoveryContext,
+  isSaved,
+  onToggleSave,
+  savedSyncEnabled,
+}: ChatServiceCardProps) {
   const [showFeedback, setShowFeedback] = useState(false);
+  const serviceHref = buildDiscoveryHref(`/service/${card.serviceId}`, discoveryContext ?? {});
+  const reportHref = buildDiscoveryHref(`/report?serviceId=${encodeURIComponent(card.serviceId)}`, discoveryContext ?? {});
+  const savedToggleCopy = savedSyncEnabled == null
+    ? {
+        ariaLabel: isSaved ? 'Remove from saved' : 'Save this service',
+        title: isSaved ? 'Remove from saved' : 'Save for later',
+      }
+    : getSavedTogglePresentation(Boolean(isSaved), savedSyncEnabled);
 
   // Get or create session ID for feedback
   const getSessionId = (): string => {
@@ -60,7 +79,7 @@ export function ChatServiceCard({ card, isSaved, onToggleSave }: ChatServiceCard
         <div className="min-w-0">
           <h4 className="font-semibold text-gray-900 text-sm leading-tight">
             <Link
-              href={`/service/${card.serviceId}`}
+              href={serviceHref}
               className="hover:underline text-blue-600"
             >
               {card.serviceName}
@@ -74,8 +93,8 @@ export function ChatServiceCard({ card, isSaved, onToggleSave }: ChatServiceCard
               type="button"
               onClick={() => onToggleSave(card.serviceId)}
               className="p-1 rounded-md hover:bg-gray-100 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
-              aria-label={isSaved ? 'Remove from saved' : 'Save this service'}
-              title={isSaved ? 'Remove from saved' : 'Save for later'}
+              aria-label={savedToggleCopy.ariaLabel}
+              title={savedToggleCopy.title}
             >
               {isSaved
                 ? <BookmarkCheck className="h-4 w-4 text-blue-600" aria-hidden="true" />
@@ -144,6 +163,22 @@ export function ChatServiceCard({ card, isSaved, onToggleSave }: ChatServiceCard
         </div>
       )}
 
+      {card.matchReasons && card.matchReasons.length > 0 && (
+        <div className="mt-2">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Why this may fit</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {card.matchReasons.map((reason) => (
+              <span
+                key={reason}
+                className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-800"
+              >
+                {reason}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2">{card.eligibilityHint}</p>
 
       {/* Feedback + report actions */}
@@ -160,7 +195,7 @@ export function ChatServiceCard({ card, isSaved, onToggleSave }: ChatServiceCard
           </button>
         )}
         <Link
-          href={`/report?serviceId=${encodeURIComponent(card.serviceId)}`}
+          href={reportHref}
           className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 transition-colors min-h-[44px]"
           title="Report incorrect information — wrong address, closed, or other data issue"
         >

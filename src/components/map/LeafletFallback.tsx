@@ -26,6 +26,7 @@ import 'leaflet/dist/leaflet.css';
 
 import type { EnrichedService } from '@/domain/types';
 import { getConfidenceTier } from '@/domain/confidence';
+import { buildDiscoveryHref, type DiscoveryLinkState } from '@/services/search/discovery';
 
 // ─── Fix Leaflet default marker icon paths broken by webpack ────────────────
 // react-leaflet/webpack strips the default icon URLs; we override with CDN copies.
@@ -52,6 +53,7 @@ export interface LeafletFallbackProps {
   centerLng?: number;
   zoom?: number;
   services?: EnrichedService[];
+  discoveryContext?: DiscoveryLinkState;
   onBoundsChange?: (bounds: { minLat: number; minLng: number; maxLat: number; maxLng: number }) => void;
   className?: string;
 }
@@ -130,6 +132,7 @@ export function LeafletFallback({
   centerLng = -98.35,
   zoom = 4,
   services = [],
+  discoveryContext,
   onBoundsChange,
   className = '',
 }: LeafletFallbackProps) {
@@ -185,6 +188,7 @@ export function LeafletFallback({
             typeof pin.confidenceScore === 'number' && Number.isFinite(pin.confidenceScore)
               ? getConfidenceTier(Math.max(0, Math.min(100, pin.confidenceScore)))
               : 'unknown';
+          const serviceHref = buildDiscoveryHref(`/service/${encodeURIComponent(pin.id)}`, discoveryContext ?? {});
 
           return (
             <Marker key={pin.id} position={[pin.lat, pin.lng]} icon={makePinIcon(tier)}>
@@ -195,7 +199,7 @@ export function LeafletFallback({
                     <p className="text-gray-500 text-xs mt-0.5">{pin.orgName}</p>
                   )}
                   <a
-                    href={`/service/${encodeURIComponent(pin.id)}`}
+                    href={serviceHref}
                     className="mt-2 block text-xs font-semibold text-blue-700 hover:underline"
                   >
                     View service

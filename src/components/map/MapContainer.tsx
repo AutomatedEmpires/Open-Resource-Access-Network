@@ -18,6 +18,7 @@ import { AlertTriangle, Loader2 } from 'lucide-react';
 
 import type { EnrichedService } from '@/domain/types';
 import { getConfidenceTier } from '@/domain/confidence';
+import { buildDiscoveryHref, type DiscoveryLinkState } from '@/services/search/discovery';
 import { LeafletFallback } from './LeafletFallback';
 
 // ============================================================
@@ -43,6 +44,8 @@ interface MapContainerProps {
   zoom?: number;
   /** Services to plot (only those with coordinates are shown) */
   services?: EnrichedService[];
+  /** Shareable discovery context for popup detail links. */
+  discoveryContext?: DiscoveryLinkState;
   /** Callback when map viewport changes (for bbox queries) */
   onBoundsChange?: (bounds: { minLat: number; minLng: number; maxLat: number; maxLng: number }) => void;
   className?: string;
@@ -52,8 +55,9 @@ interface MapContainerProps {
 // POPUP HELPERS
 // ============================================================
 
-function popupContent(pin: Pin): string {
+function popupContent(pin: Pin, discoveryContext?: DiscoveryLinkState): string {
   const safeLogo = safeHttpUrl(pin.orgLogoUrl ?? null);
+  const detailHref = buildDiscoveryHref(`/service/${encodeURIComponent(pin.id)}`, discoveryContext ?? {});
 
   const logoHtml = safeLogo
     ? `<img src="${escapeAttribute(safeLogo)}" alt="${escapeAttribute(`${pin.orgName} logo`)}" style="width:32px;height:32px;border-radius:8px;object-fit:contain;background:#fff;border:1px solid #e5e7eb" />`
@@ -68,7 +72,7 @@ function popupContent(pin: Pin): string {
       </div>
     </div>
     <div style="margin-top:8px">
-      <a href="/service/${encodeURIComponent(pin.id)}" style="font-size:12px;color:#1d4ed8;text-decoration:none;font-weight:600">View service</a>
+      <a href="${escapeAttribute(detailHref)}" style="font-size:12px;color:#1d4ed8;text-decoration:none;font-weight:600">View service</a>
     </div>
   </div>`;
 }
@@ -117,6 +121,7 @@ export function MapContainer({
   centerLng = -98.35,
   zoom = 4,
   services = [],
+  discoveryContext,
   onBoundsChange,
   className = '',
 }: MapContainerProps) {
@@ -287,7 +292,7 @@ export function MapContainer({
         map.events.add('click', marker, () => {
           popup.setOptions({
             position: [pin.lng, pin.lat],
-            content: popupContent(pin),
+            content: popupContent(pin, discoveryContext),
           });
           popup.open(map);
         });
@@ -309,7 +314,7 @@ export function MapContainer({
         map.setCamera({ bounds: bb, padding: 60 });
       }
     }
-  }, [pins]);
+  }, [discoveryContext, pins]);
 
   // ── keyboard navigation ───────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -381,6 +386,7 @@ export function MapContainer({
         centerLng={centerLng}
         zoom={zoom}
         services={services}
+        discoveryContext={discoveryContext}
         onBoundsChange={onBoundsChange}
         className={className}
       />

@@ -9,6 +9,7 @@ import {
   orchestrateChat,
   resetSessionQuotasForTests,
 } from '../orchestrator';
+import type { OrchestratorDeps } from '../orchestrator';
 import {
   CRISIS_KEYWORDS,
   ELIGIBILITY_DISCLAIMER,
@@ -170,6 +171,15 @@ describe('orchestrateChat', () => {
 
   it('uses LLM summarization only when enabled and services exist', async () => {
     const llmSpy = vi.fn().mockResolvedValue('Here are services that may help.');
+    const retrieveServices: OrchestratorDeps['retrieveServices'] = async () => ({
+      services: [makeMockService('svc-1')],
+      retrievalStatus: 'results',
+    });
+    const deps: OrchestratorDeps = {
+      retrieveServices,
+      isFlagEnabled: async () => true,
+      summarizeWithLLM: async (services, intent) => llmSpy(services, intent),
+    };
 
     const response = await orchestrateChat(
       'I need food',
@@ -177,11 +187,7 @@ describe('orchestrateChat', () => {
       undefined,
       'en',
       'chat:test:llm',
-      {
-        retrieveServices: async () => [makeMockService('svc-1')],
-        isFlagEnabled: async () => true,
-        summarizeWithLLM: llmSpy,
-      },
+      deps,
     );
 
     expect(llmSpy).toHaveBeenCalledOnce();
@@ -191,6 +197,15 @@ describe('orchestrateChat', () => {
 
   it('falls back to the assembled response if LLM summarization fails', async () => {
     const llmSpy = vi.fn().mockRejectedValue(new Error('LLM unavailable'));
+    const retrieveServices: OrchestratorDeps['retrieveServices'] = async () => ({
+      services: [makeMockService('svc-2')],
+      retrievalStatus: 'results',
+    });
+    const deps: OrchestratorDeps = {
+      retrieveServices,
+      isFlagEnabled: async () => true,
+      summarizeWithLLM: async (services, intent) => llmSpy(services, intent),
+    };
 
     const response = await orchestrateChat(
       'I need food',
@@ -198,11 +213,7 @@ describe('orchestrateChat', () => {
       undefined,
       'en',
       'chat:test:llm-fallback',
-      {
-        retrieveServices: async () => [makeMockService('svc-2')],
-        isFlagEnabled: async () => true,
-        summarizeWithLLM: llmSpy,
-      },
+      deps,
     );
 
     expect(llmSpy).toHaveBeenCalledOnce();
@@ -221,7 +232,10 @@ describe('orchestrateChat', () => {
         serviceInterests: ['housing'],
       },
     });
-    const retrieveServices = vi.fn().mockResolvedValue([]);
+    const retrieveServices = vi.fn().mockResolvedValue({
+      services: [],
+      retrievalStatus: 'no_match',
+    });
 
     await orchestrateChat(
       'I need help',
@@ -279,6 +293,50 @@ describe('orchestrateChat', () => {
     // Crisis safety flag (Stage 1b) runs before quota — that's correct.
     // The key contract: LLM summarization must NOT trigger on quota exceeded.
     expect(isFlagEnabled).not.toHaveBeenCalledWith(FEATURE_FLAGS.LLM_SUMMARIZE);
+  });
+
+  it('returns a deterministic out-of-scope response before retrieval', async () => {
+    const retrieveServices = vi.fn();
+
+    const response = await orchestrateChat(
+      'What is the weather tomorrow?',
+      '00000000-0000-0000-0000-000000000099',
+      undefined,
+      'en',
+      'chat:test:out-of-scope',
+      {
+        retrieveServices,
+        isFlagEnabled: async () => true,
+      },
+    );
+
+    expect(response.retrievalStatus).toBe('out_of_scope');
+    expect(response.message.toLowerCase()).toContain('find services');
+    expect(retrieveServices).not.toHaveBeenCalled();
+  });
+
+  it('skips LLM summarization when retrieval is temporarily unavailable', async () => {
+    const llmSpy = vi.fn();
+
+    const response = await orchestrateChat(
+      'I need food',
+      '00000000-0000-0000-0000-000000000100',
+      undefined,
+      'en',
+      'chat:test:unavailable',
+      {
+        retrieveServices: async () => ({
+          services: [],
+          retrievalStatus: 'temporarily_unavailable',
+        }),
+        isFlagEnabled: async () => true,
+        summarizeWithLLM: llmSpy,
+      },
+    );
+
+    expect(response.retrievalStatus).toBe('temporarily_unavailable');
+    expect(response.llmSummarized).toBe(false);
+    expect(llmSpy).not.toHaveBeenCalled();
   });
 });
 

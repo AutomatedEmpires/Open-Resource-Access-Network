@@ -5,24 +5,18 @@
 import { z } from 'zod';
 import type { EnrichedService } from '@/domain/types';
 import { CRISIS_RESOURCES, ELIGIBILITY_DISCLAIMER } from '@/domain/constants';
+import { DISCOVERY_NEED_IDS, type DiscoveryNeedId } from '@/domain/discoveryNeeds';
+import { buildSeekerDiscoveryProfile } from '@/services/profile/discoveryProfile';
 import { selectServiceLinks, type ServiceLink } from '@/services/chat/links';
+import { formatDiscoveryAttributeLabel } from '@/services/search/discoveryPresentation';
+import type { SearchFilters } from '@/services/search/types';
+import { SearchFiltersSchema } from '@/services/search/types';
 
 // ============================================================
 // INTENT
 // ============================================================
 
-export const INTENT_CATEGORIES = [
-  'food_assistance',
-  'housing',
-  'mental_health',
-  'healthcare',
-  'employment',
-  'childcare',
-  'transportation',
-  'legal_aid',
-  'utility_assistance',
-  'general',
-] as const;
+export const INTENT_CATEGORIES = [...DISCOVERY_NEED_IDS, 'general'] as const;
 
 export type IntentCategory = (typeof INTENT_CATEGORIES)[number];
 
@@ -62,10 +56,13 @@ export const ChatRequestSchema = z.object({
   sessionId: z.string().uuid(),
   userId: z.string().optional(),
   locale: z.string().default('en'),
+  profileMode: z.enum(['use', 'ignore']).default('use'),
   filters: z
     .object({
       /** Canonical taxonomy term IDs (UUIDs). */
       taxonomyTermIds: z.array(z.string().uuid()).max(20).optional(),
+      /** Browse-compatible ORAN attribute filters preserved from directory/map discovery. */
+      attributeFilters: SearchFiltersSchema.shape.attributeFilters,
       /** Trust-tier filter aligned with Directory UI. */
       trust: z.enum(['all', 'LIKELY', 'HIGH']).optional(),
     })
@@ -83,6 +80,12 @@ export interface UserProfile {
   locationCity?: string;
   locationPostalCode?: string;
   categoryPreferences?: string[];
+  primaryNeedId?: DiscoveryNeedId;
+  browsePreference?: {
+    needId?: DiscoveryNeedId | null;
+    taxonomyTermIds?: string[];
+    attributeFilters?: SearchFilters['attributeFilters'];
+  };
   accessibilityNeeds?: string[];
   /** Self-identified tags (e.g., "veteran"). Do not persist without explicit consent. */
   audienceTags?: string[];
@@ -104,6 +107,7 @@ export interface ChatContext {
   userId?: string;
   locale: string;
   messageCount: number;
+  profileShapingDisabled?: boolean;
   userProfile?: UserProfile;
   /** Approximate location — city or postal code only */
   approximateLocation?: {
@@ -133,6 +137,34 @@ export interface ServiceCard {
   confidenceScore: number;
   /** Always use qualifying language — never guarantee eligibility */
   eligibilityHint: string;
+  /** Deterministic fit reasons derived only from stored facts and active filters/preferences. */
+  matchReasons?: string[];
+}
+
+export const CHAT_RETRIEVAL_STATUSES = [
+  'results',
+  'no_match',
+  'catalog_empty_for_scope',
+  'temporarily_unavailable',
+  'out_of_scope',
+] as const;
+
+export type ChatRetrievalStatus = (typeof CHAT_RETRIEVAL_STATUSES)[number];
+
+export interface SearchInterpretation {
+  category: IntentCategory;
+  categoryLabel: string;
+  urgencyQualifier: Intent['urgencyQualifier'];
+  actionQualifier?: IntentAction;
+  summary: string;
+  usedProfileShaping: boolean;
+  ignoredProfileShaping: boolean;
+  profileSignals: string[];
+}
+
+export interface ChatRetrievalResult {
+  services: EnrichedService[];
+  retrievalStatus: Exclude<ChatRetrievalStatus, 'out_of_scope'>;
 }
 
 export interface ChatResponse {
@@ -143,8 +175,12 @@ export interface ChatResponse {
   intent: Intent;
   sessionId: string;
   quotaRemaining: number;
+  /** ISO-8601 timestamp when the 24-hour quota window resets. Null if window not yet started. */
+  quotaResetAt?: string;
   eligibilityDisclaimer: typeof ELIGIBILITY_DISCLAIMER;
   llmSummarized: boolean;
+  retrievalStatus?: ChatRetrievalStatus;
+  searchInterpretation?: SearchInterpretation;
 }
 
 // ============================================================
@@ -156,11 +192,131 @@ export interface QuotaState {
   messageCount: number;
   remaining: number;
   exceeded: boolean;
+  /** When the 24-hour quota window resets (undefined if window not yet started) */
+  resetAt?: Date;
 }
 
 // ============================================================
 // ENRICHED SERVICE → SERVICE CARD CONVERSION
 // ============================================================
+
+const ATTRIBUTE_MATCH_REASON_LABELS: Record<string, string> = {
+  phone: 'Offers phone support',
+  virtual: 'Offers virtual support',
+  hybrid: 'Offers flexible in-person or virtual support',
+  in_person: 'Available in person',
+  home_delivery: 'Offers home delivery',
+  interpreter_on_site: 'Offers interpreter support',
+  no_id_required: 'Does not require ID',
+  no_documentation_required: 'Does not require documentation',
+  no_ssn_required: 'Does not require SSN',
+  no_referral_needed: 'Does not require a referral',
+  walk_in: 'Allows walk-ins',
+  drop_in: 'Allows drop-in access',
+  accepting_new_clients: 'Marked as accepting new clients',
+  weekend_hours: 'Offers weekend hours',
+  evening_hours: 'Offers evening hours',
+  same_day: 'Marked for same-day help',
+  next_day: 'Marked for next-day help',
+  transportation_provided: 'Helps with transportation',
+  bilingual_services: 'Offers bilingual services',
+  lgbtq_affirming: 'Marked LGBTQ+ affirming',
+  child_friendly: 'Marked child friendly',
+  pregnant: 'Tagged for pregnancy support',
+  post_partum: 'Tagged for postpartum support',
+  postpartum: 'Tagged for postpartum support',
+  caregiver: 'Tagged for caregivers',
+  refugee: 'Tagged for refugees or asylum seekers',
+  reentry: 'Tagged for reentry support',
+  dv_survivor: 'Tagged for survivors',
+  single_parent: 'Tagged for single-parent households',
+  no_fixed_address: 'Supports people without a fixed address',
+};
+
+function formatAttributeMatchReason(tag: string): string {
+  return ATTRIBUTE_MATCH_REASON_LABELS[tag] ?? `Matched ${formatDiscoveryAttributeLabel(tag).toLowerCase()}`;
+}
+
+function addReason(reasons: string[], seen: Set<string>, reason: string) {
+  if (reason && !seen.has(reason)) {
+    seen.add(reason);
+    reasons.push(reason);
+  }
+}
+
+export function deriveChatMatchReasons(
+  enriched: EnrichedService,
+  options?: { intent?: Intent; context?: ChatContext; links?: ServiceLink[] },
+): string[] {
+  const reasons: string[] = [];
+  const seen = new Set<string>();
+  const serviceAttributes = enriched.attributes ?? [];
+  const browsePreference = options?.context?.userProfile?.browsePreference;
+  const browseAttributeFilters = browsePreference?.attributeFilters ?? {};
+  const browseTaxonomyIds = new Set(browsePreference?.taxonomyTermIds ?? []);
+
+  for (const [taxonomy, tags] of Object.entries(browseAttributeFilters)) {
+    tags.forEach((tag) => {
+      const matched = serviceAttributes.some((attribute) => attribute.taxonomy === taxonomy && attribute.tag === tag);
+      if (matched) {
+        addReason(reasons, seen, formatAttributeMatchReason(tag));
+      }
+    });
+  }
+
+  if ((browseTaxonomyIds.size ?? 0) > 0) {
+    enriched.taxonomyTerms.forEach((term) => {
+      if (browseTaxonomyIds.has(term.id)) {
+        addReason(reasons, seen, `Tagged with ${term.term}`);
+      }
+    });
+  }
+
+  if (options?.context?.userProfile) {
+    const discoveryProfile = buildSeekerDiscoveryProfile(options.context.userProfile, {
+      locale: options.context.locale,
+    });
+    const signalGroups = discoveryProfile.profileSignals;
+
+    signalGroups?.deliveryTags?.forEach((tag) => {
+      const matched = serviceAttributes.some((attribute) => attribute.taxonomy === 'delivery' && attribute.tag === tag);
+      if (matched) addReason(reasons, seen, formatAttributeMatchReason(tag));
+    });
+    signalGroups?.accessTags?.forEach((tag) => {
+      const matched = serviceAttributes.some((attribute) => attribute.taxonomy === 'access' && attribute.tag === tag);
+      if (matched) addReason(reasons, seen, formatAttributeMatchReason(tag));
+    });
+    signalGroups?.cultureTags?.forEach((tag) => {
+      const matched = serviceAttributes.some((attribute) => attribute.taxonomy === 'culture' && attribute.tag === tag);
+      if (matched) addReason(reasons, seen, formatAttributeMatchReason(tag));
+    });
+    signalGroups?.populationTags?.forEach((tag) => {
+      const matched = serviceAttributes.some((attribute) => attribute.taxonomy === 'population' && attribute.tag === tag);
+      if (matched) addReason(reasons, seen, formatAttributeMatchReason(tag));
+    });
+    signalGroups?.situationTags?.forEach((tag) => {
+      const matched = serviceAttributes.some((attribute) => attribute.taxonomy === 'situation' && attribute.tag === tag);
+      if (matched) addReason(reasons, seen, formatAttributeMatchReason(tag));
+    });
+  }
+
+  if (options?.intent?.actionQualifier === 'apply' && options.links?.some((link) => link.kind === 'apply')) {
+    addReason(reasons, seen, 'Includes an application path');
+  }
+
+  if (
+    options?.intent?.actionQualifier === 'contact'
+    && (Boolean(enriched.phones[0]?.number) || options.links?.some((link) => link.kind === 'contact'))
+  ) {
+    addReason(reasons, seen, 'Includes direct contact details');
+  }
+
+  if (options?.intent?.actionQualifier === 'hours' && Boolean(enriched.schedules[0]?.description)) {
+    addReason(reasons, seen, 'Includes hours information');
+  }
+
+  return reasons.slice(0, 4);
+}
 
 export function enrichedServiceToCard(
   enriched: EnrichedService,
@@ -186,6 +342,11 @@ export function enrichedServiceToCard(
 
   const trustScore = confidenceScore?.verificationConfidence ?? 0;
   const band = trustScore >= 80 ? 'HIGH' : trustScore >= 60 ? 'LIKELY' : 'POSSIBLE';
+  const matchReasons = deriveChatMatchReasons(enriched, {
+    intent: options?.intent,
+    context: options?.context,
+    links,
+  });
 
   return {
     serviceId: service.id,
@@ -199,5 +360,6 @@ export function enrichedServiceToCard(
     confidenceBand: band,
     confidenceScore: trustScore,
     eligibilityHint: 'You may qualify for this service. Please confirm eligibility with the provider.',
+    matchReasons: matchReasons.length > 0 ? matchReasons : undefined,
   };
 }

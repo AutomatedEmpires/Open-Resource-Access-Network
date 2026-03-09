@@ -175,4 +175,63 @@ describe('chat types + conversion', () => {
     expect(card.links).toBeUndefined();
     expect(card.eligibilityHint.toLowerCase()).toContain('may qualify');
   });
+
+  it('derives deterministic match reasons from browse filters, taxonomy, and action intent', () => {
+    const card = enrichedServiceToCard(
+      makeEnrichedService({
+        taxonomyTerms: [
+          { id: 'tax-1', term: 'Housing Navigation', createdAt: new Date(), updatedAt: new Date() },
+        ],
+        attributes: [
+          { id: 'attr-1', serviceId: 'svc-1', taxonomy: 'delivery', tag: 'phone', createdAt: new Date(), updatedAt: new Date() },
+          { id: 'attr-2', serviceId: 'svc-1', taxonomy: 'access', tag: 'no_id_required', createdAt: new Date(), updatedAt: new Date() },
+          { id: 'attr-3', serviceId: 'svc-1', taxonomy: 'access', tag: 'same_day', createdAt: new Date(), updatedAt: new Date() },
+        ],
+        service: {
+          id: 'svc-apply',
+          organizationId: 'org-1',
+          name: 'Rapid Housing Help',
+          description: 'Fast-track housing support.',
+          status: 'active',
+          url: 'https://example.org/apply',
+          updatedAt: new Date(),
+          createdAt: new Date(),
+        },
+      }),
+      {
+        intent: {
+          category: 'housing',
+          rawQuery: 'Need housing help fast',
+          actionQualifier: 'contact',
+          urgencyQualifier: 'urgent',
+        },
+        context: {
+          sessionId: '00000000-0000-4000-8000-000000000125',
+          locale: 'en',
+          messageCount: 1,
+          userProfile: {
+            userId: 'guest',
+            serviceInterests: ['housing'],
+            urgencyWindow: 'same_day',
+            preferredDeliveryModes: ['phone'],
+            documentationBarriers: ['no_id'],
+            browsePreference: {
+              attributeFilters: {
+                delivery: ['phone'],
+                access: ['same_day', 'no_id_required'],
+              },
+              taxonomyTermIds: ['tax-1'],
+            },
+          },
+        },
+      },
+    );
+
+    expect(card.matchReasons).toEqual([
+      'Offers phone support',
+      'Marked for same-day help',
+      'Does not require ID',
+      'Tagged with Housing Navigation',
+    ]);
+  });
 });

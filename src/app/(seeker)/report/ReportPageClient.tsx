@@ -8,7 +8,7 @@
 
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Flag, Send, Loader2, CheckCircle2, ArrowLeft, Clock, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
@@ -17,10 +17,12 @@ import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormField } from '@/components/ui/form-field';
 import { FormAlert } from '@/components/ui/form-alert';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { FormSection } from '@/components/ui/form-section';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { formatDate, daysAgo } from '@/lib/format';
 import type { SubmissionStatus } from '@/domain/types';
+import { buildDiscoveryHref, parseDiscoveryUrlState } from '@/services/search/discovery';
 
 // ============================================================
 // TYPES
@@ -62,6 +64,12 @@ const REPORT_REASONS = [
 function ReportPageInner() {
   const searchParams = useSearchParams();
   const serviceId = searchParams.get('serviceId') ?? '';
+  const discoveryIntent = useMemo(() => parseDiscoveryUrlState(searchParams), [searchParams]);
+  const directoryHref = useMemo(() => buildDiscoveryHref('/directory', discoveryIntent), [discoveryIntent]);
+  const listingHref = useMemo(() => {
+    if (!serviceId) return directoryHref;
+    return buildDiscoveryHref(`/service/${serviceId}`, discoveryIntent);
+  }, [directoryHref, discoveryIntent, serviceId]);
 
   const [reason, setReason] = useState('');
   const [details, setDetails] = useState('');
@@ -132,7 +140,7 @@ function ReportPageInner() {
     <main className="container mx-auto max-w-xl px-4 py-8">
       <div className="mb-4">
         <Link
-          href={serviceId ? `/service/${serviceId}` : '/directory'}
+          href={listingHref}
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -141,10 +149,28 @@ function ReportPageInner() {
       </div>
 
       <PageHeader
+        eyebrow="Record quality"
         title="Report a Listing"
         icon={<Flag className="h-6 w-6" aria-hidden="true" />}
         subtitle="Help keep service information accurate by reporting problems."
+        badges={(
+          <>
+            <PageHeaderBadge tone="trust">Stored records only</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Reviewed by ORAN staff</PageHeaderBadge>
+            <PageHeaderBadge>Quality feedback workflow</PageHeaderBadge>
+            <PageHeaderBadge>Need a missing listing? Use Submit a Resource</PageHeaderBadge>
+          </>
+        )}
       />
+
+      <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+        Missing a resource entirely?
+        {' '}
+        <Link href="/submit-resource?compose=listing" className="font-semibold underline hover:no-underline">
+          Submit a new resource for review
+        </Link>
+        {' '}through the structured card workflow.
+      </div>
 
       {result && (
         <div className="mb-4">
@@ -164,7 +190,7 @@ function ReportPageInner() {
           <AlertTriangle className="inline h-4 w-4 mr-1.5 align-text-bottom" aria-hidden="true" />
           To report a specific listing, open the service page and click
           {' '}<span className="font-medium">Report a problem</span>.{' '}
-          <Link href="/directory" className="underline hover:no-underline font-medium">
+          <Link href={directoryHref} className="underline hover:no-underline font-medium">
             Browse the directory
           </Link>{' '}to find a service.
         </div>
@@ -176,7 +202,7 @@ function ReportPageInner() {
           <p className="text-gray-700 font-medium">Thank you for your report</p>
           <p className="text-sm text-gray-500 mt-1">Our team will review it and take appropriate action.</p>
           <Link
-            href="/directory"
+            href={directoryHref}
             className="inline-block mt-4 text-sm text-action-base hover:underline"
           >
             Return to directory
@@ -184,62 +210,70 @@ function ReportPageInner() {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Service ID */}
-          <FormField id="service-id" label="Service ID" hint="The ID of the service listing to report">
-            <input
-              id="service-id"
-              type="text"
-              value={serviceId}
-              disabled
-              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-500"
-            />
-          </FormField>
-
-          {/* Reason */}
-          <FormField id="reason" label="Reason for report">
-            <select
-              id="reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-            >
-              <option value="">Select a reason…</option>
-              {REPORT_REASONS.map(({ value, label }) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FormField>
-
-          {/* Details */}
-          <FormField
-            id="details"
-            label="Details"
-            hint="Please describe the issue in detail"
-            charCount={details.length}
-            maxChars={2000}
+          <FormSection
+            title="Report details"
+            description="Tell us what is wrong with this listing so reviewers can verify and correct it quickly."
           >
-            <textarea
-              id="details"
-              value={details}
-              onChange={(e) => setDetails(e.target.value)}
-              rows={4}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-              placeholder="What is wrong with this listing?"
-              maxLength={2000}
-            />
-          </FormField>
+            <FormField id="service-id" label="Service ID" hint="The ID of the service listing to report">
+              <input
+                id="service-id"
+                type="text"
+                value={serviceId}
+                disabled
+                className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-500"
+              />
+            </FormField>
 
-          {/* Contact email (optional) */}
-          <FormField id="contact-email" label="Contact email (optional)" hint="We may follow up if we need more details">
-            <input
-              id="contact-email"
-              type="email"
-              value={contactEmail}
-              onChange={(e) => setContactEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
-              placeholder="your@email.com"
-            />
-          </FormField>
+            <FormField id="reason" label="Reason for report">
+              <select
+                id="reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                required
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+              >
+                <option value="">Select a reason…</option>
+                {REPORT_REASONS.map(({ value, label }) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FormField>
+
+            <FormField
+              id="details"
+              label="Details"
+              hint="Please describe the issue in detail. Include what changed or what a reviewer should verify."
+              charCount={details.length}
+              maxChars={2000}
+            >
+              <textarea
+                id="details"
+                value={details}
+                onChange={(e) => setDetails(e.target.value)}
+                rows={4}
+                required
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+                placeholder="What is wrong with this listing?"
+                maxLength={2000}
+              />
+            </FormField>
+          </FormSection>
+
+          <FormSection
+            title="Follow-up"
+            description="Optional contact details let the team follow up if they need clarification."
+          >
+            <FormField id="contact-email" label="Contact email (optional)" hint="We may follow up if we need more details">
+              <input
+                id="contact-email"
+                type="email"
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                placeholder="your@email.com"
+              />
+            </FormField>
+          </FormSection>
 
           {/* Submit */}
           <Button
@@ -261,13 +295,25 @@ function ReportPageInner() {
         </form>
       )}
 
+      <FormSection
+        title="What happens next"
+        description="Reports go into a reviewer queue so ORAN can verify record changes without inventing new facts."
+        className="mt-8"
+      >
+        <ul className="space-y-2 text-sm text-gray-600">
+          <li>Reviewers compare your note against stored provider data and evidence.</li>
+          <li>Listings are corrected, flagged, or removed only after verification.</li>
+          <li>Optional contact details are used only if clarification is needed.</li>
+        </ul>
+      </FormSection>
+
       {/* ── My Reports ── */}
       {myReports.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <Flag className="h-5 w-5 text-action" aria-hidden="true" />
-            My Reports
-          </h2>
+        <FormSection
+          title="My Reports"
+          description="Track the review status of listings you flagged for correction."
+          className="mt-10"
+        >
           <div className="space-y-3">
             {myReports.map((r) => {
               const age = daysAgo(r.created_at);
@@ -304,7 +350,7 @@ function ReportPageInner() {
               );
             })}
           </div>
-        </section>
+        </FormSection>
       )}
 
       {isLoadingReports && myReports.length === 0 && (

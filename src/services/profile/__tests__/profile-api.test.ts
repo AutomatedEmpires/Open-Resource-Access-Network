@@ -11,39 +11,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { z } from 'zod';
+import { UpdateProfileSchema } from '../contracts';
 
 // ============================================================
 // Re-declare schemas matching src/app/api/profile/route.ts
 // ============================================================
-
-const UpdateProfileSchema = z.object({
-  approximateCity: z.string().max(100).optional(),
-  preferredLocale: z.string().max(10).optional(),
-  displayName: z.string().min(1).max(100).optional(),
-  phone: z.string().max(20).optional(),
-  seekerProfile: z.object({
-    serviceInterests: z.array(z.string().min(1).max(100)).max(32).default([]),
-    ageGroup: z.string().max(50).default(''),
-    householdType: z.string().max(50).default(''),
-    housingSituation: z.string().max(50).default(''),
-    selfIdentifiers: z.array(z.string().min(1).max(100)).max(32).default([]),
-    currentServices: z.array(z.string().min(1).max(100)).max(32).default([]),
-    accessibilityNeeds: z.array(z.string().min(1).max(100)).max(32).default([]),
-    transportationBarrier: z.boolean().default(false),
-    preferredDeliveryModes: z.array(z.enum(['in_person', 'virtual', 'phone', 'hybrid'])).max(4).default([]),
-    urgencyWindow: z.enum(['same_day', 'next_day', 'flexible']).or(z.literal('')).default(''),
-    documentationBarriers: z.array(z.enum(['no_id', 'no_documents', 'no_ssn'])).max(3).default([]),
-    digitalAccessBarrier: z.boolean().default(false),
-    pronouns: z.string().max(50).default(''),
-    profileHeadline: z.string().max(120).default(''),
-    avatarEmoji: z.string().max(8).default(''),
-    accentTheme: z.enum(['ocean', 'blossom', 'forest', 'sunset', 'midnight']).default('ocean'),
-    contactPhone: z.string().max(50).default(''),
-    contactEmail: z.string().max(254).default(''),
-    additionalContext: z.string().max(500).default(''),
-  }).optional(),
-});
 
 const PROFILE_RATE_LIMIT_MAX = 20;
 

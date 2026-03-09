@@ -64,6 +64,58 @@ describe('ProfilePageClient', () => {
     });
   });
 
+  it('personalizes the saved-empty browse link from the seeker service interest', async () => {
+    localStorage.setItem(
+      SEEKER_KEY,
+      JSON.stringify({
+        serviceInterests: ['housing'],
+      }),
+    );
+    fetchMock.mockResolvedValueOnce({
+      status: 401,
+      ok: false,
+    });
+
+    render(<ProfilePage />);
+
+    await screen.findByText('No saved services yet.');
+    expect(screen.getByRole('link', { name: 'Browse services' })).toHaveAttribute(
+      'href',
+      '/directory?q=housing&category=housing',
+    );
+  });
+
+  it('uses canonical profile-derived discovery defaults for browse, chat, and map actions', async () => {
+    localStorage.setItem(
+      SEEKER_KEY,
+      JSON.stringify({
+        serviceInterests: ['housing'],
+        preferredDeliveryModes: ['phone'],
+        documentationBarriers: ['no_id'],
+      }),
+    );
+    fetchMock.mockResolvedValueOnce({
+      status: 401,
+      ok: false,
+    });
+
+    render(<ProfilePage />);
+
+    await screen.findByText('No saved services yet.');
+    expect(screen.getByRole('link', { name: 'Browse services' })).toHaveAttribute(
+      'href',
+      '/directory?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%5D%7D',
+    );
+    expect(screen.getByRole('link', { name: 'Ask chat' })).toHaveAttribute(
+      'href',
+      '/chat?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%5D%7D',
+    );
+    expect(screen.getByRole('link', { name: 'Map view' })).toHaveAttribute(
+      'href',
+      '/map?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%5D%7D',
+    );
+  });
+
   it('hydrates from authenticated server profile and shows signed-in account state', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
@@ -88,14 +140,11 @@ describe('ProfilePageClient', () => {
     expect(signOutLinks[0]).toHaveAttribute('href', '/api/auth/signout');
   });
 
-  it('saves city and language locally and sends best-effort server updates', async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        status: 401,
-        ok: false,
-      })
-      .mockResolvedValueOnce({ ok: true }) // save city PUT
-      .mockResolvedValueOnce({ ok: true }); // save language PUT
+  it('saves city and language locally without server sync when not opted in', async () => {
+    fetchMock.mockResolvedValueOnce({
+      status: 401,
+      ok: false,
+    });
 
     render(<ProfilePage />);
     await screen.findByText('Profile');
@@ -109,6 +158,96 @@ describe('ProfilePageClient', () => {
       expect(JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual(
         expect.objectContaining({ approximateCity: 'Seattle, WA' }),
       );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.change(screen.getByLabelText('Language'), {
+      target: { value: 'ko' },
+    });
+
+    await waitFor(() => {
+      expect(JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual(
+        expect.objectContaining({ approximateCity: 'Seattle, WA', language: 'ko' }),
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('keeps authenticated profiles local-only until sync is explicitly enabled', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          profile: {
+            userId: 'user-1',
+            displayName: null,
+            preferredLocale: null,
+            approximateCity: null,
+            seekerProfile: null,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ preferences: [] }),
+      });
+
+    render(<ProfilePage />);
+
+    await screen.findByText('You are signed in. Profile changes stay on this device until you turn on cross-device sync.');
+    expect(screen.getByText('Local-only until you opt in')).toBeInTheDocument();
+    expect(screen.getByLabelText('Save my preferences to improve future results across devices')).not.toBeChecked();
+  });
+
+  it('enables cross-device sync explicitly before sending profile updates to the server', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          profile: {
+            userId: 'user-1',
+            displayName: null,
+            preferredLocale: null,
+            approximateCity: null,
+            seekerProfile: null,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ preferences: [] }),
+      })
+      .mockResolvedValue({ ok: true, status: 200 });
+
+    render(<ProfilePage />);
+
+    const syncToggle = await screen.findByLabelText('Save my preferences to improve future results across devices');
+    expect(syncToggle).not.toBeChecked();
+
+    fireEvent.click(syncToggle);
+
+    await waitFor(() => {
+      const syncCall = fetchMock.mock.calls[2];
+      expect(syncCall?.[0]).toBe('/api/profile');
+      expect(syncCall?.[1]).toMatchObject({
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const body = JSON.parse(String((syncCall?.[1] as RequestInit | undefined)?.body ?? '{}')) as Record<string, unknown>;
+      expect(body.preferredLocale).toBe('en');
+      expect(body.seekerProfile).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByLabelText('City or region'), {
+      target: { value: 'Seattle, WA' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith('/api/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -121,9 +260,6 @@ describe('ProfilePageClient', () => {
     });
 
     await waitFor(() => {
-      expect(JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}')).toEqual(
-        expect.objectContaining({ approximateCity: 'Seattle, WA', language: 'ko' }),
-      );
       expect(fetchMock).toHaveBeenCalledWith('/api/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -148,7 +284,7 @@ describe('ProfilePageClient', () => {
 
     await waitFor(() => {
       expect(localStorage.getItem(PREFS_KEY)).toBeNull();
-      expect(localStorage.getItem(SAVED_KEY)).toBeNull();
+      expect(localStorage.getItem(SAVED_KEY)).toBe('[]');
       expect(screen.getByText('No saved services yet.')).toBeInTheDocument();
     });
   });

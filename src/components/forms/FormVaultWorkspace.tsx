@@ -5,6 +5,8 @@ import {
   Archive,
   BarChart3,
   CheckSquare,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   Copy,
   Download,
@@ -20,6 +22,8 @@ import {
   ShieldCheck,
   ShieldX,
   Square,
+  Trash2,
+  UserPlus,
   XCircle,
 } from 'lucide-react';
 
@@ -352,6 +356,16 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
   const [bulkNotes, setBulkNotes] = useState('');
   const [bulkPending, setBulkPending] = useState(false);
 
+  // ── Instance pagination state ───────────────────────────
+  const [instancePage, setInstancePage] = useState(0);
+
+  // ── Reassignment state ──────────────────────────────────
+  const [assigneeUserId, setAssigneeUserId] = useState('');
+  const [assignPending, setAssignPending] = useState(false);
+
+  // ── Template delete state ───────────────────────────────
+  const [deletePending, setDeletePending] = useState<string | null>(null);
+
   const templateMap = useMemo(
     () => new Map((templatesData?.templates ?? []).map((template) => [template.id, template])),
     [templatesData],
@@ -494,7 +508,7 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
     setInstancesLoading(true);
     setInstancesError(null);
     try {
-      const params = new URLSearchParams({ limit: '50' });
+      const params = new URLSearchParams({ limit: '50', offset: String(instancePage * 50) });
       if (statusFilter) {
         params.set('status', statusFilter);
       }
@@ -519,7 +533,7 @@ export default function FormVaultWorkspace({ portal }: FormVaultWorkspaceProps) 
     } finally {
       setInstancesLoading(false);
     }
-  }, [detailLoading, selectedInstanceId, statusFilter]);
+  }, [detailLoading, instancePage, selectedInstanceId, statusFilter]);
 
   const fetchOrganizations = useCallback(async () => {
     if (!canCreateInstances) return;

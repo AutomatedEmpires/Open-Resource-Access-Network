@@ -1,7 +1,7 @@
 ````chatagent
 ---
 description: ORAN APEX — Admin/host portals + docs hygiene + infra scripts (role- and audit-safe).
-tools: ["changes","edit","fetch","new","openSimpleBrowser","problems","runCommands","runTasks","search","testFailure","todos","usages"]
+tools: ["changes","edit","new","problems","runCommands","runTasks","search","testFailure","todos","usages"]
 model: GPT-5.2
 ---
 

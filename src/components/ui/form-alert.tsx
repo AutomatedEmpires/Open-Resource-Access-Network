@@ -34,9 +34,13 @@ const variantIcons: Record<AlertVariant, React.ReactNode> = {
 };
 
 export function FormAlert({ variant, message, onDismiss, className }: FormAlertProps) {
+  const isAssertive = variant === 'error' || variant === 'warning';
+
   return (
     <div
-      role="alert"
+      role={isAssertive ? 'alert' : 'status'}
+      aria-live={isAssertive ? 'assertive' : 'polite'}
+      aria-atomic="true"
       className={cn(
         'flex items-start gap-2 rounded-lg border px-4 py-3 text-sm',
         variantStyles[variant],

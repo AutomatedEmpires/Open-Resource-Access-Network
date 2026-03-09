@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { FormField } from '@/components/ui/form-field';
 import { FormAlert } from '@/components/ui/form-alert';
+import { FormSection } from '@/components/ui/form-section';
 
 // ============================================================
 // CONSTANTS
@@ -142,9 +143,10 @@ export function ReportProblemDialog({
             }}
             className="space-y-4"
           >
-            {/* Issue type grid */}
-            <fieldset>
-              <legend className="text-sm font-medium text-gray-700 mb-2">What&apos;s the issue?</legend>
+            <FormSection
+              title="What&apos;s the issue?"
+              description="Choose the problem type that best matches what you saw in the listing."
+            >
               <div className="grid grid-cols-2 gap-2">
                 {ISSUE_TYPES.map(({ value, label, icon: Icon, color }) => (
                   <button
@@ -164,25 +166,29 @@ export function ReportProblemDialog({
                   </button>
                 ))}
               </div>
-            </fieldset>
+            </FormSection>
 
-            {/* Details */}
-            <FormField
-              id="report-comment"
-              label="Additional details"
-              hint="Optional — anything else we should know?"
-              charCount={comment.length}
-              maxChars={2000}
+            <FormSection
+              title="Additional details"
+              description="Add optional context that can help reviewers verify and fix the issue faster."
             >
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                rows={3}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g. The phone number listed goes to voicemail and is no longer in service..."
-                maxLength={2000}
-              />
-            </FormField>
+              <FormField
+                id="report-comment"
+                label="Additional details"
+                hint="Optional — anything else we should know?"
+                charCount={comment.length}
+                maxChars={2000}
+              >
+                <textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. The phone number listed goes to voicemail and is no longer in service..."
+                  maxLength={2000}
+                />
+              </FormField>
+            </FormSection>
 
             {errorMessage && (
               <FormAlert

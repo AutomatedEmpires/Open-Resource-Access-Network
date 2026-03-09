@@ -9,6 +9,7 @@
 
 import React, { useCallback } from 'react';
 import { Clock, Sun, Moon } from 'lucide-react';
+import { FormSection } from '@/components/ui/form-section';
 import { cn } from '@/lib/utils';
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -95,11 +96,12 @@ export function ScheduleEditor({ schedule, onChange, className }: ScheduleEditor
   );
 
   return (
-    <fieldset className={cn('space-y-3', className)}>
-      <legend className="flex items-center gap-2 text-sm font-medium text-gray-700">
-        <Clock className="h-4 w-4" aria-hidden="true" />
-        Operating Hours
-      </legend>
+    <FormSection
+      title="Operating schedule"
+      description="Set open and closed times for each day, then copy a schedule across the week when needed."
+      className={className}
+      action={<Clock className="h-4 w-4 text-gray-500" aria-hidden="true" />}
+    >
 
       {/* Quick-fill buttons */}
       <div className="flex flex-wrap gap-2">
@@ -229,6 +231,6 @@ export function ScheduleEditor({ schedule, onChange, className }: ScheduleEditor
           </div>
         ))}
       </div>
-    </fieldset>
+    </FormSection>
   );
 }

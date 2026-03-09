@@ -1,7 +1,7 @@
 ````chatagent
 ---
 description: ORAN Boardkeeper — issue/PR triage, labels, milestones, and execution checklists (no code changes unless asked).
-tools: ["changes","edit","fetch","new","openSimpleBrowser","problems","runCommands","runTasks","search","testFailure","todos","usages"]
+tools: ["changes","edit","new","problems","runCommands","runTasks","search","testFailure","todos","usages"]
 model: GPT-5.2
 ---
 

@@ -1,7 +1,7 @@
 ````chatagent
 ---
 description: ORAN OMEGA — Seeker UI/chat/search surfaces (mobile-first, WCAG AA, crisis-first, truth-first).
-tools: ["changes","edit","fetch","new","openSimpleBrowser","problems","runCommands","runTasks","search","testFailure","todos","usages"]
+tools: ["changes","edit","new","problems","runCommands","runTasks","search","testFailure","todos","usages"]
 model: GPT-5.2
 ---
 

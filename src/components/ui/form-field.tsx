@@ -48,7 +48,8 @@ export function FormField({
   className,
   children,
 }: FormFieldProps) {
-  const id = idProp ?? htmlFor ?? '';
+  const generatedId = React.useId();
+  const id = idProp ?? htmlFor ?? generatedId;
   const maxChars = maxCharsProp ?? maxLength;
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
@@ -90,17 +91,31 @@ export function FormField({
       {/* Clone-in aria attributes so the child input gets them */}
       {React.Children.map(children, (child) => {
         if (!React.isValidElement(child)) return child;
+        const childProps = child.props as Record<string, unknown>;
+        const describedBy = new Set<string>();
+        const existingDescribedBy = childProps['aria-describedby'];
+        if (typeof existingDescribedBy === 'string') {
+          for (const token of existingDescribedBy.split(/\s+/)) {
+            if (token) describedBy.add(token);
+          }
+        }
+        if (hint) describedBy.add(hintId);
+        if (hasError) describedBy.add(errorId);
+
         return React.cloneElement(child as React.ReactElement<Record<string, unknown>>, {
-          id,
-          'aria-invalid': hasError || undefined,
-          'aria-describedby': [
-            hasError ? errorId : null,
-            hint ? hintId : null,
-          ]
-            .filter(Boolean)
-            .join(' ') || undefined,
+          id: childProps.id ?? id,
+          required: childProps.required ?? required,
+          'aria-required': childProps['aria-required'] ?? (required || undefined),
+          'aria-invalid': hasError ? true : childProps['aria-invalid'],
+          'aria-describedby': describedBy.size > 0 ? Array.from(describedBy).join(' ') : undefined,
         });
       })}
+
+      {hint && (
+        <p id={hintId} className="text-xs text-gray-500">
+          {hint}
+        </p>
+      )}
 
       {hasError && (
         <p id={errorId} className="text-sm text-red-600 flex items-center gap-1" role="alert">
@@ -117,12 +132,6 @@ export function FormField({
             />
           </svg>
           {error}
-        </p>
-      )}
-
-      {!hasError && hint && (
-        <p id={hintId} className="text-xs text-gray-500">
-          {hint}
         </p>
       )}
     </div>

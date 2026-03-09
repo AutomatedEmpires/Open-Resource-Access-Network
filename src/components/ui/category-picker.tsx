@@ -9,6 +9,7 @@
 
 import React, { useState } from 'react';
 import { Tags, Plus, X } from 'lucide-react';
+import { FormSection } from '@/components/ui/form-section';
 import { cn } from '@/lib/utils';
 
 /* ── Preset categories ─────────────────────────────────────────── */
@@ -107,16 +108,13 @@ export function CategoryPicker({
   };
 
   return (
-    <fieldset className={cn('space-y-2', className)}>
-      <legend className="flex items-center gap-2 text-sm font-medium text-gray-700">
-        <Tags className="h-4 w-4" aria-hidden="true" />
-        Service Categories
-        {maxSelections && (
-          <span className="text-xs text-gray-400 font-normal">
-            ({selected.length}/{maxSelections})
-          </span>
-        )}
-      </legend>
+    <FormSection
+      title="Service categories"
+      description="Choose the categories that best describe this service, then add a custom tag only if no preset fits."
+      className={className}
+      action={maxSelections ? <span className="text-xs text-gray-400 font-normal">({selected.length}/{maxSelections})</span> : <Tags className="h-4 w-4 text-gray-500" aria-hidden="true" />}
+      contentClassName="space-y-2"
+    >
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="Service categories">
         {allCategories.map((cat) => {
@@ -199,6 +197,6 @@ export function CategoryPicker({
           {selected.length} categor{selected.length === 1 ? 'y' : 'ies'} selected
         </p>
       )}
-    </fieldset>
+    </FormSection>
   );
 }

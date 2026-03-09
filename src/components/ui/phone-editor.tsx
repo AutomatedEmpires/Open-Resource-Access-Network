@@ -11,6 +11,7 @@ import React, { useState, useCallback } from 'react';
 import { Phone, Plus, Pencil, Trash2, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FormField } from '@/components/ui/form-field';
+import { FormSection } from '@/components/ui/form-section';
 import { cn } from '@/lib/utils';
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -91,12 +92,17 @@ export function PhoneEditor({ phones, onChange, max = 10, className }: PhoneEdit
   );
 
   return (
-    <fieldset className={cn('space-y-3', className)}>
-      <legend className="flex items-center gap-2 text-sm font-medium text-gray-700">
-        <Phone className="h-4 w-4" aria-hidden="true" />
-        Phone Numbers
-        <span className="text-xs text-gray-400 font-normal">({phones.length}/{max})</span>
-      </legend>
+    <FormSection
+      title="Contact phones"
+      description="Add voice, text, hotline, fax, or TTY numbers that seekers and reviewers can use to contact this record."
+      className={className}
+      action={
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+          <Phone className="h-4 w-4" aria-hidden="true" />
+          <span className="text-xs text-gray-400 font-normal">({phones.length}/{max})</span>
+        </div>
+      }
+    >
 
       {/* Existing phones */}
       {phones.length > 0 && (
@@ -181,7 +187,7 @@ export function PhoneEditor({ phones, onChange, max = 10, className }: PhoneEdit
           Add Phone
         </Button>
       )}
-    </fieldset>
+    </FormSection>
   );
 }
 
@@ -201,7 +207,7 @@ function PhoneInlineForm({
   return (
     <div className="flex-1 space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <FormField id="phone-number" label="Number" required className="sm:col-span-2">
+        <FormField id="phone-number" label="Number" className="sm:col-span-2">
           <input
             type="tel"
             value={draft.number}

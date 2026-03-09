@@ -20,7 +20,8 @@ If any requested change conflicts with these constraints, propose a safer altern
 - For safety-critical changes, add an ADR: docs/DECISIONS/
 
 Update-on-touch rule:
-- If you modify chat/search/scoring contracts, also update the relevant docs/** SSOT files and the area README under src/services/**.
+
+- If you modify chat/search/scoring contracts, also update the relevant docs/**SSOT files and the area README under src/services/**.
 - For contract-level changes, append a short UTC entry to docs/ENGINEERING_LOG.md.
 
 ## Architecture map (where things live)

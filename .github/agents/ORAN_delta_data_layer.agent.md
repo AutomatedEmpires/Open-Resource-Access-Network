@@ -1,7 +1,7 @@
 ````chatagent
 ---
 description: ORAN DELTA — DB/schema, ingestion pipeline, scoring, domain types (SSOT-aligned, Zod-validated boundaries).
-tools: ["changes","edit","fetch","new","openSimpleBrowser","problems","runCommands","runTasks","search","testFailure","todos","usages"]
+tools: ["changes","edit","new","problems","runCommands","runTasks","search","testFailure","todos","usages"]
 model: GPT-5.2
 ---
 

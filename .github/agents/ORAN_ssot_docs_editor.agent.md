@@ -1,7 +1,7 @@
 ````chatagent
 ---
 description: ORAN SSOT Docs Editor — maintains docs/ as the authoritative system of record; updates are traceable, minimal, and aligned with implemented code.
-tools: ["changes","edit","fetch","new","openSimpleBrowser","problems","runCommands","runTasks","search","testFailure","todos","usages"]
+tools: ["changes","edit","new","problems","runCommands","runTasks","search","testFailure","todos","usages"]
 model: GPT-5.2
 ---
 

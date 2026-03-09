@@ -1,7 +1,7 @@
 ````chatagent
 ---
 description: ORAN Actions/CI Maintainer — GitHub Actions hygiene, CI reliability, workflow triggers, and safe release/deploy pipelines.
-tools: ["changes","edit","fetch","new","openSimpleBrowser","problems","runCommands","runTasks","search","testFailure","todos","usages"]
+tools: ["changes","edit","new","problems","runCommands","runTasks","search","testFailure","todos","usages"]
 model: GPT-5.2
 ---
 

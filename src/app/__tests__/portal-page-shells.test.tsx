@@ -5,6 +5,7 @@ const useStateMock = vi.hoisted(() => vi.fn());
 const useEffectMock = vi.hoisted(() => vi.fn());
 const useCallbackMock = vi.hoisted(() => vi.fn());
 const useRefMock = vi.hoisted(() => vi.fn());
+const useMemoMock = vi.hoisted(() => vi.fn());
 
 vi.mock('react', async () => {
   const actual = await vi.importActual<typeof import('react')>('react');
@@ -14,6 +15,7 @@ vi.mock('react', async () => {
     useEffect: useEffectMock,
     useCallback: useCallbackMock,
     useRef: useRefMock,
+    useMemo: useMemoMock,
   };
 });
 vi.mock('next/link', () => ({
@@ -83,6 +85,10 @@ async function loadHostOrgPage() {
   return import('../(host)/org/OrgPageClient');
 }
 
+async function loadHostLocationsPage() {
+  return import('../(host)/locations/LocationsPageClient');
+}
+
 async function loadApprovalsPage() {
   return import('../(oran-admin)/approvals/ApprovalsPageClient');
 }
@@ -121,12 +127,13 @@ function mockStateSequence(values: unknown[]) {
 
 beforeEach(() => {
   vi.resetModules();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
 
   useStateMock.mockImplementation((initial: unknown) => [initial, vi.fn()]);
   useEffectMock.mockImplementation(() => undefined);
   useCallbackMock.mockImplementation((fn: unknown) => fn);
   useRefMock.mockImplementation((initial: unknown) => ({ current: initial }));
+  useMemoMock.mockImplementation((fn: () => unknown) => fn());
 });
 
 describe('portal page shells', () => {
@@ -155,22 +162,6 @@ describe('portal page shells', () => {
       '',
       '',
       [{ id: 'org-1', name: 'Helping Hands' }],
-      {
-        organizationId: 'org-1',
-        name: 'Food Pantry',
-        description: 'Emergency grocery assistance',
-        url: 'https://example.org',
-        email: 'help@example.org',
-        status: 'active',
-        interpretationServices: 'Spanish',
-        applicationProcess: 'Walk in',
-        fees: 'Free',
-        waitTime: '15 minutes',
-        accreditations: 'County Certified',
-        licenses: 'State Licensed',
-      },
-      false,
-      'Validation failed',
       'svc-1',
       false,
     ]);
@@ -182,7 +173,7 @@ describe('portal page shells', () => {
     const buttons = collectElements(element, (child) => child.type === 'button');
     const skeletons = collectElements(element, (child) => child.type === 'skeleton-card');
 
-    expect(dialogRoots).toHaveLength(2);
+    expect(dialogRoots).toHaveLength(1);
     expect(dialogContents.length).toBeGreaterThanOrEqual(1);
     expect(buttons.length).toBeGreaterThan(6);
     expect(skeletons).toHaveLength(0);
@@ -238,7 +229,7 @@ describe('portal page shells', () => {
     expect(buttons.length).toBeGreaterThan(8);
   });
 
-  it('renders the host organization dashboard with edit and archive dialogs', async () => {
+  it('renders the host organization dashboard as a Studio-only published-record surface', async () => {
     mockStateSequence([
       {
         results: [
@@ -258,15 +249,6 @@ describe('portal page shells', () => {
       'Delete failed',
       2,
       'help',
-      {
-        id: 'org-1',
-        name: 'Helping Hands',
-        description: 'Emergency aid and community referrals',
-        url: 'https://example.org',
-        email: 'hello@example.org',
-      },
-      false,
-      'Name is required',
       'org-1',
       false,
     ]);
@@ -282,9 +264,57 @@ describe('portal page shells', () => {
 
     expect(wrappers).toHaveLength(1);
     expect(alerts.length).toBeGreaterThanOrEqual(0);
-    expect(dialogRoots).toHaveLength(2);
-    expect(dialogContents.length).toBeGreaterThanOrEqual(1);
-    expect(buttons.length).toBeGreaterThan(6);
+    expect(dialogRoots).toHaveLength(0);
+    expect(dialogContents).toHaveLength(0);
+    expect(buttons.length).toBe(4);
+    expect(skeletons).toHaveLength(0);
+  });
+
+  it('renders the host locations page as a Studio-only operational surface', async () => {
+    mockStateSequence([
+      {
+        results: [
+          {
+            id: 'loc-1',
+            organization_id: 'org-1',
+            name: 'Downtown Office',
+            description: 'Main service access point',
+            address_1: '123 Main St',
+            city: 'Seattle',
+            state_province: 'WA',
+            postal_code: '98101',
+            organization_name: 'Helping Hands',
+            primary_service_id: 'svc-1',
+            primary_service_name: 'Food Pantry',
+            created_at: '2026-01-01T00:00:00.000Z',
+            updated_at: '2026-01-02T00:00:00.000Z',
+          },
+        ],
+        total: 8,
+        page: 1,
+        hasMore: false,
+      },
+      false,
+      null,
+      1,
+      '',
+      [{ id: 'org-1', name: 'Helping Hands' }],
+      'loc-1',
+      false,
+    ]);
+    const { default: LocationsPage } = await loadHostLocationsPage();
+
+    const element = LocationsPage() as React.ReactElement<any, any>;
+    const wrappers = collectElements(element, (child) => child.type === 'error-boundary');
+    const dialogRoots = collectElements(element, (child) => child.type === 'dialog-root');
+    const dialogContents = collectElements(element, (child) => child.type === 'dialog-content');
+    const buttons = collectElements(element, (child) => child.type === 'button');
+    const skeletons = collectElements(element, (child) => child.type === 'skeleton-card');
+
+    expect(wrappers).toHaveLength(1);
+    expect(dialogRoots).toHaveLength(0);
+    expect(dialogContents).toHaveLength(0);
+    expect(buttons.length).toBe(3);
     expect(skeletons).toHaveLength(0);
   });
 });

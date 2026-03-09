@@ -36,6 +36,7 @@ Displays confidence bands with color-coding per ORAN scoring model.
 | `variant` | same as `band` | Alternative manual variant selector |
 
 Tooltip-ready labels:
+
 - **HIGH** → "High confidence"
 - **LIKELY** → "Likely — confirm hours/eligibility"
 - **POSSIBLE** → "Possible — here's what to verify"
@@ -58,6 +59,7 @@ Loading placeholder that respects `prefers-reduced-motion`.
 | `circle` | `boolean` | Render circular skeleton (avatar placeholder) |
 
 Preset compositions:
+
 - `SkeletonCard` — matches ORAN service card dimensions
 - `ChatSkeletonLoader` — chat message loading state
 
@@ -75,6 +77,7 @@ import { Skeleton, SkeletonCard } from '@/components/ui/skeleton';
 Accessible modal dialog using Radix UI primitives.
 
 Exported parts:
+
 - `Dialog` — root context provider
 - `DialogTrigger` — element that opens dialog
 - `DialogContent` — modal panel with overlay and auto-focus trap
@@ -109,6 +112,81 @@ import {
 
 ---
 
+## FormField (`form-field.tsx`)
+
+Accessible label and message wrapper for a single form control.
+
+What it standardizes:
+
+- label to control wiring
+- required-state copy for screen readers
+- merged `aria-describedby` support so field-specific help is not lost
+- inline hint and error messaging
+- optional character counts
+
+Use it for `input`, `textarea`, and `select` controls instead of hand-rolled labels.
+
+Important for embedded editors:
+
+- If a control belongs to a local draft flow inside a larger parent form, do not mark the raw draft input as `required` unless the parent submit should be blocked by browser validation.
+- For editors like add-phone or add-evidence flows, keep validation local to the editor action until the user explicitly commits that nested item.
+
+```tsx
+import { FormField } from '@/components/ui/form-field';
+
+<FormField
+
+- label to control wiring
+- required-state copy for screen readers
+- merged `aria-describedby` support so field-specific help is not lost
+- inline hint and error messaging
+- optional character counts
+
+>
+  <textarea value={details} onChange={handleChange} />
+</FormField>
+```
+
+- If a control belongs to a local draft flow inside a larger parent form, do not mark the raw draft input as `required` unless the parent submit should be blocked by browser validation.
+- For editors like add-phone or add-evidence flows, keep validation local to the editor action until the user explicitly commits that nested item.
+
+## FormAlert (`form-alert.tsx`)
+
+Consistent inline message banner for forms.
+
+Behavior:
+
+- `error` and `warning` announce with assertive live regions
+- `success` and `info` announce with polite live regions
+
+```tsx
+import { FormAlert } from '@/components/ui/form-alert';
+
+<FormAlert variant="error" message="Please fix the highlighted fields." />
+```
+
+---
+
+## FormSection (`form-section.tsx`)
+
+Shared wrapper for grouping related fields under a labeled section with optional supporting copy and actions.
+
+Use it to keep forms organized and predictable across seeker, host, and admin flows.
+
+```tsx
+import { FormSection } from '@/components/ui/form-section';
+
+<FormSection
+  title="Supporting evidence"
+  description="Add documents or links that support this request."
+  action={<Button type="button">Add evidence</Button>}
+>
+  {/* fields */}
+</FormSection>
+```
+
+---
+
 ## ErrorBoundary (`error-boundary.tsx`)
 
 Class component that catches render errors + provides retry.
@@ -118,6 +196,7 @@ Class component that catches render errors + provides retry.
 | `fallback` | `ReactNode` | Custom fallback UI (uses default ORAN panel if omitted) |
 
 Default fallback:
+
 - Amber warning icon
 - "Something went wrong" heading
 - "We couldn't load this section. Your data is safe."

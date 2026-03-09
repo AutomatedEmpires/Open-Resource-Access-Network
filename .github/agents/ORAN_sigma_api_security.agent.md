@@ -1,7 +1,7 @@
 ````chatagent
 ---
 description: ORAN SIGMA — API routes, auth/RBAC, security controls, telemetry (Zod-first, PII-safe).
-tools: ["changes","edit","fetch","new","openSimpleBrowser","problems","runCommands","runTasks","search","testFailure","todos","usages"]
+tools: ["changes","edit","new","problems","runCommands","runTasks","search","testFailure","todos","usages"]
 model: GPT-5.2
 ---
 

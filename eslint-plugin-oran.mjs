@@ -29,10 +29,10 @@ const APPROVED_ARBITRARY = new Set([
 
   // ── Truncation constraints ────────────────────────────────────────────────
   'max-w-[120px]', 'max-w-[180px]', 'max-w-[200px]', 'max-w-[220px]', 'max-w-[18rem]', 'max-w-[85%]',
-  'max-h-[120px]', 'max-h-[420px]',
+    'max-h-[120px]', 'max-h-[160px]', 'max-h-[420px]',
 
   // ── Grid template columns ─────────────────────────────────────────────────
-  'grid-cols-[1fr,auto,auto]', 'grid-cols-[1fr_380px]',
+  'grid-cols-[1fr,auto,auto]', 'grid-cols-[1fr_380px]', 'grid-cols-[1fr_auto]',
 
   // ── Sub-xs font sizes for badges / metadata labels ────────────────────────
   'text-[9px]', 'text-[10px]', 'text-[11px]',

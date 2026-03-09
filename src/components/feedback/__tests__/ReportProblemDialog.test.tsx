@@ -64,7 +64,7 @@ describe('ReportProblemDialog', () => {
     );
 
     fireEvent.click(screen.getByRole('radio', { name: 'Wrong hours' }));
-    fireEvent.change(screen.getByLabelText('Additional details'), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Additional details' }), {
       target: { value: '  closes at 5pm now  ' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Submit Report' }));
@@ -127,7 +127,7 @@ describe('ReportProblemDialog', () => {
     );
 
     fireEvent.click(screen.getByRole('radio', { name: 'Wrong phone number' }));
-    fireEvent.change(screen.getByLabelText('Additional details'), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Additional details' }), {
       target: { value: 'Test comment' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -138,7 +138,7 @@ describe('ReportProblemDialog', () => {
       vi.advanceTimersByTime(200);
     });
 
-    expect(screen.getByLabelText('Additional details')).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: 'Additional details' })).toHaveValue('');
     expect(screen.getByRole('button', { name: 'Submit Report' })).toBeDisabled();
   });
 });

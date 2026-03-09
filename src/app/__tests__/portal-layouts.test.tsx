@@ -34,17 +34,10 @@ vi.mock('@/components/ui/access-denied', () => ({
 vi.mock('@/components/ui/skeleton', () => ({
   Skeleton: (props: Record<string, unknown>) => <div data-testid="skeleton" {...props} />,
 }));
-vi.mock('lucide-react', () => ({
-  MessageCircle: 'svg',
-  List: 'svg',
-  MapPin: 'svg',
-  Bookmark: 'svg',
-  User: 'svg',
-  Building2: 'svg',
-  Wrench: 'svg',
-  Users: 'svg',
-  Tag: 'svg',
-}));
+vi.mock('lucide-react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('lucide-react')>();
+  return { ...actual };
+});
 
 async function loadHostLayout() {
   return import('../(host)/layout');

@@ -32,6 +32,8 @@ describe('PhoneEditor', () => {
     expect(screen.getByText('No phone numbers added yet')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Add Phone' }));
 
+    expect(screen.getByLabelText(/Number/i)).not.toBeRequired();
+
     const saveButton = screen.getByRole('button', { name: /Save/i });
     expect(saveButton).toBeDisabled();
 

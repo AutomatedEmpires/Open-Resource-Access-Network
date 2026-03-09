@@ -91,7 +91,10 @@ describe('platform shell', () => {
     const element = Providers({ children: 'Child' }) as React.ReactElement<any, any>;
     const toastProvider = element.props.children as React.ReactElement<any, any>;
 
-    expect(toastProvider.props.children).toBe('Child');
+    // ToastProvider now wraps CrisisProvider which wraps children
+    const inner = toastProvider.props.children;
+    const child = typeof inner === 'string' ? inner : inner?.props?.children;
+    expect(child).toBe('Child');
   });
 
   it('builds the root layout with skip link and metadata exports', async () => {
@@ -113,11 +116,9 @@ describe('platform shell', () => {
 
     const element = Home() as React.ReactElement<any, any>;
     const children = React.Children.toArray(element.props.children) as React.ReactElement<any, any>[];
-    const alert = children.find((child) => child?.props?.role === 'alert') as React.ReactElement<any, any>;
     const main = children.find((child) => child?.props?.id === 'main-content') as React.ReactElement<any, any>;
 
     expect(metadata.title).toBe('ORAN — Open Resource Access Network');
-    expect(alert.props.role).toBe('alert');
     expect(main.props.id).toBe('main-content');
   });
 

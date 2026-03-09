@@ -16,6 +16,7 @@ Principle: **standardize the defaults** so individual pages don’t invent their
 - `xl` ≈ 1280px
 
 Mobile-first requirement:
+
 - Layout MUST work at 360–390px wide without horizontal scroll.
 
 ---
@@ -33,15 +34,19 @@ Use these as defaults (deviation requires a reason):
 ## 3) Typography scale (Tailwind classes)
 
 Page title (H1):
+
 - `text-2xl font-bold` (mobile) and MAY increase to `sm:text-3xl` for dashboard titles
 
 Section title (H2):
+
 - `text-lg font-semibold`
 
 Body:
+
 - Default `text-sm` to `text-base` depending on density
 
 Muted/supporting:
+
 - `text-gray-500` for subtitles
 
 ---
@@ -49,6 +54,7 @@ Muted/supporting:
 ## 4) Spacing + density
 
 Standard spacing:
+
 - Page section spacing: `mb-6`
 - Card padding: `p-4` (dense lists MAY use `p-3`)
 - Panel padding: `p-6` or `p-8` for empty states
@@ -58,6 +64,7 @@ Standard spacing:
 ## 5) Surfaces (cards/panels)
 
 Card baseline:
+
 - `bg-white border border-gray-200 rounded-lg`
 - Shadows MUST be subtle: `shadow-sm` and `hover:shadow-md` only where interactive.
 
@@ -66,10 +73,12 @@ Card baseline:
 ## 6) Buttons and badges
 
 Use the shared components:
+
 - Buttons: `src/components/ui/button.tsx`
 - Confidence badges: `src/components/ui/badge.tsx`
 
 Rules:
+
 - Primary CTA MUST be a `Button` `variant="default"`.
 - Destructive actions MUST be `variant="destructive"`.
 - Crisis CTAs MUST be `variant="crisis"`.
@@ -79,11 +88,13 @@ Rules:
 ## 7) States (contract)
 
 Every page with data MUST show:
+
 - Loading state (skeleton or clear loading panel)
 - Empty state (explain + next action)
 - Error state (human readable + retry)
 
 Standard copy conventions:
+
 - Don’t blame the user.
 - Don’t claim certainty.
 - Provide one next action.
@@ -133,6 +144,7 @@ Arbitrary Tailwind values (`utility-[value]`) are restricted by the `oran/no-una
 To add a new value: add it to both `APPROVED_ARBITRARY` in `eslint-plugin-oran.mjs` **and** the table below.
 
 The following categories are **unconditionally approved** without appearing in the list:
+
 - CSS custom-property references: `z-[var(--z-nav)]`, `bg-[var(--bg-surface)]`, etc.
 - Radix UI data-attribute selectors: `data-[state=open]`, `data-[state=closed]`
 
@@ -146,7 +158,7 @@ The following categories are **unconditionally approved** without appearing in t
 | `max-h-[85vh]`, `max-h-[80vh]` | Modal / panel max heights |
 | `h-[calc(100dvh-13rem)]`, `h-[calc(100vh-16rem)]`, `max-h-[calc(100vh-16rem)]` | Computed scroll container heights |
 | `max-w-[120px]`…`max-w-[220px]`, `max-w-[18rem]`, `max-w-[85%]` | Truncation constraints for names / labels |
-| `max-h-[120px]`, `max-h-[420px]` | Scrollable list max heights |
+| `max-h-[120px]`, `max-h-[160px]`, `max-h-[420px]` | Scrollable list max heights |
 | `grid-cols-[1fr,auto,auto]`, `grid-cols-[1fr_380px]` | Two-panel / sidebar layouts |
 | `text-[9px]`, `text-[10px]`, `text-[11px]` | Sub-`xs` font sizes for badge labels |
 | `bottom-[4.5rem]`, `top-[20%]` | Fixed / absolute positioning |

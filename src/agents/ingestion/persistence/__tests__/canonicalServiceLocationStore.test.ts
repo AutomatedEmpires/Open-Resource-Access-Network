@@ -90,4 +90,30 @@ describe('canonicalServiceLocationStore', () => {
     await store.remove('csvc-1', 'cloc-1');
     expect(db.delete).toHaveBeenCalled();
   });
+
+  it('bulkCreate inserts multiple rows and returns via returning()', async () => {
+    const rows = [
+      makeRow({ id: 'csl-1' }),
+      makeRow({ id: 'csl-2', canonicalLocationId: 'cloc-2' }),
+    ];
+    const { db, insertValues } = createMockDb([], [rows]);
+    const store = createDrizzleCanonicalServiceLocationStore(db as never);
+
+    const result = await store.bulkCreate([
+      { canonicalServiceId: 'csvc-1', canonicalLocationId: 'cloc-1' } as never,
+      { canonicalServiceId: 'csvc-1', canonicalLocationId: 'cloc-2' } as never,
+    ]);
+
+    expect(result).toEqual(rows);
+    expect(insertValues).toHaveLength(1);
+  });
+
+  it('bulkCreate returns empty array for empty input', async () => {
+    const { db } = createMockDb();
+    const store = createDrizzleCanonicalServiceLocationStore(db as never);
+
+    const result = await store.bulkCreate([]);
+    expect(result).toEqual([]);
+    expect(db.insert).not.toHaveBeenCalled();
+  });
 });

@@ -16,18 +16,17 @@ function createMockDb(selectResults: unknown[] = []) {
           return builder;
         }),
         limit: vi.fn(() => Promise.resolve(result)),
-        then: (onFulfilled?: ((value: unknown) => unknown) | null, onRejected?: ((reason: unknown) => unknown) | null) =>
-          Promise.resolve(result).then(onFulfilled ?? undefined, onRejected ?? undefined),
+        then: (
+          onFulfilled?: ((value: unknown) => unknown) | null,
+          onRejected?: ((reason: unknown) => unknown) | null,
+        ) => Promise.resolve(result).then(onFulfilled ?? undefined, onRejected ?? undefined),
       };
       return builder;
     }),
     insert: vi.fn(() => ({
       values: vi.fn((value: unknown) => {
         insertValues.push(value);
-        return {
-          then: (onFulfilled: ((value: void) => unknown) | null | undefined, onRejected?: ((reason: unknown) => unknown) | null | undefined) =>
-            Promise.resolve().then(onFulfilled, onRejected),
-        };
+        return Promise.resolve();
       }),
     })),
     update: vi.fn(() => ({
@@ -47,15 +46,28 @@ function makeRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'src-1',
     name: 'County Feed',
-    pattern: 'example.gov',
-    patternType: 'domain',
-    trustLevel: 'allowlisted',
-    maxDepth: 6,
-    crawlFrequency: 12,
-    ownerOrgId: null,
+    family: 'seeded_only',
+    homepageUrl: 'https://example.gov',
+    licenseNotes: null,
+    termsUrl: null,
+    trustTier: 'allowlisted',
+    hsdsProfileUri: null,
+    domainRules: [{ type: 'exact_host', value: 'example.gov' }],
+    crawlPolicy: {
+      discovery: [{ type: 'seeded_only' }],
+      obeyRobotsTxt: true,
+      userAgent: 'oran-ingestion-agent/1.0',
+      allowedPathPrefixes: ['/'],
+      blockedPathPrefixes: [],
+      maxRequestsPerMinute: 60,
+      maxConcurrentRequests: 4,
+      fetchTtlHours: 12,
+    },
+    jurisdictionScope: [{ kind: 'statewide', country: 'US', stateProvince: 'WA' }],
+    contactInfo: {},
     isActive: true,
-    flags: {},
     notes: null,
+    legacyIngestionSourceId: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-02T00:00:00.000Z'),
     ...overrides,
@@ -67,10 +79,11 @@ describe('sourceRegistryStore', () => {
     vi.clearAllMocks();
   });
 
-  it('maps active rows into the current domain model', async () => {
+  it('maps active source systems into the current domain model and skips non-registry rows', async () => {
     const { db } = createMockDb([
       [
-        makeRow({ patternType: 'exact', maxDepth: 4, crawlFrequency: 9 }),
+        makeRow(),
+        makeRow({ id: 'host-portal', name: 'ORAN Host Portal', domainRules: [], family: 'host_portal' }),
       ],
     ]);
     const store = createDrizzleSourceRegistryStore(db as never);
@@ -83,11 +96,12 @@ describe('sourceRegistryStore', () => {
         displayName: 'County Feed',
         trustLevel: 'allowlisted',
         domainRules: [{ type: 'exact_host', value: 'example.gov' }],
+        discovery: [{ type: 'seeded_only' }],
         crawl: expect.objectContaining({
           maxConcurrentRequests: 4,
-          fetchTtlHours: 9,
+          fetchTtlHours: 12,
         }),
-        discovery: [{ type: 'seeded_only' }],
+        coverage: [{ kind: 'statewide', country: 'US', stateProvince: 'WA' }],
       }),
     ]);
   });
@@ -100,29 +114,15 @@ describe('sourceRegistryStore', () => {
     await expect(store.findForUrl('not a url')).resolves.toBeNull();
   });
 
-  it('matches exact, suffix, domain, and regex sources in priority order', async () => {
+  it('matches exact and suffix sources through the shared registry matcher', async () => {
     const { db } = createMockDb([
       [
-        makeRow({ id: 'exact-row', patternType: 'exact', pattern: 'portal.example.gov', name: 'Exact' }),
-        makeRow({ id: 'suffix-row', patternType: 'suffix', pattern: 'example.gov', name: 'Suffix' }),
-        makeRow({ id: 'domain-row', patternType: 'domain', pattern: 'agency.gov', name: 'Domain' }),
-        makeRow({ id: 'regex-row', patternType: 'regex', pattern: '.*city\\.gov$', name: 'Regex' }),
+        makeRow({ id: 'exact-row', name: 'Exact', domainRules: [{ type: 'exact_host', value: 'portal.example.gov' }] }),
+        makeRow({ id: 'suffix-row', name: 'Suffix', domainRules: [{ type: 'suffix', value: 'example.gov' }] }),
       ],
       [
-        makeRow({ id: 'exact-row', patternType: 'exact', pattern: 'portal.example.gov', name: 'Exact' }),
-        makeRow({ id: 'suffix-row', patternType: 'suffix', pattern: 'example.gov', name: 'Suffix' }),
-        makeRow({ id: 'domain-row', patternType: 'domain', pattern: 'agency.gov', name: 'Domain' }),
-        makeRow({ id: 'regex-row', patternType: 'regex', pattern: '.*city\\.gov$', name: 'Regex' }),
-      ],
-      [
-        makeRow({ id: 'exact-row', patternType: 'exact', pattern: 'portal.example.gov', name: 'Exact' }),
-        makeRow({ id: 'suffix-row', patternType: 'suffix', pattern: 'example.gov', name: 'Suffix' }),
-        makeRow({ id: 'domain-row', patternType: 'domain', pattern: 'agency.gov', name: 'Domain' }),
-        makeRow({ id: 'regex-row', patternType: 'regex', pattern: '.*city\\.gov$', name: 'Regex' }),
-      ],
-      [
-        makeRow({ id: 'broken-regex', patternType: 'regex', pattern: '[', name: 'Broken' }),
-        makeRow({ id: 'regex-row', patternType: 'regex', pattern: '.*city\\.gov$', name: 'Regex' }),
+        makeRow({ id: 'exact-row', name: 'Exact', domainRules: [{ type: 'exact_host', value: 'portal.example.gov' }] }),
+        makeRow({ id: 'suffix-row', name: 'Suffix', domainRules: [{ type: 'suffix', value: 'example.gov' }] }),
       ],
     ]);
     const store = createDrizzleSourceRegistryStore(db as never);
@@ -133,15 +133,9 @@ describe('sourceRegistryStore', () => {
     await expect(store.findForUrl('https://sub.example.gov/path')).resolves.toEqual(
       expect.objectContaining({ id: 'suffix-row', displayName: 'Suffix' }),
     );
-    await expect(store.findForUrl('https://dept.agency.gov/path')).resolves.toEqual(
-      expect.objectContaining({ id: 'domain-row', displayName: 'Domain' }),
-    );
-    await expect(store.findForUrl('https://metro.city.gov/path')).resolves.toEqual(
-      expect.objectContaining({ id: 'regex-row', displayName: 'Regex' }),
-    );
   });
 
-  it('updates existing records and inserts new ones with legacy-compatible field mapping', async () => {
+  it('updates existing records and inserts new ones against source systems', async () => {
     const { db, insertValues, updateSets } = createMockDb([
       [makeRow({ id: 'src-1' })],
       [],
@@ -153,7 +147,7 @@ describe('sourceRegistryStore', () => {
       displayName: 'Updated Feed',
       trustLevel: 'blocked',
       domainRules: [{ type: 'suffix', value: 'updated.gov' }],
-      discovery: [{ type: 'seeded_only' }],
+      discovery: [{ type: 'sitemap', sitemapUrl: 'https://updated.gov/sitemap.xml' }],
       crawl: {
         obeyRobotsTxt: true,
         userAgent: 'oran',
@@ -163,7 +157,7 @@ describe('sourceRegistryStore', () => {
         maxConcurrentRequests: 8,
         fetchTtlHours: 24,
       },
-      coverage: [],
+      coverage: [{ kind: 'national', country: 'US' }],
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-02T00:00:00.000Z',
     });
@@ -173,7 +167,7 @@ describe('sourceRegistryStore', () => {
       displayName: 'Inserted Feed',
       trustLevel: 'allowlisted',
       domainRules: [{ type: 'exact_host', value: 'inserted.gov' }],
-      discovery: [{ type: 'seeded_only' }],
+      discovery: [{ type: 'seeded_only', seedUrls: ['https://inserted.gov'] }],
       crawl: {
         obeyRobotsTxt: true,
         userAgent: 'oran',
@@ -193,11 +187,16 @@ describe('sourceRegistryStore', () => {
       expect.objectContaining({
         id: 'src-1',
         name: 'Updated Feed',
-        pattern: 'updated.gov',
-        patternType: 'suffix',
-        trustLevel: 'blocked',
-        maxDepth: 8,
-        crawlFrequency: 24,
+        family: 'sitemap',
+        homepageUrl: 'https://updated.gov/sitemap.xml',
+        trustTier: 'blocked',
+        domainRules: [{ type: 'suffix', value: 'updated.gov' }],
+        crawlPolicy: expect.objectContaining({
+          discovery: [{ type: 'sitemap', sitemapUrl: 'https://updated.gov/sitemap.xml' }],
+          maxConcurrentRequests: 8,
+          fetchTtlHours: 24,
+        }),
+        jurisdictionScope: [{ kind: 'national', country: 'US' }],
         isActive: true,
         updatedAt: expect.any(Date),
       }),
@@ -208,13 +207,12 @@ describe('sourceRegistryStore', () => {
       expect.objectContaining({
         id: 'src-2',
         name: 'Inserted Feed',
-        pattern: 'inserted.gov',
-        patternType: 'exact_host',
-        trustLevel: 'allowlisted',
-        maxDepth: 3,
-        crawlFrequency: 6,
+        family: 'seeded_only',
+        homepageUrl: 'https://inserted.gov',
+        trustTier: 'allowlisted',
+        domainRules: [{ type: 'exact_host', value: 'inserted.gov' }],
+        jurisdictionScope: [],
         isActive: true,
-        notes: null,
       }),
     );
   });

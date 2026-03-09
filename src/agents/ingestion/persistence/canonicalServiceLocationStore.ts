@@ -37,6 +37,14 @@ export function createDrizzleCanonicalServiceLocationStore(
       return result[0];
     },
 
+    async bulkCreate(rows) {
+      if (rows.length === 0) return [];
+      return db
+        .insert(canonicalServiceLocations)
+        .values(rows)
+        .returning();
+    },
+
     async remove(canonicalServiceId, canonicalLocationId) {
       await db
         .delete(canonicalServiceLocations)

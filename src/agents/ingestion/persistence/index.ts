@@ -1,7 +1,7 @@
 /**
  * Persistence Layer for Ingestion Agent
  *
- * Drizzle ORM implementations of all 27 store interfaces.
+ * Drizzle ORM implementations of all 36 store interfaces.
  */
 
 export {
@@ -57,5 +57,16 @@ export { createDrizzleCanonicalServiceStore } from './canonicalServiceStore';
 export { createDrizzleCanonicalLocationStore } from './canonicalLocationStore';
 export { createDrizzleCanonicalServiceLocationStore } from './canonicalServiceLocationStore';
 export { createDrizzleCanonicalProvenanceStore } from './canonicalProvenanceStore';
+
+export { createDrizzleTaxonomyRegistryStore } from './taxonomyRegistryStore';
+export { createDrizzleTaxonomyTermExtStore } from './taxonomyTermExtStore';
+export { createDrizzleCanonicalConceptStore } from './canonicalConceptStore';
+export { createDrizzleTaxonomyCrosswalkStore } from './taxonomyCrosswalkStore';
+export { createDrizzleConceptTagDerivationStore } from './conceptTagDerivationStore';
+
+export { createDrizzleEntityClusterStore } from './entityClusterStore';
+export { createDrizzleEntityClusterMemberStore } from './entityClusterMemberStore';
+export { createDrizzleResolutionCandidateStore } from './resolutionCandidateStore';
+export { createDrizzleResolutionDecisionStore } from './resolutionDecisionStore';
 
 export { createIngestionStores } from './storeFactory';

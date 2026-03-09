@@ -176,4 +176,22 @@ describe('canonicalLocationStore', () => {
     expect(set).toHaveProperty('publicationStatus', 'published');
     expect(set.updatedAt).toBeInstanceOf(Date);
   });
+
+  it('getByIds returns matching locations for multiple IDs', async () => {
+    const rows = [makeRow(), makeRow({ id: 'cloc-2', name: 'Branch' })];
+    const { db } = createMockDb([rows]);
+    const store = createDrizzleCanonicalLocationStore(db as never);
+
+    const result = await store.getByIds(['cloc-1', 'cloc-2']);
+    expect(result).toEqual(rows);
+  });
+
+  it('getByIds returns empty array for empty input', async () => {
+    const { db } = createMockDb();
+    const store = createDrizzleCanonicalLocationStore(db as never);
+
+    const result = await store.getByIds([]);
+    expect(result).toEqual([]);
+    expect(db.select).not.toHaveBeenCalled();
+  });
 });

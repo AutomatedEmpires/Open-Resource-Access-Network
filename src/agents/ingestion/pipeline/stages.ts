@@ -675,6 +675,41 @@ export class VerifyStage implements PipelineStageHandler {
         severity: meetsPolicy ? 'info' : 'critical',
       });
 
+      // Check 7: Identifier strength
+      // Evaluate whether the extracted entity has strong identifiers
+      // (phone, URL, or address) beyond just a name.
+      const hasPhone = !!context.llmExtraction.phone;
+      const hasUrl = !!context.llmExtraction.websiteUrl;
+      const hasAddr = !!context.llmExtraction.address;
+      const identifierCount = [hasPhone, hasUrl, hasAddr].filter(Boolean).length;
+      results.push({
+        checkType: 'identifier_strength',
+        status: identifierCount >= 2 ? 'pass' : identifierCount === 1 ? 'unknown' : 'fail',
+        severity: identifierCount >= 2 ? 'info' : 'warning',
+      });
+
+      // Check 8: Source license OK
+      // At single-URL ingestion stage, source licensing is determined by
+      // trust level — allowlisted sources are presumed licensed;
+      // quarantined sources are flagged unknown until reviewed.
+      const trustLevel = context.sourceCheck?.trustLevel;
+      const licenseOk = trustLevel === 'allowlisted';
+      results.push({
+        checkType: 'source_license_ok',
+        status: licenseOk ? 'pass' : 'unknown',
+        severity: licenseOk ? 'info' : 'warning',
+      });
+
+      // Check 9: Taxonomy mapping reviewed
+      // At pipeline stage this is always 'unknown' — taxonomy mapping
+      // review is a downstream canonical-layer concern that requires
+      // human or admin review after crosswalk resolution.
+      results.push({
+        checkType: 'taxonomy_mapping_reviewed',
+        status: 'unknown',
+        severity: 'info',
+      });
+
       context.verificationResults = results;
 
       const passCount = results.filter((r) => r.status === 'pass').length;

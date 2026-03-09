@@ -15,6 +15,7 @@ You are auditing the first two sprints of the ORAN Ingestion Agent implementatio
 ## Files to Audit
 
 ### Sprint 1 — LLM Extraction Core
+
 - `src/agents/ingestion/llm/client.ts` — LLM client interface
 - `src/agents/ingestion/llm/types.ts` — Zod schemas for extraction/categorization
 - `src/agents/ingestion/llm/providers/azureOpenai.ts` — Azure OpenAI implementation
@@ -26,6 +27,7 @@ You are auditing the first two sprints of the ORAN Ingestion Agent implementatio
 - `src/agents/ingestion/__tests__/llm.test.ts` — Unit tests (25 tests)
 
 ### Sprint 2 — Fetcher + HTML Extraction
+
 - `src/agents/ingestion/fetcher/types.ts` — Zod schemas for fetch/extraction types
 - `src/agents/ingestion/fetcher/fetcher.ts` — PageFetcher with redirect handling
 - `src/agents/ingestion/fetcher/htmlExtractor.ts` — HTML-to-text using cheerio
@@ -36,6 +38,7 @@ You are auditing the first two sprints of the ORAN Ingestion Agent implementatio
 - `src/agents/ingestion/__tests__/fetcher.test.ts` — Unit tests (57 tests)
 
 ### SSOT Documents to Cross-Reference
+
 - `docs/agents/AGENTS_INGESTION_PIPELINE.md` — Pipeline contract specification
 - `docs/agents/AGENTS_SOURCE_REGISTRY.md` — Source allowlist/quarantine rules
 - `docs/agents/AGENTS_OVERVIEW.md` — Agent architecture overview
@@ -48,36 +51,43 @@ You are auditing the first two sprints of the ORAN Ingestion Agent implementatio
 ## Audit Checklist
 
 ### 1. Safety Compliance (CRITICAL)
+
 Check each file against the non-negotiables in `.github/copilot-instructions.md`:
+
 - [ ] **No hallucinated facts**: LLM prompts must instruct model to only extract facts present in source text
 - [ ] **Retrieval-first**: Extraction prompts must not allow LLM to invent service names, phones, addresses, hours, or URLs
 - [ ] **Eligibility caution**: No code should guarantee eligibility — use "may qualify" / "confirm with provider"
 - [ ] **Privacy-first**: No PII logging, no unauthorized data collection
 
 ### 2. Contract Alignment
+
 - [ ] LLM extraction output schema (`ExtractionResultSchema`) aligns with `ExtractedCandidateSchema` in contracts.ts
 - [ ] `EvidenceSnapshot` created by EvidenceBuilder matches `EvidenceSnapshotSchema` in contracts.ts
 - [ ] Service categories in categorization prompt match `ServiceCategorySchema` taxonomy
 - [ ] Link types in LinkDiscovery match `DiscoveredLinkSchema.type` enum
 
 ### 3. Error Handling
+
 - [ ] LLM client classifies errors (rate_limited, timeout, auth_error, content_filtered)
 - [ ] PageFetcher classifies errors (timeout, dns_error, ssl_error, connection_refused, etc.)
 - [ ] All error types have `retryable` flag properly set
 - [ ] No unhandled promise rejections or bare `catch {}` blocks
 
 ### 4. Type Safety
+
 - [ ] All exports have explicit types (no implicit `any`)
 - [ ] Zod schemas used for runtime validation at boundaries
 - [ ] Factory functions return properly typed instances
 
 ### 5. Test Coverage
+
 - [ ] Schema validation tests exist for all public Zod schemas
 - [ ] Error classification tests cover all error codes
 - [ ] Prompt builders have output format tests
 - [ ] No tests rely on network calls (should be unit tests only)
 
 ### 6. Security Concerns
+
 - [ ] No hardcoded API keys or secrets
 - [ ] Environment variables properly named (LLM_ENDPOINT, LLM_API_KEY, etc.)
 - [ ] User-Agent string is identifiable for responsible crawling
@@ -85,6 +95,7 @@ Check each file against the non-negotiables in `.github/copilot-instructions.md`
 - [ ] Redirect handling has max limit to prevent infinite loops
 
 ### 7. Documentation
+
 - [ ] Each module has JSDoc on public exports
 - [ ] Complex logic has inline comments
 - [ ] Barrel exports (index.ts) are comprehensive

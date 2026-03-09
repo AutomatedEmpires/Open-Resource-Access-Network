@@ -66,5 +66,17 @@ export function createDrizzleEntityIdentifierStore(
         );
       return result.rowCount ?? 0;
     },
+
+    async deleteByEntity(entityType, entityId) {
+      const result = await db
+        .delete(entityIdentifiers)
+        .where(
+          and(
+            eq(entityIdentifiers.entityType, entityType),
+            eq(entityIdentifiers.entityId, entityId)
+          )
+        );
+      return result.rowCount ?? 0;
+    },
   };
 }

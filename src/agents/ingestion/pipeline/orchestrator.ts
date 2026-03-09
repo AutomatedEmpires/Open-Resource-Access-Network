@@ -14,6 +14,7 @@ import type {
   PipelineStageHandler,
   PipelineStage,
   StageResult,
+  PipelineVerificationCheckArtifact,
 } from './types';
 import { PipelineConfigSchema } from './types';
 import { createPipelineStages } from './stages';
@@ -190,7 +191,7 @@ export class PipelineOrchestrator {
               evidenceId: context.evidenceSnapshot?.evidenceId ?? '',
             })),
             verificationChecks: (context.verificationResults ?? []).map((check) => ({
-              checkType: check.checkType as 'domain_allowlist' | 'contact_validity' | 'cross_source_agreement' | 'hours_stability' | 'location_plausibility' | 'policy_constraints',
+              checkType: check.checkType as PipelineVerificationCheckArtifact['checkType'],
               severity: check.severity,
               status: check.status,
               ranAt: new Date().toISOString(),

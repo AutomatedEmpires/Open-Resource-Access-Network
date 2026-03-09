@@ -11,6 +11,7 @@ This module handles automated service data ingestion, including LLM-assisted tag
 ## Usage
 
 The LLM ingestion agent uses these modules to:
+
 1. Parse unstructured service data (website scrapes, PDF text, etc.)
 2. Extract structured tags using the taxonomy defined in `src/domain/taxonomy.ts`
 3. Validate tags before database insertion

@@ -4,7 +4,7 @@
  * Normalized location entities with PostGIS geometry,
  * belonging to canonical organizations.
  */
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, inArray } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { canonicalLocations } from '@/db/schema';
@@ -23,6 +23,14 @@ export function createDrizzleCanonicalLocationStore(
         .where(eq(canonicalLocations.id, id))
         .limit(1);
       return rows[0] ?? null;
+    },
+
+    async getByIds(ids) {
+      if (ids.length === 0) return [];
+      return db
+        .select()
+        .from(canonicalLocations)
+        .where(inArray(canonicalLocations.id, ids));
     },
 
     async listByOrganization(canonicalOrganizationId) {

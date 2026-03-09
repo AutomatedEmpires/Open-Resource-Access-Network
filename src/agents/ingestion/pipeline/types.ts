@@ -151,7 +151,7 @@ export interface PipelineCandidateTagArtifact {
 }
 
 export interface PipelineVerificationCheckArtifact {
-  checkType: 'domain_allowlist' | 'contact_validity' | 'cross_source_agreement' | 'hours_stability' | 'location_plausibility' | 'policy_constraints';
+  checkType: 'domain_allowlist' | 'contact_validity' | 'cross_source_agreement' | 'hours_stability' | 'location_plausibility' | 'policy_constraints' | 'identifier_strength' | 'source_license_ok' | 'taxonomy_mapping_reviewed';
   severity: 'critical' | 'warning' | 'info';
   status: 'pass' | 'fail' | 'unknown';
   ranAt: string;

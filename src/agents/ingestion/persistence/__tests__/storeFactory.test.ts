@@ -28,6 +28,15 @@ const creatorMocks = vi.hoisted(() => ({
   canonicalLocations: vi.fn(() => ({ name: 'canonicalLocationStore' })),
   canonicalServiceLocations: vi.fn(() => ({ name: 'canonicalServiceLocationStore' })),
   canonicalProvenance: vi.fn(() => ({ name: 'canonicalProvenanceStore' })),
+  taxonomyRegistries: vi.fn(() => ({ name: 'taxonomyRegistryStore' })),
+  taxonomyTermsExt: vi.fn(() => ({ name: 'taxonomyTermExtStore' })),
+  canonicalConcepts: vi.fn(() => ({ name: 'canonicalConceptStore' })),
+  taxonomyCrosswalks: vi.fn(() => ({ name: 'taxonomyCrosswalkStore' })),
+  conceptTagDerivations: vi.fn(() => ({ name: 'conceptTagDerivationStore' })),
+  entityClusters: vi.fn(() => ({ name: 'entityClusterStore' })),
+  entityClusterMembers: vi.fn(() => ({ name: 'entityClusterMemberStore' })),
+  resolutionCandidates: vi.fn(() => ({ name: 'resolutionCandidateStore' })),
+  resolutionDecisions: vi.fn(() => ({ name: 'resolutionDecisionStore' })),
 }));
 
 vi.mock('../sourceRegistryStore', () => ({
@@ -111,6 +120,33 @@ vi.mock('../canonicalServiceLocationStore', () => ({
 vi.mock('../canonicalProvenanceStore', () => ({
   createDrizzleCanonicalProvenanceStore: creatorMocks.canonicalProvenance,
 }));
+vi.mock('../taxonomyRegistryStore', () => ({
+  createDrizzleTaxonomyRegistryStore: creatorMocks.taxonomyRegistries,
+}));
+vi.mock('../taxonomyTermExtStore', () => ({
+  createDrizzleTaxonomyTermExtStore: creatorMocks.taxonomyTermsExt,
+}));
+vi.mock('../canonicalConceptStore', () => ({
+  createDrizzleCanonicalConceptStore: creatorMocks.canonicalConcepts,
+}));
+vi.mock('../taxonomyCrosswalkStore', () => ({
+  createDrizzleTaxonomyCrosswalkStore: creatorMocks.taxonomyCrosswalks,
+}));
+vi.mock('../conceptTagDerivationStore', () => ({
+  createDrizzleConceptTagDerivationStore: creatorMocks.conceptTagDerivations,
+}));
+vi.mock('../entityClusterStore', () => ({
+  createDrizzleEntityClusterStore: creatorMocks.entityClusters,
+}));
+vi.mock('../entityClusterMemberStore', () => ({
+  createDrizzleEntityClusterMemberStore: creatorMocks.entityClusterMembers,
+}));
+vi.mock('../resolutionCandidateStore', () => ({
+  createDrizzleResolutionCandidateStore: creatorMocks.resolutionCandidates,
+}));
+vi.mock('../resolutionDecisionStore', () => ({
+  createDrizzleResolutionDecisionStore: creatorMocks.resolutionDecisions,
+}));
 
 import { createIngestionStores } from '../storeFactory';
 
@@ -150,6 +186,15 @@ describe('storeFactory', () => {
     expect(creatorMocks.canonicalLocations).toHaveBeenCalledWith(db);
     expect(creatorMocks.canonicalServiceLocations).toHaveBeenCalledWith(db);
     expect(creatorMocks.canonicalProvenance).toHaveBeenCalledWith(db);
+    expect(creatorMocks.taxonomyRegistries).toHaveBeenCalledWith(db);
+    expect(creatorMocks.taxonomyTermsExt).toHaveBeenCalledWith(db);
+    expect(creatorMocks.canonicalConcepts).toHaveBeenCalledWith(db);
+    expect(creatorMocks.taxonomyCrosswalks).toHaveBeenCalledWith(db);
+    expect(creatorMocks.conceptTagDerivations).toHaveBeenCalledWith(db);
+    expect(creatorMocks.entityClusters).toHaveBeenCalledWith(db);
+    expect(creatorMocks.entityClusterMembers).toHaveBeenCalledWith(db);
+    expect(creatorMocks.resolutionCandidates).toHaveBeenCalledWith(db);
+    expect(creatorMocks.resolutionDecisions).toHaveBeenCalledWith(db);
 
     expect(stores).toEqual({
       sourceRegistry: { name: 'sourceRegistryStore' },
@@ -179,6 +224,15 @@ describe('storeFactory', () => {
       canonicalLocations: { name: 'canonicalLocationStore' },
       canonicalServiceLocations: { name: 'canonicalServiceLocationStore' },
       canonicalProvenance: { name: 'canonicalProvenanceStore' },
+      taxonomyRegistries: { name: 'taxonomyRegistryStore' },
+      taxonomyTermsExt: { name: 'taxonomyTermExtStore' },
+      canonicalConcepts: { name: 'canonicalConceptStore' },
+      taxonomyCrosswalks: { name: 'taxonomyCrosswalkStore' },
+      conceptTagDerivations: { name: 'conceptTagDerivationStore' },
+      entityClusters: { name: 'entityClusterStore' },
+      entityClusterMembers: { name: 'entityClusterMemberStore' },
+      resolutionCandidates: { name: 'resolutionCandidateStore' },
+      resolutionDecisions: { name: 'resolutionDecisionStore' },
     });
   });
 });

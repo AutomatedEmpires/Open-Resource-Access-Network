@@ -693,6 +693,7 @@ The agent should:
    - Approximate location: intersection mention (60%)
 
 2. **Mark many fields as MISSING**:
+
    ```typescript
    const checklist = [
      { key: 'contact_method', status: 'missing', missingFields: ['phone', 'email', 'website'] },
@@ -703,6 +704,7 @@ The agent should:
    ```
 
 3. **Generate LLM suggestions for missing fields**:
+
    ```typescript
    import { createLlmSuggestion } from './llmSuggestions';
 
@@ -713,6 +715,7 @@ The agent should:
    ```
 
 4. **Compute LOW overall confidence**:
+
    ```
    Score: 35
    Tier: RED
@@ -755,6 +758,7 @@ The agent should:
    - Structured data = higher confidence than free text
 
 2. **Generate MANY tags automatically**:
+
    ```typescript
    const autoApprovedTags = [
      { taxonomy: 'delivery', tag: 'in_person', confidence: 98 },
@@ -768,6 +772,7 @@ The agent should:
    ```
 
 3. **Generate service adaptations**:
+
    ```typescript
    const adaptations = [
      { type: 'disability', tag: 'deaf', details: 'ASL interpreter available', confidence: 95 },
@@ -775,6 +780,7 @@ The agent should:
    ```
 
 4. **Compute HIGH overall confidence**:
+
    ```
    Score: 95
    Tier: GREEN

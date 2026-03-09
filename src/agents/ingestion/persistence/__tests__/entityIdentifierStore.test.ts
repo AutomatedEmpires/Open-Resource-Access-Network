@@ -40,6 +40,9 @@ function createMockDb(selectResults: unknown[] = [], returningResults: unknown[]
         };
       }),
     })),
+    delete: vi.fn(() => ({
+      where: vi.fn(() => Promise.resolve({ rowCount: 1 })),
+    })),
   };
 
   return { db, insertValues, updateSets };
@@ -113,5 +116,15 @@ describe('entityIdentifierStore', () => {
     expect(set).toHaveProperty('status', 'deprecated');
     expect(set.statusChangedAt).toBeInstanceOf(Date);
     expect(set.updatedAt).toBeInstanceOf(Date);
+  });
+
+  it('deleteByEntity removes identifiers and returns affected count', async () => {
+    const { db } = createMockDb();
+    const store = createDrizzleEntityIdentifierStore(db as never);
+
+    const count = await store.deleteByEntity('canonical_service', 'cs-1');
+
+    expect(count).toBe(1);
+    expect(db.delete).toHaveBeenCalled();
   });
 });

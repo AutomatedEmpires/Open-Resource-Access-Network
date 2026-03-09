@@ -538,7 +538,7 @@ describe('VerifyStage', () => {
     const result = await stage.execute(context);
     expect(result.status).toBe('completed');
     expect(context.verificationResults).toBeDefined();
-    expect(context.verificationResults?.length).toBe(6);
+    expect(context.verificationResults?.length).toBe(9);
 
     // Check domain allowlist passes for .gov
     const domainCheck = context.verificationResults?.find(r => r.checkType === 'domain_allowlist');
@@ -563,6 +563,18 @@ describe('VerifyStage', () => {
     // Check policy constraints passes with org name + description > 20 chars
     const policyCheck = context.verificationResults?.find(r => r.checkType === 'policy_constraints');
     expect(policyCheck?.status).toBe('pass');
+
+    // Check identifier strength passes with phone + URL + address (3 identifiers)
+    const idStrength = context.verificationResults?.find(r => r.checkType === 'identifier_strength');
+    expect(idStrength?.status).toBe('pass');
+
+    // Check source license OK passes for allowlisted trust level
+    const licenseCheck = context.verificationResults?.find(r => r.checkType === 'source_license_ok');
+    expect(licenseCheck?.status).toBe('pass');
+
+    // Check taxonomy mapping reviewed is always unknown at pipeline stage
+    const taxonomyCheck = context.verificationResults?.find(r => r.checkType === 'taxonomy_mapping_reviewed');
+    expect(taxonomyCheck?.status).toBe('unknown');
   });
 
   it('marks cross_source_agreement unknown with fewer than 2 links', async () => {
@@ -652,6 +664,98 @@ describe('VerifyStage', () => {
     const policyCheck = context.verificationResults?.find(r => r.checkType === 'policy_constraints');
     expect(policyCheck?.status).toBe('fail');
     expect(policyCheck?.severity).toBe('critical');
+  });
+
+  it('marks identifier_strength fail when no identifiers', async () => {
+    const context: PipelineContext = {
+      input: createInput('https://example.gov'),
+      config: DEFAULT_PIPELINE_CONFIG,
+      correlationId: 'test-123',
+      stageResults: [],
+      startedAt: new Date(),
+      sourceCheck: { allowed: true, trustLevel: 'allowlisted' as const, sourceId: 'gov' },
+      llmExtraction: {
+        organizationName: 'Test Org',
+        serviceName: 'Test Service',
+        description: 'A community support service.',
+        confidence: 70,
+        fieldConfidences: {},
+      },
+    };
+
+    await stage.execute(context);
+    const idCheck = context.verificationResults?.find(r => r.checkType === 'identifier_strength');
+    expect(idCheck?.status).toBe('fail');
+    expect(idCheck?.severity).toBe('warning');
+  });
+
+  it('marks identifier_strength unknown with exactly one identifier', async () => {
+    const context: PipelineContext = {
+      input: createInput('https://example.gov'),
+      config: DEFAULT_PIPELINE_CONFIG,
+      correlationId: 'test-123',
+      stageResults: [],
+      startedAt: new Date(),
+      sourceCheck: { allowed: true, trustLevel: 'allowlisted' as const, sourceId: 'gov' },
+      llmExtraction: {
+        organizationName: 'Test Org',
+        serviceName: 'Test Service',
+        description: 'A community support service.',
+        phone: '555-1234',
+        confidence: 70,
+        fieldConfidences: {},
+      },
+    };
+
+    await stage.execute(context);
+    const idCheck = context.verificationResults?.find(r => r.checkType === 'identifier_strength');
+    expect(idCheck?.status).toBe('unknown');
+  });
+
+  it('marks source_license_ok unknown for quarantined source', async () => {
+    const context: PipelineContext = {
+      input: createInput('https://example.gov'),
+      config: DEFAULT_PIPELINE_CONFIG,
+      correlationId: 'test-123',
+      stageResults: [],
+      startedAt: new Date(),
+      sourceCheck: { allowed: true, trustLevel: 'quarantine' as const, sourceId: 'q' },
+      llmExtraction: {
+        organizationName: 'Test Org',
+        serviceName: 'Test Service',
+        description: 'A community support service.',
+        confidence: 70,
+        fieldConfidences: {},
+      },
+    };
+
+    await stage.execute(context);
+    const licenseCheck = context.verificationResults?.find(r => r.checkType === 'source_license_ok');
+    expect(licenseCheck?.status).toBe('unknown');
+    expect(licenseCheck?.severity).toBe('warning');
+  });
+
+  it('taxonomy_mapping_reviewed is always unknown at pipeline stage', async () => {
+    const context: PipelineContext = {
+      input: createInput('https://example.gov'),
+      config: DEFAULT_PIPELINE_CONFIG,
+      correlationId: 'test-123',
+      stageResults: [],
+      startedAt: new Date(),
+      sourceCheck: { allowed: true, trustLevel: 'allowlisted' as const, sourceId: 'gov' },
+      llmExtraction: {
+        organizationName: 'Test Org',
+        serviceName: 'Test Service',
+        description: 'A community support service.',
+        confidence: 70,
+        fieldConfidences: {},
+      },
+    };
+
+    await stage.execute(context);
+    const taxCheck = context.verificationResults?.find(r => r.checkType === 'taxonomy_mapping_reviewed');
+    expect(taxCheck?.status).toBe('unknown');
+    expect(taxCheck?.severity).toBe('info');
   });
 });
 

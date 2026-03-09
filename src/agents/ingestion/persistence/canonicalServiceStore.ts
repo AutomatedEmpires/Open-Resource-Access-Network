@@ -3,7 +3,7 @@
  *
  * Normalized service entities belonging to canonical organizations.
  */
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { canonicalServices } from '@/db/schema';
@@ -87,6 +87,32 @@ export function createDrizzleCanonicalServiceStore(
         .update(canonicalServices)
         .set({ publicationStatus: status, updatedAt: new Date() })
         .where(eq(canonicalServices.id, id));
+    },
+
+    async findActiveByUrl(url) {
+      if (!url) return null;
+      const rows = await db
+        .select()
+        .from(canonicalServices)
+        .where(and(
+          eq(canonicalServices.lifecycleStatus, 'active'),
+          eq(canonicalServices.url, url),
+        ))
+        .limit(1);
+      return rows[0] ?? null;
+    },
+
+    async findActiveByName(name) {
+      if (!name) return null;
+      const rows = await db
+        .select()
+        .from(canonicalServices)
+        .where(and(
+          eq(canonicalServices.lifecycleStatus, 'active'),
+          eq(canonicalServices.name, name),
+        ))
+        .limit(1);
+      return rows[0] ?? null;
     },
   };
 }

@@ -38,6 +38,24 @@ import type {
   NewCanonicalServiceLocationRow,
   CanonicalProvenanceRow,
   NewCanonicalProvenanceRow,
+  TaxonomyRegistryRow,
+  NewTaxonomyRegistryRow,
+  TaxonomyTermExtRow,
+  NewTaxonomyTermExtRow,
+  CanonicalConceptRow,
+  NewCanonicalConceptRow,
+  TaxonomyCrosswalkRow,
+  NewTaxonomyCrosswalkRow,
+  ConceptTagDerivationRow,
+  NewConceptTagDerivationRow,
+  EntityClusterRow,
+  NewEntityClusterRow,
+  EntityClusterMemberRow,
+  NewEntityClusterMemberRow,
+  ResolutionCandidateRow,
+  NewResolutionCandidateRow,
+  ResolutionDecisionRow,
+  NewResolutionDecisionRow,
 } from '@/db/schema';
 
 // ============================================================
@@ -831,6 +849,9 @@ export interface EntityIdentifierStore {
     entityId: string,
     status: string
   ): Promise<number>;
+
+  /** Delete identifiers for a specific entity (cleanup orphans). */
+  deleteByEntity(entityType: string, entityId: string): Promise<number>;
 }
 
 // ============================================================
@@ -933,6 +954,12 @@ export interface CanonicalServiceStore {
 
   /** Transition publication status. */
   updatePublicationStatus(id: string, status: string): Promise<void>;
+
+  /** Find active services matching a URL (for entity resolution). */
+  findActiveByUrl(url: string): Promise<CanonicalServiceRow | null>;
+
+  /** Find active services matching an exact name (for entity resolution). */
+  findActiveByName(name: string): Promise<CanonicalServiceRow | null>;
 }
 
 // ============================================================
@@ -942,6 +969,9 @@ export interface CanonicalServiceStore {
 export interface CanonicalLocationStore {
   /** Get a canonical location by ID. */
   getById(id: string): Promise<CanonicalLocationRow | null>;
+
+  /** Get multiple canonical locations by ID (batch). */
+  getByIds(ids: string[]): Promise<CanonicalLocationRow[]>;
 
   /** List locations for a canonical organization. */
   listByOrganization(canonicalOrganizationId: string): Promise<CanonicalLocationRow[]>;
@@ -981,6 +1011,9 @@ export interface CanonicalServiceLocationStore {
 
   /** Link a service to a location. */
   create(row: NewCanonicalServiceLocationRow): Promise<CanonicalServiceLocationRow>;
+
+  /** Bulk-create service–location links. */
+  bulkCreate(rows: NewCanonicalServiceLocationRow[]): Promise<CanonicalServiceLocationRow[]>;
 
   /** Remove a service–location link. */
   remove(canonicalServiceId: string, canonicalLocationId: string): Promise<void>;
@@ -1035,6 +1068,83 @@ export interface CanonicalProvenanceStore {
 }
 
 // ============================================================
+// TAXONOMY FEDERATION STORES (migration 0037)
+// ============================================================
+
+export interface TaxonomyRegistryStore {
+  getById(id: string): Promise<TaxonomyRegistryRow | null>;
+  findByName(name: string): Promise<TaxonomyRegistryRow | null>;
+  listActive(): Promise<TaxonomyRegistryRow[]>;
+  create(row: NewTaxonomyRegistryRow): Promise<TaxonomyRegistryRow>;
+  update(id: string, fields: Partial<NewTaxonomyRegistryRow>): Promise<void>;
+}
+
+export interface TaxonomyTermExtStore {
+  getById(id: string): Promise<TaxonomyTermExtRow | null>;
+  findByRegistryAndCode(registryId: string, code: string): Promise<TaxonomyTermExtRow | null>;
+  listByRegistry(registryId: string): Promise<TaxonomyTermExtRow[]>;
+  create(row: NewTaxonomyTermExtRow): Promise<TaxonomyTermExtRow>;
+  bulkCreate(rows: NewTaxonomyTermExtRow[]): Promise<void>;
+}
+
+export interface CanonicalConceptStore {
+  getById(id: string): Promise<CanonicalConceptRow | null>;
+  findByKey(conceptKey: string): Promise<CanonicalConceptRow | null>;
+  listActive(): Promise<CanonicalConceptRow[]>;
+  create(row: NewCanonicalConceptRow): Promise<CanonicalConceptRow>;
+  update(id: string, fields: Partial<NewCanonicalConceptRow>): Promise<void>;
+}
+
+export interface TaxonomyCrosswalkStore {
+  getById(id: string): Promise<TaxonomyCrosswalkRow | null>;
+  findBySourceCode(registryId: string, sourceCode: string): Promise<TaxonomyCrosswalkRow[]>;
+  findExact(registryId: string, sourceCode: string, conceptId: string): Promise<TaxonomyCrosswalkRow | null>;
+  create(row: NewTaxonomyCrosswalkRow): Promise<TaxonomyCrosswalkRow>;
+  bulkCreate(rows: NewTaxonomyCrosswalkRow[]): Promise<void>;
+}
+
+export interface ConceptTagDerivationStore {
+  findByEntity(entityType: string, entityId: string): Promise<ConceptTagDerivationRow[]>;
+  create(row: NewConceptTagDerivationRow): Promise<ConceptTagDerivationRow>;
+  bulkCreate(rows: NewConceptTagDerivationRow[]): Promise<void>;
+}
+
+// ============================================================
+// RESOLUTION & CLUSTERING STORES (migration 0038)
+// ============================================================
+
+export interface EntityClusterStore {
+  getById(id: string): Promise<EntityClusterRow | null>;
+  findByCanonicalEntity(entityType: string, entityId: string): Promise<EntityClusterRow[]>;
+  listByStatus(status: string, limit?: number): Promise<EntityClusterRow[]>;
+  create(row: NewEntityClusterRow): Promise<EntityClusterRow>;
+  update(id: string, fields: Partial<NewEntityClusterRow>): Promise<void>;
+}
+
+export interface EntityClusterMemberStore {
+  findByCluster(clusterId: string): Promise<EntityClusterMemberRow[]>;
+  findByEntity(entityType: string, entityId: string): Promise<EntityClusterMemberRow[]>;
+  create(row: NewEntityClusterMemberRow): Promise<EntityClusterMemberRow>;
+  deleteByCluster(clusterId: string): Promise<number>;
+}
+
+export interface ResolutionCandidateStore {
+  getById(id: string): Promise<ResolutionCandidateRow | null>;
+  findBySourceRecord(sourceRecordId: string): Promise<ResolutionCandidateRow[]>;
+  findByEntity(entityType: string, entityId: string): Promise<ResolutionCandidateRow[]>;
+  listByStatus(status: string, limit?: number): Promise<ResolutionCandidateRow[]>;
+  create(row: NewResolutionCandidateRow): Promise<ResolutionCandidateRow>;
+  update(id: string, fields: Partial<NewResolutionCandidateRow>): Promise<void>;
+}
+
+export interface ResolutionDecisionStore {
+  getById(id: string): Promise<ResolutionDecisionRow | null>;
+  findBySourceRecord(sourceRecordId: string): Promise<ResolutionDecisionRow[]>;
+  findByEntity(entityType: string, entityId: string): Promise<ResolutionDecisionRow[]>;
+  create(row: NewResolutionDecisionRow): Promise<ResolutionDecisionRow>;
+}
+
+// ============================================================
 // COMPOSITE STORE (aggregates all stores)
 // ============================================================
 
@@ -1072,4 +1182,17 @@ export interface IngestionStores {
   canonicalLocations: CanonicalLocationStore;
   canonicalServiceLocations: CanonicalServiceLocationStore;
   canonicalProvenance: CanonicalProvenanceStore;
+
+  // Taxonomy federation layer (0037)
+  taxonomyRegistries: TaxonomyRegistryStore;
+  taxonomyTermsExt: TaxonomyTermExtStore;
+  canonicalConcepts: CanonicalConceptStore;
+  taxonomyCrosswalks: TaxonomyCrosswalkStore;
+  conceptTagDerivations: ConceptTagDerivationStore;
+
+  // Resolution & clustering layer (0038)
+  entityClusters: EntityClusterStore;
+  entityClusterMembers: EntityClusterMemberStore;
+  resolutionCandidates: ResolutionCandidateStore;
+  resolutionDecisions: ResolutionDecisionStore;
 }

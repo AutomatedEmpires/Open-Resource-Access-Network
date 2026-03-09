@@ -224,7 +224,8 @@ export type SubmissionType =
   | 'new_service'
   | 'removal_request'
   | 'community_report'
-  | 'appeal';
+  | 'appeal'
+  | 'managed_form';
 
 export type SubmissionStatus =
   | 'draft'
@@ -246,7 +247,8 @@ export type SubmissionTargetType =
   | 'organization'
   | 'location'
   | 'user'
-  | 'system';
+  | 'system'
+  | 'form_template';
 
 export type SubmissionPriority = 0 | 1 | 2 | 3;
 
@@ -690,6 +692,11 @@ export interface SeekerProfile {
   selfIdentifiers: string[];
   currentServices: string[];
   accessibilityNeeds: string[];
+  transportationBarrier?: boolean | null;
+  preferredDeliveryModes?: string[];
+  urgencyWindow?: string | null;
+  documentationBarriers?: string[];
+  digitalAccessBarrier?: boolean | null;
   pronouns?: string | null;
   profileHeadline?: string | null;
   avatarEmoji?: string | null;

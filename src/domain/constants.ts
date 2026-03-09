@@ -176,6 +176,7 @@ export const SUBMISSION_TYPES: readonly SubmissionType[] = [
   'removal_request',
   'community_report',
   'appeal',
+  'managed_form',
 ] as const;
 
 export const SUBMISSION_TARGET_TYPES: readonly SubmissionTargetType[] = [
@@ -184,6 +185,7 @@ export const SUBMISSION_TARGET_TYPES: readonly SubmissionTargetType[] = [
   'location',
   'user',
   'system',
+  'form_template',
 ] as const;
 
 /**
@@ -399,6 +401,12 @@ export const PERMISSIONS = {
 
 /** Maximum messages per chat session */
 export const MAX_CHAT_QUOTA = 50;
+
+/** 24-hour quota window in milliseconds — enforces cooldown between quota exhaustion and renewal */
+export const CHAT_QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Cookie name used to persist the anonymous device identity for quota tracking */
+export const CHAT_DEVICE_COOKIE = 'oran-did';
 
 /** Session quota TTL for in-memory quota tracking (6 hours) */
 export const SESSION_QUOTA_TTL_MS = 6 * 60 * 60 * 1000;

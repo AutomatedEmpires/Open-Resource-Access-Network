@@ -17,6 +17,8 @@ import {
   index,
   customType,
   doublePrecision,
+  date,
+  time,
 } from 'drizzle-orm/pg-core';
 
 /**
@@ -27,6 +29,38 @@ import {
 const geometryPoint = customType<{ data: string | null; driverParam: string | null }>({
   dataType() {
     return 'GEOMETRY(POINT, 4326)';
+  },
+  toDriver(value: string | null): string | null {
+    return value;
+  },
+  fromDriver(value: unknown): string | null {
+    return value as string | null;
+  },
+});
+
+/**
+ * Custom Drizzle type for PostGIS POLYGON columns.
+ * Used for coverage zones and service areas.
+ */
+const geometryPolygon = customType<{ data: string | null; driverParam: string | null }>({
+  dataType() {
+    return 'GEOMETRY(Polygon, 4326)';
+  },
+  toDriver(value: string | null): string | null {
+    return value;
+  },
+  fromDriver(value: unknown): string | null {
+    return value as string | null;
+  },
+});
+
+/**
+ * Custom Drizzle type for pgvector VECTOR columns.
+ * Stored/retrieved as string representation (e.g. "[0.1,0.2,...]").
+ */
+const vector1024 = customType<{ data: string | null; driverParam: string | null }>({
+  dataType() {
+    return 'vector(1024)';
   },
   toDriver(value: string | null): string | null {
     return value;
@@ -1604,5 +1638,1498 @@ export const canonicalProvenanceRelations = relations(canonicalProvenance, ({ on
   sourceRecord: one(sourceRecords, {
     fields: [canonicalProvenance.sourceRecordId],
     references: [sourceRecords.id],
+  }),
+}));
+
+// ============================================================
+// TAXONOMY FEDERATION LAYER  (migration 0037)
+// ============================================================
+// Multi-taxonomy awareness, cross-walk logic, and automated tag
+// derivation from external taxonomy codes.
+// ============================================================
+
+/** External taxonomy registries (AIRS/211, Open Eligibility, etc.) */
+export const taxonomyRegistries = pgTable(
+  'taxonomy_registries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    uri: text('uri'),
+    version: text('version'),
+    description: text('description'),
+    isDefault: boolean('is_default').notNull().default(false),
+    status: text('status').notNull().default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export type TaxonomyRegistryRow = typeof taxonomyRegistries.$inferSelect;
+export type NewTaxonomyRegistryRow = typeof taxonomyRegistries.$inferInsert;
+
+/** Extended taxonomy terms with hierarchy (external vocabularies). */
+export const taxonomyTermsExt = pgTable(
+  'taxonomy_terms_ext',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    registryId: uuid('registry_id').notNull().references(() => taxonomyRegistries.id, { onDelete: 'cascade' }),
+    code: text('code').notNull(),
+    term: text('term').notNull(),
+    parentCode: text('parent_code'),
+    description: text('description'),
+    uri: text('uri'),
+    depth: integer('depth').notNull().default(0),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export type TaxonomyTermExtRow = typeof taxonomyTermsExt.$inferSelect;
+export type NewTaxonomyTermExtRow = typeof taxonomyTermsExt.$inferInsert;
+
+/** ORAN canonical concepts — abstract service concepts mapped to ORAN tags. */
+export const canonicalConcepts = pgTable(
+  'canonical_concepts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conceptKey: text('concept_key').notNull().unique(),
+    label: text('label').notNull(),
+    description: text('description'),
+    oranTaxonomyTermId: uuid('oran_taxonomy_term_id').references(() => taxonomyTerms.id, { onDelete: 'set null' }),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export type CanonicalConceptRow = typeof canonicalConcepts.$inferSelect;
+export type NewCanonicalConceptRow = typeof canonicalConcepts.$inferInsert;
+
+/** Cross-walks mapping external taxonomy codes to canonical concepts. */
+export const taxonomyCrosswalks = pgTable(
+  'taxonomy_crosswalks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sourceRegistryId: uuid('source_registry_id').notNull().references(() => taxonomyRegistries.id, { onDelete: 'cascade' }),
+    sourceCode: text('source_code').notNull(),
+    targetConceptId: uuid('target_concept_id').notNull().references(() => canonicalConcepts.id, { onDelete: 'cascade' }),
+    matchType: text('match_type').notNull().default('exact'),
+    confidence: integer('confidence').notNull().default(100),
+    notes: text('notes'),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export type TaxonomyCrosswalkRow = typeof taxonomyCrosswalks.$inferSelect;
+export type NewTaxonomyCrosswalkRow = typeof taxonomyCrosswalks.$inferInsert;
+
+/** Audit log: how a resource tag was derived from an external taxonomy code. */
+export const conceptTagDerivations = pgTable(
+  'concept_tag_derivations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sourceRecordId: uuid('source_record_id').references(() => sourceRecords.id, { onDelete: 'set null' }),
+    sourceRegistryId: uuid('source_registry_id').notNull().references(() => taxonomyRegistries.id, { onDelete: 'cascade' }),
+    sourceCode: text('source_code').notNull(),
+    crosswalkId: uuid('crosswalk_id').references(() => taxonomyCrosswalks.id, { onDelete: 'set null' }),
+    conceptId: uuid('concept_id').notNull().references(() => canonicalConcepts.id, { onDelete: 'cascade' }),
+    derivedTagType: text('derived_tag_type').notNull().default('category'),
+    derivedTagValue: text('derived_tag_value').notNull(),
+    confidence: integer('confidence').notNull().default(100),
+    entityType: text('entity_type').notNull(),
+    entityId: uuid('entity_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export type ConceptTagDerivationRow = typeof conceptTagDerivations.$inferSelect;
+export type NewConceptTagDerivationRow = typeof conceptTagDerivations.$inferInsert;
+
+// ---- Taxonomy Federation Relations ----
+
+export const taxonomyRegistriesRelations = relations(taxonomyRegistries, ({ many }) => ({
+  terms: many(taxonomyTermsExt),
+  crosswalks: many(taxonomyCrosswalks),
+  derivations: many(conceptTagDerivations),
+}));
+
+export const taxonomyTermsExtRelations = relations(taxonomyTermsExt, ({ one }) => ({
+  registry: one(taxonomyRegistries, {
+    fields: [taxonomyTermsExt.registryId],
+    references: [taxonomyRegistries.id],
+  }),
+}));
+
+export const canonicalConceptsRelations = relations(canonicalConcepts, ({ one, many }) => ({
+  oranTaxonomyTerm: one(taxonomyTerms, {
+    fields: [canonicalConcepts.oranTaxonomyTermId],
+    references: [taxonomyTerms.id],
+  }),
+  crosswalks: many(taxonomyCrosswalks),
+  derivations: many(conceptTagDerivations),
+}));
+
+export const taxonomyCrosswalksRelations = relations(taxonomyCrosswalks, ({ one }) => ({
+  sourceRegistry: one(taxonomyRegistries, {
+    fields: [taxonomyCrosswalks.sourceRegistryId],
+    references: [taxonomyRegistries.id],
+  }),
+  targetConcept: one(canonicalConcepts, {
+    fields: [taxonomyCrosswalks.targetConceptId],
+    references: [canonicalConcepts.id],
+  }),
+}));
+
+export const conceptTagDerivationsRelations = relations(conceptTagDerivations, ({ one }) => ({
+  sourceRecord: one(sourceRecords, {
+    fields: [conceptTagDerivations.sourceRecordId],
+    references: [sourceRecords.id],
+  }),
+  sourceRegistry: one(taxonomyRegistries, {
+    fields: [conceptTagDerivations.sourceRegistryId],
+    references: [taxonomyRegistries.id],
+  }),
+  crosswalk: one(taxonomyCrosswalks, {
+    fields: [conceptTagDerivations.crosswalkId],
+    references: [taxonomyCrosswalks.id],
+  }),
+  concept: one(canonicalConcepts, {
+    fields: [conceptTagDerivations.conceptId],
+    references: [canonicalConcepts.id],
+  }),
+}));
+
+// ============================================================
+// RESOLUTION & CLUSTERING LAYER  (migration 0038)
+// ============================================================
+// Entity resolution decisions, candidate tracking, and cluster
+// management for deduplication across source systems.
+// ============================================================
+
+/** Entity clusters — groups of canonical entities believed to be the same real-world entity. */
+export const entityClusters = pgTable(
+  'entity_clusters',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    entityType: text('entity_type').notNull(),
+    canonicalEntityId: uuid('canonical_entity_id').notNull(),
+    label: text('label'),
+    status: text('status').notNull().default('active'),
+    confidence: integer('confidence').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export type EntityClusterRow = typeof entityClusters.$inferSelect;
+export type NewEntityClusterRow = typeof entityClusters.$inferInsert;
+
+/** Entity cluster members — individual canonical entities within a cluster. */
+export const entityClusterMembers = pgTable(
+  'entity_cluster_members',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    clusterId: uuid('cluster_id').notNull().references(() => entityClusters.id, { onDelete: 'cascade' }),
+    entityType: text('entity_type').notNull(),
+    entityId: uuid('entity_id').notNull(),
+    role: text('role').notNull().default('member'),
+    addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pairIndex: uniqueIndex('idx_entity_cluster_members_pair').on(table.clusterId, table.entityId),
+    entityIndex: index('idx_entity_cluster_members_entity').on(table.entityType, table.entityId),
+  }),
+);
+
+export type EntityClusterMemberRow = typeof entityClusterMembers.$inferSelect;
+export type NewEntityClusterMemberRow = typeof entityClusterMembers.$inferInsert;
+
+/** Resolution candidates — proposed matches between a source record and an existing canonical entity. */
+export const resolutionCandidates = pgTable(
+  'resolution_candidates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sourceRecordId: uuid('source_record_id').references(() => sourceRecords.id, { onDelete: 'set null' }),
+    candidateEntityType: text('candidate_entity_type').notNull(),
+    candidateEntityId: uuid('candidate_entity_id').notNull(),
+    matchStrategy: text('match_strategy').notNull(),
+    matchKey: text('match_key'),
+    confidence: integer('confidence').notNull().default(0),
+    autoResolved: boolean('auto_resolved').notNull().default(false),
+    status: text('status').notNull().default('pending'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedBy: text('resolved_by'),
+  },
+);
+
+export type ResolutionCandidateRow = typeof resolutionCandidates.$inferSelect;
+export type NewResolutionCandidateRow = typeof resolutionCandidates.$inferInsert;
+
+/** Resolution decisions — audit log of all resolution actions taken. */
+export const resolutionDecisions = pgTable(
+  'resolution_decisions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    resolutionCandidateId: uuid('resolution_candidate_id').references(() => resolutionCandidates.id, { onDelete: 'set null' }),
+    sourceRecordId: uuid('source_record_id').references(() => sourceRecords.id, { onDelete: 'set null' }),
+    entityType: text('entity_type').notNull(),
+    entityId: uuid('entity_id').notNull(),
+    decision: text('decision').notNull(),
+    matchStrategy: text('match_strategy'),
+    matchConfidence: integer('match_confidence').notNull().default(0),
+    rationale: text('rationale'),
+    decidedBy: text('decided_by').notNull().default('system'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export type ResolutionDecisionRow = typeof resolutionDecisions.$inferSelect;
+export type NewResolutionDecisionRow = typeof resolutionDecisions.$inferInsert;
+
+// ---- Resolution & Clustering Relations ----
+
+export const entityClustersRelations = relations(entityClusters, ({ many }) => ({
+  members: many(entityClusterMembers),
+}));
+
+export const entityClusterMembersRelations = relations(entityClusterMembers, ({ one }) => ({
+  cluster: one(entityClusters, {
+    fields: [entityClusterMembers.clusterId],
+    references: [entityClusters.id],
+  }),
+}));
+
+export const resolutionCandidatesRelations = relations(resolutionCandidates, ({ one, many }) => ({
+  sourceRecord: one(sourceRecords, {
+    fields: [resolutionCandidates.sourceRecordId],
+    references: [sourceRecords.id],
+  }),
+  decisions: many(resolutionDecisions),
+}));
+
+export const resolutionDecisionsRelations = relations(resolutionDecisions, ({ one }) => ({
+  candidate: one(resolutionCandidates, {
+    fields: [resolutionDecisions.resolutionCandidateId],
+    references: [resolutionCandidates.id],
+  }),
+  sourceRecord: one(sourceRecords, {
+    fields: [resolutionDecisions.sourceRecordId],
+    references: [sourceRecords.id],
+  }),
+}));
+
+// ============================================================
+// ZONE C: LIVE / SEEKER-VISIBLE TABLES
+// ============================================================
+// HSDS-core and ORAN-extension tables powering seeker-facing
+// search, chat, and detail views.
+// SQL migrations: 0000, 0003, 0004, 0005, 0006, 0009–0013.
+// ============================================================
+
+// ---- HSDS Core (migration 0000) ----
+
+export const organizations = pgTable(
+  'organizations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    description: text('description'),
+    url: text('url'),
+    email: text('email'),
+    taxStatus: text('tax_status'),
+    taxId: text('tax_id'),
+    yearIncorporated: integer('year_incorporated'),
+    legalStatus: text('legal_status'),
+    logoUrl: text('logo_url'),
+    uri: text('uri'),
+    status: text('status').notNull().default('active'),
+    phone: text('phone'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+);
+
+export type OrganizationRow = typeof organizations.$inferSelect;
+export type NewOrganizationRow = typeof organizations.$inferInsert;
+
+export const locations = pgTable(
+  'locations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    name: text('name'),
+    alternateName: text('alternate_name'),
+    description: text('description'),
+    transportation: text('transportation'),
+    latitude: doublePrecision('latitude'),
+    longitude: doublePrecision('longitude'),
+    geom: geometryPoint('geom'),
+    status: text('status').notNull().default('active'),
+    transitAccess: text('transit_access').array(),
+    parkingAvailable: text('parking_available').default('unknown'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_locations_organization').on(table.organizationId),
+  ]
+);
+
+export type LocationRow = typeof locations.$inferSelect;
+export type NewLocationRow = typeof locations.$inferInsert;
+
+export const programs = pgTable(
+  'programs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    alternateName: text('alternate_name'),
+    description: text('description'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_programs_organization').on(table.organizationId),
+  ]
+);
+
+export type ProgramRow = typeof programs.$inferSelect;
+export type NewProgramRow = typeof programs.$inferInsert;
+
+export const services = pgTable(
+  'services',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    programId: uuid('program_id'),
+    name: text('name').notNull(),
+    alternateName: text('alternate_name'),
+    description: text('description'),
+    url: text('url'),
+    email: text('email'),
+    status: text('status').notNull().default('active'),
+    interpretationServices: text('interpretation_services'),
+    applicationProcess: text('application_process'),
+    waitTime: text('wait_time'),
+    fees: text('fees'),
+    accreditations: text('accreditations'),
+    licenses: text('licenses'),
+    estimatedWaitDays: integer('estimated_wait_days'),
+    capacityStatus: text('capacity_status').default('available'),
+    embedding: vector1024('embedding'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_services_organization').on(table.organizationId),
+    index('idx_services_status').on(table.status),
+    index('idx_services_capacity_status').on(table.capacityStatus),
+  ]
+);
+
+export type ServiceRow = typeof services.$inferSelect;
+export type NewServiceRow = typeof services.$inferInsert;
+
+export const serviceAtLocation = pgTable(
+  'service_at_location',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    locationId: uuid('location_id').notNull().references(() => locations.id, { onDelete: 'cascade' }),
+    description: text('description'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    uniqueIndex('idx_sal_unique').on(table.serviceId, table.locationId),
+    index('idx_sal_service').on(table.serviceId),
+    index('idx_sal_location').on(table.locationId),
+  ]
+);
+
+export type ServiceAtLocationRow = typeof serviceAtLocation.$inferSelect;
+export type NewServiceAtLocationRow = typeof serviceAtLocation.$inferInsert;
+
+export const phones = pgTable(
+  'phones',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    locationId: uuid('location_id').references(() => locations.id, { onDelete: 'cascade' }),
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+    number: text('number').notNull(),
+    extension: text('extension'),
+    type: text('type').default('voice'),
+    language: text('language'),
+    description: text('description'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_phones_service').on(table.serviceId),
+    index('idx_phones_location').on(table.locationId),
+    index('idx_phones_organization').on(table.organizationId),
+  ]
+);
+
+export type PhoneRow = typeof phones.$inferSelect;
+export type NewPhoneRow = typeof phones.$inferInsert;
+
+export const addresses = pgTable(
+  'addresses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    locationId: uuid('location_id').notNull().references(() => locations.id, { onDelete: 'cascade' }),
+    attention: text('attention'),
+    address1: text('address_1'),
+    address2: text('address_2'),
+    city: text('city'),
+    region: text('region'),
+    stateProvince: text('state_province'),
+    postalCode: text('postal_code'),
+    country: text('country').default('US'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_addresses_location').on(table.locationId),
+    index('idx_addresses_city').on(table.city),
+    index('idx_addresses_postal').on(table.postalCode),
+  ]
+);
+
+export type AddressRow = typeof addresses.$inferSelect;
+export type NewAddressRow = typeof addresses.$inferInsert;
+
+export const schedules = pgTable(
+  'schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }),
+    locationId: uuid('location_id').references(() => locations.id, { onDelete: 'cascade' }),
+    validFrom: date('valid_from'),
+    validTo: date('valid_to'),
+    dtstart: text('dtstart'),
+    until: text('until'),
+    wkst: text('wkst'),
+    days: text('days').array(),
+    opensAt: time('opens_at'),
+    closesAt: time('closes_at'),
+    description: text('description'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_schedules_service').on(table.serviceId),
+    index('idx_schedules_location').on(table.locationId),
+  ]
+);
+
+export type ScheduleRow = typeof schedules.$inferSelect;
+export type NewScheduleRow = typeof schedules.$inferInsert;
+
+export const taxonomyTerms = pgTable(
+  'taxonomy_terms',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    term: text('term').notNull(),
+    description: text('description'),
+    parentId: uuid('parent_id'),
+    taxonomy: text('taxonomy').default('custom'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_taxonomy_parent').on(table.parentId),
+  ]
+);
+
+export type TaxonomyTermRow = typeof taxonomyTerms.$inferSelect;
+export type NewTaxonomyTermRow = typeof taxonomyTerms.$inferInsert;
+
+export const serviceTaxonomy = pgTable(
+  'service_taxonomy',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    taxonomyTermId: uuid('taxonomy_term_id').notNull().references(() => taxonomyTerms.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    uniqueIndex('idx_service_taxonomy_unique').on(table.serviceId, table.taxonomyTermId),
+    index('idx_service_taxonomy_service').on(table.serviceId),
+    index('idx_service_taxonomy_term').on(table.taxonomyTermId),
+  ]
+);
+
+export type ServiceTaxonomyRow = typeof serviceTaxonomy.$inferSelect;
+export type NewServiceTaxonomyRow = typeof serviceTaxonomy.$inferInsert;
+
+export const confidenceScores = pgTable(
+  'confidence_scores',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    score: numeric('score', { precision: 5, scale: 2 }).notNull().default('0'),
+    verificationConfidence: numeric('verification_confidence', { precision: 5, scale: 2 }).notNull().default('0'),
+    eligibilityMatch: numeric('eligibility_match', { precision: 5, scale: 2 }).notNull().default('0'),
+    constraintFit: numeric('constraint_fit', { precision: 5, scale: 2 }).notNull().default('0'),
+    computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_confidence_service_unique').on(table.serviceId),
+    index('idx_confidence_score').on(table.score),
+  ]
+);
+
+export type ConfidenceScoreRow = typeof confidenceScores.$inferSelect;
+export type NewConfidenceScoreRow = typeof confidenceScores.$inferInsert;
+
+export const verificationQueue = pgTable(
+  'verification_queue',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    status: text('status').notNull().default('pending'),
+    submittedByUserId: text('submitted_by_user_id').notNull(),
+    assignedToUserId: text('assigned_to_user_id'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_vq_service').on(table.serviceId),
+    index('idx_vq_status').on(table.status),
+    index('idx_vq_assigned').on(table.assignedToUserId),
+  ]
+);
+
+export type VerificationQueueRow = typeof verificationQueue.$inferSelect;
+export type NewVerificationQueueRow = typeof verificationQueue.$inferInsert;
+
+export const seekerFeedback = pgTable(
+  'seeker_feedback',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id').notNull(),
+    rating: integer('rating').notNull(),
+    comment: text('comment'),
+    contactSuccess: boolean('contact_success'),
+    triageCategory: text('triage_category'),
+    triageResult: jsonb('triage_result'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_feedback_service').on(table.serviceId),
+    index('idx_feedback_session').on(table.sessionId),
+  ]
+);
+
+export type SeekerFeedbackRow = typeof seekerFeedback.$inferSelect;
+export type NewSeekerFeedbackRow = typeof seekerFeedback.$inferInsert;
+
+export const chatSessions = pgTable(
+  'chat_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    intentSummary: text('intent_summary'),
+    serviceIdsShown: uuid('service_ids_shown').array(),
+    messageCount: integer('message_count').notNull().default(0),
+  },
+  (table) => [
+    index('idx_chat_sessions_user').on(table.userId),
+  ]
+);
+
+export type ChatSessionRow = typeof chatSessions.$inferSelect;
+export type NewChatSessionRow = typeof chatSessions.$inferInsert;
+
+export const featureFlags = pgTable(
+  'feature_flags',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull().unique(),
+    enabled: boolean('enabled').notNull().default(false),
+    rolloutPct: integer('rollout_pct').notNull().default(0),
+    description: text('description'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+);
+
+export type FeatureFlagRow = typeof featureFlags.$inferSelect;
+export type NewFeatureFlagRow = typeof featureFlags.$inferInsert;
+
+// ---- HSDS Extended (migrations 0009–0013) ----
+
+export const eligibility = pgTable(
+  'eligibility',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    description: text('description').notNull(),
+    minimumAge: integer('minimum_age'),
+    maximumAge: integer('maximum_age'),
+    eligibleValues: text('eligible_values').array(),
+    householdSizeMin: integer('household_size_min'),
+    householdSizeMax: integer('household_size_max'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_eligibility_service').on(table.serviceId),
+  ]
+);
+
+export type EligibilityRow = typeof eligibility.$inferSelect;
+export type NewEligibilityRow = typeof eligibility.$inferInsert;
+
+export const requiredDocuments = pgTable(
+  'required_documents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    document: text('document').notNull(),
+    type: text('type'),
+    uri: text('uri'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_required_documents_service').on(table.serviceId),
+  ]
+);
+
+export type RequiredDocumentRow = typeof requiredDocuments.$inferSelect;
+export type NewRequiredDocumentRow = typeof requiredDocuments.$inferInsert;
+
+export const serviceAreas = pgTable(
+  'service_areas',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    name: text('name'),
+    description: text('description'),
+    extent: geometryPolygon('extent'),
+    extentType: text('extent_type').default('other'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_service_areas_service').on(table.serviceId),
+    index('idx_service_areas_type').on(table.extentType),
+  ]
+);
+
+export type ServiceAreaRow = typeof serviceAreas.$inferSelect;
+export type NewServiceAreaRow = typeof serviceAreas.$inferInsert;
+
+export const languagesTable = pgTable(
+  'languages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }),
+    locationId: uuid('location_id').references(() => locations.id, { onDelete: 'cascade' }),
+    language: text('language').notNull(),
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_languages_service').on(table.serviceId),
+    index('idx_languages_location').on(table.locationId),
+    index('idx_languages_language').on(table.language),
+  ]
+);
+
+export type LanguageRow = typeof languagesTable.$inferSelect;
+export type NewLanguageRow = typeof languagesTable.$inferInsert;
+
+export const accessibilityForDisabilities = pgTable(
+  'accessibility_for_disabilities',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    locationId: uuid('location_id').notNull().references(() => locations.id, { onDelete: 'cascade' }),
+    accessibility: text('accessibility').notNull(),
+    details: text('details'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_accessibility_location').on(table.locationId),
+    index('idx_accessibility_feature').on(table.accessibility),
+  ]
+);
+
+export type AccessibilityForDisabilitiesRow = typeof accessibilityForDisabilities.$inferSelect;
+export type NewAccessibilityForDisabilitiesRow = typeof accessibilityForDisabilities.$inferInsert;
+
+export const contacts = pgTable(
+  'contacts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+    serviceId: uuid('service_id').references(() => services.id, { onDelete: 'cascade' }),
+    locationId: uuid('location_id').references(() => locations.id, { onDelete: 'cascade' }),
+    name: text('name'),
+    title: text('title'),
+    department: text('department'),
+    email: text('email'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_contacts_organization').on(table.organizationId),
+    index('idx_contacts_service').on(table.serviceId),
+    index('idx_contacts_location').on(table.locationId),
+  ]
+);
+
+export type ContactRow = typeof contacts.$inferSelect;
+export type NewContactRow = typeof contacts.$inferInsert;
+
+export const savedServices = pgTable(
+  'saved_services',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id').notNull(),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    notes: text('notes'),
+    savedAt: timestamp('saved_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_saved_services_unique').on(table.userId, table.serviceId),
+    index('idx_saved_services_user').on(table.userId),
+    index('idx_saved_services_service').on(table.serviceId),
+  ]
+);
+
+export type SavedServiceRow = typeof savedServices.$inferSelect;
+export type NewSavedServiceRow = typeof savedServices.$inferInsert;
+
+export const verificationEvidence = pgTable(
+  'verification_evidence',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    queueEntryId: uuid('queue_entry_id').notNull().references(() => verificationQueue.id, { onDelete: 'cascade' }),
+    evidenceType: text('evidence_type').notNull(),
+    description: text('description'),
+    fileUrl: text('file_url'),
+    fileName: text('file_name'),
+    fileSizeBytes: integer('file_size_bytes'),
+    submittedByUserId: text('submitted_by_user_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_evidence_queue_entry').on(table.queueEntryId),
+    index('idx_evidence_type').on(table.evidenceType),
+  ]
+);
+
+export type VerificationEvidenceRow = typeof verificationEvidence.$inferSelect;
+export type NewVerificationEvidenceRow = typeof verificationEvidence.$inferInsert;
+
+export const serviceAttributes = pgTable(
+  'service_attributes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    taxonomy: text('taxonomy').notNull(),
+    tag: text('tag').notNull(),
+    details: text('details'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    uniqueIndex('idx_service_attributes_unique').on(table.serviceId, table.taxonomy, table.tag),
+    index('idx_service_attributes_taxonomy_tag').on(table.taxonomy, table.tag),
+    index('idx_service_attributes_service').on(table.serviceId),
+    index('idx_service_attributes_tag').on(table.tag),
+  ]
+);
+
+export type ServiceAttributeRow = typeof serviceAttributes.$inferSelect;
+export type NewServiceAttributeRow = typeof serviceAttributes.$inferInsert;
+
+export const serviceAdaptations = pgTable(
+  'service_adaptations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    adaptationType: text('adaptation_type').notNull(),
+    adaptationTag: text('adaptation_tag').notNull(),
+    details: text('details'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    uniqueIndex('idx_service_adaptations_unique').on(table.serviceId, table.adaptationType, table.adaptationTag),
+    index('idx_service_adaptations_service').on(table.serviceId),
+    index('idx_service_adaptations_type_tag').on(table.adaptationType, table.adaptationTag),
+    index('idx_service_adaptations_tag').on(table.adaptationTag),
+  ]
+);
+
+export type ServiceAdaptationRow = typeof serviceAdaptations.$inferSelect;
+export type NewServiceAdaptationRow = typeof serviceAdaptations.$inferInsert;
+
+export const dietaryOptions = pgTable(
+  'dietary_options',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    dietaryType: text('dietary_type').notNull(),
+    availability: text('availability').default('always'),
+    details: text('details'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    uniqueIndex('idx_dietary_options_unique').on(table.serviceId, table.dietaryType),
+    index('idx_dietary_options_service').on(table.serviceId),
+    index('idx_dietary_options_type').on(table.dietaryType),
+  ]
+);
+
+export type DietaryOptionRow = typeof dietaryOptions.$inferSelect;
+export type NewDietaryOptionRow = typeof dietaryOptions.$inferInsert;
+
+// ---- Import / Staging (migration 0003) ----
+
+export const importBatches = pgTable(
+  'import_batches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    batchKey: text('batch_key').notNull().unique(),
+    importedByUserId: text('imported_by_user_id'),
+    source: text('source').notNull().default('csv'),
+    status: text('status').notNull().default('validated'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_import_batches_status').on(table.status),
+  ]
+);
+
+export type ImportBatchRow = typeof importBatches.$inferSelect;
+export type NewImportBatchRow = typeof importBatches.$inferInsert;
+
+export const stagingOrganizations = pgTable(
+  'staging_organizations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    importBatchId: uuid('import_batch_id').notNull().references(() => importBatches.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id'),
+    importStatus: text('import_status').notNull().default('pending'),
+    importDiff: jsonb('import_diff'),
+    name: text('name').notNull(),
+    description: text('description'),
+    url: text('url'),
+    email: text('email'),
+    taxStatus: text('tax_status'),
+    taxId: text('tax_id'),
+    yearIncorporated: integer('year_incorporated'),
+    legalStatus: text('legal_status'),
+    logoUrl: text('logo_url'),
+    uri: text('uri'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_stg_org_batch').on(table.importBatchId),
+  ]
+);
+
+export type StagingOrganizationRow = typeof stagingOrganizations.$inferSelect;
+export type NewStagingOrganizationRow = typeof stagingOrganizations.$inferInsert;
+
+export const stagingLocations = pgTable(
+  'staging_locations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    importBatchId: uuid('import_batch_id').notNull().references(() => importBatches.id, { onDelete: 'cascade' }),
+    locationId: uuid('location_id'),
+    organizationId: uuid('organization_id'),
+    importStatus: text('import_status').notNull().default('pending'),
+    importDiff: jsonb('import_diff'),
+    name: text('name'),
+    alternateName: text('alternate_name'),
+    description: text('description'),
+    transportation: text('transportation'),
+    latitude: doublePrecision('latitude'),
+    longitude: doublePrecision('longitude'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_stg_loc_batch').on(table.importBatchId),
+  ]
+);
+
+export type StagingLocationRow = typeof stagingLocations.$inferSelect;
+export type NewStagingLocationRow = typeof stagingLocations.$inferInsert;
+
+export const stagingServices = pgTable(
+  'staging_services',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    importBatchId: uuid('import_batch_id').notNull().references(() => importBatches.id, { onDelete: 'cascade' }),
+    serviceId: uuid('service_id'),
+    organizationId: uuid('organization_id'),
+    programId: uuid('program_id'),
+    importStatus: text('import_status').notNull().default('pending'),
+    importDiff: jsonb('import_diff'),
+    name: text('name').notNull(),
+    alternateName: text('alternate_name'),
+    description: text('description'),
+    url: text('url'),
+    email: text('email'),
+    status: text('status').notNull().default('active'),
+    interpretationServices: text('interpretation_services'),
+    applicationProcess: text('application_process'),
+    waitTime: text('wait_time'),
+    fees: text('fees'),
+    accreditations: text('accreditations'),
+    licenses: text('licenses'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_stg_svc_batch').on(table.importBatchId),
+  ]
+);
+
+export type StagingServiceRow = typeof stagingServices.$inferSelect;
+export type NewStagingServiceRow = typeof stagingServices.$inferInsert;
+
+// ---- Governance / Extension (migrations 0004–0006) ----
+
+export const auditLogs = pgTable(
+  'audit_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    actorUserId: text('actor_user_id'),
+    actorRole: text('actor_role'),
+    action: text('action').notNull(),
+    resourceType: text('resource_type').notNull(),
+    resourceId: uuid('resource_id'),
+    before: jsonb('before'),
+    after: jsonb('after'),
+    requestId: text('request_id'),
+    ipDigest: text('ip_digest'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_audit_logs_actor').on(table.actorUserId),
+    index('idx_audit_logs_action').on(table.action),
+    index('idx_audit_logs_resource').on(table.resourceType, table.resourceId),
+    index('idx_audit_logs_created').on(table.createdAt),
+  ]
+);
+
+export type AuditLogRow = typeof auditLogs.$inferSelect;
+export type NewAuditLogRow = typeof auditLogs.$inferInsert;
+
+export const coverageZones = pgTable(
+  'coverage_zones',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    description: text('description'),
+    geometry: geometryPolygon('geometry'),
+    assignedUserId: text('assigned_user_id'),
+    status: text('status').notNull().default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_coverage_zones_status').on(table.status),
+    index('idx_coverage_zones_assigned').on(table.assignedUserId),
+  ]
+);
+
+export type CoverageZoneRow = typeof coverageZones.$inferSelect;
+export type NewCoverageZoneRow = typeof coverageZones.$inferInsert;
+
+export const organizationMembers = pgTable(
+  'organization_members',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    role: text('role').notNull().default('host_member'),
+    status: text('status').notNull().default('invited'),
+    invitedByUserId: text('invited_by_user_id'),
+    invitedAt: timestamp('invited_at', { withTimezone: true }).notNull().defaultNow(),
+    activatedAt: timestamp('activated_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    uniqueIndex('idx_org_members_unique').on(table.organizationId, table.userId),
+    index('idx_org_members_organization').on(table.organizationId),
+    index('idx_org_members_user').on(table.userId),
+  ]
+);
+
+export type OrganizationMemberRow = typeof organizationMembers.$inferSelect;
+export type NewOrganizationMemberRow = typeof organizationMembers.$inferInsert;
+
+export const userProfiles = pgTable(
+  'user_profiles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id').notNull().unique(),
+    displayName: text('display_name'),
+    preferredLocale: text('preferred_locale').default('en'),
+    approximateCity: text('approximate_city'),
+    role: text('role').notNull().default('seeker'),
+    email: text('email'),
+    passwordHash: text('password_hash'),
+    phone: text('phone'),
+    authProvider: text('auth_provider').notNull().default('azure-ad'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+  },
+  (table) => [
+    index('idx_user_profiles_role').on(table.role),
+  ]
+);
+
+export type UserProfileRow = typeof userProfiles.$inferSelect;
+export type NewUserProfileRow = typeof userProfiles.$inferInsert;
+
+export const formTemplates = pgTable(
+  'form_templates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: text('slug').notNull().unique(),
+    title: text('title').notNull(),
+    description: text('description'),
+    category: text('category').notNull().default('general'),
+    audienceScope: text('audience_scope').notNull(),
+    storageScope: text('storage_scope').notNull().default('platform'),
+    defaultTargetRole: text('default_target_role'),
+    schemaJson: jsonb('schema_json').notNull().default({}),
+    uiSchemaJson: jsonb('ui_schema_json').notNull().default({}),
+    instructionsMarkdown: text('instructions_markdown'),
+    version: integer('version').notNull().default(1),
+    isPublished: boolean('is_published').notNull().default(false),
+    blobStoragePrefix: text('blob_storage_prefix'),
+    createdByUserId: text('created_by_user_id'),
+    updatedByUserId: text('updated_by_user_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_form_templates_audience').on(table.audienceScope),
+    index('idx_form_templates_storage_scope').on(table.storageScope),
+    index('idx_form_templates_published').on(table.isPublished),
+  ]
+);
+
+export type FormTemplateRow = typeof formTemplates.$inferSelect;
+export type NewFormTemplateRow = typeof formTemplates.$inferInsert;
+
+export const formInstances = pgTable(
+  'form_instances',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    submissionId: uuid('submission_id').notNull().unique().references(() => submissions.id, { onDelete: 'cascade' }),
+    templateId: uuid('template_id').notNull().references(() => formTemplates.id, { onDelete: 'restrict' }),
+    templateVersion: integer('template_version').notNull(),
+    storageScope: text('storage_scope').notNull(),
+    ownerOrganizationId: uuid('owner_organization_id').references(() => organizations.id, { onDelete: 'set null' }),
+    coverageZoneId: uuid('coverage_zone_id').references(() => coverageZones.id, { onDelete: 'set null' }),
+    recipientRole: text('recipient_role'),
+    recipientUserId: text('recipient_user_id'),
+    recipientOrganizationId: uuid('recipient_organization_id').references(() => organizations.id, { onDelete: 'set null' }),
+    blobStoragePrefix: text('blob_storage_prefix'),
+    formData: jsonb('form_data').notNull().default({}),
+    attachmentManifest: jsonb('attachment_manifest').notNull().default([]),
+    lastSavedAt: timestamp('last_saved_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_form_instances_template').on(table.templateId),
+    index('idx_form_instances_owner_org').on(table.ownerOrganizationId),
+    index('idx_form_instances_recipient_role').on(table.recipientRole),
+    index('idx_form_instances_recipient_org').on(table.recipientOrganizationId),
+    index('idx_form_instances_coverage_zone').on(table.coverageZoneId),
+    index('idx_form_instances_last_saved').on(table.lastSavedAt),
+  ]
+);
+
+export type FormInstanceRow = typeof formInstances.$inferSelect;
+export type NewFormInstanceRow = typeof formInstances.$inferInsert;
+
+// ============================================================
+// RELATIONS (Zone C Live Tables)
+// ============================================================
+
+export const organizationsRelations = relations(organizations, ({ many }) => ({
+  locations: many(locations),
+  services: many(services),
+  phones: many(phones),
+  contacts: many(contacts),
+  programs: many(programs),
+  organizationMembers: many(organizationMembers),
+  ownedFormInstances: many(formInstances),
+  recipientFormInstances: many(formInstances),
+}));
+
+export const formTemplatesRelations = relations(formTemplates, ({ many }) => ({
+  instances: many(formInstances),
+}));
+
+export const formInstancesRelations = relations(formInstances, ({ one }) => ({
+  template: one(formTemplates, {
+    fields: [formInstances.templateId],
+    references: [formTemplates.id],
+  }),
+  submission: one(submissions, {
+    fields: [formInstances.submissionId],
+    references: [submissions.id],
+  }),
+  ownerOrganization: one(organizations, {
+    fields: [formInstances.ownerOrganizationId],
+    references: [organizations.id],
+    relationName: 'form_instance_owner_org',
+  }),
+  recipientOrganization: one(organizations, {
+    fields: [formInstances.recipientOrganizationId],
+    references: [organizations.id],
+    relationName: 'form_instance_recipient_org',
+  }),
+  coverageZone: one(coverageZones, {
+    fields: [formInstances.coverageZoneId],
+    references: [coverageZones.id],
+  }),
+}));
+
+export const locationsRelations = relations(locations, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [locations.organizationId],
+    references: [organizations.id],
+  }),
+  phones: many(phones),
+  addresses: many(addresses),
+  schedules: many(schedules),
+  serviceAtLocation: many(serviceAtLocation),
+  languagesAtLocation: many(languagesTable),
+  accessibilityForDisabilities: many(accessibilityForDisabilities),
+  contacts: many(contacts),
+}));
+
+export const servicesRelations = relations(services, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [services.organizationId],
+    references: [organizations.id],
+  }),
+  phones: many(phones),
+  serviceAtLocation: many(serviceAtLocation),
+  serviceTaxonomy: many(serviceTaxonomy),
+  confidenceScores: many(confidenceScores),
+  verificationQueue: many(verificationQueue),
+  seekerFeedback: many(seekerFeedback),
+  eligibility: many(eligibility),
+  requiredDocuments: many(requiredDocuments),
+  serviceAreas: many(serviceAreas),
+  languagesAtService: many(languagesTable),
+  contacts: many(contacts),
+  savedServices: many(savedServices),
+  serviceAttributes: many(serviceAttributes),
+  serviceAdaptations: many(serviceAdaptations),
+  dietaryOptions: many(dietaryOptions),
+  schedules: many(schedules),
+}));
+
+export const programsRelations = relations(programs, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [programs.organizationId],
+    references: [organizations.id],
+  }),
+}));
+
+export const serviceAtLocationRelations = relations(serviceAtLocation, ({ one }) => ({
+  service: one(services, {
+    fields: [serviceAtLocation.serviceId],
+    references: [services.id],
+  }),
+  location: one(locations, {
+    fields: [serviceAtLocation.locationId],
+    references: [locations.id],
+  }),
+}));
+
+export const phonesRelations = relations(phones, ({ one }) => ({
+  location: one(locations, {
+    fields: [phones.locationId],
+    references: [locations.id],
+  }),
+  service: one(services, {
+    fields: [phones.serviceId],
+    references: [services.id],
+  }),
+  organization: one(organizations, {
+    fields: [phones.organizationId],
+    references: [organizations.id],
+  }),
+}));
+
+export const addressesRelations = relations(addresses, ({ one }) => ({
+  location: one(locations, {
+    fields: [addresses.locationId],
+    references: [locations.id],
+  }),
+}));
+
+export const schedulesRelations = relations(schedules, ({ one }) => ({
+  service: one(services, {
+    fields: [schedules.serviceId],
+    references: [services.id],
+  }),
+  location: one(locations, {
+    fields: [schedules.locationId],
+    references: [locations.id],
+  }),
+}));
+
+export const taxonomyTermsRelations = relations(taxonomyTerms, ({ one, many }) => ({
+  parent: one(taxonomyTerms, {
+    fields: [taxonomyTerms.parentId],
+    references: [taxonomyTerms.id],
+    relationName: 'taxonomy_parent_child',
+  }),
+  children: many(taxonomyTerms, {
+    relationName: 'taxonomy_parent_child',
+  }),
+  serviceTaxonomy: many(serviceTaxonomy),
+}));
+
+export const serviceTaxonomyRelations = relations(serviceTaxonomy, ({ one }) => ({
+  service: one(services, {
+    fields: [serviceTaxonomy.serviceId],
+    references: [services.id],
+  }),
+  taxonomyTerm: one(taxonomyTerms, {
+    fields: [serviceTaxonomy.taxonomyTermId],
+    references: [taxonomyTerms.id],
+  }),
+}));
+
+export const confidenceScoresRelations = relations(confidenceScores, ({ one }) => ({
+  service: one(services, {
+    fields: [confidenceScores.serviceId],
+    references: [services.id],
+  }),
+}));
+
+export const verificationQueueRelations = relations(verificationQueue, ({ one, many }) => ({
+  service: one(services, {
+    fields: [verificationQueue.serviceId],
+    references: [services.id],
+  }),
+  evidence: many(verificationEvidence),
+}));
+
+export const seekerFeedbackRelations = relations(seekerFeedback, ({ one }) => ({
+  service: one(services, {
+    fields: [seekerFeedback.serviceId],
+    references: [services.id],
+  }),
+}));
+
+export const eligibilityRelations = relations(eligibility, ({ one }) => ({
+  service: one(services, {
+    fields: [eligibility.serviceId],
+    references: [services.id],
+  }),
+}));
+
+export const requiredDocumentsRelations = relations(requiredDocuments, ({ one }) => ({
+  service: one(services, {
+    fields: [requiredDocuments.serviceId],
+    references: [services.id],
+  }),
+}));
+
+export const serviceAreasRelations = relations(serviceAreas, ({ one }) => ({
+  service: one(services, {
+    fields: [serviceAreas.serviceId],
+    references: [services.id],
+  }),
+}));
+
+export const languagesTableRelations = relations(languagesTable, ({ one }) => ({
+  service: one(services, {
+    fields: [languagesTable.serviceId],
+    references: [services.id],
+  }),
+  location: one(locations, {
+    fields: [languagesTable.locationId],
+    references: [locations.id],
+  }),
+}));
+
+export const accessibilityForDisabilitiesRelations = relations(accessibilityForDisabilities, ({ one }) => ({
+  location: one(locations, {
+    fields: [accessibilityForDisabilities.locationId],
+    references: [locations.id],
+  }),
+}));
+
+export const contactsRelations = relations(contacts, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [contacts.organizationId],
+    references: [organizations.id],
+  }),
+  service: one(services, {
+    fields: [contacts.serviceId],
+    references: [services.id],
+  }),
+  location: one(locations, {
+    fields: [contacts.locationId],
+    references: [locations.id],
+  }),
+}));
+
+export const savedServicesRelations = relations(savedServices, ({ one }) => ({
+  service: one(services, {
+    fields: [savedServices.serviceId],
+    references: [services.id],
+  }),
+}));
+
+export const verificationEvidenceRelations = relations(verificationEvidence, ({ one }) => ({
+  queueEntry: one(verificationQueue, {
+    fields: [verificationEvidence.queueEntryId],
+    references: [verificationQueue.id],
+  }),
+}));
+
+export const serviceAttributesRelations = relations(serviceAttributes, ({ one }) => ({
+  service: one(services, {
+    fields: [serviceAttributes.serviceId],
+    references: [services.id],
+  }),
+}));
+
+export const serviceAdaptationsRelations = relations(serviceAdaptations, ({ one }) => ({
+  service: one(services, {
+    fields: [serviceAdaptations.serviceId],
+    references: [services.id],
+  }),
+}));
+
+export const dietaryOptionsRelations = relations(dietaryOptions, ({ one }) => ({
+  service: one(services, {
+    fields: [dietaryOptions.serviceId],
+    references: [services.id],
+  }),
+}));
+
+export const importBatchesRelations = relations(importBatches, ({ many }) => ({
+  stagingOrganizations: many(stagingOrganizations),
+  stagingLocations: many(stagingLocations),
+  stagingServices: many(stagingServices),
+}));
+
+export const stagingOrganizationsRelations = relations(stagingOrganizations, ({ one }) => ({
+  importBatch: one(importBatches, {
+    fields: [stagingOrganizations.importBatchId],
+    references: [importBatches.id],
+  }),
+}));
+
+export const stagingLocationsRelations = relations(stagingLocations, ({ one }) => ({
+  importBatch: one(importBatches, {
+    fields: [stagingLocations.importBatchId],
+    references: [importBatches.id],
+  }),
+}));
+
+export const stagingServicesRelations = relations(stagingServices, ({ one }) => ({
+  importBatch: one(importBatches, {
+    fields: [stagingServices.importBatchId],
+    references: [importBatches.id],
+  }),
+}));
+
+export const organizationMembersRelations = relations(organizationMembers, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [organizationMembers.organizationId],
+    references: [organizations.id],
   }),
 }));

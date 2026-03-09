@@ -22,15 +22,31 @@ import type { Organization } from '@/domain/types';
 // SCHEMAS
 // ============================================================
 
+const SocialLinksSchema = z.object({
+  website:   z.string().url().max(2000).optional().nullable(),
+  facebook:  z.string().url().max(2000).optional().nullable(),
+  instagram: z.string().url().max(2000).optional().nullable(),
+  twitter:   z.string().url().max(2000).optional().nullable(),
+  linkedin:  z.string().url().max(2000).optional().nullable(),
+  youtube:   z.string().url().max(2000).optional().nullable(),
+  tiktok:    z.string().url().max(2000).optional().nullable(),
+  phone:     z.string().max(30).optional().nullable(),
+});
+
 const UpdateOrgSchema = z.object({
   name:              z.string().min(1).max(500).optional(),
   description:       z.string().max(5000).optional(),
-  url:               z.string().url().max(2000).optional(),
-  email:             z.string().email().max(500).optional(),
+  url:               z.string().url().max(2000).optional().or(z.literal('')).optional(),
+  email:             z.string().email().max(500).optional().or(z.literal('')).optional(),
   taxStatus:         z.string().max(200).optional(),
   taxId:             z.string().max(100).optional(),
   yearIncorporated:  z.number().int().min(1800).max(2100).optional(),
   legalStatus:       z.string().max(200).optional(),
+  logoUrl:           z.string().url().max(2000).optional().or(z.literal('')).optional(),
+  missionStatement:  z.string().max(2000).optional(),
+  whoWeServe:        z.string().max(2000).optional(),
+  serviceRegion:     z.string().max(500).optional(),
+  socialLinks:       SocialLinksSchema.optional(),
 }).refine((d) => Object.keys(d).length > 0, { message: 'At least one field required' });
 
 // ============================================================
@@ -89,6 +105,8 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     const rows = await executeQuery<Organization>(
       `SELECT id, name, description, url, email, tax_status, tax_id,
               year_incorporated, legal_status, logo_url, uri,
+              mission_statement, who_we_serve, service_region, social_links,
+              verified_at, verified_by_user_id,
               created_at, updated_at
        FROM organizations WHERE id = $1 ${statusFilter}`,
       [id],
@@ -184,6 +202,10 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
     taxId: 'tax_id',
     yearIncorporated: 'year_incorporated',
     legalStatus: 'legal_status',
+    logoUrl: 'logo_url',
+    missionStatement: 'mission_statement',
+    whoWeServe: 'who_we_serve',
+    serviceRegion: 'service_region',
   };
 
   for (const [tsKey, dbCol] of Object.entries(fieldMap)) {
@@ -191,6 +213,12 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
       params.push((d as Record<string, unknown>)[tsKey] ?? null);
       setClauses.push(`${dbCol} = $${params.length}`);
     }
+  }
+
+  // Handle socialLinks JSONB separately (must be JSON-encoded)
+  if ('socialLinks' in d && d.socialLinks !== undefined) {
+    params.push(JSON.stringify(d.socialLinks));
+    setClauses.push(`social_links = $${params.length}`);
   }
 
   // Add updated_by_user_id if authenticated
@@ -208,7 +236,9 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
          SET ${setClauses.join(', ')}
          WHERE id = $${params.length}
          RETURNING id, name, description, url, email, tax_status, tax_id,
-                   year_incorporated, legal_status, logo_url, uri, created_at, updated_at`,
+                   year_incorporated, legal_status, logo_url, uri,
+                   mission_statement, who_we_serve, service_region, social_links,
+                   verified_at, verified_by_user_id, created_at, updated_at`,
         params,
       );
 

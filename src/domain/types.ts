@@ -8,6 +8,18 @@
 // CORE HSDS ENTITIES
 // ============================================================
 
+/** Social / contact links map stored as JSONB (migration 0041) */
+export interface OrgSocialLinks {
+  website?: string | null;
+  facebook?: string | null;
+  instagram?: string | null;
+  twitter?: string | null;
+  linkedin?: string | null;
+  youtube?: string | null;
+  tiktok?: string | null;
+  phone?: string | null;
+}
+
 export interface Organization {
   id: string;
   name: string;
@@ -22,6 +34,18 @@ export interface Organization {
   uri?: string | null;
   /** Organization status: 'active', 'inactive', 'defunct' (migration 0007) */
   status: 'active' | 'inactive' | 'defunct';
+  /** Public-facing mission statement (migration 0041) */
+  missionStatement?: string | null;
+  /** Plain-language description of who this org serves (migration 0041) */
+  whoWeServe?: string | null;
+  /** Human-readable geographic scope (migration 0041) */
+  serviceRegion?: string | null;
+  /** Social/contact links JSONB (migration 0041) */
+  socialLinks?: OrgSocialLinks | null;
+  /** When ORAN marked this org as a verified provider (migration 0041) */
+  verifiedAt?: string | null;
+  /** ORAN admin who granted verified status (migration 0041) */
+  verifiedByUserId?: string | null;
   createdByUserId?: string | null;
   updatedByUserId?: string | null;
   updatedAt: Date;

@@ -781,6 +781,16 @@ Remaining work after this P0 slice belongs to P1 and P2, not the core gap items 
 - improve quota exhaustion handoff
 - improve crisis subject-awareness
 
+### P1 Status Update
+
+Status as of 2026-03-09:
+
+- implemented lightweight structured `sessionContext` carryover for active need, city, urgency, trust, taxonomy, attribute filters, delivery preferences, and profile-shaping state
+- implemented deterministic clarification responses for weak general queries before retrieval
+- implemented subject-aware crisis handling so third-party or informational crisis language gets immediate 911/988 guidance plus a clarification path instead of the self-harm hard stop
+- implemented quota handoff UI to Directory, Map, and one-click new-session restart with carried scope
+- added focused route, orchestrator, and chat-window regression coverage for the new P1 flows
+
 ### P2
 
 - add result diversification

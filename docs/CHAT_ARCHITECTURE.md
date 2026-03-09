@@ -45,6 +45,13 @@ User Message
 └─────────────────────┘
      │
      ▼
+┌──────────────────────────────────────────────┐
+│  4a. Clarification + Crisis Scope Guard      │  ← Deterministic weak-query and third-party crisis handling
+└──────────────────────────────────────────────┘
+     │ clarification required?
+     ├── YES → Return clarification response with truthful next-step chips. STOP.
+     │
+     ▼ can search
 ┌─────────────────────┐
 │  4b. Scope Guard     │  ← Deterministic off-topic / out-of-scope check
 └─────────────────────┘
@@ -85,6 +92,7 @@ Return ChatResponse (with eligibility disclaimer always included)
 
 - Runs synchronously before any other processing
 - Checks message against `CRISIS_KEYWORDS` constant (50+ terms)
+- Applies subject-awareness before hard-routing so clearly third-party or informational crisis language does not trigger the self-harm hard stop
 - Categories: suicidal ideation, self-harm, domestic violence, imminent danger, overdose, child abuse, homelessness emergency
 - **On detection**: Immediately return response containing:
   - Emergency numbers: **911** (life-threatening emergency)
@@ -145,6 +153,20 @@ Intent also extracts:
 - Population qualifier (veteran, senior, child, family)
 - Urgency qualifier (urgent, emergency, immediate, today)
 
+### Stage 4a: Clarification + Crisis Scope Guard
+
+- Weak general queries now trigger a deterministic clarification response before retrieval
+- Clarification only fires when the system lacks enough structured scope to search honestly
+- Clarification responses include `retrievalStatus='clarification_required'` plus suggestion chips for common service categories
+- If the active chat session already has structured scope, ambiguous follow-up turns may inherit:
+     - active need
+     - active city
+     - trust filter
+     - taxonomy filters
+     - attribute filters
+     - preferred delivery modes
+- Third-party or informational crisis language returns immediate 911/988 guidance without showing the self-harm crisis banner, then asks the seeker to specify the local service type they want to find
+
 ### Stage 4b: Scope Guard
 
 - After intent detection and before retrieval, the orchestrator applies a deterministic out-of-scope guard for requests that are clearly not about finding services or support resources
@@ -181,6 +203,13 @@ For anonymous users:
 - Use geo from request (IP-based approximate location) if explicitly allowed
 - No profile persistence
 
+For all sessions:
+
+- The request may include a lightweight `sessionContext` contract carried in browser session storage
+- Session context is limited to structured scope only, not raw transcript history
+- Current session context may carry forward active need, city, urgency, delivery preferences, trust filter, taxonomy filters, and attribute filters
+- Session context is visible in the UI and can be cleared field-by-field
+
 ### Stage 6: Retrieval
 
 Pure SQL query against PostgreSQL/PostGIS:
@@ -206,6 +235,7 @@ Pure SQL query against PostgreSQL/PostGIS:
   - `no_match`: the catalog has records in scope, but none matched the current query closely enough
   - `catalog_empty_for_scope`: the catalog is effectively empty for the current scope/filter combination
   - `temporarily_unavailable`: search infrastructure or DB access was unavailable
+     - `clarification_required`: retrieval was intentionally skipped because the query lacked enough search scope
   - `out_of_scope`: handled before retrieval when the request is outside the service-finding boundary
 
 Current schema-backed mappings:
@@ -254,7 +284,9 @@ Build `ChatResponse` from retrieved records:
 - Always append `ELIGIBILITY_DISCLAIMER`
 - Never generate or infer data not in the record
 - Include `retrievalStatus` so the UI can distinguish no-match, sparse-catalog, temporary-unavailability, and out-of-scope states
-- Include `searchInterpretation` so the UI can disclose the normalized search framing used for the turn, including whether saved profile shaping influenced ordering or was explicitly ignored
+- Include `activeContextUsed` + `sessionContext` so the UI can disclose and persist structured turn scope between requests
+- Include `searchInterpretation` so the UI can disclose the normalized search framing used for the turn, including whether saved profile shaping influenced ordering or was explicitly ignored, and whether session context was inherited
+- Include `clarification` metadata when retrieval is intentionally deferred pending a clearer request
 
 #### Contextual link selection (deep links vs general links)
 

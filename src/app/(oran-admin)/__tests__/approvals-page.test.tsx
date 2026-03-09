@@ -15,6 +15,12 @@ vi.mock('@/components/ui/skeleton', () => ({
   SkeletonCard: () => <div data-testid="claims-skeleton">Loading...</div>,
 }));
 
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>{children}</a>
+  ),
+}));
+
 vi.mock('@/components/ui/button', () => ({
   Button: ({
     children,
@@ -116,7 +122,8 @@ describe('oran admin approvals page', () => {
     render(<ApprovalsPage />);
     await screen.findByText('Helping Hands Org');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+    expect(screen.getByRole('link', { name: 'Card review' })).toHaveAttribute('href', '/approvals/claim-1');
+    fireEvent.click(screen.getByRole('button', { name: 'Quick action' }));
     const denyButton = screen.getByRole('button', { name: 'Deny' });
     expect(denyButton).toBeDisabled();
 
@@ -138,7 +145,7 @@ describe('oran admin approvals page', () => {
       });
       expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/admin/approvals?page=1&limit=20');
       expect(toastSuccessMock).toHaveBeenCalledWith('Claim denied successfully');
-      expect(screen.getByRole('alert')).toHaveTextContent('Decision recorded');
+      expect(screen.getByRole('status')).toHaveTextContent('Decision recorded');
     });
   });
 
@@ -156,7 +163,7 @@ describe('oran admin approvals page', () => {
     render(<ApprovalsPage />);
     await screen.findByText('Helping Hands Org');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Quick action' }));
     fireEvent.change(screen.getByLabelText('Decision notes'), {
       target: { value: 'reason provided' },
     });

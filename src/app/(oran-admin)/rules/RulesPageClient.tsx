@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormAlert } from '@/components/ui/form-alert';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 
 // ============================================================
@@ -112,28 +113,31 @@ function RulesPageInner() {
 
   return (
     <>
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Settings className="h-6 w-6 text-action-base" aria-hidden="true" />
-            System Rules &amp; Feature Flags
-          </h1>
-          <p className="mt-1 text-sm text-gray-600">
-            Configure feature flags and rollout percentages.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1"
-          onClick={() => void fetchFlags()}
-          disabled={isLoading}
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="ORAN Admin"
+        title="System Rules & Feature Flags"
+        icon={<Settings className="h-6 w-6 text-action-base" aria-hidden="true" />}
+        subtitle="Configure feature flags and staged rollout percentages for platform features."
+        badges={
+          <>
+            <PageHeaderBadge tone="trust">Flag changes affect platform behavior immediately</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Rollouts stay explicit and reviewable</PageHeaderBadge>
+            <PageHeaderBadge>{flags.length > 0 ? `${flags.length} flags` : 'No flags loaded yet'}</PageHeaderBadge>
+          </>
+        }
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => void fetchFlags()}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Save result */}
       {saveResult && (

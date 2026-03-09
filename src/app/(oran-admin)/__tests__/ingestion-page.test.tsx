@@ -21,6 +21,11 @@ vi.mock('@/components/ui/button', () => ({
   }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
 }));
 
+vi.mock('@/components/ui/toast', () => ({
+  useToast: () => ({ toast: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+  ToastProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 import IngestionPage from '@/app/(oran-admin)/ingestion/page';
 
 function makeSourcesResponse(overrides: Record<string, unknown> = {}) {

@@ -117,7 +117,7 @@ describe('oran admin rules page', () => {
         }),
       });
       expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/admin/rules');
-      expect(screen.getByRole('alert')).toHaveTextContent('Flag updated');
+      expect(screen.getByRole('status')).toHaveTextContent('Flag updated');
     });
   });
 

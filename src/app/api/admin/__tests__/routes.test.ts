@@ -37,6 +37,7 @@ vi.mock('@/services/auth/guards', () => ({
 vi.mock('@/services/workflow/engine', () => engineMocks);
 vi.mock('@/services/flags/flags', () => ({
   flagService: flagServiceMocks,
+  getFlagServiceImplementation: vi.fn().mockResolvedValue('in_memory'),
 }));
 
 function createRequest(options: {
@@ -232,6 +233,7 @@ describe('admin api routes', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       flags: [{ name: 'chat-summary', enabled: true, rolloutPct: 100 }],
+      implementation: 'in_memory',
     });
   });
 

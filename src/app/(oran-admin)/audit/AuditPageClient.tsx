@@ -17,6 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormAlert } from '@/components/ui/form-alert';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 
 // ============================================================
@@ -161,28 +162,31 @@ function AuditPageInner() {
 
   return (
     <>
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <ScrollText className="h-6 w-6 text-action-base" aria-hidden="true" />
-            Audit Log
-          </h1>
-          <p className="mt-1 text-sm text-gray-600">
-            Full system audit trail for all write operations.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1"
-          onClick={() => void fetchLogs(page, actionFilter, tableFilter)}
-          disabled={isLoading}
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="ORAN Admin"
+        title="Audit Log"
+        icon={<ScrollText className="h-6 w-6 text-action-base" aria-hidden="true" />}
+        subtitle="Full system audit trail for write operations and governance changes."
+        badges={
+          <>
+            <PageHeaderBadge tone="trust">Sensitive actions stay auditable</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">IP addresses remain privacy-masked in the UI</PageHeaderBadge>
+            <PageHeaderBadge>{data ? `${data.total} entries` : 'Loading audit log'}</PageHeaderBadge>
+          </>
+        }
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => void fetchLogs(page, actionFilter, tableFilter)}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-4">

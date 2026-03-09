@@ -16,10 +16,13 @@ import { AccessDenied } from '@/components/ui/access-denied';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AppFooter } from '@/components/footer';
 import { PortalUserMenu } from '@/components/ui/portal-user-menu';
+import OranAdminContextStrip from '@/components/oran-admin/OranAdminContextStrip';
 
 const NAV_ITEMS = [
   { href: '/approvals', label: 'Approvals' },
   { href: '/appeals', label: 'Appeals' },
+  { href: '/discovery-preview', label: 'Discovery Preview' },
+  { href: '/forms', label: 'Forms' },
   { href: '/scopes', label: 'Scopes' },
   { href: '/rules', label: 'Rules' },
   { href: '/audit', label: 'Audit' },
@@ -80,6 +83,8 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
           </div>
         </div>
       </header>
+
+      <OranAdminContextStrip />
 
       <main id="main-content" className="container mx-auto max-w-7xl px-4 py-6">{children}</main>
       <AppFooter />

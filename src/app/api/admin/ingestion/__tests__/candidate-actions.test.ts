@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbConfigMock = vi.hoisted(() => vi.fn());
-const executeQueryMock = vi.hoisted(() => vi.fn());
 const rateLimitMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
 const authMocks = vi.hoisted(() => ({
@@ -45,7 +44,6 @@ const stores = vi.hoisted(() => ({
 
 vi.mock('@/services/db/postgres', () => ({
   isDatabaseConfigured: dbConfigMock,
-  executeQuery: executeQueryMock,
 }));
 vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimit: rateLimitMock,
@@ -113,7 +111,6 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   dbConfigMock.mockReturnValue(true);
-  executeQueryMock.mockResolvedValue({ rows: [], rowCount: 0 });
   rateLimitMock.mockReturnValue({
     exceeded: false,
     retryAfterSeconds: 0,
@@ -210,10 +207,7 @@ describe('admin ingestion candidate action routes', () => {
         },
       }),
     );
-    expect(executeQueryMock).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO submissions'),
-      ['service-id', 'oran-1', 'Ingestion publish: candidate 11111111-1111-4111-8111-111111111111'],
-    );
+    expect(stores.audit.append).toHaveBeenCalledTimes(1);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       success: true,

@@ -5,7 +5,11 @@
 import type { Metadata } from 'next';
 import IngestionPageClient from './IngestionPageClient';
 
-export const metadata: Metadata = { title: 'Ingestion' };
+export const metadata: Metadata = {
+  title: 'Ingestion',
+  description: 'Run ingestion operations, monitor jobs, and manage candidate processing.',
+  robots: { index: false, follow: false },
+};
 
 export default function IngestionPage() {
   return <IngestionPageClient />;

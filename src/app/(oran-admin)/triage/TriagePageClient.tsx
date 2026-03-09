@@ -23,6 +23,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormAlert } from '@/components/ui/form-alert';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/toast';
@@ -195,27 +196,35 @@ function TriagePageInner() {
 
   return (
     <>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <ListFilter className="h-5 w-5 text-action" aria-hidden="true" />
-          <h1 className="text-xl font-bold text-gray-900">Triage Queue</h1>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void handleRescore()}
-          disabled={isRescoring}
-          className="gap-1"
-          aria-label="Re-score all pending submissions"
-        >
-          {isRescoring
-            ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            : <RefreshCw className="h-4 w-4" aria-hidden="true" />
-          }
-          Re-score All
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="ORAN Admin"
+        title="Triage Queue"
+        icon={<ListFilter className="h-6 w-6 text-action-base" aria-hidden="true" />}
+        subtitle="Review prioritized queues, anomaly signals, and re-score pending submissions when needed."
+        badges={
+          <>
+            <PageHeaderBadge tone="trust">Priority signals stay deterministic</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Active queue: {QUEUE_TYPE_LABELS[activeQueue]}</PageHeaderBadge>
+            <PageHeaderBadge>{data ? `${data.total} queued items` : 'Loading triage queue'}</PageHeaderBadge>
+          </>
+        }
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void handleRescore()}
+            disabled={isRescoring}
+            className="gap-1"
+            aria-label="Re-score all pending submissions"
+          >
+            {isRescoring
+              ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              : <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            }
+            Re-score All
+          </Button>
+        }
+      />
 
       {/* Summary cards */}
       {summaryError && (

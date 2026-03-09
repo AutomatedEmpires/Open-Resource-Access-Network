@@ -172,7 +172,7 @@ describe('oran admin zone management page', () => {
         }),
       });
       expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/admin/zones?page=1&limit=20');
-      expect(screen.getByRole('alert')).toHaveTextContent('Zone created');
+      expect(screen.getByRole('status')).toHaveTextContent('Zone created');
       expect(screen.getByText('Uptown')).toBeInTheDocument();
     });
   });
@@ -227,7 +227,7 @@ describe('oran admin zone management page', () => {
         }),
       });
       expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/admin/zones?page=1&limit=20');
-      expect(screen.getByRole('alert')).toHaveTextContent('Zone updated');
+      expect(screen.getByRole('status')).toHaveTextContent('Zone updated');
       expect(screen.getByText('Downtown East')).toBeInTheDocument();
     });
   });
@@ -323,7 +323,7 @@ describe('oran admin zone management page', () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/admin/zones/zone-1', { method: 'DELETE' });
       expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/admin/zones?page=1&limit=20');
-      expect(screen.getByRole('alert')).toHaveTextContent('Zone deleted');
+      expect(screen.getByRole('status')).toHaveTextContent('Zone deleted');
     });
   });
 });

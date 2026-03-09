@@ -19,6 +19,8 @@ import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormField } from '@/components/ui/form-field';
 import { FormAlert } from '@/components/ui/form-alert';
+import { FormSection } from '@/components/ui/form-section';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/toast';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import {
@@ -223,38 +225,41 @@ function ZoneManagementInner() {
 
   return (
     <>
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <MapPin className="h-6 w-6 text-action-base" aria-hidden="true" />
-            Coverage Zone Administration
-          </h1>
-          <p className="mt-1 text-sm text-gray-600">
-            Manage all coverage zones and community admin assignments.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1"
-            onClick={() => void fetchZones(page, statusFilter)}
-            disabled={isLoading}
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
-            Refresh
-          </Button>
-          <Button
-            size="sm"
-            className="gap-1"
-            onClick={() => setShowCreate(true)}
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            New Zone
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="ORAN Admin"
+        title="Coverage Zone Administration"
+        icon={<MapPin className="h-6 w-6 text-action-base" aria-hidden="true" />}
+        subtitle="Manage coverage zones and community admin assignments across the platform."
+        badges={
+          <>
+            <PageHeaderBadge tone="trust">Zone changes alter downstream review routing</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Assignments stay visible across communities</PageHeaderBadge>
+            <PageHeaderBadge>{data ? `${data.total} zones` : 'Loading zones'}</PageHeaderBadge>
+          </>
+        }
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={() => void fetchZones(page, statusFilter)}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+              Refresh
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1"
+              onClick={() => setShowCreate(true)}
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              New Zone
+            </Button>
+          </div>
+        }
+      />
 
       {/* Action result */}
       {actionResult && (
@@ -415,54 +420,66 @@ function ZoneManagementInner() {
                               }}
                               className="max-w-lg space-y-3"
                             >
-                              <FormField id={`edit-name-${zone.id}`} label="Zone name" required>
-                                <input
-                                  id={`edit-name-${zone.id}`}
-                                  type="text"
-                                  value={editName}
-                                  onChange={(e) => setEditName(e.target.value)}
-                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-                                  maxLength={500}
-                                />
-                              </FormField>
-                              <FormField id={`edit-desc-${zone.id}`} label="Description">
-                                <textarea
-                                  id={`edit-desc-${zone.id}`}
-                                  value={editDesc}
-                                  onChange={(e) => setEditDesc(e.target.value)}
-                                  rows={2}
-                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-                                  maxLength={5000}
-                                />
-                              </FormField>
-                              <div className="grid grid-cols-2 gap-3">
-                                <FormField
-                                  id={`edit-assigned-${zone.id}`}
-                                  label="Assigned admin ID"
-                                  hint="Leave empty to unassign"
-                                >
+                              <FormSection
+                                title="Zone details"
+                                description="Update the coverage-zone name and summary used across assignment and review flows."
+                                contentClassName="space-y-3"
+                              >
+                                <FormField id={`edit-name-${zone.id}`} label="Zone name" required>
                                   <input
-                                    id={`edit-assigned-${zone.id}`}
+                                    id={`edit-name-${zone.id}`}
                                     type="text"
-                                    value={editAssigned}
-                                    onChange={(e) => setEditAssigned(e.target.value)}
+                                    value={editName}
+                                    onChange={(e) => setEditName(e.target.value)}
                                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-                                    placeholder="Leave empty to unassign"
                                     maxLength={500}
                                   />
                                 </FormField>
-                                <FormField id={`edit-status-${zone.id}`} label="Status">
-                                  <select
-                                    id={`edit-status-${zone.id}`}
-                                    value={editStatus}
-                                    onChange={(e) => setEditStatus(e.target.value as ZoneStatus)}
+                                <FormField id={`edit-desc-${zone.id}`} label="Description">
+                                  <textarea
+                                    id={`edit-desc-${zone.id}`}
+                                    value={editDesc}
+                                    onChange={(e) => setEditDesc(e.target.value)}
+                                    rows={2}
                                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-                                  >
-                                    <option value="active">Active</option>
-                                    <option value="inactive">Inactive</option>
-                                  </select>
+                                    maxLength={5000}
+                                  />
                                 </FormField>
-                              </div>
+                              </FormSection>
+                              <FormSection
+                                title="Assignment and status"
+                                description="Control who owns the zone and whether it is active in the operations queue."
+                                contentClassName="space-y-0"
+                              >
+                                <div className="grid grid-cols-2 gap-3">
+                                  <FormField
+                                    id={`edit-assigned-${zone.id}`}
+                                    label="Assigned admin ID"
+                                    hint="Leave empty to unassign"
+                                  >
+                                    <input
+                                      id={`edit-assigned-${zone.id}`}
+                                      type="text"
+                                      value={editAssigned}
+                                      onChange={(e) => setEditAssigned(e.target.value)}
+                                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+                                      placeholder="Leave empty to unassign"
+                                      maxLength={500}
+                                    />
+                                  </FormField>
+                                  <FormField id={`edit-status-${zone.id}`} label="Status">
+                                    <select
+                                      id={`edit-status-${zone.id}`}
+                                      value={editStatus}
+                                      onChange={(e) => setEditStatus(e.target.value as ZoneStatus)}
+                                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+                                    >
+                                      <option value="active">Active</option>
+                                      <option value="inactive">Inactive</option>
+                                    </select>
+                                  </FormField>
+                                </div>
+                              </FormSection>
                               <div className="flex items-center gap-2">
                                 <Button
                                   type="submit"
@@ -547,55 +564,67 @@ function ZoneManagementInner() {
             }}
             className="space-y-3 py-2"
           >
-            <FormField id="create-name" label="Zone name" required>
-              <input
-                id="create-name"
-                type="text"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-                placeholder="e.g. Downtown Portland"
-                maxLength={500}
-              />
-            </FormField>
-            <FormField id="create-desc" label="Description">
-              <textarea
-                id="create-desc"
-                value={createDesc}
-                onChange={(e) => setCreateDesc(e.target.value)}
-                rows={2}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-                maxLength={5000}
-              />
-            </FormField>
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                id="create-assigned"
-                label="Assigned admin ID"
-                hint="Paste a user UUID or leave empty"
-              >
+            <FormSection
+              title="Zone details"
+              description="Create the coverage-zone record that community admins and ORAN operators will manage."
+              contentClassName="space-y-3"
+            >
+              <FormField id="create-name" label="Zone name" required>
                 <input
-                  id="create-assigned"
+                  id="create-name"
                   type="text"
-                  value={createAssigned}
-                  onChange={(e) => setCreateAssigned(e.target.value)}
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-                  placeholder="Optional"
+                  placeholder="e.g. Downtown Portland"
                   maxLength={500}
                 />
               </FormField>
-              <FormField id="create-status" label="Status">
-                <select
-                  id="create-status"
-                  value={createStatus}
-                  onChange={(e) => setCreateStatus(e.target.value as ZoneStatus)}
+              <FormField id="create-desc" label="Description">
+                <textarea
+                  id="create-desc"
+                  value={createDesc}
+                  onChange={(e) => setCreateDesc(e.target.value)}
+                  rows={2}
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
+                  maxLength={5000}
+                />
               </FormField>
-            </div>
+            </FormSection>
+            <FormSection
+              title="Assignment and status"
+              description="Optionally assign an admin now and decide whether the zone is immediately active."
+              contentClassName="space-y-0"
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  id="create-assigned"
+                  label="Assigned admin ID"
+                  hint="Paste a user UUID or leave empty"
+                >
+                  <input
+                    id="create-assigned"
+                    type="text"
+                    value={createAssigned}
+                    onChange={(e) => setCreateAssigned(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+                    placeholder="Optional"
+                    maxLength={500}
+                  />
+                </FormField>
+                <FormField id="create-status" label="Status">
+                  <select
+                    id="create-status"
+                    value={createStatus}
+                    onChange={(e) => setCreateStatus(e.target.value as ZoneStatus)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </FormField>
+              </div>
+            </FormSection>
           </form>
           <DialogFooter>
             <Button

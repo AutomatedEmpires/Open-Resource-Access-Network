@@ -10,6 +10,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
   ShieldCheck, RefreshCw, AlertTriangle,
   ChevronLeft, ChevronRight, CheckCircle2, XCircle,
@@ -20,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormField } from '@/components/ui/form-field';
 import { FormAlert } from '@/components/ui/form-alert';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useToast } from '@/components/ui/toast';
 import { SkeletonCard } from '@/components/ui/skeleton';
@@ -147,31 +149,31 @@ function ApprovalsPageInner() {
 
   return (
     <>
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-action-base" aria-hidden="true" />
-            Claim Approvals
-            <span className="ml-2 inline-flex items-center rounded-full bg-info-muted px-2.5 py-0.5 text-xs font-medium text-action-deep">
-              ORAN Admin
-            </span>
-          </h1>
-          <p className="mt-1 text-sm text-gray-600">
-            Final review and approve/deny organization ownership claims (platform-wide).
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1"
-          onClick={() => void fetchClaims(page, statusFilter)}
-          disabled={isLoading}
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="ORAN Admin"
+        title="Claim Approvals"
+        icon={<ShieldCheck className="h-6 w-6 text-action-base" aria-hidden="true" />}
+        subtitle="Final review and approve or deny organization ownership claims across the platform."
+        badges={
+          <>
+            <PageHeaderBadge tone="trust">Ownership decisions affect workspace control</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Platform-wide verification gate</PageHeaderBadge>
+            <PageHeaderBadge>{data ? `${data.total} claims` : 'Loading claims'}</PageHeaderBadge>
+          </>
+        }
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => void fetchClaims(page, statusFilter)}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Result announcement */}
       {submitResult && (
@@ -299,14 +301,25 @@ function ApprovalsPageInner() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           {canDecide && !isDeciding && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setDecidingId(row.id)}
-                              className="gap-1"
-                            >
-                              Review
-                            </Button>
+                            <div className="flex justify-end gap-2">
+                              <Link href={`/approvals/${row.id}`}>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="gap-1"
+                                >
+                                  Card review
+                                </Button>
+                              </Link>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDecidingId(row.id)}
+                                className="gap-1"
+                              >
+                                Quick action
+                              </Button>
+                            </div>
                           )}
                           {isDeciding && (
                             <Button

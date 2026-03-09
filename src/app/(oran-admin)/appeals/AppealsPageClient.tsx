@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormField } from '@/components/ui/form-field';
 import { FormAlert } from '@/components/ui/form-alert';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { useToast } from '@/components/ui/toast';
 import { SkeletonCard } from '@/components/ui/skeleton';
@@ -167,28 +168,31 @@ function AppealsPageInner() {
 
   return (
     <>
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Scale className="h-6 w-6 text-purple-600" aria-hidden="true" />
-            Appeal Review
-          </h1>
-          <p className="mt-1 text-sm text-gray-600">
-            Review appeals on denied submissions. Approved appeals re-open the original for re-review.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1"
-          onClick={() => void fetchAppeals(page, statusFilter)}
-          disabled={isLoading}
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="ORAN Admin"
+        title="Appeal Review"
+        icon={<Scale className="h-6 w-6 text-action-base" aria-hidden="true" />}
+        subtitle="Review appeals on denied submissions. Approved appeals re-open the original record for re-review."
+        badges={
+          <>
+            <PageHeaderBadge tone="trust">Appeals preserve review accountability</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Denied records can re-enter the queue</PageHeaderBadge>
+            <PageHeaderBadge>{data ? `${data.total} appeals` : 'Loading appeals'}</PageHeaderBadge>
+          </>
+        }
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => void fetchAppeals(page, statusFilter)}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Result announcement */}
       {submitResult && (

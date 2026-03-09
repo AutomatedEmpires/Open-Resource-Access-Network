@@ -21,6 +21,8 @@ import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormField } from '@/components/ui/form-field';
 import { FormAlert } from '@/components/ui/form-alert';
+import { FormSection } from '@/components/ui/form-section';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { type StatusStyle } from '@/domain/status-styles';
 import { useToast } from '@/components/ui/toast';
@@ -158,124 +160,135 @@ function TemplateForm({ initial, onSave, onCancel }: TemplateFormProps) {
 
   return (
     <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 p-4 border border-gray-200 rounded-xl bg-gray-50">
-      <h3 className="font-semibold text-gray-900">
-        {initial ? 'Edit Template' : 'New Template'}
-      </h3>
-
-      {formError && <FormAlert variant="error" message={formError} />}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField id="tpl-title" label="Title">
-          <input
-            id="tpl-title"
-            type="text"
-            value={title}
-            onChange={(e) => handleTitleChange(e.target.value)}
-            required
-            maxLength={300}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-          />
-        </FormField>
-        <FormField id="tpl-slug" label="Slug" hint="Lowercase, hyphens only">
-          <input
-            id="tpl-slug"
-            type="text"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            required
-            maxLength={200}
-            pattern="[a-z0-9-]+"
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-          />
-        </FormField>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <FormField id="tpl-scope" label="Role Scope">
-          <select
-            id="tpl-scope"
-            value={roleScope}
-            onChange={(e) => setRoleScope(e.target.value as TemplateRoleScope)}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-          >
-            {TEMPLATE_ROLE_SCOPES.map((s) => (
-              <option key={s} value={s}>{SCOPE_LABELS[s]}</option>
-            ))}
-          </select>
-        </FormField>
-        <FormField id="tpl-category" label="Category">
-          <select
-            id="tpl-category"
-            value={category}
-            onChange={(e) => setCategory(e.target.value as TemplateCategory)}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-          >
-            {TEMPLATE_CATEGORIES.map((c) => (
-              <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
-            ))}
-          </select>
-        </FormField>
-        <FormField id="tpl-lang" label="Language" hint="2-letter code, e.g. en">
-          <input
-            id="tpl-lang"
-            type="text"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            maxLength={2}
-            pattern="[a-z]{2}"
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-          />
-        </FormField>
-      </div>
-
-      <FormField id="tpl-tags" label="Tags" hint="Comma-separated">
-        <input
-          id="tpl-tags"
-          type="text"
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-          maxLength={500}
-          placeholder="e.g. onboarding, verification, admin"
-          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-        />
-      </FormField>
-
-      <FormField
-        id="tpl-content"
-        label="Content (Markdown)"
-        charCount={content.length}
-        maxChars={100_000}
+      <FormSection
+        title={initial ? 'Edit Template' : 'New Template'}
+        description="Define the template identity, scope, and content before publishing it to the library."
+        className="border-0 bg-transparent p-0 shadow-none"
       >
-        <textarea
-          id="tpl-content"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          required
-          rows={12}
-          maxLength={100_000}
-          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-action"
-        />
-      </FormField>
 
-      <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={isPublished}
-          onChange={(e) => setIsPublished(e.target.checked)}
-          className="rounded"
-        />
-        Publish immediately (visible in template library)
-      </label>
+        {formError && <FormAlert variant="error" message={formError} />}
 
-      <div className="flex items-center gap-2 pt-2">
-        <Button type="submit" disabled={isSubmitting} className="gap-1">
-          {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-          {initial ? 'Save Changes' : 'Create Template'}
-        </Button>
-        <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
-          Cancel
-        </Button>
-      </div>
+        <FormSection title="Template identity" description="Set the title and slug that admins will use to find this template later.">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField id="tpl-title" label="Title">
+              <input
+                id="tpl-title"
+                type="text"
+                value={title}
+                onChange={(e) => handleTitleChange(e.target.value)}
+                required
+                maxLength={300}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+              />
+            </FormField>
+            <FormField id="tpl-slug" label="Slug" hint="Lowercase, hyphens only">
+              <input
+                id="tpl-slug"
+                type="text"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                required
+                maxLength={200}
+                pattern="[a-z0-9-]+"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+              />
+            </FormField>
+          </div>
+        </FormSection>
+
+        <FormSection title="Audience and metadata" description="Choose who should see the template and how it should be categorized.">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <FormField id="tpl-scope" label="Role Scope">
+              <select
+                id="tpl-scope"
+                value={roleScope}
+                onChange={(e) => setRoleScope(e.target.value as TemplateRoleScope)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+              >
+                {TEMPLATE_ROLE_SCOPES.map((s) => (
+                  <option key={s} value={s}>{SCOPE_LABELS[s]}</option>
+                ))}
+              </select>
+            </FormField>
+            <FormField id="tpl-category" label="Category">
+              <select
+                id="tpl-category"
+                value={category}
+                onChange={(e) => setCategory(e.target.value as TemplateCategory)}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+              >
+                {TEMPLATE_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                ))}
+              </select>
+            </FormField>
+            <FormField id="tpl-lang" label="Language" hint="2-letter code, e.g. en">
+              <input
+                id="tpl-lang"
+                type="text"
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                maxLength={2}
+                pattern="[a-z]{2}"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+              />
+            </FormField>
+          </div>
+          <FormField id="tpl-tags" label="Tags" hint="Comma-separated">
+            <input
+              id="tpl-tags"
+              type="text"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              maxLength={500}
+              placeholder="e.g. onboarding, verification, admin"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+            />
+          </FormField>
+        </FormSection>
+
+        <FormSection title="Template content" description="Write the Markdown content and decide whether to publish it immediately.">
+          <FormField
+            id="tpl-content"
+            label="Content (Markdown)"
+            charCount={content.length}
+            maxChars={100_000}
+          >
+            <textarea
+              id="tpl-content"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              required
+              rows={12}
+              maxLength={100_000}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-action"
+            />
+          </FormField>
+
+          <FormField id="tpl-published" label="Publish immediately" hint="Visible in the template library as soon as you save.">
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+              <input
+                id="tpl-published"
+                type="checkbox"
+                checked={isPublished}
+                onChange={(e) => setIsPublished(e.target.checked)}
+                className="rounded"
+              />
+              Publish immediately (visible in template library)
+            </label>
+          </FormField>
+        </FormSection>
+
+        <div className="flex items-center gap-2 pt-2">
+          <Button type="submit" disabled={isSubmitting} className="gap-1">
+            {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            {initial ? 'Save Changes' : 'Create Template'}
+          </Button>
+          <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
+            Cancel
+          </Button>
+        </div>
+      </FormSection>
     </form>
   );
 }
@@ -363,37 +376,42 @@ function TemplatesPageInner() {
 
   return (
     <>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <BookOpen className="h-5 w-5 text-action" aria-hidden="true" />
-          <h1 className="text-xl font-bold text-gray-900">Content Templates</h1>
-          {data && (
-            <span className="text-sm text-gray-500 ml-1">({data.total} total)</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void fetchTemplates(page, categoryFilter)}
-            disabled={isLoading}
-            className="gap-1"
-            aria-label="Refresh templates list"
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
-            Refresh
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => { setEditingTemplate(null); setShowForm(true); }}
-            className="gap-1"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            New Template
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="ORAN Admin"
+        title="Content Templates"
+        icon={<BookOpen className="h-6 w-6 text-action-base" aria-hidden="true" />}
+        subtitle="Publish shared guidance, onboarding, and policy content for role-based portal workflows."
+        badges={
+          <>
+            <PageHeaderBadge tone="trust">Published templates guide downstream teams</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Role-scoped knowledge artifacts</PageHeaderBadge>
+            <PageHeaderBadge>{data ? `${data.total} total` : 'Loading templates'}</PageHeaderBadge>
+          </>
+        }
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void fetchTemplates(page, categoryFilter)}
+              disabled={isLoading}
+              className="gap-1"
+              aria-label="Refresh templates list"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+              Refresh
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => { setEditingTemplate(null); setShowForm(true); }}
+              className="gap-1"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              New Template
+            </Button>
+          </div>
+        }
+      />
 
       {/* Filter bar */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">

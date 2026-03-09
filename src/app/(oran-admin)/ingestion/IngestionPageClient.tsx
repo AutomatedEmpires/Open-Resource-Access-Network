@@ -22,8 +22,11 @@ import {
 } from 'lucide-react';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormAlert } from '@/components/ui/form-alert';
+import { FormField } from '@/components/ui/form-field';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
 import { formatDateSafe } from '@/lib/format';
 
 // ============================================================
@@ -63,6 +66,22 @@ interface Candidate {
   confidenceScore?: number;
   fields: Record<string, unknown>;
 }
+
+interface SourceDraft {
+  displayName: string;
+  trustLevel: Source['trustLevel'];
+  domainValue: string;
+  domainType: 'exact_host' | 'suffix';
+  seedUrl: string;
+}
+
+const EMPTY_SOURCE_DRAFT: SourceDraft = {
+  displayName: '',
+  trustLevel: 'quarantine',
+  domainValue: '',
+  domainType: 'exact_host',
+  seedUrl: '',
+};
 
 // ============================================================
 // Constants
@@ -131,9 +150,12 @@ function StatusBadge({ status, styles }: { status: string; styles: Record<string
 // ============================================================
 
 function SourcesTab() {
+  const { success, error: showError } = useToast();
   const [sources, setSources] = useState<Source[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<SourceDraft>(EMPTY_SOURCE_DRAFT);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchSources = useCallback(async () => {
     setIsLoading(true);
@@ -151,6 +173,49 @@ function SourcesTab() {
   }, []);
 
   useEffect(() => { fetchSources(); }, [fetchSources]);
+
+  const handleCreateSource = useCallback(async () => {
+    const displayName = draft.displayName.trim();
+    const domainValue = draft.domainValue.trim();
+    const seedUrl = draft.seedUrl.trim();
+
+    if (!displayName || !domainValue) {
+      setError('Display name and at least one domain rule are required.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/ingestion/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          displayName,
+          trustLevel: draft.trustLevel,
+          domainRules: [{ type: draft.domainType, value: domainValue }],
+          discovery: seedUrl
+            ? [{ type: 'seeded_only', seedUrls: [seedUrl] }]
+            : undefined,
+        }),
+      });
+
+      const body = (await response.json().catch(() => null)) as { error?: string; details?: unknown } | null;
+      if (!response.ok) {
+        throw new Error(body?.error ?? 'Failed to create ingestion source');
+      }
+
+      setDraft(EMPTY_SOURCE_DRAFT);
+      success('Ingestion source created.');
+      await fetchSources();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to create ingestion source';
+      setError(message);
+      showError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [draft, fetchSources, showError, success]);
 
   if (isLoading) return <SkeletonCard />;
   if (error) {
@@ -172,6 +237,71 @@ function SourcesTab() {
 
   return (
     <div className="space-y-4">
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        <div className="mb-4">
+          <p className="text-sm font-semibold text-gray-900">Register ingestion source</p>
+          <p className="mt-1 text-sm text-gray-600">
+            Add the domain allowlist rule and optional seed URL that the ingestion pipeline should trust and crawl.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <FormField label="Display name" id="ingestion-source-display-name" required>
+            <input
+              type="text"
+              value={draft.displayName}
+              onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+            />
+          </FormField>
+          <FormField label="Trust level" id="ingestion-source-trust-level" required>
+            <select
+              value={draft.trustLevel}
+              onChange={(event) => setDraft((current) => ({ ...current, trustLevel: event.target.value as Source['trustLevel'] }))}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+            >
+              <option value="allowlisted">Allowlisted</option>
+              <option value="quarantine">Quarantine</option>
+              <option value="blocked">Blocked</option>
+            </select>
+          </FormField>
+          <FormField label="Domain rule type" id="ingestion-source-domain-type" required>
+            <select
+              value={draft.domainType}
+              onChange={(event) => setDraft((current) => ({ ...current, domainType: event.target.value as SourceDraft['domainType'] }))}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+            >
+              <option value="exact_host">Exact host</option>
+              <option value="suffix">Suffix</option>
+            </select>
+          </FormField>
+          <FormField label="Domain value" id="ingestion-source-domain-value" required hint="Examples: 211.org or .gov">
+            <input
+              type="text"
+              value={draft.domainValue}
+              onChange={(event) => setDraft((current) => ({ ...current, domainValue: event.target.value }))}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+            />
+          </FormField>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto]">
+          <FormField label="Optional seed URL" id="ingestion-source-seed-url" hint="Used for seeded-only discovery when provided.">
+            <input
+              type="url"
+              value={draft.seedUrl}
+              onChange={(event) => setDraft((current) => ({ ...current, seedUrl: event.target.value }))}
+              placeholder="https://example.org/resources"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+            />
+          </FormField>
+          <div className="flex items-end">
+            <Button type="button" onClick={() => void handleCreateSource()} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+              Create source
+            </Button>
+          </div>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-600">{sources.length} source{sources.length !== 1 ? 's' : ''}</p>
         <Button variant="outline" size="sm" onClick={fetchSources}>
@@ -681,18 +811,19 @@ function IngestionPageInner() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start gap-3">
-        <div className="rounded-lg bg-info-subtle p-2.5">
-          <Database className="h-6 w-6 text-action-base" aria-hidden="true" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Ingestion Agent</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Manage sources, monitor jobs, review candidates, and trigger pipeline processing.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="ORAN Admin"
+        title="Ingestion Agent"
+        icon={<Database className="h-6 w-6 text-action-base" aria-hidden="true" />}
+        subtitle="Manage sources, monitor jobs, review candidates, and trigger pipeline processing."
+        badges={
+          <>
+            <PageHeaderBadge tone="trust">Ingestion stays source-aware and review-gated</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">Active section: {TABS.find((tab) => tab.key === activeTab)?.label}</PageHeaderBadge>
+            <PageHeaderBadge>Pipeline operations remain operator-controlled</PageHeaderBadge>
+          </>
+        }
+      />
 
       {/* Tabs */}
       <nav className="flex items-center gap-1 border-b border-gray-200 pb-px" role="tablist" aria-label="Ingestion sections">

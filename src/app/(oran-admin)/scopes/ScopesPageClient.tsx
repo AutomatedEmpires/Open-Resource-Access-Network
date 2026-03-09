@@ -28,6 +28,8 @@ import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormAlert } from '@/components/ui/form-alert';
 import { FormField } from '@/components/ui/form-field';
+import { FormSection } from '@/components/ui/form-section';
+import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/toast';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { formatDate } from '@/lib/format';
@@ -182,8 +184,10 @@ function ScopesTab() {
       {/* Create form */}
       {showCreate && (
         <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
-          <h3 className="font-medium text-gray-900">Create Platform Scope</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormSection
+            title="Create Platform Scope"
+            description="Define a new permission scope and describe the risk and approval expectations up front."
+          >
             <FormField id="scope-name" label="Scope name" hint="Lowercase, alphanumeric, dots/underscores">
               <input
                 type="text"
@@ -193,7 +197,22 @@ function ScopesTab() {
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
               />
             </FormField>
-            <div className="flex gap-3">
+            <FormField id="scope-desc" label="Description" charCount={newDescription.length} maxChars={2000}>
+              <textarea
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                rows={2}
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+                placeholder="What this scope controls..."
+                maxLength={2000}
+              />
+            </FormField>
+          </FormSection>
+          <FormSection
+            title="Governance settings"
+            description="Set the risk classification and whether this scope always requires two-person approval."
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormField id="scope-risk" label="Risk level">
                 <select
                   value={newRisk}
@@ -218,17 +237,7 @@ function ScopesTab() {
                 </label>
               </FormField>
             </div>
-          </div>
-          <FormField id="scope-desc" label="Description" charCount={newDescription.length} maxChars={2000}>
-            <textarea
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              rows={2}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
-              placeholder="What this scope controls..."
-              maxLength={2000}
-            />
-          </FormField>
+          </FormSection>
           <div className="flex gap-2">
             <Button size="sm" onClick={() => void handleCreate()} disabled={isCreating || !newName.trim() || !newDescription.trim()} className="gap-1">
               {isCreating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
@@ -432,33 +441,43 @@ function GrantsTab() {
                       <tr>
                         <td colSpan={5} className="px-4 py-4 bg-indigo-50/30 border-t border-indigo-100">
                           <div className="max-w-xl space-y-3">
-                            <div className="text-sm">
-                              <span className="text-gray-500 font-medium">Justification: </span>
-                              <span className="text-gray-700">{g.justification}</span>
-                            </div>
-                            {g.expires_at && (
-                              <p className="text-xs text-gray-500">Expires: {formatDate(g.expires_at)}</p>
-                            )}
-                            <FormField id={`reason-${g.id}`} label="Decision reason" charCount={decisionReason.length} maxChars={5000}>
-                              <textarea
-                                value={decisionReason}
-                                onChange={(e) => setDecisionReason(e.target.value)}
-                                rows={2}
-                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                placeholder="Reason for decision..."
-                                maxLength={5000}
-                              />
-                            </FormField>
-                            <div className="flex gap-2">
-                              <Button size="sm" onClick={() => void handleDecision(g.id, 'approved')} disabled={isSubmitting || !decisionReason.trim()} className="gap-1 bg-green-600 hover:bg-green-700 text-white">
-                                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
-                                Approve
-                              </Button>
-                              <Button size="sm" variant="outline" onClick={() => void handleDecision(g.id, 'denied')} disabled={isSubmitting || !decisionReason.trim()} className="gap-1 text-error-base border-error-soft hover:bg-error-subtle">
-                                <XCircle className="h-4 w-4" aria-hidden="true" />
-                                Deny
-                              </Button>
-                            </div>
+                            <FormSection
+                              title="Review context"
+                              description="Confirm the request justification and expiry window before recording a decision."
+                            >
+                              <div className="text-sm">
+                                <span className="text-gray-500 font-medium">Justification: </span>
+                                <span className="text-gray-700">{g.justification}</span>
+                              </div>
+                              {g.expires_at && (
+                                <p className="text-xs text-gray-500">Expires: {formatDate(g.expires_at)}</p>
+                              )}
+                            </FormSection>
+                            <FormSection
+                              title="Decision"
+                              description="Record a clear approval or denial reason for the audit trail."
+                            >
+                              <FormField id={`reason-${g.id}`} label="Decision reason" charCount={decisionReason.length} maxChars={5000}>
+                                <textarea
+                                  value={decisionReason}
+                                  onChange={(e) => setDecisionReason(e.target.value)}
+                                  rows={2}
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                  placeholder="Reason for decision..."
+                                  maxLength={5000}
+                                />
+                              </FormField>
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={() => void handleDecision(g.id, 'approved')} disabled={isSubmitting || !decisionReason.trim()} className="gap-1 bg-green-600 hover:bg-green-700 text-white">
+                                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+                                  Approve
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => void handleDecision(g.id, 'denied')} disabled={isSubmitting || !decisionReason.trim()} className="gap-1 text-error-base border-error-soft hover:bg-error-subtle">
+                                  <XCircle className="h-4 w-4" aria-hidden="true" />
+                                  Deny
+                                </Button>
+                              </div>
+                            </FormSection>
                           </div>
                         </td>
                       </tr>
@@ -578,15 +597,23 @@ function ScopeCenterInner() {
 
   return (
     <>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Shield className="h-6 w-6 text-indigo-600" aria-hidden="true" />
-          Scope Center
-        </h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Manage platform scopes, review pending scope grants (two-person approval), and view the audit trail.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="ORAN Admin"
+        title="Scope Center"
+        icon={<Shield className="h-6 w-6 text-action-base" aria-hidden="true" />}
+        subtitle="Manage platform scopes, review pending scope grants with dual control, and inspect the audit trail."
+        badges={
+          <>
+            <PageHeaderBadge tone="trust">Sensitive access stays approval-aware</PageHeaderBadge>
+            <PageHeaderBadge tone="accent">
+              {activeTab === 'grants' ? 'Two-person grant review active' : activeTab === 'audit' ? 'Scope audit visible' : 'Scope definitions are platform-wide'}
+            </PageHeaderBadge>
+            <PageHeaderBadge>
+              {activeTab === 'scopes' ? 'Manage definitions' : activeTab === 'grants' ? 'Review pending grants' : 'Inspect audit trail'}
+            </PageHeaderBadge>
+          </>
+        }
+      />
 
       {/* Tab bar */}
       <div className="flex items-center gap-1 mb-6 border-b border-gray-200 pb-px" role="tablist" aria-label="Scope center sections">

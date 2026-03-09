@@ -127,7 +127,7 @@ describe('oran admin appeals page', () => {
       });
       expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/admin/appeals?page=1&limit=20');
       expect(toastSuccessMock).toHaveBeenCalledWith('Appeal approved successfully');
-      expect(screen.getByRole('alert')).toHaveTextContent('Appeal approved successfully');
+      expect(screen.getByRole('status')).toHaveTextContent('Appeal approved successfully');
     });
   });
 

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Canonical viewport sizes used for UI snapshot testing and flow documentation.",
+  "viewports": [
+    {
+      "id": "mobile-xs",
+      "label": "Mobile XS (small Android / older iPhones)",
+      "width": 360,
+      "height": 640,
+      "deviceScaleFactor": 2
+    },
+    {
+      "id": "mobile-sm",
+      "label": "Mobile SM (iPhone SE / mid-range Android)",
+      "width": 390,
+      "height": 844,
+      "deviceScaleFactor": 3
+    },
+    {
+      "id": "mobile-lg",
+      "label": "Mobile LG (iPhone Pro Max / large Android)",
+      "width": 430,
+      "height": 932,
+      "deviceScaleFactor": 3
+    },
+    {
+      "id": "tablet",
+      "label": "Tablet (iPad / large Android tablet)",
+      "width": 768,
+      "height": 1024,
+      "deviceScaleFactor": 2
+    },
+    {
+      "id": "desktop-sm",
+      "label": "Desktop SM (compact laptop / 13\")",
+      "width": 1280,
+      "height": 800,
+      "deviceScaleFactor": 1
+    },
+    {
+      "id": "desktop-lg",
+      "label": "Desktop LG (1080p monitor)",
+      "width": 1920,
+      "height": 1080,
+      "deviceScaleFactor": 1
+    }
+  ],
+  "breakpoints": {
+    "sm": 640,
+    "md": 768,
+    "lg": 1024,
+    "xl": 1280,
+    "2xl": 1536
+  },
+  "touchTargetMinPx": 44,
+  "notes": [
+    "All seeker-side features must be fully functional at mobile-xs (360px).",
+    "Bottom navigation is active on mobile-xs through tablet.",
+    "Two-column layouts activate at lg (1024px) on service detail and submit-resource.",
+    "Use these viewport IDs in Playwright snapshot scripts for consistent naming."
+  ]
+}

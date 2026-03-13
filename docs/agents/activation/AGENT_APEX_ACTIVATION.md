@@ -65,8 +65,8 @@ src/app/(oran-admin)/
 src/app/(community-admin)/
   layout.tsx                        # Community admin shell — nav, role guard UI
   coverage/                         # Coverage zone management
-  queue/                            # Verification queue
-  verify/                           # Record verification flow
+  queue/                            # Review queue workbench
+  verify/                           # Submission-backed record review flow
 
 src/app/(host)/
   layout.tsx                        # Host portal shell — nav, role guard UI
@@ -244,7 +244,7 @@ for their geographic area.
 - Verify `community_admin` role gating at the UI level.
 - Navigation shows: queue count badge, coverage zone assignment.
 
-#### 4.2.2 Verification Queue (`queue/`)
+#### 4.2.2 Review Queue (`queue/`)
 
 - Identical purpose to ORAN admin approvals, but scoped to the community admin's
   assigned coverage zones.
@@ -331,7 +331,7 @@ technically sophisticated.
   - Eligibility: multi-field structured input (income threshold, age range, residency,
     other). Each field is optional. Eligibility text is explicitly labeled "confirm
     with provider."
-  - After save: record enters the verification queue. Show clear status messaging.
+  - After save: record enters the shared review workflow. Show clear status messaging.
 - Edit service: same fields, plus ability to view review history.
 - Archive service: soft-delete with confirmation.
 - All mutations write to audit log.
@@ -441,7 +441,7 @@ APEX's work is complete when **every item below is verifiably true**:
   audit log entry as part of the same atomic operation.
 - [ ] ORAN admin: approvals queue, audit log viewer, rules management, zone management
   are fully built and functional.
-- [ ] Community admin: verification queue, step-by-step verify flow, and coverage view
+- [ ] Community admin: review queue, step-by-step verify flow, and coverage view
   are fully built and functional.
 - [ ] Host portal: org claim flow, org profile, location CRUD, service CRUD, and admin
   management are fully built and functional.

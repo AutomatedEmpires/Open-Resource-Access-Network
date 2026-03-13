@@ -18,7 +18,7 @@ Infrastructure-as-Code for the core ORAN Azure platform, including the Azure Map
 
 Not currently provisioned by this template:
 
-- Azure Maps SAS token generation and rotation automation. The template provisions the Maps account, stores its primary key in Key Vault, and accepts the browser SAS token as a secure deployment parameter so the web app can consume both values through Key Vault references.
+- Azure Maps SAS token generation and rotation automation inside Bicep itself. The template provisions the Maps account, stores its primary key in Key Vault, and accepts the browser SAS token as a secure deployment parameter so the web app can consume both values through Key Vault references. Ongoing rotation is handled by the repo-level script/workflow pair: `scripts/azure/rotate-maps-sas.sh` and `.github/workflows/rotate-azure-maps-sas.yml`.
 
 ## Deployment
 
@@ -92,4 +92,4 @@ az deployment group what-if \
 - TLS 1.2 minimum
 - Redis SSL-only (port 6380)
 - PostgreSQL firewall allows Azure services only (production hardening: use private endpoints)
-- The current Bicep template does not mint or rotate Azure Maps SAS tokens automatically; treat the `azureMapsSasToken` deployment parameter as a secret that must be rotated deliberately.
+- The current Bicep template does not mint or rotate Azure Maps SAS tokens automatically inside the deployment itself; use the repo rotation automation after bootstrap/deploy to keep the live browser token current.

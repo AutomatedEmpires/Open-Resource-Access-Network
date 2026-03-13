@@ -176,9 +176,11 @@ Computed confidence score for each service record.
 | constraint_fit       | NUMERIC(5,2)| ORAN sub-score: constraint fit (0–100) |
 | computed_at          | TIMESTAMPTZ | When score was last computed |
 
-### `verification_queue`
+### `verification_queue` (Historical Table)
 
-Workflow queue for record verification.
+Legacy verification workflow table from the initial schema.
+
+The canonical runtime workflow now uses `submissions`; `verification_queue` survives as a compatibility view documented later in this file.
 
 | Field       | Type        | Description |
 |-------------|-------------|-------------|
@@ -867,7 +869,7 @@ locations ──< schedules
 services ──< service_taxonomy >── taxonomy_terms
 taxonomy_terms ──< taxonomy_terms (self-referential parent)
 services ──< confidence_scores
-services ──< verification_queue
+services ──< verification_queue (compatibility view)
 services ──< submissions
 submissions ──< submission_transitions
 submissions ──< submission_slas

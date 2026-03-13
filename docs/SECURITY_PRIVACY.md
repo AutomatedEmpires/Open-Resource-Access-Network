@@ -20,7 +20,7 @@ Implemented today:
 - Feature flags with typed constants, fail-closed semantics (unknown flag → off).
 - PII redaction in Sentry/telemetry—verified by automated tests.
 - Redis-backed shared rate limiting is available for high-value endpoints when `REDIS_URL` is configured, with in-memory fallback retained for local/test resilience.
-- DB schema exists in db/migrations/** (including feature_flags and verification_queue).
+- DB schema exists in db/migrations/** (including feature flags, submissions/workflow tables, and the legacy `verification_queue` compatibility view).
 
 Planned / not yet enforced end-to-end:
 
@@ -33,8 +33,10 @@ ORAN uses **Microsoft Entra ID** for identity management via NextAuth.js with th
 
 Optional providers:
 
+- Apple OAuth is supported only when `ORAN_ENABLE_APPLE_AUTH=1` is set alongside valid Apple client credentials.
 - Google OAuth is supported only when explicitly enabled with `ORAN_ENABLE_GOOGLE_AUTH=1` and matching Google client credentials.
-- Email/password auth is available in local or test environments and is disabled in production unless `ORAN_ENABLE_CREDENTIALS_AUTH=1` is set deliberately.
+- Credentials auth accepts email, username, or phone number plus password. It is available in local or test environments and is disabled in production unless `ORAN_ENABLE_CREDENTIALS_AUTH=1` is set deliberately.
+- Phone sign-in currently means password-based identifier login against a stored phone number. SMS/OTP phone auth is not implemented.
 
 ### Session Validation
 
@@ -44,6 +46,7 @@ Optional providers:
 - Implemented: unauthenticated requests to protected routes return HTTP 401.
 - Implemented: role checks return HTTP 403 for insufficient permissions.
 - Implemented: optional non-Entra providers fail closed in production unless explicitly enabled.
+- Implemented: first successful non-credentials OAuth sign-in upserts a `user_profiles` row so role/profile hydration remains stable across providers.
 
 ### Role Enforcement
 

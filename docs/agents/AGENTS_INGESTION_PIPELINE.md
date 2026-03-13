@@ -145,15 +145,18 @@ A candidate is eligible to be approved for publish only if:
 
 The ingestion system must maintain a **single source of truth status** for each candidate/extraction so admins can filter and act deterministically.
 
-Canonical statuses (align to `verification_queue` in `docs/DATA_MODEL.md`):
+Canonical workflow statuses align to the universal `submissions` pipeline, not the legacy `verification_queue` shape:
 
-- `pending` — newly extracted/verified; needs review
-- `in_review` — assigned and actively reviewed
-- `verified` — approved for publish (publish is a separate action)
-- `rejected` — rejected (with reason)
+- `draft` / `submitted` — newly captured or manually created work item
+- `auto_checking` — automated checks are running
+- `needs_review` — ready for human intake/review
+- `under_review` — assigned and actively reviewed
+- `pending_second_approval` — waiting for a distinct reviewer when two-person approval applies
+- `approved` — approved for publish or downstream action
+- `denied` / `returned` / `withdrawn` / `expired` / `archived` — terminal or non-publish outcomes
 - `escalated` — requires ORAN-admin attention
 
-Hard rule: every status transition MUST emit an audit event.
+Community queue and ingestion views may project these into simpler lane-specific labels, but the submission status model remains canonical. Hard rule: every status transition MUST emit an audit event.
 
 ## SLA timers + re-review
 

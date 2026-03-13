@@ -450,11 +450,11 @@ Mobile:
 
 ### Community admin page templates
 
-#### A. Queue workbench template
+#### A. Review workbench template
 
 Used by:
 
-- verification queue
+- community review queue
 
 Layout:
 

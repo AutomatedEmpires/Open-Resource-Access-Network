@@ -1,6 +1,6 @@
 # ORAN Confidence Scoring Systems
 
-> **Last Updated**: 2026-03-02
+> **Last Updated**: 2026-03-13
 > **Purpose**: Single Source of Truth for all confidence scoring across ORAN
 
 ## Executive Summary
@@ -27,16 +27,11 @@ ORAN uses **multiple confidence scoring systems** for different purposes. All sc
 - **Consistent thresholds**: 80/60/40 are easy to remember and communicate
 - **Database efficiency**: INT columns are more efficient than NUMERIC
 
-### Legacy 0-1 Support
+### Public Search Contract
 
-The `/api/search` endpoint accepts `minConfidence` (0-1) for backward compatibility, which is automatically converted to 0-100:
+The public `/api/search` endpoint accepts `minConfidenceScore` on the canonical 0-100 scale.
 
-```typescript
-// src/app/api/search/route.ts
-const minConfidenceScore =
-  params.minConfidenceScore ??
-  (params.minConfidence !== undefined ? params.minConfidence * 100 : undefined);
-```
+The legacy `minConfidence` alias was retired at the API boundary on 2026-03-13 and now returns `400` so seeker-facing callers cannot silently mix scales.
 
 ### Normalization Utility
 
@@ -337,8 +332,7 @@ confidence_color      TEXT GENERATED ALWAYS AS (
 
 ```typescript
 // Query parameters:
-minConfidenceScore?: number;  // Preferred: 0-100
-minConfidence?: number;       // Legacy: 0-1 (auto-converted)
+minConfidenceScore?: number;  // Canonical: 0-100
 ```
 
 ### Response includes:

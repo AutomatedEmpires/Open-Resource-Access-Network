@@ -155,7 +155,7 @@ Nothing else proceeds until this audit is complete and its findings are resolved
   - `services` table: org_id, status, updated_at, geometry/location columns
   - `organizations` table: status, verified_at
   - `feature_flags` table: flag_name (for fast lookup)
-  - `verification_queue` table: status, assigned_to, created_at
+  - `submissions` table: status, assigned_to_user_id, created_at
   - `audit_logs` table: entity_type + entity_id, created_at, actor_id
 - Add any missing indexes as a new numbered migration (do not modify existing migration files).
 - Document all added indexes in `docs/DATA_MODEL.md` and `docs/ENGINEERING_LOG.md`.

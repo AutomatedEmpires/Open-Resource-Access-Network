@@ -24,6 +24,8 @@ Create an ADR before implementing changes to:
 | ADR-0005 | [Content Security Policy (CSP)](ADR-0005-content-security-policy.md) | Accepted |
 | ADR-0006 | [Opt-In Device Geolocation (Seeker)](ADR-0006-opt-in-device-geolocation.md) | Accepted |
 | ADR-0007 | [HSDS / 211 Federation Canonical Model](ADR-0007-hsds-211-federation-canonical-model.md) | Accepted |
+| ADR-0008 | [Chat Profile Hydration and Deterministic Retrieval Shaping](ADR-0008-chat-profile-hydration-and-deterministic-retrieval-shaping.md) | Accepted |
+| ADR-0009 | [Platform Pillars and Subsystem Boundaries](ADR-0009-platform-pillars-and-subsystem-boundaries.md) | Accepted |
 
 ## File naming
 

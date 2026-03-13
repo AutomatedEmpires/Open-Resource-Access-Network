@@ -40,7 +40,7 @@ Respond to data quality incidents in staged or published records, including malf
 ## Validation
 
 - New candidate quality returns to expected baseline.
-- Verification queue normalizes.
+- Review queue backlog normalizes.
 - No unsafe records are published.
 
 ## References

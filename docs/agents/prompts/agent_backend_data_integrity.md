@@ -78,7 +78,7 @@ Start with these known high-risk areas and validate them directly:
 - src/services/chat/**
 - src/services/search/**
 - src/services/forms/**
-- src/services/ingestion/** and src/agents/ingestion/** where data integrity depends on persistence
+- `src/services/ingestion/**` and `src/agents/ingestion/**` where data integrity depends on persistence
 
 Known examples of prior risk that you must re-validate rather than assume:
 

@@ -331,29 +331,29 @@ AdminsPage
 
 ## Community Admin Routes
 
-### `/queue` — Verification Queue ✅
+### `/queue` — Review Queue Workbench ✅
 
 **Access**: community_admin
-**Purpose**: Review and act on pending verification submissions
+**Purpose**: Review and act on pending verification-oriented submissions through the shared workflow model
 
 Component hierarchy:
 
 ```
 QueuePage
 ├── QueueHeader (title + refresh button)
-├── StatusFilterTabs (All / Pending / In Review / Verified / Rejected / Escalated)
+├── StatusFilterTabs (All / Needs Review / Under Review / Approved / Denied / Escalated)
 ├── ErrorState (inline alert)
 ├── SkeletonCard grid (loading)
 ├── EmptyState (no entries for current filter)
 ├── QueueTable
 │   └── QueueRow (×N)
-│       ├── ServiceNameLink (→ /verify?id=…)
+│       ├── RecordNameLink (→ /verify?id=…)
 │       ├── OrganizationName
 │       ├── StatusBadge (color-coded)
 │       ├── SubmittedDate + StaleIndicator (>14 days)
 │       ├── AssignedTo (user or dash)
 │       └── ActionButtons
-│           ├── ClaimButton (pending only → POST /api/community/queue)
+│           ├── ClaimButton (needs_review only → POST /api/community/queue)
 │           └── ReviewLink (→ /verify?id=…)
 └── Pagination (entry count + prev/next)
 ```

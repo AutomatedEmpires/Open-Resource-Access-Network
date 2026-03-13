@@ -45,6 +45,14 @@ This runbook handles outages or degradations affecting Microsoft Entra ID auth, 
    - `AZURE_AD_TENANT_ID`
    - `NEXTAUTH_SECRET`
    - `NEXTAUTH_URL`
+   - If optional providers are enabled, also verify:
+     - `APPLE_CLIENT_ID`
+     - `APPLE_CLIENT_SECRET`
+     - `ORAN_ENABLE_APPLE_AUTH`
+     - `GOOGLE_CLIENT_ID`
+     - `GOOGLE_CLIENT_SECRET`
+     - `ORAN_ENABLE_GOOGLE_AUTH`
+     - `ORAN_ENABLE_CREDENTIALS_AUTH`
 3. Verify deploy/environment changes around incident time.
 4. Validate session handling in logs for `getServerSession()` or JWT parsing failures.
 
@@ -61,6 +69,13 @@ This runbook handles outages or degradations affecting Microsoft Entra ID auth, 
 1. Confirm `NEXTAUTH_SECRET` exists and is valid.
 2. Verify callback URL (`NEXTAUTH_URL`) matches deployed hostname.
 3. Re-test sign-in flow and protected route access.
+
+### D. Optional Provider Regression
+
+1. Confirm the enabled provider has a complete env set, not only the gate flag.
+2. For credentials auth, determine whether the failure is specific to email, username, or phone identifier lookup.
+3. Remember that phone login is password-based identifier auth, not SMS/OTP.
+4. Re-test Microsoft Entra login separately to confirm the outage is isolated to an optional provider.
 
 ### C. Role Mapping Issues
 

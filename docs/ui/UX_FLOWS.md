@@ -77,7 +77,7 @@ flowchart TD
   E --> G[Manage locations]
   E --> H[Manage services]
   H --> I[Submit updates for verification]
-  I --> J[Enters verification queue]
+  I --> J[Enters shared submissions review workflow]
 ```
 
 Requirements:
@@ -91,7 +91,7 @@ Requirements:
 
 ```mermaid
 flowchart TD
-  A[Community admin signs in] --> B[Verification queue]
+  A[Community admin signs in] --> B[Community review queue]
   B --> C[Open case]
   C --> D[Compare fields + evidence]
   D --> E{Decision}

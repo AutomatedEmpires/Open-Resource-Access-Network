@@ -1,11 +1,11 @@
 # `src/services/community`
 
-Community-admin service helpers and tests for verification queue workflows.
+Community-admin service helpers and tests for submissions-backed review queue workflows.
 
 ## Scope
 
 - Supports community-admin flows consumed by `src/app/api/community/**`.
-- Includes queue listing, claim/assignment, and verification decisions.
+- Includes review-queue listing, claim/assignment, and verification decisions.
 
 ## Current Implementation Status
 

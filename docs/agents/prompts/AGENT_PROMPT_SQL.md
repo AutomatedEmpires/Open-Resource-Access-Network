@@ -23,6 +23,7 @@ You are the SQL migration agent for ORAN (Open Resource Access Network), a civic
 - All mutable tables have `created_at`, `updated_at`, `created_by_user_id`, `updated_by_user_id`
 - `set_updated_at()` trigger function exists (from 0001)
 - Geometry column `geom` on `locations` with `sync_location_geom()` trigger
+- Current runtime review workflow targets `submissions`; treat `verification_queue` references below as initial-migration or compatibility-view context unless the task explicitly concerns legacy bridge behavior.
 
 ## Task 1: Verify Existing Schema Against Application Code
 
@@ -30,10 +31,10 @@ The UI/API agent has built API routes that write to these tables. Verify the SQL
 
 ### Claim Route (`/api/host/claim` — POST)
 
-Writes to: `organizations`, `services`, `verification_queue`
+Writes to: `organizations`, `services`, `submissions`
 
-- `verification_queue.submitted_by_user_id` — CONFIRMED renamed in 0002. ✅
-- `verification_queue.notes` — column exists in 0000. ✅
+- Legacy migration context: `verification_queue.submitted_by_user_id` was renamed in 0002. ✅
+- Legacy migration context: `verification_queue.notes` exists in 0000. ✅
 - `services.status` — CHECK constraint includes 'inactive'. ✅
 
 ### Organization CRUD (`/api/host/organizations`)
@@ -55,12 +56,11 @@ Writes to: `organizations`, `services`, `verification_queue`
 - POST inserts to `locations` then `addresses` (in transaction). All columns exist. ✅
 - PUT updates `locations` fields + upserts `addresses`. ✅
 
-### Verification Queue (Community Admin `/queue`, `/verify` — Phase 4 being built now)
+### Community Review Workflow (`/api/community/queue`, `/verify`)
 
-- Queries: `SELECT * FROM verification_queue WHERE status IN ('pending','in_review') ORDER BY created_at`
-- Joins: `verification_queue JOIN services ON s.id = vq.service_id JOIN organizations ON o.id = s.organization_id`
-- Updates: `UPDATE verification_queue SET status = $1, assigned_to = $2, notes = $3 WHERE id = $4`
-- ⚠️ `assigned_to` column: exists in 0000 as `TEXT` — consider renaming to `assigned_to_user_id` for consistency with the audit field convention used everywhere else. This is optional but recommended.
+- Current runtime routes read and mutate `submissions`, not `verification_queue`.
+- Legacy `verification_queue` references should be interpreted as historical migration context or compatibility-view behavior only.
+- New schema work for community review should target workflow columns on `submissions` (for example `status`, `assigned_to_user_id`, `created_at`, `locked_by_user_id`) rather than reintroducing queue-specific tables.
 
 ### Audit Logs (ORAN Admin `/audit` — Phase 5)
 
@@ -137,20 +137,20 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 
 Evaluate and implement if beneficial:
 
-1. **Composite indexes for common query patterns**:
-   - `verification_queue(status, created_at DESC)` — queue page sorts by oldest pending first
-   - `services(organization_id, status)` — host services page filters by both
-   - `locations(organization_id, name)` — host locations page sorts by name within org
+- **Composite indexes for common query patterns**:
+- `submissions(status, created_at DESC)` — review queue workbench sorts oldest actionable work first
+- `services(organization_id, status)` — host services page filters by both
+- `locations(organization_id, name)` — host locations page sorts by name within org
 
-2. **Full-text search improvements**:
-   - Currently `organizations.name` has GIN index. Consider adding `description` GIN for org search.
-   - `locations` has NO text search index. Add GIN on `locations.name` if needed.
+- **Full-text search improvements**:
+- Currently `organizations.name` has GIN index. Consider adding `description` GIN for org search.
+- `locations` has NO text search index. Add GIN on `locations.name` if needed.
 
-3. **`organizations.status` column**: If absent, add `status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'defunct'))`. The API references it.
+- **`organizations.status` column**: If absent, add `status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'defunct'))`. The API references it.
 
-4. **Soft-delete support**: `docs/DATA_MODEL.md` says "Records are marked status='defunct' rather than hard-deleted." Services already have a status column with 'defunct'. Organizations and locations need a similar column if they don't have one.
+- **Soft-delete support**: `docs/DATA_MODEL.md` says "Records are marked status='defunct' rather than hard-deleted." Services already have a status column with 'defunct'. Organizations and locations need a similar column if they don't have one.
 
-5. **Trigger for `set_updated_at` on new tables**: Every new table with `updated_at` needs a trigger using the existing `set_updated_at()` function.
+- **Trigger for `set_updated_at` on new tables**: Every new table with `updated_at` needs a trigger using the existing `set_updated_at()` function.
 
 ## Task 4: Seed Data Review
 

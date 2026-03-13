@@ -112,7 +112,7 @@ Verify → Score → BuildCandidate → RouteToAdmin`
 - `/oran-admin/audit` — Full system audit trail
 - `/oran-admin/rules` — Scoring weights + feature flags
 - `/oran-admin/zone-management` — Coverage zone and admin assignments
-- `/community-admin/queue` — Verification queue (wired to `candidate_assignments`)
+- `/community-admin/queue` — Review queue workbench (submissions-backed assignment inbox)
 - `/community-admin/verify` — Guided field-by-field review with tag confirmation UI
 
 8+ admin API endpoints under `src/app/api/admin/**` and

@@ -54,7 +54,8 @@ Objective executed:
 - Removed remaining reviewed legacy `audit_log` writes from the deprecated seeker report endpoint and duplicate-merge service.
 - Aligned Azure deployment-readiness surfaces with the live Maps contract so control-plane status, deployment docs, and infra notes now require both `AZURE_MAPS_KEY` and `AZURE_MAPS_SAS_TOKEN` for production readiness.
 - Extended `infra/main.bicep` so Azure Maps is provisioned in infrastructure code, the primary Maps key is stored in Key Vault automatically, and the browser SAS token is now a first-class secure deployment parameter wired into the web app via Key Vault.
-- Added Redis-backed shared rate limiting for the highest-value public/auth/privacy endpoints, then expanded that shared enforcement to seeker/public search, feedback, profile, saved-items, services, and seeker submission routes, with automatic fallback to the existing in-memory limiter when Redis is unavailable.
+- Added Redis-backed shared rate limiting for the highest-value public/auth/privacy endpoints, then expanded that shared enforcement to seeker/public search, feedback, profile, saved-items, services, seeker submission routes, and the core admin/operator APIs, with automatic fallback to the existing in-memory limiter when Redis is unavailable.
+- Added a strict runtime-readiness gate in CI and the Azure App Service deploy workflow so missing `REDIS_URL`, `AZURE_MAPS_KEY`, or `AZURE_MAPS_SAS_TOKEN` now fail readiness validation instead of surfacing only as non-blocking production warnings.
 
 ### Files changed during this audit pass
 
@@ -81,6 +82,9 @@ Objective executed:
 - `infra/README.md`
 - `scripts/azure/bootstrap.sh`
 - `scripts/azure/README.md`
+- `.github/runtime/webapp-production-settings.txt`
+- `.github/workflows/ci.yml`
+- `.github/workflows/deploy-azure-appservice.yml`
 - `docs/ENGINEERING_LOG.md`
 
 ## Verification Evidence
@@ -117,16 +121,43 @@ Expanded shared-rate-limit validation also passed for:
 - `src/app/api/submissions/__tests__/report-routes.test.ts`
 - `src/app/api/submissions/__tests__/appeal-routes.test.ts`
 
+Admin/operator shared-rate-limit validation also passed for:
+
+- `src/app/api/admin/__tests__/routes.test.ts`
+- `src/app/api/admin/__tests__/bulk-merge-routes.test.ts`
+- `src/app/api/admin/__tests__/appeals-routes.test.ts`
+- `src/app/api/admin/__tests__/approvals-zones-extra.test.ts`
+- `src/app/api/admin/__tests__/scopes-routes.test.ts`
+- `src/app/api/admin/__tests__/scopes-grants-extra.test.ts`
+- `src/app/api/admin/appeals/__tests__/route.test.ts`
+- `src/app/api/admin/audit/__tests__/route.test.ts`
+- `src/app/api/admin/capacity/__tests__/route.test.ts`
+- `src/app/api/admin/scopes/audit/__tests__/route.test.ts`
+- `src/app/api/admin/rules/__tests__/route.test.ts`
+- `src/app/api/admin/triage/__tests__/triage-routes.test.ts`
+- `src/app/api/admin/templates/__tests__/templates-routes.test.ts`
+- `src/app/api/admin/agents/control-plane/__tests__/route.test.ts`
+- `src/app/api/admin/embeddings/reindex/__tests__/route.test.ts`
+- `src/app/api/admin/embeddings/dedup/__tests__/route.test.ts`
+- `src/app/api/admin/ingestion/__tests__/sources.test.ts`
+- `src/app/api/admin/ingestion/__tests__/jobs.test.ts`
+- `src/app/api/admin/ingestion/__tests__/candidates.test.ts`
+- `src/app/api/admin/ingestion/__tests__/batch-feeds.test.ts`
+- `src/app/api/admin/ingestion/__tests__/candidate-actions.test.ts`
+- `src/app/api/admin/ingestion/__tests__/process.test.ts`
+- `src/app/api/admin/ingestion/candidates/[id]/ai-review/__tests__/route.test.ts`
+- `src/services/runtime/__tests__/envContract.test.ts`
+
 Repo-wide status at audit time:
 
 - Touched files were free of direct compile diagnostics.
 - Focused verification for the shared-rate-limit upgrade passed across the touched security slices.
-- Full repository validation is now green in the current workspace: `npm run test` passed with 318 test files and 3121 tests green, including the previously suspected seeker-page blockers.
+- Full repository validation is now green in the current workspace: `npm run test` passed with 318 test files and 3152 tests green, including the admin/operator rollout and the previously suspected seeker-page blockers.
 
 ## Residual Risks
 
 - This audit covered the primary auth, privacy, telemetry, maps, and reviewed audit-log boundaries, but it was not a full formal penetration test.
-- Redis-backed rate limiting now covers the primary public and seeker abuse surfaces reviewed in this lane, but routes still using the in-memory limiter alone do not yet gain cross-instance enforcement.
+- Redis-backed rate limiting now covers the primary public, seeker, and admin/operator abuse surfaces reviewed in this lane, but routes still using the in-memory limiter alone do not yet gain cross-instance enforcement.
 - Optional auth providers now fail closed in production by default, but deployment hygiene still depends on environment configuration being managed correctly.
 - Azure Maps SAS token lifecycle is now codified as a secure deployment input, but automatic minting and rotation are still an operational secret-management process rather than an in-template rotation workflow.
 
@@ -144,4 +175,4 @@ Rationale:
 
 1. Add one focused regression assertion for `audit_logs` writes in merge/report paths if future refactors touch those services.
 2. Expand the Redis-backed limiter to any remaining abuse-sensitive routes that still rely only on in-memory enforcement.
-3. Mirror the local green validation state in CI with an explicit production-readiness check for required Azure Maps secrets and shared-rate-limit configuration.
+3. Extend the shared limiter and strict readiness policy to the remaining host, community-admin, forms, and template-management routes that still rely on in-memory-only enforcement.

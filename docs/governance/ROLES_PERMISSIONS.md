@@ -36,7 +36,7 @@ Platform governor. Has full access to all resources, can override verifications,
 | addresses            | R      | R/W(own)    | R/W(own)   | R               | R/W        |
 | schedules            | R      | R/W(own)    | R/W(own)   | R               | R/W        |
 | taxonomy_terms       | R      | R           | R          | R               | R/W        |
-| verification_queue   | -      | submit      | submit     | R/W(zone)       | R/W        |
+| submissions          | -      | submit      | submit     | R/W(zone)       | R/W        |
 | user_profiles        | R(own) | R(own)      | R(own)     | R(own)          | R/W        |
 | audit_logs           | -      | -           | -          | R(zone)         | R          |
 | feature_flags        | -      | -           | -          | -               | R/W        |
@@ -55,7 +55,9 @@ Platform governor. Has full access to all resources, can override verifications,
 | source_registry      | -      | -           | -          | -               | R/W        |
 | evidence_snapshots   | -      | -           | -          | R(zone)         | R          |
 
-**Legend**: R = Read, W = Write, R/W = Read+Write, own = restricted to own records, zone = restricted to assigned coverage zone, submit = can create new entries
+**Legend**: R = Read, W = Write, R/W = Read+Write, own = restricted to own records, zone = restricted to assigned coverage zone, submit = can create new reviewable submissions
+
+Note: legacy `verification_queue` naming may still appear in compatibility views or historical documents, but the canonical workflow substrate is the universal `submissions` pipeline.
 
 ---
 

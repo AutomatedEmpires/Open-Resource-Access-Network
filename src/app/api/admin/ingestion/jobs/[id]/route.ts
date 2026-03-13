@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
@@ -31,7 +31,7 @@ export async function GET(
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(ip, { maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
+  const rl = await checkRateLimitShared(ip, { maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
@@ -85,7 +85,7 @@ export async function DELETE(
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(ip, { maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
+  const rl = await checkRateLimitShared(ip, { maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },

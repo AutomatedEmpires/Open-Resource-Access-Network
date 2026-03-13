@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
@@ -41,7 +41,7 @@ export async function GET(
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`ai-review:${ip}`, {
+  const rl = await checkRateLimitShared(`ai-review:${ip}`, {
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
     windowMs: RATE_LIMIT_WINDOW_MS,
   });

@@ -12,7 +12,7 @@ import { isDatabaseConfigured, executeQuery } from '@/services/db/postgres';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
 import { captureException } from '@/services/telemetry/sentry';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const rateLimit = checkRateLimit(`admin_capacity:${ip}`, {
+  const rateLimit = await checkRateLimitShared(`admin_capacity:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   });

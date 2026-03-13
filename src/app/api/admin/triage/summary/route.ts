@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
@@ -32,7 +32,7 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
   }
 
-  const limited = checkRateLimit(
+  const limited = await checkRateLimitShared(
     `triage:summary:${authCtx.userId}`,
     { maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS },
   );

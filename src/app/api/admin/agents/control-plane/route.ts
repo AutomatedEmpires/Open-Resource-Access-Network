@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { trackEvent } from '@/services/telemetry/appInsights';
 import { getAuthContext } from '@/services/auth/session';
@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
   }
 
-  const limited = checkRateLimit(`agent-control-plane:${authCtx.userId}`, {
+  const limited = await checkRateLimitShared(`agent-control-plane:${authCtx.userId}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   });

@@ -11,7 +11,8 @@ const flagServiceMocks = vi.hoisted(() => ({
 }));
 const getFlagServiceImplementationMock = vi.hoisted(() => vi.fn());
 
-vi.mock('@/services/security/rateLimit', () => ({ checkRateLimit: rateLimitMock }));
+vi.mock('@/services/security/rateLimit', () => ({ checkRateLimit: rateLimitMock,
+  checkRateLimitShared: rateLimitMock }));
 vi.mock('@/services/telemetry/sentry', () => ({ captureException: captureExceptionMock }));
 vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/auth/guards', () => ({ requireMinRole: requireMinRoleMock }));

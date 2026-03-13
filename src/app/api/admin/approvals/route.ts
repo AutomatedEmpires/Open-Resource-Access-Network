@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`admin:approvals:read:${ip}`, {
+  const rl = await checkRateLimitShared(`admin:approvals:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   });
@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`admin:approvals:write:${ip}`, {
+  const rl = await checkRateLimitShared(`admin:approvals:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });

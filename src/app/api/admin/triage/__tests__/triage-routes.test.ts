@@ -32,6 +32,7 @@ vi.mock('@/services/auth/guards', () => ({
 
 vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimit: mockCheckRateLimit,
+  checkRateLimitShared: mockCheckRateLimit,
 }));
 
 vi.mock('@/services/triage/triage', () => triageServiceMocks);

@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import {
   listAllTemplates,
@@ -61,7 +61,7 @@ function getIp(req: NextRequest): string {
 
 export async function GET(req: NextRequest) {
   const ip = getIp(req);
-  const rl = checkRateLimit(`admin:templates:get:${ip}`, {
+  const rl = await checkRateLimitShared(`admin:templates:get:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   });
@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const ip = getIp(req);
-  const rl = checkRateLimit(`admin:templates:post:${ip}`, {
+  const rl = await checkRateLimitShared(`admin:templates:post:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });

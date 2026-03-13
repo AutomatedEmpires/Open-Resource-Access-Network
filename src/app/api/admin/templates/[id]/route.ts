@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import {
   getTemplate,
@@ -62,7 +62,7 @@ type Params = { params: Promise<{ id: string }> };
 export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params;
   const ip = getIp(req);
-  const rl = checkRateLimit(`admin:templates:get:${ip}`, {
+  const rl = await checkRateLimitShared(`admin:templates:get:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   });
@@ -92,7 +92,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function PUT(req: NextRequest, { params }: Params) {
   const { id } = await params;
   const ip = getIp(req);
-  const rl = checkRateLimit(`admin:templates:put:${ip}`, {
+  const rl = await checkRateLimitShared(`admin:templates:put:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
@@ -137,7 +137,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   const { id } = await params;
   const ip = getIp(req);
-  const rl = checkRateLimit(`admin:templates:delete:${ip}`, {
+  const rl = await checkRateLimitShared(`admin:templates:delete:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });

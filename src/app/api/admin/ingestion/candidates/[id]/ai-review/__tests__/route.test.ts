@@ -27,6 +27,7 @@ vi.mock('@/services/auth/guards', () => ({
 }));
 vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimit: rateLimitMock,
+  checkRateLimitShared: rateLimitMock,
 }));
 vi.mock('@/services/flags/flags', () => ({
   flagService: { isEnabled: isEnabledMock },

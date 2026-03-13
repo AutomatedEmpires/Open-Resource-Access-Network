@@ -54,7 +54,7 @@ Objective executed:
 - Removed remaining reviewed legacy `audit_log` writes from the deprecated seeker report endpoint and duplicate-merge service.
 - Aligned Azure deployment-readiness surfaces with the live Maps contract so control-plane status, deployment docs, and infra notes now require both `AZURE_MAPS_KEY` and `AZURE_MAPS_SAS_TOKEN` for production readiness.
 - Extended `infra/main.bicep` so Azure Maps is provisioned in infrastructure code, the primary Maps key is stored in Key Vault automatically, and the browser SAS token is now a first-class secure deployment parameter wired into the web app via Key Vault.
-- Added Redis-backed shared rate limiting for the highest-value public/auth/privacy endpoints, with automatic fallback to the existing in-memory limiter when Redis is unavailable.
+- Added Redis-backed shared rate limiting for the highest-value public/auth/privacy endpoints, then expanded that shared enforcement to seeker/public search, feedback, profile, saved-items, services, and seeker submission routes, with automatic fallback to the existing in-memory limiter when Redis is unavailable.
 
 ### Files changed during this audit pass
 
@@ -104,35 +104,44 @@ Final validation for the closing remediation slice should include:
 - `src/services/agentic/__tests__/controlPlane.test.ts`
 - `src/services/security/__tests__/rateLimit.test.ts`
 
+Expanded shared-rate-limit validation also passed for:
+
+- `src/app/api/search/__tests__/route.test.ts`
+- `src/app/api/feedback/__tests__/route.test.ts`
+- `src/app/api/profile/__tests__/route.test.ts`
+- `src/app/api/saved/__tests__/route.test.ts`
+- `src/app/api/services/__tests__/route.test.ts`
+- `src/app/api/submissions/report/__tests__/route.test.ts`
+- `src/app/api/submissions/appeal/__tests__/route.test.ts`
+- `src/app/api/submissions/denied/__tests__/route.test.ts`
+- `src/app/api/submissions/__tests__/report-routes.test.ts`
+- `src/app/api/submissions/__tests__/appeal-routes.test.ts`
+
 Repo-wide status at audit time:
 
 - Touched files were free of direct compile diagnostics.
-- The previously reported `src/services/resourceSubmissions/__tests__/service.test.ts` syntax issue was no longer reproducible in the current workspace and is treated as resolved outside this remediation lane.
-- A subsequent repo-wide rerun surfaced unrelated blockers outside this slice:
-  - `npx tsc --noEmit` currently fails in `src/components/chat/ChatWindow.tsx` with syntax-level parse errors.
-  - `npm run test` currently fails in `src/app/(seeker)/__tests__/map-page-client.test.tsx` due to seeker-map UI expectation drift.
 - Focused verification for the shared-rate-limit upgrade passed across the touched security slices.
+- Full repository validation is now green in the current workspace: `npm run test` passed with 318 test files and 3121 tests green, including the previously suspected seeker-page blockers.
 
 ## Residual Risks
 
 - This audit covered the primary auth, privacy, telemetry, maps, and reviewed audit-log boundaries, but it was not a full formal penetration test.
-- Redis-backed rate limiting now covers the highest-value routes reviewed in this lane, but routes still using the in-memory limiter alone do not yet gain cross-instance enforcement.
+- Redis-backed rate limiting now covers the primary public and seeker abuse surfaces reviewed in this lane, but routes still using the in-memory limiter alone do not yet gain cross-instance enforcement.
 - Optional auth providers now fail closed in production by default, but deployment hygiene still depends on environment configuration being managed correctly.
 - Azure Maps SAS token lifecycle is now codified as a secure deployment input, but automatic minting and rotation are still an operational secret-management process rather than an in-template rotation workflow.
 
 ## Readiness Assessment
 
-Current assessment: the reviewed security/compliance slice is production-ready in isolation, but the repository is not globally deployment-ready until unrelated chat and seeker-map validation failures are resolved.
+Current assessment: the reviewed security/compliance slice is production-ready, and the repository currently has a clean test gate in this workspace.
 
 Rationale:
 
 - No reviewed critical or high-severity finding remains open.
 - Secret exposure, privacy-route drift, and auth-surface drift identified in this audit were remediated in code.
-- Final deployment confidence still depends on full typecheck/test validation and disciplined Azure configuration.
-- The current repo-wide blockers are outside this remediation scope, but they still prevent a clean deployment gate for the whole application.
+- Final deployment confidence still depends on maintaining full validation and disciplined Azure configuration in CI and production.
 
 ## Recommended Next Checks
 
-1. Fix the current repo-wide validation blockers in `src/components/chat/ChatWindow.tsx` and `src/app/(seeker)/__tests__/map-page-client.test.tsx`, then rerun typecheck and tests.
-2. Add one focused regression assertion for `audit_logs` writes in merge/report paths if future refactors touch those services.
-3. Expand the Redis-backed limiter to any remaining abuse-sensitive routes that still rely only on in-memory enforcement.
+1. Add one focused regression assertion for `audit_logs` writes in merge/report paths if future refactors touch those services.
+2. Expand the Redis-backed limiter to any remaining abuse-sensitive routes that still rely only on in-memory enforcement.
+3. Mirror the local green validation state in CI with an explicit production-readiness check for required Azure Maps secrets and shared-rate-limit configuration.

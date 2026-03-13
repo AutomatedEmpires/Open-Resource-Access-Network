@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContext } from '@/services/auth/session';
 import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { captureException } from '@/services/telemetry/sentry';
 import {
@@ -78,7 +78,7 @@ interface ProfileResponse {
 // ============================================================
 
 function checkProfileRateLimit(ip: string) {
-  const rateLimit = checkRateLimit(`profile:ip:${ip}`, {
+  const rateLimit = checkRateLimitShared(`profile:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: PROFILE_RATE_LIMIT_MAX,
   });
@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
 
   // Rate limiting
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const rateLimit = checkProfileRateLimit(ip);
+  const rateLimit = await checkProfileRateLimit(ip);
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
@@ -210,7 +210,7 @@ export async function PUT(req: NextRequest) {
 
   // Rate limiting
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const rateLimit = checkProfileRateLimit(ip);
+  const rateLimit = await checkProfileRateLimit(ip);
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },

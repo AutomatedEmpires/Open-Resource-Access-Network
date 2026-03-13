@@ -18,7 +18,7 @@ import {
   RATE_LIMIT_WINDOW_MS,
   SEARCH_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { getSearchPreset, mergePresetFilters } from '@/services/search/presets';
 import { captureException } from '@/services/telemetry/sentry';
 
@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
     );
   }
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const rateLimit = checkRateLimit(`search:ip:${ip}`, {
+  const rateLimit = await checkRateLimitShared(`search:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: SEARCH_RATE_LIMIT_MAX_REQUESTS,
   });

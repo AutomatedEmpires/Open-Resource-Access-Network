@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getAuthContext } from '@/services/auth/session';
 import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { captureException } from '@/services/telemetry/sentry';
 
@@ -42,7 +42,7 @@ const ServiceIdSchema = z.object({
 // ============================================================
 
 function checkSavedRateLimit(ip: string) {
-  const rateLimit = checkRateLimit(`saved:ip:${ip}`, {
+  const rateLimit = checkRateLimitShared(`saved:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: SAVED_RATE_LIMIT_MAX,
   });
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
 
   // Rate limiting
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const rateLimit = checkSavedRateLimit(ip);
+  const rateLimit = await checkSavedRateLimit(ip);
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
 
   // Rate limiting
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const rateLimit = checkSavedRateLimit(ip);
+  const rateLimit = await checkSavedRateLimit(ip);
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
@@ -201,7 +201,7 @@ export async function DELETE(req: NextRequest) {
 
   // Rate limiting
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const rateLimit = checkSavedRateLimit(ip);
+  const rateLimit = await checkSavedRateLimit(ip);
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },

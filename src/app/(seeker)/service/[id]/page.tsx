@@ -161,6 +161,11 @@ function buildServiceJsonLd(baseUrl: string, id: string, meta: ServiceMeta) {
   };
 }
 
+/** Safely serialize JSON-LD, escaping < to prevent XSS in inline scripts */
+function safeJsonLd(data: Record<string, unknown>): string {
+  return JSON.stringify(data).replace(/</g, '\\u003c');
+}
+
 export default async function ServiceDetailPage({ params }: ServiceDetailPageProps) {
   const { id } = await params;
   const baseUrl = await getBaseUrlFromHeaders();
@@ -173,13 +178,13 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
           <script
             type="application/ld+json"
             dangerouslySetInnerHTML={{
-              __html: JSON.stringify(buildBreadcrumbJsonLd(baseUrl, id, meta.name)),
+              __html: safeJsonLd(buildBreadcrumbJsonLd(baseUrl, id, meta.name)),
             }}
           />
           <script
             type="application/ld+json"
             dangerouslySetInnerHTML={{
-              __html: JSON.stringify(buildServiceJsonLd(baseUrl, id, meta)),
+              __html: safeJsonLd(buildServiceJsonLd(baseUrl, id, meta)),
             }}
           />
         </>

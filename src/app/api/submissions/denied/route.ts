@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`user:denied:read:${ip}`, {
+  const rl = await checkRateLimitShared(`user:denied:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: 60,
   });

@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { isDatabaseConfigured, executeQuery, withTransaction } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { applySla } from '@/services/workflow/engine';
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`user:appeal:write:${ip}`, {
+  const rl = await checkRateLimitShared(`user:appeal:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: USER_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
@@ -251,7 +251,7 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`user:appeal:read:${ip}`, {
+  const rl = await checkRateLimitShared(`user:appeal:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: 60,
   });

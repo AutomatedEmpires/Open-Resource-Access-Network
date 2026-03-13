@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { ServiceSearchEngine } from '@/services/search/engine';
 import { executeCount, executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { captureException } from '@/services/telemetry/sentry';
 
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 
   // Rate limiting
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const rateLimit = checkRateLimit(`services:ip:${ip}`, {
+  const rateLimit = await checkRateLimitShared(`services:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: SERVICES_RATE_LIMIT_MAX,
   });

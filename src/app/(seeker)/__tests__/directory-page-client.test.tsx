@@ -486,7 +486,7 @@ describe('DirectoryPageClient', () => {
       expect(trustUrl).toContain('page=1');
     });
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Next' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Next page of results' }));
 
     await waitFor(() => {
       const searchCalls = fetchMock.mock.calls
@@ -1073,7 +1073,7 @@ describe('DirectoryPageClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     await screen.findByText('Food Pantry');
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Next' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Next page of results' }));
     await screen.findByText('Housing Hotline');
 
     const searchCalls = fetchMock.mock.calls

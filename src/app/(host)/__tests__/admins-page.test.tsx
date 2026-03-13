@@ -115,11 +115,11 @@ describe('host admins page', () => {
 
     render(<AdminsPage />);
 
-    await screen.findByText('11111111-1111-4111-8111-111111111111');
+    await screen.findByText(/11111111/);
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/host/organizations');
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/host/admins?organizationId=org-1');
 
-    fireEvent.change(screen.getByLabelText('Change role for 11111111-1111-4111-8111-111111111111'), {
+    fireEvent.change(screen.getByLabelText('Change role for member 11111111'), {
       target: { value: 'host_admin' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -268,7 +268,7 @@ describe('host admins page', () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith('/api/host/admins?organizationId=org-2');
-      expect(screen.getByText('22222222-2222-4222-8222-222222222222')).toBeInTheDocument();
+      expect(screen.getByText(/22222222/)).toBeInTheDocument();
     });
   });
 
@@ -377,9 +377,9 @@ describe('host admins page', () => {
       });
 
     render(<AdminsPage />);
-    await screen.findByText('11111111-1111-4111-8111-111111111111');
+    await screen.findByText(/11111111/);
 
-    fireEvent.change(screen.getByLabelText('Change role for 11111111-1111-4111-8111-111111111111'), {
+    fireEvent.change(screen.getByLabelText('Change role for member 11111111'), {
       target: { value: 'host_admin' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -408,7 +408,7 @@ describe('host admins page', () => {
       });
 
     render(<AdminsPage />);
-    await screen.findByText('11111111-1111-4111-8111-111111111111');
+    await screen.findByText(/11111111/);
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[1]);

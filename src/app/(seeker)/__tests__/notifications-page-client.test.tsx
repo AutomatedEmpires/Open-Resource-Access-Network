@@ -129,7 +129,7 @@ describe('NotificationsPageClient', () => {
     await screen.findByText('Case assigned');
     expect(screen.getByText('2 unread')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mark "Case assigned" as read' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mark “Case assigned” as read' }));
 
     await waitFor(() => {
       expect(screen.getByText('1 unread')).toBeInTheDocument();

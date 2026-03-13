@@ -172,7 +172,7 @@ export function ServiceCard({
         <div className="min-w-0 flex-1">
           <h3 className="font-bold text-gray-900 leading-snug text-base">
             {href ? (
-              <Link href={href} className="inline-flex items-center gap-1 text-sky-700 hover:underline">
+              <Link href={href} className="text-sky-700 hover:underline">
                 {service.name}
               </Link>
             ) : service.url ? (
@@ -180,7 +180,7 @@ export function ServiceCard({
                 href={service.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sky-700 hover:underline"
+                className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5 text-sky-700 hover:underline"
               >
                 {service.name}
                 <ExternalLink className="h-3 w-3 flex-shrink-0" aria-label="(opens in new tab)" />
@@ -494,32 +494,32 @@ export function ServiceCard({
 
       {/* Bottom action row: View details + feedback/report */}
       {!showFeedback && (
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
+        <div className="mt-3 flex items-center justify-between gap-1 border-t border-slate-100 pt-1.5 -mx-1">
+          <div className="flex items-center">
             <button
               type="button"
               onClick={() => setShowFeedback(true)}
-              className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 transition-colors"
+              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
             >
-              <MessageSquare className="h-3 w-3" aria-hidden="true" />
+              <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
               Feedback
             </button>
             <button
               type="button"
               onClick={() => setShowReport(true)}
-              className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-amber-600 transition-colors"
+              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-amber-50 hover:text-amber-800"
             >
-              <AlertCircle className="h-3 w-3" aria-hidden="true" />
+              <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
               Flag issue
             </button>
           </div>
           {href && (
             <Link
               href={href}
-              className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
+              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-sky-700 transition-colors hover:bg-sky-50"
             >
               View details
-              <ExternalLink className="h-3 w-3" aria-hidden="true" />
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             </Link>
           )}
         </div>

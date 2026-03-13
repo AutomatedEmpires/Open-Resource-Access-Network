@@ -15,7 +15,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { MessageCircle, List, MapPin, Bookmark, User } from 'lucide-react';
+import { MessageCircle, List, MapPin, Bookmark, User, Search } from 'lucide-react';
 import { CommandPalette } from '@/components/command/CommandPalette';
 import { AppFooter } from '@/components/footer';
 import { SeekerContextStrip } from '@/components/seeker/SeekerContextStrip';
@@ -113,6 +113,16 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
             </span>
           </div>
 
+          {/* Mobile: compact search/command shortcut — hidden on desktop */}
+          <button
+            type="button"
+            onClick={() => setCommandPaletteOpen(true)}
+            className="flex items-center justify-center min-h-[44px] min-w-[44px] rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 md:hidden"
+            aria-label="Open quick actions"
+          >
+            <Search className="h-5 w-5" aria-hidden="true" />
+          </button>
+
           <div className="hidden items-center gap-2 md:flex">
             <button
               type="button"
@@ -193,13 +203,13 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
                 key={href}
                 href={href}
                 className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-xs font-medium transition-colors ${
-                  active ? 'text-slate-950' : 'text-slate-400 hover:text-slate-700'
+                  active ? 'text-action-base' : 'text-slate-400 hover:text-slate-700'
                 }`}
                 aria-current={active ? 'page' : undefined}
               >
                 {/* Active pill capsule behind icon */}
                 <span className={`relative flex items-center justify-center rounded-full transition-colors ${
-                  active ? 'bg-slate-100 px-3 py-1' : 'px-3 py-1'
+                  active ? 'bg-info-subtle px-3 py-1' : 'px-3 py-1'
                 }`}>
                   <Icon className="h-5 w-5" aria-hidden="true" />
                   {isSavedItem && savedCount > 0 && (

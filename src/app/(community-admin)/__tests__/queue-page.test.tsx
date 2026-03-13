@@ -105,15 +105,15 @@ describe('community admin queue page', () => {
 
     render(<QueuePage />);
 
-    await screen.findByText('Food Pantry');
+    expect(await screen.findAllByText('Food Pantry')).not.toHaveLength(0);
     expect(fetchMock).toHaveBeenCalledWith('/api/community/queue?page=1&limit=20');
     expect(screen.getAllByText('40 entries').length).toBeGreaterThan(0);
     expect(screen.getByText(/\(\d+d\)/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Next page' })[0]);
     await waitFor(() => {
       expect(fetchMock).toHaveBeenLastCalledWith('/api/community/queue?page=2&limit=20');
-      expect(screen.getByText('2 / 2')).toBeInTheDocument();
+      expect(screen.getAllByText('2 / 2')).not.toHaveLength(0);
     });
   });
 
@@ -129,7 +129,7 @@ describe('community admin queue page', () => {
       });
 
     render(<QueuePage />);
-    await screen.findByText('Food Pantry');
+    expect(await screen.findAllByText('Food Pantry')).not.toHaveLength(0);
 
     fireEvent.click(screen.getByRole('tab', { name: 'Approved' }));
 
@@ -165,13 +165,13 @@ describe('community admin queue page', () => {
       });
 
     render(<QueuePage />);
-    await screen.findByText('Food Pantry');
+    expect(await screen.findAllByText('Food Pantry')).not.toHaveLength(0);
 
     fireEvent.click(screen.getByRole('tab', { name: 'Assigned to me' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenLastCalledWith('/api/community/queue?page=1&limit=20&assignedToMe=true');
-      expect(screen.getByText('community-admin-1')).toBeInTheDocument();
+      expect(screen.getAllByText('community-admin-1')).not.toHaveLength(0);
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
@@ -206,9 +206,9 @@ describe('community admin queue page', () => {
       });
 
     render(<QueuePage />);
-    await screen.findByText('Food Pantry');
+    expect(await screen.findAllByText('Food Pantry')).not.toHaveLength(0);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Claim' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Claim' })[0]);
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/community/queue', {
@@ -217,7 +217,7 @@ describe('community admin queue page', () => {
         body: JSON.stringify({ submissionId: 'q-1' }),
       });
       expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/community/queue?page=1&limit=20');
-      expect(screen.getByText('community-admin-1')).toBeInTheDocument();
+      expect(screen.getAllByText('community-admin-1')).not.toHaveLength(0);
     });
   });
 
@@ -244,8 +244,8 @@ describe('community admin queue page', () => {
       });
 
     render(<QueuePage />);
-    await screen.findByText('Food Pantry');
-    fireEvent.click(screen.getByRole('button', { name: 'Claim' }));
+    expect(await screen.findAllByText('Food Pantry')).not.toHaveLength(0);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Claim' })[0]);
 
     await screen.findByRole('alert');
     expect(screen.getByText('already claimed by another reviewer')).toBeInTheDocument();
@@ -288,9 +288,9 @@ describe('community admin queue page', () => {
       });
 
     render(<QueuePage />);
-    await screen.findByText('Food Pantry');
+    expect(await screen.findAllByText('Food Pantry')).not.toHaveLength(0);
     expect(screen.getByText('Breached')).toBeInTheDocument();
-    expect(screen.getByText('reviewer-2')).toBeInTheDocument();
+    expect(screen.getAllByText('reviewer-2')).not.toHaveLength(0);
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
     expect(screen.getByText('2 selected')).toBeInTheDocument();
@@ -321,9 +321,9 @@ describe('community admin queue page', () => {
       });
 
     render(<QueuePage />);
-    await screen.findByText('Food Pantry');
+    expect(await screen.findAllByText('Food Pantry')).not.toHaveLength(0);
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /Select Food Pantry/i }));
+    fireEvent.click(screen.getAllByRole('checkbox', { name: /Select Food Pantry/i })[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Reject selected' }));
 
     await screen.findByRole('alert');
@@ -342,6 +342,6 @@ describe('community admin queue page', () => {
     render(<QueuePage />);
 
     await screen.findByText('No entries found');
-    expect(screen.getByText('The verification queue is empty.')).toBeInTheDocument();
+    expect(screen.getByText('The review queue is empty.')).toBeInTheDocument();
   });
 });

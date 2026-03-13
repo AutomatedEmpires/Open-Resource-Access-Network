@@ -1,3 +1,7 @@
+/**
+ * Organization Invitations — Server Component wrapper
+ * noindex: private auth-gated page for accepting/declining org invitations.
+ */
 import type { Metadata } from 'next';
 import InvitationsPageClient from './InvitationsPageClient';
 

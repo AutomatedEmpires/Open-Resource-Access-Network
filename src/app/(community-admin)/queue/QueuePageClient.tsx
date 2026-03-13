@@ -1,9 +1,9 @@
 /**
- * /queue — Verification Queue
+ * /queue — Review Queue Workbench
  *
  * Enhanced with FormAlert, toast notifications.
  *
- * Lists all verification queue entries with status filters, pagination,
+ * Lists all review queue entries with status filters, pagination,
  * and claim-for-review actions. Click-through navigates to /verify?id=…
  * Wired to GET /api/community/queue + POST /api/community/queue (claim).
  */
@@ -109,7 +109,128 @@ function TriageBadge({ tier, explanations }: { tier: 'urgent' | 'high' | 'normal
   );
 }
 
+// ============================================================
+// MOBILE CARD — shown on xs/sm screens only
+// ============================================================
 
+function MobileQueueCard({
+  entry,
+  currentUserId,
+  onClaim,
+  onUnclaim,
+  claimingId,
+  releasingId,
+  isSelected,
+  onToggleSelect,
+}: {
+  entry: QueueRow;
+  currentUserId: string | undefined;
+  onClaim: (id: string) => void;
+  onUnclaim: (id: string) => void;
+  claimingId: string | null;
+  releasingId: string | null;
+  isSelected: boolean;
+  onToggleSelect: (id: string) => void;
+}) {
+  const age = daysAgo(entry.created_at);
+  const isStale = age > 14;
+  const isSelectable = entry.status === 'submitted' || entry.status === 'under_review';
+  return (
+    <div
+      className={`bg-white rounded-xl border p-4 space-y-3 transition-shadow hover:shadow-sm ${
+        entry.sla_breached ? 'border-error-soft ring-1 ring-error-soft' : 'border-gray-200'
+      }`}
+    >
+      {/* Top row: optional checkbox + service name + triage badge */}
+      <div className="flex items-start gap-3">
+        {isSelectable ? (
+          <input
+            type="checkbox"
+            aria-label={`Select ${entry.service_name}`}
+            checked={isSelected}
+            onChange={() => onToggleSelect(entry.id)}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 shrink-0"
+          />
+        ) : (
+          <span className="w-4 shrink-0" aria-hidden="true" />
+        )}
+        <div className="min-w-0 flex-1">
+          <Link
+            href={`/verify?id=${entry.id}`}
+            className="text-sm font-semibold text-action-base hover:underline block line-clamp-2"
+          >
+            {entry.service_name ?? <span className="italic text-gray-400">(unnamed service)</span>}
+          </Link>
+          <p className="text-xs text-gray-500 mt-0.5 truncate">{entry.organization_name}</p>
+        </div>
+        <TriageBadge tier={entry.triage_tier ?? 'low'} explanations={entry.triage_explanations ?? []} />
+      </div>
+
+      {/* Status + submitted date */}
+      <div className="flex items-center justify-between">
+        <StatusBadge status={entry.status} />
+        <span className="text-xs text-gray-400 flex items-center gap-1">
+          <Clock className="h-3 w-3" aria-hidden="true" />
+          {formatDate(entry.created_at)}
+          {isStale && <span className="text-amber-600 font-medium ml-1">({age}d old)</span>}
+        </span>
+      </div>
+
+      {/* SLA / assignee strip */}
+      {(entry.sla_breached || entry.assigned_to_user_id || entry.sla_deadline) && (
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs">
+          {entry.sla_breached ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-error-muted px-2 py-0.5 font-medium text-error-deep">
+              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+              SLA Breached
+            </span>
+          ) : entry.sla_deadline ? (
+            <span className="text-gray-500">Due {formatDate(entry.sla_deadline)}</span>
+          ) : (
+            <span />
+          )}
+          {entry.assigned_to_user_id && (
+            <span className="flex items-center gap-1 text-gray-500">
+              <UserCheck className="h-3 w-3 text-green-600" aria-hidden="true" />
+              {entry.assigned_to_display_name ?? entry.assigned_to_user_id.slice(0, 8) + '…'}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 pt-1">
+        {entry.status === 'submitted' && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1 flex-1"
+            disabled={claimingId === entry.id}
+            onClick={() => void onClaim(entry.id)}
+          >
+            <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            {claimingId === entry.id ? 'Claiming…' : 'Claim'}
+          </Button>
+        )}
+        {entry.status === 'under_review' && entry.assigned_to_user_id === currentUserId && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1 flex-1 border-amber-300 text-amber-700 hover:bg-amber-50"
+            disabled={releasingId === entry.id}
+            onClick={() => void onUnclaim(entry.id)}
+          >
+            <Unlock className="h-3.5 w-3.5" aria-hidden="true" />
+            {releasingId === entry.id ? 'Releasing…' : 'Release'}
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" className="flex-1" asChild>
+          <Link href={`/verify?id=${entry.id}`}>Review →</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function QueuePage() {
   const searchParams = useSearchParams();
@@ -277,7 +398,7 @@ export default function QueuePage() {
     <ErrorBoundary>
       <PageHeader
         eyebrow="Community Admin"
-        title="Verification Queue"
+        title="Review Queue"
         icon={<ClipboardList className="h-6 w-6 text-action-base" aria-hidden="true" />}
         subtitle="Triage and review pending service verification submissions for your community."
         badges={
@@ -304,7 +425,7 @@ export default function QueuePage() {
       />
 
       {/* Status filter tabs */}
-      <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-1" role="tablist" aria-label="Filter by status">
+      <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-1 scrollbar-none" role="tablist" aria-label="Filter by status">
         <Filter className="h-4 w-4 text-gray-400 mr-1 shrink-0" aria-hidden="true" />
         {STATUS_TABS.map(({ value, label }) => (
           <button
@@ -312,7 +433,7 @@ export default function QueuePage() {
             role="tab"
             aria-selected={statusFilter === value}
             onClick={() => { setFilter(value); }}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+            className={`inline-flex min-h-[44px] items-center px-3 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               statusFilter === value
                 ? 'bg-info-muted text-action-deep'
                 : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
@@ -326,7 +447,7 @@ export default function QueuePage() {
           role="tab"
           aria-selected={statusFilter === SPECIAL_FILTER_ASSIGNED}
           onClick={() => { setFilter(SPECIAL_FILTER_ASSIGNED); }}
-          className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+          className={`inline-flex min-h-[44px] items-center px-3 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
             statusFilter === SPECIAL_FILTER_ASSIGNED
               ? 'bg-green-100 text-green-800'
               : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
@@ -376,34 +497,55 @@ export default function QueuePage() {
         <FormAlert variant="error" message={error} onDismiss={() => setError(null)} />
       )}
 
-      {/* Loading state */}
-      {isLoading && !data && (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </div>
-      )}
+      {/* Live region: announces state changes to screen readers */}
+      <div aria-live="polite" aria-atomic="false">
+        {/* Loading state */}
+        {isLoading && !data && (
+          <div role="status" className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        )}
 
-      {/* Empty state */}
-      {!isLoading && data && data.results.length === 0 && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-gray-200 bg-white p-12 text-center">
-          <ClipboardList className="h-10 w-10 text-gray-300 mb-3" aria-hidden="true" />
-          <p className="text-gray-500 font-medium">No entries found</p>
-          <p className="text-gray-400 text-sm mt-1">
-            {statusFilter
-              ? `No entries with status "${STATUS_TABS.find(({ value }) => value === statusFilter)?.label ?? statusFilter}".`
-              : 'The verification queue is empty.'}
-          </p>
-        </div>
-      )}
+        {/* Empty state */}
+        {!isLoading && data && data.results.length === 0 && (
+          <div role="status" className="flex flex-col items-center justify-center rounded-lg border border-gray-200 bg-white p-12 text-center">
+            <ClipboardList className="h-10 w-10 text-gray-300 mb-3" aria-hidden="true" />
+            <p className="text-gray-500 font-medium">No entries found</p>
+            <p className="text-gray-400 text-sm mt-1">
+              {statusFilter
+                ? `No entries with status "${STATUS_TABS.find(({ value }) => value === statusFilter)?.label ?? statusFilter}".`
+                : 'The review queue is empty.'}
+            </p>
+          </div>
+        )}
 
-      {/* Queue table */}
-      {data && data.results.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        {/* Queue items */}
+        {data && data.results.length > 0 && (
+        <>
+          {/* Mobile: card list — visible only on xs/sm */}
+          <div className="sm:hidden space-y-3">
+            {data.results.map((entry) => (
+              <MobileQueueCard
+                key={entry.id}
+                entry={entry}
+                currentUserId={currentUserId}
+                onClaim={handleClaim}
+                onUnclaim={handleUnclaim}
+                claimingId={claimingId}
+                releasingId={releasingId}
+                isSelected={selectedIds.has(entry.id)}
+                onToggleSelect={toggleSelect}
+              />
+            ))}
+          </div>
+
+          {/* Desktop: table — visible on sm+ */}
+        <div className="hidden sm:block bg-white rounded-lg border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <caption className="sr-only">Verification queue entries with status, submission date, assignee, and actions.</caption>
+              <caption className="sr-only">Review queue entries with status, submission date, assignee, and actions.</caption>
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th scope="col" className="w-10 px-4 py-3">
@@ -575,7 +717,37 @@ export default function QueuePage() {
             </div>
           </div>
         </div>
+
+          {/* Mobile: pagination — visible only on xs/sm */}
+          <div className="sm:hidden flex items-center justify-between px-1 py-3">
+            <p className="text-sm text-gray-500">
+              {data.total} {data.total === 1 ? 'entry' : 'entries'}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={page <= 1 || isLoading}
+                onClick={() => void fetchQueue(page - 1, statusFilter)}
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                <span className="sr-only">Previous page</span>
+              </Button>
+              <span className="text-sm text-gray-600">{page} / {totalPages}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!data.hasMore || isLoading}
+                onClick={() => void fetchQueue(page + 1, statusFilter)}
+              >
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                <span className="sr-only">Next page</span>
+              </Button>
+            </div>
+          </div>
+        </>
       )}
+      </div>{/* end aria-live */}
     </ErrorBoundary>
   );
 }

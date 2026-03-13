@@ -56,7 +56,7 @@ describe('seeker layout shell', () => {
   it('toggles command palette with Ctrl/Cmd+K and closes through palette callback', () => {
     render(<SeekerLayout>Child</SeekerLayout>);
 
-    expect(screen.getByRole('button', { name: 'Open quick actions' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Open quick actions' })).toHaveLength(2);
     expect(screen.getByTestId('palette-state')).toHaveTextContent('closed');
 
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true });

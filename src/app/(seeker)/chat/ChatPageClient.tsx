@@ -82,7 +82,7 @@ export default function ChatPage() {
     return (
       <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)]">
         <div className="container mx-auto max-w-6xl px-4 py-6 md:py-8">
-          <div className="rounded-[28px] border border-slate-200/80 bg-white/92 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/92 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
             <PageHeader
               eyebrow="Seeker assistant"
               title="Find Services"
@@ -108,7 +108,7 @@ export default function ChatPage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)]">
       <div className="container mx-auto max-w-6xl px-4 pt-4 pb-6 md:py-8">
-        <section className="rounded-[30px] border border-slate-200/80 bg-white/92 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+        <section className="rounded-[30px] border border-slate-200/80 bg-white/92 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
             <PageHeader
               eyebrow="Seeker assistant"
               title="Find Services"

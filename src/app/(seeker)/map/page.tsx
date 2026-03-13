@@ -11,6 +11,16 @@ export const metadata: Metadata = {
   description:
     'View verified services on an interactive map. Find food banks, shelters, healthcare, and more near your location.',
   robots: { index: false, follow: false },
+  openGraph: {
+    title: 'Service Map | ORAN',
+    description: 'View verified services near your location on an interactive map.',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Service Map | ORAN',
+    description: 'View verified services near your location on an interactive map.',
+  },
 };
 
 export default function MapPage() {

@@ -62,19 +62,21 @@ export default function HostLayoutShell({ children }: { children: React.ReactNod
       >
         Skip to main content
       </a>
-      <header className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
+      <header aria-label="Host portal navigation" className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
+        {/* Top bar — brand + desktop nav + user menu */}
         <div className="container mx-auto max-w-7xl flex items-center justify-between px-4 h-14">
-          <Link href="/host" className="font-bold text-gray-900 tracking-tight">
+          <Link href="/host" className="shrink-0 font-bold text-gray-900 tracking-tight">
             ORAN Host
           </Link>
 
-          <div className="flex items-center gap-2">
-            <nav className="flex items-center gap-1 overflow-x-auto" aria-label="Host navigation">
+          {/* Desktop nav (lg and up) */}
+          <div className="hidden lg:flex items-center gap-2">
+            <nav className="flex items-center gap-1" aria-label="Host navigation">
               {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
                 <Link
                   key={href}
                   href={href}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`flex items-center gap-1.5 min-h-[44px] px-3 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                     isActive(href)
                       ? 'bg-teal-50 text-teal-800'
                       : 'text-stone-500 hover:text-stone-900 hover:bg-stone-50'
@@ -88,7 +90,36 @@ export default function HostLayoutShell({ children }: { children: React.ReactNod
             </nav>
             <PortalUserMenu />
           </div>
+
+          {/* Mobile: user menu only in top bar */}
+          <div className="flex lg:hidden items-center">
+            <PortalUserMenu />
+          </div>
         </div>
+
+        {/* Mobile nav strip (below lg) — scrollable icon+label tabs */}
+        <nav
+          className="lg:hidden overflow-x-auto scrollbar-none border-t border-[var(--border)]"
+          aria-label="Host navigation"
+        >
+          <div className="flex items-stretch px-1">
+            {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] min-w-16 px-2 py-1 text-[10px] font-medium transition-colors whitespace-nowrap border-b-2 ${
+                  isActive(href)
+                    ? 'border-teal-600 text-teal-800'
+                    : 'border-transparent text-stone-500 hover:text-stone-800 hover:border-stone-300'
+                }`}
+                aria-current={isActive(href) ? 'page' : undefined}
+              >
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="truncate max-w-14">{label}</span>
+              </Link>
+            ))}
+          </div>
+        </nav>
       </header>
 
       <HostContextStrip />

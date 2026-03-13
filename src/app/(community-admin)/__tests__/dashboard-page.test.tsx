@@ -84,7 +84,7 @@ describe('community admin dashboard page', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/community/queue?assignedToMe=true&limit=1');
     expect(screen.getByText('Jordan')).toBeInTheDocument();
     expect(screen.getAllByText('Central Texas').length).toBeGreaterThan(0);
-    expect(screen.getByText('Verification Queue')).toBeInTheDocument();
+    expect(screen.getByText('Review Queue')).toBeInTheDocument();
     expect(screen.getByText('Continue a Review')).toBeInTheDocument();
     expect(screen.getByText('Submitted')).toBeInTheDocument();
     expect(screen.getByText('Under Review')).toBeInTheDocument();

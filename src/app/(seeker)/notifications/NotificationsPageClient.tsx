@@ -176,12 +176,13 @@ export default function NotificationsPageClient() {
         title="Inbox"
         description="Notifications route you back to authenticated workflows and never expose profile details publicly."
       >
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div className="flex gap-2" role="group" aria-label="Filter notifications">
             <button
               type="button"
               onClick={() => setFilter('all')}
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              aria-pressed={filter === 'all'}
+              className={`inline-flex min-h-[44px] items-center rounded-full px-3 text-sm font-medium transition-colors ${
                 filter === 'all'
                   ? 'bg-info-subtle text-action-strong'
                   : 'text-stone-600 hover:bg-orange-50'
@@ -192,7 +193,8 @@ export default function NotificationsPageClient() {
             <button
               type="button"
               onClick={() => setFilter('unread')}
-              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              aria-pressed={filter === 'unread'}
+              className={`inline-flex min-h-[44px] items-center rounded-full px-3 text-sm font-medium transition-colors ${
                 filter === 'unread'
                   ? 'bg-info-subtle text-action-strong'
                   : 'text-stone-600 hover:bg-orange-50'
@@ -205,25 +207,29 @@ export default function NotificationsPageClient() {
             <button
               type="button"
               onClick={markAllRead}
-              className="inline-flex items-center gap-1.5 text-xs text-action-base hover:text-action-deep font-medium"
+              className="inline-flex min-h-[44px] items-center gap-1.5 px-2 text-xs text-action-base hover:text-action-deep font-medium"
             >
-              <CheckCheck className="h-3.5 w-3.5" />
+              <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" />
               Mark all read
             </button>
           )}
         </div>
 
+        <div aria-live="polite" aria-atomic="false">
         {loading && isAuthenticated === null ? (
-          <div className="py-12 text-center text-sm text-stone-400">Loading notifications…</div>
+          <div role="status" className="py-12 text-center text-sm text-stone-400">Loading notifications…</div>
         ) : notifications.length === 0 ? (
-          <div className="text-center py-12">
+          <div role="status" className="text-center py-12">
             <Inbox className="mx-auto mb-3 h-10 w-10 text-orange-200" aria-hidden="true" />
             <p className="text-sm text-stone-400">
               {filter === 'unread' ? 'No unread notifications.' : 'No notifications yet.'}
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-orange-100 overflow-hidden rounded-[24px] border border-orange-100 bg-white shadow-sm">
+          <div
+            className="divide-y divide-orange-100 overflow-hidden rounded-[24px] border border-orange-100 bg-white shadow-sm"
+            aria-label="Notifications list"
+          >
             {notifications.map((n) => (
               <div
                 key={n.id}
@@ -231,9 +237,9 @@ export default function NotificationsPageClient() {
                   !n.read_at ? 'bg-info-subtle/30' : ''
                 }`}
               >
-                <div className="mt-1.5 flex-shrink-0">
+                <div className="mt-1.5 flex-shrink-0" aria-hidden="true">
                   {!n.read_at ? (
-                    <span className="block h-2 w-2 rounded-full bg-action" aria-label="Unread" />
+                    <span className="block h-2 w-2 rounded-full bg-action" />
                   ) : (
                     <span className="block h-2 w-2" />
                   )}
@@ -247,24 +253,24 @@ export default function NotificationsPageClient() {
                   <p className="mt-1 text-[10px] text-stone-400">{formatDate(n.created_at)}</p>
                 </div>
 
-                <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+                <div className="flex items-center gap-1 flex-shrink-0">
                   {!n.read_at && (
                     <button
                       type="button"
                       onClick={() => markOneRead(n.id)}
-                      className="rounded p-1.5 text-stone-400 hover:bg-orange-100 hover:text-stone-600"
-                      aria-label={`Mark "${n.title}" as read`}
+                      className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-stone-400 hover:bg-orange-100 hover:text-stone-600"
+                      aria-label={`Mark \u201c${n.title}\u201d as read`}
                     >
-                      <Check className="h-4 w-4" />
+                      <Check className="h-4 w-4" aria-hidden="true" />
                     </button>
                   )}
                   {n.action_url && (
                     <Link
                       href={n.action_url}
-                      className="rounded p-1.5 text-stone-400 hover:bg-orange-100 hover:text-stone-600"
+                      className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-stone-400 hover:bg-orange-100 hover:text-stone-600"
                       aria-label={`View ${n.title}`}
                     >
-                      <ExternalLink className="h-4 w-4" />
+                      <ExternalLink className="h-4 w-4" aria-hidden="true" />
                     </Link>
                   )}
                 </div>
@@ -272,6 +278,7 @@ export default function NotificationsPageClient() {
             ))}
           </div>
         )}
+        </div>
 
         {(page > 1 || hasMore) && (
           <div className="flex items-center justify-between mt-4">

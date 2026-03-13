@@ -908,7 +908,7 @@ export default function MapPage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)]">
       <div className="container mx-auto max-w-6xl px-4 pt-4 pb-8 md:py-8">
-        <section className="rounded-[30px] border border-slate-200/80 bg-white/92 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+        <section className="rounded-[30px] border border-slate-200/80 bg-white/92 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
             <PageHeader
               eyebrow="Verified discovery"
               title="Service Map"
@@ -924,15 +924,15 @@ export default function MapPage() {
             />
 
             <ErrorBoundary>
-              <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-5">
+              <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-4">
         {/* Search bar */}
         <FormSection
           title="Search the map"
           description="Search first. Open refinements only when you need to tighten the view."
           className="mb-3"
         >
-          <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end">
-            <FormField id="map-search" label="Search services to plot" className="flex-1 basis-64">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+            <FormField id="map-search" label="Search services to plot" className="w-full">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" aria-hidden="true" />
                 <input
@@ -962,18 +962,21 @@ export default function MapPage() {
                 )}
               </div>
             </FormField>
-            <Button type="submit" disabled={!canSearch || isLoading}>
-              Search
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleUseMyLocation}
-              disabled={isLocating}
-              title="Opt-in: uses device location in-session only; not stored"
-            >
-              {isLocating ? 'Locating…' : 'Use my location'}
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button type="submit" disabled={!canSearch || isLoading} className="w-full sm:w-auto">
+                Search
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleUseMyLocation}
+                disabled={isLocating}
+                title="Opt-in: uses device location in-session only; not stored"
+                className="w-full sm:w-auto"
+              >
+                {isLocating ? 'Locating…' : 'Use my location'}
+              </Button>
+            </div>
           </form>
         </FormSection>
 
@@ -1054,8 +1057,9 @@ export default function MapPage() {
                 const commonTags = def.tags.filter((t) => t.common);
                 const activeTags = selectedAttributes[dim] ?? [];
                 return (
-                  <div key={dim} className="flex flex-wrap items-center gap-2" role="group" aria-label={def.name}>
-                    <span className="w-20 flex-shrink-0 text-xs font-medium text-stone-500">{def.name}:</span>
+                  <div key={dim} className="flex flex-col gap-1.5" role="group" aria-label={def.name}>
+                    <span className="text-xs font-medium text-stone-500">{def.name}:</span>
+                    <div className="flex flex-wrap gap-1.5">
                     {commonTags.map((t) => {
                       const isActive = activeTags.includes(t.tag);
                       return (
@@ -1075,6 +1079,7 @@ export default function MapPage() {
                         </button>
                       );
                     })}
+                    </div>
                   </div>
                 );
               })}
@@ -1097,7 +1102,7 @@ export default function MapPage() {
                 description="Change confidence or ordering without resetting the active map view."
                 className="rounded-[18px] border border-slate-200 bg-white p-4"
               >
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
             <FormField id="map-confidence" label="Trust:" className="w-40 max-w-full">
               <select
                 id="map-confidence"

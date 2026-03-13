@@ -368,14 +368,18 @@ export default function AdminsPage() {
                 <button
                   type="button"
                   onClick={() => setInviteInputMode('email')}
-                  className={`px-3 py-1 text-sm rounded-full ${inviteInputMode === 'email' ? 'bg-info-muted text-action-deep font-medium' : 'bg-gray-100 text-gray-600'}`}
+                  className={`inline-flex min-h-[44px] items-center px-4 text-sm rounded-full ${
+                    inviteInputMode === 'email' ? 'bg-info-muted text-action-deep font-medium' : 'bg-gray-100 text-gray-600'
+                  }`}
                 >
                   Email
                 </button>
                 <button
                   type="button"
                   onClick={() => setInviteInputMode('uuid')}
-                  className={`px-3 py-1 text-sm rounded-full ${inviteInputMode === 'uuid' ? 'bg-info-muted text-action-deep font-medium' : 'bg-gray-100 text-gray-600'}`}
+                  className={`inline-flex min-h-[44px] items-center px-4 text-sm rounded-full ${
+                    inviteInputMode === 'uuid' ? 'bg-info-muted text-action-deep font-medium' : 'bg-gray-100 text-gray-600'
+                  }`}
                 >
                   User ID
                 </button>
@@ -514,13 +518,18 @@ export default function AdminsPage() {
           ) : (
             <ul className="divide-y divide-gray-100">
               {members.map((m) => (
-                <li key={m.id} className="flex items-center justify-between px-6 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-info-muted text-action-strong">
+                <li key={m.id} className="flex items-center justify-between px-6 py-3 min-h-[54px]">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-info-muted text-action-strong">
                       <Users className="h-4 w-4" aria-hidden="true" />
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{m.userId}</p>
+                    <div className="min-w-0">
+                      <p
+                        className="font-mono text-xs font-medium text-gray-700 truncate max-w-[180px]"
+                        title={m.userId}
+                      >
+                        {m.userId.slice(0, 8)}&hellip;
+                      </p>
                       <p className="text-xs text-gray-500">
                         Added {formatDate(m.addedAt)}
                       </p>
@@ -538,8 +547,8 @@ export default function AdminsPage() {
                     <select
                       value={m.role}
                       onChange={(e) => setPendingRoleChange({ memberId: m.id, userId: m.userId, newRole: e.target.value as HostRole })}
-                      className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs min-h-[32px]"
-                      aria-label={`Change role for ${m.userId}`}
+                      className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs min-h-[44px]"
+                      aria-label={`Change role for member ${m.userId.slice(0, 8)}`}
                       disabled={memberAction?.memberId === m.id}
                     >
                       {availableRoles.map((r) => (

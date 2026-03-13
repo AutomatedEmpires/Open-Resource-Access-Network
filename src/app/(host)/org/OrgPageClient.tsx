@@ -159,16 +159,11 @@ export default function OrgDashboardPage() {
           </form>
         </FormSection>
 
-        <FormSection
-          title="How organization edits work now"
-          description="This page is the published organization view. Structured edits and retirement actions reopen in Resource Studio so organization facts, linked listing changes, evidence, and review history stay on one submission trail."
-          className="mb-4"
-        >
-          <div className="flex flex-wrap gap-3 text-sm text-slate-600">
-            <Link href="/resource-studio?compose=listing" className="font-medium text-action-base hover:underline">Start a structured update</Link>
-            <Link href="/resource-studio" className="font-medium text-action-base hover:underline">Open draft and review history</Link>
-          </div>
-        </FormSection>
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
+          <span>This page shows published organization records. Structured edits stay attached to the submission audit trail.</span>
+          <Link href="/resource-studio?compose=listing" className="font-medium text-action-base hover:underline whitespace-nowrap">Start a structured update →</Link>
+          <Link href="/resource-studio" className="font-medium text-action-base hover:underline whitespace-nowrap">Open draft history →</Link>
+        </div>
 
         {error && (
           <FormAlert variant="error" message={error} onDismiss={() => setError(null)} className="mb-4" />
@@ -209,15 +204,28 @@ export default function OrgDashboardPage() {
                   <div>
                     <div className="flex items-start justify-between gap-2">
                       <h2 className="font-semibold text-gray-900 text-sm">{org.name}</h2>
-                      {org.verified_at && (
-                        <span
-                          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200"
-                          title={`Verified ${new Date(org.verified_at).toLocaleDateString()}`}
-                        >
-                          <Award className="h-3 w-3" aria-hidden="true" />
-                          Verified
-                        </span>
-                      )}
+                      <div className="flex shrink-0 flex-wrap gap-1">
+                        {org.verified_at && (
+                          <span
+                            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200"
+                            title={`Verified ${new Date(org.verified_at).toLocaleDateString()}`}
+                          >
+                            <Award className="h-3 w-3" aria-hidden="true" />
+                            Verified
+                          </span>
+                        )}
+                        {org.status && org.status !== 'active' && (
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border ${
+                              org.status === 'defunct'
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                            }`}
+                          >
+                            {org.status.charAt(0).toUpperCase() + org.status.slice(1)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     {org.mission_statement && (
                       <p className="mt-1 text-xs text-slate-500 italic line-clamp-1">{org.mission_statement}</p>
@@ -244,6 +252,25 @@ export default function OrgDashboardPage() {
                         </span>
                       )}
                     </div>
+                    {(org.year_incorporated ?? org.legal_status ?? org.tax_status) && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {org.year_incorporated && (
+                          <span className="inline-flex items-center rounded-md bg-gray-50 border border-gray-200 px-2 py-0.5 text-xs text-gray-500">
+                            Est. {org.year_incorporated}
+                          </span>
+                        )}
+                        {org.legal_status && (
+                          <span className="inline-flex items-center rounded-md bg-gray-50 border border-gray-200 px-2 py-0.5 text-xs text-gray-500">
+                            {org.legal_status}
+                          </span>
+                        )}
+                        {org.tax_status && (
+                          <span className="inline-flex items-center rounded-md bg-gray-50 border border-gray-200 px-2 py-0.5 text-xs text-gray-500">
+                            {org.tax_status}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
                     <Link href={`/resource-studio?compose=listing&organizationId=${org.id}`}>

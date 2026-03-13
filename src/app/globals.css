@@ -3,6 +3,17 @@
 /* Enables dark: utilities via .dark class on <html> */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ─── Custom utilities ─────────────────────────────────────────────────────── */
+
+/* Hide scrollbars while preserving scroll behaviour (used on context strip, chip rows) */
+@utility scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 :root {
   --background: #fffcf9;
   --foreground: #1c1412;

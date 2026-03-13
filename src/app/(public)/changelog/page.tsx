@@ -49,7 +49,7 @@ const RELEASES: Release[] = [
     highlight: false,
     changes: [
       { type: 'feat',    text: 'Host portal — organization, services, locations, team, and claim pages (full CRUD).' },
-      { type: 'feat',    text: 'Community admin portal — verification queue, deep-review form, and coverage dashboard.' },
+      { type: 'feat',    text: 'Community admin portal — review queue, deep-review form, and coverage dashboard.' },
       { type: 'feat',    text: 'ORAN admin portal — triage, approvals, appeals, audit, ingestion, scopes, rules, templates, and zone management.' },
       { type: 'feat',    text: 'Public footer pages — About, Privacy, Terms, Accessibility, Contact, Status, Security, Partnerships, Team, Press, and Changelog.' },
       { type: 'feat',    text: 'Footer system — role-aware variant rendering (public / host / community_admin / oran_admin) with crisis modal.' },

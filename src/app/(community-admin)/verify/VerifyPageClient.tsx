@@ -316,7 +316,7 @@ export default function VerifyPage() {
         <p className="text-gray-400 text-sm mt-1">
           Select an entry from the{' '}
           <Link href="/queue" className="text-action-base hover:underline">
-            verification queue
+            review queue
           </Link>
           {' '}to begin review.
         </p>
@@ -335,7 +335,7 @@ export default function VerifyPage() {
         pageTitle="Resource review"
         pageSubtitle="Review the same resource cards the submitter completed, make precise edits when needed, and record the final decision against the workflow."
         backHref="/queue"
-        backLabel="Back to queue"
+        backLabel="Back to review queue"
       />
     );
   }
@@ -343,7 +343,7 @@ export default function VerifyPage() {
   // ── Loading ──
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div role="status" className="space-y-6">
         <Skeleton className="h-8 w-64" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
@@ -382,7 +382,7 @@ export default function VerifyPage() {
       <div className="mb-6">
         <Link href="/queue" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-3">
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Back to Queue
+          Back to Review Queue
         </Link>
         <PageHeader
           eyebrow="Community Admin"
@@ -406,8 +406,8 @@ export default function VerifyPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column — Service detail */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* Left column — Service detail (shown second on mobile, first on desktop) */}
+        <div className="lg:col-span-2 space-y-6 order-2 lg:order-1">
           {/* Service info */}
           <section className="bg-white rounded-lg border border-gray-200 p-5">
             <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">Service Details</h2>
@@ -418,7 +418,7 @@ export default function VerifyPage() {
                   <dd className="mt-0.5 text-sm text-gray-800">{entry.service_description}</dd>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {entry.service_url && (
                   <div>
                     <dt className="text-xs font-medium text-gray-500 flex items-center gap-1">
@@ -470,7 +470,7 @@ export default function VerifyPage() {
                   <dd className="mt-0.5 text-sm text-gray-800">{entry.organization_description}</dd>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {entry.organization_url && (
                   <div>
                     <dt className="text-xs font-medium text-gray-500 flex items-center gap-1">
@@ -663,8 +663,8 @@ export default function VerifyPage() {
           )}
         </div>
 
-        {/* Right column — Confidence + Decision */}
-        <div className="space-y-6">
+        {/* Right column — Confidence + Decision (shown first on mobile for quick access) */}
+        <div className="space-y-6 order-1 lg:order-2">
           {/* Confidence score */}
           <section className="bg-white rounded-lg border border-gray-200 p-5">
             <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">Confidence Score</h2>
@@ -785,7 +785,7 @@ export default function VerifyPage() {
                   <fieldset>
                     <legend className="text-xs font-medium text-gray-500 mb-2">Select decision</legend>
                     <div className="space-y-2">
-                      <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'approved' ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                      <label className={`flex min-h-[44px] items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'approved' ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:bg-gray-50'}`}>
                         <input
                           type="radio"
                           name="decision"
@@ -801,7 +801,7 @@ export default function VerifyPage() {
                         </div>
                       </label>
 
-                      <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'denied' ? 'border-error-pale bg-error-subtle' : 'border-gray-200 hover:bg-gray-50'}`}>
+                      <label className={`flex min-h-[44px] items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'denied' ? 'border-error-pale bg-error-subtle' : 'border-gray-200 hover:bg-gray-50'}`}>
                         <input
                           type="radio"
                           name="decision"
@@ -817,7 +817,7 @@ export default function VerifyPage() {
                         </div>
                       </label>
 
-                      <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'escalated' ? 'border-purple-400 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                      <label className={`flex min-h-[44px] items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'escalated' ? 'border-purple-400 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'}`}>
                         <input
                           type="radio"
                           name="decision"
@@ -833,7 +833,7 @@ export default function VerifyPage() {
                         </div>
                       </label>
 
-                      <label className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'returned' ? 'border-amber-400 bg-amber-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                      <label className={`flex min-h-[44px] items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${decision === 'returned' ? 'border-amber-400 bg-amber-50' : 'border-gray-200 hover:bg-gray-50'}`}>
                         <input
                           type="radio"
                           name="decision"
@@ -916,7 +916,7 @@ export default function VerifyPage() {
                 </p>
                 <div className="mt-3">
                   <Button variant="outline" size="sm" asChild>
-                    <Link href="/queue">← Back to Queue</Link>
+                    <Link href="/queue">← Back to Review Queue</Link>
                   </Button>
                 </div>
               </div>

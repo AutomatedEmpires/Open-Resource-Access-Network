@@ -1011,7 +1011,7 @@ export function ChatWindow({
                   key={opt.value}
                   type="button"
                   onClick={() => setTrustFilter(opt.value)}
-                  className={`inline-flex min-h-[40px] flex-shrink-0 items-center justify-center rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+                  className={`inline-flex min-h-[44px] flex-shrink-0 items-center justify-center rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
                     selected
                       ? 'bg-orange-500 text-white shadow-sm'
                       : 'border border-orange-100 bg-orange-50/60 text-stone-700 hover:border-orange-200 hover:bg-white'
@@ -1094,7 +1094,7 @@ export function ChatWindow({
             <button
               type="button"
               onClick={() => setIgnoreProfileShaping((current) => !current)}
-              className={`inline-flex min-h-[40px] items-center rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm ${
+              className={`inline-flex min-h-[44px] items-center rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm ${
                 ignoreProfileShaping
                   ? 'border-amber-200 bg-amber-50 text-amber-900'
                   : 'border-rose-200 bg-rose-50 text-rose-900'

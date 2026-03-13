@@ -18,6 +18,11 @@ export const metadata: Metadata = {
     description: 'Browse and search verified service listings in your area.',
     type: 'website',
   },
+  twitter: {
+    card: 'summary',
+    title: 'Service Directory | ORAN',
+    description: 'Browse and search verified service listings in your area.',
+  },
 };
 
 function DirectoryFallback() {

@@ -104,8 +104,14 @@ function MetricCard({
             </p>
           )}
         </div>
-        <div className={`shrink-0 rounded-lg p-2.5 ${iconBg}`}>
+        <div className={`shrink-0 rounded-lg p-2.5 ${iconBg} relative`}>
           <Icon className="h-5 w-5" aria-hidden="true" />
+          {alert && (value ?? 0) > 0 && (
+            <span
+              className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse"
+              aria-hidden="true"
+            />
+          )}
         </div>
       </div>
       {href && (
@@ -249,7 +255,7 @@ export default function DashboardPageClient() {
       )}
 
       {data && (
-        <section className="mb-8 rounded-xl border border-gray-200 bg-white p-5">
+        <section className="mb-8 rounded-xl border border-gray-200 bg-white p-5 border-l-4 border-l-orange-400">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Assigned scope</p>
@@ -286,7 +292,7 @@ export default function DashboardPageClient() {
       {/* Key metrics */}
       <section aria-label="Key metrics" className="mb-8">
         {isLoading && !data ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div role="status" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {Array.from({ length: 5 }).map((_, i) => (
               <Skeleton key={i} className="h-32 w-full rounded-xl" />
             ))}
@@ -340,7 +346,7 @@ export default function DashboardPageClient() {
           <QuickActionCard
             href="/queue"
             icon={ClipboardList}
-            label="Verification Queue"
+            label="Review Queue"
             description="Triage and claim pending submissions"
             badge={data?.summary.submitted}
           />
@@ -363,17 +369,18 @@ export default function DashboardPageClient() {
           <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Recent Activity <span className="normal-case font-normal text-gray-400">(last 7 days)</span></h2>
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {isLoading && !data ? (
-              <div className="p-5 space-y-3">
+              <div role="status" className="p-5 space-y-3">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Skeleton key={i} className="h-8 w-full" />
                 ))}
               </div>
             ) : !data || data.recentActivity.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center px-6">
+              <div role="status" className="flex flex-col items-center justify-center py-12 text-center px-6">
                 <TrendingUp className="h-8 w-8 text-gray-200 mb-2" aria-hidden="true" />
                 <p className="text-sm text-gray-400">No decisions recorded in the last 30 days.</p>
               </div>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <caption className="sr-only">Recent verification decisions by day</caption>
                 <thead>
@@ -411,6 +418,7 @@ export default function DashboardPageClient() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
             {data && data.recentActivity.length > 7 && (
               <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">

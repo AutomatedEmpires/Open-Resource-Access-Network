@@ -487,29 +487,31 @@ function NotificationPreferencesSection() {
       {isLoading ? (
         <p className="text-sm text-gray-400">Loading…</p>
       ) : (
-        <div className="space-y-1">
-          <div className="grid grid-cols-[1fr,auto,auto] gap-x-4 text-xs text-gray-500 font-medium border-b border-gray-100 pb-2 mb-1">
-            <span>Event</span>
-            <span className="text-center w-14">In-App</span>
-            <span className="text-center w-14">Email</span>
-          </div>
-          {(Object.keys(EVENT_TYPE_LABELS) as NotificationEventType[]).map(et => (
-            <div key={et} className="grid grid-cols-[1fr,auto,auto] gap-x-4 items-center py-1.5">
-              <span className="text-sm text-gray-700">{EVENT_TYPE_LABELS[et]}</span>
-              <div className="flex justify-center w-14">
-                <input type="checkbox" checked={isEnabled(et, 'in_app')}
-                  onChange={e => void toggle(et, 'in_app', e.target.checked)} disabled={isSaving}
-                  className="rounded border-orange-200 text-orange-500 focus:ring-orange-400"
-                  aria-label={`${EVENT_TYPE_LABELS[et]} in-app notifications`} />
-              </div>
-              <div className="flex justify-center w-14">
-                <input type="checkbox" checked={isEnabled(et, 'email')}
-                  onChange={e => void toggle(et, 'email', e.target.checked)} disabled={isSaving}
-                  className="rounded border-orange-200 text-orange-500 focus:ring-orange-400"
-                  aria-label={`${EVENT_TYPE_LABELS[et]} email notifications`} />
-              </div>
+        <div className="overflow-x-auto -mx-1 px-1">
+          <div className="min-w-80 space-y-1">
+            <div className="grid grid-cols-[1fr,auto,auto] gap-x-4 text-xs text-gray-500 font-medium border-b border-gray-100 pb-2 mb-1">
+              <span>Event</span>
+              <span className="text-center w-14">In-App</span>
+              <span className="text-center w-14">Email</span>
             </div>
-          ))}
+            {(Object.keys(EVENT_TYPE_LABELS) as NotificationEventType[]).map(et => (
+              <div key={et} className="grid grid-cols-[1fr,auto,auto] gap-x-4 items-center py-1.5">
+                <span className="text-sm text-gray-700">{EVENT_TYPE_LABELS[et]}</span>
+                <div className="flex justify-center w-14">
+                  <input type="checkbox" checked={isEnabled(et, 'in_app')}
+                    onChange={e => void toggle(et, 'in_app', e.target.checked)} disabled={isSaving}
+                    className="h-5 w-5 rounded border-orange-200 text-orange-500 focus:ring-orange-400"
+                    aria-label={`${EVENT_TYPE_LABELS[et]} in-app notifications`} />
+                </div>
+                <div className="flex justify-center w-14">
+                  <input type="checkbox" checked={isEnabled(et, 'email')}
+                    onChange={e => void toggle(et, 'email', e.target.checked)} disabled={isSaving}
+                    className="h-5 w-5 rounded border-orange-200 text-orange-500 focus:ring-orange-400"
+                    aria-label={`${EVENT_TYPE_LABELS[et]} email notifications`} />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

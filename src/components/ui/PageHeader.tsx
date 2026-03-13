@@ -78,44 +78,47 @@ export function PageHeaderBadge({ children, tone = 'neutral' }: PageHeaderBadgeP
 
 export function PageHeader({ eyebrow, title, icon, subtitle, badges, actions, className = '' }: PageHeaderProps) {
   return (
-    <div className={`flex items-start justify-between gap-4 mb-6 ${className}`}>
+    <div className={`mb-4 sm:mb-6 ${className}`}>
+      {/* On mobile: stacked column. On sm+: side-by-side with actions right-aligned */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
 
-      {/* Left: icon + title + subtitle */}
-      <div className="min-w-0 flex-1">
-        {eyebrow && (
-          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-            {eyebrow}
-          </div>
-        )}
-        <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight text-slate-950 leading-tight md:text-[2rem]">
-          {icon && (
-            <span className="flex-shrink-0 text-sky-600" aria-hidden="true">
-              {icon}
-            </span>
+        {/* Left: icon + title + subtitle + badges */}
+        <div className="min-w-0 flex-1">
+          {eyebrow && (
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+              {eyebrow}
+            </div>
           )}
-          {title}
-        </h1>
+          <h1 className="flex items-center gap-2.5 text-xl font-semibold tracking-tight text-slate-950 leading-tight sm:text-2xl md:text-[2rem]">
+            {icon && (
+              <span className="flex-shrink-0 text-sky-600" aria-hidden="true">
+                {icon}
+              </span>
+            )}
+            {title}
+          </h1>
 
-        {/* div not p — accepts any ReactNode incl. inline links and multi-line content */}
-        {subtitle && (
-          <div className="mt-2 text-sm text-slate-600 leading-relaxed md:text-[15px]">
-            {subtitle}
-          </div>
-        )}
+          {/* div not p — accepts any ReactNode incl. inline links and multi-line content */}
+          {subtitle && (
+            <div className="mt-1.5 text-sm text-slate-600 leading-relaxed md:text-[15px]">
+              {subtitle}
+            </div>
+          )}
 
-        {badges && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {badges}
+          {badges && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              {badges}
+            </div>
+          )}
+        </div>
+
+        {/* Right: optional actions — scrollable on very small screens, right-aligned on sm+ */}
+        {actions && (
+          <div className="flex flex-shrink-0 items-center gap-2 overflow-x-auto scrollbar-none sm:mt-0.5">
+            {actions}
           </div>
         )}
       </div>
-
-      {/* Right: optional actions */}
-      {actions && (
-        <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
-          {actions}
-        </div>
-      )}
     </div>
   );
 }

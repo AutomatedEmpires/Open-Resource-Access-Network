@@ -261,16 +261,11 @@ export default function ServicesPage() {
           </form>
         </FormSection>
 
-        <FormSection
-          title="How this page works now"
-          description="This list is the published record view. Creation, edits, and returned fixes now reopen in Resource Studio so review, provenance, and decision history remain attached to the same submission."
-          className="mb-4"
-        >
-          <div className="flex flex-wrap gap-3 text-sm text-slate-600">
-            <Link href={composeHref} className="font-medium text-action-base hover:underline">Start a new listing</Link>
-            <Link href="/resource-studio" className="font-medium text-action-base hover:underline">Open draft and review history</Link>
-          </div>
-        </FormSection>
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
+          <span>This list shows published records. Edits and new listings go through Resource Studio.</span>
+          <Link href={composeHref} className="font-medium text-action-base hover:underline whitespace-nowrap">Start a new listing →</Link>
+          <Link href="/resource-studio" className="font-medium text-action-base hover:underline whitespace-nowrap">Open draft history →</Link>
+        </div>
 
         {error && (
           <FormAlert variant="error" message={error} onDismiss={() => setError(null)} className="mb-4" />

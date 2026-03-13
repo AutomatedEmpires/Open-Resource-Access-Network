@@ -162,7 +162,7 @@ describe('community admin verify page', () => {
     render(<VerifyPage />);
 
     expect(screen.getByText('No entry selected')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'verification queue' })).toHaveAttribute('href', '/queue');
+    expect(screen.getByRole('link', { name: 'review queue' })).toHaveAttribute('href', '/queue');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

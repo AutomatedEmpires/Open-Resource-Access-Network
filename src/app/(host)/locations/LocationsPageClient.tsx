@@ -21,7 +21,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormAlert } from '@/components/ui/form-alert';
-import { FormSection } from '@/components/ui/form-section';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import type { Organization } from '@/domain/types';
@@ -153,19 +152,18 @@ export default function LocationsPage() {
       />
 
       <ErrorBoundary>
-        <FormSection
-          title="How location edits work now"
-          description="This page is the published location view. Structured edits and retirement actions reopen in Resource Studio through the associated listing so location facts, service details, evidence, and review state stay together."
-          className="mb-4"
-        >
-          <div className="flex flex-wrap gap-3 text-sm text-slate-600">
-            <Link href={composeHref} className="font-medium text-action-base hover:underline">Start a listing update</Link>
-            <Link href="/resource-studio" className="font-medium text-action-base hover:underline">Open draft and review history</Link>
-          </div>
-        </FormSection>
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
+          <span>This page shows published access points. Edits flow through Resource Studio so review history stays attached.</span>
+          <Link href={composeHref} className="font-medium text-action-base hover:underline whitespace-nowrap">Start a listing update →</Link>
+          <Link href="/resource-studio" className="font-medium text-action-base hover:underline whitespace-nowrap">Open draft history →</Link>
+        </div>
 
         <div className="flex gap-2 items-center mb-4">
+          <label htmlFor="loc-org-filter" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+            Filter by org
+          </label>
           <select
+            id="loc-org-filter"
             value={orgFilter}
             onChange={(event) => {
               setOrgFilter(event.target.value);
@@ -219,9 +217,16 @@ export default function LocationsPage() {
                         <p className="mt-1 text-xs text-gray-600">{address}</p>
                       )}
                       {location.latitude != null && location.longitude != null && (
-                        <p className="mt-1 text-xs text-gray-400">
+                        <a
+                          href={`https://www.google.com/maps?q=${location.latitude},${location.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-flex items-center gap-1 text-xs text-action-base hover:underline"
+                          aria-label={`View ${location.name ?? 'location'} on Google Maps`}
+                        >
+                          <MapPin className="h-3 w-3" aria-hidden="true" />
                           {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
-                        </p>
+                        </a>
                       )}
                       {location.description && (
                         <p className="mt-1 text-xs text-gray-600 line-clamp-2">{location.description}</p>

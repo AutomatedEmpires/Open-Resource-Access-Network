@@ -11,6 +11,9 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import {
+  LayoutDashboard, ClipboardList, ShieldCheck, FileText, Globe2,
+} from 'lucide-react';
 import { isRoleAtLeast } from '@/services/auth/roles';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -18,13 +21,13 @@ import { AppFooter } from '@/components/footer';
 import { PortalUserMenu } from '@/components/ui/portal-user-menu';
 import CommunityAdminContextStrip from '@/components/community-admin/CommunityAdminContextStrip';
 
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/queue',            label: 'Queue' },
-  { href: '/verify',           label: 'Verify' },
-  { href: '/community-forms',  label: 'Forms' },
-  { href: '/coverage',         label: 'Coverage' },
-] as const;
+const NAV_ITEMS: { href: string; label: string; icon: React.ElementType }[] = [
+  { href: '/dashboard',        label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/queue',            label: 'Queue',     icon: ClipboardList },
+  { href: '/verify',           label: 'Verify',    icon: ShieldCheck },
+  { href: '/community-forms',  label: 'Forms',     icon: FileText },
+  { href: '/coverage',         label: 'Coverage',  icon: Globe2 },
+];
 
 export default function CommunityAdminLayoutShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -57,32 +60,64 @@ export default function CommunityAdminLayoutShell({ children }: { children: Reac
       >
         Skip to main content
       </a>
-      <header className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
+      <header aria-label="Community Admin portal" className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
+        {/* Primary bar: brand + desktop nav + user menu */}
         <div className="container mx-auto max-w-7xl flex items-center justify-between px-4 h-14">
-          <Link href="/dashboard" className="font-bold text-[var(--text-default,#111827)] tracking-tight">
+          <Link href="/dashboard" className="font-bold text-[var(--text-default,#111827)] tracking-tight shrink-0">
             ORAN Community Admin
           </Link>
 
-          <div className="flex items-center gap-2">
-            <nav className="flex items-center gap-1 overflow-x-auto" aria-label="Community admin navigation">
-              {NAV_ITEMS.map(({ href, label }) => (
+          {/* Desktop nav — hidden on mobile */}
+          <div className="hidden md:flex items-center gap-2">
+            <nav className="flex items-center gap-1" aria-label="Community admin navigation">
+              {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
                 <Link
                   key={href}
                   href={href}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`inline-flex min-h-[44px] items-center gap-1.5 px-3 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                     isActive(href)
                       ? 'bg-[var(--bg-active,#f3f4f6)] text-[var(--text-default,#111827)]'
                       : 'text-gray-500 hover:text-[var(--text-default,#111827)] hover:bg-[var(--bg-hover,#f9fafb)]'
                   }`}
                   aria-current={isActive(href) ? 'page' : undefined}
                 >
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                   {label}
                 </Link>
               ))}
             </nav>
             <PortalUserMenu />
           </div>
+
+          {/* Mobile: user menu only */}
+          <div className="md:hidden">
+            <PortalUserMenu />
+          </div>
         </div>
+
+        {/* Mobile nav strip — scrollable bottom row, hidden on desktop */}
+        <nav
+          className="md:hidden border-t border-[var(--border)] overflow-x-auto scrollbar-none"
+          aria-label="Community admin navigation"
+        >
+          <div className="flex items-center px-2">
+            {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className={`inline-flex min-h-[44px] shrink-0 items-center gap-1.5 px-3 text-sm font-medium transition-colors whitespace-nowrap border-b-2 ${
+                  isActive(href)
+                    ? 'border-[var(--color-action-base,#f97316)] text-[var(--text-default,#111827)]'
+                    : 'border-transparent text-gray-500 hover:text-[var(--text-default,#111827)]'
+                }`}
+                aria-current={isActive(href) ? 'page' : undefined}
+              >
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                {label}
+              </Link>
+            ))}
+          </div>
+        </nav>
       </header>
 
       <CommunityAdminContextStrip />

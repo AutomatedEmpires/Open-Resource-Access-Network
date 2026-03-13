@@ -105,7 +105,11 @@ function StatCard({
     </div>
   );
 
-  return href ? <Link href={href}>{content}</Link> : content;
+  return href ? (
+    <Link href={href} className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-action-base focus-visible:ring-offset-1">
+      {content}
+    </Link>
+  ) : content;
 }
 
 // ============================================================
@@ -176,7 +180,7 @@ export default function CommunityAdminCoveragePage() {
 
       {/* Loading state */}
       {isLoading && !data && (
-        <div className="space-y-6">
+        <div role="status" className="space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-24 w-full" />
@@ -256,8 +260,9 @@ export default function CommunityAdminCoveragePage() {
             )}
           </section>
 
-          {/* Summary stats grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {/* Summary stats: Active Pipeline */}
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Active Pipeline</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-2">
             <StatCard
               label="Submitted"
               value={data.summary.submitted}
@@ -288,8 +293,9 @@ export default function CommunityAdminCoveragePage() {
             />
           </div>
 
-          {/* Second row: total + stale + sla + denied */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {/* Health Signals */}
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mt-6 mb-3">Health Signals</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-2">
             <StatCard
               label="Total Entries"
               value={data.summary.total}
@@ -318,8 +324,9 @@ export default function CommunityAdminCoveragePage() {
             />
           </div>
 
-          {/* Third row: in-flight pipeline statuses */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+          {/* In-Flight States */}
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mt-6 mb-3">In-Flight States</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
             <StatCard
               label="Pending 2nd Approval"
               value={data.summary.pendingSecondApproval}

@@ -177,16 +177,20 @@ export function SeekerContextStrip({ pathname: _pathname }: { pathname: string }
 
   return (
     <div className="border-b border-slate-200/80 bg-white/75 backdrop-blur">
-      <div className="container mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-2.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex min-h-[32px] items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
+      <div className="container mx-auto flex max-w-6xl items-center justify-between gap-2 overflow-hidden px-4 py-2">
+        {/* Chip row: horizontal scroll on mobile instead of wrapping to multiple lines */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto scrollbar-none">
+          <span className="inline-flex min-h-[32px] flex-shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
             <ShieldCheck className="mr-1.5 h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
             Private by default
           </span>
-          {primaryContext}
+          {primaryContext.map((chip, i) => (
+            <span key={i} className="flex-shrink-0">{chip}</span>
+          ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+        {/* Manage link — hidden on mobile to reduce chrome, accessible via profile nav */}
+        <div className="hidden flex-shrink-0 items-center gap-2 text-xs text-slate-500 sm:flex">
           <Link href="/profile" className="font-medium text-sky-700 hover:underline">
             {context.serverSyncEnabled ? 'Manage preferences' : 'Personalize your search'}
           </Link>

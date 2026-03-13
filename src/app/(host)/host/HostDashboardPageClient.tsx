@@ -8,6 +8,7 @@ import {
   Building2,
   ClipboardList,
   LayoutDashboard,
+  Layers3,
   MapPin,
   RefreshCw,
   Send,
@@ -63,7 +64,10 @@ function MetricCard({
   tone: string;
 }) {
   return (
-    <Link href={href} className="block rounded-xl border border-gray-200 bg-white p-5 transition-shadow hover:shadow-md">
+    <Link
+      href={href}
+      className="block rounded-xl border border-gray-200 bg-white p-5 transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-action focus-visible:ring-offset-1"
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
@@ -80,11 +84,30 @@ function MetricCard({
   );
 }
 
-function QuickAction({ href, label, description }: { href: string; label: string; description: string }) {
+function QuickAction({
+  href,
+  label,
+  description,
+  icon: Icon,
+}: {
+  href: string;
+  label: string;
+  description: string;
+  icon: React.ElementType;
+}) {
   return (
-    <Link href={href} className="rounded-xl border border-gray-200 bg-white p-4 transition-shadow hover:shadow-md">
-      <p className="text-sm font-semibold text-gray-900">{label}</p>
-      <p className="mt-1 text-xs text-gray-500">{description}</p>
+    <Link
+      href={href}
+      className="group flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-action focus-visible:ring-offset-1"
+    >
+      <div className="shrink-0 rounded-lg bg-teal-50 p-2 text-teal-700">
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-gray-900 transition-colors group-hover:text-teal-800">{label}</p>
+        <p className="mt-0.5 text-xs text-gray-500">{description}</p>
+      </div>
+      <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 transition-colors group-hover:text-teal-600" aria-hidden="true" />
     </Link>
   );
 }
@@ -178,31 +201,28 @@ export default function HostDashboardPageClient() {
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Pending reviews</p>
-                  <p className="mt-1 text-2xl font-bold text-gray-900">{data.summary.pendingReviews}</p>
-                  <p className="mt-1 text-xs text-gray-500">Host-submitted changes awaiting verification.</p>
-                </div>
-                <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Incomplete organizations</p>
-                  <p className="mt-1 text-2xl font-bold text-gray-900">{data.summary.incompleteOrganizations}</p>
-                  <p className="mt-1 text-xs text-gray-500">Profiles missing key public trust fields.</p>
-                </div>
-                <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Pending invites</p>
-                  <p className="mt-1 text-2xl font-bold text-gray-900">{data.summary.pendingInvites}</p>
-                  <p className="mt-1 text-xs text-gray-500">Team members who still need to accept access.</p>
-                </div>
-                <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Stale services</p>
-                  <p className="mt-1 text-2xl font-bold text-gray-900">{data.summary.staleServices}</p>
-                  <p className="mt-1 text-xs text-gray-500">Service records untouched for more than 90 days.</p>
-                </div>
-                <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Stale locations</p>
-                  <p className="mt-1 text-2xl font-bold text-gray-900">{data.summary.staleLocations}</p>
-                  <p className="mt-1 text-xs text-gray-500">Location data that may need a freshness review.</p>
-                </div>
+                {[
+                  { label: 'Pending reviews', value: data.summary.pendingReviews, note: 'Host-submitted changes awaiting verification.' },
+                  { label: 'Incomplete organizations', value: data.summary.incompleteOrganizations, note: 'Profiles missing key public trust fields.' },
+                  { label: 'Pending invites', value: data.summary.pendingInvites, note: 'Team members who still need to accept access.' },
+                  { label: 'Stale services', value: data.summary.staleServices, note: 'Service records untouched for more than 90 days.' },
+                  { label: 'Stale locations', value: data.summary.staleLocations, note: 'Location data that may need a freshness review.' },
+                ].map(({ label, value, note }) => (
+                  <div
+                    key={label}
+                    className={`rounded-lg border p-4 ${
+                      value > 0 ? 'border-amber-200 bg-amber-50' : 'border-gray-100 bg-gray-50'
+                    }`}
+                  >
+                    <p className={`text-xs font-medium uppercase tracking-wide ${
+                      value > 0 ? 'text-amber-700' : 'text-gray-500'
+                    }`}>{label}</p>
+                    <p className={`mt-1 text-2xl font-bold ${
+                      value > 0 ? 'text-amber-900' : 'text-gray-900'
+                    }`}>{value}</p>
+                    <p className="mt-1 text-xs text-gray-500">{note}</p>
+                  </div>
+                ))}
               </div>
 
               <div className="mt-6 overflow-x-auto">
@@ -251,11 +271,11 @@ export default function HostDashboardPageClient() {
                   <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-900">Quick actions</h2>
                 </div>
                 <div className="mt-4 grid gap-3">
-                  <QuickAction href="/resource-studio" label="Open resource studio" description="Start new listings, reopen drafts, and continue returned fixes through one workflow." />
-                  <QuickAction href="/resource-studio?compose=listing" label="Start a listing" description="Launch the card-based listing workflow instead of opening a legacy modal." />
-                  <QuickAction href="/locations" label="Refresh location details" description="Correct addresses, hours, and site details before they go stale." />
-                  <QuickAction href="/admins" label="Manage team access" description="Invite members, promote admins, and clear pending invites." />
-                  <QuickAction href="/resource-studio?compose=claim" label="Submit a claim" description="Start a new organization claim or continue one already in flight." />
+                  <QuickAction href="/resource-studio" label="Open resource studio" description="Start new listings, reopen drafts, and continue returned fixes through one workflow." icon={Layers3} />
+                  <QuickAction href="/resource-studio?compose=listing" label="Start a listing" description="Launch the card-based listing workflow instead of opening a legacy modal." icon={Wrench} />
+                  <QuickAction href="/locations" label="Refresh location details" description="Correct addresses, hours, and site details before they go stale." icon={MapPin} />
+                  <QuickAction href="/admins" label="Manage team access" description="Invite members, promote admins, and clear pending invites." icon={Users} />
+                  <QuickAction href="/resource-studio?compose=claim" label="Submit a claim" description="Start a new organization claim or continue one already in flight." icon={Send} />
                 </div>
               </div>
 
@@ -264,10 +284,38 @@ export default function HostDashboardPageClient() {
                   <AlertTriangle className="h-5 w-5 text-amber-600" aria-hidden="true" />
                   <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-900">Priority cues</h2>
                 </div>
-                <ul className="mt-4 space-y-3 text-sm text-gray-600">
-                  <li>{data.summary.pendingReviews > 0 ? `${data.summary.pendingReviews} host changes are waiting on review.` : 'No review backlog is currently blocking publication.'}</li>
-                  <li>{data.summary.incompleteOrganizations > 0 ? `${data.summary.incompleteOrganizations} organization profiles still need core trust fields.` : 'Organization profiles include the expected core trust fields.'}</li>
-                  <li>{data.summary.staleServices + data.summary.staleLocations > 0 ? `${data.summary.staleServices + data.summary.staleLocations} records have gone stale and should be revisited.` : 'Service and location freshness is in a healthy range.'}</li>
+                <ul className="mt-4 space-y-2">
+                  {([
+                    {
+                      count: data.summary.pendingReviews,
+                      positive: 'No review backlog is blocking publication.',
+                      negative: `${data.summary.pendingReviews} host changes are waiting on review.`,
+                    },
+                    {
+                      count: data.summary.incompleteOrganizations,
+                      positive: 'Organization profiles include core trust fields.',
+                      negative: `${data.summary.incompleteOrganizations} profiles still need core trust fields.`,
+                    },
+                    {
+                      count: data.summary.staleServices + data.summary.staleLocations,
+                      positive: 'Service and location freshness is in a healthy range.',
+                      negative: `${data.summary.staleServices + data.summary.staleLocations} records have gone stale and should be revisited.`,
+                    },
+                  ] as const).map((cue, i) => (
+                    <li
+                      key={i}
+                      className={`flex items-start gap-2 rounded-lg px-3 py-2.5 text-sm ${
+                        cue.count > 0 ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-700'
+                      }`}
+                    >
+                      {cue.count > 0 ? (
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
+                      ) : (
+                        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-green-500" aria-hidden="true" />
+                      )}
+                      <span>{cue.count > 0 ? cue.negative : cue.positive}</span>
+                    </li>
+                  ))}
                 </ul>
               </div>
             </section>

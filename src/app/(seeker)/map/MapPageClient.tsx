@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, MapPin, List, AlertTriangle, X, ChevronDown, ChevronUp } from 'lucide-react';
 

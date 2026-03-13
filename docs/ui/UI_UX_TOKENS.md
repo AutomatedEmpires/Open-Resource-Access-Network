@@ -161,6 +161,15 @@ The following categories are **unconditionally approved** without appearing in t
 | `max-h-[120px]`, `max-h-[160px]`, `max-h-[420px]` | Scrollable list max heights |
 | `grid-cols-[1fr,auto,auto]`, `grid-cols-[1fr_380px]` | Two-panel / sidebar layouts |
 | `text-[9px]`, `text-[10px]`, `text-[11px]` | Sub-`xs` font sizes for badge labels |
+| `text-[15px]` | Compact body text in service cards |
+| `text-[2rem]` | Large display heading in PageHeader |
 | `bottom-[4.5rem]`, `top-[20%]` | Fixed / absolute positioning |
 | `[animation-delay:-0.3s]`, `[animation-delay:-0.15s]` | Staggered loading-dot animation delays |
 | `animate-[page-enter_var(--transition-standard)_both]` | Page-enter transition animation |
+| `tracking-[0.24em]` | Extended letter-spacing for uppercase display labels |
+| `min-h-[38px]` | Surface tab minimum touch height |
+| `min-h-[46px]` | Filter panel input minimum touch height |
+| `shadow-[0_12px_28px_rgba(15,23,42,0.06)]` | Service card hover shadow (light) |
+| `shadow-[0_18px_40px_rgba(15,23,42,0.08)]` | Service card active/focus shadow (medium) |
+| `bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))]` | Filter panel backdrop gradient |
+| `bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)]` | Directory / map page background gradient |

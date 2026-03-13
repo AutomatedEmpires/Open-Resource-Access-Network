@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import { DiscoverySurfaceTabs } from '@/components/seeker/DiscoverySurfaceTabs';

@@ -125,8 +125,8 @@ async function ensureHostPortalFeed(client: PoolClient, sourceSystemId: string):
 
   const created = await client.query<{ id: string }>(
     `INSERT INTO source_feeds
-       (source_system_id, feed_name, feed_type, base_url, auth_type, jurisdiction_scope, refresh_interval_hours)
-     VALUES ($1, $2, $3, $4, 'session', '{}'::jsonb, 24)
+       (source_system_id, feed_name, feed_type, feed_handler, base_url, auth_type, jurisdiction_scope, refresh_interval_hours)
+     VALUES ($1, $2, $3, 'none', $4, 'session', '{}'::jsonb, 24)
      RETURNING id`,
     [sourceSystemId, HOST_PORTAL_SOURCE_FEED_NAME, HOST_PORTAL_SOURCE_FEED_TYPE, HOST_PORTAL_BASE_URL],
   );

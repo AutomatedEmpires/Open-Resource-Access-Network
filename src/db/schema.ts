@@ -1229,6 +1229,7 @@ export const sourceFeeds = pgTable(
     sourceSystemId: uuid('source_system_id').notNull().references(() => sourceSystems.id, { onDelete: 'cascade' }),
     feedName: text('feed_name').notNull(),
     feedType: text('feed_type').notNull(),
+    feedHandler: text('feed_handler').notNull().default('none'),
     baseUrl: text('base_url'),
     healthcheckUrl: text('healthcheck_url'),
     authType: text('auth_type').default('none'),
@@ -1247,6 +1248,7 @@ export const sourceFeeds = pgTable(
     index('idx_source_feeds_system').on(table.sourceSystemId),
     index('idx_source_feeds_active').on(table.isActive),
     index('idx_source_feeds_type').on(table.feedType),
+    index('idx_source_feeds_handler').on(table.feedHandler),
   ]
 );
 
@@ -2749,6 +2751,7 @@ export const userProfiles = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     userId: text('user_id').notNull().unique(),
     displayName: text('display_name'),
+    username: text('username'),
     preferredLocale: text('preferred_locale').default('en'),
     approximateCity: text('approximate_city'),
     role: text('role').notNull().default('seeker'),
@@ -2763,6 +2766,7 @@ export const userProfiles = pgTable(
   },
   (table) => [
     index('idx_user_profiles_role').on(table.role),
+    index('idx_user_profiles_username').on(table.username),
   ]
 );
 

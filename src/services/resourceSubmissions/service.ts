@@ -488,13 +488,14 @@ async function ensureManualSubmissionSourceSystem(
 
   const createdFeed = await client.query<{ id: string }>(
     `INSERT INTO source_feeds
-       (source_system_id, feed_name, feed_type, base_url, auth_type, jurisdiction_scope, refresh_interval_hours)
-     VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, 24)
+       (source_system_id, feed_name, feed_type, feed_handler, base_url, auth_type, jurisdiction_scope, refresh_interval_hours)
+     VALUES ($1, $2, $3, $4, $5, $6, '{}'::jsonb, 24)
      RETURNING id`,
     [
       sourceSystemId,
       feedName,
       channel === 'host' ? 'manual_portal' : 'manual_submission',
+      'none',
       baseUrl,
       channel === 'host' ? 'session' : 'none',
     ],

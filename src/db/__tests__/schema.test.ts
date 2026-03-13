@@ -364,11 +364,12 @@ describe('Zone C live table definitions', () => {
     expect(colNames).not.toContain('assigned_to');
   });
 
-  it('user_profiles has multi-provider auth columns (0031)', async () => {
+  it('user_profiles has multi-provider auth columns and username support', async () => {
     const schema = await loadSchemaModule();
     const cfg = getTableConfig(schema.userProfiles as Parameters<typeof getTableConfig>[0]);
     const colNames = cfg.columns.map((c) => c.name);
     expect(colNames).toContain('email');
+    expect(colNames).toContain('username');
     expect(colNames).toContain('password_hash');
     expect(colNames).toContain('phone');
     expect(colNames).toContain('auth_provider');

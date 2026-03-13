@@ -82,6 +82,14 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
 
   return (
       <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)] text-[var(--text-primary)]">
+      {/* Skip-to-main-content: first focusable element for keyboard / screen-reader users */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[9999] focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-sky-700 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+      >
+        Skip to main content
+      </a>
+
       {/* Command palette — opens on ⌘K / Ctrl+K */}
       <CommandPalette
         open={commandPaletteOpen}
@@ -155,9 +163,9 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
 
       {/* ── Main content ────────────────────────────────── */}
       {/* pb-14 on mobile clears the fixed bottom nav (h-14 = 56px) */}
-      <div id="main-content" className="flex-1 pb-14 md:pb-0 animate-[page-enter_var(--transition-standard)_both]">
+      <main id="main-content" className="flex-1 pb-14 md:pb-0 animate-[page-enter_var(--transition-standard)_both]">
         {children}
-      </div>
+      </main>
 
       {/* Footer — extra bottom padding on mobile keeps it above the fixed nav */}
       <div className="pb-14 md:pb-0">

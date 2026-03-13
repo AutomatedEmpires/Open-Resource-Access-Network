@@ -31,6 +31,7 @@ describe('buildAgentControlPlaneSnapshot', () => {
         AZURE_CONTENT_SAFETY_ENDPOINT: 'https://safety.example.cognitiveservices.azure.com',
         AZURE_CONTENT_SAFETY_KEY: 'safety-key',
         AZURE_MAPS_KEY: 'maps-key',
+        AZURE_MAPS_SAS_TOKEN: 'maps-sas-token',
         AZURE_OPENAI_ENDPOINT: 'https://openai.example.openai.azure.com',
         AZURE_OPENAI_KEY: 'openai-key',
       },

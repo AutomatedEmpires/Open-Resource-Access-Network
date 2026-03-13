@@ -28,6 +28,7 @@ Example (your chosen defaults):
   --prefix oran \
   --location westus2 \
   --environments dev,staging,prod \
+  --azure-maps-sas-token '<scoped-sas-token>' \
   --prod-hostname app.example.com
 ```
 
@@ -43,8 +44,9 @@ Optional but recommended:
 
 - Azure Database for PostgreSQL Flexible Server (enable PostGIS)
 - Azure Key Vault (store secrets)
+- Azure Maps account plus a scoped SAS token for the interactive seeker map
 
-If you used `scripts/azure/bootstrap.sh`, these resources are created automatically.
+`infra/main.bicep` now provisions the Azure Maps account and injects both `AZURE_MAPS_KEY` and `AZURE_MAPS_SAS_TOKEN` into the web app through Key Vault references. `scripts/azure/bootstrap.sh` now provisions the same Azure Maps account and Key Vault secret wiring, but it still requires the caller to provide `--azure-maps-sas-token` as a secure input.
 
 ## 2) Configure app settings (Web App)
 
@@ -57,12 +59,24 @@ Set these as App Service Application Settings (or via Key Vault references):
   - `AZURE_AD_TENANT_ID`
   - `NEXTAUTH_URL`
   - `NEXTAUTH_SECRET` (store in Key Vault)
+- Azure Maps:
+  - `AZURE_MAPS_KEY` for server-side geocoding
+  - `AZURE_MAPS_SAS_TOKEN` for browser map token brokering via `/api/maps/token`
+  - When deploying with `infra/main.bicep`, pass `azureMapsSasToken` as a secure deployment parameter so the template can store it in Key Vault and wire the app setting automatically.
+- Optional auth-provider gates:
+  - `ORAN_ENABLE_GOOGLE_AUTH=1` only when Google OAuth is intentionally enabled in production
+  - `ORAN_ENABLE_CREDENTIALS_AUTH=1` only when email/password auth is intentionally enabled in production
 - Optional Sentry:
   - `NEXT_PUBLIC_SENTRY_DSN`
 - Recommended:
   - `NODE_ENV=production`
   - `NEXT_TELEMETRY_DISABLED=1`
   - `SCM_DO_BUILD_DURING_DEPLOYMENT=true`
+
+Deployment gate note:
+
+- Run `node scripts/validate-runtime-env.mjs --target webapp --node-env production` against the final app-settings set before rollout. In production this warns when Azure Maps, Translator, Redis, or Application Insights configuration is incomplete.
+- The current infrastructure codifies Azure Maps account creation and secret injection, but SAS token lifecycle is still deployment-managed. Rotate the deploy-time `azureMapsSasToken` value on the same cadence as other high-value secrets.
 
 Note: the bootstrap script sets `DATABASE_URL` as a **Key Vault reference** using a system-assigned managed identity, so the raw connection string does not need to live in App Service settings.
 

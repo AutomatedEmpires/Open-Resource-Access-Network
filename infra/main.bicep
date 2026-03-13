@@ -7,6 +7,7 @@
 //   - Key Vault (secrets)
 //   - PostgreSQL Flexible Server + PostGIS
 //   - Application Insights + Log Analytics
+//   - Azure Maps account for geocoding + browser map auth
 //   - Azure Communication Services (email notifications)
 //   - Azure Cache for Redis (search caching)
 //
@@ -56,6 +57,10 @@ param nextAuthSecret string
 @description('Internal API key for Functions → App communication')
 param internalApiKey string
 
+@secure()
+@description('Scoped Azure Maps SAS token for browser map authentication via /api/maps/token')
+param azureMapsSasToken string
+
 @description('Entra ID (Azure AD) client ID')
 param entraClientId string = ''
 
@@ -87,6 +92,7 @@ var pgDbName = 'oran_db'
 var storageName = replace('${prefix}${environment}st', '-', '')
 var logWorkspaceName = '${resourcePrefix}-logs'
 var appInsightsName = '${resourcePrefix}-insights'
+var mapsAccountName = '${resourcePrefix}-maps'
 var commName = '${resourcePrefix}-comm'
 var redisName = '${resourcePrefix}-redis'
 
@@ -119,6 +125,24 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
     IngestionMode: 'LogAnalytics'
     publicNetworkAccessForIngestion: 'Enabled'
     publicNetworkAccessForQuery: 'Enabled'
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Azure Maps
+// ---------------------------------------------------------------------------
+
+resource mapsAccount 'Microsoft.Maps/accounts@2024-07-01-preview' = {
+  name: mapsAccountName
+  location: location
+  kind: 'Gen2'
+  sku: {
+    name: 'G2'
+  }
+  properties: {
+    // ORAN currently uses a server-side geocoding key plus browser SAS tokens.
+    // Local auth must remain enabled until the application is migrated away from this model.
+    disableLocalAuth: false
   }
 }
 
@@ -218,6 +242,22 @@ resource secretEntraSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (
   }
 }
 
+resource secretAzureMapsKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'azure-maps-key'
+  properties: {
+    value: mapsAccount.listKeys().primaryKey
+  }
+}
+
+resource secretAzureMapsSasToken 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'azure-maps-sas-token'
+  properties: {
+    value: azureMapsSasToken
+  }
+}
+
 // ---------------------------------------------------------------------------
 // PostgreSQL Flexible Server
 // ---------------------------------------------------------------------------
@@ -309,19 +349,66 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
       alwaysOn: appServiceSku != 'B1' // B1 doesn't support Always On
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
-      appSettings: [
-        { name: 'NODE_ENV'; value: 'production' }
-        { name: 'NEXT_TELEMETRY_DISABLED'; value: '1' }
-        { name: 'DATABASE_URL'; value: '@Microsoft.KeyVault(SecretUri=${secretDbUrl.properties.secretUri})' }
-        { name: 'NEXTAUTH_SECRET'; value: '@Microsoft.KeyVault(SecretUri=${secretNextAuth.properties.secretUri})' }
-        { name: 'NEXTAUTH_URL'; value: !empty(customHostname) ? 'https://${customHostname}' : 'https://${webAppName}.azurewebsites.net' }
-        { name: 'INTERNAL_API_KEY'; value: '@Microsoft.KeyVault(SecretUri=${secretInternalApi.properties.secretUri})' }
-        { name: 'AZURE_AD_CLIENT_ID'; value: entraClientId }
-        { name: 'AZURE_AD_CLIENT_SECRET'; value: !empty(entraClientSecret) ? '@Microsoft.KeyVault(SecretUri=${secretEntraSecret.properties.secretUri})' : '' }
-        { name: 'AZURE_AD_TENANT_ID'; value: entraTenantId }
-        { name: 'NEXT_PUBLIC_SENTRY_DSN'; value: sentryDsn }
-        { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'; value: appInsights.properties.ConnectionString }
-      ]
+      appSettings: concat(
+        [
+          {
+            name: 'NODE_ENV'
+            value: 'production'
+          }
+          {
+            name: 'NEXT_TELEMETRY_DISABLED'
+            value: '1'
+          }
+          {
+            name: 'DATABASE_URL'
+            value: '@Microsoft.KeyVault(SecretUri=${secretDbUrl.properties.secretUri})'
+          }
+          {
+            name: 'NEXTAUTH_SECRET'
+            value: '@Microsoft.KeyVault(SecretUri=${secretNextAuth.properties.secretUri})'
+          }
+          {
+            name: 'NEXTAUTH_URL'
+            value: !empty(customHostname) ? 'https://${customHostname}' : 'https://${webAppName}.azurewebsites.net'
+          }
+          {
+            name: 'INTERNAL_API_KEY'
+            value: '@Microsoft.KeyVault(SecretUri=${secretInternalApi.properties.secretUri})'
+          }
+          {
+            name: 'AZURE_AD_CLIENT_ID'
+            value: entraClientId
+          }
+          {
+            name: 'AZURE_AD_TENANT_ID'
+            value: entraTenantId
+          }
+          {
+            name: 'NEXT_PUBLIC_SENTRY_DSN'
+            value: sentryDsn
+          }
+          {
+            name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+            value: appInsights.properties.ConnectionString
+          }
+          {
+            name: 'AZURE_MAPS_KEY'
+            value: '@Microsoft.KeyVault(SecretUri=${secretAzureMapsKey.properties.secretUri})'
+          }
+          {
+            name: 'AZURE_MAPS_SAS_TOKEN'
+            value: '@Microsoft.KeyVault(SecretUri=${secretAzureMapsSasToken.properties.secretUri})'
+          }
+        ],
+        !empty(entraClientSecret)
+          ? [
+              {
+                name: 'AZURE_AD_CLIENT_SECRET'
+                value: '@Microsoft.KeyVault(SecretUri=${secretEntraSecret.?properties.secretUri})'
+              }
+            ]
+          : []
+      )
     }
   }
 }
@@ -369,13 +456,34 @@ resource funcApp 'Microsoft.Web/sites@2023-12-01' = {
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       appSettings: [
-        { name: 'AzureWebJobsStorage'; value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${az.environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}' }
-        { name: 'FUNCTIONS_EXTENSION_VERSION'; value: '~4' }
-        { name: 'FUNCTIONS_WORKER_RUNTIME'; value: 'node' }
-        { name: 'WEBSITE_NODE_DEFAULT_VERSION'; value: '~20' }
-        { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'; value: appInsights.properties.ConnectionString }
-        { name: 'ORAN_APP_URL'; value: 'https://${webApp.properties.defaultHostName}' }
-        { name: 'INTERNAL_API_KEY'; value: '@Microsoft.KeyVault(SecretUri=${secretInternalApi.properties.secretUri})' }
+        {
+          name: 'AzureWebJobsStorage'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${az.environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
+        }
+        {
+          name: 'FUNCTIONS_EXTENSION_VERSION'
+          value: '~4'
+        }
+        {
+          name: 'FUNCTIONS_WORKER_RUNTIME'
+          value: 'node'
+        }
+        {
+          name: 'WEBSITE_NODE_DEFAULT_VERSION'
+          value: '~20'
+        }
+        {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: appInsights.properties.ConnectionString
+        }
+        {
+          name: 'ORAN_APP_URL'
+          value: 'https://${webApp.properties.defaultHostName}'
+        }
+        {
+          name: 'INTERNAL_API_KEY'
+          value: '@Microsoft.KeyVault(SecretUri=${secretInternalApi.properties.secretUri})'
+        }
       ]
     }
   }
@@ -443,6 +551,9 @@ output appInsightsConnectionString string = appInsights.properties.ConnectionStr
 
 @description('Application Insights instrumentation key')
 output appInsightsInstrumentationKey string = appInsights.properties.InstrumentationKey
+
+@description('Azure Maps account name')
+output mapsAccountName string = mapsAccount.name
 
 @description('PostgreSQL server FQDN')
 output pgServerFqdn string = pgServer.properties.fullyQualifiedDomainName

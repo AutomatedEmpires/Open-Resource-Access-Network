@@ -14,4 +14,4 @@ param appServiceSku = 'B1'
 param pgAdminUser = 'oranadmin'
 
 // Secrets — pass at deploy time or from Key Vault / pipeline variables:
-//   --parameters pgAdminPassword=<value> nextAuthSecret=<value> internalApiKey=<value>
+//   --parameters pgAdminPassword=<value> nextAuthSecret=<value> internalApiKey=<value> azureMapsSasToken=<value>

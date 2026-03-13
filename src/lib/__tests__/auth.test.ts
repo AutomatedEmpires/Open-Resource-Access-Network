@@ -33,6 +33,8 @@ const originalEnv = {
   tenantId: process.env.AZURE_AD_TENANT_ID,
   googleClientId: process.env.GOOGLE_CLIENT_ID,
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  googleAuthEnabled: process.env.ORAN_ENABLE_GOOGLE_AUTH,
+  credentialsAuthEnabled: process.env.ORAN_ENABLE_CREDENTIALS_AUTH,
   testAuthEnabled: process.env.ORAN_TEST_AUTH_ENABLED,
   nodeEnv: process.env.NODE_ENV,
 };
@@ -56,6 +58,8 @@ beforeEach(() => {
   delete mutableEnv.AZURE_AD_TENANT_ID;
   delete mutableEnv.GOOGLE_CLIENT_ID;
   delete mutableEnv.GOOGLE_CLIENT_SECRET;
+  delete mutableEnv.ORAN_ENABLE_GOOGLE_AUTH;
+  delete mutableEnv.ORAN_ENABLE_CREDENTIALS_AUTH;
   delete mutableEnv.ORAN_TEST_AUTH_ENABLED;
   delete mutableEnv.NODE_ENV;
   // Default: DB returns no role (null result)
@@ -93,6 +97,18 @@ afterEach(() => {
     mutableEnv.GOOGLE_CLIENT_SECRET = originalEnv.googleClientSecret;
   }
 
+  if (originalEnv.googleAuthEnabled === undefined) {
+    delete mutableEnv.ORAN_ENABLE_GOOGLE_AUTH;
+  } else {
+    mutableEnv.ORAN_ENABLE_GOOGLE_AUTH = originalEnv.googleAuthEnabled;
+  }
+
+  if (originalEnv.credentialsAuthEnabled === undefined) {
+    delete mutableEnv.ORAN_ENABLE_CREDENTIALS_AUTH;
+  } else {
+    mutableEnv.ORAN_ENABLE_CREDENTIALS_AUTH = originalEnv.credentialsAuthEnabled;
+  }
+
   if (originalEnv.testAuthEnabled === undefined) {
     delete mutableEnv.ORAN_TEST_AUTH_ENABLED;
   } else {
@@ -125,7 +141,7 @@ describe('resolveOranRole', () => {
 });
 
 describe('authOptions', () => {
-  it('has only the credentials provider when Azure AD and Google are not configured', async () => {
+  it('has only the credentials provider when Azure AD and Google are not configured outside production', async () => {
     const { authOptions } = await loadAuthModule();
 
     // Email/password credentials provider is always present
@@ -133,6 +149,27 @@ describe('authOptions', () => {
     expect(credentialsProviderMock).toHaveBeenCalledOnce();
     expect(providerMock).not.toHaveBeenCalled();
     expect(googleProviderMock).not.toHaveBeenCalled();
+  });
+
+  it('requires an explicit flag before enabling Google auth', async () => {
+    mutableEnv.GOOGLE_CLIENT_ID = 'google-client-id';
+    mutableEnv.GOOGLE_CLIENT_SECRET = 'google-client-secret';
+
+    const { authOptions } = await loadAuthModule();
+
+    expect(authOptions.providers).toHaveLength(1);
+    expect(googleProviderMock).not.toHaveBeenCalled();
+  });
+
+  it('configures Google auth only when explicitly enabled', async () => {
+    mutableEnv.GOOGLE_CLIENT_ID = 'google-client-id';
+    mutableEnv.GOOGLE_CLIENT_SECRET = 'google-client-secret';
+    mutableEnv.ORAN_ENABLE_GOOGLE_AUTH = '1';
+
+    const { authOptions } = await loadAuthModule();
+
+    expect(authOptions.providers).toHaveLength(2);
+    expect(googleProviderMock).toHaveBeenCalledOnce();
   });
 
   it('configures the Azure AD provider when env vars are present', async () => {
@@ -271,7 +308,16 @@ describe('authOptions', () => {
     mutableEnv.NODE_ENV = 'production';
 
     const { authOptions } = await loadAuthModule();
-    // Only the email/password credentials provider (no test provider)
+    expect(authOptions.providers).toHaveLength(0);
+    expect(credentialsProviderMock).not.toHaveBeenCalled();
+  });
+
+  it('requires an explicit flag before enabling credentials auth in production', async () => {
+    mutableEnv.NODE_ENV = 'production';
+    mutableEnv.ORAN_ENABLE_CREDENTIALS_AUTH = '1';
+
+    const { authOptions } = await loadAuthModule();
+
     expect(authOptions.providers).toHaveLength(1);
     expect(credentialsProviderMock).toHaveBeenCalledOnce();
   });

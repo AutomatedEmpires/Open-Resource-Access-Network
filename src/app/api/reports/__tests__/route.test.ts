@@ -14,7 +14,7 @@ const applySlaMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
-  checkRateLimit: rateLimitMock,
+  checkRateLimitShared: rateLimitMock,
 }));
 vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
@@ -60,7 +60,7 @@ beforeEach(() => {
   clientQueryMock
     .mockResolvedValueOnce({ rows: [{ id: 'new-sub-id' }] }) // submission insert
     .mockResolvedValueOnce({ rows: [] })                      // transition insert
-    .mockResolvedValueOnce({ rows: [] });                     // audit_log insert
+    .mockResolvedValueOnce({ rows: [] });                     // audit_logs insert
   applySlaMock.mockResolvedValue(undefined);
   rateLimitMock.mockReturnValue({
     exceeded: false,

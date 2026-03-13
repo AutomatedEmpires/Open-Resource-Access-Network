@@ -3,14 +3,15 @@
  *
  * Authenticated users can request an export of all their personal data.
  * Returns a JSON archive with: profile, seeker profile, submissions,
- * notifications, preferences, organization memberships, and audit log entries.
+ * notifications, preferences, organization memberships, audit log entries,
+ * chat sessions, saved services, and seeker feedback.
  *
  * Rate-limited (1 per 10 minutes) to prevent abuse.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isDatabaseConfigured, executeQuery } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { getAuthContext } from '@/services/auth/session';
 import { captureException } from '@/services/telemetry/sentry';
 
@@ -23,24 +24,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }
 
-  const ip = getIp(req);
-  const rl = checkRateLimit(`user:data-export:${ip}`, {
-    windowMs: 600_000, // 10-minute window
-    maxRequests: 1,
-  });
-  if (rl.exceeded) {
-    return NextResponse.json(
-      { error: 'Export rate limit exceeded. Please wait before requesting again.' },
-      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
-    );
-  }
-
   const authCtx = await getAuthContext();
   if (!authCtx) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
   const userId = authCtx.userId;
+  const ip = getIp(req);
+  const rl = await checkRateLimitShared(`user:data-export:${userId}:${ip}`, {
+    windowMs: 600_000,
+    maxRequests: 1,
+  });
+  if (rl.exceeded) {
+    return NextResponse.json(
+      { error: 'Export rate limit exceeded. Please wait before requesting again.' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(rl.retryAfterSeconds),
+          'Cache-Control': 'private, no-store',
+        },
+      },
+    );
+  }
 
   try {
     // 1. Submissions authored by this user
@@ -68,8 +74,8 @@ export async function POST(req: NextRequest) {
 
     // 3. Notification events
     const notifications = await executeQuery<Record<string, unknown>>(
-      `SELECT id, event_type, channel, status, payload,
-              created_at
+      `SELECT id, event_type, channel, title, body, resource_type, resource_id,
+              action_url, status, created_at
        FROM notification_events
        WHERE recipient_user_id = $1
        ORDER BY created_at DESC
@@ -88,10 +94,10 @@ export async function POST(req: NextRequest) {
 
     // 5. Audit log entries for this user's actions
     const auditEntries = await executeQuery<Record<string, unknown>>(
-      `SELECT id, action, entity_type, entity_id,
+      `SELECT id, action, resource_type, resource_id,
               created_at
-       FROM audit_log
-       WHERE performed_by = $1
+       FROM audit_logs
+       WHERE actor_user_id = $1
        ORDER BY created_at DESC
        LIMIT 5000`,
       [userId],
@@ -127,6 +133,27 @@ export async function POST(req: NextRequest) {
       [userId],
     );
 
+    // 9. Chat sessions
+    const chatSessions = await executeQuery<Record<string, unknown>>(
+      `SELECT id, started_at, ended_at, intent_summary, message_count, created_at
+       FROM chat_sessions
+       WHERE user_id = $1
+       ORDER BY started_at DESC
+       LIMIT 5000`,
+      [userId],
+    );
+
+    // 10. Seeker feedback
+    const feedback = await executeQuery<Record<string, unknown>>(
+      `SELECT id, service_id, session_id, rating, comment, contact_success,
+              created_at
+       FROM seeker_feedback
+       WHERE created_by_user_id = $1
+       ORDER BY created_at DESC
+       LIMIT 5000`,
+      [userId],
+    );
+
     const exportData = {
       exportedAt: new Date().toISOString(),
       userId,
@@ -138,10 +165,13 @@ export async function POST(req: NextRequest) {
       preferences,
       savedServices,
       auditEntries,
+      chatSessions,
+      feedback,
     };
 
     return NextResponse.json(exportData, {
       headers: {
+        'Cache-Control': 'private, no-store',
         'Content-Disposition': `attachment; filename="oran-data-export-${Date.now()}.json"`,
       },
     });

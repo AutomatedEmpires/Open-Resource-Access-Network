@@ -25,19 +25,27 @@ This document is the SSOT for platform direction. If you introduce a non-Azure p
 
 ## Production resource inventory
 
+Provisioned by `infra/main.bicep` today:
+
 | Resource | Type | SKU |
 |---|---|---|
 | `oranhf57ir-prod-plan` | App Service Plan | B1 Basic |
 | `oranhf57ir-prod-web` | Web App (Linux Node 20) | — |
+| `oranhf57ir-prod-st` | Storage Account | Standard_LRS |
 | `oranhf57ir-prod-kv` | Key Vault | Standard |
 | `oranhf57ir-prod-pg` | PostgreSQL Flexible Server | — |
 | `oranhf57ir-prod-logs` | Log Analytics Workspace | — |
 | `oranhf57ir-prod-insights` | Application Insights | — |
 | `oranhf57ir-prod-maps` | Azure Maps | G2 Gen2 |
-| `oranhf57ir-prod-translator` | AI Translator | F0 Free |
 | `oranhf57ir-prod-comm` | Communication Services | — |
 | `oranhf57ir-prod-redis` | Azure Cache for Redis | C0 Basic |
 | `oranhf57ir-prod-func` | Function App (Node.js 20) | Consumption |
+
+Supported Azure integrations not yet provisioned by `infra/main.bicep`:
+
+| Integration | Current expectation |
+|---|---|
+| Azure AI Translator | Supported by application code and env contract; configure separately until added to IaC |
 
 ## Environments
 

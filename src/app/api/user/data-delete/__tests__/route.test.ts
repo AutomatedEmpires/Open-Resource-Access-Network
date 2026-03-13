@@ -13,7 +13,7 @@ const authMocks = vi.hoisted(() => ({
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
-  checkRateLimit: rateLimitMock,
+  checkRateLimitShared: rateLimitMock,
 }));
 vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/telemetry/sentry', () => ({
@@ -92,9 +92,10 @@ describe('DELETE /api/user/data-delete', () => {
     await expect(res.json()).resolves.toEqual({
       message: 'All personal data has been deleted.',
     });
-    expect(clientQueryMock).toHaveBeenCalledTimes(12);
+    expect(clientQueryMock).toHaveBeenCalledTimes(14);
     expect(clientQueryMock.mock.calls[0]?.[0]).toContain('DELETE FROM saved_services');
-    expect(clientQueryMock.mock.calls[11]?.[0]).toContain('INSERT INTO audit_log');
+    expect(clientQueryMock.mock.calls[11]?.[0]).toContain('UPDATE audit_logs');
+    expect(clientQueryMock.mock.calls[13]?.[0]).toContain('INSERT INTO audit_logs');
   });
 
   it('returns 500 when transaction fails', async () => {

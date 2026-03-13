@@ -19,17 +19,22 @@ Implemented today:
 - No CORS wildcard (`Access-Control-Allow-Origin: *`) on any route—default same-origin policy.
 - Feature flags with typed constants, fail-closed semantics (unknown flag → off).
 - PII redaction in Sentry/telemetry—verified by automated tests.
+- Redis-backed shared rate limiting is available for high-value endpoints when `REDIS_URL` is configured, with in-memory fallback retained for local/test resilience.
 - DB schema exists in db/migrations/** (including feature_flags and verification_queue).
 
 Planned / not yet enforced end-to-end:
 
 - Comprehensive audit logging with before/after snapshots.
 - Nonce-based CSP to replace `script-src 'unsafe-inline'` (see ADR-0005).
-- Redis-backed rate limiting for multi-instance deployments.
 
 ## Authentication Model
 
-ORAN uses **Microsoft Entra ID** for identity management via NextAuth.js with the Azure AD provider. Some environments may run without Entra configured.
+ORAN uses **Microsoft Entra ID** for identity management via NextAuth.js with the Azure AD provider.
+
+Optional providers:
+
+- Google OAuth is supported only when explicitly enabled with `ORAN_ENABLE_GOOGLE_AUTH=1` and matching Google client credentials.
+- Email/password auth is available in local or test environments and is disabled in production unless `ORAN_ENABLE_CREDENTIALS_AUTH=1` is set deliberately.
 
 ### Session Validation
 
@@ -38,6 +43,7 @@ ORAN uses **Microsoft Entra ID** for identity management via NextAuth.js with th
 - Implemented: protected API routes validate NextAuth.js session server-side via `getAuthContext()`.
 - Implemented: unauthenticated requests to protected routes return HTTP 401.
 - Implemented: role checks return HTTP 403 for insufficient permissions.
+- Implemented: optional non-Entra providers fail closed in production unless explicitly enabled.
 
 ### Role Enforcement
 
@@ -175,6 +181,7 @@ Status: Implemented.
   - POST/GET /api/submissions/report (listing reports; POST allows anonymous, GET requires auth)
 - Implemented: all 429 responses include `Retry-After` header with seconds until window reset.
 - Planned: Redis-backed rate limiting for multi-instance deployments.
+- Implemented: authenticated privacy endpoints (`/api/user/data-export`, `/api/user/data-delete`) rate-limit by authenticated user context instead of shared IP alone.
 
 ---
 
@@ -199,6 +206,7 @@ Status: Implemented.
 - All API responses exclude internal scoring detail from seeker-facing endpoints
 - Database connection strings never in client-side code
 - Environment variables validated at startup
+- Azure Maps shared subscription keys are not returned to the browser; interactive map auth uses a scoped server-brokered token.
 
 ### Security Headers
 

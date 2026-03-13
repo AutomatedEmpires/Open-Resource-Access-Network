@@ -107,6 +107,7 @@ export function ServiceCard({
 }: ServiceCardProps) {
   const [showFeedback, setShowFeedback] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
 
   const {
     service, organization, address, phones, schedules, confidenceScore,
@@ -133,6 +134,20 @@ export function ServiceCard({
   const capacity = service.capacityStatus
     ? CAPACITY_STYLES[service.capacityStatus]
     : null;
+  const hasExtendedDetails = Boolean(
+    (!compact && languages && languages.length > 0)
+    || (!compact && accessibility && accessibility.length > 0)
+    || (!compact && attributes && attributes.length > 0)
+    || (!compact && adaptations && adaptations.length > 0)
+    || (!compact && dietaryOptions && dietaryOptions.length > 0)
+    || (!compact && program)
+    || (!compact && location && (location.transitAccess?.length || location.parkingAvailable))
+    || (!compact && contacts && contacts.length > 0)
+    || (!compact && serviceAreas && serviceAreas.length > 0)
+    || (!compact && eligibility && eligibility.length > 0)
+    || (!compact && requiredDocuments && requiredDocuments.length > 0)
+    || (!compact && (organization.missionStatement || organization.verifiedAt))
+  );
 
   // Get or create session ID for feedback
   const getSessionId = (): string => {
@@ -149,7 +164,7 @@ export function ServiceCard({
 
   return (
     <article
-      className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow p-4 card-enter"
+      className="card-enter rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)] transition-shadow hover:shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
       aria-label={`Service: ${service.name}`}
     >
       {/* Header: service name + save action */}
@@ -157,10 +172,7 @@ export function ServiceCard({
         <div className="min-w-0 flex-1">
           <h3 className="font-bold text-gray-900 leading-snug text-base">
             {href ? (
-              <Link
-                href={href}
-                className="hover:underline text-blue-700 inline-flex items-center gap-1"
-              >
+              <Link href={href} className="inline-flex items-center gap-1 text-sky-700 hover:underline">
                 {service.name}
               </Link>
             ) : service.url ? (
@@ -168,7 +180,7 @@ export function ServiceCard({
                 href={service.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:underline text-blue-700 inline-flex items-center gap-1"
+                className="inline-flex items-center gap-1 text-sky-700 hover:underline"
               >
                 {service.name}
                 <ExternalLink className="h-3 w-3 flex-shrink-0" aria-label="(opens in new tab)" />
@@ -177,20 +189,20 @@ export function ServiceCard({
               service.name
             )}
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5 leading-tight">{organization.name}</p>
+          <p className="mt-0.5 text-xs leading-tight text-slate-500">{organization.name}</p>
         </div>
         {onToggleSave && (
           <button
             type="button"
             onClick={() => onToggleSave(service.id)}
-            className="flex-shrink-0 flex items-center justify-center min-w-[44px] min-h-[44px] rounded-lg hover:bg-gray-100 transition-colors -mr-2 -mt-1"
+            className="-mr-2 -mt-1 flex min-h-[44px] min-w-[44px] flex-shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-slate-100"
             aria-pressed={isSaved ?? false}
             aria-label={savedToggleCopy.ariaLabel}
             title={savedToggleCopy.title}
           >
             {isSaved
               ? <BookmarkCheck className="h-5 w-5 text-blue-600" aria-hidden="true" />
-              : <Bookmark className="h-5 w-5 text-gray-400" aria-hidden="true" />}
+              : <Bookmark className="h-5 w-5 text-slate-400" aria-hidden="true" />}
           </button>
         )}
       </div>
@@ -226,28 +238,28 @@ export function ServiceCard({
       </div>
 
       {alignmentLabels.length > 0 && (
-        <div className="mb-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
-          <span className="font-semibold">Aligned with current filters:</span>{' '}
+        <div className="mb-2 rounded-2xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+          <span className="font-semibold">Fits your current scope:</span>{' '}
           {alignmentLabels.join(', ')}
         </div>
       )}
 
       {/* Description */}
       {!compact && service.description && (
-        <p className="text-sm text-gray-600 mb-3 line-clamp-3">{service.description}</p>
+        <p className="mb-3 line-clamp-2 text-sm text-slate-600">{service.description}</p>
       )}
 
       {/* Taxonomy tags */}
       {taxonomyTerms.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {taxonomyTerms.slice(0, 5).map((t) => (
-            <span key={t.id} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {taxonomyTerms.slice(0, compact ? 3 : 4).map((t) => (
+            <span key={t.id} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
               <Tag className="h-3 w-3" aria-hidden="true" />
               {t.term}
             </span>
           ))}
-          {taxonomyTerms.length > 5 && (
-            <span className="text-xs text-gray-400">+{taxonomyTerms.length - 5} more</span>
+          {taxonomyTerms.length > (compact ? 3 : 4) && (
+            <span className="text-xs text-slate-400">+{taxonomyTerms.length - (compact ? 3 : 4)} more</span>
           )}
         </div>
       )}
@@ -295,29 +307,39 @@ export function ServiceCard({
       {/* Fees */}
       {!compact && service.fees && (
         <div className="mt-2 text-sm">
-          <span className="font-medium text-gray-700">Fees: </span>
-          <span className="text-gray-600">{service.fees}</span>
+          <span className="font-medium text-slate-700">Fees: </span>
+          <span className="text-slate-600">{service.fees}</span>
         </div>
       )}
 
-      {/* Languages */}
-      {!compact && languages && languages.length > 0 && (
+      {hasExtendedDetails && !compact && (
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          <button
+            type="button"
+            onClick={() => setShowMoreDetails((current) => !current)}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white"
+            aria-expanded={showMoreDetails}
+          >
+            {showMoreDetails ? 'Hide details' : 'More details'}
+          </button>
+        </div>
+      )}
+
+      {showMoreDetails && !compact && languages && languages.length > 0 && (
         <div className="flex items-center gap-1.5 mt-2 text-sm text-gray-600">
           <Globe2 className="h-4 w-4 text-gray-400 flex-shrink-0" aria-hidden="true" />
           <span>{languages.map((l) => l.language).join(', ')}</span>
         </div>
       )}
 
-      {/* Accessibility */}
-      {!compact && accessibility && accessibility.length > 0 && (
+      {showMoreDetails && !compact && accessibility && accessibility.length > 0 && (
         <div className="flex items-start gap-1.5 mt-2 text-sm text-gray-600">
           <Accessibility className="h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
           <span>{accessibility.map((a) => a.accessibility).join(', ')}</span>
         </div>
       )}
 
-      {/* Service attributes — delivery, cost, access badges */}
-      {!compact && attributes && attributes.length > 0 && (
+      {showMoreDetails && !compact && attributes && attributes.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2">
           {attributes.slice(0, 6).map((attr) => (
             <span
@@ -331,8 +353,7 @@ export function ServiceCard({
         </div>
       )}
 
-      {/* Adaptations */}
-      {!compact && adaptations && adaptations.length > 0 && (
+      {showMoreDetails && !compact && adaptations && adaptations.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2">
           {adaptations.map((a) => (
             <span
@@ -347,8 +368,7 @@ export function ServiceCard({
         </div>
       )}
 
-      {/* Dietary options */}
-      {!compact && dietaryOptions && dietaryOptions.length > 0 && (
+      {showMoreDetails && !compact && dietaryOptions && dietaryOptions.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2">
           {dietaryOptions.map((d) => (
             <span
@@ -366,8 +386,7 @@ export function ServiceCard({
         </div>
       )}
 
-      {/* Program */}
-      {!compact && program && (
+      {showMoreDetails && !compact && program && (
         <div className="mt-2 text-sm text-gray-600">
           <span className="flex items-center gap-1 text-xs font-medium text-gray-700">
             <Layers className="h-3.5 w-3.5" aria-hidden="true" />
@@ -376,8 +395,7 @@ export function ServiceCard({
         </div>
       )}
 
-      {/* Transit & parking */}
-      {!compact && location && (location.transitAccess?.length || location.parkingAvailable) && (
+      {showMoreDetails && !compact && location && (location.transitAccess?.length || location.parkingAvailable) && (
         <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-gray-600">
           {location.transitAccess && location.transitAccess.length > 0 && (
             <span className="inline-flex items-center gap-1">
@@ -394,8 +412,7 @@ export function ServiceCard({
         </div>
       )}
 
-      {/* Contacts */}
-      {!compact && contacts && contacts.length > 0 && (
+      {showMoreDetails && !compact && contacts && contacts.length > 0 && (
         <div className="mt-2 text-sm text-gray-600">
           <p className="flex items-center gap-1 font-medium text-gray-700 text-xs">
             <Users className="h-3.5 w-3.5" aria-hidden="true" />
@@ -409,16 +426,14 @@ export function ServiceCard({
         </div>
       )}
 
-      {/* Service area */}
-      {!compact && serviceAreas && serviceAreas.length > 0 && (
+      {showMoreDetails && !compact && serviceAreas && serviceAreas.length > 0 && (
         <div className="mt-2 text-xs text-gray-500 flex items-center gap-1">
           <Globe2 className="h-3.5 w-3.5 text-gray-400" aria-hidden="true" />
           Serves: {serviceAreas.map((sa) => sa.name ?? sa.extentType ?? 'Custom area').join(', ')}
         </div>
       )}
 
-      {/* Eligibility summary */}
-      {!compact && eligibility && eligibility.length > 0 && (
+      {showMoreDetails && !compact && eligibility && eligibility.length > 0 && (
         <div className="mt-2 text-sm border-l-2 border-amber-300 pl-2">
           <p className="font-medium text-gray-700 flex items-center gap-1">
             <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
@@ -440,8 +455,7 @@ export function ServiceCard({
         </div>
       )}
 
-      {/* Required documents */}
-      {!compact && requiredDocuments && requiredDocuments.length > 0 && (
+      {showMoreDetails && !compact && requiredDocuments && requiredDocuments.length > 0 && (
         <div className="mt-2 text-sm text-gray-600">
           <p className="flex items-center gap-1 font-medium text-gray-700">
             <FileText className="h-3.5 w-3.5" aria-hidden="true" />
@@ -455,13 +469,11 @@ export function ServiceCard({
         </div>
       )}
 
-      {/* Eligibility hint — "may qualify" language — NEVER guarantee */}
-      <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+      <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
         You may qualify. Confirm eligibility and hours with the provider.
       </p>
 
-      {/* Org profile snippet — shown when org has mission or is verified */}
-      {!compact && (organization.missionStatement || organization.verifiedAt) && (
+      {showMoreDetails && !compact && (organization.missionStatement || organization.verifiedAt) && (
         <div className="mt-3">
           <OrgProfileCard
             org={{

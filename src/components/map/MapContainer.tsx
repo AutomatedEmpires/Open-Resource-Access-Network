@@ -5,8 +5,8 @@
  * - Does NOT request device location (any device location use must be explicit
  *   and happen at the page level).
  * - Plots only coordinates from stored, verified records.
- * - Subscription key is fetched from /api/maps/token (server-side broker)
- *   so it never appears in the client JS bundle.
+ * - Scoped Azure Maps auth is fetched from /api/maps/token (server-side broker)
+ *   so the raw shared key never appears in the client.
  */
 
 'use client';
@@ -49,6 +49,11 @@ interface MapContainerProps {
   /** Callback when map viewport changes (for bbox queries) */
   onBoundsChange?: (bounds: { minLat: number; minLng: number; maxLat: number; maxLng: number }) => void;
   className?: string;
+}
+
+interface MapsClientAuthResponse {
+  authType: 'sas';
+  sasToken: string;
 }
 
 // ============================================================
@@ -158,16 +163,22 @@ export function MapContainer({
     return raw.filter((p): p is Pin => typeof p.lat === 'number' && typeof p.lng === 'number');
   }, [services]);
 
-  // ── fetch key from server-side broker ─────────────────────
-  const fetchKey = useCallback(async (): Promise<string | null> => {
+  // ── fetch scoped auth from server-side broker ─────────────
+  const fetchMapsAuth = useCallback(async (): Promise<MapsClientAuthResponse | null> => {
     try {
       const res = await fetch('/api/maps/token', {
         credentials: 'same-origin',
-        cache: 'default', // browser respects Cache-Control: private, max-age=300
+        cache: 'no-store',
       });
       if (!res.ok) return null;
-      const body = (await res.json()) as { subscriptionKey?: string };
-      return body.subscriptionKey ?? null;
+      const body = (await res.json()) as Partial<MapsClientAuthResponse>;
+      if (body.authType !== 'sas' || !body.sasToken) {
+        return null;
+      }
+      return {
+        authType: 'sas',
+        sasToken: body.sasToken,
+      };
     } catch {
       return null;
     }
@@ -181,10 +192,10 @@ export function MapContainer({
     let cancelled = false;
 
     (async () => {
-      const key = await fetchKey();
+      const mapsAuth = await fetchMapsAuth();
       if (cancelled) return;
 
-      if (!key) {
+      if (!mapsAuth) {
         setUseLeafletFallback(true);
         setIsLoading(false);
         return;
@@ -198,8 +209,8 @@ export function MapContainer({
           view: 'Auto',
           style: 'road',
           authOptions: {
-            authType: atlas.AuthenticationType.subscriptionKey,
-            subscriptionKey: key,
+            authType: atlas.AuthenticationType.sas,
+            sasToken: mapsAuth.sasToken,
           },
         });
 
@@ -259,8 +270,7 @@ export function MapContainer({
         mapRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only run on mount
-  }, []);
+  }, [centerLat, centerLng, fetchMapsAuth, onBoundsChange, zoom]);
 
   // ── update markers + popups when pins change ──────────────
   useEffect(() => {

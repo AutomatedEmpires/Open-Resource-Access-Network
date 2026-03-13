@@ -8,6 +8,7 @@ import ResourceStudioPageClient from './ResourceStudioPageClient';
 export const metadata: Metadata = {
   title: 'Resource Studio',
   description: 'Build, preview, and submit ORAN resource records for approval.',
+  robots: { index: false, follow: false },
 };
 
 export default function ResourceStudioPage() {

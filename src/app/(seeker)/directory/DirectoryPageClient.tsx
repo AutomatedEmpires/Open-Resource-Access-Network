@@ -22,6 +22,7 @@ import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { ServiceCard } from '@/components/directory/ServiceCard';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
+import { DiscoverySurfaceTabs } from '@/components/seeker/DiscoverySurfaceTabs';
 import { SeekerAppliedFilters, type SeekerAppliedFilterItem } from '@/components/seeker/SeekerAppliedFilters';
 import { SeekerDiscoveryFilters } from '@/components/seeker/SeekerDiscoveryFilters';
 import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
@@ -151,6 +152,7 @@ export default function DirectoryPage() {
     return {};
   });
   const [attributeSectionOpen, setAttributeSectionOpen] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   // Opt-in device geolocation (in-session only; never stored; not reflected in URL)
   const [isLocating, setIsLocating] = useState(false);
@@ -285,6 +287,15 @@ export default function DirectoryPage() {
       attributeFilters: selectedAttributes,
     });
   }, [activeCategory, confidenceFilter, query, selectedAttributes, selectedTaxonomyIds, sortBy]);
+
+  const surfaceTabs = useMemo(
+    () => [
+      { href: chatHref, label: 'Chat' },
+      { href: '/directory', label: 'Directory' },
+      { href: mapHref, label: 'Map' },
+    ],
+    [chatHref, mapHref],
+  );
 
   const directoryDiscoveryContext = useMemo(() => {
     return {
@@ -688,6 +699,17 @@ export default function DirectoryPage() {
   }, [activeCategory, confidenceFilter, deviceLocation, hasSearchContext, query, resetResultsToEmpty, runSearch, selectedTaxonomyIds, sortBy]);
 
   const hasActiveAttributes = useMemo(() => Object.keys(selectedAttributes).length > 0, [selectedAttributes]);
+  const hasActiveRefinements = useMemo(
+    () => Boolean(
+      activeCategory
+      || deviceLocation
+      || selectedTaxonomyIds.length > 0
+      || hasActiveAttributes
+      || confidenceFilter !== 'all'
+      || sortBy !== 'relevance',
+    ),
+    [activeCategory, confidenceFilter, deviceLocation, hasActiveAttributes, selectedTaxonomyIds.length, sortBy],
+  );
 
   const clearCategory = useCallback(() => {
     const nextQuery = isDiscoveryNeedSearchText(activeCategory, query) ? '' : query;
@@ -915,36 +937,28 @@ export default function DirectoryPage() {
   }, [confidenceFilter, deviceLocation, hasSearchContext, resetResultsToEmpty, runSearch, selectedAttributes, selectedTaxonomyIds, sortBy]);
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(191,219,254,0.42),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(167,243,208,0.2),_transparent_24%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fb_55%,_#eef4f7_100%)]">
-      <div className="container mx-auto max-w-7xl px-4 pt-4 pb-8 md:py-8">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
-          <section className="rounded-[30px] border border-white/70 bg-white/85 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)]">
+      <div className="container mx-auto max-w-6xl px-4 pt-4 pb-8 md:py-8">
+        <section className="rounded-[30px] border border-slate-200/80 bg-white/92 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
             <PageHeader
               eyebrow="Verified discovery"
               title="Service Directory"
-              subtitle={
-                <>
-                  Search verified listings. Also try{' '}
-                  <Link href={chatHref} className="font-medium text-action-base hover:underline">Chat</Link>
-                  {' '}or{' '}
-                  <Link href={mapHref} className="font-medium text-action-base hover:underline">Map view</Link>.
-                </>
-              }
+              subtitle="Browse verified services in a quieter, easier-to-scan layout. Refine only when you need to."
+              actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/directory" />}
               badges={(
                 <>
-                  <PageHeaderBadge tone="trust">Trust-aware results</PageHeaderBadge>
-                  <PageHeaderBadge tone="accent">{deviceLocation ? 'Approximate location active' : 'Location optional'}</PageHeaderBadge>
-                  <PageHeaderBadge>{selectedTaxonomyIds.length + Object.keys(selectedAttributes).length > 0 ? 'Filters applied' : 'Browse and compare'}</PageHeaderBadge>
-                  <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync to your account' : 'Saves stay on this device'}</PageHeaderBadge>
+                  <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
+                  {deviceLocation ? <PageHeaderBadge tone="accent">Approximate location active</PageHeaderBadge> : null}
+                  {hasActiveRefinements ? <PageHeaderBadge>Refinements on</PageHeaderBadge> : null}
                 </>
               )}
             />
 
             <ErrorBoundary>
-              <div className="rounded-[24px] border border-orange-100/90 bg-gradient-to-b from-white to-orange-50/60 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-5">
+              <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-5">
                 <FormSection
                   title="Search the directory"
-                  description="Search verified listings, then refine sort order and location-aware discovery without leaving the page."
+                  description="Start simple, then open refinements only if you need them."
                   className="mb-3"
                 >
                   <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
@@ -963,14 +977,14 @@ export default function DirectoryPage() {
                           }}
                           type="search"
                           placeholder="Search for services (e.g., rent help, food pantry, job training)"
-                          className="min-h-[44px] w-full rounded-xl border border-orange-200 bg-white py-2 pl-9 pr-8 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
+                          className="min-h-[46px] w-full rounded-2xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
                           aria-label="Search services"
                         />
                         {query && (
                           <button
                             type="button"
                             onClick={handleClearSearch}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-stone-400 hover:text-stone-600 focus:outline-none focus:ring-2 focus:ring-action"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-slate-400 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
                             aria-label="Clear search"
                           >
                             <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -995,16 +1009,12 @@ export default function DirectoryPage() {
                   </form>
                 </FormSection>
 
-                <p className="-mt-2 mb-3 text-xs leading-5 text-stone-600">
-                  Location is optional. If you choose “Use my location”, ORAN uses an approximate location to show nearby results in-session only and does not store it.
-                </p>
-
                 {deviceLocation && (
                   <div className="mb-3">
                     <button
                       type="button"
                       onClick={clearDeviceLocation}
-                      className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-white px-3 py-1 text-xs font-medium text-stone-700 shadow-sm hover:bg-orange-50"
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-white"
                       aria-label="Clear location filter"
                       title="Clear location (not saved)"
                     >
@@ -1014,30 +1024,57 @@ export default function DirectoryPage() {
                   </div>
                 )}
 
-                <SeekerDiscoveryFilters
-                  activeCategory={activeCategory}
-                  onCategoryClick={handleCategoryClick}
-                  taxonomyError={taxonomyError}
-                  taxonomyTerms={taxonomyTerms}
-                  isLoadingTaxonomy={isLoadingTaxonomy}
-                  quickTaxonomyTerms={topTaxonomyTerms}
-                  selectedTaxonomyIds={selectedTaxonomyIds}
-                  onToggleTaxonomyId={toggleTaxonomyId}
-                  taxonomyDialogOpen={taxonomyDialogOpen}
-                  onTaxonomyOpenChange={handleTaxonomyOpenChange}
-                  taxonomySearch={taxonomySearch}
-                  onTaxonomySearchChange={setTaxonomySearch}
-                  onClearTaxonomyFilters={clearTaxonomyFilters}
-                  groupedTaxonomyTerms={groupedTaxonomyTerms}
-                  visibleTaxonomyTermsCount={visibleTaxonomyTerms.length}
-                  dimensionLabels={DIMENSION_LABELS}
-                />
+                <div className="mb-4 rounded-[20px] border border-slate-200 bg-slate-50/80 p-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvancedFilters((current) => !current)}
+                      className="inline-flex min-h-[40px] items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                      aria-expanded={showAdvancedFilters || hasActiveRefinements}
+                    >
+                      Refine results
+                      {hasActiveRefinements ? (
+                        <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
+                          {appliedFilterItems.length || 1}
+                        </span>
+                      ) : null}
+                      {showAdvancedFilters || hasActiveRefinements ? (
+                        <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                      )}
+                    </button>
+                    <p className="text-xs text-slate-500">
+                      {savedSyncEnabled ? 'Saves can sync to your account.' : 'Saves stay on this device.'}
+                    </p>
+                  </div>
 
-                <div className="mb-4 rounded-[20px] border border-orange-100 bg-white/80 p-4 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
+                  {(showAdvancedFilters || hasActiveRefinements) && (
+                    <div className="mt-4 space-y-4">
+                      <SeekerDiscoveryFilters
+                        activeCategory={activeCategory}
+                        onCategoryClick={handleCategoryClick}
+                        taxonomyError={taxonomyError}
+                        taxonomyTerms={taxonomyTerms}
+                        isLoadingTaxonomy={isLoadingTaxonomy}
+                        quickTaxonomyTerms={topTaxonomyTerms}
+                        selectedTaxonomyIds={selectedTaxonomyIds}
+                        onToggleTaxonomyId={toggleTaxonomyId}
+                        taxonomyDialogOpen={taxonomyDialogOpen}
+                        onTaxonomyOpenChange={handleTaxonomyOpenChange}
+                        taxonomySearch={taxonomySearch}
+                        onTaxonomySearchChange={setTaxonomySearch}
+                        onClearTaxonomyFilters={clearTaxonomyFilters}
+                        groupedTaxonomyTerms={groupedTaxonomyTerms}
+                        visibleTaxonomyTermsCount={visibleTaxonomyTerms.length}
+                        dimensionLabels={DIMENSION_LABELS}
+                      />
+
+                      <div className="rounded-[18px] border border-slate-200 bg-white p-4">
                   <button
                     type="button"
                     onClick={() => setAttributeSectionOpen((v) => !v)}
-                    className="mb-2 flex items-center gap-1 text-xs font-medium text-stone-500 hover:text-stone-700"
+                    className="mb-2 flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
                     aria-expanded={attributeSectionOpen || hasActiveAttributes}
                   >
                     Service type filters
@@ -1062,7 +1099,7 @@ export default function DirectoryPage() {
                         const activeTags = selectedAttributes[dim] ?? [];
                         return (
                           <div key={dim} className="flex flex-wrap items-center gap-2" role="group" aria-label={def.name}>
-                            <span className="w-20 flex-shrink-0 text-xs font-medium text-stone-500">{def.name}:</span>
+                            <span className="w-20 flex-shrink-0 text-xs font-medium text-slate-500">{def.name}:</span>
                             {commonTags.map((t) => {
                               const isActive = activeTags.includes(t.tag);
                               return (
@@ -1072,8 +1109,8 @@ export default function DirectoryPage() {
                                   onClick={() => toggleAttribute(dim, t.tag)}
                                   className={`min-h-[44px] flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                                     isActive
-                                      ? 'bg-action-base text-white shadow-sm'
-                                      : 'border border-orange-200 bg-white text-stone-700 hover:bg-orange-50'
+                                        ? 'bg-slate-900 text-white shadow-sm'
+                                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                                   }`}
                                   aria-pressed={isActive}
                                   title={t.description}
@@ -1089,23 +1126,23 @@ export default function DirectoryPage() {
                         <button
                           type="button"
                           onClick={clearAttributes}
-                          className="text-xs font-medium text-action-strong hover:underline"
+                          className="text-xs font-medium text-sky-700 hover:underline"
                         >
                           Clear service type filters
                         </button>
                       )}
                     </div>
                   )}
-                </div>
+                      </div>
 
-                <FormSection
-                  title="Trust and sort"
-                  description="Adjust confidence and result order while keeping the current search and filters intact."
-                  className="mb-4 rounded-[20px] border border-orange-100 bg-white/80 p-4 shadow-[0_10px_30px_rgba(234,88,12,0.04)]"
-                >
+                      <FormSection
+                        title="Trust and sort"
+                        description="Change confidence or ordering without resetting the current search."
+                        className="rounded-[18px] border border-slate-200 bg-white p-4"
+                      >
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                     <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Trust filter">
-                      <span className="text-xs font-medium text-stone-500">Trust:</span>
+                      <span className="text-xs font-medium text-slate-500">Trust:</span>
                       {CONFIDENCE_OPTIONS.map((opt) => (
                         <button
                           key={opt.value}
@@ -1113,8 +1150,8 @@ export default function DirectoryPage() {
                           onClick={() => handleConfidenceChange(opt.value)}
                           className={`min-h-[44px] flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                             confidenceFilter === opt.value
-                              ? 'bg-action-base text-white shadow-sm'
-                              : 'border border-orange-200 bg-white text-stone-700 hover:bg-orange-50'
+                              ? 'bg-slate-900 text-white shadow-sm'
+                              : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                           }`}
                           aria-pressed={confidenceFilter === opt.value}
                         >
@@ -1128,7 +1165,7 @@ export default function DirectoryPage() {
                           id="sort-select"
                           value={sortBy}
                           onChange={handleSortChange}
-                          className="min-h-[44px] rounded-lg border border-orange-200 bg-white px-2 py-1.5 text-xs text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
+                          className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
                         >
                           {SORT_OPTIONS.map((opt) => (
                             <option key={opt.value} value={opt.value}>
@@ -1139,16 +1176,21 @@ export default function DirectoryPage() {
                       </FormField>
                     </div>
                   </div>
-                </FormSection>
+                      </FormSection>
+                    </div>
+                  )}
+                </div>
 
                 <SeekerAppliedFilters items={appliedFilterItems} onClearAll={clearAllFilters} />
-                <DiscoveryContextPanel
-                  discoveryContext={directoryDiscoveryContext}
-                  taxonomyLabelById={taxonomyLabelById}
-                  title="Current search scope"
-                  description="Results stay inside this trust and filter scope until you change or clear it."
-                  className="mb-4"
-                />
+                {hasActiveRefinements && (
+                  <DiscoveryContextPanel
+                    discoveryContext={directoryDiscoveryContext}
+                    taxonomyLabelById={taxonomyLabelById}
+                    title="Current search scope"
+                    description="Results stay inside this scope until you change or clear it."
+                    className="mb-4 border-slate-200 bg-slate-50"
+                  />
+                )}
 
                 {error && (
                   <div
@@ -1185,7 +1227,7 @@ export default function DirectoryPage() {
 
                 {!isLoading && data && (
                   <div ref={resultsContainerRef} tabIndex={-1} className="space-y-4 outline-none">
-                    <div className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] border border-orange-100 bg-white/80 px-4 py-3 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
+                    <div className="flex flex-wrap items-center justify-between gap-4 rounded-[20px] border border-slate-200 bg-slate-50/80 px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
                       <p className="text-sm text-stone-600" role="status" aria-live="polite">
                         {allResults.length === 0 ? `0 of ${data.total} results` : `Showing ${allResults.length} of ${data.total}`}
                       </p>
@@ -1314,27 +1356,7 @@ export default function DirectoryPage() {
                 )}
               </div>
             </ErrorBoundary>
-          </section>
-
-          <aside className="space-y-4 lg:sticky lg:top-6">
-            <div className="rounded-[24px] border border-rose-100 bg-gradient-to-br from-rose-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(251,113,133,0.10)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Browse with confidence</p>
-              <h2 className="mt-2 text-lg font-semibold text-stone-900">Tighten scope without losing your place</h2>
-              <ul className="mt-3 space-y-3 text-sm leading-6 text-stone-600">
-                <li>Search stays grounded in verified records only.</li>
-                <li>Trust, tags, and service type filters layer together cleanly.</li>
-                <li>You can move the same search into Chat or Map at any time.</li>
-              </ul>
-            </div>
-
-            <div className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(16,185,129,0.10)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Private by default</p>
-              <p className="mt-2 text-sm leading-6 text-stone-700">
-                Location stays optional. If you opt in, ORAN uses an approximate in-session location to improve nearby results and does not store it.
-              </p>
-            </div>
-          </aside>
-        </div>
+        </section>
       </div>
     </main>
   );

@@ -54,11 +54,39 @@ jobs:
           echo "::add-mask::$DB_URL"
           echo "DATABASE_URL=$DB_URL" >> "$GITHUB_ENV"
 
-      - name: Run Drizzle migrations
-        run: npx drizzle-kit migrate
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Run SQL migrations
+        run: |
+          set -euo pipefail
+
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE IF NOT EXISTS schema_migrations (
+            filename text PRIMARY KEY,
+            applied_at timestamptz NOT NULL DEFAULT now()
+          );
+          SQL
+
+          while IFS= read -r file; do
+            filename="$(basename "$file")"
+            applied=$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -c "SELECT 1 FROM schema_migrations WHERE filename = '$filename' LIMIT 1;")
+
+            if [ "$applied" = "1" ]; then
+              echo "Skipping already applied migration: $filename"
+              continue
+            fi
+
+            echo "Applying migration: $filename"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$file"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (filename) VALUES ('$filename');"
+          done < <(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort)
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
 
       - name: Verify migration
         run: |
           echo "Migration completed for environment: ${{ inputs.environment }}"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT filename, applied_at FROM schema_migrations ORDER BY filename;"
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}

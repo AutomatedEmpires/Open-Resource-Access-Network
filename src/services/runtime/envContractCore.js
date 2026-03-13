@@ -8,6 +8,12 @@ const RULES_BY_TARGET = {
     { name: 'AZURE_AD_TENANT_ID', level: 'warning', whenPresent: 'AZURE_AD_CLIENT_ID' },
     { name: 'GOOGLE_CLIENT_SECRET', level: 'critical', whenPresent: 'GOOGLE_CLIENT_ID' },
     { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', level: 'warning', productionOnly: true },
+    { name: 'REDIS_URL', level: 'warning', productionOnly: true },
+    { name: 'AZURE_MAPS_KEY', level: 'warning', productionOnly: true },
+    { name: 'AZURE_MAPS_SAS_TOKEN', level: 'warning', productionOnly: true },
+    { name: 'AZURE_TRANSLATOR_KEY', level: 'warning', productionOnly: true },
+    { name: 'AZURE_TRANSLATOR_ENDPOINT', level: 'warning', productionOnly: true },
+    { name: 'AZURE_TRANSLATOR_REGION', level: 'warning', productionOnly: true },
   ],
   functions: [
     { name: 'AzureWebJobsStorage', level: 'critical', productionOnly: true },

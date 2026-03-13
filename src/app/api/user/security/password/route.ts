@@ -3,8 +3,9 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { getAuthContext } from '@/services/auth/session';
 import { getPgPool, isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
+import { isCredentialsAuthEnabled } from '@/lib/auth';
 
 const UpdatePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(128),
@@ -19,11 +20,18 @@ function getIp(req: NextRequest): string {
 }
 
 export async function POST(req: NextRequest) {
+  if (!isCredentialsAuthEnabled()) {
+    return NextResponse.json(
+      { error: 'Password changes are not available.' },
+      { status: 403 },
+    );
+  }
+
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Security settings are temporarily unavailable.' }, { status: 503 });
   }
 
-  const rl = checkRateLimit(`user:password:${getIp(req)}`, {
+  const rl = await checkRateLimitShared(`user:password:${getIp(req)}`, {
     windowMs: 600_000,
     maxRequests: PASSWORD_RATE_LIMIT_MAX,
   });

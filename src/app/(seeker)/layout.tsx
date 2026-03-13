@@ -81,7 +81,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
     pathname === href || pathname.startsWith(href + '/');
 
   return (
-      <div className="flex min-h-screen flex-col bg-gradient-to-b from-orange-50 via-rose-50/70 to-emerald-50/80 text-[var(--text-primary)]">
+      <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)] text-[var(--text-primary)]">
       {/* Command palette — opens on ⌘K / Ctrl+K */}
       <CommandPalette
         open={commandPaletteOpen}
@@ -89,19 +89,19 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
       />
 
       {/* ── Top bar ─────────────────────────────────────── */}
-      <header className="sticky top-0 z-[var(--z-nav)] border-b border-orange-100/80 bg-white/90 backdrop-blur">
+      <header className="sticky top-0 z-[var(--z-nav)] border-b border-slate-200/80 bg-white/88 backdrop-blur">
         <div className="container mx-auto max-w-6xl flex items-center justify-between px-4 h-14">
 
           {/* Brand */}
           <div className="flex min-w-0 items-center gap-3">
             <Link
               href="/"
-              className="flex items-center gap-2 text-lg font-bold tracking-tight text-stone-900 transition-colors hover:text-action-base"
+              className="flex items-center gap-2 text-lg font-semibold tracking-tight text-slate-900 transition-colors hover:text-sky-700"
             >
               ORAN
             </Link>
-            <span className="hidden rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-widest text-emerald-700 md:inline-flex">
-              Verified records only
+            <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 md:inline-flex">
+              Seeker
             </span>
           </div>
 
@@ -109,7 +109,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
             <button
               type="button"
               onClick={() => setCommandPaletteOpen(true)}
-              className="inline-flex min-h-10 items-center rounded-full border border-orange-100 bg-white px-3 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-orange-50 hover:text-stone-900"
+              className="inline-flex min-h-10 items-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
               aria-label="Open quick actions"
             >
               Quick actions
@@ -126,8 +126,8 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
                     href={href}
                     className={`relative flex min-h-[44px] items-center gap-1.5 rounded-full px-3 py-2 text-sm transition-colors ${
                       active
-                        ? 'bg-info-subtle text-action-strong font-semibold shadow-sm'
-                        : 'font-medium text-stone-600 hover:bg-orange-50 hover:text-stone-900'
+                        ? 'bg-slate-100 text-slate-950 font-semibold shadow-sm'
+                        : 'font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900'
                     }`}
                     aria-current={active ? 'page' : undefined}
                   >
@@ -136,7 +136,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
                     {isSavedItem && savedCount > 0 && (
                       <span
                         className={`ml-0.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold min-w-[16px] h-4 px-1 leading-none ${
-                          active ? 'bg-action-base text-white' : 'bg-orange-100 text-stone-700'
+                          active ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'
                         }`}
                         aria-label={`${savedCount} saved`}
                       >
@@ -172,7 +172,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
         the outer nav just grows downward into the safe area.
       */}
       <nav
-        className="fixed bottom-0 inset-x-0 z-[var(--z-nav)] border-t border-orange-100/80 bg-white/95 backdrop-blur md:hidden"
+        className="fixed bottom-0 inset-x-0 z-[var(--z-nav)] border-t border-slate-200/80 bg-white/95 backdrop-blur md:hidden"
         aria-label="Mobile navigation"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
@@ -185,18 +185,18 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
                 key={href}
                 href={href}
                 className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-xs font-medium transition-colors ${
-                  active ? 'text-action-base' : 'text-stone-400 hover:text-stone-600'
+                  active ? 'text-slate-950' : 'text-slate-400 hover:text-slate-700'
                 }`}
                 aria-current={active ? 'page' : undefined}
               >
                 {/* Active pill capsule behind icon */}
                 <span className={`relative flex items-center justify-center rounded-full transition-colors ${
-                  active ? 'bg-info-subtle px-3 py-1' : 'px-3 py-1'
+                  active ? 'bg-slate-100 px-3 py-1' : 'px-3 py-1'
                 }`}>
                   <Icon className="h-5 w-5" aria-hidden="true" />
                   {isSavedItem && savedCount > 0 && (
                     <span
-                      className="absolute -top-1.5 -right-2 inline-flex items-center justify-center rounded-full bg-action-base text-white text-[9px] font-bold min-w-[14px] h-3.5 px-0.5 leading-none"
+                      className="absolute -top-1.5 -right-2 inline-flex items-center justify-center rounded-full bg-slate-900 text-white text-[9px] font-bold min-w-[14px] h-3.5 px-0.5 leading-none"
                       aria-hidden="true"
                     >
                       {savedCount > 99 ? '99+' : savedCount}

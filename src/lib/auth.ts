@@ -1,10 +1,9 @@
 /**
  * NextAuth.js Configuration
  *
- * Supports three auth providers:
- *   1. Microsoft Entra ID (Azure AD) — OAuth
- *   2. Google — OAuth
- *   3. Credentials — email + password (DB-backed)
+ * Supports Microsoft Entra ID by default.
+ * Optional Google OAuth and email/password auth are fail-closed in production
+ * unless explicitly enabled with server-side env flags.
  *
  * Stores role claim in the JWT so middleware can enforce RBAC without DB lookups.
  * On sign-in, the DB user_profiles.role is the source of truth (falls back to Entra claims).
@@ -13,7 +12,7 @@
  * - NEXTAUTH_SECRET
  * - NEXTAUTH_URL (production only — auto-detected in dev)
  * - AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID (optional)
- * - GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET (optional)
+ * - GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET (optional when ORAN_ENABLE_GOOGLE_AUTH=1)
  */
 
 import type { AuthOptions } from 'next-auth';
@@ -40,6 +39,14 @@ const ENTRA_ROLE_MAP: Record<string, OranRole> = {
   'HostMember': 'host_member',
   'Seeker': 'seeker',
 };
+
+export function isCredentialsAuthEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production' || process.env.ORAN_ENABLE_CREDENTIALS_AUTH === '1';
+}
+
+export function isGoogleAuthEnabled(): boolean {
+  return process.env.ORAN_ENABLE_GOOGLE_AUTH === '1' && Boolean(process.env.GOOGLE_CLIENT_ID);
+}
 
 /**
  * Determine the highest ORAN role from Entra ID app role claims.
@@ -150,61 +157,65 @@ export const authOptions: AuthOptions = {
       : []),
 
     // ── Google OAuth ─────────────────────────────────────
-    ...(process.env.GOOGLE_CLIENT_ID
+    ...(isGoogleAuthEnabled()
       ? [
           GoogleProvider({
-            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientId: process.env.GOOGLE_CLIENT_ID ?? '',
             clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
           }),
         ]
       : []),
 
     // ── Email + Password (credentials) ───────────────────
-    CredentialsProvider({
-      id: 'credentials',
-      name: 'Email & Password',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+    ...(isCredentialsAuthEnabled()
+      ? [
+          CredentialsProvider({
+            id: 'credentials',
+            name: 'Email & Password',
+            credentials: {
+              email: { label: 'Email', type: 'email' },
+              password: { label: 'Password', type: 'password' },
+            },
+            async authorize(credentials) {
+              if (!credentials?.email || !credentials?.password) return null;
 
-        const email = credentials.email.trim().toLowerCase();
-        const password = credentials.password;
+              const email = credentials.email.trim().toLowerCase();
+              const password = credentials.password;
 
-        try {
-          const pool = getPgPool();
-          const result = await pool.query<{
-            user_id: string;
-            display_name: string | null;
-            email: string;
-            password_hash: string;
-            role: OranRole;
-          }>(
-            `SELECT user_id, display_name, email, password_hash, role
-             FROM user_profiles
-             WHERE email = $1 AND auth_provider = 'credentials'`,
-            [email],
-          );
+              try {
+                const pool = getPgPool();
+                const result = await pool.query<{
+                  user_id: string;
+                  display_name: string | null;
+                  email: string;
+                  password_hash: string;
+                  role: OranRole;
+                }>(
+                  `SELECT user_id, display_name, email, password_hash, role
+                   FROM user_profiles
+                   WHERE email = $1 AND auth_provider = 'credentials'`,
+                  [email],
+                );
 
-          const user = result.rows[0];
-          if (!user || !user.password_hash) return null;
+                const user = result.rows[0];
+                if (!user || !user.password_hash) return null;
 
-          const isValid = await bcrypt.compare(password, user.password_hash);
-          if (!isValid) return null;
+                const isValid = await bcrypt.compare(password, user.password_hash);
+                if (!isValid) return null;
 
-          return {
-            id: user.user_id,
-            name: user.display_name ?? email,
-            email: user.email,
-            role: user.role,
-          } as unknown as { id: string; name: string; email: string; role: OranRole };
-        } catch {
-          return null;
-        }
-      },
-    }),
+                return {
+                  id: user.user_id,
+                  name: user.display_name ?? email,
+                  email: user.email,
+                  role: user.role,
+                } as unknown as { id: string; name: string; email: string; role: OranRole };
+              } catch {
+                return null;
+              }
+            },
+          }),
+        ]
+      : []),
   ],
 
   session: {

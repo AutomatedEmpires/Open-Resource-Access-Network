@@ -1,7 +1,7 @@
 /**
  * LeafletFallback — OpenStreetMap tile-based map rendered with react-leaflet.
  *
- * Used automatically when AZURE_MAPS_KEY is not configured.
+ * Used automatically when secure Azure Maps client auth is not configured.
  * No API key required — tiles are served by the OpenStreetMap Foundation
  * under the ODbL licence. Attribution is required and rendered below the map.
  *
@@ -154,7 +154,7 @@ export function LeafletFallback({
       {/* Fallback badge — lets operators know which tile provider is active */}
       <div className="mb-1 flex items-center gap-1">
         <span className="rounded-sm bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-          Map preview — configure <code className="font-mono">AZURE_MAPS_KEY</code> for full Azure Maps
+          Map preview — configure secure Azure Maps client auth for the full Azure Maps experience
         </span>
       </div>
 

@@ -110,11 +110,10 @@ describe('seeker layout shell', () => {
       expect(screen.getByText('Near Phoenix (approx.)')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Verified records. Private by default.')).toBeInTheDocument();
+    expect(screen.getByText(/Private by default/)).toBeInTheDocument();
     expect(screen.getByText('2 saved')).toBeInTheDocument();
-    expect(screen.getByText('2 interests set')).toBeInTheDocument();
     expect(screen.getByText('Personalized profile')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Review your seeker context' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Personalize your search' })).toBeInTheDocument();
   });
 
   it('updates saved badges and context strip immediately when same-tab saved state changes', async () => {
@@ -138,8 +137,6 @@ describe('seeker layout shell', () => {
 
     render(<SeekerLayout>Child</SeekerLayout>);
 
-    expect(screen.getByText('Local-only')).toBeInTheDocument();
-
     writeStoredProfilePreferences({ approximateCity: 'Tacoma', serverSyncEnabled: true });
     writeStoredSeekerProfile({
       serviceInterests: ['food_assistance'],
@@ -150,8 +147,8 @@ describe('seeker layout shell', () => {
       expect(screen.getByText('Near Tacoma (approx.)')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('1 interests set')).toBeInTheDocument();
+    expect(screen.getByText(/Private by default/)).toBeInTheDocument();
     expect(screen.getByText('Personalized profile')).toBeInTheDocument();
-    expect(screen.getByText('Sync on')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Manage preferences' })).toBeInTheDocument();
   });
 });

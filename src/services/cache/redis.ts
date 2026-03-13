@@ -67,6 +67,14 @@ function getRedis(): Redis | null {
   }
 }
 
+/**
+ * Exposes the shared Redis client for infrastructure helpers such as the
+ * distributed rate limiter. Returns null when Redis is unavailable.
+ */
+export function getRedisClient(): Redis | null {
+  return getRedis();
+}
+
 // ============================================================
 // CACHE OPERATIONS
 // ============================================================

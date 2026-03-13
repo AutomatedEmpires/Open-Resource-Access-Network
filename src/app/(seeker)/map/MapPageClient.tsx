@@ -19,6 +19,7 @@ import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { ServiceCard } from '@/components/directory/ServiceCard';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
+import { DiscoverySurfaceTabs } from '@/components/seeker/DiscoverySurfaceTabs';
 import { SeekerAppliedFilters, type SeekerAppliedFilterItem } from '@/components/seeker/SeekerAppliedFilters';
 import { SeekerDiscoveryFilters } from '@/components/seeker/SeekerDiscoveryFilters';
 import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
@@ -137,6 +138,7 @@ export default function MapPage() {
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string[]>>(
     () => parseDiscoveryAttributeFilters(searchParams.get('attributes')) ?? {},
   );
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [attributeSectionOpen, setAttributeSectionOpen] = useState(false);
   const [taxonomyDialogOpen, setTaxonomyDialogOpen] = useState(false);
   const [taxonomySearch, setTaxonomySearch] = useState('');
@@ -446,6 +448,15 @@ export default function MapPage() {
     return buildDiscoveryHref('/chat', mapDiscoveryContext);
   }, [mapDiscoveryContext]);
 
+  const surfaceTabs = useMemo(
+    () => [
+      { href: chatHref, label: 'Chat' },
+      { href: directoryHref, label: 'Directory' },
+      { href: '/map', label: 'Map' },
+    ],
+    [chatHref, directoryHref],
+  );
+
   const taxonomyLabelById = useMemo<Record<string, string>>(() => {
     return taxonomyTerms.reduce<Record<string, string>>((acc, term) => {
       acc[term.id] = term.term;
@@ -630,6 +641,17 @@ export default function MapPage() {
   }, [activeCategory, hasSearchContext, query, runSearch, selectedTaxonomyIds]);
 
   const hasActiveAttributes = useMemo(() => Object.keys(selectedAttributes).length > 0, [selectedAttributes]);
+  const hasActiveRefinements = useMemo(
+    () => Boolean(
+      activeCategory
+      || deviceCenter
+      || selectedTaxonomyIds.length > 0
+      || hasActiveAttributes
+      || confidenceFilter !== 'all'
+      || sortBy !== 'relevance',
+    ),
+    [activeCategory, confidenceFilter, deviceCenter, hasActiveAttributes, selectedTaxonomyIds.length, sortBy],
+  );
 
   // Keyboard shortcut: "/" focuses the search input (standard for search-centric pages)
   useEffect(() => {
@@ -885,37 +907,29 @@ export default function MapPage() {
   }, [hasSearchContext, resetResultsToEmpty, runSearch, selectedAttributes, selectedTaxonomyIds, taxonomyIdsParam]);
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(191,219,254,0.42),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(167,243,208,0.2),_transparent_24%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fb_55%,_#eef4f7_100%)]">
-      <div className="container mx-auto max-w-7xl px-4 pt-4 pb-8 md:py-8">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
-          <section className="rounded-[30px] border border-white/70 bg-white/85 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)]">
+      <div className="container mx-auto max-w-6xl px-4 pt-4 pb-8 md:py-8">
+        <section className="rounded-[30px] border border-slate-200/80 bg-white/92 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
             <PageHeader
               eyebrow="Verified discovery"
               title="Service Map"
-              subtitle={
-                <>
-                  Search verified service locations. Prefer browsing?{' '}
-                  <Link href={directoryHref} className="font-medium text-action-base hover:underline">Directory</Link>
-                  {' '}or{' '}
-                  <Link href={chatHref} className="font-medium text-action-base hover:underline">Chat</Link>.
-                </>
-              }
+              subtitle="Stay oriented on the map, then open the list only when you want details."
+              actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/map" />}
               badges={(
                 <>
-                  <PageHeaderBadge tone="trust">Verified listings only</PageHeaderBadge>
-                  <PageHeaderBadge tone="accent">{deviceCenter ? 'Approximate location active' : 'Location optional'}</PageHeaderBadge>
-                  <PageHeaderBadge>{activeCategory ? 'Category view active' : 'Map and list stay in sync'}</PageHeaderBadge>
-                  <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync to your account' : 'Saves stay on this device'}</PageHeaderBadge>
+                  <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
+                  {deviceCenter ? <PageHeaderBadge tone="accent">Approximate location active</PageHeaderBadge> : null}
+                  {hasActiveRefinements ? <PageHeaderBadge>Refinements on</PageHeaderBadge> : null}
                 </>
               )}
             />
 
             <ErrorBoundary>
-              <div className="rounded-[24px] border border-orange-100/90 bg-gradient-to-b from-white to-orange-50/60 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-5">
+              <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-5">
         {/* Search bar */}
         <FormSection
           title="Search the map"
-          description="Search verified listings, then refine trust and sort settings without leaving the map."
+          description="Search first. Open refinements only when you need to tighten the view."
           className="mb-3"
         >
           <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end">
@@ -934,14 +948,14 @@ export default function MapPage() {
                   }}
                   type="search"
                   placeholder="Search for services (e.g., food bank, shelter)"
-                  className="min-h-[44px] w-full rounded-xl border border-orange-200 bg-white py-2 pl-9 pr-8 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
+                  className="min-h-[46px] w-full rounded-2xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
                   aria-label="Search services to plot"
                 />
                 {query && (
                   <button
                     type="button"
                     onClick={handleClearSearch}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-stone-400 hover:text-stone-600 focus:outline-none focus:ring-2 focus:ring-action"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-slate-400 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
                     aria-label="Clear search"
                   >
                     <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -964,33 +978,60 @@ export default function MapPage() {
           </form>
         </FormSection>
 
-        <SeekerDiscoveryFilters
-          activeCategory={activeCategory}
-          onCategoryClick={handleCategoryClick}
-          taxonomyError={taxonomyError}
-          taxonomyTerms={taxonomyTerms}
-          isLoadingTaxonomy={isLoadingTaxonomy}
-          quickTaxonomyTerms={quickTaxonomyTerms}
-          selectedTaxonomyIds={selectedTaxonomyIds}
-          onToggleTaxonomyId={toggleTaxonomyId}
-          taxonomyDialogOpen={taxonomyDialogOpen}
-          onTaxonomyOpenChange={setTaxonomyDialogOpen}
-          taxonomySearch={taxonomySearch}
-          onTaxonomySearchChange={setTaxonomySearch}
-          onClearTaxonomyFilters={clearTaxonomyFilters}
-          groupedTaxonomyTerms={groupedTaxonomyTerms}
-          visibleTaxonomyTermsCount={visibleTaxonomyTerms.length}
-          dimensionLabels={DIMENSION_LABELS}
-          categoryGroupLabel="Filter by service category"
-          showCategoryLabel={false}
-        />
+        <div className="mb-3 rounded-[20px] border border-slate-200 bg-slate-50/80 p-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAdvancedFilters((current) => !current)}
+              className="inline-flex min-h-[40px] items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              aria-expanded={showAdvancedFilters || hasActiveRefinements}
+            >
+              Refine map
+              {hasActiveRefinements ? (
+                <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
+                  {appliedFilterItems.length || 1}
+                </span>
+              ) : null}
+              {showAdvancedFilters || hasActiveRefinements ? (
+                <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+            </button>
+            <p className="text-xs text-slate-500">
+              {savedSyncEnabled ? 'Saves can sync to your account.' : 'Saves stay on this device.'}
+            </p>
+          </div>
 
-        {/* Service attribute dimension filters (delivery, cost, access) */}
-        <div className="mb-3 rounded-[20px] border border-orange-100 bg-white/80 p-4 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
+          {(showAdvancedFilters || hasActiveRefinements) && (
+            <div className="mt-4 space-y-4">
+              <SeekerDiscoveryFilters
+                activeCategory={activeCategory}
+                onCategoryClick={handleCategoryClick}
+                taxonomyError={taxonomyError}
+                taxonomyTerms={taxonomyTerms}
+                isLoadingTaxonomy={isLoadingTaxonomy}
+                quickTaxonomyTerms={quickTaxonomyTerms}
+                selectedTaxonomyIds={selectedTaxonomyIds}
+                onToggleTaxonomyId={toggleTaxonomyId}
+                taxonomyDialogOpen={taxonomyDialogOpen}
+                onTaxonomyOpenChange={setTaxonomyDialogOpen}
+                taxonomySearch={taxonomySearch}
+                onTaxonomySearchChange={setTaxonomySearch}
+                onClearTaxonomyFilters={clearTaxonomyFilters}
+                groupedTaxonomyTerms={groupedTaxonomyTerms}
+                visibleTaxonomyTermsCount={visibleTaxonomyTerms.length}
+                dimensionLabels={DIMENSION_LABELS}
+                categoryGroupLabel="Filter by service category"
+                showCategoryLabel={false}
+              />
+
+              {/* Service attribute dimension filters (delivery, cost, access) */}
+              <div className="rounded-[18px] border border-slate-200 bg-white p-4">
           <button
             type="button"
             onClick={() => setAttributeSectionOpen((v) => !v)}
-            className="mb-2 flex items-center gap-1 text-xs font-medium text-stone-500 hover:text-stone-700"
+            className="mb-2 flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
             aria-expanded={attributeSectionOpen || hasActiveAttributes}
           >
             Service type filters
@@ -1025,8 +1066,8 @@ export default function MapPage() {
                           onClick={() => toggleAttribute(dim, t.tag)}
                           className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
                             isActive
-                                ? 'bg-action-base text-white shadow-sm'
-                                : 'border border-orange-200 bg-white text-stone-700 hover:bg-orange-50'
+                                ? 'bg-slate-900 text-white shadow-sm'
+                                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                           }`}
                           aria-pressed={isActive}
                           title={t.description}
@@ -1042,21 +1083,21 @@ export default function MapPage() {
                 <button
                   type="button"
                   onClick={clearAttributes}
-                  className="text-xs font-medium text-action-strong hover:underline"
+                  className="text-xs font-medium text-sky-700 hover:underline"
                 >
                   Clear service type filters
                 </button>
               )}
             </div>
           )}
-        </div>
+              </div>
 
-        {/* Confidence + sort controls */}
-        <FormSection
-          title="Trust and sort"
-          description="Change the confidence threshold or list order without resetting the active map view."
-          className="mb-3 rounded-[20px] border border-orange-100 bg-white/80 p-4 shadow-[0_10px_30px_rgba(234,88,12,0.04)]"
-        >
+              {/* Confidence + sort controls */}
+              <FormSection
+                title="Trust and sort"
+                description="Change confidence or ordering without resetting the active map view."
+                className="rounded-[18px] border border-slate-200 bg-white p-4"
+              >
           <div className="flex flex-wrap items-end gap-3">
             <FormField id="map-confidence" label="Trust:" className="w-40 max-w-full">
               <select
@@ -1071,7 +1112,7 @@ export default function MapPage() {
                     void runSearch({ confidence: next });
                   }
                 }}
-                className="min-h-[44px] rounded-lg border border-orange-200 bg-white px-2 py-1 text-xs text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
+                className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
               >
                 {CONFIDENCE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -1091,7 +1132,7 @@ export default function MapPage() {
                     void runSearch({ sort: next });
                   }
                 }}
-                className="min-h-[44px] rounded-lg border border-orange-200 bg-white px-2 py-1 text-xs text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
+                className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
               >
                 {SORT_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -1099,20 +1140,21 @@ export default function MapPage() {
               </select>
             </FormField>
           </div>
-        </FormSection>
-
-        <p className="-mt-2 mb-3 text-xs leading-5 text-stone-600">
-          Location is optional. If you choose “Use my location”, ORAN uses an approximate location to center the map in-session only and does not store it.
-        </p>
+              </FormSection>
+            </div>
+          )}
+        </div>
 
         <SeekerAppliedFilters items={appliedFilterItems} onClearAll={clearAllFilters} />
-        <DiscoveryContextPanel
-          discoveryContext={mapDiscoveryContext}
-          taxonomyLabelById={taxonomyLabelById}
-          title="Current map scope"
-          description="The map and result list stay inside this trust and filter scope until you change it."
-          className="mb-3"
-        />
+        {hasActiveRefinements && (
+          <DiscoveryContextPanel
+            discoveryContext={mapDiscoveryContext}
+            taxonomyLabelById={taxonomyLabelById}
+            title="Current map scope"
+            description="The map and list stay inside this scope until you change it."
+            className="mb-3 border-slate-200 bg-slate-50"
+          />
+        )}
 
         {/* Mobile view toggle — only visible below md */}
         <div className="mb-3 flex gap-1 rounded-[18px] border border-orange-100 bg-white/80 p-1 shadow-[0_8px_24px_rgba(234,88,12,0.04)] md:hidden">
@@ -1159,7 +1201,7 @@ export default function MapPage() {
         {/* Split-pane layout: stacked on mobile, side-by-side on desktop */}
         <div className="md:grid md:grid-cols-[1fr_380px] md:gap-4 md:items-start">
           {/* Map column */}
-          <div className={`overflow-hidden rounded-[24px] border border-orange-100 bg-white/85 p-2 shadow-[0_18px_50px_rgba(234,88,12,0.06)] md:sticky md:top-24 ${
+          <div className={`overflow-hidden rounded-[24px] border border-slate-200 bg-white/92 p-2 shadow-[0_18px_50px_rgba(15,23,42,0.06)] md:sticky md:top-24 ${
             mobileView === 'list' ? 'hidden md:block' : ''
           }`}>
             <div className="relative">
@@ -1212,7 +1254,7 @@ export default function MapPage() {
           <div
             ref={resultsContainerRef}
             tabIndex={-1}
-            className={`mt-4 rounded-[24px] border border-orange-100 bg-white/85 p-4 shadow-[0_18px_50px_rgba(234,88,12,0.06)] outline-none md:mt-0 md:max-h-[calc(100vh-16rem)] md:overflow-y-auto ${
+            className={`mt-4 rounded-[24px] border border-slate-200 bg-white/92 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.06)] outline-none md:mt-0 md:max-h-[calc(100vh-16rem)] md:overflow-y-auto ${
               mobileView === 'map' ? 'hidden md:block' : ''
             }`}
           >
@@ -1280,27 +1322,7 @@ export default function MapPage() {
         </div>
               </div>
             </ErrorBoundary>
-          </section>
-
-          <aside className="space-y-4 lg:sticky lg:top-6">
-            <div className="rounded-[24px] border border-rose-100 bg-gradient-to-br from-rose-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(251,113,133,0.10)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Map rhythm</p>
-              <h2 className="mt-2 text-lg font-semibold text-stone-900">Scan an area, then tighten the list</h2>
-              <ul className="mt-3 space-y-3 text-sm leading-6 text-stone-600">
-                <li>Map pins and the result list stay in the same discovery scope.</li>
-                <li>Use “Search this area” after panning to re-run inside the visible map.</li>
-                <li>Switch to Directory or Chat without losing the active search context.</li>
-              </ul>
-            </div>
-
-            <div className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(16,185,129,0.10)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Location handling</p>
-              <p className="mt-2 text-sm leading-6 text-stone-700">
-                ORAN only uses approximate location in-session when you opt in. You can clear it at any time and continue browsing by text, category, or map bounds.
-              </p>
-            </div>
-          </aside>
-        </div>
+        </section>
       </div>
     </main>
   );

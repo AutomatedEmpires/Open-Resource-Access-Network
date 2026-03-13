@@ -33,7 +33,7 @@ interface PrefState {
 }
 
 export default function NotificationPreferencesPanel() {
-  const { success: toastSuccess, error: toastError error: toastError } = useToast();
+  const { success: toastSuccess, error: toastError } = useToast();
 
   const [prefs, setPrefs] = useState<PrefState[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +66,7 @@ export default function NotificationPreferencesPanel() {
       setPrefs(merged);
       setDirty(false);
     } catch {
-      toastError('Failed to load notification preferences.
+      toastError('Failed to load notification preferences.');
     } finally {
       setLoading(false);
     }
@@ -97,9 +97,9 @@ export default function NotificationPreferencesPanel() {
       });
       if (!res.ok) throw new Error('Failed to save preferences');
       setDirty(false);
-      toastSuccess('Notification preferences saved.
+      toastSuccess('Notification preferences saved.');
     } catch {
-      toastError('Failed to save notification preferences.
+      toastError('Failed to save notification preferences.');
     } finally {
       setSaving(false);
     }

@@ -9,9 +9,9 @@
 
 'use client';
 
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { signIn } from 'next-auth/react';
+import { getProviders, signIn } from 'next-auth/react';
 import Link from 'next/link';
 import { Search, Building2, ShieldCheck, ArrowLeft, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -131,6 +131,7 @@ function SignInContent() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [providerIds, setProviderIds] = useState<Set<string>>(new Set(['azure-ad']));
 
   const activePath = PATHS.find((p) => p.id === selected)!;
 
@@ -144,6 +145,31 @@ function SignInContent() {
   const errorMessage = error
     ? ERROR_MESSAGES[error] ?? 'An unexpected error occurred. Please try again.'
     : null;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void getProviders()
+      .then((providers) => {
+        if (cancelled || !providers) {
+          return;
+        }
+        setProviderIds(new Set(Object.keys(providers)));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProviderIds(new Set(['azure-ad']));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const hasAzureAd = providerIds.has('azure-ad');
+  const hasGoogle = providerIds.has('google');
+  const hasCredentials = providerIds.has('credentials');
 
   async function handleEmailSignIn(e: React.FormEvent) {
     e.preventDefault();
@@ -277,54 +303,70 @@ function SignInContent() {
           {/* OAuth sign-in buttons */}
           {!showEmailForm && (
             <div className="space-y-3">
-              <Button
-                className="w-full min-h-[44px] text-sm font-medium gap-2"
-                onClick={() => signIn('azure-ad', { callbackUrl: effectiveCallback })}
-              >
-                <MicrosoftLogo />
-                Sign in with Microsoft
-              </Button>
+              {hasAzureAd && (
+                <Button
+                  className="w-full min-h-[44px] text-sm font-medium gap-2"
+                  onClick={() => signIn('azure-ad', { callbackUrl: effectiveCallback })}
+                >
+                  <MicrosoftLogo />
+                  Sign in with Microsoft
+                </Button>
+              )}
 
-              <Button
-                variant="outline"
-                className="w-full min-h-[44px] text-sm font-medium gap-2"
-                onClick={() => signIn('google', { callbackUrl: effectiveCallback })}
-              >
-                <GoogleLogo />
-                Sign in with Google
-              </Button>
+              {hasGoogle && (
+                <Button
+                  variant="outline"
+                  className="w-full min-h-[44px] text-sm font-medium gap-2"
+                  onClick={() => signIn('google', { callbackUrl: effectiveCallback })}
+                >
+                  <GoogleLogo />
+                  Sign in with Google
+                </Button>
+              )}
 
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200" />
+              {hasCredentials && (hasAzureAd || hasGoogle) && (
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-200" />
+                  </div>
+                  <div className="relative flex justify-center text-xs">
+                    <span className="bg-white px-3 text-gray-500">or</span>
+                  </div>
                 </div>
-                <div className="relative flex justify-center text-xs">
-                  <span className="bg-white px-3 text-gray-500">or</span>
-                </div>
-              </div>
+              )}
 
-              <Button
-                variant="outline"
-                className="w-full min-h-[44px] text-sm font-medium gap-2"
-                onClick={() => setShowEmailForm(true)}
-              >
-                <Mail className="h-5 w-5" aria-hidden="true" />
-                Sign in with Email
-              </Button>
+              {hasCredentials && (
+                <Button
+                  variant="outline"
+                  className="w-full min-h-[44px] text-sm font-medium gap-2"
+                  onClick={() => setShowEmailForm(true)}
+                >
+                  <Mail className="h-5 w-5" aria-hidden="true" />
+                  Sign in with Email
+                </Button>
+              )}
 
               {/* Sign-up discoverability */}
-              <div className="mt-2 text-center border-t border-gray-100 pt-3">
-                <p className="text-sm text-gray-700">
-                  New to ORAN?{' '}
-                  <button
-                    type="button"
-                    onClick={() => { setShowEmailForm(true); setIsRegistering(true); }}
-                    className="font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-2 transition-colors"
-                  >
-                    Create a free account
-                  </button>
+              {hasCredentials && (
+                <div className="mt-2 text-center border-t border-gray-100 pt-3">
+                  <p className="text-sm text-gray-700">
+                    New to ORAN?{' '}
+                    <button
+                      type="button"
+                      onClick={() => { setShowEmailForm(true); setIsRegistering(true); }}
+                      className="font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-2 transition-colors"
+                    >
+                      Create a free account
+                    </button>
+                  </p>
+                </div>
+              )}
+
+              {!hasAzureAd && !hasGoogle && !hasCredentials && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                  Sign-in is temporarily unavailable. Contact an ORAN administrator if this persists.
                 </p>
-              </div>
+              )}
             </div>
           )}
 

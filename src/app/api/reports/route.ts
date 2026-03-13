@@ -8,13 +8,13 @@
  *
  * Seeker-facing endpoint to report a problem with a service listing.
  * Creates a submission (community_report) in the universal pipeline
- * AND stores a legacy audit_log entry for backward compatibility.
+ * AND stores an audit_logs entry for backward compatibility.
  * No PII collected — anonymous reporting by default.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { captureException } from '@/services/telemetry/sentry';
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  const rateLimit = checkRateLimit(`report:ip:${ip}`, {
+  const rateLimit = await checkRateLimitShared(`report:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: REPORT_RATE_LIMIT_MAX,
   });
@@ -99,11 +99,12 @@ export async function POST(req: NextRequest) {
         `INSERT INTO submissions
            (submission_type, status, service_id, target_type, target_id,
             payload, submitted_by_user_id)
-         VALUES ('community_report', 'submitted', $1, 'service', $1, $2, NULL)
+         VALUES ('community_report', 'submitted', $1, 'service', $1, $2, $3)
          RETURNING id`,
         [
           serviceId,
           JSON.stringify({ issueType, comment: comment ?? null }),
+          `anon_${ip}`,
         ],
       );
 
@@ -120,10 +121,10 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // 3. Legacy audit_log entry (backward compatibility)
+      // 3. Backward-compatible audit trail entry
       await client.query(
-        `INSERT INTO audit_log (action, entity_type, entity_id, details, performed_by)
-         VALUES ($1, $2, $3, $4, $5)`,
+        `INSERT INTO audit_logs (action, resource_type, resource_id, after, actor_user_id)
+         VALUES ($1, $2, $3, $4::jsonb, $5)`,
         [
           'service_reported',
           'service',

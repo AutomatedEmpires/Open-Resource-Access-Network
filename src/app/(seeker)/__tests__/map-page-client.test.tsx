@@ -660,6 +660,7 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
     await screen.findByText('Filters unavailable');
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
@@ -703,6 +704,7 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
     await screen.findByRole('button', { name: 'Food Assistance' });
 
     const initialSearchCalls = getSearchCalls().length;
@@ -758,6 +760,7 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
       target: { value: 'food' },
@@ -830,6 +833,7 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
     await screen.findByText('Shelter');
@@ -845,6 +849,7 @@ describe('MapPageClient', () => {
 
   it('clears a stale category chip when the user types a different query', async () => {
     renderWithToast(<MapPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
 
     const categoryButton = screen.getByRole('button', { name: 'Food' });
     fireEvent.click(categoryButton);
@@ -861,6 +866,7 @@ describe('MapPageClient', () => {
     mockApi([{ ok: true, body: makeSearchResponse() }]);
 
     renderWithToast(<MapPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
       target: { value: 'rare typed query' },
@@ -896,6 +902,7 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
     expect(await screen.findByText('Filters unavailable')).toBeInTheDocument();
   });
 

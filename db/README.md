@@ -72,47 +72,47 @@ ORAN uses **Azure Database for PostgreSQL Flexible Server** in production. See `
 
 ## Migrations
 
-ORAN uses plain SQL migrations under `db/migrations/`. Apply them sequentially.
+ORAN uses plain SQL migrations under `db/migrations/`. They are the canonical schema history.
 
-| File | Description |
-| ---- | ----------- |
-| `0000_initial_schema.sql` | Core HSDS tables (organizations, locations, services, service_at_location, phones, addresses, schedules, taxonomy_terms, service_taxonomy, confidence_scores, verification_queue, seeker_feedback, chat_sessions, feature_flags) + PostGIS + UUID extensions |
-| `0001_updated_at_triggers.sql` | `set_updated_at()` function + triggers for organizations, locations, services, verification_queue, feature_flags |
-| `0002_audit_fields.sql` | Normalizes `created_at`/`updated_at` on all tables, adds `created_by_user_id`/`updated_by_user_id` (Entra Object IDs), renames `submitted_by` → `submitted_by_user_id` |
-| `0003_import_staging.sql` | Import pipeline: `import_batches`, `staging_organizations`, `staging_locations`, `staging_services` |
-| `0004_audit_logs.sql` | Append-only `audit_logs` table (actor, action, resource, before/after JSONB, ip_digest) |
-| `0005_coverage_zones.sql` | `coverage_zones` table with PostGIS polygon geometry, GiST index, assigned_user_id |
-| `0006_org_members_and_profiles.sql` | `organization_members` (user↔org mapping with role/status) + `user_profiles` (pseudonymous preferences) |
-| `0007_schema_optimizations.sql` | Soft-delete columns on organizations/locations, composite indexes, text search GIN indexes, feature_flags.description |
-| `0008_rename_assigned_to.sql` | Renames `verification_queue.assigned_to` → `assigned_to_user_id` for Entra naming consistency |
-| `0009_programs_eligibility_documents.sql` | `programs` table (services.program_id FK), `eligibility` (structured criteria with GIN index), `required_documents` |
-| `0010_service_areas_languages_accessibility.sql` | `service_areas` (PostGIS polygon), `languages` (ISO 639-1), `accessibility_for_disabilities` |
-| `0011_contacts_saved_services_evidence.sql` | `contacts` (HSDS named contacts), `saved_services` (server-side bookmarks), `verification_evidence` (proof docs) |
-| `0012_service_attributes.sql` | `service_attributes` — universal tag system across 6 dimensions (delivery, cost, access, culture, population, situation) |
-| `0013_comprehensive_coverage.sql` | Household size on eligibility, wait times + capacity on services, transit + parking on locations, `service_adaptations` + `dietary_options` tables |
+The current repository contains migrations from `0000_initial_schema.sql` through `0041_org_profile_extensions.sql`.
+
+Production workflow behavior:
+
+- `.github/workflows/db-migrate.yml` installs `psql`, creates a lightweight `schema_migrations` ledger table if needed, and applies each SQL file in lexical order exactly once.
+- The workflow is intentionally SQL-first. Drizzle remains available for schema typing and future tooling, but it is not the production migration orchestrator in the current repository state.
 
 ### Run migrations via psql
 
 ```bash
-psql $DATABASE_URL -f db/migrations/0000_initial_schema.sql
-psql $DATABASE_URL -f db/migrations/0001_updated_at_triggers.sql
-psql $DATABASE_URL -f db/migrations/0002_audit_fields.sql
-psql $DATABASE_URL -f db/migrations/0003_import_staging.sql
-psql $DATABASE_URL -f db/migrations/0004_audit_logs.sql
-psql $DATABASE_URL -f db/migrations/0005_coverage_zones.sql
-psql $DATABASE_URL -f db/migrations/0006_org_members_and_profiles.sql
-psql $DATABASE_URL -f db/migrations/0007_schema_optimizations.sql
-psql $DATABASE_URL -f db/migrations/0008_rename_assigned_to.sql
-psql $DATABASE_URL -f db/migrations/0009_programs_eligibility_documents.sql
-psql $DATABASE_URL -f db/migrations/0010_service_areas_languages_accessibility.sql
-psql $DATABASE_URL -f db/migrations/0011_contacts_saved_services_evidence.sql
-psql $DATABASE_URL -f db/migrations/0012_service_attributes.sql
-psql $DATABASE_URL -f db/migrations/0013_comprehensive_coverage.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+CREATE TABLE IF NOT EXISTS schema_migrations (
+   filename text PRIMARY KEY,
+   applied_at timestamptz NOT NULL DEFAULT now()
+);
+SQL
+
+for file in $(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+   filename="$(basename "$file")"
+   applied=$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -c "SELECT 1 FROM schema_migrations WHERE filename = '$filename' LIMIT 1;")
+
+   if [ "$applied" = "1" ]; then
+      echo "Skipping already applied migration: $filename"
+      continue
+   fi
+
+   echo "Applying migration: $filename"
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$file"
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (filename) VALUES ('$filename');"
+done
 ```
 
-### Drizzle Kit (planned)
+### Migration ledger
 
-If/when Drizzle config is added, migration orchestration can move to Drizzle Kit.
+The `schema_migrations` table is the deployment ledger used by the current GitHub Actions migration workflow.
+
+### Drizzle status
+
+Drizzle is used in the repository for schema typing and related data access patterns, but the migration source of truth remains the SQL files under `db/migrations/**`.
 
 ---
 

@@ -1,5 +1,15 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { checkRateLimit, resetRateLimitsForTests } from '@/services/security/rateLimit';
+
+const redisMocks = vi.hoisted(() => ({
+  getRedisClient: vi.fn(),
+}));
+
+const captureExceptionMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@/services/cache/redis', () => redisMocks);
+vi.mock('@/services/telemetry/sentry', () => ({ captureException: captureExceptionMock }));
+
+import { checkRateLimit, checkRateLimitShared, resetRateLimitsForTests } from '@/services/security/rateLimit';
 
 describe('checkRateLimit', () => {
   const windowMs = 60_000;
@@ -7,6 +17,7 @@ describe('checkRateLimit', () => {
 
   beforeEach(() => {
     resetRateLimitsForTests();
+    redisMocks.getRedisClient.mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -50,5 +61,40 @@ describe('checkRateLimit', () => {
     now.mockReturnValue(1_000 + windowMs);
     const stateAtReset = checkRateLimit('k', { windowMs, maxRequests });
     expect(stateAtReset.retryAfterSeconds).toBeGreaterThanOrEqual(0);
+  });
+
+  it('falls back to the in-memory limiter when Redis is unavailable', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+
+    const state = await checkRateLimitShared('shared-fallback', { windowMs, maxRequests });
+
+    expect(state.count).toBe(1);
+    expect(state.exceeded).toBe(false);
+  });
+
+  it('uses Redis for shared rate limiting when configured', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(5_000);
+    redisMocks.getRedisClient.mockReturnValue({
+      eval: vi.fn().mockResolvedValue([3, 1_000]),
+    });
+
+    const state = await checkRateLimitShared('shared-redis', { windowMs, maxRequests });
+
+    expect(state.count).toBe(3);
+    expect(state.windowStart).toBe(1_000);
+    expect(state.exceeded).toBe(true);
+    expect(state.retryAfterSeconds).toBe(56);
+  });
+
+  it('captures Redis errors and falls back to memory', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(2_000);
+    redisMocks.getRedisClient.mockReturnValue({
+      eval: vi.fn().mockRejectedValue(new Error('redis down')),
+    });
+
+    const state = await checkRateLimitShared('shared-error', { windowMs, maxRequests });
+
+    expect(state.count).toBe(1);
+    expect(captureExceptionMock).toHaveBeenCalledOnce();
   });
 });

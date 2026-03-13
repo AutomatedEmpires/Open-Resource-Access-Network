@@ -239,7 +239,7 @@ describe('DirectoryPageClient', () => {
       '/directory?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
       { scroll: false },
     );
-    expect(screen.getByRole('link', { name: 'Map view' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Map' })).toHaveAttribute(
       'href',
       '/map?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
     );
@@ -262,6 +262,7 @@ describe('DirectoryPageClient', () => {
     });
 
     renderWithToast(<DirectoryPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
 
     await screen.findByRole('button', { name: 'Food Assistance' });
     const urls = fetchMock.mock.calls.map((c) => String(c?.[0]));
@@ -282,6 +283,7 @@ describe('DirectoryPageClient', () => {
     });
 
     renderWithToast(<DirectoryPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
 
     // Select a tag via the top-tag chip.
     fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
@@ -351,6 +353,7 @@ describe('DirectoryPageClient', () => {
     });
 
     renderWithToast(<DirectoryPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
     fireEvent.click(screen.getByRole('button', { name: 'Rent Help' }));
@@ -385,6 +388,7 @@ describe('DirectoryPageClient', () => {
     });
 
     renderWithToast(<DirectoryPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
     fireEvent.click(screen.getByRole('button', { name: 'Rent Help' }));
@@ -469,6 +473,7 @@ describe('DirectoryPageClient', () => {
       expect(screen.getAllByRole('status')[0]).toHaveTextContent('3');
     });
 
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
     fireEvent.click(screen.getByRole('button', { name: 'High confidence only' }));
 
     await waitFor(() => {
@@ -555,6 +560,7 @@ describe('DirectoryPageClient', () => {
 
     renderWithToast(<DirectoryPage />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
 
     await waitFor(() => {
@@ -579,10 +585,11 @@ describe('DirectoryPageClient', () => {
 
     renderWithToast(<DirectoryPage />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
     await screen.findByText('Food Pantry');
 
-    expect(screen.getByRole('link', { name: 'Map view' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Map' })).toHaveAttribute(
       'href',
       '/map?q=food&category=food_assistance',
     );
@@ -608,7 +615,7 @@ describe('DirectoryPageClient', () => {
 
     await screen.findByText('Food Pantry');
 
-    expect(screen.getByRole('link', { name: 'Map view' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Map' })).toHaveAttribute(
       'href',
       '/map?q=food&category=food_assistance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
     );
@@ -638,6 +645,7 @@ describe('DirectoryPageClient', () => {
 
     renderWithToast(<DirectoryPage />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
     await screen.findByText('Food Pantry');
@@ -675,6 +683,7 @@ describe('DirectoryPageClient', () => {
 
     renderWithToast(<DirectoryPage />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
     await screen.findByText('Food Pantry');
@@ -759,6 +768,7 @@ describe('DirectoryPageClient', () => {
 
     renderWithToast(<DirectoryPage />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
     await screen.findByText('Filters unavailable');
     expect(fetchMock).toHaveBeenCalledWith('/api/taxonomy/terms?limit=250', expect.any(Object));
   });
@@ -779,6 +789,7 @@ describe('DirectoryPageClient', () => {
 
     renderWithToast(<DirectoryPage />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
     fireEvent.click(screen.getByRole('button', { name: 'More filters' }));
     fireEvent.change(await screen.findByRole('searchbox', { name: 'Search service tags' }), {
       target: { value: 'zzzz-no-match' },
@@ -871,6 +882,7 @@ describe('DirectoryPageClient', () => {
 
     renderWithToast(<DirectoryPage />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
     await screen.findByText('Food Pantry');
 
@@ -926,6 +938,7 @@ describe('DirectoryPageClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     await screen.findByText('Food Pantry');
 
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
     fireEvent.click(screen.getByRole('button', { name: 'High confidence only' }));
     fireEvent.change(screen.getByLabelText('Sort:'), {
       target: { value: 'name_desc' },
@@ -1088,6 +1101,7 @@ describe('DirectoryPageClient', () => {
 
     renderWithToast(<DirectoryPage />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
     await screen.findByText('No matches');
 

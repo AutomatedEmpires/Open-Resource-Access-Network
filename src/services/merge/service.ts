@@ -125,8 +125,8 @@ export async function mergeOrganizations(
 
       // 7. Record audit trail
       await client.query(
-        `INSERT INTO audit_log (action, entity_type, entity_id, details, performed_by)
-         VALUES ('org_merged', 'organization', $1, $2, $3)`,
+        `INSERT INTO audit_logs (action, resource_type, resource_id, after, actor_user_id)
+         VALUES ('org_merged', 'organization', $1, $2::jsonb, $3)`,
         [
           targetId,
           JSON.stringify({
@@ -240,8 +240,8 @@ export async function mergeServices(
 
       // 6. Audit trail
       await client.query(
-        `INSERT INTO audit_log (action, entity_type, entity_id, details, performed_by)
-         VALUES ('service_merged', 'service', $1, $2, $3)`,
+        `INSERT INTO audit_logs (action, resource_type, resource_id, after, actor_user_id)
+         VALUES ('service_merged', 'service', $1, $2::jsonb, $3)`,
         [
           targetId,
           JSON.stringify({

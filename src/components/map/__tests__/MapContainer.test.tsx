@@ -102,7 +102,7 @@ vi.mock('azure-maps-control', () => {
     Popup: PopupMock,
     HtmlMarker: HtmlMarkerMock,
     AuthenticationType: {
-      subscriptionKey: 'subscriptionKey',
+      sas: 'sas',
     },
     data: {
       BoundingBox: {
@@ -288,7 +288,7 @@ describe('MapContainer', () => {
   it('manages map lifecycle, markers, bounds updates, and popup clicks', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({ subscriptionKey: 'atlas-key' }),
+      json: vi.fn().mockResolvedValue({ authType: 'sas', sasToken: 'atlas-sas-token' }),
     });
     const setMapError = vi.fn();
     const setIsLoading = vi.fn();
@@ -333,8 +333,8 @@ describe('MapContainer', () => {
     expect(map.options).toEqual(
       expect.objectContaining({
         authOptions: {
-          authType: 'subscriptionKey',
-          subscriptionKey: 'atlas-key',
+          authType: 'sas',
+          sasToken: 'atlas-sas-token',
         },
       }),
     );
@@ -451,7 +451,7 @@ describe('MapContainer', () => {
   it('centers camera directly when exactly one pin is available', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({ subscriptionKey: 'atlas-key' }),
+      json: vi.fn().mockResolvedValue({ authType: 'sas', sasToken: 'atlas-sas-token' }),
     });
     const effects: Array<() => void | (() => void)> = [];
     useEffectMock.mockImplementation((effect: () => void | (() => void)) => {
@@ -492,7 +492,7 @@ describe('MapContainer', () => {
     mapCtorError.error = new Error('atlas init failed');
     fetchMock.mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({ subscriptionKey: 'atlas-key' }),
+      json: vi.fn().mockResolvedValue({ authType: 'sas', sasToken: 'atlas-sas-token' }),
     });
     const setMapError = vi.fn();
     const setIsLoading = vi.fn();
@@ -607,7 +607,7 @@ describe('MapContainer', () => {
     expect(setCamera).toHaveBeenCalledWith({ center: [-120, 45], zoom: 6 });
   });
 
-  it('treats successful token responses without subscriptionKey as unconfigured', async () => {
+  it('treats successful token responses without a SAS token as unconfigured', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: vi.fn().mockResolvedValue({}),

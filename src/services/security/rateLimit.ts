@@ -7,6 +7,9 @@ export interface RateLimitState {
   retryAfterSeconds: number;
 }
 
+import { getRedisClient } from '@/services/cache/redis';
+import { captureException } from '@/services/telemetry/sentry';
+
 const rateLimitWindows = new Map<string, { count: number; windowStart: number }>();
 
 // ============================================================
@@ -77,6 +80,74 @@ export function checkRateLimit(
     exceeded: newCount > options.maxRequests,
     retryAfterSeconds: computeRetryAfterSeconds(window.windowStart),
   };
+}
+
+const SHARED_RATE_LIMIT_LUA = `
+local now = tonumber(ARGV[1])
+local windowMs = tonumber(ARGV[2])
+local currentCount = tonumber(redis.call('HGET', KEYS[1], 'count') or '0')
+local windowStart = tonumber(redis.call('HGET', KEYS[1], 'windowStart') or '0')
+
+if currentCount == 0 or (now - windowStart) > windowMs then
+  currentCount = 1
+  windowStart = now
+else
+  currentCount = currentCount + 1
+end
+
+redis.call('HSET', KEYS[1], 'count', currentCount, 'windowStart', windowStart)
+
+local expiresIn = windowMs - (now - windowStart)
+if expiresIn <= 0 then
+  expiresIn = windowMs
+end
+redis.call('PEXPIRE', KEYS[1], expiresIn)
+
+return { tostring(currentCount), tostring(windowStart) }
+`;
+
+/**
+ * Shared-capable limiter for production endpoints. Uses Redis when available
+ * and falls back to the in-memory limiter when Redis is unavailable.
+ */
+export async function checkRateLimitShared(
+  key: string,
+  options: {
+    windowMs: number;
+    maxRequests: number;
+  }
+): Promise<RateLimitState> {
+  const client = getRedisClient();
+  if (!client) {
+    return checkRateLimit(key, options);
+  }
+
+  const now = Date.now();
+  try {
+    const result = await client.eval(
+      SHARED_RATE_LIMIT_LUA,
+      1,
+      `rate-limit:${key}`,
+      String(now),
+      String(options.windowMs),
+    ) as [string | number, string | number];
+
+    const count = Number(result?.[0] ?? 0);
+    const windowStart = Number(result?.[1] ?? now);
+    const resetAt = windowStart + options.windowMs;
+    const retryAfterSeconds = Math.max(0, Math.ceil((resetAt - now) / 1000));
+
+    return {
+      key,
+      count,
+      windowStart,
+      exceeded: count > options.maxRequests,
+      retryAfterSeconds,
+    };
+  } catch (error) {
+    await captureException(error, { feature: 'shared_rate_limit' });
+    return checkRateLimit(key, options);
+  }
 }
 
 export function resetRateLimitsForTests(): void {

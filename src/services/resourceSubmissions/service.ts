@@ -559,6 +559,76 @@ async function attachSourceAssertion(
   return created.rows[0].id;
 }
 
+async function attachApprovedProjectionAssertion(
+  client: PoolClient,
+  submissionId: string,
+  variant: ResourceSubmissionVariant,
+  channel: ResourceSubmissionChannel,
+  actorUserId: string,
+  draft: ResourceSubmissionDraft,
+  projection: {
+    organizationId: string | null;
+    serviceId: string | null;
+    targetType: 'organization' | 'service';
+    submissionType: string;
+  },
+): Promise<string> {
+  const { sourceFeedId } = await ensureManualSubmissionSourceSystem(client, channel);
+  const payloadJson = JSON.stringify({
+    submissionId,
+    variant,
+    channel,
+    projection,
+    draft,
+  });
+  const payloadSha256 = crypto.createHash('sha256').update(payloadJson).digest('hex');
+  const sourceRecordType = variant === 'claim'
+    ? 'approved_org_claim_projection'
+    : 'approved_resource_projection';
+
+  const existing = await client.query<{ id: string }>(
+    `SELECT id
+       FROM source_records
+      WHERE source_feed_id = $1
+        AND source_record_type = $2
+        AND source_record_id = $3
+        AND payload_sha256 = $4
+      LIMIT 1`,
+    [sourceFeedId, sourceRecordType, submissionId, payloadSha256],
+  );
+
+  if (existing.rows[0]?.id) {
+    return existing.rows[0].id;
+  }
+
+  const created = await client.query<{ id: string }>(
+    `INSERT INTO source_records
+       (source_feed_id, source_record_type, source_record_id, canonical_source_url,
+        payload_sha256, raw_payload, parsed_payload, correlation_id,
+        source_license, source_confidence_signals, processing_status, processed_at)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $6::jsonb, $7, $8, $9::jsonb, 'processed', NOW())
+     RETURNING id`,
+    [
+      sourceFeedId,
+      sourceRecordType,
+      submissionId,
+      `oran://resource-submissions/${submissionId}/projection`,
+      payloadSha256,
+      payloadJson,
+      `resource-projection:${submissionId}`,
+      'internal_submission',
+      JSON.stringify({
+        channel,
+        actorUserId,
+        targetType: projection.targetType,
+        submissionType: projection.submissionType,
+      }),
+    ],
+  );
+
+  return created.rows[0].id;
+}
+
 async function updateSubmissionPayload(
   client: PoolClient,
   submissionId: string,
@@ -1419,6 +1489,27 @@ export async function projectApprovedResourceSubmission(
           WHERE id = $2`,
         [organizationId, row.submission_id],
       );
+
+      const projectionSourceRecordId = await attachApprovedProjectionAssertion(
+        client,
+        row.submission_id,
+        draft.variant,
+        draft.channel,
+        actorUserId,
+        draft,
+        {
+          organizationId,
+          serviceId: null,
+          targetType: 'organization',
+          submissionType: row.submission_type,
+        },
+      );
+      await updateSubmissionPayload(client, row.submission_id, {
+        projectionSourceRecordId,
+        projectedOrganizationId: organizationId,
+        projectedServiceId: null,
+      });
+
       return { organizationId, serviceId: null };
     }
 
@@ -1433,6 +1524,27 @@ export async function projectApprovedResourceSubmission(
         WHERE id = $2`,
       [serviceId, row.submission_id],
     );
+
+    const projectionSourceRecordId = await attachApprovedProjectionAssertion(
+      client,
+      row.submission_id,
+      draft.variant,
+      draft.channel,
+      actorUserId,
+      draft,
+      {
+        organizationId,
+        serviceId,
+        targetType: 'service',
+        submissionType: row.submission_type,
+      },
+    );
+    await updateSubmissionPayload(client, row.submission_id, {
+      projectionSourceRecordId,
+      projectedOrganizationId: organizationId,
+      projectedServiceId: serviceId,
+    });
+
     return { organizationId, serviceId };
   });
 }

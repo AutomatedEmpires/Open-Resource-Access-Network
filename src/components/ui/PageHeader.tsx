@@ -29,9 +29,9 @@ interface PageHeaderBadgeProps {
 }
 
 const PAGE_HEADER_BADGE_STYLES: Record<PageHeaderBadgeTone, string> = {
-  neutral: 'border-orange-100 bg-white/90 text-stone-700',
-  accent: 'border-rose-100 bg-rose-50 text-rose-800',
-  trust: 'border-emerald-100 bg-emerald-50 text-emerald-800',
+  neutral: 'border-slate-200 bg-white/90 text-slate-600',
+  accent: 'border-sky-100 bg-sky-50 text-sky-700',
+  trust: 'border-emerald-100 bg-emerald-50 text-emerald-700',
 };
 
 // ============================================================
@@ -83,13 +83,13 @@ export function PageHeader({ eyebrow, title, icon, subtitle, badges, actions, cl
       {/* Left: icon + title + subtitle */}
       <div className="min-w-0 flex-1">
         {eyebrow && (
-          <div className="mb-1.5 text-xs font-semibold uppercase tracking-widest text-rose-700">
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
             {eyebrow}
           </div>
         )}
-        <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-stone-900 leading-tight">
+        <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight text-slate-950 leading-tight md:text-[2rem]">
           {icon && (
-            <span className="flex-shrink-0 text-orange-500" aria-hidden="true">
+            <span className="flex-shrink-0 text-sky-600" aria-hidden="true">
               {icon}
             </span>
           )}
@@ -98,7 +98,7 @@ export function PageHeader({ eyebrow, title, icon, subtitle, badges, actions, cl
 
         {/* div not p — accepts any ReactNode incl. inline links and multi-line content */}
         {subtitle && (
-          <div className="mt-1.5 text-sm text-stone-600 leading-relaxed">
+          <div className="mt-2 text-sm text-slate-600 leading-relaxed md:text-[15px]">
             {subtitle}
           </div>
         )}

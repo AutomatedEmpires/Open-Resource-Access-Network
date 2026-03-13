@@ -428,6 +428,11 @@ describe('resource submission service', () => {
         };
       }
       if (sql.includes('INSERT INTO organizations')) return { rows: [{ id: 'org-1' }] };
+      if (sql.includes('INSERT INTO source_systems')) return { rows: [{ id: 'sys-1' }] };
+      if (sql.includes('FROM source_feeds')) return { rows: [] };
+      if (sql.includes('INSERT INTO source_feeds')) return { rows: [{ id: 'feed-1' }] };
+      if (sql.includes('FROM source_records')) return { rows: [] };
+      if (sql.includes('INSERT INTO source_records')) return { rows: [{ id: 'proj-sr-1' }] };
       return { rows: [] };
     });
     dbMocks.withTransaction.mockImplementation(async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }));
@@ -435,6 +440,26 @@ describe('resource submission service', () => {
     const result = await projectApprovedResourceSubmission('instance-1', 'actor-1');
     expect(result.organizationId).toBe('org-1');
     expect(result.serviceId).toBeNull();
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO source_records'),
+      expect.arrayContaining([
+        'feed-1',
+        'approved_org_claim_projection',
+        'sub-1',
+        'oran://resource-submissions/sub-1/projection',
+      ]),
+    );
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining("SET payload = COALESCE(payload, '{}'::jsonb) ||"),
+      [
+        JSON.stringify({
+          projectionSourceRecordId: 'proj-sr-1',
+          projectedOrganizationId: 'org-1',
+          projectedServiceId: null,
+        }),
+        'sub-1',
+      ],
+    );
   });
 
   it('projects listing submissions into service + org updates', async () => {
@@ -458,6 +483,11 @@ describe('resource submission service', () => {
       if (sql.includes('INSERT INTO organizations')) return { rows: [{ id: 'org-1' }] };
       if (sql.includes('INSERT INTO services')) return { rows: [{ id: 'svc-1' }] };
       if (sql.includes('SELECT location_id FROM service_at_location')) return { rows: [] };
+      if (sql.includes('INSERT INTO source_systems')) return { rows: [{ id: 'sys-1' }] };
+      if (sql.includes('FROM source_feeds')) return { rows: [] };
+      if (sql.includes('INSERT INTO source_feeds')) return { rows: [{ id: 'feed-1' }] };
+      if (sql.includes('FROM source_records')) return { rows: [] };
+      if (sql.includes('INSERT INTO source_records')) return { rows: [{ id: 'proj-sr-2' }] };
       return { rows: [] };
     });
     dbMocks.withTransaction.mockImplementation(async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }));
@@ -465,6 +495,26 @@ describe('resource submission service', () => {
     const result = await projectApprovedResourceSubmission('instance-1', 'actor-1');
     expect(result.organizationId).toBe('org-1');
     expect(result.serviceId).toBe('svc-1');
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO source_records'),
+      expect.arrayContaining([
+        'feed-1',
+        'approved_resource_projection',
+        'sub-1',
+        'oran://resource-submissions/sub-1/projection',
+      ]),
+    );
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining("SET payload = COALESCE(payload, '{}'::jsonb) ||"),
+      [
+        JSON.stringify({
+          projectionSourceRecordId: 'proj-sr-2',
+          projectedOrganizationId: 'org-1',
+          projectedServiceId: 'svc-1',
+        }),
+        'sub-1',
+      ],
+    );
   });
 
   it('gets, lists, and resolves accessible resource submissions', async () => {

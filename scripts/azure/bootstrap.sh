@@ -22,6 +22,9 @@ set -euo pipefail
 # Optional custom domain setup (example):
 #   ./scripts/azure/bootstrap.sh ... \
 #     --prod-hostname app.example.com
+# Optional Azure Maps setup (example):
+#   ./scripts/azure/bootstrap.sh ... \
+#     --azure-maps-sas-token '<scoped-sas-token>'
 
 usage() {
   cat <<'EOF'
@@ -38,6 +41,7 @@ Optional:
   --pg-location    PostgreSQL region override (default: same as --location)
   --pg-admin-user  PostgreSQL admin username (default: oranadmin)
   --prod-hostname  Custom hostname for prod webapp (e.g., app.example.com)
+  --azure-maps-sas-token  Scoped Azure Maps SAS token to store in Key Vault and wire into the web app
   --skip-web       Skip App Service plan + Web App provisioning
   --skip-db        Skip PostgreSQL provisioning (and related Key Vault secrets)
 
@@ -56,6 +60,7 @@ APPSERVICE_SKU="B1"
 PG_LOCATION=""
 PG_ADMIN_USER="oranadmin"
 PROD_HOSTNAME=""
+AZURE_MAPS_SAS_TOKEN=""
 SKIP_WEB="false"
 SKIP_DB="false"
 
@@ -75,6 +80,8 @@ while [[ $# -gt 0 ]]; do
       PG_ADMIN_USER="$2"; shift 2 ;;
     --prod-hostname)
       PROD_HOSTNAME="$2"; shift 2 ;;
+    --azure-maps-sas-token)
+      AZURE_MAPS_SAS_TOKEN="$2"; shift 2 ;;
     --skip-web)
       SKIP_WEB="true"; shift 1 ;;
     --skip-db)
@@ -95,6 +102,11 @@ fi
 
 if [[ -z "$PREFIX" || -z "$LOCATION" || -z "$ENVS_CSV" ]]; then
   usage
+  exit 1
+fi
+
+if [[ "$SKIP_WEB" != "true" && -z "$AZURE_MAPS_SAS_TOKEN" ]]; then
+  echo "Missing required arg for web provisioning: --azure-maps-sas-token" >&2
   exit 1
 fi
 
@@ -152,6 +164,7 @@ ensure_provider_registered() {
 
 if [[ "$SKIP_WEB" != "true" ]]; then
   ensure_provider_registered "Microsoft.Web"
+  ensure_provider_registered "Microsoft.Maps"
 fi
 ensure_provider_registered "Microsoft.Resources"
 ensure_provider_registered "Microsoft.KeyVault"
@@ -205,6 +218,7 @@ create_env() {
   local plan="${PREFIX}-${env}-plan"
   local webapp="${PREFIX}-${env}-web"
   local kv="${PREFIX}-${env}-kv"
+  local mapsAccount="${PREFIX}-${env}-maps"
   local pgServer="${PREFIX}-${env}-pg"
   local dbName="oran_db"
 
@@ -298,6 +312,8 @@ EOF
     fi
   fi
   local databaseUrlSecretUri=""
+  local azureMapsKeySecretUri=""
+  local azureMapsSasSecretUri=""
   if [[ "$SKIP_DB" != "true" ]]; then
     if az postgres flexible-server show --resource-group "$rg" --name "$pgServer" >/dev/null 2>&1; then
       echo "==> [${env}] PostgreSQL server exists; skipping create: ${pgServer}"
@@ -353,6 +369,41 @@ EOF
   fi
 
   if [[ "$SKIP_WEB" != "true" ]]; then
+    if az maps account show --name "$mapsAccount" --resource-group "$rg" >/dev/null 2>&1; then
+      echo "==> [${env}] Azure Maps account exists; skipping create: ${mapsAccount}"
+    else
+      echo "==> [${env}] Creating Azure Maps account: ${mapsAccount}"
+      az maps account create \
+        --account-name "$mapsAccount" \
+        --resource-group "$rg" \
+        --location "$LOCATION" \
+        --kind Gen2 \
+        --sku G2 \
+        --accept-tos \
+        --disable-local-auth false >/dev/null
+    fi
+
+    echo "==> [${env}] Storing Azure Maps secrets in Key Vault"
+    local tmp
+    tmp="$(mktemp)"
+    chmod 600 "$tmp"
+
+    local mapsKey
+    mapsKey="$(az maps account keys list --name "$mapsAccount" --resource-group "$rg" --query primaryKey -o tsv)"
+
+    printf %s "$mapsKey" >"$tmp"
+    az keyvault secret set --vault-name "$kv" --name "azure-maps-key" --file "$tmp" >/dev/null
+
+    printf %s "$AZURE_MAPS_SAS_TOKEN" >"$tmp"
+    az keyvault secret set --vault-name "$kv" --name "azure-maps-sas-token" --file "$tmp" >/dev/null
+
+    rm -f "$tmp"
+
+    azureMapsKeySecretUri="$(az keyvault secret show --vault-name "$kv" --name "azure-maps-key" --query id -o tsv)"
+    azureMapsSasSecretUri="$(az keyvault secret show --vault-name "$kv" --name "azure-maps-sas-token" --query id -o tsv)"
+  fi
+
+  if [[ "$SKIP_WEB" != "true" ]]; then
     echo "==> [${env}] Configuring Web App settings"
     # Use Key Vault reference so secrets do not appear in App Service settings.
     # NOTE: This requires the Web App managed identity policy above.
@@ -365,6 +416,12 @@ EOF
     if [[ -n "$databaseUrlSecretUri" ]]; then
       settings+=("DATABASE_URL=@Microsoft.KeyVault(SecretUri=${databaseUrlSecretUri})")
     fi
+    if [[ -n "$azureMapsKeySecretUri" ]]; then
+      settings+=("AZURE_MAPS_KEY=@Microsoft.KeyVault(SecretUri=${azureMapsKeySecretUri})")
+    fi
+    if [[ -n "$azureMapsSasSecretUri" ]]; then
+      settings+=("AZURE_MAPS_SAS_TOKEN=@Microsoft.KeyVault(SecretUri=${azureMapsSasSecretUri})")
+    fi
 
     az webapp config appsettings set \
       --name "$webapp" \
@@ -375,6 +432,7 @@ EOF
   echo "==> [${env}] Done"
   if [[ "$SKIP_WEB" != "true" ]]; then
     echo "    Web App URL: https://${webapp}.azurewebsites.net"
+    echo "    Azure Maps:  ${mapsAccount}"
   fi
   echo "    Key Vault:   ${kv}"
   if [[ "$SKIP_DB" != "true" ]]; then

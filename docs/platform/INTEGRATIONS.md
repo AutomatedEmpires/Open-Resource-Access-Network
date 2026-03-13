@@ -26,7 +26,7 @@ Implemented (recently):
 - Full RBAC enforcement (middleware + API route guards + `shouldEnforceAuth()` production fail-closed).
 - Hybrid feature flags with a DB-backed authoritative catalog when `DATABASE_URL` is configured, plus an in-memory fallback for local development and runtime recovery.
 - Content Security Policy (see ADR-0005).
-- Rate limiting on all API routes with Retry-After headers.
+- Rate limiting on all API routes with Retry-After headers, with Redis-backed shared enforcement available for high-value endpoints when `REDIS_URL` is configured.
 - Azure Communication Services — transactional email dispatch for notification channel='email' (`src/services/email/azureEmail.ts`).
 - Azure Cache for Redis — search result caching with 5-min TTL (`src/services/cache/redis.ts`, `src/services/search/cache.ts`).
 - Azure Functions Timer Trigger — hourly SLA breach checker (`functions/checkSlaBreaches/`, `src/app/api/internal/sla-check/route.ts`).
@@ -40,6 +40,11 @@ Planned:
 ## Authentication: Microsoft Entra ID
 
 ORAN uses [Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity/) for authentication and session management via NextAuth.js with the Azure AD provider.
+
+Optional auth providers are deliberately gated:
+
+- Google OAuth is enabled only when `ORAN_ENABLE_GOOGLE_AUTH=1` is set alongside Google client credentials.
+- Email/password auth is available for local/test use and must be explicitly enabled in production with `ORAN_ENABLE_CREDENTIALS_AUTH=1`.
 
 ### Configuration
 
@@ -79,6 +84,7 @@ ORAN is deployed to **Azure App Service (Linux)** with Node.js 20 LTS.
 - Deployment guide: `docs/platform/DEPLOYMENT_AZURE.md`
 - Deploy workflow: `.github/workflows/deploy-azure-appservice.yml`
 - Secrets: App Service Application Settings and/or Azure Key Vault references
+- Bootstrap helper: `scripts/azure/bootstrap.sh` now provisions the core web stack plus Azure Maps account parity, but still requires a caller-supplied scoped `--azure-maps-sas-token` secret.
 
 ---
 
@@ -103,7 +109,8 @@ Optional alternative:
 Status: Raw SQL migrations are the source of truth today.
 
 - Implemented: migrations in db/migrations/** (plain SQL files).
-- Planned: Drizzle ORM adoption (no db/schema/** folder in the repo today).
+- Implemented: `.github/workflows/db-migrate.yml` applies the SQL migration chain via `psql` and records applied files in `schema_migrations`.
+- Drizzle remains part of the repository for schema typing and related tooling, not as the production migration orchestrator.
 
 ### PostGIS
 
@@ -219,8 +226,10 @@ ORAN uses **Azure Maps** (G2 Gen2 SKU) for geocoding queries.
 
 ### Configuration
 
-- Environment variable: `AZURE_MAPS_KEY` (stored as Key Vault reference in App Service)
+- Server-side geocoding key: `AZURE_MAPS_KEY` (stored as Key Vault reference in App Service)
+- Interactive web map token broker: `AZURE_MAPS_SAS_TOKEN` (scoped SAS token returned by `/api/maps/token`)
 - Production resource: `oranhf57ir-prod-maps` in `westus2`
+- Provisioning status: the Azure Maps account is provisioned by `infra/main.bicep`
 
 ### Service (`src/services/geocoding/azureMaps.ts`)
 
@@ -242,6 +251,7 @@ interface AzureMapsGeocodingResult {
 
 - Only query text is sent to Azure Maps; no user PII.
 - Approximate location by default (city-level for seekers).
+- Raw Azure Maps shared keys are never exposed to the client. The web map consumes only the brokered SAS token from `/api/maps/token`.
 
 ---
 
@@ -255,6 +265,7 @@ ORAN uses **Azure AI Translator** (F0 free tier — 2M characters/month) for dyn
   - `AZURE_TRANSLATOR_KEY` (stored as Key Vault reference)
   - `AZURE_TRANSLATOR_ENDPOINT` (`https://api.cognitive.microsofttranslator.com/`)
   - `AZURE_TRANSLATOR_REGION` (`westus2`)
+- Provisioning status: supported by application code and runtime validation; not currently provisioned by `infra/main.bicep`
 
 ### Service (`src/services/i18n/translator.ts`)
 

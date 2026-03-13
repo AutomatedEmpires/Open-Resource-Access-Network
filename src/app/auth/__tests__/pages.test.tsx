@@ -9,7 +9,14 @@ vi.mock('react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react')>();
   return {
     ...actual,
-    useState: (initial: unknown) => [initial, setStateMock],
+    useState: (initial: unknown) => {
+      // For providerIds state, return all three providers so button tests work
+      if (initial instanceof Set) {
+        return [new Set(['azure-ad', 'google', 'credentials']), setStateMock];
+      }
+      return [initial, setStateMock];
+    },
+    useEffect: () => {},
   };
 });
 vi.mock('next/navigation', () => ({
@@ -202,7 +209,13 @@ describe('auth pages', () => {
     expect(oauthGroup).toBeDefined();
 
     const oauthButtons = React.Children.toArray(oauthGroup.props.children) as React.ReactElement<any, any>[];
-    const buttonsWithClick = oauthButtons.filter((c: any) => c?.props?.onClick);
+    // React 19 does not flatten fragments in Children.toArray — expand them manually
+    const flatButtons = oauthButtons.flatMap((c: any) =>
+      c?.type === React.Fragment
+        ? (React.Children.toArray(c.props.children) as React.ReactElement<any, any>[])
+        : [c],
+    );
+    const buttonsWithClick = flatButtons.filter((c: any) => c?.props?.onClick);
     // Microsoft, Google, and Email buttons
     expect(buttonsWithClick.length).toBe(3);
 

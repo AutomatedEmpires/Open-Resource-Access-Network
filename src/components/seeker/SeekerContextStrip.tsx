@@ -147,7 +147,7 @@ export function SeekerContextStrip({ pathname: _pathname }: { pathname: string }
       );
     }
 
-    if (context.interestCount > 0) {
+    if (context.interestCount > 0 && !context.hasProfileIdentity) {
       items.push(
         <ContextChip key="interests" icon={<Sparkles className="h-3.5 w-3.5" />} href="/profile">
           {context.interestCount} interests set
@@ -163,53 +163,33 @@ export function SeekerContextStrip({ pathname: _pathname }: { pathname: string }
       );
     }
 
-    items.push(
-      <ContextChip
-        key="sync"
-        icon={<ShieldCheck className="h-3.5 w-3.5" />}
-        href="/profile"
-        title={
-          context.serverSyncEnabled
-            ? 'Cross-device sync is enabled for this device.'
-            : 'Profile and saves stay local on this device until you turn on cross-device sync.'
-        }
-      >
-        {context.serverSyncEnabled ? 'Sync on' : 'Local-only'}
-      </ContextChip>,
-    );
-
-    return items;
+    return items.slice(0, 3);
   }, [
     context.approximateCity,
     context.hasProfileIdentity,
     context.interestCount,
     context.savedCount,
-    context.serverSyncEnabled,
   ]);
 
+  if (primaryContext.length === 0) {
+    return null;
+  }
+
   return (
-    <div className="border-b border-[var(--border)] bg-[var(--bg-page)]/80">
-      <div className="container mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-2">
+    <div className="border-b border-slate-200/80 bg-white/75 backdrop-blur">
+      <div className="container mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
-          <ContextChip
-            icon={<ShieldCheck className="h-3.5 w-3.5" />}
-            title="Verified records only. Approximate location by default. Profile details are private to your ORAN experience."
-          >
-            Verified records. Private by default.
-          </ContextChip>
+          <span className="inline-flex min-h-[32px] items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
+            <ShieldCheck className="mr-1.5 h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+            Private by default
+          </span>
           {primaryContext}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-          {!context.hasPersonalization && !context.approximateCity && context.savedCount === 0 ? (
-            <Link href="/profile" className="font-medium text-blue-700 hover:underline">
-              Add preferences for better matches
-            </Link>
-          ) : (
-            <Link href="/profile" className="font-medium text-blue-700 hover:underline">
-              Review your seeker context
-            </Link>
-          )}
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+          <Link href="/profile" className="font-medium text-sky-700 hover:underline">
+            {context.serverSyncEnabled ? 'Manage preferences' : 'Personalize your search'}
+          </Link>
         </div>
       </div>
     </div>

@@ -50,7 +50,7 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
     );
   }
 
-  if (status === 'authenticated' && !isRoleAtLeast(session.user.role, 'oran_admin')) {
+  if (status === 'unauthenticated' || (status === 'authenticated' && !isRoleAtLeast(session.user.role, 'oran_admin'))) {
     return <AccessDenied portalName="ORAN Admin" requiredRole="oran_admin" />;
   }
 

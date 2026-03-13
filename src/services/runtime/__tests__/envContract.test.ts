@@ -12,6 +12,12 @@ describe('validateRuntimeEnv', () => {
         NEXTAUTH_URL: 'https://oran.test',
         INTERNAL_API_KEY: 'internal-key',
         APPLICATIONINSIGHTS_CONNECTION_STRING: 'InstrumentationKey=test',
+        REDIS_URL: 'redis://localhost:6379',
+        AZURE_MAPS_KEY: 'maps-key',
+        AZURE_MAPS_SAS_TOKEN: 'sas-token',
+        AZURE_TRANSLATOR_KEY: 'trans-key',
+        AZURE_TRANSLATOR_ENDPOINT: 'https://api.example.com',
+        AZURE_TRANSLATOR_REGION: 'eastus',
       },
     );
 
@@ -38,6 +44,12 @@ describe('validateRuntimeEnv', () => {
     expect(result.warnings).toEqual([
       'APPLICATIONINSIGHTS_CONNECTION_STRING',
       'AZURE_AD_TENANT_ID',
+      'AZURE_MAPS_KEY',
+      'AZURE_MAPS_SAS_TOKEN',
+      'AZURE_TRANSLATOR_ENDPOINT',
+      'AZURE_TRANSLATOR_KEY',
+      'AZURE_TRANSLATOR_REGION',
+      'REDIS_URL',
     ]);
   });
 

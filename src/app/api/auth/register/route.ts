@@ -11,9 +11,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { getPgPool, isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { captureException } from '@/services/telemetry/sentry';
+import { isCredentialsAuthEnabled } from '@/lib/auth';
 
 // ============================================================
 // REQUEST SCHEMA
@@ -48,7 +49,7 @@ const RegisterSchema = z.object({
 const REGISTER_RATE_LIMIT_MAX = 5;
 
 function checkRegisterRateLimit(ip: string) {
-  return checkRateLimit(`register:ip:${ip}`, {
+  return checkRateLimitShared(`register:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: REGISTER_RATE_LIMIT_MAX,
   });
@@ -66,6 +67,13 @@ const BCRYPT_ROUNDS = 12;
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isCredentialsAuthEnabled()) {
+      return NextResponse.json(
+        { error: 'Registration is not available.' },
+        { status: 403 },
+      );
+    }
+
     // Require database
     if (!isDatabaseConfigured()) {
       return NextResponse.json(
@@ -78,7 +86,7 @@ export async function POST(request: NextRequest) {
     const ip =
       request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
       'unknown';
-    const rateLimit = checkRegisterRateLimit(ip);
+    const rateLimit = await checkRegisterRateLimit(ip);
     if (rateLimit.exceeded) {
       return NextResponse.json(
         { error: 'Too many registration attempts. Please try again later.' },

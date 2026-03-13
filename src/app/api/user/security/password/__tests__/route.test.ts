@@ -14,10 +14,11 @@ const captureExceptionMock = vi.hoisted(() => vi.fn());
 const compareMock = vi.hoisted(() => vi.fn());
 const hashMock = vi.hoisted(() => vi.fn());
 const queryMock = vi.hoisted(() => vi.fn());
+const credentialsAuthEnabledMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/db/postgres', () => dbMocks);
-vi.mock('@/services/security/rateLimit', () => ({ checkRateLimit: rateLimitMock }));
+vi.mock('@/services/security/rateLimit', () => ({ checkRateLimitShared: rateLimitMock }));
 vi.mock('@/services/telemetry/sentry', () => ({ captureException: captureExceptionMock }));
 vi.mock('bcryptjs', () => ({
   default: {
@@ -25,6 +26,7 @@ vi.mock('bcryptjs', () => ({
     hash: hashMock,
   },
 }));
+vi.mock('@/lib/auth', () => ({ isCredentialsAuthEnabled: credentialsAuthEnabledMock }));
 
 function createRequest(jsonBody?: unknown) {
   return {
@@ -40,6 +42,8 @@ async function loadRoute() {
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
+  credentialsAuthEnabledMock.mockReturnValue(true);
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
   dbMocks.getPgPool.mockReturnValue({ query: queryMock });
   authMocks.getAuthContext.mockResolvedValue({ userId: 'user-1' });
@@ -51,6 +55,15 @@ beforeEach(() => {
 });
 
 describe('api/user/security/password route', () => {
+  it('returns 403 when credentials auth is disabled in production', async () => {
+    credentialsAuthEnabledMock.mockReturnValue(false);
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({ currentPassword: 'old-pass-1', newPassword: 'new-pass-2' }));
+
+    expect(response.status).toBe(403);
+  });
+
   it('returns 401 when unauthenticated', async () => {
     authMocks.getAuthContext.mockResolvedValue(null);
     const { POST } = await loadRoute();

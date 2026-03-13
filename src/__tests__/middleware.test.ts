@@ -227,4 +227,23 @@ describe('middleware', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });
+
+  it.each([
+    ['/host', 'host_member'],
+    ['/host-forms', 'host_member'],
+    ['/resource-studio', 'host_member'],
+    ['/community-forms', 'community_admin'],
+    ['/discovery-preview', 'oran_admin'],
+    ['/forms', 'oran_admin'],
+  ])('redirects unauthenticated users from previously unprotected route %s (min role: %s)', async (route) => {
+    mutableEnv.AZURE_AD_CLIENT_ID = 'client-id';
+    mutableEnv.NEXTAUTH_SECRET = 'secret';
+    getTokenMock.mockResolvedValue(null);
+    const { proxy: middleware } = await loadMiddlewareModule();
+
+    const response = await middleware(makeRequest(route));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toContain('/api/auth/signin');
+  });
 });

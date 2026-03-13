@@ -29,9 +29,15 @@ Timer Trigger (scheduledCrawl) → ingestion-fetch queue
 
 ## Status
 
-These stubs define the function signatures, bindings, and integration points
-with the existing `createIngestionService()` pipeline. They are ready to deploy
-once Azure infrastructure (Storage Queues / Service Bus, Functions App) is provisioned.
+The repository now contains deployable Azure Functions packaging and a production deployment workflow.
+
+Current maturity split:
+
+- Runtime packaging and deployment path: implemented
+- Trigger bindings and queue topology: implemented
+- Business behavior inside some functions: still partially scaffolded and tied to the broader ingestion-service maturation path
+
+Treat this directory as deployable runtime infrastructure with some still-evolving function behaviors, not as a purely hypothetical stub tree.
 
 ## Deployment
 

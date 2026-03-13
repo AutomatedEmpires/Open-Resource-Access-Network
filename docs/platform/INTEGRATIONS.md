@@ -43,8 +43,10 @@ ORAN uses [Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity/
 
 Optional auth providers are deliberately gated:
 
+- Apple OAuth is enabled only when `ORAN_ENABLE_APPLE_AUTH=1` is set alongside `APPLE_CLIENT_ID` and `APPLE_CLIENT_SECRET`.
 - Google OAuth is enabled only when `ORAN_ENABLE_GOOGLE_AUTH=1` is set alongside Google client credentials.
-- Email/password auth is available for local/test use and must be explicitly enabled in production with `ORAN_ENABLE_CREDENTIALS_AUTH=1`.
+- Credentials auth supports email, username, or phone number plus password and must be explicitly enabled in production with `ORAN_ENABLE_CREDENTIALS_AUTH=1`.
+- Phone is an alternate identifier for credentials auth only; ORAN does not currently implement SMS or OTP-based phone authentication.
 
 ### Configuration
 
@@ -54,6 +56,14 @@ Optional auth providers are deliberately gated:
   - `AZURE_AD_TENANT_ID`
   - `NEXTAUTH_URL` (e.g., `https://yourapp.azurewebsites.net`)
   - `NEXTAUTH_SECRET` (random secret for JWT encryption)
+- Optional provider variables:
+  - `APPLE_CLIENT_ID`
+  - `APPLE_CLIENT_SECRET`
+  - `ORAN_ENABLE_APPLE_AUTH=1`
+  - `GOOGLE_CLIENT_ID`
+  - `GOOGLE_CLIENT_SECRET`
+  - `ORAN_ENABLE_GOOGLE_AUTH=1`
+  - `ORAN_ENABLE_CREDENTIALS_AUTH=1`
 
 ### Implementation
 

@@ -7,6 +7,7 @@ function parseArgs(argv) {
     namesFile: '',
     format: 'plain',
     nodeEnv: '',
+    requireWarnings: [],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -28,6 +29,11 @@ function parseArgs(argv) {
     }
     if (arg === '--node-env') {
       parsed.nodeEnv = argv[index + 1] ?? '';
+      index += 1;
+      continue;
+    }
+    if (arg === '--require-warning') {
+      parsed.requireWarnings.push(argv[index + 1] ?? '');
       index += 1;
     }
   }
@@ -57,7 +63,7 @@ function printUsageAndExit() {
   console.error(
     [
       'Usage:',
-      '  node scripts/validate-runtime-env.mjs --target <webapp|functions> [--names-file path] [--node-env production] [--format plain|github]',
+      '  node scripts/validate-runtime-env.mjs --target <webapp|functions> [--names-file path] [--node-env production] [--format plain|github] [--require-warning NAME]',
     ].join('\n'),
   );
   process.exit(1);
@@ -73,6 +79,10 @@ const envSource = options.namesFile ? readNamesFile(options.namesFile) : process
 const result = validateRuntimeEnv(options.target, envSource, {
   nodeEnv: options.nodeEnv || undefined,
 });
+const requiredWarnings = options.requireWarnings
+  .map((value) => value.trim())
+  .filter(Boolean);
+const missingRequiredWarnings = result.warnings.filter((name) => requiredWarnings.includes(name));
 
 if (!result.ok) {
   emit(
@@ -90,7 +100,15 @@ if (result.warnings.length > 0) {
   );
 }
 
-if (!result.ok) {
+if (missingRequiredWarnings.length > 0) {
+  emit(
+    options.format,
+    'error',
+    `Missing required ${result.target} production settings: ${missingRequiredWarnings.join(', ')}`,
+  );
+}
+
+if (!result.ok || missingRequiredWarnings.length > 0) {
   process.exit(1);
 }
 

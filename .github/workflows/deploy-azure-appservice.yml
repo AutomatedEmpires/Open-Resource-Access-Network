@@ -50,7 +50,10 @@ jobs:
             --target webapp \
             --names-file /tmp/oran-webapp-settings.txt \
             --node-env production \
-            --format github
+            --format github \
+            --require-warning REDIS_URL \
+            --require-warning AZURE_MAPS_KEY \
+            --require-warning AZURE_MAPS_SAS_TOKEN
 
       - name: Run tests
         run: npm run test

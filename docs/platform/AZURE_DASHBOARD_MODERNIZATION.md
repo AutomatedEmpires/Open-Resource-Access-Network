@@ -73,7 +73,7 @@ Recommended ORAN executive dashboard tiles:
 - error rate
 - latency
 - deployment status
-- verification queue backlog
+- review queue backlog
 - ingestion run status
 - App Insights availability tests
 - Key Vault health and secret rotation watchpoints
@@ -218,7 +218,7 @@ Panels:
 
 - ingestion run volumes
 - failed stages by function
-- verification queue backlog
+- review queue backlog
 - SLA breach counts
 - source health by source family
 - stale listing and reverification counts

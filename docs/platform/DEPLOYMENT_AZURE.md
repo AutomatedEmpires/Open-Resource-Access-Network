@@ -46,7 +46,9 @@ Optional but recommended:
 - Azure Key Vault (store secrets)
 - Azure Maps account plus a scoped SAS token for the interactive seeker map
 
-`infra/main.bicep` now provisions the Azure Maps account and injects both `AZURE_MAPS_KEY` and `AZURE_MAPS_SAS_TOKEN` into the web app through Key Vault references. `scripts/azure/bootstrap.sh` now provisions the same Azure Maps account and Key Vault secret wiring, but it still requires the caller to provide `--azure-maps-sas-token` as a secure input.
+`infra/main.bicep` now provisions the Azure Maps account and injects both `AZURE_MAPS_KEY` and `AZURE_MAPS_SAS_TOKEN` into the web app through Key Vault references. `scripts/azure/bootstrap.sh` now provisions the same Azure Maps account and Key Vault secret wiring, but it still requires the caller to provide `--azure-maps-sas-token` as a secure input for first deployment.
+
+Post-deployment rotation is now automated through `.github/workflows/rotate-azure-maps-sas.yml`, which calls `scripts/azure/rotate-maps-sas.sh` on a schedule or manual dispatch. The rotation script generates a fresh SAS token from the Azure Maps account, syncs the Key Vault secret, updates the live App Service setting, and verifies `/api/maps/token`.
 
 ## 2) Configure app settings (Web App)
 
@@ -64,8 +66,11 @@ Set these as App Service Application Settings (or via Key Vault references):
   - `AZURE_MAPS_SAS_TOKEN` for browser map token brokering via `/api/maps/token`
   - When deploying with `infra/main.bicep`, pass `azureMapsSasToken` as a secure deployment parameter so the template can store it in Key Vault and wire the app setting automatically.
 - Optional auth-provider gates:
+  - `ORAN_ENABLE_APPLE_AUTH=1` only when Apple OAuth is intentionally enabled in production
+  - `APPLE_CLIENT_ID` and `APPLE_CLIENT_SECRET` only when Apple OAuth is intentionally enabled in production
   - `ORAN_ENABLE_GOOGLE_AUTH=1` only when Google OAuth is intentionally enabled in production
   - `ORAN_ENABLE_CREDENTIALS_AUTH=1` only when email/password auth is intentionally enabled in production
+  - Credentials auth now accepts email, username, or phone as the sign-in identifier; this is password-based and not SMS/OTP auth.
 - Optional Sentry:
   - `NEXT_PUBLIC_SENTRY_DSN`
 - Recommended:
@@ -76,7 +81,20 @@ Set these as App Service Application Settings (or via Key Vault references):
 Deployment gate note:
 
 - Run `node scripts/validate-runtime-env.mjs --target webapp --node-env production` against the final app-settings set before rollout. In production this warns when Azure Maps, Translator, Redis, or Application Insights configuration is incomplete.
-- The current infrastructure codifies Azure Maps account creation and secret injection, but SAS token lifecycle is still deployment-managed. Rotate the deploy-time `azureMapsSasToken` value on the same cadence as other high-value secrets.
+- CI now codifies the expected production webapp settings in `.github/runtime/webapp-production-settings.txt` and fails the `Runtime Readiness Contract` job if `REDIS_URL`, `AZURE_MAPS_KEY`, or `AZURE_MAPS_SAS_TOKEN` fall out of the enforced production contract.
+- The App Service deploy workflow also promotes those three settings from warnings to hard failures when validating the live Azure Web App app-settings set before rollout.
+- The Bicep template still accepts `azureMapsSasToken` as the initial deployment secret, but ongoing SAS lifecycle is now handled by the rotation workflow/script rather than a manual App Service update.
+
+Apple setup note:
+
+- This repository uses NextAuth/Auth.js directly, not Clerk-managed social auth. Clerk can abstract the Apple provider setup because Clerk stores and manages the Apple credentials on your behalf. ORAN cannot do that in its current architecture.
+- To enable Apple in production you must create the Apple provider credentials yourself:
+  - create or reuse an Apple Developer account
+  - create a Service ID for the web app and enable Sign in with Apple
+  - add the callback URL `https://openresourceaccessnetwork.com/api/auth/callback/apple` and any secondary host you intend to use, such as `https://oranhf57ir-prod-web.azurewebsites.net/api/auth/callback/apple`
+  - generate the Apple client secret JWT and store the resulting values as `APPLE_CLIENT_ID` and `APPLE_CLIENT_SECRET`
+  - Auth.js notes that Apple requires a live HTTPS URL and a client secret JWT; their current guidance also points to `npx auth add apple` as a helper for generating the client secret material
+- Do not set `ORAN_ENABLE_APPLE_AUTH=1` until the Apple client ID and secret are both present in production.
 
 Note: the bootstrap script sets `DATABASE_URL` as a **Key Vault reference** using a system-assigned managed identity, so the raw connection string does not need to live in App Service settings.
 

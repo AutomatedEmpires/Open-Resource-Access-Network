@@ -166,6 +166,18 @@ describe('sourceRecordStore', () => {
     expect(result).toEqual(rows);
   });
 
+  it('listPendingByFeed returns only pending records for a given feed in FIFO order', async () => {
+    const rows = [
+      makeRow({ id: 'rec-old', createdAt: new Date('2026-01-01') }),
+      makeRow({ id: 'rec-new', createdAt: new Date('2026-01-02') }),
+    ];
+    const { db } = createMockDb([rows]);
+    const store = createDrizzleSourceRecordStore(db as never);
+
+    const result = await store.listPendingByFeed('feed-1', 50);
+    expect(result).toEqual(rows);
+  });
+
   it('addTaxonomy skips empty array', async () => {
     const { db, insertValues } = createMockDb();
     const store = createDrizzleSourceRecordStore(db as never);

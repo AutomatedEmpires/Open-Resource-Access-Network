@@ -819,6 +819,9 @@ export interface SourceRecordStore {
   /** List records pending processing. */
   listPending(limit?: number): Promise<SourceRecordRow[]>;
 
+  /** List pending records for a specific feed. */
+  listPendingByFeed(sourceFeedId: string, limit?: number): Promise<SourceRecordRow[]>;
+
   /** List records by feed (for batch processing). */
   listByFeed(sourceFeedId: string, limit?: number): Promise<SourceRecordRow[]>;
 

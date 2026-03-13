@@ -16,6 +16,79 @@ import { createIngestionJob, type IngestionJob } from './jobs';
 import type { SourceRegistryEntry } from './sourceRegistry';
 import { materializePipelineArtifacts } from './materialize';
 
+type SupportedSourceFeedHandler = 'ndp_211' | 'hsds_api';
+
+function getSourceRecordTrustTier(sourceRecord: { sourceConfidenceSignals?: unknown }): string | undefined {
+  const signals = sourceRecord.sourceConfidenceSignals;
+  if (!signals || typeof signals !== 'object' || Array.isArray(signals)) {
+    return undefined;
+  }
+
+  const trustTier = (signals as Record<string, unknown>).trustTier;
+  return typeof trustTier === 'string' ? trustTier : undefined;
+}
+
+function is211SourceRecord(sourceRecord: { sourceConfidenceSignals?: unknown; sourceRecordType?: string }): boolean {
+  const signals = sourceRecord.sourceConfidenceSignals;
+  if (signals && typeof signals === 'object' && !Array.isArray(signals)) {
+    const source = (signals as Record<string, unknown>).source;
+    if (source === '211_ndp') {
+      return true;
+    }
+  }
+
+  return sourceRecord.sourceRecordType === 'organization_bundle';
+}
+
+async function normalizePendingSourceRecordsForFeed(
+  stores: IngestionStores,
+  sourceFeedId: string,
+): Promise<{ normalized: number; errors: number }> {
+  const pendingRecords = await stores.sourceRecords.listPendingByFeed(sourceFeedId);
+  let normalized = 0;
+  let errors = 0;
+
+  for (const sourceRecord of pendingRecords) {
+    try {
+      if (is211SourceRecord(sourceRecord)) {
+        const { normalize211SourceRecord } = await import('./ndp211Normalizer');
+        await normalize211SourceRecord({
+          stores,
+          sourceRecord,
+          trustTier: getSourceRecordTrustTier(sourceRecord),
+          runCrosswalk: true,
+        });
+      } else {
+        const { normalizeSourceRecord } = await import('./normalizeSourceRecord');
+        await normalizeSourceRecord({
+          stores,
+          sourceRecord,
+          trustTier: getSourceRecordTrustTier(sourceRecord),
+        });
+      }
+
+      normalized++;
+    } catch (error) {
+      errors++;
+      await stores.sourceRecords.updateStatus(
+        sourceRecord.id,
+        'failed',
+        error instanceof Error ? error.message : 'Normalization failed',
+      );
+    }
+  }
+
+  return { normalized, errors };
+}
+
+function getSupportedSourceFeedHandler(feed: { feedHandler?: string | null }): SupportedSourceFeedHandler | null {
+  if (feed.feedHandler === 'ndp_211' || feed.feedHandler === 'hsds_api') {
+    return feed.feedHandler;
+  }
+
+  return null;
+}
+
 // ============================================================
 // Service Types
 // ============================================================
@@ -200,14 +273,13 @@ export function createIngestionService(
       newUrls: number;
       errors: number;
     }> {
+      // ── Legacy feeds (FeedSubscription) ────────────────────
       const dueFeeds = await stores.feeds.listDueForPoll();
-      const newUrls = 0;
+      let newUrls = 0;
       let errors = 0;
 
       for (const feed of dueFeeds) {
         try {
-          // For now, mark feed as polled. Actual feed parsing will be
-          // implemented in Azure Functions with proper HTTP fetching.
           await stores.feeds.updateAfterPoll(feed.id!, {
             lastPolledAt: new Date().toISOString(),
           });
@@ -222,7 +294,63 @@ export function createIngestionService(
         }
       }
 
-      return { feedsPolled: dueFeeds.length, newUrls, errors };
+      // ── Source-assertion-layer feeds (sourceFeeds) ──────────
+      let sourceAssertionFeeds = 0;
+      try {
+        const dueSourceFeeds = await stores.sourceFeeds.listDueForPoll();
+        for (const sourceFeed of dueSourceFeeds) {
+          const sourceSystem = await stores.sourceSystems.getById(sourceFeed.sourceSystemId);
+          if (!sourceSystem) {
+            errors++;
+            continue;
+          }
+
+          try {
+            const feedHandler = getSupportedSourceFeedHandler(sourceFeed);
+            if (feedHandler === 'ndp_211') {
+              const { poll211NdpFeed } = await import('./ndp211Connector');
+              const pollResult = await poll211NdpFeed({
+                stores,
+                sourceSystem,
+                feed: sourceFeed,
+                correlationId: `poll-211-${sourceFeed.id}-${Date.now()}`,
+                dataOwners: process.env.NDP_211_DATA_OWNERS,
+              });
+              newUrls += pollResult.recordsCreated;
+              if (pollResult.errors.length > 0) errors += pollResult.errors.length;
+            } else if (feedHandler === 'hsds_api') {
+              const { pollHsdsFeed } = await import('./hsdsFeedConnector');
+              const pollResult = await pollHsdsFeed({
+                stores,
+                sourceSystem,
+                feed: sourceFeed,
+                correlationId: `poll-hsds-${sourceFeed.id}-${Date.now()}`,
+              });
+              newUrls += pollResult.recordsCreated;
+              if (pollResult.errors.length > 0) errors += pollResult.errors.length;
+            } else {
+              continue;
+            }
+
+            const normalizationResult = await normalizePendingSourceRecordsForFeed(
+              stores,
+              sourceFeed.id,
+            );
+            errors += normalizationResult.errors;
+            sourceAssertionFeeds++;
+          } catch {
+            errors++;
+          }
+        }
+      } catch {
+        // sourceFeeds store may not be available in all environments
+      }
+
+      return {
+        feedsPolled: dueFeeds.length + sourceAssertionFeeds,
+        newUrls,
+        errors,
+      };
     },
 
     async runReverification(

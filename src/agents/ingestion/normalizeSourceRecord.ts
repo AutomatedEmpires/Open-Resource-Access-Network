@@ -45,7 +45,7 @@ const ORG_FIELDS = [
 
 /** Standard HSDS service fields. */
 const SERVICE_FIELDS = [
-  'name', 'alternate_name', 'description', 'url', 'email',
+  'name', 'alternate_name', 'description', 'url', 'email', 'phone',
   'status', 'interpretation_services', 'application_process',
   'wait_time', 'fees', 'accreditations', 'licenses',
 ] as const;
@@ -124,9 +124,11 @@ function envInt(name: string, fallback: number): number {
 /** Default confidence scores per trust tier. Export for overrides. */
 export const TRUST_TIER_CONFIDENCE: Record<string, number> = {
   verified_publisher: envInt('ORAN_TRUST_VERIFIED_PUBLISHER', 90),
+  trusted_partner: envInt('ORAN_TRUST_TRUSTED_PARTNER', 80),
   curated: envInt('ORAN_TRUST_CURATED', 75),
   community: envInt('ORAN_TRUST_COMMUNITY', 50),
   quarantine: envInt('ORAN_TRUST_QUARANTINE', 30),
+  blocked: 0,
 };
 
 function confidenceForTrustTier(

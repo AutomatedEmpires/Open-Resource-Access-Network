@@ -49,10 +49,14 @@ function makeRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'feed-1',
     sourceSystemId: 'sys-1',
+    feedName: 'WA 211 HSDS Feed',
     feedType: 'hsds_api',
-    feedUrl: 'https://api.wa211.org/v1',
+    feedHandler: 'hsds_api',
+    baseUrl: 'https://api.wa211.org/v1',
+    healthcheckUrl: null,
     authType: 'api_key',
-    authConfig: null,
+    profileUri: null,
+    jurisdictionScope: {},
     refreshIntervalHours: 24,
     isActive: true,
     lastPolledAt: null,
@@ -102,8 +106,10 @@ describe('sourceFeedStore', () => {
 
     const result = await store.create({
       sourceSystemId: 'sys-1',
+      feedName: 'WA 211 HSDS Feed',
       feedType: 'hsds_api',
-      feedUrl: 'https://api.wa211.org/v1',
+      feedHandler: 'hsds_api',
+      baseUrl: 'https://api.wa211.org/v1',
     } as never);
 
     expect(result).toEqual(row);

@@ -31,6 +31,7 @@ function buildFeed(overrides: Record<string, unknown> = {}) {
     sourceSystemId: 'sys-1',
     feedName: 'Test HSDS Feed',
     feedType: 'hsds_api',
+    feedHandler: 'hsds_api',
     baseUrl: 'https://api.example.org/hsds',
     healthcheckUrl: null,
     authType: 'none',

@@ -10,14 +10,13 @@
  *   GET /services       → list services
  */
 
-import crypto from 'node:crypto';
-
 import type { IngestionStores } from './stores';
 import type {
   SourceFeedRow,
   SourceSystemRow,
   NewSourceRecordRow,
 } from '@/db/schema';
+import { sha256, stableStringify, isTransient } from './connectorUtils';
 
 // ── Public types ──────────────────────────────────────────────
 
@@ -42,29 +41,6 @@ export interface HsdsFeedConnectorResult {
 }
 
 // ── Helpers ───────────────────────────────────────────────────
-
-function sha256(data: string): string {
-  return crypto.createHash('sha256').update(data).digest('hex');
-}
-
-/**
- * Produce a canonical JSON string with sorted keys so that
- * semantically identical payloads always yield the same hash,
- * regardless of original key ordering.
- */
-function stableStringify(value: unknown): string {
-  return JSON.stringify(value, (_key, val) => {
-    if (val && typeof val === 'object' && !Array.isArray(val)) {
-      return Object.keys(val as Record<string, unknown>)
-        .sort()
-        .reduce<Record<string, unknown>>((sorted, k) => {
-          sorted[k] = (val as Record<string, unknown>)[k];
-          return sorted;
-        }, {});
-    }
-    return val;
-  });
-}
 
 function buildFeedUrl(feed: SourceFeedRow, path: string): string {
   const base = (feed.baseUrl ?? '').replace(/\/+$/, '');
@@ -108,16 +84,6 @@ async function fetchHsdsPage(
 }
 
 // ── Retry helper ──────────────────────────────────────────────
-
-function isTransient(err: unknown): boolean {
-  if (err instanceof Error) {
-    const msg = err.message;
-    // Timeout, network, or 5xx server errors
-    if (msg.includes('timeout') || msg.includes('ECONNRESET') || msg.includes('ENOTFOUND')) return true;
-    if (/returned 5\d\d/.test(msg)) return true;
-  }
-  return false;
-}
 
 async function fetchWithRetry(
   url: string,

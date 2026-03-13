@@ -23,6 +23,8 @@ const RULES_BY_TARGET = {
     { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', level: 'warning', productionOnly: true },
     { name: 'FOUNDRY_KEY', level: 'warning', whenPresent: 'FOUNDRY_ENDPOINT' },
     { name: 'FOUNDRY_ENDPOINT', level: 'warning', whenPresent: 'FOUNDRY_KEY' },
+    { name: 'NDP_211_SUBSCRIPTION_KEY', level: 'warning', whenPresent: 'NDP_211_DATA_OWNERS' },
+    { name: 'NDP_211_DATA_OWNERS', level: 'warning', whenPresent: 'NDP_211_SUBSCRIPTION_KEY' },
   ],
 };
 

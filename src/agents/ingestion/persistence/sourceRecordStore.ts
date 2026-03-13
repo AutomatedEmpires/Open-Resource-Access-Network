@@ -77,6 +77,20 @@ export function createDrizzleSourceRecordStore(
         .limit(limit);
     },
 
+    async listPendingByFeed(sourceFeedId, limit = 100) {
+      return db
+        .select()
+        .from(sourceRecords)
+        .where(
+          and(
+            eq(sourceRecords.sourceFeedId, sourceFeedId),
+            eq(sourceRecords.processingStatus, 'pending')
+          )
+        )
+        .orderBy(asc(sourceRecords.createdAt))
+        .limit(limit);
+    },
+
     async listByFeed(sourceFeedId, limit = 500) {
       return db
         .select()

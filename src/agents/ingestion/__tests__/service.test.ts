@@ -8,6 +8,10 @@ const createPipelineOrchestratorMock = vi.hoisted(() => vi.fn(() => ({
 })));
 const createIngestionJobMock = vi.hoisted(() => vi.fn());
 const materializePipelineArtifactsMock = vi.hoisted(() => vi.fn());
+const poll211NdpFeedMock = vi.hoisted(() => vi.fn());
+const pollHsdsFeedMock = vi.hoisted(() => vi.fn());
+const normalize211SourceRecordMock = vi.hoisted(() => vi.fn());
+const normalizeSourceRecordMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../pipeline/orchestrator', () => ({
   createPipelineOrchestrator: createPipelineOrchestratorMock,
@@ -17,6 +21,18 @@ vi.mock('../jobs', () => ({
 }));
 vi.mock('../materialize', () => ({
   materializePipelineArtifacts: materializePipelineArtifactsMock,
+}));
+vi.mock('../ndp211Connector', () => ({
+  poll211NdpFeed: poll211NdpFeedMock,
+}));
+vi.mock('../hsdsFeedConnector', () => ({
+  pollHsdsFeed: pollHsdsFeedMock,
+}));
+vi.mock('../ndp211Normalizer', () => ({
+  normalize211SourceRecord: normalize211SourceRecordMock,
+}));
+vi.mock('../normalizeSourceRecord', () => ({
+  normalizeSourceRecord: normalizeSourceRecordMock,
 }));
 
 async function loadServiceModule() {
@@ -39,6 +55,18 @@ function createStores() {
     feeds: {
       listDueForPoll: vi.fn(),
       updateAfterPoll: vi.fn(),
+    },
+    sourceSystems: {
+      getById: vi.fn(),
+    },
+    sourceFeeds: {
+      listDueForPoll: vi.fn(),
+      updateAfterPoll: vi.fn(),
+    },
+    sourceRecords: {
+      listPendingByFeed: vi.fn(),
+      listByFeed: vi.fn(),
+      updateStatus: vi.fn(),
     },
     candidates: {
       listDueForReverify: vi.fn(),
@@ -122,6 +150,20 @@ beforeEach(() => {
     assignedToRole: 'community_admin',
     reviewStatus: 'pending',
   });
+  poll211NdpFeedMock.mockResolvedValue({
+    organizationBundlesFetched: 1,
+    recordsCreated: 1,
+    recordsSkippedDuplicate: 0,
+    taxonomyCodesAttached: 0,
+    errors: [],
+  });
+  pollHsdsFeedMock.mockResolvedValue({
+    recordsCreated: 1,
+    recordsSkippedDuplicate: 0,
+    errors: [],
+  });
+  normalize211SourceRecordMock.mockResolvedValue(undefined);
+  normalizeSourceRecordMock.mockResolvedValue(undefined);
 });
 
 describe('ingestion service', () => {
@@ -249,6 +291,7 @@ describe('ingestion service', () => {
   it('polls due feeds and records both successful and failed poll attempts', async () => {
     const stores = createStores();
     stores.feeds.listDueForPoll.mockResolvedValue([{ id: 'feed-1' }, { id: 'feed-2' }]);
+    stores.sourceFeeds.listDueForPoll.mockResolvedValue([]);
     stores.feeds.updateAfterPoll
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('poll failed'))
@@ -269,6 +312,130 @@ describe('ingestion service', () => {
       'feed-2',
       expect.objectContaining({ error: 'Feed poll failed' }),
     );
+  });
+
+  it('polls 211 source feeds, passes configured data owners, and dispatches 211 normalization for pending source records', async () => {
+    const previousDataOwners = process.env.NDP_211_DATA_OWNERS;
+    process.env.NDP_211_DATA_OWNERS = '211ventura,211monterey';
+
+    const stores = createStores();
+    stores.feeds.listDueForPoll.mockResolvedValue([]);
+    stores.sourceFeeds.listDueForPoll.mockResolvedValue([
+      {
+        id: 'source-feed-1',
+        sourceSystemId: 'source-system-1',
+        feedHandler: 'ndp_211',
+        baseUrl: 'https://api.211.org/resources/v2',
+      },
+    ]);
+    stores.sourceSystems.getById.mockResolvedValue({
+      id: 'source-system-1',
+      family: 'partner_api',
+      name: '211 Monterey',
+    });
+    stores.sourceRecords.listPendingByFeed.mockResolvedValue([
+      {
+        id: 'source-record-1',
+        processingStatus: 'pending',
+        sourceRecordType: 'organization_bundle',
+        sourceConfidenceSignals: { source: '211_ndp', trustTier: 'trusted_partner' },
+      },
+    ]);
+
+    const { createIngestionService } = await loadServiceModule();
+    const service = createIngestionService(stores as never);
+    const result = await service.pollFeeds();
+
+    expect(poll211NdpFeedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dataOwners: '211ventura,211monterey',
+        feed: expect.objectContaining({ id: 'source-feed-1' }),
+      }),
+    );
+    expect(normalize211SourceRecordMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceRecord: expect.objectContaining({ id: 'source-record-1' }),
+        runCrosswalk: true,
+        trustTier: 'trusted_partner',
+      }),
+    );
+    expect(result).toEqual({ feedsPolled: 1, newUrls: 1, errors: 0 });
+
+    if (previousDataOwners === undefined) {
+      delete process.env.NDP_211_DATA_OWNERS;
+    } else {
+      process.env.NDP_211_DATA_OWNERS = previousDataOwners;
+    }
+  });
+
+  it('polls HSDS source feeds and dispatches generic normalization for pending source records', async () => {
+    const stores = createStores();
+    stores.feeds.listDueForPoll.mockResolvedValue([]);
+    stores.sourceFeeds.listDueForPoll.mockResolvedValue([
+      {
+        id: 'source-feed-1',
+        sourceSystemId: 'source-system-1',
+        feedHandler: 'hsds_api',
+        baseUrl: 'https://example.com/hsds',
+      },
+    ]);
+    stores.sourceSystems.getById.mockResolvedValue({
+      id: 'source-system-1',
+      family: 'hsds',
+      name: 'County HSDS Feed',
+    });
+    stores.sourceRecords.listPendingByFeed.mockResolvedValue([
+      {
+        id: 'source-record-1',
+        processingStatus: 'pending',
+        sourceRecordType: 'organization',
+        sourceConfidenceSignals: { source: 'hsds', trustTier: 'curated' },
+      },
+    ]);
+
+    const { createIngestionService } = await loadServiceModule();
+    const service = createIngestionService(stores as never);
+    const result = await service.pollFeeds();
+
+    expect(pollHsdsFeedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        feed: expect.objectContaining({ id: 'source-feed-1' }),
+      }),
+    );
+    expect(normalizeSourceRecordMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceRecord: expect.objectContaining({ id: 'source-record-1' }),
+        trustTier: 'curated',
+      }),
+    );
+    expect(result).toEqual({ feedsPolled: 1, newUrls: 1, errors: 0 });
+  });
+
+  it('does not count unsupported source feeds as polled by the service', async () => {
+    const stores = createStores();
+    stores.feeds.listDueForPoll.mockResolvedValue([]);
+    stores.sourceFeeds.listDueForPoll.mockResolvedValue([
+      {
+        id: 'source-feed-1',
+        sourceSystemId: 'source-system-1',
+        feedHandler: 'none',
+        baseUrl: 'https://example.com/feed.csv',
+      },
+    ]);
+    stores.sourceSystems.getById.mockResolvedValue({
+      id: 'source-system-1',
+      family: 'csv',
+      name: 'County CSV Feed',
+    });
+
+    const { createIngestionService } = await loadServiceModule();
+    const service = createIngestionService(stores as never);
+    const result = await service.pollFeeds();
+
+    expect(poll211NdpFeedMock).not.toHaveBeenCalled();
+    expect(pollHsdsFeedMock).not.toHaveBeenCalled();
+    expect(stores.sourceRecords.listPendingByFeed).not.toHaveBeenCalled();
+    expect(result).toEqual({ feedsPolled: 0, newUrls: 0, errors: 0 });
   });
 
   it('reverifies only candidates with source URLs and continues past assignment escalation failures', async () => {

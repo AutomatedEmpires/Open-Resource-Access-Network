@@ -1,8 +1,11 @@
 /**
  * ORAN Ingestion Service
  *
- * Handles automated ingestion of service data from various sources,
- * including LLM-assisted tagging of unstructured content.
+ * Legacy thin service entry point.
+ *
+ * Rich ingestion and federation workflows now primarily live under
+ * `src/agents/ingestion/**` and Azure Functions. This module currently exports
+ * shared service-level helpers used by existing route and workflow code.
  */
 
 export * from './tagging-prompt';

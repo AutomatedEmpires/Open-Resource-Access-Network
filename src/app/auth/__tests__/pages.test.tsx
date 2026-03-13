@@ -10,9 +10,9 @@ vi.mock('react', async (importOriginal) => {
   return {
     ...actual,
     useState: (initial: unknown) => {
-      // For providerIds state, return all three providers so button tests work
+      // For providerIds state, return all four providers so button tests work
       if (initial instanceof Set) {
-        return [new Set(['azure-ad', 'google', 'credentials']), setStateMock];
+        return [new Set(['azure-ad', 'google', 'apple', 'credentials']), setStateMock];
       }
       return [initial, setStateMock];
     },
@@ -25,6 +25,12 @@ vi.mock('next/navigation', () => ({
   }),
 }));
 vi.mock('next-auth/react', () => ({
+  getProviders: vi.fn().mockResolvedValue({
+    'azure-ad': { id: 'azure-ad' },
+    google: { id: 'google' },
+    apple: { id: 'apple' },
+    credentials: { id: 'credentials' },
+  }),
   signIn: signInMock,
 }));
 vi.mock('next/link', () => ({
@@ -191,9 +197,11 @@ describe('auth pages', () => {
     // Should have 3 paths defined
     expect(PATHS).toHaveLength(3);
     expect(PATHS.map((p: any) => p.id)).toEqual(['seeker', 'organization', 'admin']);
+    expect(PATHS[1].accessNotes[1]).toContain('approves the claim');
+    expect(PATHS[2].accessNotes[1]).toContain('not created by self-service registration');
   });
 
-  it('renders Google and Email sign-in buttons alongside Microsoft', async () => {
+  it('renders Google, Apple, and identifier sign-in buttons alongside Microsoft', async () => {
     const { default: SignInPage } = await loadSignInPage();
     const suspense = SignInPage() as React.ReactElement<any, any>;
     const content = (suspense.props.children as React.ReactElement<any, any>).type() as React.ReactElement<any, any>;
@@ -216,11 +224,17 @@ describe('auth pages', () => {
         : [c],
     );
     const buttonsWithClick = flatButtons.filter((c: any) => c?.props?.onClick);
-    // Microsoft, Google, and Email buttons
-    expect(buttonsWithClick.length).toBe(3);
+    // Microsoft, Google, Apple, and identifier buttons
+    expect(buttonsWithClick.length).toBe(4);
 
     // Click Google button
     buttonsWithClick[1].props.onClick();
     expect(signInMock).toHaveBeenCalledWith('google', { callbackUrl: '/chat' });
+
+    // Click Apple button
+    buttonsWithClick[2].props.onClick();
+    expect(signInMock).toHaveBeenCalledWith('apple', { callbackUrl: '/chat' });
+
+    expect(JSON.stringify(oauthGroup)).toContain('Sign in with Email, Username, or Phone');
   });
 });

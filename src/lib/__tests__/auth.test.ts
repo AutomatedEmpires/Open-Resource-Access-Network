@@ -6,6 +6,9 @@ const providerMock = vi.hoisted(() =>
 const credentialsProviderMock = vi.hoisted(() =>
   vi.fn((config: Record<string, unknown>) => config),
 );
+const appleProviderMock = vi.hoisted(() =>
+  vi.fn((config: Record<string, unknown>) => config),
+);
 const googleProviderMock = vi.hoisted(() =>
   vi.fn((config: Record<string, unknown>) => config),
 );
@@ -16,6 +19,9 @@ vi.mock('next-auth/providers/azure-ad', () => ({
 }));
 vi.mock('next-auth/providers/credentials', () => ({
   default: credentialsProviderMock,
+}));
+vi.mock('next-auth/providers/apple', () => ({
+  default: appleProviderMock,
 }));
 vi.mock('next-auth/providers/google', () => ({
   default: googleProviderMock,
@@ -31,6 +37,9 @@ const originalEnv = {
   clientId: process.env.AZURE_AD_CLIENT_ID,
   clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
   tenantId: process.env.AZURE_AD_TENANT_ID,
+  appleClientId: process.env.APPLE_CLIENT_ID,
+  appleClientSecret: process.env.APPLE_CLIENT_SECRET,
+  appleAuthEnabled: process.env.ORAN_ENABLE_APPLE_AUTH,
   googleClientId: process.env.GOOGLE_CLIENT_ID,
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
   googleAuthEnabled: process.env.ORAN_ENABLE_GOOGLE_AUTH,
@@ -56,6 +65,9 @@ beforeEach(() => {
   delete mutableEnv.AZURE_AD_CLIENT_ID;
   delete mutableEnv.AZURE_AD_CLIENT_SECRET;
   delete mutableEnv.AZURE_AD_TENANT_ID;
+  delete mutableEnv.APPLE_CLIENT_ID;
+  delete mutableEnv.APPLE_CLIENT_SECRET;
+  delete mutableEnv.ORAN_ENABLE_APPLE_AUTH;
   delete mutableEnv.GOOGLE_CLIENT_ID;
   delete mutableEnv.GOOGLE_CLIENT_SECRET;
   delete mutableEnv.ORAN_ENABLE_GOOGLE_AUTH;
@@ -83,6 +95,24 @@ afterEach(() => {
     delete mutableEnv.AZURE_AD_TENANT_ID;
   } else {
     mutableEnv.AZURE_AD_TENANT_ID = originalEnv.tenantId;
+  }
+
+  if (originalEnv.appleClientId === undefined) {
+    delete mutableEnv.APPLE_CLIENT_ID;
+  } else {
+    mutableEnv.APPLE_CLIENT_ID = originalEnv.appleClientId;
+  }
+
+  if (originalEnv.appleClientSecret === undefined) {
+    delete mutableEnv.APPLE_CLIENT_SECRET;
+  } else {
+    mutableEnv.APPLE_CLIENT_SECRET = originalEnv.appleClientSecret;
+  }
+
+  if (originalEnv.appleAuthEnabled === undefined) {
+    delete mutableEnv.ORAN_ENABLE_APPLE_AUTH;
+  } else {
+    mutableEnv.ORAN_ENABLE_APPLE_AUTH = originalEnv.appleAuthEnabled;
   }
 
   if (originalEnv.googleClientId === undefined) {
@@ -148,7 +178,29 @@ describe('authOptions', () => {
     expect(authOptions.providers).toHaveLength(1);
     expect(credentialsProviderMock).toHaveBeenCalledOnce();
     expect(providerMock).not.toHaveBeenCalled();
+    expect(appleProviderMock).not.toHaveBeenCalled();
     expect(googleProviderMock).not.toHaveBeenCalled();
+  });
+
+  it('requires an explicit flag before enabling Apple auth', async () => {
+    mutableEnv.APPLE_CLIENT_ID = 'apple-client-id';
+    mutableEnv.APPLE_CLIENT_SECRET = 'apple-client-secret';
+
+    const { authOptions } = await loadAuthModule();
+
+    expect(authOptions.providers).toHaveLength(1);
+    expect(appleProviderMock).not.toHaveBeenCalled();
+  });
+
+  it('configures Apple auth only when explicitly enabled', async () => {
+    mutableEnv.APPLE_CLIENT_ID = 'apple-client-id';
+    mutableEnv.APPLE_CLIENT_SECRET = 'apple-client-secret';
+    mutableEnv.ORAN_ENABLE_APPLE_AUTH = '1';
+
+    const { authOptions } = await loadAuthModule();
+
+    expect(authOptions.providers).toHaveLength(2);
+    expect(appleProviderMock).toHaveBeenCalledOnce();
   });
 
   it('requires an explicit flag before enabling Google auth', async () => {
@@ -279,6 +331,21 @@ describe('authOptions', () => {
         role: 'oran_admin',
       },
     });
+  });
+
+  it('signIn callback syncs OAuth users into user_profiles', async () => {
+    const { authOptions } = await loadAuthModule();
+    const signIn = authOptions.callbacks?.signIn;
+
+    await expect(signIn?.({
+      user: { id: 'oauth-user', name: 'OAuth User', email: 'oauth@example.com', role: 'seeker' },
+      account: { provider: 'apple' },
+    } as never)).resolves.toBe(true);
+
+    expect(mockPoolQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO user_profiles'),
+      ['oauth-user', 'OAuth User', 'oauth@example.com', 'apple', 'seeker'],
+    );
   });
 
   it('adds ORAN test credentials provider outside production', async () => {
@@ -435,6 +502,8 @@ describe('credentials authorize', () => {
         user_id: 'u1',
         display_name: 'Alice',
         email: 'alice@example.com',
+        username: 'alice',
+        phone: '+15551234567',
         password_hash: '$2a$10$hash',
         role: 'seeker',
       }],
@@ -444,11 +513,11 @@ describe('credentials authorize', () => {
     const credProvider = authOptions.providers.find(
       (p) => (p as unknown as { id: string }).id === 'credentials',
     ) as unknown as {
-      authorize: (creds: { email: string; password: string }) => Promise<unknown>;
+      authorize: (creds: { identifier: string; password: string }) => Promise<unknown>;
     };
 
     const result = await credProvider.authorize({
-      email: 'Alice@Example.com',
+      identifier: 'Alice@Example.com',
       password: 'password123',
     });
 
@@ -459,8 +528,86 @@ describe('credentials authorize', () => {
       role: 'seeker',
     });
     expect(mockPoolQuery).toHaveBeenCalledWith(
-      expect.stringContaining('WHERE email = $1'),
-      ['alice@example.com'],
+      expect.stringContaining("LOWER(COALESCE(email, '')) = $1"),
+      ['alice@example.com', 'alice@example.com', '__oran_no_phone__'],
+    );
+  });
+
+  it('accepts username as the credentials identifier', async () => {
+    const bcrypt = await import('bcryptjs');
+    vi.mocked(bcrypt.default.compare).mockResolvedValue(true as never);
+    mockPoolQuery.mockResolvedValue({
+      rows: [{
+        user_id: 'u2',
+        display_name: null,
+        email: 'alice@example.com',
+        username: 'alice',
+        phone: null,
+        password_hash: '$2a$10$hash',
+        role: 'host_member',
+      }],
+    });
+
+    const { authOptions } = await loadAuthModule();
+    const credProvider = authOptions.providers.find(
+      (p) => (p as unknown as { id: string }).id === 'credentials',
+    ) as unknown as {
+      authorize: (creds: { identifier: string; password: string }) => Promise<unknown>;
+    };
+
+    const result = await credProvider.authorize({
+      identifier: 'Alice',
+      password: 'password123',
+    });
+
+    expect(result).toEqual({
+      id: 'u2',
+      name: 'alice',
+      email: 'alice@example.com',
+      role: 'host_member',
+    });
+    expect(mockPoolQuery).toHaveBeenCalledWith(
+      expect.stringContaining('regexp_replace'),
+      ['alice', 'alice', '__oran_no_phone__'],
+    );
+  });
+
+  it('accepts phone as the credentials identifier', async () => {
+    const bcrypt = await import('bcryptjs');
+    vi.mocked(bcrypt.default.compare).mockResolvedValue(true as never);
+    mockPoolQuery.mockResolvedValue({
+      rows: [{
+        user_id: 'u3',
+        display_name: 'Phone User',
+        email: null,
+        username: null,
+        phone: '+15551234567',
+        password_hash: '$2a$10$hash',
+        role: 'seeker',
+      }],
+    });
+
+    const { authOptions } = await loadAuthModule();
+    const credProvider = authOptions.providers.find(
+      (p) => (p as unknown as { id: string }).id === 'credentials',
+    ) as unknown as {
+      authorize: (creds: { identifier: string; password: string }) => Promise<unknown>;
+    };
+
+    const result = await credProvider.authorize({
+      identifier: '(555) 123-4567',
+      password: 'password123',
+    });
+
+    expect(result).toEqual({
+      id: 'u3',
+      name: 'Phone User',
+      email: undefined,
+      role: 'seeker',
+    });
+    expect(mockPoolQuery).toHaveBeenCalledWith(
+      expect.stringContaining('regexp_replace'),
+      ['(555) 123-4567', '(555) 123-4567', '5551234567'],
     );
   });
 
@@ -470,11 +617,11 @@ describe('credentials authorize', () => {
     const credProvider = authOptions.providers.find(
       (p) => (p as unknown as { id: string }).id === 'credentials',
     ) as unknown as {
-      authorize: (creds: { email: string; password: string }) => Promise<unknown>;
+      authorize: (creds: { identifier: string; password: string }) => Promise<unknown>;
     };
 
     const result = await credProvider.authorize({
-      email: 'nobody@example.com',
+      identifier: 'nobody@example.com',
       password: 'password',
     });
 
@@ -498,11 +645,11 @@ describe('credentials authorize', () => {
     const credProvider = authOptions.providers.find(
       (p) => (p as unknown as { id: string }).id === 'credentials',
     ) as unknown as {
-      authorize: (creds: { email: string; password: string }) => Promise<unknown>;
+      authorize: (creds: { identifier: string; password: string }) => Promise<unknown>;
     };
 
     const result = await credProvider.authorize({
-      email: 'alice@example.com',
+      identifier: 'alice@example.com',
       password: 'wrongpassword',
     });
 
@@ -515,11 +662,11 @@ describe('credentials authorize', () => {
     const credProvider = authOptions.providers.find(
       (p) => (p as unknown as { id: string }).id === 'credentials',
     ) as unknown as {
-      authorize: (creds: { email: string; password: string }) => Promise<unknown>;
+      authorize: (creds: { identifier: string; password: string }) => Promise<unknown>;
     };
 
     const result = await credProvider.authorize({
-      email: 'alice@example.com',
+      identifier: 'alice@example.com',
       password: 'password',
     });
 
@@ -531,11 +678,11 @@ describe('credentials authorize', () => {
     const credProvider = authOptions.providers.find(
       (p) => (p as unknown as { id: string }).id === 'credentials',
     ) as unknown as {
-      authorize: (creds?: { email?: string; password?: string }) => Promise<unknown>;
+      authorize: (creds?: { identifier?: string; password?: string }) => Promise<unknown>;
     };
 
     expect(await credProvider.authorize({})).toBeNull();
-    expect(await credProvider.authorize({ email: 'a@b.com' })).toBeNull();
+    expect(await credProvider.authorize({ identifier: 'a@b.com' })).toBeNull();
     expect(await credProvider.authorize({ password: 'p' })).toBeNull();
   });
 });

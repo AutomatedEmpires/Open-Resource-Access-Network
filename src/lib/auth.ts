@@ -17,6 +17,7 @@
 
 import type { AuthOptions } from 'next-auth';
 import AzureADProvider from 'next-auth/providers/azure-ad';
+import AppleProvider from 'next-auth/providers/apple';
 import GoogleProvider from 'next-auth/providers/google';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
@@ -46,6 +47,29 @@ export function isCredentialsAuthEnabled(): boolean {
 
 export function isGoogleAuthEnabled(): boolean {
   return process.env.ORAN_ENABLE_GOOGLE_AUTH === '1' && Boolean(process.env.GOOGLE_CLIENT_ID);
+}
+
+export function isAppleAuthEnabled(): boolean {
+  return process.env.ORAN_ENABLE_APPLE_AUTH === '1' && Boolean(process.env.APPLE_CLIENT_ID);
+}
+
+function normalizeUsername(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function normalizePhoneNumber(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const hasLeadingPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/\D/g, '');
+  if (!digits) {
+    return null;
+  }
+
+  return hasLeadingPlus ? `+${digits}` : digits;
 }
 
 /**
@@ -89,6 +113,38 @@ async function getDbRole(userId: string): Promise<OranRole | null> {
   } catch {
     // If DB is unreachable, fall back to JWT/provider role
     return null;
+  }
+}
+
+async function ensureUserProfile(user: {
+  id?: string;
+  name?: string | null;
+  email?: string | null;
+  role?: OranRole;
+}, provider?: string): Promise<void> {
+  if (!user.id) {
+    return;
+  }
+
+  try {
+    const pool = getPgPool();
+    await pool.query(
+      `INSERT INTO user_profiles (user_id, display_name, email, auth_provider, role)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id) DO UPDATE
+         SET display_name = COALESCE(EXCLUDED.display_name, user_profiles.display_name),
+             email = COALESCE(EXCLUDED.email, user_profiles.email),
+             auth_provider = EXCLUDED.auth_provider`,
+      [
+        user.id,
+        user.name?.trim() || null,
+        user.email?.trim().toLowerCase() || null,
+        provider ?? 'azure-ad',
+        user.role ?? 'seeker',
+      ],
+    );
+  } catch {
+    // Non-blocking: auth still works even if profile sync fails.
   }
 }
 
@@ -166,35 +222,56 @@ export const authOptions: AuthOptions = {
         ]
       : []),
 
+    // ── Apple OAuth ──────────────────────────────────────
+    ...(isAppleAuthEnabled()
+      ? [
+          AppleProvider({
+            clientId: process.env.APPLE_CLIENT_ID ?? '',
+            clientSecret: process.env.APPLE_CLIENT_SECRET ?? '',
+          }),
+        ]
+      : []),
+
     // ── Email + Password (credentials) ───────────────────
     ...(isCredentialsAuthEnabled()
       ? [
           CredentialsProvider({
             id: 'credentials',
-            name: 'Email & Password',
+            name: 'Email, Username, or Phone',
             credentials: {
-              email: { label: 'Email', type: 'email' },
+              identifier: { label: 'Email, Username, or Phone', type: 'text' },
               password: { label: 'Password', type: 'password' },
             },
             async authorize(credentials) {
-              if (!credentials?.email || !credentials?.password) return null;
+              if (!credentials?.identifier || !credentials?.password) return null;
 
-              const email = credentials.email.trim().toLowerCase();
+              const identifier = credentials.identifier.trim();
               const password = credentials.password;
+              const normalizedEmail = identifier.toLowerCase();
+              const normalizedUsername = normalizeUsername(identifier);
+              const normalizedPhone = normalizePhoneNumber(identifier) ?? '__oran_no_phone__';
 
               try {
                 const pool = getPgPool();
                 const result = await pool.query<{
                   user_id: string;
                   display_name: string | null;
-                  email: string;
+                  email: string | null;
+                  username: string | null;
+                  phone: string | null;
                   password_hash: string;
                   role: OranRole;
                 }>(
-                  `SELECT user_id, display_name, email, password_hash, role
+                  `SELECT user_id, display_name, email, username, phone, password_hash, role
                    FROM user_profiles
-                   WHERE email = $1 AND auth_provider = 'credentials'`,
-                  [email],
+                   WHERE auth_provider = 'credentials'
+                     AND (
+                       LOWER(COALESCE(email, '')) = $1
+                       OR LOWER(COALESCE(username, '')) = $2
+                       OR regexp_replace(COALESCE(phone, ''), '[^0-9+]', '', 'g') = $3
+                     )
+                   LIMIT 1`,
+                  [normalizedEmail, normalizedUsername, normalizedPhone],
                 );
 
                 const user = result.rows[0];
@@ -205,8 +282,8 @@ export const authOptions: AuthOptions = {
 
                 return {
                   id: user.user_id,
-                  name: user.display_name ?? email,
-                  email: user.email,
+                  name: user.display_name ?? user.username ?? user.email ?? user.phone ?? identifier,
+                  email: user.email ?? undefined,
                   role: user.role,
                 } as unknown as { id: string; name: string; email: string; role: OranRole };
               } catch {
@@ -224,6 +301,14 @@ export const authOptions: AuthOptions = {
   },
 
   callbacks: {
+    async signIn({ user, account }) {
+      if (user?.id && account?.provider && account.provider !== 'credentials') {
+        await ensureUserProfile(user, account.provider);
+      }
+
+      return true;
+    },
+
     /**
      * JWT callback — runs on sign-in and on every session access.
      * Persists the ORAN role into the JWT so middleware can read it

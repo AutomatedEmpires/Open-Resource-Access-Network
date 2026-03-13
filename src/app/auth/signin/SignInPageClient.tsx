@@ -32,6 +32,8 @@ interface PathOption {
   callbackUrl: string;
   guestAllowed: boolean;
   detail: string;
+  accessTitle: string;
+  accessNotes: string[];
 }
 
 const PATHS: PathOption[] = [
@@ -43,6 +45,11 @@ const PATHS: PathOption[] = [
     callbackUrl: '/chat',
     guestAllowed: true,
     detail: 'Search verified community resources, save favorites, and get personalized results.',
+    accessTitle: 'Open to everyone',
+    accessNotes: [
+      'Anyone can browse verified services as a seeker.',
+      'Create an account only if you want saved items and synced preferences.',
+    ],
   },
   {
     id: 'organization',
@@ -52,6 +59,11 @@ const PATHS: PathOption[] = [
     callbackUrl: '/claim',
     guestAllowed: false,
     detail: 'Register your organization or manage your service listings on ORAN.',
+    accessTitle: 'For provider staff and organization owners',
+    accessNotes: [
+      'Use this path if you represent a service provider and need to claim or update listings.',
+      'Organization editing access is granted after an ORAN admin reviews and approves the claim.',
+    ],
   },
   {
     id: 'admin',
@@ -61,6 +73,11 @@ const PATHS: PathOption[] = [
     callbackUrl: '/approvals',
     guestAllowed: false,
     detail: 'Community moderation, data verification, and platform management.',
+    accessTitle: 'For designated review and platform teams only',
+    accessNotes: [
+      'Admin access is reserved for community verifiers, ORAN operations staff, and platform governors.',
+      'These roles are provisioned manually and are not created by self-service registration.',
+    ],
   },
 ];
 
@@ -111,6 +128,17 @@ function GoogleLogo() {
   );
 }
 
+function AppleLogo() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M16.37 12.77c.02 2.31 2.03 3.08 2.05 3.09-.02.06-.32 1.09-1.04 2.15-.62.92-1.26 1.84-2.28 1.86-1 .02-1.32-.59-2.47-.59-1.16 0-1.51.57-2.44.61-1 .04-1.76-1-2.38-1.91-1.28-1.85-2.26-5.22-.95-7.49.65-1.13 1.81-1.84 3.06-1.86.95-.02 1.84.64 2.47.64.62 0 1.78-.79 2.99-.68.51.02 1.95.21 2.88 1.58-.08.05-1.72 1-1.69 2.6ZM14.85 6.43c.52-.63.88-1.5.78-2.38-.75.03-1.66.5-2.2 1.12-.48.56-.91 1.45-.79 2.3.83.06 1.68-.42 2.21-1.04Z"
+      />
+    </svg>
+  );
+}
+
 // ============================================================
 // MAIN CONTENT
 // ============================================================
@@ -123,7 +151,9 @@ function SignInContent() {
   const [selected, setSelected] = useState<UserPath>(detectedPath);
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [identifier, setIdentifier] = useState('');
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -168,6 +198,7 @@ function SignInContent() {
   }, []);
 
   const hasAzureAd = providerIds.has('azure-ad');
+  const hasApple = providerIds.has('apple');
   const hasGoogle = providerIds.has('google');
   const hasCredentials = providerIds.has('credentials');
 
@@ -178,14 +209,14 @@ function SignInContent() {
 
     try {
       const result = await signIn('credentials', {
-        email,
+        identifier,
         password,
         callbackUrl: effectiveCallback,
         redirect: false,
       });
 
       if (result?.error) {
-        setFormError('Invalid email or password. Please try again.');
+        setFormError('Invalid email, username, phone number, or password. Please try again.');
       } else if (result?.url) {
         window.location.href = result.url;
       }
@@ -212,7 +243,7 @@ function SignInContent() {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, displayName, phone: phone || undefined }),
+        body: JSON.stringify({ username, email, password, displayName, phone: phone || undefined }),
       });
 
       const data = await res.json();
@@ -274,6 +305,15 @@ function SignInContent() {
             {activePath.detail}
           </p>
 
+          <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left">
+            <p className="text-sm font-semibold text-slate-900">{activePath.accessTitle}</p>
+            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+              {activePath.accessNotes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </div>
+
           {/* Error messages */}
           {errorMessage && (
             <div
@@ -324,7 +364,18 @@ function SignInContent() {
                 </Button>
               )}
 
-              {hasCredentials && (hasAzureAd || hasGoogle) && (
+              {hasApple && (
+                <Button
+                  variant="outline"
+                  className="w-full min-h-[44px] text-sm font-medium gap-2"
+                  onClick={() => signIn('apple', { callbackUrl: effectiveCallback })}
+                >
+                  <AppleLogo />
+                  Sign in with Apple
+                </Button>
+              )}
+
+              {hasCredentials && (hasAzureAd || hasGoogle || hasApple) && (
                 <div className="relative my-4">
                   <div className="absolute inset-0 flex items-center">
                     <div className="w-full border-t border-gray-200" />
@@ -342,7 +393,7 @@ function SignInContent() {
                   onClick={() => setShowEmailForm(true)}
                 >
                   <Mail className="h-5 w-5" aria-hidden="true" />
-                  Sign in with Email
+                  Sign in with Email, Username, or Phone
                 </Button>
               )}
 
@@ -377,8 +428,8 @@ function SignInContent() {
               className="space-y-3"
             >
               <FormSection
-                title={isRegistering ? 'Create your account' : 'Sign in with email'}
-                description={isRegistering ? 'Enter the account details ORAN will use for this sign-in path.' : 'Use your email and password to continue to the selected ORAN experience.'}
+                title={isRegistering ? 'Create your account' : 'Sign in with your account'}
+                description={isRegistering ? 'Enter the account details ORAN will use for this sign-in path.' : 'Use your email address, username, or phone number with your password to continue.'}
               >
                 {isRegistering && (
                   <FormField id="displayName" label="Display Name" required>
@@ -395,18 +446,49 @@ function SignInContent() {
                   </FormField>
                 )}
 
-                <FormField id="email" label="Email" required>
-                  <input
-                    id="email"
-                    type="email"
-                    required
-                    maxLength={255}
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="you@example.com"
-                  />
-                </FormField>
+                {isRegistering ? (
+                  <>
+                    <FormField id="username" label="Username" required>
+                      <input
+                        id="username"
+                        type="text"
+                        required
+                        minLength={3}
+                        maxLength={32}
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="yourname"
+                      />
+                    </FormField>
+
+                    <FormField id="email" label="Email" required>
+                      <input
+                        id="email"
+                        type="email"
+                        required
+                        maxLength={255}
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="you@example.com"
+                      />
+                    </FormField>
+                  </>
+                ) : (
+                  <FormField id="identifier" label="Email, Username, or Phone" required>
+                    <input
+                      id="identifier"
+                      type="text"
+                      required
+                      maxLength={255}
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder="you@example.com, yourname, or +15551234567"
+                    />
+                  </FormField>
+                )}
 
                 <FormField id="password" label="Password" required>
                   <input
@@ -479,6 +561,7 @@ function SignInContent() {
                     setFormError(null);
                     setFormSuccess(null);
                     setConfirmPassword('');
+                    setIdentifier('');
                   }}
                   className="text-blue-600 hover:text-blue-800 transition-colors"
                 >

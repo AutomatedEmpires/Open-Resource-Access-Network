@@ -47,6 +47,7 @@ describe('POST /api/auth/register', () => {
   it('creates account for valid payload', async () => {
     const { POST } = await import('../route');
     const res = await POST(createRequest({
+      username: 'test-user',
       email: 'Test@Example.com',
       password: 'StrongPass123',
       displayName: '  Test User ',
@@ -72,6 +73,7 @@ describe('POST /api/auth/register', () => {
 
     const { POST } = await import('../route');
     const res = await POST(createRequest({
+      username: 'user',
       email: 'user@example.com',
       password: 'StrongPass123',
       displayName: 'User',
@@ -84,6 +86,7 @@ describe('POST /api/auth/register', () => {
     rateLimitMock.mockReturnValueOnce({ exceeded: true, retryAfterSeconds: 60 });
     const { POST } = await import('../route');
     const res = await POST(createRequest({
+      username: 'user',
       email: 'user@example.com',
       password: 'StrongPass123',
       displayName: 'User',
@@ -101,14 +104,48 @@ describe('POST /api/auth/register', () => {
 
   it('returns 409 for duplicate email', async () => {
     const query = vi.fn();
-    query.mockResolvedValueOnce({ rows: [{ 1: 1 }] });
+    query.mockResolvedValueOnce({ rows: [{ email_exists: true, username_exists: false, phone_exists: false }] });
     dbMocks.getPgPool.mockReturnValueOnce({ query });
 
     const { POST } = await import('../route');
     const res = await POST(createRequest({
+      username: 'user',
       email: 'user@example.com',
       password: 'StrongPass123',
       displayName: 'User',
+    }));
+
+    expect(res.status).toBe(409);
+  });
+
+  it('returns 409 for duplicate username', async () => {
+    const query = vi.fn();
+    query.mockResolvedValueOnce({ rows: [{ email_exists: false, username_exists: true, phone_exists: false }] });
+    dbMocks.getPgPool.mockReturnValueOnce({ query });
+
+    const { POST } = await import('../route');
+    const res = await POST(createRequest({
+      username: 'user',
+      email: 'user@example.com',
+      password: 'StrongPass123',
+      displayName: 'User',
+    }));
+
+    expect(res.status).toBe(409);
+  });
+
+  it('returns 409 for duplicate phone', async () => {
+    const query = vi.fn();
+    query.mockResolvedValueOnce({ rows: [{ email_exists: false, username_exists: false, phone_exists: true }] });
+    dbMocks.getPgPool.mockReturnValueOnce({ query });
+
+    const { POST } = await import('../route');
+    const res = await POST(createRequest({
+      username: 'user',
+      email: 'user@example.com',
+      password: 'StrongPass123',
+      displayName: 'User',
+      phone: '(555) 123-4567',
     }));
 
     expect(res.status).toBe(409);
@@ -121,6 +158,7 @@ describe('POST /api/auth/register', () => {
 
     const { POST } = await import('../route');
     const res = await POST(createRequest({
+      username: 'user',
       email: 'user@example.com',
       password: 'StrongPass123',
       displayName: 'User',

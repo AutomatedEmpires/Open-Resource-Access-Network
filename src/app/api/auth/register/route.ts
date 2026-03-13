@@ -21,6 +21,12 @@ import { isCredentialsAuthEnabled } from '@/lib/auth';
 // ============================================================
 
 const RegisterSchema = z.object({
+  username: z
+    .string()
+    .min(3, 'Username must be at least 3 characters')
+    .max(32, 'Username must be 32 characters or fewer')
+    .regex(/^[a-zA-Z0-9._-]+$/, 'Username may only use letters, numbers, dots, dashes, or underscores')
+    .transform((value) => value.trim().toLowerCase()),
   email: z
     .string()
     .email('Invalid email address')
@@ -37,9 +43,23 @@ const RegisterSchema = z.object({
     .transform((n) => n.trim()),
   phone: z
     .string()
-    .max(20)
+    .max(32)
     .optional()
-    .transform((p) => p?.trim() || null),
+    .transform((phone) => {
+      const trimmed = phone?.trim();
+      if (!trimmed) {
+        return null;
+      }
+
+      const hasLeadingPlus = trimmed.startsWith('+');
+      const digits = trimmed.replace(/\D/g, '');
+      if (!digits) {
+        return null;
+      }
+
+      return hasLeadingPlus ? `+${digits}` : digits;
+    })
+    .refine((phone) => phone === null || phone.length >= 7, 'Invalid phone number'),
 });
 
 // ============================================================
@@ -102,18 +122,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: firstError }, { status: 400 });
     }
 
-    const { email, password, displayName, phone } = parsed.data;
+    const { username, email, password, displayName, phone } = parsed.data;
 
     const pool = getPgPool();
 
-    // Check if email already exists
-    const existing = await pool.query(
-      `SELECT 1 FROM user_profiles WHERE email = $1`,
-      [email],
+    const existing = await pool.query<{
+      email_exists: boolean;
+      username_exists: boolean;
+      phone_exists: boolean;
+    }>(
+      `SELECT
+         EXISTS(SELECT 1 FROM user_profiles WHERE LOWER(COALESCE(email, '')) = $1) AS email_exists,
+         EXISTS(SELECT 1 FROM user_profiles WHERE LOWER(COALESCE(username, '')) = $2) AS username_exists,
+         EXISTS(
+           SELECT 1
+           FROM user_profiles
+           WHERE $3 IS NOT NULL
+             AND regexp_replace(COALESCE(phone, ''), '[^0-9+]', '', 'g') = $3
+         ) AS phone_exists`,
+      [email, username, phone],
     );
-    if (existing.rows.length > 0) {
+    const duplicate = existing.rows[0];
+    if (duplicate?.email_exists) {
       return NextResponse.json(
         { error: 'An account with this email already exists' },
+        { status: 409 },
+      );
+    }
+    if (duplicate?.username_exists) {
+      return NextResponse.json(
+        { error: 'That username is already taken' },
+        { status: 409 },
+      );
+    }
+    if (duplicate?.phone_exists) {
+      return NextResponse.json(
+        { error: 'An account with this phone number already exists' },
         { status: 409 },
       );
     }
@@ -126,9 +170,9 @@ export async function POST(request: NextRequest) {
 
     // Create user profile
     await pool.query(
-      `INSERT INTO user_profiles (user_id, display_name, email, password_hash, phone, auth_provider, role)
-       VALUES ($1, $2, $3, $4, $5, 'credentials', 'seeker')`,
-      [userId, displayName, email, passwordHash, phone],
+      `INSERT INTO user_profiles (user_id, display_name, username, email, password_hash, phone, auth_provider, role)
+       VALUES ($1, $2, $3, $4, $5, $6, 'credentials', 'seeker')`,
+      [userId, displayName, username, email, passwordHash, phone],
     );
 
     return NextResponse.json(

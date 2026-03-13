@@ -172,7 +172,7 @@ describe('community api routes', () => {
     expect(body.error).toBe('Invalid parameters');
   });
 
-  it('lists verification queue entries', async () => {
+  it('lists review queue entries', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
     dbMocks.executeQuery
       .mockResolvedValueOnce([])

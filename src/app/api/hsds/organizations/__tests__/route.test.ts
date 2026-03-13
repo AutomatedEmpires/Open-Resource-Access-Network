@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbMocks = vi.hoisted(() => ({
   isDatabaseConfigured: vi.fn(),
-  getPgPool: vi.fn(),
+  executeCount: vi.fn(),
+  executeQuery: vi.fn(),
 }));
 
 const captureExceptionMock = vi.hoisted(() => vi.fn());
@@ -22,13 +23,9 @@ function createRequest(query = ''): NextRequest {
   return new NextRequest(url, { method: 'GET' });
 }
 
-function mockPool(queryResults: Record<string, { rows: unknown[] }>) {
-  const queryFn = vi.fn().mockImplementation((sql: string) => {
-    if (sql.includes('COUNT(*)')) return queryResults['count'];
-    return queryResults['data'];
-  });
-  dbMocks.getPgPool.mockReturnValue({ query: queryFn });
-  return queryFn;
+function mockPublicationRows(queryResults: Record<string, { rows: unknown[] }>) {
+  dbMocks.executeCount.mockResolvedValue(Number((queryResults.count.rows[0] as { total: number }).total));
+  dbMocks.executeQuery.mockResolvedValue(queryResults.data.rows);
 }
 
 const sampleRow = {
@@ -50,7 +47,7 @@ const sampleRow = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
 });
 
@@ -63,7 +60,7 @@ describe('GET /api/hsds/organizations', () => {
   });
 
   it('returns paginated list of organizations', async () => {
-    mockPool({
+    mockPublicationRows({
       count: { rows: [{ total: 1 }] },
       data: { rows: [sampleRow] },
     });
@@ -80,7 +77,7 @@ describe('GET /api/hsds/organizations', () => {
   });
 
   it('respects custom pagination', async () => {
-    const queryFn = mockPool({
+    mockPublicationRows({
       count: { rows: [{ total: 30 }] },
       data: { rows: [] },
     });
@@ -90,14 +87,14 @@ describe('GET /api/hsds/organizations', () => {
     expect(body.page_number).toBe(2);
     expect(body.per_page).toBe(10);
     expect(body.total_pages).toBe(3);
-    expect(queryFn).toHaveBeenCalledWith(
-      expect.stringContaining('LIMIT'),
+    expect(dbMocks.executeQuery).toHaveBeenCalledWith(
+      expect.stringContaining('LIMIT $1 OFFSET $2'),
       [10, 10]
     );
   });
 
   it('clamps per_page to 100', async () => {
-    mockPool({
+    mockPublicationRows({
       count: { rows: [{ total: 0 }] },
       data: { rows: [] },
     });
@@ -109,9 +106,7 @@ describe('GET /api/hsds/organizations', () => {
 
   it('returns 500 on db error', async () => {
     const err = new Error('connection lost');
-    dbMocks.getPgPool.mockReturnValue({
-      query: vi.fn().mockRejectedValue(err),
-    });
+    dbMocks.executeCount.mockRejectedValue(err);
     const { GET } = await import('../route');
     const res = await GET(createRequest());
     expect(res.status).toBe(500);

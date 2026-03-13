@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbMocks = vi.hoisted(() => ({
   isDatabaseConfigured: vi.fn(),
-  getPgPool: vi.fn(),
+  executeCount: vi.fn(),
+  executeQuery: vi.fn(),
 }));
 
 const captureExceptionMock = vi.hoisted(() => vi.fn());
@@ -22,13 +23,9 @@ function createRequest(query = ''): NextRequest {
   return new NextRequest(url, { method: 'GET' });
 }
 
-function mockPool(queryResults: Record<string, { rows: unknown[] }>) {
-  const queryFn = vi.fn().mockImplementation((sql: string) => {
-    if (sql.includes('COUNT(*)')) return queryResults['count'];
-    return queryResults['data'];
-  });
-  dbMocks.getPgPool.mockReturnValue({ query: queryFn });
-  return queryFn;
+function mockPublicationRows(queryResults: Record<string, { rows: unknown[] }>) {
+  dbMocks.executeCount.mockResolvedValue(Number((queryResults.count.rows[0] as { total: number }).total));
+  dbMocks.executeQuery.mockResolvedValue(queryResults.data.rows);
 }
 
 const sampleRow = {
@@ -49,7 +46,7 @@ const sampleRow = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
 });
 
@@ -62,7 +59,7 @@ describe('GET /api/hsds/services', () => {
   });
 
   it('returns paginated list of services', async () => {
-    mockPool({
+    mockPublicationRows({
       count: { rows: [{ total: 1 }] },
       data: { rows: [sampleRow] },
     });
@@ -79,7 +76,7 @@ describe('GET /api/hsds/services', () => {
   });
 
   it('respects page and per_page query params', async () => {
-    const queryFn = mockPool({
+    mockPublicationRows({
       count: { rows: [{ total: 50 }] },
       data: { rows: [] },
     });
@@ -91,14 +88,14 @@ describe('GET /api/hsds/services', () => {
     expect(body.per_page).toBe(5);
     expect(body.total_pages).toBe(10);
     // Verify offset = (3-1)*5 = 10
-    expect(queryFn).toHaveBeenCalledWith(
-      expect.stringContaining('LIMIT'),
+    expect(dbMocks.executeQuery).toHaveBeenCalledWith(
+      expect.stringContaining('LIMIT $1 OFFSET $2'),
       [5, 10]
     );
   });
 
   it('clamps per_page to MAX_PAGE_SIZE=100', async () => {
-    mockPool({
+    mockPublicationRows({
       count: { rows: [{ total: 0 }] },
       data: { rows: [] },
     });
@@ -109,7 +106,7 @@ describe('GET /api/hsds/services', () => {
   });
 
   it('returns empty list when no services', async () => {
-    mockPool({
+    mockPublicationRows({
       count: { rows: [{ total: 0 }] },
       data: { rows: [] },
     });
@@ -122,9 +119,7 @@ describe('GET /api/hsds/services', () => {
 
   it('returns 500 and calls captureException on db error', async () => {
     const err = new Error('db down');
-    dbMocks.getPgPool.mockReturnValue({
-      query: vi.fn().mockRejectedValue(err),
-    });
+    dbMocks.executeCount.mockRejectedValue(err);
     const { GET } = await import('../route');
     const res = await GET(createRequest());
     expect(res.status).toBe(500);

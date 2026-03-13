@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbMocks = vi.hoisted(() => ({
   isDatabaseConfigured: vi.fn(),
-  getPgPool: vi.fn(),
+  executeCount: vi.fn(),
+  executeQuery: vi.fn(),
 }));
 
 const captureExceptionMock = vi.hoisted(() => vi.fn());
@@ -88,21 +89,29 @@ const addressRow = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
 });
 
 function setupPool(rows: Record<string, unknown[]>) {
-  const queryFn = vi.fn().mockImplementation((sql: string) => {
-    if (sql.includes('FROM services')) return { rows: rows['service'] ?? [] };
-    if (sql.includes('FROM organizations')) return { rows: rows['org'] ?? [] };
-    if (sql.includes('FROM service_at_location')) return { rows: rows['locations'] ?? [] };
-    if (sql.includes('FROM phones')) return { rows: rows['phones'] ?? [] };
-    if (sql.includes('FROM addresses')) return { rows: rows['addresses'] ?? [] };
-    return { rows: [] };
+  dbMocks.executeQuery.mockImplementation(async (sql: string) => {
+    if (sql.includes('FROM services s') && sql.includes('JOIN organizations o')) {
+      return rows['service'] ?? [];
+    }
+    if (sql.includes('FROM organizations o')) {
+      return rows['org'] ?? [];
+    }
+    if (sql.includes('FROM service_at_location sal')) {
+      return rows['locations'] ?? [];
+    }
+    if (sql.includes('FROM phones')) {
+      return rows['phones'] ?? [];
+    }
+    if (sql.includes('FROM addresses')) {
+      return rows['addresses'] ?? [];
+    }
+    return [];
   });
-  dbMocks.getPgPool.mockReturnValue({ query: queryFn });
-  return queryFn;
 }
 
 describe('GET /api/hsds/services/[id]', () => {
@@ -164,28 +173,23 @@ describe('GET /api/hsds/services/[id]', () => {
   });
 
   it('skips address query when no locations', async () => {
-    const queryFn = setupPool({
+    setupPool({
       service: [svcRow],
       org: [orgRow],
       locations: [],
       phones: [],
+      addresses: [],
     });
     const { GET } = await import('../route');
     const res = await GET(createRequest(VALID_UUID), makeParams(VALID_UUID));
     const body = await res.json();
     expect(body.addresses).toEqual([]);
-    // Should NOT have called addresses query
-    const addressCalls = queryFn.mock.calls.filter(
-      (c: string[]) => typeof c[0] === 'string' && c[0].includes('FROM addresses')
-    );
-    expect(addressCalls).toHaveLength(0);
+    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(4);
   });
 
   it('returns 500 and calls captureException on error', async () => {
     const err = new Error('db error');
-    dbMocks.getPgPool.mockReturnValue({
-      query: vi.fn().mockRejectedValue(err),
-    });
+    dbMocks.executeQuery.mockRejectedValue(err);
     const { GET } = await import('../route');
     const res = await GET(createRequest(VALID_UUID), makeParams(VALID_UUID));
     expect(res.status).toBe(500);

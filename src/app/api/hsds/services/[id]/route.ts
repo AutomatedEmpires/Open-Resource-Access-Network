@@ -7,10 +7,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { isDatabaseConfigured, getPgPool } from '@/services/db/postgres';
+import { executeCount, executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
+import { getPublishedServiceDetail } from '@/services/search/publication';
 import { captureException } from '@/services/telemetry/sentry';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const publicationDeps = {
+  executeQuery,
+  executeCount,
+};
 
 export async function GET(
   req: NextRequest,
@@ -27,68 +33,13 @@ export async function GET(
   }
 
   try {
-    const pool = getPgPool();
+    const service = await getPublishedServiceDetail(publicationDeps, id);
 
-    // Service
-    const svcResult = await pool.query(
-      `SELECT id, organization_id, name, alternate_name, description,
-              url, email, status, interpretation_services, fees,
-              accreditations, licenses,
-              created_at, updated_at
-       FROM services WHERE id = $1`,
-      [id]
-    );
-
-    if (svcResult.rows.length === 0) {
+    if (!service) {
       return NextResponse.json({ error: 'Service not found' }, { status: 404 });
     }
 
-    const service = svcResult.rows[0];
-
-    // Organization
-    const orgResult = await pool.query(
-      `SELECT id, name, description, url, email, status, phone
-       FROM organizations WHERE id = $1`,
-      [service.organization_id]
-    );
-
-    // Locations via service_at_location
-    const locResult = await pool.query(
-      `SELECT l.id, l.name, l.description, l.latitude, l.longitude,
-              l.transportation, l.status
-       FROM service_at_location sal
-       JOIN locations l ON l.id = sal.location_id
-       WHERE sal.service_id = $1`,
-      [id]
-    );
-
-    // Phones
-    const phoneResult = await pool.query(
-      `SELECT id, number, extension, type, language, description
-       FROM phones WHERE service_id = $1`,
-      [id]
-    );
-
-    // Addresses for the service's locations
-    const locationIds = locResult.rows.map((l: { id: string }) => l.id);
-    let addresses: unknown[] = [];
-    if (locationIds.length > 0) {
-      const addrResult = await pool.query(
-        `SELECT id, location_id, address_1, city, state_province,
-                postal_code, country
-         FROM addresses WHERE location_id = ANY($1)`,
-        [locationIds]
-      );
-      addresses = addrResult.rows;
-    }
-
-    return NextResponse.json({
-      ...service,
-      organization: orgResult.rows[0] ?? null,
-      locations: locResult.rows,
-      phones: phoneResult.rows,
-      addresses,
-    });
+    return NextResponse.json(service);
   } catch (err) {
     captureException(err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

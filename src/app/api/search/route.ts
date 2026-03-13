@@ -3,6 +3,7 @@
  *
  * Service search API. Pure SQL retrieval — no LLM, no ML.
  * Supports radius, bbox, and text queries with filters and pagination.
+ * Public search is always published-only active retrieval.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -20,6 +21,7 @@ import {
 } from '@/domain/constants';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { getSearchPreset, mergePresetFilters } from '@/services/search/presets';
+import { PUBLISHED_RECORD_STATUS } from '@/services/search/publication';
 import { captureException } from '@/services/telemetry/sentry';
 
 // ============================================================
@@ -35,11 +37,8 @@ const SearchParamsSchema = z.object({
   minLng:         z.coerce.number().min(-180).max(180).optional(),
   maxLat:         z.coerce.number().min(-90).max(90).optional(),
   maxLng:         z.coerce.number().min(-180).max(180).optional(),
-  status:         z.enum(['active', 'inactive', 'defunct']).default('active'),
   /** Preferred (0-100) */
   minConfidenceScore: z.coerce.number().min(0).max(100).optional(),
-  /** Legacy (0-1) */
-  minConfidence:  z.coerce.number().min(0).max(1).optional(),
   taxonomyIds:    z.string().optional(),
   /**
    * Attribute filters as JSON: {"delivery":["virtual"],"cost":["free"]}.
@@ -93,6 +92,16 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl;
 
+  if (searchParams.has('minConfidence')) {
+    return NextResponse.json(
+      {
+        error: 'Invalid query parameters',
+        details: [{ message: 'minConfidence has been retired; use minConfidenceScore (0-100)' }],
+      },
+      { status: 400 },
+    );
+  }
+
   const rawParams: Record<string, string> = {};
   searchParams.forEach((value, key) => {
     rawParams[key] = value;
@@ -107,10 +116,6 @@ export async function GET(req: NextRequest) {
   }
 
   const params = parsed.data;
-
-  const minConfidenceScore =
-    params.minConfidenceScore ??
-    (params.minConfidence !== undefined ? params.minConfidence * 100 : undefined);
 
   const taxonomyTermIds = params.taxonomyIds
     ? params.taxonomyIds.split(',').filter(Boolean)
@@ -181,11 +186,12 @@ export async function GET(req: NextRequest) {
   // Build structured query
   const query: SearchQuery = {
     filters: {
-      status: params.status,
-      minConfidenceScore,
+      status: PUBLISHED_RECORD_STATUS,
+      minConfidenceScore: params.minConfidenceScore,
       organizationId: params.organizationId,
       taxonomyTermIds: taxonomyTermIds as undefined | string[],
       attributeFilters,
+      publishedOnly: true,
     },
     pagination: {
       page: params.page,

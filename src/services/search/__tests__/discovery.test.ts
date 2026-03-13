@@ -53,6 +53,7 @@ describe('search discovery helpers', () => {
       },
       filters: {
         status: 'active',
+        publishedOnly: true,
         taxonomyTermIds: ['11111111-1111-1111-1111-111111111111'],
         attributeFilters: { delivery: ['virtual'] },
         minConfidenceScore: 80,
@@ -101,6 +102,7 @@ describe('search discovery helpers', () => {
     expect(params.get('lat')).toBe('47.62');
     expect(params.get('lng')).toBe('-122.33');
     expect(params.get('radius')).toBe('16093');
+    expect(params.get('status')).toBeNull();
   });
 
   it('serializes shareable discovery URL params with canonical category ids', () => {

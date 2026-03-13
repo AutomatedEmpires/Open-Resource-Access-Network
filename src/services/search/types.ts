@@ -34,7 +34,9 @@ export const SearchFiltersSchema = z.object({
   ).optional(),
 });
 
-export type SearchFilters = z.infer<typeof SearchFiltersSchema>;
+export type SearchFilters = z.infer<typeof SearchFiltersSchema> & {
+  publishedOnly?: boolean;
+};
 
 // ============================================================
 // SORT OPTIONS

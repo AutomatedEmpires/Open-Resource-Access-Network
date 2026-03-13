@@ -9,6 +9,19 @@ All API routes must:
 - include `Retry-After` header on all 429 responses
 - call `getAuthContext()` for protected routes (not rely on middleware alone)
 
+## Public Distribution Tiers
+
+ORAN exposes three distinct public resource-distribution surfaces:
+
+- `/api/search` — seeker discovery and ranked search
+- `/api/services` — batch lookup for already-known published service IDs
+- `/api/hsds/**` — standards-oriented distribution and profile discovery
+
+These are separate contracts. Do not collapse them into one generic public data API. See
+`docs/contracts/RESOURCE_DISTRIBUTION_API.md`.
+
+`/api/search` is always a published-only active-record query surface. Public callers must not be given a status override that can target inactive or defunct records.
+
 ## Endpoints
 
 | Route | Method | Auth | Zod | Rate Limit | Notes |
@@ -18,6 +31,11 @@ All API routes must:
 | `/api/search` | GET | No | Yes | Yes (60/min) | Public search |
 | `/api/feedback` | POST | No | Yes | Yes (10/min) | Public feedback submission |
 | `/api/services` | GET | No | Yes | Yes (60/min) | Batch service fetch by IDs |
+| `/api/hsds/profile` | GET | No | N/A | No | HSDS profile/discovery metadata |
+| `/api/hsds/services` | GET | No | Query parsing only | No | HSDS-compatible published services list |
+| `/api/hsds/services/[id]` | GET | No | UUID validation | No | HSDS-compatible published service detail |
+| `/api/hsds/organizations` | GET | No | Query parsing only | No | HSDS-compatible published organizations list |
+| `/api/hsds/organizations/[id]` | GET | No | UUID validation | No | HSDS-compatible published organization detail |
 | `/api/maps/token` | GET | No | N/A | Yes (60/5min) | Azure Maps key broker |
 | `/api/internal/sla-check` | POST | Internal (Bearer `INTERNAL_API_KEY`) | N/A | No | SLA breach scanner (timer-triggered) |
 | `/api/internal/confidence-regression-scan` | POST | Internal (Bearer `INTERNAL_API_KEY`) | N/A | No | Creates deduped confidence regression submissions |
@@ -31,8 +49,8 @@ All API routes must:
 | `/api/admin/rules` | GET/PUT | `oran_admin` | Yes | Yes (30/min write) | Feature flag management |
 | `/api/admin/zones` | GET/POST | `oran_admin` | Yes | Yes (30/min write) | Coverage zone CRUD |
 | `/api/admin/zones/[id]` | PUT/DELETE | `oran_admin` | Yes (UUID) | Yes (30/min) | Zone update/delete; UUID-validated |
-| `/api/community/queue` | GET/POST | `community_admin` | Yes | Yes (60/30 min) | Verification queue |
-| `/api/community/queue/[id]` | GET/PUT | `community_admin` | Yes (UUID) | Yes (60/30 min) | Queue entry detail + decision |
+| `/api/community/queue` | GET/POST | `community_admin` | Yes | Yes (60/30 min) | Community review queue over submissions |
+| `/api/community/queue/[id]` | GET/PUT | `community_admin` | Yes (UUID) | Yes (60/30 min) | Review entry detail + decision |
 | `/api/community/coverage` | GET | `community_admin` | N/A | Yes (60/min) | Coverage stats (no user input) |
 | `/api/host/organizations` | GET/POST | Auth required | Yes | Yes (60/30 min) | Org CRUD; fail-closed in prod |
 | `/api/host/organizations/[id]` | GET/PUT/DELETE | Auth + org scope | Yes (UUID) | Yes | Org detail; UUID-validated |
@@ -66,6 +84,7 @@ All API routes must:
 If you add or change an API route:
 
 - Document the API boundary in the relevant SSOT doc (chat/search/security/privacy)
+- Update `docs/contracts/RESOURCE_DISTRIBUTION_API.md` when changing `/api/search`, `/api/services`, or `/api/hsds/**`
 - Add targeted unit tests for the underlying service module
 - Add rate limiting where the endpoint is exposed publicly
 - Include `Retry-After` header on 429 responses

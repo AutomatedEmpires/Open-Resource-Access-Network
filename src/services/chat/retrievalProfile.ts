@@ -50,6 +50,10 @@ export function buildChatSearchQuery(
 
   return {
     ...query,
+    filters: {
+      ...query.filters,
+      publishedOnly: true,
+    },
     cachePolicy: 'skip',
     cityBias: context.approximateLocation?.city ?? context.userProfile?.locationCity,
     profileSignals: buildChatSearchProfileSignals(context),

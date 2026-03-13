@@ -2,8 +2,9 @@
 
 ## Contract
 
-- Pure SQL/PostGIS retrieval only.
-- No LLM, no vector similarity, no ML ranking.
+- Public seeker retrieval defaults to deterministic SQL/PostGIS over stored records.
+- No LLM in retrieval or ranking.
+- Non-default hybrid/vector utilities may exist in this folder, but they must remain flag-gated or operator-only, must operate on stored records only, and must never bypass trust-first ordering or replace the canonical SQL path.
 - Queries must be parameterized.
 - Authenticated chat may pass deterministic `profileSignals`, but they may only re-order already eligible results.
 - Personalized chat retrieval must bypass the shared Redis cache.
@@ -12,6 +13,8 @@ Primary entry points:
 
 - src/services/search/engine.ts (query builder + engine)
 - src/app/api/search/route.ts (API boundary + Zod validation)
+- src/services/search/vectorSearch.ts (supplemental vector utilities; non-default path)
+- src/services/search/publication.ts (shared published-record read model for public distribution routes)
 
 ## Tests
 

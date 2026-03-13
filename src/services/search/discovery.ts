@@ -195,6 +195,7 @@ export function buildSearchQueryFromDiscovery(input: DiscoverySearchInput): Sear
     geo: input.geo,
     filters: {
       status: 'active',
+      publishedOnly: true,
       taxonomyTermIds: input.taxonomyTermIds && input.taxonomyTermIds.length > 0 ? input.taxonomyTermIds : undefined,
       attributeFilters,
       minConfidenceScore,
@@ -211,7 +212,6 @@ export function buildSearchQueryFromDiscovery(input: DiscoverySearchInput): Sear
 export function buildSearchApiParamsFromDiscovery(input: DiscoverySearchInput): URLSearchParams {
   const query = buildSearchQueryFromDiscovery(input);
   const params = new URLSearchParams({
-    status: query.filters.status,
     page: String(query.pagination.page),
     limit: String(query.pagination.limit),
   });

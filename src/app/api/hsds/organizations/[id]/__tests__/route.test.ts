@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbMocks = vi.hoisted(() => ({
   isDatabaseConfigured: vi.fn(),
-  getPgPool: vi.fn(),
+  executeCount: vi.fn(),
+  executeQuery: vi.fn(),
 }));
 
 const captureExceptionMock = vi.hoisted(() => vi.fn());
@@ -69,18 +70,22 @@ const phoneRow = {
 };
 
 function setupPool(rows: Record<string, unknown[]>) {
-  const queryFn = vi.fn().mockImplementation((sql: string) => {
-    if (sql.includes('FROM organizations WHERE')) return { rows: rows['org'] ?? [] };
-    if (sql.includes('FROM services')) return { rows: rows['services'] ?? [] };
-    if (sql.includes('FROM phones')) return { rows: rows['phones'] ?? [] };
-    return { rows: [] };
+  dbMocks.executeQuery.mockImplementation(async (sql: string) => {
+    if (sql.includes('FROM organizations o')) {
+      return rows['org'] ?? [];
+    }
+    if (sql.includes('FROM services')) {
+      return rows['services'] ?? [];
+    }
+    if (sql.includes('FROM phones')) {
+      return rows['phones'] ?? [];
+    }
+    return [];
   });
-  dbMocks.getPgPool.mockReturnValue({ query: queryFn });
-  return queryFn;
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
 });
 
@@ -139,9 +144,7 @@ describe('GET /api/hsds/organizations/[id]', () => {
 
   it('returns 500 and calls captureException on error', async () => {
     const err = new Error('query failed');
-    dbMocks.getPgPool.mockReturnValue({
-      query: vi.fn().mockRejectedValue(err),
-    });
+    dbMocks.executeQuery.mockRejectedValue(err);
     const { GET } = await import('../route');
     const res = await GET(createRequest(VALID_UUID), makeParams(VALID_UUID));
     expect(res.status).toBe(500);

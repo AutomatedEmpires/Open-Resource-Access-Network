@@ -20,6 +20,7 @@ import type {
 } from './types';
 import type { SearchFilters } from './types';
 import { CONFIDENCE_BANDS } from '@/domain/constants';
+import { buildPublishedServicePredicate } from './publication';
 
 // ============================================================
 // WHERE CLAUSE BUILDERS
@@ -66,6 +67,10 @@ export function buildFiltersWhereClause(
   // Status filter
   conditions.push(`s.status = $${idx++}`);
   params.push(filters.status);
+
+  if (filters.publishedOnly) {
+    conditions.push(buildPublishedServicePredicate('s', 'o'));
+  }
 
   // Taxonomy filter (service must have at least one matching term)
   if (filters.taxonomyTermIds && filters.taxonomyTermIds.length > 0) {
@@ -345,8 +350,9 @@ export interface SearchEngineDeps {
 /**
  * ServiceSearchEngine
  *
- * Executes structured SQL queries against the ORAN database.
- * No LLM, no ML, no vector similarity — pure relational retrieval.
+ * Executes the canonical structured SQL retrieval path against the ORAN database.
+ * The default search flow is deterministic SQL/PostGIS. Supplemental hybrid/vector
+ * helpers are exposed separately and must not replace the canonical path.
  */
 export class ServiceSearchEngine {
   constructor(private readonly deps: SearchEngineDeps) {}
@@ -453,7 +459,7 @@ export class ServiceSearchEngine {
       LEFT JOIN addresses a ON a.location_id = l.id
       LEFT JOIN confidence_scores cs ON cs.service_id = s.id
       WHERE s.id = ANY($1::uuid[])
-      AND s.status = 'active'
+      AND ${buildPublishedServicePredicate('s', 'o')}
       ORDER BY cs.verification_confidence DESC NULLS LAST
     `;
 

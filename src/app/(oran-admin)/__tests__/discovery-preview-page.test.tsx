@@ -91,7 +91,7 @@ describe('oran admin discovery preview page', () => {
 
     await screen.findByText('Food Pantry');
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/search?status=active&page=1&limit=8&q=food&minConfidenceScore=80');
+    expect(fetchMock).toHaveBeenCalledWith('/api/search?page=1&limit=8&q=food&minConfidenceScore=80');
     expect(replaceMock).toHaveBeenCalledWith(
       '/discovery-preview?q=food&confidence=HIGH&category=food_assistance',
       { scroll: false },
@@ -111,10 +111,10 @@ describe('oran admin discovery preview page', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Virtual' }));
     await waitFor(() => {
-      expect(screen.getByText(/\/api\/search\?status=active&page=1&limit=8&q=housing/)).toBeInTheDocument();
+      expect(screen.getByText(/\/api\/search\?page=1&limit=8&q=housing/)).toBeInTheDocument();
     });
 
-    expect(screen.getByText('/api/search?status=active&page=1&limit=8&q=housing&taxonomyIds=11111111-1111-4111-8111-111111111111&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D&minConfidenceScore=60&sortBy=name_asc')).toBeInTheDocument();
+    expect(screen.getByText('/api/search?page=1&limit=8&q=housing&taxonomyIds=11111111-1111-4111-8111-111111111111&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D&minConfidenceScore=60&sortBy=name_asc')).toBeInTheDocument();
     expect(screen.getByText(/"minConfidenceScore": 60/)).toBeInTheDocument();
   });
 

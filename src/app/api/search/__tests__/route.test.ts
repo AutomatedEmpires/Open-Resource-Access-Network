@@ -122,7 +122,7 @@ describe('api/search route', () => {
     const response = await GET(
       createRequest({
         search:
-          '?q=food&lat=39.7&lng=-104.9&radius=1000&page=2&minConfidence=0.8',
+          '?q=food&lat=39.7&lng=-104.9&radius=1000&page=2&minConfidenceScore=80',
       }),
     );
 
@@ -134,6 +134,7 @@ describe('api/search route', () => {
         minConfidenceScore: 80,
         organizationId: undefined,
         taxonomyTermIds: undefined,
+        publishedOnly: true,
       },
       pagination: {
         page: 2,
@@ -153,6 +154,16 @@ describe('api/search route', () => {
       page: 2,
       hasMore: false,
     });
+  });
+
+  it('returns 400 for the retired legacy minConfidence param', async () => {
+    const { GET } = await loadRoute();
+
+    const response = await GET(createRequest({ search: '?q=food&minConfidence=0.8' }));
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe('Invalid query parameters');
   });
 
   it('returns 500 when the search engine throws', async () => {
@@ -313,6 +324,22 @@ describe('api/search route', () => {
           attributeFilters: expect.objectContaining({
             cost: ['medicaid'],
           }),
+        }),
+      }),
+    );
+  });
+
+  it('ignores the legacy status query param and keeps public search published-only', async () => {
+    const { GET } = await loadRoute();
+
+    const response = await GET(createRequest({ search: '?q=food&status=inactive' }));
+
+    expect(response.status).toBe(200);
+    expect(searchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          status: 'active',
+          publishedOnly: true,
         }),
       }),
     );

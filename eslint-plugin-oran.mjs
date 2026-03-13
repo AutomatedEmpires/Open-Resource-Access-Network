@@ -41,7 +41,7 @@ const APPROVED_ARBITRARY = new Set([
   'text-[9px]', 'text-[10px]', 'text-[11px]', 'text-[15px]', 'text-[2rem]', 'text-[15px]', 'text-[2rem]',
 
   // ── Positioning ───────────────────────────────────────────────────────────
-  'bottom-[4.5rem]', 'top-[20%]',
+  'bottom-[4.5rem]', 'top-[20%]', 'z-[9999]',
 
   // ── Animation delays (inline chat loading dots) ───────────────────────────
   '[animation-delay:-0.3s]', '[animation-delay:-0.15s]',

@@ -63,3 +63,72 @@ describe('crisis detection completeness', () => {
     expect(keywords).toContain('overdose');
   });
 });
+
+describe('crisis scope classification (via detectCrisis)', () => {
+  /**
+   * Third-party crisis — messages about another person in crisis.
+   * These must NOT trigger `detectCrisis` (which gates emergency routing).
+   * The pipeline uses a different path for these (clarification / helpline info).
+   */
+  describe('third-party crisis messages are NOT flagged as self-crisis', () => {
+    const thirdPartyMessages = [
+      'My friend is suicidal',
+      'My brother wants to kill himself',
+      'My sister is threatening self harm',
+      'My partner might overdose',
+      'My child mentioned suicide today',
+      'My mom is suicidal and I do not know what to do',
+      'How do I help someone who is suicidal?',
+      'What should I do if my friend is suicidal?',
+      'Help them with suicide prevention',
+    ];
+
+    for (const msg of thirdPartyMessages) {
+      it(`"${msg}" → detectCrisis returns false`, () => {
+        expect(detectCrisis(msg)).toBe(false);
+      });
+    }
+  });
+
+  /**
+   * Informational queries — asking *about* crisis topics without being in crisis.
+   * These must NOT trigger emergency routing.
+   */
+  describe('informational crisis queries are NOT flagged as self-crisis', () => {
+    const informationalMessages = [
+      'What is suicide prevention?',
+      'Tell me about 988 hotline',
+      'Information about self harm resources',
+      'What does the suicide hotline do?',
+      'Signs of suicide in teenagers',
+      'Suicide warning signs',
+      'What is the 988 crisis hotline number?',
+    ];
+
+    for (const msg of informationalMessages) {
+      it(`"${msg}" → detectCrisis returns false`, () => {
+        expect(detectCrisis(msg)).toBe(false);
+      });
+    }
+  });
+
+  /**
+   * Self-crisis — these MUST trigger emergency routing.
+   * Ensures the scope classifier does not accidentally block valid self-crisis.
+   */
+  describe('self-crisis messages ARE correctly flagged', () => {
+    const selfCrisisMessages = [
+      'I want to kill myself',
+      'I am suicidal',
+      'I took an overdose',
+      'I am thinking about suicide',
+      'I want to end my life',
+    ];
+
+    for (const msg of selfCrisisMessages) {
+      it(`"${msg}" → detectCrisis returns true`, () => {
+        expect(detectCrisis(msg)).toBe(true);
+      });
+    }
+  });
+});

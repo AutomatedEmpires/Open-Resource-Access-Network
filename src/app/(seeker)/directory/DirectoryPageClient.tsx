@@ -1240,6 +1240,7 @@ export default function DirectoryPage() {
                           onClick={() => void runSearch(Math.max(1, page - 1))}
                           disabled={page <= 1 || isLoading || isFetchingMore}
                           className="gap-1"
+                          aria-label="Previous page of results"
                         >
                           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                           Prev
@@ -1251,6 +1252,7 @@ export default function DirectoryPage() {
                           onClick={() => void runSearch(page + 1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, true)}
                           disabled={!data.hasMore || isLoading || isFetchingMore}
                           className="gap-1"
+                          aria-label="Next page of results"
                         >
                           Next
                           <ArrowRight className="h-4 w-4" aria-hidden="true" />

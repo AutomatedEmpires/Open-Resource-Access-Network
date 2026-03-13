@@ -333,4 +333,209 @@ describe('authOptions', () => {
     const result = await session?.({ session: {}, token: {} } as never);
     expect(result).toEqual({});
   });
+
+  it('session callback defaults role to seeker when token has no role', async () => {
+    const { authOptions } = await loadAuthModule();
+    const session = authOptions.callbacks?.session;
+
+    const result = await session?.({
+      session: { user: { name: 'Test User' } },
+      token: { sub: 'user-no-role' },
+    } as never);
+
+    expect(result).toEqual({
+      user: {
+        name: 'Test User',
+        id: 'user-no-role',
+        role: 'seeker',
+      },
+    });
+  });
+
+  it('jwt callback falls back to user.role when getDbRole fails', async () => {
+    mockPoolQuery.mockRejectedValue(new Error('DB connection lost'));
+    const { authOptions } = await loadAuthModule();
+    const jwt = authOptions.callbacks?.jwt;
+
+    const token = await jwt?.({
+      token: {},
+      user: { id: 'user-dbfail', role: 'host_member' },
+      account: null,
+    } as never);
+
+    expect(token).toMatchObject({
+      sub: 'user-dbfail',
+      role: 'host_member',
+    });
+  });
+
+  it('jwt callback defaults to seeker when getDbRole fails and user has no role', async () => {
+    mockPoolQuery.mockRejectedValue(new Error('DB unavailable'));
+    const { authOptions } = await loadAuthModule();
+    const jwt = authOptions.callbacks?.jwt;
+
+    const token = await jwt?.({
+      token: {},
+      user: { id: 'user-norole' },
+      account: null,
+    } as never);
+
+    expect(token).toMatchObject({
+      sub: 'user-norole',
+      role: 'seeker',
+    });
+  });
+
+  it('jwt callback bootstraps Entra role from id_token when token has no role', async () => {
+    const { authOptions } = await loadAuthModule();
+    const jwt = authOptions.callbacks?.jwt;
+
+    // Simulate a subsequent call (no user) where token lacks a role
+    // and account has Entra id_token with roles
+    const token = await jwt?.({
+      token: { sub: 'entra-user' },
+      account: {
+        id_token: encodeJwtPayload({ roles: ['HostAdmin'] }),
+      },
+    } as never);
+
+    expect(token).toMatchObject({
+      sub: 'entra-user',
+      role: 'host_admin',
+    });
+  });
+
+  it('Entra profile callback prefers sub over oid', async () => {
+    mutableEnv.AZURE_AD_CLIENT_ID = 'client-id';
+    mutableEnv.AZURE_AD_CLIENT_SECRET = 'client-secret';
+    const { authOptions } = await loadAuthModule();
+
+    const azureAdProvider = authOptions.providers[0] as unknown as {
+      profile: (profile: Record<string, unknown>) => Record<string, unknown>;
+    };
+
+    const result = azureAdProvider.profile({
+      sub: 'sub-value',
+      oid: 'oid-value',
+      name: 'User',
+      email: 'user@example.com',
+      roles: [],
+    });
+
+    expect(result.id).toBe('sub-value');
+  });
+});
+
+describe('credentials authorize', () => {
+  it('returns user on valid credentials', async () => {
+    const bcrypt = await import('bcryptjs');
+    vi.mocked(bcrypt.default.compare).mockResolvedValue(true as never);
+    mockPoolQuery.mockResolvedValue({
+      rows: [{
+        user_id: 'u1',
+        display_name: 'Alice',
+        email: 'alice@example.com',
+        password_hash: '$2a$10$hash',
+        role: 'seeker',
+      }],
+    });
+
+    const { authOptions } = await loadAuthModule();
+    const credProvider = authOptions.providers.find(
+      (p) => (p as unknown as { id: string }).id === 'credentials',
+    ) as unknown as {
+      authorize: (creds: { email: string; password: string }) => Promise<unknown>;
+    };
+
+    const result = await credProvider.authorize({
+      email: 'Alice@Example.com',
+      password: 'password123',
+    });
+
+    expect(result).toEqual({
+      id: 'u1',
+      name: 'Alice',
+      email: 'alice@example.com',
+      role: 'seeker',
+    });
+    expect(mockPoolQuery).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE email = $1'),
+      ['alice@example.com'],
+    );
+  });
+
+  it('returns null when user is not found', async () => {
+    mockPoolQuery.mockResolvedValue({ rows: [] });
+    const { authOptions } = await loadAuthModule();
+    const credProvider = authOptions.providers.find(
+      (p) => (p as unknown as { id: string }).id === 'credentials',
+    ) as unknown as {
+      authorize: (creds: { email: string; password: string }) => Promise<unknown>;
+    };
+
+    const result = await credProvider.authorize({
+      email: 'nobody@example.com',
+      password: 'password',
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null on password mismatch', async () => {
+    const bcrypt = await import('bcryptjs');
+    vi.mocked(bcrypt.default.compare).mockResolvedValue(false as never);
+    mockPoolQuery.mockResolvedValue({
+      rows: [{
+        user_id: 'u1',
+        display_name: 'Alice',
+        email: 'alice@example.com',
+        password_hash: '$2a$10$hash',
+        role: 'seeker',
+      }],
+    });
+
+    const { authOptions } = await loadAuthModule();
+    const credProvider = authOptions.providers.find(
+      (p) => (p as unknown as { id: string }).id === 'credentials',
+    ) as unknown as {
+      authorize: (creds: { email: string; password: string }) => Promise<unknown>;
+    };
+
+    const result = await credProvider.authorize({
+      email: 'alice@example.com',
+      password: 'wrongpassword',
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when DB query throws', async () => {
+    mockPoolQuery.mockRejectedValue(new Error('DB connection error'));
+    const { authOptions } = await loadAuthModule();
+    const credProvider = authOptions.providers.find(
+      (p) => (p as unknown as { id: string }).id === 'credentials',
+    ) as unknown as {
+      authorize: (creds: { email: string; password: string }) => Promise<unknown>;
+    };
+
+    const result = await credProvider.authorize({
+      email: 'alice@example.com',
+      password: 'password',
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when credentials are missing', async () => {
+    const { authOptions } = await loadAuthModule();
+    const credProvider = authOptions.providers.find(
+      (p) => (p as unknown as { id: string }).id === 'credentials',
+    ) as unknown as {
+      authorize: (creds?: { email?: string; password?: string }) => Promise<unknown>;
+    };
+
+    expect(await credProvider.authorize({})).toBeNull();
+    expect(await credProvider.authorize({ email: 'a@b.com' })).toBeNull();
+    expect(await credProvider.authorize({ password: 'p' })).toBeNull();
+  });
 });

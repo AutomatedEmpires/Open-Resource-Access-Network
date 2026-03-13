@@ -285,6 +285,15 @@ function AuditPageInner() {
                       <tr
                         className={`hover:bg-gray-50 ${hasDetails ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-info-subtle/30' : ''}`}
                         onClick={() => hasDetails && setExpandedId(isExpanded ? null : row.id)}
+                        onKeyDown={(e) => {
+                          if (hasDetails && (e.key === 'Enter' || e.key === ' ')) {
+                            e.preventDefault();
+                            setExpandedId(isExpanded ? null : row.id);
+                          }
+                        }}
+                        tabIndex={hasDetails ? 0 : undefined}
+                        role={hasDetails ? 'button' : undefined}
+                        aria-expanded={hasDetails ? isExpanded : undefined}
                       >
                         <td className="px-4 py-3">
                           {hasDetails && (

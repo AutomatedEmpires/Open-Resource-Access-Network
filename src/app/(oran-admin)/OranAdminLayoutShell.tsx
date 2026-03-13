@@ -56,6 +56,13 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
 
   return (
     <div className="min-h-screen bg-[var(--bg-page)]">
+      {/* Skip-to-main-content: first focusable element for keyboard / screen-reader users */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[9999] focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-sky-700 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+      >
+        Skip to main content
+      </a>
       <header className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
         <div className="container mx-auto max-w-7xl flex items-center justify-between px-4 h-14">
           <Link href="/approvals" className="font-bold text-gray-900 tracking-tight">

@@ -146,15 +146,15 @@ export default function HostDashboardPageClient() {
       {error && <FormAlert variant="error" message={error} onDismiss={() => setError(null)} className="mb-6" />}
 
       {isLoading && !data ? (
-        <div className="space-y-6">
+        <div className="space-y-6" role="status" aria-busy="true" aria-label="Loading dashboard data">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             {Array.from({ length: 5 }).map((_, index) => (
-              <Skeleton key={index} className="h-32 w-full rounded-xl" />
+              <Skeleton key={index} className="h-32 w-full rounded-xl" aria-hidden="true" />
             ))}
           </div>
           <div className="grid gap-6 lg:grid-cols-5">
-            <Skeleton className="h-72 w-full rounded-xl lg:col-span-3" />
-            <Skeleton className="h-72 w-full rounded-xl lg:col-span-2" />
+            <Skeleton className="h-72 w-full rounded-xl lg:col-span-3" aria-hidden="true" />
+            <Skeleton className="h-72 w-full rounded-xl lg:col-span-2" aria-hidden="true" />
           </div>
         </div>
       ) : data && (

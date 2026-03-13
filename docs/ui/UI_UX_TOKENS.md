@@ -163,7 +163,7 @@ The following categories are **unconditionally approved** without appearing in t
 | `text-[9px]`, `text-[10px]`, `text-[11px]` | Sub-`xs` font sizes for badge labels |
 | `text-[15px]` | Compact body text in service cards |
 | `text-[2rem]` | Large display heading in PageHeader |
-| `bottom-[4.5rem]`, `top-[20%]` | Fixed / absolute positioning |
+| `bottom-[4.5rem]`, `top-[20%]`, `z-[9999]` | Fixed / absolute positioning; skip-to-content a11y link z-index |
 | `[animation-delay:-0.3s]`, `[animation-delay:-0.15s]` | Staggered loading-dot animation delays |
 | `animate-[page-enter_var(--transition-standard)_both]` | Page-enter transition animation |
 | `tracking-[0.24em]` | Extended letter-spacing for uppercase display labels |

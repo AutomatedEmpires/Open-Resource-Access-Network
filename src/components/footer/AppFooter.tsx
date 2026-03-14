@@ -25,6 +25,7 @@ import {
   type FooterColumn,
 } from './footerConfig';
 import { useCrisisModal } from '@/components/crisis/CrisisContext';
+import { useLocale } from '@/contexts/LocaleContext';
 
 // ============================================================
 // CONSTANTS
@@ -44,6 +45,7 @@ interface AppFooterProps {
 export function AppFooter({ className }: AppFooterProps) {
   const { data: session } = useSession();
   const { openCrisis } = useCrisisModal();
+  const { t } = useLocale();
 
   const role = session?.user?.role as OranRole | undefined;
   const variant = getFooterVariant(role);
@@ -68,7 +70,7 @@ export function AppFooter({ className }: AppFooterProps) {
               </Link>
 
               <p className="mt-2 text-sm leading-relaxed text-gray-500 max-w-[200px]">
-                Connecting people to verified services — real help, real fast.
+                {t('footer.tagline')}
               </p>
 
               {/* Crisis help button — opens shared CrisisModal via context */}
@@ -77,10 +79,10 @@ export function AppFooter({ className }: AppFooterProps) {
                 onClick={openCrisis}
                 className="mt-5 inline-flex min-h-[44px] items-center gap-2 rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
                 aria-haspopup="dialog"
-                aria-label="Open crisis resources and hotlines"
+                aria-label={t('footer.crisis_resources_aria')}
               >
                 <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-                Crisis Resources
+                {t('footer.crisis_resources')}
               </button>
             </div>
 
@@ -128,12 +130,12 @@ export function AppFooter({ className }: AppFooterProps) {
             <p className="order-2 text-xs text-gray-400 sm:order-1">
               © {YEAR}{' '}
               <span className="font-medium text-gray-500">ORAN</span>
-              {' '}— Open Resource Access Network
+              {' '}— {t('footer.copyright_suffix')}
             </p>
 
             <nav
               className="order-1 flex flex-wrap gap-x-4 gap-y-2 sm:order-2"
-              aria-label="Legal links"
+              aria-label={t('footer.legal_aria')}
             >
               {LEGAL_LINKS.map(({ label, href }) => (
                 <Link

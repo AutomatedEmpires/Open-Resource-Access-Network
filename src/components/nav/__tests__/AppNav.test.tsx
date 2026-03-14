@@ -30,6 +30,27 @@ vi.mock('lucide-react', () => ({
 vi.mock('../NotificationBell', () => ({
   NotificationBell: () => null,
 }));
+vi.mock('../LanguageSwitcher', () => ({
+  LanguageSwitcher: () => null,
+}));
+vi.mock('@/contexts/LocaleContext', () => ({
+  useLocale: () => ({
+    t: (key: string) => ({
+      'nav.chat': 'Chat',
+      'nav.directory': 'Directory',
+      'nav.map': 'Map',
+      'nav.saved': 'Saved',
+      'nav.report': 'Report',
+      'nav.profile': 'Profile',
+      'nav.about': 'About',
+      'nav.get_involved': 'Get Involved',
+      'nav.explore': 'Explore',
+      'nav.open_menu': 'Open navigation',
+      'nav.close_menu': 'Close navigation',
+      'nav.main_label': 'Main navigation',
+    }[key] ?? key),
+  }),
+}));
 
 async function loadAppNav() {
   return import('../AppNav');

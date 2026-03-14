@@ -24,7 +24,7 @@ describe('i18n t()', () => {
   });
 
   it('falls back to English when locale is non-default and key exists in English', () => {
-    expect(t('nav.map', undefined, 'es')).toBe('Map');
+    expect(t('nav.map', undefined, 'es')).toBe('Mapa');
   });
 
   it('falls back to key when missing (non-development)', () => {

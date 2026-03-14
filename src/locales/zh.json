@@ -1,50 +1,68 @@
 {
-  "_locale": "placeholder — strings not yet translated; en.json serves as fallback",
   "chat": {
     "crisis": {
-      "title": "It sounds like you may be in crisis. Please reach out for help immediately.",
-      "emergency": "Emergency: Call 911",
-      "crisis_line": "Crisis Line: Call or text 988",
-      "community_line": "Community Resources: Call 211"
+      "title": "听起来您可能正处于危机中。请立即寻求帮助。",
+      "emergency": "紧急情况：拨打 911",
+      "crisis_line": "危机热线：拨打或发短信 988",
+      "community_line": "社区资源：拨打 211"
     },
     "disclaimer": {
-      "eligibility": "Results shown are from verified records. Eligibility is determined by each service provider — ORAN does not guarantee qualification. Always confirm with the provider."
+      "eligibility": "显示的结果来自经过核实的记录。各服务提供方决定资格条件，ORAN 不保证符合资格。请始终向提供方确认。"
     },
     "input": {
-      "placeholder": "Describe what you need help with...",
-      "send": "Send"
+      "placeholder": "说明您需要什么帮助...",
+      "send": "发送"
     },
     "quota": {
-      "exceeded": "You've reached the message limit for this session. Please start a new conversation."
+      "exceeded": "您已达到本次会话的消息限制。请开始新对话。"
     }
   },
   "service": {
     "confidence": {
-      "high": "High confidence",
-      "medium": "Medium confidence — information may have changed",
-      "low": "Low confidence — please verify before visiting",
-      "unverified": "Unverified record"
+      "high": "高置信度",
+      "medium": "中等置信度 — 信息可能已更改",
+      "low": "低置信度 — 请在访问前核实",
+      "unverified": "未经核实的记录"
     },
-    "eligibility_hint": "You may qualify for this service. Confirm eligibility with the provider."
+    "eligibility_hint": "您可能符合此服务的条件。请向提供方确认资格。"
   },
   "common": {
-    "loading": "Loading...",
+    "loading": "加载中...",
     "error": {
-      "generic": "Something went wrong. Please try again.",
-      "not_found": "Not found."
+      "generic": "出了些问题。请重试。",
+      "not_found": "未找到。"
     },
     "button": {
-      "save": "Save",
-      "cancel": "Cancel",
-      "submit": "Submit",
-      "close": "Close"
-    }
+      "save": "保存",
+      "cancel": "取消",
+      "submit": "提交",
+      "close": "关闭"
+    },
+    "language": "语言",
+    "select_language": "选择语言",
+    "skip_to_main": "跳到主要内容"
   },
   "nav": {
-    "chat": "Find Services",
-    "map": "Map",
-    "directory": "Directory",
-    "saved": "Saved",
-    "profile": "Profile"
+    "chat": "查找服务",
+    "map": "地图",
+    "directory": "目录",
+    "saved": "已保存",
+    "profile": "个人资料",
+    "report": "举报",
+    "about": "关于",
+    "get_involved": "参与其中",
+    "explore": "探索",
+    "open_menu": "打开导航菜单",
+    "close_menu": "关闭导航菜单",
+    "main_label": "主导航",
+    "legal_label": "法律链接",
+    "notifications": "通知"
+  },
+  "footer": {
+    "tagline": "连接人们与经过验证的服务 — 真正的帮助，快速响应。",
+    "crisis_resources": "危机资源",
+    "crisis_resources_aria": "打开危机资源和热线",
+    "legal_aria": "法律链接",
+    "copyright_suffix": "开放资源入口网络"
   }
 }

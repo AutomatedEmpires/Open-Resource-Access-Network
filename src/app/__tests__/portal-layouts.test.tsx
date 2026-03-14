@@ -34,6 +34,9 @@ vi.mock('@/components/ui/access-denied', () => ({
 vi.mock('@/components/ui/skeleton', () => ({
   Skeleton: (props: Record<string, unknown>) => <div data-testid="skeleton" {...props} />,
 }));
+vi.mock('@/components/footer', () => ({
+  AppFooter: () => <div data-testid="app-footer" />,
+}));
 vi.mock('lucide-react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('lucide-react')>();
   return { ...actual };

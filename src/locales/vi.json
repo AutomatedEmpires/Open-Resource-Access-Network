@@ -1,50 +1,68 @@
 {
-  "_locale": "placeholder — strings not yet translated; en.json serves as fallback",
   "chat": {
     "crisis": {
-      "title": "It sounds like you may be in crisis. Please reach out for help immediately.",
-      "emergency": "Emergency: Call 911",
-      "crisis_line": "Crisis Line: Call or text 988",
-      "community_line": "Community Resources: Call 211"
+      "title": "Có vẻ bạn đang trong tình trạng khủng hoảng. Vui lòng tìm kiếm sự giúp đỡ ngay lập tức.",
+      "emergency": "Khẩn cấp: Gọi 911",
+      "crisis_line": "Họt đường khủng hoảng: Gọi hoặc nhắn tin 988",
+      "community_line": "Nguồn lực cộng đồng: Gọi 211"
     },
     "disclaimer": {
-      "eligibility": "Results shown are from verified records. Eligibility is determined by each service provider — ORAN does not guarantee qualification. Always confirm with the provider."
+      "eligibility": "Kết quả hiển thị từ các hồ sơ đã được xác minh. Điều kiện đủ điều kiện do từng nhà cung cấp dịch vụ quyết định — ORAN không đảm bảo. Hãy luôn xác nhận với nhà cung cấp."
     },
     "input": {
-      "placeholder": "Describe what you need help with...",
-      "send": "Send"
+      "placeholder": "Mô tả những gì bạn cần giúp đỡ...",
+      "send": "Gửi"
     },
     "quota": {
-      "exceeded": "You've reached the message limit for this session. Please start a new conversation."
+      "exceeded": "Bạn đã đạt giới hạn tin nhắn cho phiên này. Vui lòng bắt đầu cuộc trò chuyện mới."
     }
   },
   "service": {
     "confidence": {
-      "high": "High confidence",
-      "medium": "Medium confidence — information may have changed",
-      "low": "Low confidence — please verify before visiting",
-      "unverified": "Unverified record"
+      "high": "Độ tin cậy cao",
+      "medium": "Độ tin cậy trung bình — thông tin có thể đã thay đổi",
+      "low": "Độ tin cậy thấp — vui lòng xác minh trước khi đến",
+      "unverified": "Hồ sơ chưa được xác minh"
     },
-    "eligibility_hint": "You may qualify for this service. Confirm eligibility with the provider."
+    "eligibility_hint": "Bạn có thể đủ điều kiện cho dịch vụ này. Xác nhận với nhà cung cấp."
   },
   "common": {
-    "loading": "Loading...",
+    "loading": "Đang tải...",
     "error": {
-      "generic": "Something went wrong. Please try again.",
-      "not_found": "Not found."
+      "generic": "Đã xảy ra lỗi. Vui lòng thử lại.",
+      "not_found": "Không tìm thấy."
     },
     "button": {
-      "save": "Save",
-      "cancel": "Cancel",
-      "submit": "Submit",
-      "close": "Close"
-    }
+      "save": "Lưu",
+      "cancel": "Hủy",
+      "submit": "Gửi",
+      "close": "Đóng"
+    },
+    "language": "Ngôn ngữ",
+    "select_language": "Chọn ngôn ngữ",
+    "skip_to_main": "Chuyển đến nội dung chính"
   },
   "nav": {
-    "chat": "Find Services",
-    "map": "Map",
-    "directory": "Directory",
-    "saved": "Saved",
-    "profile": "Profile"
+    "chat": "Tìm Dịch Vụ",
+    "map": "Bản đồ",
+    "directory": "Thư mục",
+    "saved": "Đã lưu",
+    "profile": "Hồ sơ",
+    "report": "Báo cáo",
+    "about": "Về chúng tôi",
+    "get_involved": "Tham gia",
+    "explore": "Khám phá",
+    "open_menu": "Mở menu điều hướng",
+    "close_menu": "Đóng menu điều hướng",
+    "main_label": "Điều hướng chính",
+    "legal_label": "Liên kết pháp lý",
+    "notifications": "Thông báo"
+  },
+  "footer": {
+    "tagline": "Kết nối mọi người với các dịch vụ đã xác minh — hỗ trợ thực sự, nhanh chóng.",
+    "crisis_resources": "Tài nguyên khủng hoảng",
+    "crisis_resources_aria": "Mở tài nguyên khủng hoảng và đường dây hỗ trợ",
+    "legal_aria": "Liên kết pháp lý",
+    "copyright_suffix": "Mạng lưới Tiếp cận Tài nguyên Mở"
   }
 }

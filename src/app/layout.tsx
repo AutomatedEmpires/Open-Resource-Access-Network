@@ -4,7 +4,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { CrisisFloatingButton } from "@/components/crisis/CrisisFloatingButton";
 import { resolveLocale } from "@/lib/locale";
-import { isRTL } from "@/services/i18n/i18n";
+import { isRTL, getMessages } from "@/services/i18n/i18n";
 
 // ============================================================
 // FONTS
@@ -71,6 +71,7 @@ export default async function RootLayout({
 }>) {
   const locale = await resolveLocale();
   const dir = isRTL(locale) ? 'rtl' : 'ltr';
+  const messages = getMessages(locale);
 
   return (
     <html lang={locale} dir={dir} className={inter.variable} suppressHydrationWarning>
@@ -90,7 +91,7 @@ export default async function RootLayout({
         >
           Skip to main content
         </a>
-        <Providers>
+        <Providers locale={locale} dir={dir} messages={messages}>
           {children}
           {/* Persistent crisis help FAB — available on every page */}
           <CrisisFloatingButton />

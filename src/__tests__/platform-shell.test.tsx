@@ -88,12 +88,16 @@ describe('platform shell', () => {
   it('wraps children with the session provider', async () => {
     const { Providers } = await loadProviders();
 
-    const element = Providers({ children: 'Child' }) as React.ReactElement<any, any>;
-    const toastProvider = element.props.children as React.ReactElement<any, any>;
-
-    // ToastProvider now wraps CrisisProvider which wraps children
-    const inner = toastProvider.props.children;
-    const child = typeof inner === 'string' ? inner : inner?.props?.children;
+    const element = Providers({
+      locale: 'en',
+      dir: 'ltr',
+      messages: {},
+      children: 'Child',
+    }) as React.ReactElement<any, any>;
+    const sessionProvider = element.props.children as React.ReactElement<any, any>;
+    const toastProvider = sessionProvider.props.children as React.ReactElement<any, any>;
+    const crisisProvider = toastProvider.props.children as React.ReactElement<any, any>;
+    const child = crisisProvider.props.children;
     expect(child).toBe('Child');
   });
 

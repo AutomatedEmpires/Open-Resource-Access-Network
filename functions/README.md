@@ -21,6 +21,7 @@ Timer Trigger (scheduledCrawl) → ingestion-fetch queue
 | Function | Trigger | Queue In | Queue Out |
 |----------|---------|----------|-----------|
 | `scheduledCrawl` | Timer (daily `0 0 6 * * *`) | — | `ingestion-fetch` |
+| `pollSourceFeeds` | Timer (hourly `0 0 * * * *`) | — | — |
 | `fetchPage` | Queue (`ingestion-fetch`) | `ingestion-fetch` | `ingestion-extract` |
 | `extractService` | Queue (`ingestion-extract`) | `ingestion-extract` | `ingestion-verify` |
 | `verifyCandidate` | Queue (`ingestion-verify`) | `ingestion-verify` | `ingestion-route` |

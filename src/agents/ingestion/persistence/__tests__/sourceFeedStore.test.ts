@@ -116,6 +116,22 @@ describe('sourceFeedStore', () => {
     expect(insertValues).toHaveLength(1);
   });
 
+  it('update persists partial changes', async () => {
+    const { db, updateSets } = createMockDb();
+    const store = createDrizzleSourceFeedStore(db as never);
+
+    await store.update('feed-1', {
+      feedName: 'Updated Name',
+      isActive: false,
+    } as never);
+
+    expect(updateSets).toHaveLength(1);
+    const set = updateSets[0] as Record<string, unknown>;
+    expect(set).toHaveProperty('feedName', 'Updated Name');
+    expect(set).toHaveProperty('isActive', false);
+    expect(set).toHaveProperty('updatedAt');
+  });
+
   it('updateAfterPoll resets error state on success', async () => {
     const { db, updateSets } = createMockDb();
     const store = createDrizzleSourceFeedStore(db as never);

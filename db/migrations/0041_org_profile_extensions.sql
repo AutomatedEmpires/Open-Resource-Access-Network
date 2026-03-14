@@ -21,7 +21,7 @@ ALTER TABLE organizations
   ADD COLUMN IF NOT EXISTS service_region      TEXT,
   ADD COLUMN IF NOT EXISTS social_links        JSONB    DEFAULT '{}',
   ADD COLUMN IF NOT EXISTS verified_at         TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS verified_by_user_id UUID     REFERENCES users(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS verified_by_user_id UUID     REFERENCES user_profiles(id) ON DELETE SET NULL;
 
 -- Fast lookup for verified orgs (badge display, trust scoring)
 CREATE INDEX IF NOT EXISTS idx_orgs_verified_at
@@ -44,8 +44,8 @@ CREATE TABLE IF NOT EXISTS org_service_scope (
   id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID       NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   service_id      UUID       NOT NULL REFERENCES services(id) ON DELETE CASCADE,
-  user_id         UUID       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  granted_by      UUID                 REFERENCES users(id) ON DELETE SET NULL,
+  user_id         UUID       NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  granted_by      UUID                 REFERENCES user_profiles(id) ON DELETE SET NULL,
   granted_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (service_id, user_id)
 );

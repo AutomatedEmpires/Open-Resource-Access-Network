@@ -53,6 +53,14 @@ export function createDrizzleSourceFeedStore(
       return result[0];
     },
 
+    async update(id, updates) {
+      const { id: _omitId, createdAt: _omitCreatedAt, ...safeUpdates } = updates as Record<string, unknown>;
+      await db
+        .update(sourceFeeds)
+        .set({ ...safeUpdates, updatedAt: new Date() })
+        .where(eq(sourceFeeds.id, id));
+    },
+
     async updateAfterPoll(feedId, result) {
       const updates: Record<string, unknown> = {
         lastPolledAt: new Date(result.lastPolledAt),

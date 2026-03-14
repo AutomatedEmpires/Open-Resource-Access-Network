@@ -40,6 +40,7 @@ These are separate contracts. Do not collapse them into one generic public data 
 | `/api/internal/sla-check` | POST | Internal (Bearer `INTERNAL_API_KEY`) | N/A | No | SLA breach scanner (timer-triggered) |
 | `/api/internal/confidence-regression-scan` | POST | Internal (Bearer `INTERNAL_API_KEY`) | N/A | No | Creates deduped confidence regression submissions |
 | `/api/internal/coverage-gaps` | POST | Internal (Bearer `INTERNAL_API_KEY`) | Yes | No | Coverage gap detection + ORAN admin alerting (timer-triggered) |
+| `/api/internal/ingestion/feed-poll` | POST | Internal (Bearer `INTERNAL_API_KEY`) | Yes | No | Scheduled source-feed poller for active HSDS / 211 feeds |
 | `/api/profile` | GET/PUT | Auth required | Yes | Yes | Seeker profile CRUD |
 | `/api/saved` | GET/POST/DELETE | Auth required | Yes | Yes | Saved services CRUD |
 | `/api/admin/audit` | GET | `oran_admin` | Yes | Yes (60/min) | Audit log read |

@@ -33,5 +33,6 @@ Defines the intake pipeline from source submission through verification and admi
 
 - `docs/solutions/IMPORT_PIPELINE.md`
 - `docs/ops/services/RUNBOOK_INGESTION.md`
+- `docs/ops/services/RUNBOOK_211_API_INGESTION.md`
 - `docs/ops/services/RUNBOOK_ADMIN_ROUTING.md`
 - `functions/**`

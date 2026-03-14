@@ -38,6 +38,7 @@ This directory is the operational control plane for production support, incident
 | Runbook | Scope |
 | --- | --- |
 | [RUNBOOK_INGESTION.md](services/RUNBOOK_INGESTION.md) | Ingestion pipeline issues, queue failures, poison queue recovery |
+| [RUNBOOK_211_API_INGESTION.md](services/RUNBOOK_211_API_INGESTION.md) | Phased rollout, bootstrap, publish policy, and sync strategy for 211 API ingestion |
 | [RUNBOOK_ADMIN_ROUTING.md](services/RUNBOOK_ADMIN_ROUTING.md) | Admin assignment failures, SLA breaches, capacity and coverage gaps |
 | [RUNBOOK_LLM_OUTAGE.md](services/RUNBOOK_LLM_OUTAGE.md) | Azure OpenAI degradation affecting ingestion extraction |
 | [RUNBOOK_DATABASE_INCIDENT.md](services/RUNBOOK_DATABASE_INCIDENT.md) | DB connectivity, saturation, lock contention, migration incidents |

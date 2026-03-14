@@ -319,6 +319,13 @@ export async function poll211NdpFeed(
     taxonomyCodesAttached: 0,
     errors: [],
   };
+  const sourceFeedState = await stores.sourceFeedStates.getByFeedId(feed.id);
+  const cursorValue = sourceFeedState?.replayFromCursor ?? sourceFeedState?.checkpointCursor;
+  const checkpointOffset = cursorValue ? Number.parseInt(cursorValue, 10) : 0;
+  const safeCheckpointOffset = Number.isFinite(checkpointOffset) && checkpointOffset >= 0 ? checkpointOffset : 0;
+  let batchOffset = safeCheckpointOffset;
+  let nextCheckpointCursor = String(safeCheckpointOffset);
+  let usedDiscoveredIds = false;
 
   // ── Resolve organization IDs to fetch ─────────────────────
   let idsToFetch = organizationIds ?? [];
@@ -346,8 +353,16 @@ export async function poll211NdpFeed(
           if (r && typeof r === 'object' && 'id' in r) return String((r as Record<string, unknown>).id);
           return null;
         })
-        .filter((id): id is string => id !== null)
-        .slice(0, maxOrgs);
+        .filter((id): id is string => id !== null);
+
+      usedDiscoveredIds = true;
+      if (batchOffset >= idsToFetch.length) {
+        batchOffset = 0;
+      }
+      nextCheckpointCursor = String(
+        batchOffset + maxOrgs >= idsToFetch.length ? 0 : batchOffset + maxOrgs,
+      );
+      idsToFetch = idsToFetch.slice(batchOffset, batchOffset + maxOrgs);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       result.errors.push(`search discovery: ${msg}`);
@@ -479,6 +494,20 @@ export async function poll211NdpFeed(
       ? { lastError: result.errors.join('; ').slice(0, 2000), errorCount: (feed.errorCount ?? 0) + 1 }
       : { lastSuccessAt: now, errorCount: 0 }),
   });
+
+  if (usedDiscoveredIds) {
+    const nextState = {
+      sourceFeedId: feed.id,
+      checkpointCursor: hasErrors ? String(batchOffset) : nextCheckpointCursor,
+      replayFromCursor: hasErrors ? String(batchOffset) : null,
+    };
+
+    if (sourceFeedState) {
+      await stores.sourceFeedStates.update(feed.id, nextState);
+    } else {
+      await stores.sourceFeedStates.upsert(nextState);
+    }
+  }
 
   return result;
 }

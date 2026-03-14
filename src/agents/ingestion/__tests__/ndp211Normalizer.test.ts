@@ -35,7 +35,10 @@ function createMockNormalizerStores() {
         addTaxonomy: vi.fn().mockResolvedValue(undefined),
         updateStatus: vi.fn().mockResolvedValue(undefined),
       },
-      sourceFeeds: { updateAfterPoll: vi.fn().mockResolvedValue(undefined) },
+      sourceFeeds: {
+        getById: vi.fn().mockResolvedValue({ id: 'feed-211', sourceSystemId: 'source-system-211' }),
+        updateAfterPoll: vi.fn().mockResolvedValue(undefined),
+      },
       canonicalOrganizations: {
         create: vi.fn().mockImplementation((row) => ({ id: `org-${Math.random().toString(36).slice(2, 6)}`, ...row })),
       },

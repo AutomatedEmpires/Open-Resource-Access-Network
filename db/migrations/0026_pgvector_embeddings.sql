@@ -11,26 +11,33 @@
 --   3. Run the admin /api/admin/embeddings/reindex endpoint to populate embeddings
 --   4. Newly published services receive embeddings automatically at publish time
 
--- Enable pgvector extension (idempotent; requires pg_vector installed on server)
-CREATE EXTENSION IF NOT EXISTS vector;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_available_extensions
+    WHERE name = 'vector'
+  ) THEN
+    CREATE EXTENSION IF NOT EXISTS vector;
 
--- Add nullable 1024-dimension embedding column to the services table.
--- NULL = not yet embedded (services created before Phase 3 or embedding not yet generated).
--- The vector search query gracefully excludes NULL rows so partial indexing is safe.
-ALTER TABLE services
-  ADD COLUMN IF NOT EXISTS embedding vector(1024);
+    EXECUTE '
+      ALTER TABLE services
+        ADD COLUMN IF NOT EXISTS embedding vector(1024)
+    ';
 
--- HNSW approximate nearest-neighbor index for cosine similarity search.
--- Parameters: m=16, ef_construction=64 — good balance of recall vs build time
--- at <100K services. Tune ef_construction upward if recall drops at higher scale.
--- Only indexes non-NULL embeddings.
-CREATE INDEX IF NOT EXISTS idx_services_embedding_hnsw
-  ON services USING hnsw (embedding vector_cosine_ops)
-  WITH (m = 16, ef_construction = 64)
-  WHERE embedding IS NOT NULL;
+    EXECUTE '
+      CREATE INDEX IF NOT EXISTS idx_services_embedding_hnsw
+        ON services USING hnsw (embedding vector_cosine_ops)
+        WITH (m = 16, ef_construction = 64)
+        WHERE embedding IS NOT NULL
+    ';
 
--- Separated index for tracking which services still need (re)embedding.
--- Used by the reindex batch job to find services missing embeddings.
-CREATE INDEX IF NOT EXISTS idx_services_needs_embedding
-  ON services (id)
-  WHERE embedding IS NULL AND status = 'active';
+    EXECUTE '
+      CREATE INDEX IF NOT EXISTS idx_services_needs_embedding
+        ON services (id)
+        WHERE embedding IS NULL AND status = ''active''
+    ';
+  ELSE
+    RAISE NOTICE 'pgvector extension is unavailable; skipping embedding column and indexes';
+  END IF;
+END $$;

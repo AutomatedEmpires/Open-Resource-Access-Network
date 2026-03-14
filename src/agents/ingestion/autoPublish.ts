@@ -5,9 +5,10 @@
  * based on source trust tier and canonical entity lifecycle/publication status.
  *
  * Policy rules:
- *  - Source system trust tier must be 'verified_publisher' or 'curated'
+ *  - Source system trust tier must be explicitly eligible for auto-publish
  *  - Canonical service lifecycle must be 'active'
  *  - Publication status must be 'unpublished' or 'published' (re-publish)
+ *  - For 'trusted_partner' sources, a higher minimum confidence threshold applies
  *  - For 'curated' sources, a minimum confidence threshold applies
  *
  * This module is intended to be called after normalizeSourceRecord() creates
@@ -23,6 +24,8 @@ import type { CanonicalServiceRow, SourceSystemRow } from '@/db/schema';
 export interface AutoPublishPolicy {
   /** Trust tiers eligible for auto-publish (default: verified_publisher, curated). */
   eligibleTiers: string[];
+  /** Minimum confidence (from sourceConfidenceSummary.overall) for trusted_partner sources. */
+  trustedPartnerMinConfidence: number;
   /** Minimum confidence (from sourceConfidenceSummary.overall) for curated sources. */
   curatedMinConfidence: number;
   /** Whether to auto-re-publish already-published services on refresh. */
@@ -31,6 +34,7 @@ export interface AutoPublishPolicy {
 
 const DEFAULT_POLICY: AutoPublishPolicy = {
   eligibleTiers: ['verified_publisher', 'curated'],
+  trustedPartnerMinConfidence: 90,
   curatedMinConfidence: 70,
   allowRepublish: true,
 };
@@ -96,7 +100,19 @@ export function evaluatePolicy(
     return { canonicalServiceId: svcId, eligible: false, reason: `trust_tier '${sourceSystem.trustTier}' not in eligible tiers` };
   }
 
-  // Gate 4: Confidence threshold for curated sources
+  // Gate 4: Confidence thresholds for feed-managed sources
+  if (sourceSystem.trustTier === 'trusted_partner') {
+    const summary = service.sourceConfidenceSummary as Record<string, unknown> | null;
+    const overall = typeof summary?.overall === 'number' ? summary.overall : 0;
+    if (overall < policy.trustedPartnerMinConfidence) {
+      return {
+        canonicalServiceId: svcId,
+        eligible: false,
+        reason: `trusted_partner source confidence ${overall} < minimum ${policy.trustedPartnerMinConfidence}`,
+      };
+    }
+  }
+
   if (sourceSystem.trustTier === 'curated') {
     const summary = service.sourceConfidenceSummary as Record<string, unknown> | null;
     const overall = typeof summary?.overall === 'number' ? summary.overall : 0;

@@ -50,6 +50,9 @@ function createMockStores() {
   let cslIdCounter = 0;
 
   return {
+    sourceFeeds: {
+      getById: vi.fn().mockResolvedValue({ id: 'feed-1', sourceSystemId: 'src-sys-1' }),
+    },
     canonicalOrganizations: {
       create: vi.fn().mockImplementation((row) => ({
         id: `org-${++orgIdCounter}`,
@@ -116,6 +119,7 @@ describe('normalizeSourceRecord', () => {
         description: 'Helps people.',
         lifecycleStatus: 'active',
         publicationStatus: 'unpublished',
+        winningSourceSystemId: 'src-sys-1',
       }),
     );
 
@@ -126,6 +130,7 @@ describe('normalizeSourceRecord', () => {
         name: 'Food Bank',
         description: 'Free groceries.',
         fees: 'None',
+        winningSourceSystemId: 'src-sys-1',
       }),
     );
 
@@ -138,6 +143,8 @@ describe('normalizeSourceRecord', () => {
         longitude: -122.3,
         addressLine1: '100 Pine St',
         addressCity: 'Seattle',
+        winningSourceSystemId: 'src-sys-1',
+        sourceConfidenceSummary: { overall: 75 },
       }),
     );
 
@@ -227,6 +234,19 @@ describe('normalizeSourceRecord', () => {
         sourceConfidenceSummary: { overall: 90 },
       }),
     );
+  });
+
+  it('rejects records whose source feed cannot be resolved', async () => {
+    const stores = createMockStores();
+    stores.sourceFeeds.getById.mockResolvedValueOnce(null);
+    const record = buildSourceRecord();
+
+    await expect(
+      normalizeSourceRecord({
+        stores: stores as never,
+        sourceRecord: record as never,
+      }),
+    ).rejects.toThrow('references missing source feed');
   });
 
   it('applies default confidence for unknown trust tier', async () => {

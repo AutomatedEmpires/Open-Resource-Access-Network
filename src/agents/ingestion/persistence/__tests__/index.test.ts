@@ -17,6 +17,7 @@ import * as tagConfirmationStoreModule from '../tagConfirmationStore';
 import * as llmSuggestionStoreModule from '../llmSuggestionStore';
 import * as publishThresholdStoreModule from '../publishThresholdStore';
 import * as publishReadinessStoreModule from '../publishReadinessStore';
+import * as sourceFeedStateStoreModule from '../sourceFeedStateStore';
 import * as storeFactoryModule from '../storeFactory';
 
 describe('persistence index exports', () => {
@@ -37,6 +38,7 @@ describe('persistence index exports', () => {
     expect(persistenceIndex.createDrizzleLlmSuggestionStore).toBe(llmSuggestionStoreModule.createDrizzleLlmSuggestionStore);
     expect(persistenceIndex.createDrizzlePublishThresholdStore).toBe(publishThresholdStoreModule.createDrizzlePublishThresholdStore);
     expect(persistenceIndex.createDrizzlePublishReadinessStore).toBe(publishReadinessStoreModule.createDrizzlePublishReadinessStore);
+    expect(persistenceIndex.createDrizzleSourceFeedStateStore).toBe(sourceFeedStateStoreModule.createDrizzleSourceFeedStateStore);
     expect(persistenceIndex.createIngestionStores).toBe(storeFactoryModule.createIngestionStores);
   });
 

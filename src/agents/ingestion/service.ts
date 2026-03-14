@@ -17,6 +17,58 @@ import type { SourceRegistryEntry } from './sourceRegistry';
 import { materializePipelineArtifacts } from './materialize';
 
 type SupportedSourceFeedHandler = 'ndp_211' | 'hsds_api';
+type PublicationMode = 'canonical_only' | 'review_required' | 'auto_publish';
+type PublicationOutcomeReason =
+  | 'no_services'
+  | 'canonical_only'
+  | 'review_required'
+  | 'auto_publish_env_disabled'
+  | 'auto_publish_approval_missing'
+  | 'missing_required_locations'
+  | 'auto_publish_policy_filtered';
+
+interface PublicationOutcome {
+  mode: PublicationMode;
+  reviewQueued: number;
+  published: number;
+  skipped: number;
+  reason: PublicationOutcomeReason;
+  decisionReasons?: Record<string, number>;
+}
+
+interface NormalizationBatchResult {
+  normalized: number;
+  errors: number;
+  canonicalOrganizationIds: string[];
+  canonicalServiceIds: string[];
+  canonicalLocationIds: string[];
+}
+
+async function appendPollAuditEvent(
+  stores: IngestionStores,
+  event: {
+    correlationId: string;
+    eventType: 'feed.poll_started' | 'feed.poll_completed' | 'normalize.failed';
+    targetType: 'source_feed' | 'source_record';
+    targetId: string;
+    inputs?: Record<string, unknown>;
+    outputs?: Record<string, unknown>;
+  },
+): Promise<void> {
+  await stores.audit.append({
+    eventId: crypto.randomUUID(),
+    correlationId: event.correlationId,
+    eventType: event.eventType,
+    actorType: 'system',
+    actorId: 'source-feed-poller',
+    targetType: event.targetType,
+    targetId: event.targetId,
+    timestamp: new Date().toISOString(),
+    inputs: event.inputs ?? {},
+    outputs: event.outputs ?? {},
+    evidenceRefs: [],
+  });
+}
 
 function getSourceRecordTrustTier(sourceRecord: { sourceConfidenceSignals?: unknown }): string | undefined {
   const signals = sourceRecord.sourceConfidenceSignals;
@@ -40,19 +92,54 @@ function is211SourceRecord(sourceRecord: { sourceConfidenceSignals?: unknown; so
   return sourceRecord.sourceRecordType === 'organization_bundle';
 }
 
+function isEnabled(value: string | undefined): boolean {
+  return ['1', 'true', 'yes', 'on'].includes(String(value ?? '').trim().toLowerCase());
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
+}
+
+function resolveFeedDataOwners(
+  configured: string | undefined,
+  state: { includedDataOwners?: unknown; excludedDataOwners?: unknown } | null,
+): string | undefined {
+  const included = toStringArray(state?.includedDataOwners);
+  const excluded = new Set(toStringArray(state?.excludedDataOwners));
+  const configuredOwners = String(configured ?? '')
+    .split(',')
+    .map((owner) => owner.trim())
+    .filter(Boolean);
+  const baseOwners = included.length > 0 ? included : configuredOwners;
+  const owners = baseOwners.filter((owner) => !excluded.has(owner));
+  return owners.length > 0 ? owners.join(',') : undefined;
+}
+
+function getPublicationMode(state: { publicationMode?: unknown } | null): PublicationMode {
+  if (state?.publicationMode === 'canonical_only') return 'canonical_only';
+  if (state?.publicationMode === 'auto_publish') return 'auto_publish';
+  return 'review_required';
+}
+
 async function normalizePendingSourceRecordsForFeed(
   stores: IngestionStores,
   sourceFeedId: string,
-): Promise<{ normalized: number; errors: number }> {
+  correlationId?: string,
+): Promise<NormalizationBatchResult> {
   const pendingRecords = await stores.sourceRecords.listPendingByFeed(sourceFeedId);
   let normalized = 0;
   let errors = 0;
+  const canonicalOrganizationIds: string[] = [];
+  const canonicalServiceIds: string[] = [];
+  const canonicalLocationIds: string[] = [];
 
   for (const sourceRecord of pendingRecords) {
     try {
+      let normalizationResult;
       if (is211SourceRecord(sourceRecord)) {
         const { normalize211SourceRecord } = await import('./ndp211Normalizer');
-        await normalize211SourceRecord({
+        normalizationResult = await normalize211SourceRecord({
           stores,
           sourceRecord,
           trustTier: getSourceRecordTrustTier(sourceRecord),
@@ -60,7 +147,7 @@ async function normalizePendingSourceRecordsForFeed(
         });
       } else {
         const { normalizeSourceRecord } = await import('./normalizeSourceRecord');
-        await normalizeSourceRecord({
+        normalizationResult = await normalizeSourceRecord({
           stores,
           sourceRecord,
           trustTier: getSourceRecordTrustTier(sourceRecord),
@@ -68,17 +155,216 @@ async function normalizePendingSourceRecordsForFeed(
       }
 
       normalized++;
+      canonicalOrganizationIds.push(normalizationResult.canonicalOrganizationId);
+      canonicalServiceIds.push(...normalizationResult.canonicalServiceIds);
+      canonicalLocationIds.push(...normalizationResult.canonicalLocationIds);
     } catch (error) {
       errors++;
       await stores.sourceRecords.updateStatus(
         sourceRecord.id,
-        'failed',
+        'error',
         error instanceof Error ? error.message : 'Normalization failed',
       );
+      if (correlationId) {
+        await appendPollAuditEvent(stores, {
+          correlationId,
+          eventType: 'normalize.failed',
+          targetType: 'source_record',
+          targetId: sourceRecord.id,
+          inputs: {
+            sourceFeedId,
+            sourceRecordType: sourceRecord.sourceRecordType,
+          },
+          outputs: {
+            error: error instanceof Error ? error.message : 'Normalization failed',
+          },
+        });
+      }
     }
   }
 
-  return { normalized, errors };
+  return {
+    normalized,
+    errors,
+    canonicalOrganizationIds,
+    canonicalServiceIds,
+    canonicalLocationIds,
+  };
+}
+
+async function markFeedStateAttemptRunning(
+  stores: IngestionStores,
+  sourceFeedId: string,
+  existingState: Awaited<ReturnType<IngestionStores['sourceFeedStates']['getByFeedId']>>,
+  startedAt: Date,
+): Promise<void> {
+  if (existingState) {
+    await stores.sourceFeedStates.update(sourceFeedId, {
+      lastAttemptStatus: 'running',
+      lastAttemptStartedAt: startedAt,
+      lastAttemptCompletedAt: null,
+      lastAttemptSummary: {},
+    });
+    return;
+  }
+
+  await stores.sourceFeedStates.upsert({
+    sourceFeedId,
+    publicationMode: 'review_required',
+    emergencyPause: false,
+    includedDataOwners: [],
+    excludedDataOwners: [],
+    lastAttemptStatus: 'running',
+    lastAttemptStartedAt: startedAt,
+    lastAttemptCompletedAt: null,
+    lastAttemptSummary: {},
+  });
+}
+
+async function queueBatchForReview(
+  stores: IngestionStores,
+  batch: Pick<NormalizationBatchResult, 'canonicalOrganizationIds' | 'canonicalServiceIds' | 'canonicalLocationIds'>,
+): Promise<void> {
+  await Promise.all([
+    ...Array.from(new Set(batch.canonicalOrganizationIds)).map((id) =>
+      stores.canonicalOrganizations.updatePublicationStatus(id, 'pending_review'),
+    ),
+    ...Array.from(new Set(batch.canonicalServiceIds)).map((id) =>
+      stores.canonicalServices.updatePublicationStatus(id, 'pending_review'),
+    ),
+    ...Array.from(new Set(batch.canonicalLocationIds)).map((id) =>
+      stores.canonicalLocations.updatePublicationStatus(id, 'pending_review'),
+    ),
+  ]);
+}
+
+async function applyPublicationMode(
+  stores: IngestionStores,
+  batch: NormalizationBatchResult,
+  state: {
+    publicationMode?: unknown;
+    autoPublishApprovedAt?: unknown;
+    autoPublishApprovedBy?: unknown;
+  } | null,
+  sourceFeed: { feedHandler?: string | null },
+): Promise<PublicationOutcome> {
+  const mode = getPublicationMode(state);
+  if (batch.canonicalServiceIds.length === 0) {
+    return { mode, reviewQueued: 0, published: 0, skipped: 0, reason: 'no_services' };
+  }
+
+  if (mode === 'canonical_only') {
+    return {
+      mode,
+      reviewQueued: 0,
+      published: 0,
+      skipped: batch.canonicalServiceIds.length,
+      reason: 'canonical_only',
+    };
+  }
+
+  if (mode === 'review_required') {
+    await queueBatchForReview(stores, batch);
+    return {
+      mode,
+      reviewQueued: batch.canonicalServiceIds.length,
+      published: 0,
+      skipped: 0,
+      reason: 'review_required',
+    };
+  }
+
+  if (!isEnabled(process.env.SOURCE_FEED_AUTO_PUBLISH_ENABLED)) {
+    await queueBatchForReview(stores, batch);
+    return {
+      mode: 'review_required',
+      reviewQueued: batch.canonicalServiceIds.length,
+      published: 0,
+      skipped: 0,
+      reason: 'auto_publish_env_disabled',
+    };
+  }
+
+  if (!state?.autoPublishApprovedAt || !state?.autoPublishApprovedBy) {
+    await queueBatchForReview(stores, batch);
+    return {
+      mode: 'review_required',
+      reviewQueued: batch.canonicalServiceIds.length,
+      published: 0,
+      skipped: 0,
+      reason: 'auto_publish_approval_missing',
+    };
+  }
+
+  if (sourceFeed.feedHandler === 'ndp_211' && batch.canonicalLocationIds.length === 0) {
+    await queueBatchForReview(stores, batch);
+    return {
+      mode: 'review_required',
+      reviewQueued: batch.canonicalServiceIds.length,
+      published: 0,
+      skipped: 0,
+      reason: 'missing_required_locations',
+    };
+  }
+
+  const { autoPublish } = await import('./autoPublish');
+  const autoPublishResult = await autoPublish({
+    stores,
+    canonicalServiceIds: batch.canonicalServiceIds,
+    policy: {
+      eligibleTiers: ['verified_publisher', 'trusted_partner', 'curated'],
+      trustedPartnerMinConfidence: Number.parseInt(
+        process.env.ORAN_TRUSTED_PARTNER_AUTO_PUBLISH_MIN_CONFIDENCE ?? '90',
+        10,
+      ),
+      curatedMinConfidence: Number.parseInt(process.env.ORAN_CURATED_AUTO_PUBLISH_MIN_CONFIDENCE ?? '85', 10),
+      allowRepublish: false,
+    },
+  });
+
+  const skippedIds = new Set(
+    autoPublishResult.decisions.filter((decision) => !decision.eligible).map((decision) => decision.canonicalServiceId),
+  );
+  for (const error of autoPublishResult.errors) {
+    skippedIds.add(error.canonicalServiceId);
+  }
+
+  await Promise.all(
+    Array.from(skippedIds).map((serviceId) =>
+      stores.canonicalServices.updatePublicationStatus(serviceId, 'pending_review'),
+    ),
+  );
+
+  if (autoPublishResult.published === 0 && skippedIds.size > 0) {
+    await Promise.all(
+      Array.from(new Set(batch.canonicalOrganizationIds)).map((id) =>
+        stores.canonicalOrganizations.updatePublicationStatus(id, 'pending_review'),
+      ),
+    );
+    await Promise.all(
+      Array.from(new Set(batch.canonicalLocationIds)).map((id) =>
+        stores.canonicalLocations.updatePublicationStatus(id, 'pending_review'),
+      ),
+    );
+  }
+
+  const decisionReasons = autoPublishResult.decisions
+    .filter((decision) => !decision.eligible)
+    .map((decision) => decision.reason)
+    .concat(autoPublishResult.errors.map((error) => `error:${error.error}`))
+    .reduce<Record<string, number>>((counts, reason) => {
+      counts[reason] = (counts[reason] ?? 0) + 1;
+      return counts;
+    }, {});
+
+  return {
+    mode,
+    reviewQueued: skippedIds.size,
+    published: autoPublishResult.published,
+    skipped: autoPublishResult.skipped,
+    reason: 'auto_publish_policy_filtered',
+    decisionReasons: Object.keys(decisionReasons).length > 0 ? decisionReasons : undefined,
+  };
 }
 
 function getSupportedSourceFeedHandler(feed: { feedHandler?: string | null }): SupportedSourceFeedHandler | null {
@@ -299,22 +585,56 @@ export function createIngestionService(
       try {
         const dueSourceFeeds = await stores.sourceFeeds.listDueForPoll();
         for (const sourceFeed of dueSourceFeeds) {
+          const correlationId = `source-feed-poll-${sourceFeed.id}-${Date.now()}`;
           const sourceSystem = await stores.sourceSystems.getById(sourceFeed.sourceSystemId);
           if (!sourceSystem) {
             errors++;
             continue;
           }
 
+          const sourceFeedState = await stores.sourceFeedStates.getByFeedId(sourceFeed.id);
+          if (sourceFeedState?.emergencyPause) {
+            await appendPollAuditEvent(stores, {
+              correlationId,
+              eventType: 'feed.poll_completed',
+              targetType: 'source_feed',
+              targetId: sourceFeed.id,
+              outputs: {
+                status: 'skipped',
+                reason: 'emergency_pause',
+              },
+            });
+            continue;
+          }
+
+          const attemptStartedAt = new Date();
+          await markFeedStateAttemptRunning(stores, sourceFeed.id, sourceFeedState, attemptStartedAt);
+
           try {
             const feedHandler = getSupportedSourceFeedHandler(sourceFeed);
+            await appendPollAuditEvent(stores, {
+              correlationId,
+              eventType: 'feed.poll_started',
+              targetType: 'source_feed',
+              targetId: sourceFeed.id,
+              inputs: {
+                feedHandler: sourceFeed.feedHandler,
+                feedType: sourceFeed.feedType,
+                baseUrl: sourceFeed.baseUrl,
+                sourceSystemId: sourceFeed.sourceSystemId,
+              },
+            });
+
             if (feedHandler === 'ndp_211') {
               const { poll211NdpFeed } = await import('./ndp211Connector');
+              const dataOwners = resolveFeedDataOwners(process.env.NDP_211_DATA_OWNERS, sourceFeedState);
               const pollResult = await poll211NdpFeed({
                 stores,
                 sourceSystem,
                 feed: sourceFeed,
-                correlationId: `poll-211-${sourceFeed.id}-${Date.now()}`,
-                dataOwners: process.env.NDP_211_DATA_OWNERS,
+                correlationId,
+                dataOwners,
+                maxOrganizations: sourceFeedState?.maxOrganizationsPerPoll ?? undefined,
               });
               newUrls += pollResult.recordsCreated;
               if (pollResult.errors.length > 0) errors += pollResult.errors.length;
@@ -324,7 +644,7 @@ export function createIngestionService(
                 stores,
                 sourceSystem,
                 feed: sourceFeed,
-                correlationId: `poll-hsds-${sourceFeed.id}-${Date.now()}`,
+                correlationId,
               });
               newUrls += pollResult.recordsCreated;
               if (pollResult.errors.length > 0) errors += pollResult.errors.length;
@@ -335,11 +655,70 @@ export function createIngestionService(
             const normalizationResult = await normalizePendingSourceRecordsForFeed(
               stores,
               sourceFeed.id,
+              correlationId,
             );
             errors += normalizationResult.errors;
+            const publicationResult = await applyPublicationMode(
+              stores,
+              normalizationResult,
+              sourceFeedState,
+              sourceFeed,
+            );
             sourceAssertionFeeds++;
-          } catch {
+            await stores.sourceFeedStates.update(sourceFeed.id, {
+              replayFromCursor: null,
+              lastAttemptStatus: 'succeeded',
+              lastAttemptCompletedAt: new Date(),
+              lastSuccessfulSyncStartedAt: attemptStartedAt,
+              lastSuccessfulSyncCompletedAt: new Date(),
+              lastAttemptSummary: {
+                normalized: normalizationResult.normalized,
+                normalizationErrors: normalizationResult.errors,
+                publicationMode: publicationResult.mode,
+                publicationReason: publicationResult.reason,
+                reviewQueued: publicationResult.reviewQueued,
+                published: publicationResult.published,
+                skipped: publicationResult.skipped,
+                decisionReasons: publicationResult.decisionReasons,
+                feedHandler,
+              },
+            });
+            await appendPollAuditEvent(stores, {
+              correlationId,
+              eventType: 'feed.poll_completed',
+              targetType: 'source_feed',
+              targetId: sourceFeed.id,
+              outputs: {
+                normalized: normalizationResult.normalized,
+                normalizationErrors: normalizationResult.errors,
+                publicationMode: publicationResult.mode,
+                publicationReason: publicationResult.reason,
+                reviewQueued: publicationResult.reviewQueued,
+                published: publicationResult.published,
+                skipped: publicationResult.skipped,
+                decisionReasons: publicationResult.decisionReasons,
+                feedHandler,
+              },
+            });
+          } catch (error) {
             errors++;
+            await stores.sourceFeedStates.update(sourceFeed.id, {
+              lastAttemptStatus: 'failed',
+              lastAttemptCompletedAt: new Date(),
+              lastAttemptSummary: {
+                error: error instanceof Error ? error.message : 'Feed poll failed',
+              },
+            });
+            await appendPollAuditEvent(stores, {
+              correlationId,
+              eventType: 'feed.poll_completed',
+              targetType: 'source_feed',
+              targetId: sourceFeed.id,
+              outputs: {
+                status: 'failed',
+                error: error instanceof Error ? error.message : 'Feed poll failed',
+              },
+            });
           }
         }
       } catch {

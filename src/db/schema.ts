@@ -1256,6 +1256,42 @@ export type SourceFeedRow = typeof sourceFeeds.$inferSelect;
 export type NewSourceFeedRow = typeof sourceFeeds.$inferInsert;
 
 // ============================================================
+// SOURCE FEED STATES (0046_source_feed_operational_state.sql)
+// ============================================================
+export const sourceFeedStates = pgTable(
+  'source_feed_states',
+  {
+    sourceFeedId: uuid('source_feed_id').primaryKey().references(() => sourceFeeds.id, { onDelete: 'cascade' }),
+    publicationMode: text('publication_mode').notNull().default('review_required'),
+    autoPublishApprovedAt: timestamp('auto_publish_approved_at', { withTimezone: true }),
+    autoPublishApprovedBy: text('auto_publish_approved_by'),
+    emergencyPause: boolean('emergency_pause').notNull().default(false),
+    includedDataOwners: jsonb('included_data_owners').notNull().default([]),
+    excludedDataOwners: jsonb('excluded_data_owners').notNull().default([]),
+    maxOrganizationsPerPoll: integer('max_organizations_per_poll'),
+    checkpointCursor: text('checkpoint_cursor'),
+    replayFromCursor: text('replay_from_cursor'),
+    lastAttemptStatus: text('last_attempt_status').notNull().default('idle'),
+    lastAttemptStartedAt: timestamp('last_attempt_started_at', { withTimezone: true }),
+    lastAttemptCompletedAt: timestamp('last_attempt_completed_at', { withTimezone: true }),
+    lastSuccessfulSyncStartedAt: timestamp('last_successful_sync_started_at', { withTimezone: true }),
+    lastSuccessfulSyncCompletedAt: timestamp('last_successful_sync_completed_at', { withTimezone: true }),
+    lastAttemptSummary: jsonb('last_attempt_summary').notNull().default({}),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_source_feed_states_publication_mode').on(table.publicationMode),
+    index('idx_source_feed_states_last_attempt_status').on(table.lastAttemptStatus),
+    index('idx_source_feed_states_emergency_pause').on(table.emergencyPause),
+  ]
+);
+
+export type SourceFeedStateRow = typeof sourceFeedStates.$inferSelect;
+export type NewSourceFeedStateRow = typeof sourceFeedStates.$inferInsert;
+
+// ============================================================
 // SOURCE RECORDS (0032_source_assertion_layer.sql)
 // ============================================================
 // Immutable assertion layer. Every inbound record lands here
@@ -1432,7 +1468,18 @@ export const sourceFeedsRelations = relations(sourceFeeds, ({ one, many }) => ({
     fields: [sourceFeeds.sourceSystemId],
     references: [sourceSystems.id],
   }),
+  state: one(sourceFeedStates, {
+    fields: [sourceFeeds.id],
+    references: [sourceFeedStates.sourceFeedId],
+  }),
   records: many(sourceRecords),
+}));
+
+export const sourceFeedStatesRelations = relations(sourceFeedStates, ({ one }) => ({
+  feed: one(sourceFeeds, {
+    fields: [sourceFeedStates.sourceFeedId],
+    references: [sourceFeeds.id],
+  }),
 }));
 
 export const sourceRecordsRelations = relations(sourceRecords, ({ one, many }) => ({

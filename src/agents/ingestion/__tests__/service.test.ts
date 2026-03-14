@@ -12,6 +12,7 @@ const poll211NdpFeedMock = vi.hoisted(() => vi.fn());
 const pollHsdsFeedMock = vi.hoisted(() => vi.fn());
 const normalize211SourceRecordMock = vi.hoisted(() => vi.fn());
 const normalizeSourceRecordMock = vi.hoisted(() => vi.fn());
+const autoPublishMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../pipeline/orchestrator', () => ({
   createPipelineOrchestrator: createPipelineOrchestratorMock,
@@ -33,6 +34,9 @@ vi.mock('../ndp211Normalizer', () => ({
 }));
 vi.mock('../normalizeSourceRecord', () => ({
   normalizeSourceRecord: normalizeSourceRecordMock,
+}));
+vi.mock('../autoPublish', () => ({
+  autoPublish: autoPublishMock,
 }));
 
 async function loadServiceModule() {
@@ -63,10 +67,30 @@ function createStores() {
       listDueForPoll: vi.fn(),
       updateAfterPoll: vi.fn(),
     },
+    sourceFeedStates: {
+      getByFeedId: vi.fn().mockResolvedValue({
+        sourceFeedId: 'source-feed-1',
+        publicationMode: 'canonical_only',
+        autoPublishApprovedAt: null,
+        autoPublishApprovedBy: null,
+        emergencyPause: false,
+      }),
+      upsert: vi.fn(),
+      update: vi.fn(),
+    },
     sourceRecords: {
       listPendingByFeed: vi.fn(),
       listByFeed: vi.fn(),
       updateStatus: vi.fn(),
+    },
+    canonicalOrganizations: {
+      updatePublicationStatus: vi.fn(),
+    },
+    canonicalServices: {
+      updatePublicationStatus: vi.fn(),
+    },
+    canonicalLocations: {
+      updatePublicationStatus: vi.fn(),
     },
     candidates: {
       listDueForReverify: vi.fn(),
@@ -162,8 +186,33 @@ beforeEach(() => {
     recordsSkippedDuplicate: 0,
     errors: [],
   });
-  normalize211SourceRecordMock.mockResolvedValue(undefined);
-  normalizeSourceRecordMock.mockResolvedValue(undefined);
+  normalize211SourceRecordMock.mockResolvedValue({
+    canonicalOrganizationId: 'org-1',
+    canonicalServiceIds: ['svc-1'],
+    canonicalLocationIds: ['loc-1'],
+    provenanceRecordsCreated: 1,
+    enrichments: {
+      eligibilityTags: [],
+      costTags: [],
+      languageTags: [],
+      taxonomyCrosswalked: false,
+      crosswalkDerivedTags: 0,
+      crosswalkUnmatchedCodes: 0,
+    },
+  });
+  normalizeSourceRecordMock.mockResolvedValue({
+    canonicalOrganizationId: 'org-1',
+    canonicalServiceIds: ['svc-1'],
+    canonicalLocationIds: ['loc-1'],
+    provenanceRecordsCreated: 1,
+  });
+  autoPublishMock.mockResolvedValue({
+    evaluated: 1,
+    published: 1,
+    skipped: 0,
+    decisions: [{ canonicalServiceId: 'svc-1', eligible: true, reason: 'auto-publish' }],
+    errors: [],
+  });
 });
 
 describe('ingestion service', () => {
@@ -359,6 +408,21 @@ describe('ingestion service', () => {
         trustTier: 'trusted_partner',
       }),
     );
+    expect(stores.audit.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'feed.poll_started',
+        targetType: 'source_feed',
+        targetId: 'source-feed-1',
+      }),
+    );
+    expect(stores.audit.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'feed.poll_completed',
+        targetType: 'source_feed',
+        targetId: 'source-feed-1',
+        outputs: expect.objectContaining({ normalized: 1, normalizationErrors: 0 }),
+      }),
+    );
     expect(result).toEqual({ feedsPolled: 1, newUrls: 1, errors: 0 });
 
     if (previousDataOwners === undefined) {
@@ -409,6 +473,185 @@ describe('ingestion service', () => {
       }),
     );
     expect(result).toEqual({ feedsPolled: 1, newUrls: 1, errors: 0 });
+  });
+
+  it('queues review instead of auto-publishing when feed approval is missing', async () => {
+    const previousAutoPublish = process.env.SOURCE_FEED_AUTO_PUBLISH_ENABLED;
+    process.env.SOURCE_FEED_AUTO_PUBLISH_ENABLED = 'true';
+
+    const stores = createStores();
+    stores.feeds.listDueForPoll.mockResolvedValue([]);
+    stores.sourceFeeds.listDueForPoll.mockResolvedValue([
+      {
+        id: 'source-feed-1',
+        sourceSystemId: 'source-system-1',
+        feedHandler: 'ndp_211',
+        baseUrl: 'https://api.211.org/resources/v2',
+      },
+    ]);
+    stores.sourceSystems.getById.mockResolvedValue({
+      id: 'source-system-1',
+      family: 'partner_api',
+      name: '211 Monterey',
+    });
+    stores.sourceFeedStates.getByFeedId.mockResolvedValue({
+      sourceFeedId: 'source-feed-1',
+      publicationMode: 'auto_publish',
+      autoPublishApprovedAt: null,
+      autoPublishApprovedBy: null,
+      emergencyPause: false,
+    });
+    stores.sourceRecords.listPendingByFeed.mockResolvedValue([
+      {
+        id: 'source-record-1',
+        processingStatus: 'pending',
+        sourceRecordType: 'organization_bundle',
+        sourceConfidenceSignals: { source: '211_ndp', trustTier: 'trusted_partner' },
+      },
+    ]);
+
+    const { createIngestionService } = await loadServiceModule();
+    const service = createIngestionService(stores as never);
+    const result = await service.pollFeeds();
+
+    expect(autoPublishMock).not.toHaveBeenCalled();
+    expect(stores.canonicalServices.updatePublicationStatus).toHaveBeenCalledWith('svc-1', 'pending_review');
+    expect(stores.canonicalOrganizations.updatePublicationStatus).toHaveBeenCalledWith('org-1', 'pending_review');
+    expect(stores.canonicalLocations.updatePublicationStatus).toHaveBeenCalledWith('loc-1', 'pending_review');
+    expect(stores.sourceFeedStates.update).toHaveBeenCalledWith(
+      'source-feed-1',
+      expect.objectContaining({
+        lastAttemptSummary: expect.objectContaining({
+          publicationMode: 'review_required',
+          publicationReason: 'auto_publish_approval_missing',
+        }),
+      }),
+    );
+    expect(stores.audit.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'feed.poll_completed',
+        outputs: expect.objectContaining({
+          publicationMode: 'review_required',
+          publicationReason: 'auto_publish_approval_missing',
+        }),
+      }),
+    );
+    expect(result).toEqual({ feedsPolled: 1, newUrls: 1, errors: 0 });
+
+    if (previousAutoPublish === undefined) {
+      delete process.env.SOURCE_FEED_AUTO_PUBLISH_ENABLED;
+    } else {
+      process.env.SOURCE_FEED_AUTO_PUBLISH_ENABLED = previousAutoPublish;
+    }
+  });
+
+  it('auto-publishes only after explicit feed approval is recorded', async () => {
+    const previousAutoPublish = process.env.SOURCE_FEED_AUTO_PUBLISH_ENABLED;
+    process.env.SOURCE_FEED_AUTO_PUBLISH_ENABLED = 'true';
+
+    const stores = createStores();
+    stores.feeds.listDueForPoll.mockResolvedValue([]);
+    stores.sourceFeeds.listDueForPoll.mockResolvedValue([
+      {
+        id: 'source-feed-1',
+        sourceSystemId: 'source-system-1',
+        feedHandler: 'ndp_211',
+        baseUrl: 'https://api.211.org/resources/v2',
+      },
+    ]);
+    stores.sourceSystems.getById.mockResolvedValue({
+      id: 'source-system-1',
+      family: 'partner_api',
+      name: '211 Monterey',
+    });
+    stores.sourceFeedStates.getByFeedId.mockResolvedValue({
+      sourceFeedId: 'source-feed-1',
+      publicationMode: 'auto_publish',
+      autoPublishApprovedAt: new Date('2026-03-13T22:30:00.000Z'),
+      autoPublishApprovedBy: 'oran-1',
+      emergencyPause: false,
+    });
+    stores.sourceRecords.listPendingByFeed.mockResolvedValue([
+      {
+        id: 'source-record-1',
+        processingStatus: 'pending',
+        sourceRecordType: 'organization_bundle',
+        sourceConfidenceSignals: { source: '211_ndp', trustTier: 'trusted_partner' },
+      },
+    ]);
+
+    const { createIngestionService } = await loadServiceModule();
+    const service = createIngestionService(stores as never);
+    const result = await service.pollFeeds();
+
+    expect(autoPublishMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        canonicalServiceIds: ['svc-1'],
+        policy: expect.objectContaining({ allowRepublish: false, trustedPartnerMinConfidence: 90 }),
+      }),
+    );
+    expect(stores.sourceFeedStates.update).toHaveBeenCalledWith(
+      'source-feed-1',
+      expect.objectContaining({
+        lastAttemptSummary: expect.objectContaining({
+          publicationMode: 'auto_publish',
+          publicationReason: 'auto_publish_policy_filtered',
+        }),
+      }),
+    );
+    expect(result).toEqual({ feedsPolled: 1, newUrls: 1, errors: 0 });
+
+    if (previousAutoPublish === undefined) {
+      delete process.env.SOURCE_FEED_AUTO_PUBLISH_ENABLED;
+    } else {
+      process.env.SOURCE_FEED_AUTO_PUBLISH_ENABLED = previousAutoPublish;
+    }
+  });
+
+  it('writes normalize.failed audit events when source-record normalization errors occur', async () => {
+    const stores = createStores();
+    stores.feeds.listDueForPoll.mockResolvedValue([]);
+    stores.sourceFeeds.listDueForPoll.mockResolvedValue([
+      {
+        id: 'source-feed-1',
+        sourceSystemId: 'source-system-1',
+        feedHandler: 'hsds_api',
+        feedType: 'api',
+        baseUrl: 'https://example.com/hsds',
+      },
+    ]);
+    stores.sourceSystems.getById.mockResolvedValue({
+      id: 'source-system-1',
+      family: 'hsds',
+      name: 'County HSDS Feed',
+    });
+    stores.sourceRecords.listPendingByFeed.mockResolvedValue([
+      {
+        id: 'source-record-1',
+        processingStatus: 'pending',
+        sourceRecordType: 'organization',
+        sourceConfidenceSignals: { source: 'hsds', trustTier: 'curated' },
+      },
+    ]);
+    normalizeSourceRecordMock.mockRejectedValueOnce(new Error('invalid payload'));
+
+    const { createIngestionService } = await loadServiceModule();
+    const service = createIngestionService(stores as never);
+    const result = await service.pollFeeds();
+
+    expect(stores.sourceRecords.updateStatus).toHaveBeenCalledWith(
+      'source-record-1',
+      'error',
+      'invalid payload',
+    );
+    expect(stores.audit.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'normalize.failed',
+        targetType: 'source_record',
+        targetId: 'source-record-1',
+      }),
+    );
+    expect(result).toEqual({ feedsPolled: 1, newUrls: 1, errors: 1 });
   });
 
   it('does not count unsupported source feeds as polled by the service', async () => {

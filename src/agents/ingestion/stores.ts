@@ -19,6 +19,8 @@ import type {
   NewSourceSystemRow,
   SourceFeedRow,
   NewSourceFeedRow,
+  SourceFeedStateRow,
+  NewSourceFeedStateRow,
   SourceRecordRow,
   NewSourceRecordRow,
   NewSourceRecordTaxonomyRow,
@@ -772,6 +774,9 @@ export interface SourceFeedStore {
   /** Create a feed. */
   create(row: NewSourceFeedRow): Promise<SourceFeedRow>;
 
+  /** Update a feed. */
+  update(id: string, updates: Partial<NewSourceFeedRow>): Promise<void>;
+
   /** Update after poll attempt. */
   updateAfterPoll(
     feedId: string,
@@ -785,6 +790,21 @@ export interface SourceFeedStore {
 
   /** Deactivate a feed. */
   deactivate(id: string): Promise<void>;
+}
+
+// ============================================================
+// SOURCE FEED STATE STORE
+// ============================================================
+
+export interface SourceFeedStateStore {
+  /** Get operational state for a source feed. */
+  getByFeedId(sourceFeedId: string): Promise<SourceFeedStateRow | null>;
+
+  /** Create or replace operational state for a source feed. */
+  upsert(row: NewSourceFeedStateRow): Promise<SourceFeedStateRow>;
+
+  /** Partially update operational state for a source feed. */
+  update(sourceFeedId: string, updates: Partial<NewSourceFeedStateRow>): Promise<void>;
 }
 
 // ============================================================
@@ -1174,6 +1194,7 @@ export interface IngestionStores {
   // Source assertion layer (0032)
   sourceSystems: SourceSystemStore;
   sourceFeeds: SourceFeedStore;
+  sourceFeedStates: SourceFeedStateStore;
   sourceRecords: SourceRecordStore;
   entityIdentifiers: EntityIdentifierStore;
   hsdsExportSnapshots: HsdsExportSnapshotStore;

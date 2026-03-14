@@ -63,6 +63,37 @@ describe('validateRuntimeEnv', () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it('requires 211 polling secrets when production web polling is enabled', () => {
+    const result = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      NEXTAUTH_SECRET: 'secret',
+      NEXTAUTH_URL: 'https://oran.test',
+      INTERNAL_API_KEY: 'internal-key',
+      NDP_211_POLLING_ENABLED: 'true',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.missingCritical).toEqual([
+      'NDP_211_DATA_OWNERS',
+      'NDP_211_SUBSCRIPTION_KEY',
+    ]);
+  });
+
+  it('does not require 211 polling secrets when the flag is disabled', () => {
+    const result = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      NEXTAUTH_SECRET: 'secret',
+      NEXTAUTH_URL: 'https://oran.test',
+      INTERNAL_API_KEY: 'internal-key',
+      NDP_211_POLLING_ENABLED: 'false',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.missingCritical).toEqual([]);
+  });
+
   it('validates Azure Functions contracts from names-only sources', () => {
     const result = validateRuntimeEnv(
       'functions',

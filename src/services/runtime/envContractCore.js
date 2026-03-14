@@ -4,6 +4,8 @@ const RULES_BY_TARGET = {
     { name: 'NEXTAUTH_SECRET', level: 'critical', productionOnly: true },
     { name: 'NEXTAUTH_URL', level: 'critical', productionOnly: true },
     { name: 'INTERNAL_API_KEY', level: 'critical', productionOnly: true },
+    { name: 'NDP_211_SUBSCRIPTION_KEY', level: 'critical', whenTruthy: 'NDP_211_POLLING_ENABLED' },
+    { name: 'NDP_211_DATA_OWNERS', level: 'critical', whenTruthy: 'NDP_211_POLLING_ENABLED' },
     { name: 'AZURE_AD_CLIENT_SECRET', level: 'critical', whenPresent: 'AZURE_AD_CLIENT_ID' },
     { name: 'AZURE_AD_TENANT_ID', level: 'warning', whenPresent: 'AZURE_AD_CLIENT_ID' },
     { name: 'GOOGLE_CLIENT_SECRET', level: 'critical', whenPresent: 'GOOGLE_CLIENT_ID' },
@@ -23,10 +25,12 @@ const RULES_BY_TARGET = {
     { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', level: 'warning', productionOnly: true },
     { name: 'FOUNDRY_KEY', level: 'warning', whenPresent: 'FOUNDRY_ENDPOINT' },
     { name: 'FOUNDRY_ENDPOINT', level: 'warning', whenPresent: 'FOUNDRY_KEY' },
-    { name: 'NDP_211_SUBSCRIPTION_KEY', level: 'warning', whenPresent: 'NDP_211_DATA_OWNERS' },
-    { name: 'NDP_211_DATA_OWNERS', level: 'warning', whenPresent: 'NDP_211_SUBSCRIPTION_KEY' },
   ],
 };
+
+function isTruthyValue(value) {
+  return ['1', 'true', 'yes', 'on'].includes(normalizeName(value).toLowerCase());
+}
 
 function normalizeName(name) {
   return String(name ?? '').trim();
@@ -93,6 +97,10 @@ export function validateRuntimeEnv(target, envSource = process.env, options = {}
     }
 
     if (rule.whenPresent && !presentNames.has(rule.whenPresent)) {
+      continue;
+    }
+
+    if (rule.whenTruthy && !isTruthyValue(isNameCollection(envSource) ? undefined : envSource?.[rule.whenTruthy])) {
       continue;
     }
 

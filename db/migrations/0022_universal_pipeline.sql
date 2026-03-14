@@ -506,8 +506,8 @@ ALTER TABLE verification_evidence
 
 -- Backfill submission_id from the migrated data
 UPDATE verification_evidence ve
-SET submission_id = ve.verification_queue_id::uuid
-WHERE EXISTS (SELECT 1 FROM submissions s WHERE s.id = ve.verification_queue_id::uuid);
+SET submission_id = ve.queue_entry_id::uuid
+WHERE EXISTS (SELECT 1 FROM submissions s WHERE s.id = ve.queue_entry_id::uuid);
 
 CREATE INDEX IF NOT EXISTS idx_verification_evidence_submission
   ON verification_evidence(submission_id);

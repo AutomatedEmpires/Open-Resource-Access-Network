@@ -1,0 +1,12 @@
+{
+  "bindings": [
+    {
+      "name": "timer",
+      "type": "timerTrigger",
+      "direction": "in",
+      "schedule": "0 0 * * * *"
+    }
+  ],
+  "scriptFile": "../dist/functions/pollSourceFeeds/index.js",
+  "entryPoint": "pollSourceFeeds"
+}

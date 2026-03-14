@@ -10,6 +10,7 @@ This document provides an auditable snapshot of operational readiness for produc
 | --- | --- | --- |
 | Incident command and triage | `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md` | Implemented |
 | Ingestion pipeline operations | `docs/ops/services/RUNBOOK_INGESTION.md` | Implemented |
+| 211 API ingestion rollout and governance | `docs/ops/services/RUNBOOK_211_API_INGESTION.md` | Implemented |
 | Admin routing reliability | `docs/ops/services/RUNBOOK_ADMIN_ROUTING.md` | Implemented |
 | LLM dependency outage | `docs/ops/services/RUNBOOK_LLM_OUTAGE.md` | Implemented |
 | Database incident response | `docs/ops/services/RUNBOOK_DATABASE_INCIDENT.md` | Implemented |

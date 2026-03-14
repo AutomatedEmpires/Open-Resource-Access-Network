@@ -1,5 +1,5 @@
 /**
- * Composite factory that creates all 36 ingestion stores.
+ * Composite factory that creates all 37 ingestion stores.
  *
  * Usage:
  *   const stores = createIngestionStores(db);
@@ -28,6 +28,7 @@ import { createDrizzlePublishThresholdStore } from './publishThresholdStore';
 import { createDrizzlePublishReadinessStore } from './publishReadinessStore';
 import { createDrizzleSourceSystemStore } from './sourceSystemStore';
 import { createDrizzleSourceFeedStore } from './sourceFeedStore';
+import { createDrizzleSourceFeedStateStore } from './sourceFeedStateStore';
 import { createDrizzleSourceRecordStore } from './sourceRecordStore';
 import { createDrizzleEntityIdentifierStore } from './entityIdentifierStore';
 import { createDrizzleHsdsExportSnapshotStore } from './hsdsExportSnapshotStore';
@@ -77,6 +78,7 @@ export function createIngestionStores(
     // Source assertion layer (0032)
     sourceSystems: createDrizzleSourceSystemStore(db),
     sourceFeeds: createDrizzleSourceFeedStore(db),
+    sourceFeedStates: createDrizzleSourceFeedStateStore(db),
     sourceRecords: createDrizzleSourceRecordStore(db),
     entityIdentifiers: createDrizzleEntityIdentifierStore(db),
     hsdsExportSnapshots: createDrizzleHsdsExportSnapshotStore(db),

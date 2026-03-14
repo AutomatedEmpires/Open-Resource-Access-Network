@@ -220,6 +220,15 @@ function createMockStores() {
     sourceFeeds: {
       updateAfterPoll: vi.fn().mockResolvedValue(undefined),
     },
+    sourceFeedStates: {
+      getByFeedId: vi.fn().mockResolvedValue({
+        sourceFeedId: 'feed-211',
+        checkpointCursor: '0',
+        replayFromCursor: null,
+      }),
+      update: vi.fn().mockResolvedValue(undefined),
+      upsert: vi.fn().mockResolvedValue(undefined),
+    },
   };
 }
 
@@ -277,6 +286,45 @@ describe('poll211NdpFeed', () => {
     // Verify taxonomy was attached
     expect(stores.sourceRecords.addTaxonomy).toHaveBeenCalled();
     expect(result.taxonomyCodesAttached).toBe(1);
+    expect(stores.sourceFeedStates.update).toHaveBeenCalledWith(
+      'feed-211',
+      expect.objectContaining({ checkpointCursor: '0', replayFromCursor: null }),
+    );
+  });
+
+  it('replays the same discovered batch after a failed export fetch', async () => {
+    const stores = createMockStores();
+    stores.sourceFeedStates.getByFeedId.mockResolvedValueOnce({
+      sourceFeedId: 'feed-211',
+      checkpointCursor: '1',
+      replayFromCursor: null,
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve([{ id: 'org-1' }, { id: 'org-2' }, { id: 'org-3' }]),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({}),
+      });
+
+    const result = await poll211NdpFeed({
+      stores: stores as never,
+      sourceSystem: buildSourceSystem() as never,
+      feed: buildFeed() as never,
+      fetchFn: fetchMock as never,
+      correlationId: 'poll-211-002',
+      subscriptionKey: 'test-key-abc',
+      maxOrganizations: 1,
+    });
+
+    expect(result.errors).not.toHaveLength(0);
+    expect(stores.sourceFeedStates.update).toHaveBeenCalledWith(
+      'feed-211',
+      expect.objectContaining({ checkpointCursor: '1', replayFromCursor: '1' }),
+    );
   });
 
   it('uses explicit organization IDs when provided', async () => {

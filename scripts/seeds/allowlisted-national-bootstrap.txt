@@ -1,0 +1,82 @@
+# Federal benefits and assistance directories
+https://www.usa.gov/benefits
+https://www.usa.gov/food-help
+https://www.usa.gov/housing-help
+https://www.usa.gov/financial-hardship
+https://www.usa.gov/help-with-utility-bills
+https://www.usa.gov/disability-benefits
+https://www.usa.gov/unemployment
+https://www.usa.gov/health-insurance
+https://www.usa.gov/government-benefits
+https://www.benefits.gov/
+https://www.benefits.gov/benefit-finder
+https://www.benefits.gov/news/article/482
+
+# Health, mental health, and treatment access
+https://findtreatment.gov/
+https://www.samhsa.gov/find-help/national-helpline
+https://www.samhsa.gov/find-help/disorders
+https://www.samhsa.gov/find-support/health-care-or-support
+https://www.hrsa.gov/get-health-care
+https://www.hrsa.gov/behavioral-health
+https://www.medicaid.gov/about-us/beneficiary-resources/index.html
+https://www.medicaid.gov/about-us/beneficiary-resources/medicaid-and-chip-program-portal/index.html
+https://www.medicaid.gov/chip/index.html
+https://www.cms.gov/medicare/medicaid-coordination
+
+# Food and nutrition support
+https://www.fns.usda.gov/snap/state-directory
+https://www.fns.usda.gov/wic/wic-how-apply
+https://www.fns.usda.gov/tefap/emergency-food-assistance-program
+https://www.fns.usda.gov/csfp/commodity-supplemental-food-program
+https://www.nutrition.gov/topics/food-security-and-access/food-assistance-programs
+
+# Housing and homelessness support
+https://www.hud.gov/topics/rental_assistance
+https://www.hud.gov/findshelter
+https://www.hud.gov/program_offices/public_indian_housing/programs/hcv/about/fact_sheet
+https://www.hudexchange.info/homelessness-assistance/
+https://www.hud.gov/states
+
+# Family, children, and utility support
+https://www.childcare.gov/
+https://headstart.gov/how-apply
+https://www.acf.hhs.gov/ofa/programs/temporary-assistance-needy-families-tanf
+https://www.acf.hhs.gov/ocs/programs/liheap
+https://www.acf.hhs.gov/fysb/programs/runaway-homeless-youth
+
+# Veterans and older adult support
+https://www.va.gov/health-care/
+https://www.va.gov/homeless/
+https://www.va.gov/family-member-benefits/
+https://www.benefits.va.gov/persona/veteran-homeless.asp
+https://acl.gov/programs
+https://eldercare.acl.gov/Public/Index.aspx
+
+# Income, disability, and employment support
+https://www.ssa.gov/benefits/
+https://www.ssa.gov/ssi
+https://www.ssa.gov/disability
+https://www.careeronestop.org/LocalHelp/local-help.aspx
+
+# State government assistance entry points
+https://www.ca.gov/assistance/
+https://www.cdss.ca.gov/benefits-services
+https://www.myflfamilies.com/services/public-assistance
+https://www.dhs.state.il.us/page.aspx?item=30357
+https://hhs.texas.gov/services
+https://access.nyc.gov/
+https://www.mass.gov/topics/assistance-benefits
+https://mn.gov/dhs/people-we-serve/adults/economic-assistance/
+https://www.pa.gov/services/dhs.html
+
+# University basic-needs and student support hubs (.edu)
+https://basicneeds.ucla.edu/
+https://basicneeds.berkeley.edu/
+https://basicneeds.ucsd.edu/
+https://deanofstudents.utexas.edu/emergency/
+https://basicneeds.umn.edu/
+https://studentlife.oregonstate.edu/hsrc
+https://basicneeds.stanford.edu/
+https://success.arizona.edu/basic-needs
+https://basicneeds.virginia.edu/

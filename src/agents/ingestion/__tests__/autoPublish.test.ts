@@ -61,6 +61,7 @@ function makeSrcSys(overrides: Partial<SourceSystemRow> = {}): SourceSystemRow {
 
 const DEFAULT_POLICY: AutoPublishPolicy = {
   eligibleTiers: ['verified_publisher', 'curated'],
+  trustedPartnerMinConfidence: 90,
   curatedMinConfidence: 70,
   allowRepublish: true,
 };
@@ -95,6 +96,27 @@ describe('evaluatePolicy', () => {
     const svc = makeSvc({ sourceConfidenceSummary: { overall: 80 } } as Partial<CanonicalServiceRow>);
     const decision = evaluatePolicy(svc, makeSrcSys({ trustTier: 'curated' } as Partial<SourceSystemRow>), DEFAULT_POLICY);
     expect(decision.eligible).toBe(true);
+  });
+
+  it('approves trusted_partner source above higher confidence threshold', () => {
+    const svc = makeSvc({ sourceConfidenceSummary: { overall: 92 } } as Partial<CanonicalServiceRow>);
+    const decision = evaluatePolicy(
+      svc,
+      makeSrcSys({ trustTier: 'trusted_partner' } as Partial<SourceSystemRow>),
+      { ...DEFAULT_POLICY, eligibleTiers: ['verified_publisher', 'trusted_partner', 'curated'] },
+    );
+    expect(decision.eligible).toBe(true);
+  });
+
+  it('rejects trusted_partner source below higher confidence threshold', () => {
+    const svc = makeSvc({ sourceConfidenceSummary: { overall: 89 } } as Partial<CanonicalServiceRow>);
+    const decision = evaluatePolicy(
+      svc,
+      makeSrcSys({ trustTier: 'trusted_partner' } as Partial<SourceSystemRow>),
+      { ...DEFAULT_POLICY, eligibleTiers: ['verified_publisher', 'trusted_partner', 'curated'] },
+    );
+    expect(decision.eligible).toBe(false);
+    expect(decision.reason).toContain('trusted_partner source confidence 89 < minimum 90');
   });
 
   it('rejects curated source below confidence threshold', () => {

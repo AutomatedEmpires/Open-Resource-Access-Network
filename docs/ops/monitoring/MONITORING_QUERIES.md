@@ -225,6 +225,48 @@ requests
 
 ---
 
+## 7. Source Feed Polling
+
+### Source Feed Poll Success / Failure Rate (last 7d)
+
+```kql
+traces
+| where timestamp > ago(7d)
+| where message has "[pollSourceFeeds]"
+| extend status = case(
+        message has "Completed", "completed",
+        message has "Skipped", "skipped",
+        message has "HTTP" or message has "Failed", "failed",
+        "other"
+    )
+| summarize total = count(), failures = countif(status == "failed"), completed = countif(status == "completed") by bin(timestamp, 1h)
+| extend successRate = iff(total == 0, 100.0, round(100.0 * completed / total, 1))
+| order by timestamp asc
+| render timechart
+```
+
+### Feed Poll Audit Events by Feed (last 24h)
+
+```kql
+traces
+| where timestamp > ago(24h)
+| where message has "feed.poll_" or message has "normalize.failed"
+| summarize count() by tostring(message), bin(timestamp, 1h)
+| order by timestamp desc
+```
+
+### Internal Feed Poll Endpoint Failures
+
+```kql
+requests
+| where timestamp > ago(24h)
+| where name has "/api/internal/ingestion/feed-poll"
+| summarize failures = countif(success == false), total = count() by resultCode, bin(timestamp, 1h)
+| order by timestamp desc
+```
+
+---
+
 ## Dashboard Setup
 
 1. Navigate to Azure Portal → Application Insights → Logs

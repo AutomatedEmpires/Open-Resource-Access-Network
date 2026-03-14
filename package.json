@@ -18,6 +18,9 @@
     "test:e2e:headed": "playwright test --headed",
     "validate:runtime": "node scripts/validate-runtime-env.mjs --target webapp",
     "validate:runtime:functions": "node scripts/validate-runtime-env.mjs --target functions",
+    "ingest:campaign": "npx tsx scripts/run-ingestion-campaign.ts",
+    "bootstrap:source-feed": "node scripts/bootstrap-source-feed.mjs",
+    "report:211-canary": "node scripts/run-211-canary-report.mjs",
     "check:bundle": "node scripts/check-bundle-sizes.js",
     "audit:ui": "node scripts/audit-ui-consistency.mjs",
     "build:functions": "node scripts/build-functions.mjs"

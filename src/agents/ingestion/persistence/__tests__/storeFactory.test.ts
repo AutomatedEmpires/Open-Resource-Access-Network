@@ -19,6 +19,7 @@ const creatorMocks = vi.hoisted(() => ({
   publishReadiness: vi.fn(() => ({ name: 'publishReadinessStore' })),
   sourceSystems: vi.fn(() => ({ name: 'sourceSystemStore' })),
   sourceFeeds: vi.fn(() => ({ name: 'sourceFeedStore' })),
+  sourceFeedStates: vi.fn(() => ({ name: 'sourceFeedStateStore' })),
   sourceRecords: vi.fn(() => ({ name: 'sourceRecordStore' })),
   entityIdentifiers: vi.fn(() => ({ name: 'entityIdentifierStore' })),
   hsdsExportSnapshots: vi.fn(() => ({ name: 'hsdsExportSnapshotStore' })),
@@ -92,6 +93,9 @@ vi.mock('../sourceSystemStore', () => ({
 }));
 vi.mock('../sourceFeedStore', () => ({
   createDrizzleSourceFeedStore: creatorMocks.sourceFeeds,
+}));
+vi.mock('../sourceFeedStateStore', () => ({
+  createDrizzleSourceFeedStateStore: creatorMocks.sourceFeedStates,
 }));
 vi.mock('../sourceRecordStore', () => ({
   createDrizzleSourceRecordStore: creatorMocks.sourceRecords,
@@ -177,6 +181,7 @@ describe('storeFactory', () => {
     expect(creatorMocks.publishReadiness).toHaveBeenCalledWith(db);
     expect(creatorMocks.sourceSystems).toHaveBeenCalledWith(db);
     expect(creatorMocks.sourceFeeds).toHaveBeenCalledWith(db);
+    expect(creatorMocks.sourceFeedStates).toHaveBeenCalledWith(db);
     expect(creatorMocks.sourceRecords).toHaveBeenCalledWith(db);
     expect(creatorMocks.entityIdentifiers).toHaveBeenCalledWith(db);
     expect(creatorMocks.hsdsExportSnapshots).toHaveBeenCalledWith(db);
@@ -215,6 +220,7 @@ describe('storeFactory', () => {
       publishReadiness: { name: 'publishReadinessStore' },
       sourceSystems: { name: 'sourceSystemStore' },
       sourceFeeds: { name: 'sourceFeedStore' },
+      sourceFeedStates: { name: 'sourceFeedStateStore' },
       sourceRecords: { name: 'sourceRecordStore' },
       entityIdentifiers: { name: 'entityIdentifierStore' },
       hsdsExportSnapshots: { name: 'hsdsExportSnapshotStore' },

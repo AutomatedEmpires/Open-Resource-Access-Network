@@ -1,7 +1,7 @@
 /**
  * Persistence Layer for Ingestion Agent
  *
- * Drizzle ORM implementations of all 36 store interfaces.
+ * Drizzle ORM implementations of all 37 store interfaces.
  */
 
 export {
@@ -43,6 +43,8 @@ export { createDrizzlePublishReadinessStore } from './publishReadinessStore';
 export { createDrizzleSourceSystemStore } from './sourceSystemStore';
 
 export { createDrizzleSourceFeedStore } from './sourceFeedStore';
+
+export { createDrizzleSourceFeedStateStore } from './sourceFeedStateStore';
 
 export { createDrizzleSourceRecordStore } from './sourceRecordStore';
 

@@ -190,6 +190,13 @@ export async function normalizeSourceRecord(
   const { stores, sourceRecord, trustTier } = options;
   const payload = getPayload(sourceRecord);
   const confidenceHint = confidenceForTrustTier(trustTier, options.trustTierConfidence);
+  const sourceFeed = await stores.sourceFeeds.getById(sourceRecord.sourceFeedId);
+  if (!sourceFeed) {
+    throw new Error(
+      `Source record ${sourceRecord.id} references missing source feed ${sourceRecord.sourceFeedId}`,
+    );
+  }
+  const winningSourceSystemId = sourceFeed.sourceSystemId;
 
   const provenanceRows: NewCanonicalProvenanceRow[] = [];
   const canonicalServiceIds: string[] = [];
@@ -211,6 +218,7 @@ export async function normalizeSourceRecord(
     ...(orgMapped as Partial<NewCanonicalOrganizationRow>),
     lifecycleStatus: 'active',
     publicationStatus: 'unpublished',
+    winningSourceSystemId,
     sourceCount: 1,
     sourceConfidenceSummary: { overall: confidenceHint },
   };
@@ -250,6 +258,7 @@ export async function normalizeSourceRecord(
       ...(svcMapped as Partial<NewCanonicalServiceRow>),
       lifecycleStatus: 'active',
       publicationStatus: 'unpublished',
+      winningSourceSystemId,
       sourceCount: 1,
       sourceConfidenceSummary: { overall: confidenceHint },
     };
@@ -290,8 +299,9 @@ export async function normalizeSourceRecord(
       ...(locMapped as Partial<NewCanonicalLocationRow>),
       lifecycleStatus: 'active',
       publicationStatus: 'unpublished',
+      winningSourceSystemId,
       sourceCount: 1,
-      sourceConfidenceSummary: {},
+      sourceConfidenceSummary: { overall: confidenceHint },
     };
 
     const canonicalLoc = await stores.canonicalLocations.create(locRow);

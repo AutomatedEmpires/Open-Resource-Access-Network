@@ -1,50 +1,68 @@
 {
-  "_locale": "placeholder — strings not yet translated; en.json serves as fallback",
   "chat": {
     "crisis": {
-      "title": "It sounds like you may be in crisis. Please reach out for help immediately.",
-      "emergency": "Emergency: Call 911",
-      "crisis_line": "Crisis Line: Call or text 988",
-      "community_line": "Community Resources: Call 211"
+      "title": "يبدو أنك قد تمر بأزمة. يرجى طلب المساعدة فوراً.",
+      "emergency": "طوارئ: اتصل بـ 911",
+      "crisis_line": "خط الأزمات: اتصل أو أرسل رسالة نصية إلى 988",
+      "community_line": "موارد المجتمع: اتصل بـ 211"
     },
     "disclaimer": {
-      "eligibility": "Results shown are from verified records. Eligibility is determined by each service provider — ORAN does not guarantee qualification. Always confirm with the provider."
+      "eligibility": "النتائج المعروضة مؤخوذة من سجلات موثقة. تحدد كل جهة خدمة معايير الأهلية — لا تضمن ORAN التأهل. تأكد دائماً من مزود الخدمة."
     },
     "input": {
-      "placeholder": "Describe what you need help with...",
-      "send": "Send"
+      "placeholder": "صف ما تحتاج إلى مساعدة فيه...",
+      "send": "إرسال"
     },
     "quota": {
-      "exceeded": "You've reached the message limit for this session. Please start a new conversation."
+      "exceeded": "لقد وصلت إلى حد الرسائل لهذه الجلسة. يرجى بدء محادثة جديدة."
     }
   },
   "service": {
     "confidence": {
-      "high": "High confidence",
-      "medium": "Medium confidence — information may have changed",
-      "low": "Low confidence — please verify before visiting",
-      "unverified": "Unverified record"
+      "high": "ثقة عالية",
+      "medium": "ثقة متوسطة — قد تكون المعلومات قد تغيرت",
+      "low": "ثقة منخفضة — يرجى التحقق قبل الزيارة",
+      "unverified": "سجل غير موثق"
     },
-    "eligibility_hint": "You may qualify for this service. Confirm eligibility with the provider."
+    "eligibility_hint": "قد تكون مؤهلاً لهذه الخدمة. تأكد من الأهلية مع مزود الخدمة."
   },
   "common": {
-    "loading": "Loading...",
+    "loading": "جارٍ التحميل...",
     "error": {
-      "generic": "Something went wrong. Please try again.",
-      "not_found": "Not found."
+      "generic": "حدث خطأ ما. رجاءً حاول مرة أخرى.",
+      "not_found": "غير موجود."
     },
     "button": {
-      "save": "Save",
-      "cancel": "Cancel",
-      "submit": "Submit",
-      "close": "Close"
-    }
+      "save": "حفظ",
+      "cancel": "إلغاء",
+      "submit": "إرسال",
+      "close": "إغلاق"
+    },
+    "language": "اللغة",
+    "select_language": "اختر اللغة",
+    "skip_to_main": "الانتقال إلى المحتوى الرئيسي"
   },
   "nav": {
-    "chat": "Find Services",
-    "map": "Map",
-    "directory": "Directory",
-    "saved": "Saved",
-    "profile": "Profile"
+    "chat": "البحث عن الخدمات",
+    "map": "الخريطة",
+    "directory": "الدليل",
+    "saved": "المحفوظات",
+    "profile": "الملف الشخصي",
+    "report": "الإبلاغ",
+    "about": "عنّا",
+    "get_involved": "شارك معنا",
+    "explore": "استكشف",
+    "open_menu": "فتح قائمة التنقل",
+    "close_menu": "إغلاق قائمة التنقل",
+    "main_label": "التنقل الرئيسي",
+    "legal_label": "الروابط القانونية",
+    "notifications": "الإشعارات"
+  },
+  "footer": {
+    "tagline": "نربط الناس بالخدمات الموثقة — مساعدة حقيقية وسريعة.",
+    "crisis_resources": "موارد الأزمات",
+    "crisis_resources_aria": "فتح موارد الأزمات وخطوط الدعم",
+    "legal_aria": "الروابط القانونية",
+    "copyright_suffix": "شبكة الوصول المفتوح للموارد"
   }
 }

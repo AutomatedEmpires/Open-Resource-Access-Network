@@ -912,7 +912,6 @@ export default function MapPage() {
             <PageHeader
               eyebrow="Verified discovery"
               title="Service Map"
-              subtitle="Stay oriented on the map, then open the list only when you want details."
               actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/map" />}
               badges={(
                 <>
@@ -927,8 +926,6 @@ export default function MapPage() {
               <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-4">
         {/* Search bar */}
         <FormSection
-          title="Search the map"
-          description="Search first. Open refinements only when you need to tighten the view."
           className="mb-3"
         >
           <form onSubmit={handleSubmit} className="flex flex-col gap-2">
@@ -1098,8 +1095,6 @@ export default function MapPage() {
 
               {/* Confidence + sort controls */}
               <FormSection
-                title="Trust and sort"
-                description="Change confidence or ordering without resetting the active map view."
                 className="rounded-[18px] border border-slate-200 bg-white p-4"
               >
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">

@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowRight, Building2, FileClock, Layers3, Plus, Send, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Building2, FileClock, Layers3, Plus, RefreshCw, Send, ShieldCheck } from 'lucide-react';
 
 import { ResourceSubmissionWorkspace } from '@/components/resource-submissions/ResourceSubmissionWorkspace';
 import { Button } from '@/components/ui/button';
@@ -110,7 +110,7 @@ function StudioLaunchCard({
   return (
     <Link
       href={href}
-      className="group rounded-3xl border border-slate-200 bg-white p-6 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg"
+      className="group rounded-3xl border border-slate-200 bg-white p-6 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-action focus-visible:ring-offset-1"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -319,7 +319,7 @@ export default function ResourceStudioPageClient() {
                 key={filter.key}
                 type="button"
                 onClick={() => setActiveFilter(filter.key)}
-                className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                className={`inline-flex min-h-[44px] items-center rounded-full px-3 text-sm font-medium transition ${
                   activeFilter === filter.key
                     ? 'bg-slate-900 text-white'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -329,6 +329,17 @@ export default function ResourceStudioPageClient() {
               </button>
             ))}
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1 shrink-0"
+            onClick={() => void fetchSubmissions()}
+            disabled={isLoading}
+            aria-label="Refresh submission list"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            Refresh
+          </Button>
         </div>
 
         {isLoading ? (
@@ -386,7 +397,15 @@ export default function ResourceStudioPageClient() {
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
                       <div
-                        className="h-full rounded-full bg-emerald-500 transition-all"
+                        className={`h-full rounded-full transition-all ${
+                          completion.total === 0
+                            ? 'bg-slate-300'
+                            : completion.completed / completion.total >= 0.8
+                            ? 'bg-emerald-500'
+                            : completion.completed / completion.total >= 0.5
+                            ? 'bg-amber-400'
+                            : 'bg-rose-400'
+                        }`}
                         style={{ width: `${completion.total === 0 ? 0 : (completion.completed / completion.total) * 100}%` }}
                       />
                     </div>

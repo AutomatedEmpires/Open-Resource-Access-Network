@@ -195,7 +195,7 @@ function ApprovalsPageInner() {
             role="tab"
             aria-selected={statusFilter === value}
             onClick={() => { setStatusFilter(value); setPage(1); }}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+            className={`inline-flex min-h-[44px] items-center px-3 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               statusFilter === value
                 ? 'bg-info-muted text-action-deep'
                 : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
@@ -270,7 +270,7 @@ function ApprovalsPageInner() {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <p className="text-gray-700">{formatDate(row.created_at)}</p>
-                          <p className="text-xs text-gray-400 flex items-center gap-1">
+                          <p className={`text-xs flex items-center gap-1 ${age >= 7 ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
                             <Clock className="h-3 w-3" aria-hidden="true" />
                             {age === 0 ? 'Today' : `${age}d ago`}
                           </p>

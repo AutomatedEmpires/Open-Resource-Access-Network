@@ -193,6 +193,40 @@ export default function TeamPage() {
         </div>
       </div>
 
+      {/* Governance resources */}
+      <section className="mb-10">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Governance resources</h2>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <a
+            href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/CONTRIBUTING.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <span className="font-medium text-gray-900">CONTRIBUTING.md</span>
+            <span className="text-gray-400" aria-hidden="true">↗</span>
+          </a>
+          <a
+            href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/CODE_OF_CONDUCT.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <span className="font-medium text-gray-900">Code of Conduct</span>
+            <span className="text-gray-400" aria-hidden="true">↗</span>
+          </a>
+          <a
+            href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/discussions"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <span className="font-medium text-gray-900">GitHub Discussions</span>
+            <span className="text-gray-400" aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </section>
+
       {/* Footer CTA */}
       <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-5 py-4">
         <div>
@@ -206,6 +240,25 @@ export default function TeamPage() {
           Contact us
         </Link>
       </div>
+
+      {/* Related */}
+      <nav aria-label="Related pages" className="mt-8 border-t border-gray-200 pt-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Related</p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Link href="/about" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">About ORAN</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/about/press" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Press &amp; Media</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/partnerships" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Get Involved</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </nav>
 
     </div>
   );

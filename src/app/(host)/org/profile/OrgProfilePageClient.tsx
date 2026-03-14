@@ -108,6 +108,7 @@ const SOCIAL_FIELDS: Array<{ key: keyof OrgSocialLinks; label: string; placehold
   { key: 'twitter',   label: 'Twitter/X', placeholder: 'https://x.com/yourhandle',       icon: Globe },
   { key: 'linkedin',  label: 'LinkedIn',  placeholder: 'https://linkedin.com/company/…', icon: Globe },
   { key: 'youtube',   label: 'YouTube',   placeholder: 'https://youtube.com/@yourchannel', icon: Globe },
+  { key: 'tiktok',    label: 'TikTok',    placeholder: 'https://tiktok.com/@yourhandle', icon: Globe },
   { key: 'phone',     label: 'Main phone', placeholder: '555-555-5555',                  icon: Globe },
 ];
 
@@ -420,7 +421,7 @@ export default function OrgProfilePageClient() {
                     key={o.id}
                     type="button"
                     onClick={() => setSelectedOrgId(o.id)}
-                    className={`rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
+                    className={`inline-flex min-h-[44px] items-center rounded-full px-4 text-sm font-medium border transition-colors ${
                       selectedOrgId === o.id
                         ? 'border-action bg-action text-white'
                         : 'border-gray-300 bg-white text-gray-700 hover:border-action hover:text-action'

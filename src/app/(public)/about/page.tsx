@@ -58,6 +58,31 @@ const PLATFORM_STATS = [
   { label: 'Verification model', value: 'Community-driven' },
   { label: 'Crisis gate', value: '911 / 988 / 211' },
   { label: 'License', value: 'MIT' },
+  { label: 'WCAG conformance', value: '2.1 AA' },
+  { label: 'Listing cost', value: 'Free' },
+];
+
+const DIFFERENTIATORS = [
+  {
+    vs: 'vs. AI chatbots',
+    title: 'Zero hallucinations',
+    body: 'ORAN never invents phone numbers, addresses, or service hours. Every result is retrieved from a verified, stored record — not generated on the fly.',
+  },
+  {
+    vs: 'vs. search engines',
+    title: 'Structured & eligibility-aware',
+    body: 'Search engines surface pages. ORAN surfaces structured service records — with hours, eligibility criteria, contact details, and a live confidence score.',
+  },
+  {
+    vs: 'vs. stale 211 databases',
+    title: 'Continuously re-verified',
+    body: 'Traditional 211 databases go stale between update cycles. ORAN flags confidence decay automatically and routes re-verification work to community admins.',
+  },
+  {
+    vs: 'vs. proprietary directories',
+    title: 'Open source & auditable',
+    body: 'MIT licensed. Anyone can inspect how records are scored, how data flows through the pipeline, and how eligibility criteria are assessed — no black boxes.',
+  },
 ];
 
 export default function AboutPage() {
@@ -72,8 +97,23 @@ export default function AboutPage() {
           Open Resource Access Network
         </h1>
         <p className="max-w-2xl text-xl leading-relaxed text-gray-600">
-          Connecting people to verified services — real help, real fast.
+          The verified civic directory — connecting people in need to real, confirmed government,
+          nonprofit, and community services.
         </p>
+        {/* Credential strip */}
+        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
+          {[
+            { dot: 'bg-green-500', text: 'WCAG 2.1 AA' },
+            { dot: 'bg-indigo-500', text: 'MIT open source' },
+            { dot: 'bg-red-500',   text: '911 / 988 / 211 crisis gate' },
+            { dot: 'bg-amber-500', text: 'Free to use' },
+          ].map(({ dot, text }) => (
+            <span key={text} className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+              <span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-hidden="true" />
+              {text}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Problem */}
@@ -146,7 +186,7 @@ export default function AboutPage() {
       {/* Platform at a glance */}
       <section className="mb-12">
         <h2 className="mb-5 text-lg font-semibold text-gray-900">Platform at a glance</h2>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           {PLATFORM_STATS.map(({ label, value }) => (
             <div
               key={label}
@@ -159,38 +199,81 @@ export default function AboutPage() {
         </div>
       </section>
 
+      {/* Why ORAN is different */}
+      <section className="mb-12">
+        <h2 className="mb-2 text-lg font-semibold text-gray-900">Why ORAN is different</h2>
+        <p className="mb-5 text-sm text-gray-600 leading-relaxed">
+          Existing tools fall short in different ways. ORAN is purpose-built to close each gap.
+        </p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {DIFFERENTIATORS.map(({ vs, title, body }) => (
+            <div
+              key={vs}
+              className="rounded-lg border border-gray-200 bg-gray-50 px-5 py-5"
+            >
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-indigo-500">{vs}</p>
+              <h3 className="mb-1 font-semibold text-gray-900">{title}</h3>
+              <p className="text-sm leading-relaxed text-gray-600">{body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* Get involved */}
       <section className="mb-12">
-        <h2 className="mb-5 text-lg font-semibold text-gray-900">Get involved</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <h2 className="mb-2 text-lg font-semibold text-gray-900">Get involved</h2>
+        <p className="mb-5 text-sm text-gray-600 leading-relaxed">
+          Whether you&apos;re seeking help, listing services, volunteering your time, or funding the
+          mission — there&apos;s a path for you.
+        </p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Link
-            href="/"
+            href="/chat"
             className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-indigo-300 hover:bg-indigo-50"
           >
-            <p className="mb-1 font-semibold text-gray-900 group-hover:text-indigo-700">
-              Get Help
-            </p>
+            <h3 className="mb-1 font-semibold text-gray-900 group-hover:text-indigo-700 flex items-center justify-between">
+              Get Help <span aria-hidden="true" className="text-gray-300 group-hover:text-indigo-400">→</span>
+            </h3>
             <p className="text-sm text-gray-500">Search verified services near you.</p>
           </Link>
           <Link
-            href="/partnerships"
+            href="/partnerships/organizations"
             className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-indigo-300 hover:bg-indigo-50"
           >
-            <p className="mb-1 font-semibold text-gray-900 group-hover:text-indigo-700">
-              List Your Organization
-            </p>
-            <p className="text-sm text-gray-500">Add your services to the directory.</p>
+            <h3 className="mb-1 font-semibold text-gray-900 group-hover:text-indigo-700 flex items-center justify-between">
+              List Your Organization <span aria-hidden="true" className="text-gray-300 group-hover:text-indigo-400">→</span>
+            </h3>
+            <p className="text-sm text-gray-500">Add your services to the directory for free.</p>
           </Link>
+          <Link
+            href="/partnerships/admins"
+            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-indigo-300 hover:bg-indigo-50"
+          >
+            <h3 className="mb-1 font-semibold text-gray-900 group-hover:text-indigo-700 flex items-center justify-between">
+              Become an Admin <span aria-hidden="true" className="text-gray-300 group-hover:text-indigo-400">→</span>
+            </h3>
+            <p className="text-sm text-gray-500">Volunteer to verify records and expand local coverage.</p>
+          </Link>
+          <Link
+            href="/contact"
+            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-indigo-300 hover:bg-indigo-50"
+          >
+            <h3 className="mb-1 font-semibold text-gray-900 group-hover:text-indigo-700 flex items-center justify-between">
+              Support ORAN <span aria-hidden="true" className="text-gray-300 group-hover:text-indigo-400">→</span>
+            </h3>
+            <p className="text-sm text-gray-500">Fund verification infrastructure and geographic expansion.</p>
+          </Link>
+          {/* GitHub — spans both columns so the grid closes evenly */}
           <a
             href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network"
             target="_blank"
             rel="noopener noreferrer"
-            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-indigo-300 hover:bg-indigo-50"
+            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-indigo-300 hover:bg-indigo-50 sm:col-span-2"
           >
-            <p className="mb-1 font-semibold text-gray-900 group-hover:text-indigo-700">
-              Contribute
-            </p>
-            <p className="text-sm text-gray-500">Open source on GitHub. PRs welcome.</p>
+            <h3 className="mb-1 font-semibold text-gray-900 group-hover:text-indigo-700 flex items-center justify-between">
+              Contribute on GitHub <span aria-hidden="true" className="text-gray-300 group-hover:text-indigo-400">→</span>
+            </h3>
+            <p className="text-sm text-gray-500">Open source &middot; MIT licensed &middot; PRs welcome &middot; Issues tracked publicly.</p>
           </a>
         </div>
       </section>
@@ -210,6 +293,29 @@ export default function AboutPage() {
           View on GitHub →
         </a>
       </div>
+
+      {/* Explore */}
+      <nav aria-label="Explore ORAN" className="mt-8 border-t border-gray-200 pt-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Explore</p>
+        <div className="grid gap-2 sm:grid-cols-4">
+          <Link href="/about/team" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Team</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/about/press" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Press</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/changelog" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Changelog</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/partnerships" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Get Involved</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </nav>
     </div>
   );
 }

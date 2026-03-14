@@ -943,7 +943,6 @@ export default function DirectoryPage() {
             <PageHeader
               eyebrow="Verified discovery"
               title="Service Directory"
-              subtitle="Browse verified services in a quieter, easier-to-scan layout. Refine only when you need to."
               actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/directory" />}
               badges={(
                 <>
@@ -957,8 +956,6 @@ export default function DirectoryPage() {
             <ErrorBoundary>
               <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-4">
                 <FormSection
-                  title="Search the directory"
-                  description="Start simple, then open refinements only if you need them."
                   className="mb-3"
                 >
                   <form onSubmit={handleSubmit} className="flex flex-col gap-2">
@@ -1140,8 +1137,6 @@ export default function DirectoryPage() {
                       </div>
 
                       <FormSection
-                        title="Trust and sort"
-                        description="Change confidence or ordering without resetting the current search."
                         className="rounded-[18px] border border-slate-200 bg-white p-4"
                       >
                   <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-2">

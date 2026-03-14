@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-const EFFECTIVE_DATE_ISO = '2026-03-06';
-const EFFECTIVE_DATE_DISPLAY = 'March 6, 2026';
+const EFFECTIVE_DATE_ISO = '2026-03-13';
+const EFFECTIVE_DATE_DISPLAY = 'March 13, 2026';
 const VERSION = '0.9 — Pre-release (pending legal review)';
 
 export const metadata: Metadata = {
@@ -57,6 +57,18 @@ export default function TermsPage() {
           By using ORAN, you agree to the provisions below. The terms will be updated with formal
           legal review before ORAN accepts general-public traffic at scale.
         </p>
+      </div>
+
+      {/* TL;DR */}
+      <div className="mb-8 rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-5">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-indigo-400">Plain-language summary — not a substitute for the full terms below</p>
+        <ul className="space-y-1.5 text-sm text-indigo-800">
+          <li className="flex gap-2"><span aria-hidden="true">•</span><span>ORAN is a free service-discovery tool. You use it to find real help — not a substitute for emergency services.</span></li>
+          <li className="flex gap-2"><span aria-hidden="true">•</span><span>Service information may be outdated. Always confirm hours and eligibility directly with the provider.</span></li>
+          <li className="flex gap-2"><span aria-hidden="true">•</span><span>In any life-threatening emergency, call <strong>911</strong>. Do not use this platform.</span></li>
+          <li className="flex gap-2"><span aria-hidden="true">•</span><span>Do not submit false listings, impersonate others, or scrape data without written permission.</span></li>
+          <li className="flex gap-2"><span aria-hidden="true">•</span><span>Platform code is MIT-licensed and open source. Service data is CC0 where applicable.</span></li>
+        </ul>
       </div>
 
       {/* Table of contents */}
@@ -207,8 +219,9 @@ export default function TermsPage() {
       <section className="mb-8" id="governing-law">
         <h2 className="mb-3 text-base font-semibold text-gray-900">9. Governing law</h2>
         <p className="text-sm leading-relaxed text-gray-700">
-          Governing jurisdiction will be specified as part of the formal legal review. This section
-          will be updated before general-public launch.
+          ORAN is currently operated in the United States. These terms are governed by applicable
+          United States federal law. The specific governing state and dispute-resolution mechanism
+          will be designated before general public launch as part of the formal legal review process.
         </p>
       </section>
 
@@ -235,6 +248,25 @@ export default function TermsPage() {
           Contact us →
         </Link>
       </div>
+
+      {/* Related policies */}
+      <nav aria-label="Related policies" className="mt-8 border-t border-gray-200 pt-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Related policies</p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Link href="/privacy" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Privacy Policy</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/security" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Security Policy</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/accessibility" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Accessibility</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </nav>
     </div>
   );
 }

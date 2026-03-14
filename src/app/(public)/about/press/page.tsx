@@ -287,6 +287,25 @@ export default function PressPage() {
         </Link>
       </div>
 
+      {/* Related */}
+      <nav aria-label="Related pages" className="mt-8 border-t border-gray-200 pt-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Related</p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Link href="/about" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">About ORAN</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/about/team" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Team</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/changelog" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Changelog</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </nav>
+
     </div>
   );
 }

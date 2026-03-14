@@ -86,7 +86,6 @@ export default function ChatPage() {
             <PageHeader
               eyebrow="Seeker assistant"
               title="Find Services"
-              subtitle="A calmer way to start: one search box, one conversation, and verified records only."
               actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/chat" />}
               badges={(
                 <>
@@ -112,7 +111,6 @@ export default function ChatPage() {
             <PageHeader
               eyebrow="Seeker assistant"
               title="Find Services"
-              subtitle="Ask in your own words. Keep the experience focused here, then move into the directory or map only when you want a different view."
               actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/chat" />}
               badges={(
                 <>

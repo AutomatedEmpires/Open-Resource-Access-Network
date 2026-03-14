@@ -14,7 +14,7 @@ const IN_SCOPE = [
 ];
 
 const OUT_OF_SCOPE = [
-  'Third-party services (Mapbox, Microsoft Entra ID, Azure infrastructure)',
+  'Third-party services (Azure Maps, Microsoft Entra ID, Azure infrastructure)',
   'Denial-of-service attacks',
   'Social engineering or phishing attempts against ORAN staff',
   'Physical security',
@@ -231,7 +231,7 @@ export default function SecurityPage() {
       </section>
 
       {/* SECURITY.md link */}
-      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-5 py-4">
+      <div className="mb-3 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-5 py-4">
         <div>
           <p className="text-sm font-medium text-gray-900">Machine-readable disclosure file</p>
           <p className="mt-0.5 text-xs text-gray-500">
@@ -247,6 +247,44 @@ export default function SecurityPage() {
           View SECURITY.md →
         </a>
       </div>
+      <p className="mb-8 text-xs text-gray-500">
+        A{' '}
+        <a
+          href="https://securitytxt.org"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:text-gray-700"
+        >
+          security.txt
+        </a>
+        {' '}file at{' '}
+        <code className="rounded bg-gray-100 px-1 py-0.5 font-mono">/.well-known/security.txt</code>
+        {' '}is planned for a future release.
+      </p>
+
+      {/* Related */}
+      <nav aria-label="Related pages" className="border-t border-gray-200 pt-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Related</p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Link href="/privacy" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Privacy Policy</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/contact" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Contact</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <a
+            href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/security/advisories"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <span className="font-medium text-gray-900">GitHub Advisories</span>
+            <span className="text-gray-400" aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </nav>
     </div>
   );
 }

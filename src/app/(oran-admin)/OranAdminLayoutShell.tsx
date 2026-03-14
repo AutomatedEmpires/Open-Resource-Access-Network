@@ -65,7 +65,7 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
       </a>
       <header className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
         <div className="container mx-auto max-w-7xl flex items-center justify-between px-4 h-14">
-          <Link href="/approvals" className="font-bold text-gray-900 tracking-tight">
+          <Link href="/approvals" className="font-bold text-gray-900 tracking-tight rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-action focus-visible:ring-offset-1">
             ORAN Admin
           </Link>
 
@@ -75,7 +75,7 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
                 <Link
                   key={href}
                   href={href}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`inline-flex items-center min-h-[44px] px-3 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                     isActive(href)
                       ? 'bg-teal-50 text-teal-800'
                       : 'text-stone-500 hover:text-stone-900 hover:bg-stone-50'

@@ -39,7 +39,7 @@ export function FormSection({
     >
       {header ? (
         header
-      ) : (
+      ) : (title || description || action) ? (
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 id={headingId} className="text-base font-semibold text-stone-900">
@@ -53,7 +53,7 @@ export function FormSection({
           </div>
           {action ? <div className="shrink-0">{action}</div> : null}
         </div>
-      )}
+      ) : null}
 
       {hasChildren ? <div className={cn('space-y-4', contentClassName)}>{children}</div> : null}
     </section>

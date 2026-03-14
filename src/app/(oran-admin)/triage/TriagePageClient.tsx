@@ -260,7 +260,7 @@ function TriagePageInner() {
             role="tab"
             aria-selected={activeQueue === qt}
             onClick={() => setActiveQueue(qt)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`inline-flex min-h-[44px] items-center px-3 rounded-lg text-sm font-medium transition-colors ${
               activeQueue === qt
                 ? 'bg-action text-white shadow-sm'
                 : 'text-gray-600 hover:bg-gray-100'

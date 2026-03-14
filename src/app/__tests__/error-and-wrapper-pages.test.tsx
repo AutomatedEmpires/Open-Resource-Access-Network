@@ -14,6 +14,12 @@ vi.mock('next/link', () => ({
 vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
 }));
+vi.mock('@/components/nav/AppNav', () => ({
+  AppNav: () => <div>App Nav</div>,
+}));
+vi.mock('@/components/footer', () => ({
+  AppFooter: () => <div>App Footer</div>,
+}));
 
 vi.mock('@/app/(seeker)/appeal/AppealPageClient', () => ({
   default: () => <div>Appeal Client</div>,
@@ -58,10 +64,11 @@ describe('app-level error and wrapper pages', () => {
   it('renders root not-found with metadata and navigation links', () => {
     render(<NotFound />);
 
-    expect(notFoundMetadata.title).toBe('Page not found');
+    expect(notFoundMetadata.title).toBe('Page not found — ORAN');
     expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Go home' })).toHaveAttribute('href', '/');
-    expect(screen.getByRole('link', { name: 'Search services' })).toHaveAttribute('href', '/directory');
+    expect(screen.getByRole('link', { name: 'Find services' })).toHaveAttribute('href', '/chat');
+    expect(screen.getByRole('link', { name: 'Directory' })).toHaveAttribute('href', '/directory');
   });
 
   it('renders seeker and auth wrapper pages with metadata', () => {

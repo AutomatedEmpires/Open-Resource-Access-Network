@@ -417,8 +417,10 @@ function TemplatesPageInner() {
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <Filter className="h-4 w-4 text-gray-400 shrink-0" aria-hidden="true" />
         <button
+          role="tab"
+          aria-selected={categoryFilter === ''}
           onClick={() => setCategoryFilter('')}
-          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+          className={`inline-flex min-h-[44px] items-center px-3 rounded-full text-xs font-medium transition-colors ${
             categoryFilter === ''
               ? 'bg-action text-white'
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -429,8 +431,10 @@ function TemplatesPageInner() {
         {TEMPLATE_CATEGORIES.map((cat) => (
           <button
             key={cat}
+            role="tab"
+            aria-selected={categoryFilter === cat}
             onClick={() => setCategoryFilter(cat)}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+            className={`inline-flex min-h-[44px] items-center px-3 rounded-full text-xs font-medium transition-colors ${
               categoryFilter === cat
                 ? 'bg-action text-white'
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'

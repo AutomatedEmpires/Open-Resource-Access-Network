@@ -164,21 +164,21 @@ function PreviewResultList({
         <div className="flex flex-wrap gap-2">
           <Link
             href={buildDiscoveryHref('/directory', discoveryState)}
-            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:border-blue-200 hover:text-blue-800"
+            className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-blue-200 hover:text-blue-800"
           >
             Directory
             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
           </Link>
           <Link
             href={buildDiscoveryHref('/map', discoveryState)}
-            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:border-blue-200 hover:text-blue-800"
+            className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-blue-200 hover:text-blue-800"
           >
             Map
             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
           </Link>
           <Link
             href={buildDiscoveryHref('/chat', discoveryState)}
-            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:border-blue-200 hover:text-blue-800"
+            className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:border-blue-200 hover:text-blue-800"
           >
             Chat
             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
@@ -457,7 +457,7 @@ export default function DiscoveryPreviewPageClient() {
                               attributeFilters: toggleAttributeValue(current.attributeFilters, group.taxonomy, option),
                             }));
                           }}
-                          className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                          className={`inline-flex min-h-[44px] items-center rounded-full border px-3 text-xs font-medium transition-colors ${
                             selected
                               ? 'border-blue-600 bg-blue-600 text-white'
                               : 'border-gray-200 bg-white text-gray-700 hover:border-blue-200 hover:text-blue-800'

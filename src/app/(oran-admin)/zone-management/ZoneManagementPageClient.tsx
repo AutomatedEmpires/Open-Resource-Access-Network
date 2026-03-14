@@ -281,7 +281,7 @@ function ZoneManagementInner() {
             role="tab"
             aria-selected={statusFilter === value}
             onClick={() => { setStatusFilter(value); setPage(1); }}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+            className={`inline-flex min-h-[44px] items-center px-3 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               statusFilter === value
                 ? 'bg-info-muted text-action-deep'
                 : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'

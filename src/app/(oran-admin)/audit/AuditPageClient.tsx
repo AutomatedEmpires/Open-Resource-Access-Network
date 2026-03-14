@@ -268,6 +268,7 @@ function AuditPageInner() {
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600 w-8" />
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Action</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Actor</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Table</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Record ID</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Timestamp</th>
@@ -304,6 +305,9 @@ function AuditPageInner() {
                         </td>
                         <td className="px-4 py-3">
                           <ActionBadge action={row.action} />
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-gray-500 truncate max-w-[120px]">
+                          {row.user_id ? row.user_id.slice(0, 12) + '\u2026' : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-4 py-3 font-mono text-xs text-gray-700">
                           {row.table_name}

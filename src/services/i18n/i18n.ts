@@ -121,3 +121,46 @@ export function isRTL(locale: LocaleCode): boolean {
 export function createTranslator(locale: LocaleCode) {
   return (key: string, params?: TranslationParams) => t(key, params, locale);
 }
+
+// ============================================================
+// CLIENT MESSAGES BUNDLE
+// ============================================================
+
+function deepMerge(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...base };
+  for (const key of Object.keys(override)) {
+    const bVal = base[key];
+    const oVal = override[key];
+    if (
+      oVal !== null &&
+      typeof oVal === 'object' &&
+      !Array.isArray(oVal) &&
+      bVal !== null &&
+      typeof bVal === 'object' &&
+      !Array.isArray(bVal)
+    ) {
+      result[key] = deepMerge(
+        bVal as Record<string, unknown>,
+        oVal as Record<string, unknown>
+      );
+    } else if (oVal !== undefined) {
+      result[key] = oVal;
+    }
+  }
+  return result;
+}
+
+/**
+ * Returns a fully merged translation bundle for the given locale.
+ * English strings fill any gaps in the target locale so clients always
+ * have a complete bundle without a second network round-trip.
+ */
+export function getMessages(locale: LocaleCode): Record<string, unknown> {
+  const en = localeCache.get('en') as Record<string, unknown>;
+  if (locale === 'en') return en;
+  const target = (localeCache.get(locale) ?? {}) as Record<string, unknown>;
+  return deepMerge(en, target);
+}

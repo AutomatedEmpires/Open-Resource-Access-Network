@@ -37,13 +37,32 @@
       "cancel": "Cancel",
       "submit": "Submit",
       "close": "Close"
-    }
+    },
+    "language": "Language",
+    "select_language": "Select language",
+    "skip_to_main": "Skip to main content"
   },
   "nav": {
     "chat": "Find Services",
     "map": "Map",
     "directory": "Directory",
     "saved": "Saved",
-    "profile": "Profile"
+    "profile": "Profile",
+    "report": "Report",
+    "about": "About",
+    "get_involved": "Get Involved",
+    "explore": "Explore",
+    "open_menu": "Open navigation menu",
+    "close_menu": "Close navigation menu",
+    "main_label": "Main navigation",
+    "legal_label": "Legal links",
+    "notifications": "Notifications"
+  },
+  "footer": {
+    "tagline": "Connecting people to verified services — real help, real fast.",
+    "crisis_resources": "Crisis Resources",
+    "crisis_resources_aria": "Open crisis resources and hotlines",
+    "legal_aria": "Legal links",
+    "copyright_suffix": "Open Resource Access Network"
   }
 }

@@ -26,7 +26,10 @@ export type CrisisCategory =
   | 'disaster'
   | 'poison'
   | 'gambling'
-  | 'trafficking';
+  | 'trafficking'
+  | 'housing'
+  | 'disability'
+  | 'financial';
 
 export interface CrisisResource {
   id: string;
@@ -48,6 +51,12 @@ export interface CrisisResource {
   chatAvailable?: boolean;
   available: string;
   category: CrisisCategory;
+  /** Marks top-priority resources (911, 988, 211) for visual prominence. */
+  featured?: boolean;
+  /** Official website URL for more information. */
+  website?: string;
+  /** Languages or accessibility options (e.g., "Español", "TTY available"). */
+  languages?: string[];
 }
 
 // ============================================================
@@ -69,6 +78,9 @@ export const CRISIS_CATEGORY_LABELS: Record<CrisisCategory, string> = {
   poison:           'Poison Control',
   gambling:         'Gambling',
   trafficking:      'Human Trafficking',
+  housing:          'Housing & Homelessness',
+  disability:       'Disability Services',
+  financial:        'Financial Crisis',
 };
 
 export const CRISIS_CATEGORY_COLORS: Record<
@@ -89,6 +101,9 @@ export const CRISIS_CATEGORY_COLORS: Record<
   poison:           { bg: 'bg-amber-50',    text: 'text-amber-700',   border: 'border-amber-200' },
   gambling:         { bg: 'bg-emerald-50',  text: 'text-emerald-700', border: 'border-emerald-200' },
   trafficking:      { bg: 'bg-rose-50',     text: 'text-rose-700',    border: 'border-rose-200' },
+  housing:          { bg: 'bg-cyan-50',     text: 'text-cyan-700',    border: 'border-cyan-200' },
+  disability:       { bg: 'bg-violet-50',   text: 'text-violet-700',  border: 'border-violet-200' },
+  financial:        { bg: 'bg-indigo-50',   text: 'text-indigo-700',  border: 'border-indigo-200' },
 };
 
 // ============================================================
@@ -106,6 +121,7 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     phoneDisplay: '911',
     available: '24/7',
     category: 'emergency',
+    featured: true,
   },
   {
     id: 'community-211',
@@ -117,6 +133,9 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     chatAvailable: true,
     available: '24/7 in most areas',
     category: 'emergency',
+    featured: true,
+    website: 'https://www.211.org',
+    languages: ['200+ languages via interpreter'],
   },
 
   // ── Mental Health ─────────────────────────────────────────
@@ -131,6 +150,9 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     chatAvailable: true,
     available: '24/7',
     category: 'mentalHealth',
+    featured: true,
+    website: 'https://988lifeline.org',
+    languages: ['Español: (888) 628-9454', 'TTY: dial 711 first'],
   },
   {
     id: 'crisis-text-line',
@@ -143,6 +165,7 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     textOption: 'Text HOME to 741741',
     available: '24/7',
     category: 'mentalHealth',
+    website: 'https://www.crisistextline.org',
   },
   {
     id: 'nami-helpline',
@@ -154,6 +177,8 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     textOption: 'Text NAMI to 741741',
     available: 'Mon–Fri 10am–10pm ET',
     category: 'mentalHealth',
+    website: 'https://www.nami.org/help',
+    languages: ['Español: text AYUDA to 741741'],
   },
   {
     id: '988-espanol',
@@ -165,6 +190,8 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     chatAvailable: true,
     available: '24/7',
     category: 'mentalHealth',
+    website: 'https://988lifeline.org',
+    languages: ['Español'],
   },
   {
     id: 'postpartum-psi',
@@ -176,6 +203,7 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     textOption: 'Text 503-894-9453',
     available: '24/7',
     category: 'mentalHealth',
+    website: 'https://www.postpartum.net',
   },
 
   // ── Safety & Abuse ───────────────────────────────────────
@@ -190,6 +218,8 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     chatAvailable: true,
     available: '24/7',
     category: 'domesticViolence',
+    website: 'https://www.thehotline.org',
+    languages: ['Español disponible', 'TTY: 1-800-787-3224'],
   },
   {
     id: 'rainn',
@@ -201,6 +231,7 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     chatAvailable: true,
     available: '24/7',
     category: 'domesticViolence',
+    website: 'https://www.rainn.org',
   },
   {
     id: 'loveisrespect',
@@ -213,6 +244,7 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     chatAvailable: true,
     available: '24/7',
     category: 'domesticViolence',
+    website: 'https://www.loveisrespect.org',
   },
   {
     id: 'stronghearts',
@@ -224,6 +256,20 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     chatAvailable: true,
     available: '24/7',
     category: 'domesticViolence',
+    website: 'https://strongheartshelpline.org',
+  },
+  {
+    id: 'victimconnect',
+    name: 'VictimConnect Resource Center',
+    description:
+      'Confidential referrals, information, and support for all crime victims — including violent crime, financial fraud, stalking, and identity theft.',
+    phone: '18554842846',
+    phoneDisplay: '1-855-484-2846',
+    textOption: 'Text 1-855-484-2846',
+    chatAvailable: true,
+    available: '24/7',
+    category: 'domesticViolence',
+    website: 'https://victimconnect.org',
   },
 
   // ── Substance & Recovery ──────────────────────────────────
@@ -236,17 +282,8 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     phoneDisplay: '1-800-662-4357',
     available: '24/7',
     category: 'substanceAbuse',
-  },
-  {
-    id: 'gambling',
-    name: 'National Problem Gambling Helpline',
-    description:
-      'Crisis intervention, information, and referrals for problem gambling and related financial distress.',
-    phone: '18005224700',
-    phoneDisplay: '1-800-522-4700',
-    chatAvailable: true,
-    available: '24/7',
-    category: 'gambling',
+    website: 'https://www.samhsa.gov/find-help/national-helpline',
+    languages: ['Español disponible'],
   },
 
   // ── Children & Youth ─────────────────────────────────────
@@ -259,6 +296,20 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     phoneDisplay: '1-800-422-4453',
     available: '24/7',
     category: 'children',
+    website: 'https://www.childhelphotline.org',
+  },
+  {
+    id: 'boys-town',
+    name: 'Boys Town National Hotline',
+    description:
+      'Free, confidential crisis and counseling support for children, teens, parents, and families facing any problem — from bullying and abuse to family conflict.',
+    phone: '18004483000',
+    phoneDisplay: '1-800-448-3000',
+    textOption: 'Text VOICE to 20121',
+    chatAvailable: true,
+    available: '24/7',
+    category: 'children',
+    website: 'https://www.boystown.org/hotline',
   },
   {
     id: 'national-parent-helpline',
@@ -269,7 +320,10 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     phoneDisplay: '1-855-427-2736',
     available: 'Mon–Fri 10am–7pm PT',
     category: 'children',
+    website: 'https://www.nationalparenthelpline.org',
   },
+
+  // ── Youth & Runaway ──────────────────────────────────────
   {
     id: 'runaway-safeline',
     name: 'National Runaway Safeline',
@@ -281,6 +335,7 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     chatAvailable: true,
     available: '24/7',
     category: 'runaway',
+    website: 'https://www.1800runaway.org',
   },
 
   // ── LGBTQ+ ────────────────────────────────────────────────
@@ -295,6 +350,7 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     chatAvailable: true,
     available: '24/7',
     category: 'lgbtq',
+    website: 'https://www.thetrevorproject.org',
   },
   {
     id: 'trans-lifeline',
@@ -305,6 +361,7 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     phoneDisplay: '1-877-565-8860',
     available: 'Hours vary — see website',
     category: 'lgbtq',
+    website: 'https://translifeline.org',
   },
   {
     id: 'glbt-help-center',
@@ -315,6 +372,7 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     phoneDisplay: '1-888-843-4564',
     available: 'Mon–Fri 4pm–12am ET, Sat Noon–5pm ET',
     category: 'lgbtq',
+    website: 'https://www.glbthotline.org',
   },
 
   // ── Veterans ─────────────────────────────────────────────
@@ -329,6 +387,19 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     chatAvailable: true,
     available: '24/7',
     category: 'veterans',
+    website: 'https://www.veteranscrisisline.net',
+    languages: ['Español disponible'],
+  },
+  {
+    id: 'homeless-veterans',
+    name: 'National Call Center for Homeless Veterans',
+    description:
+      'VA-operated free crisis line connecting veterans at risk of homelessness to local VA resources, housing, and benefits.',
+    phone: '18774243838',
+    phoneDisplay: '1-877-424-3838',
+    available: '24/7',
+    category: 'veterans',
+    website: 'https://www.va.gov/homeless/for_veterans.asp',
   },
 
   // ── Disaster Relief ───────────────────────────────────────
@@ -342,6 +413,8 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     textOption: 'Text TalkWithUs to 66746',
     available: '24/7',
     category: 'disaster',
+    website: 'https://www.samhsa.gov/find-help/disaster-distress-helpline',
+    languages: ['Español disponible', 'ASL via videophone'],
   },
 
   // ── Poison Control ────────────────────────────────────────
@@ -354,6 +427,22 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     phoneDisplay: '1-800-222-1222',
     available: '24/7',
     category: 'poison',
+    website: 'https://www.poison.org',
+    languages: ['Español disponible'],
+  },
+
+  // ── Gambling ─────────────────────────────────────────────
+  {
+    id: 'gambling',
+    name: 'National Problem Gambling Helpline',
+    description:
+      'Crisis intervention, information, and referrals for problem gambling and related financial distress.',
+    phone: '18005224700',
+    phoneDisplay: '1-800-522-4700',
+    chatAvailable: true,
+    available: '24/7',
+    category: 'gambling',
+    website: 'https://www.ncpgambling.org/help-treatment/national-helpline',
   },
 
   // ── Human Trafficking ────────────────────────────────────
@@ -368,6 +457,8 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     chatAvailable: true,
     available: '24/7',
     category: 'trafficking',
+    website: 'https://humantraffickinghotline.org',
+    languages: ['200+ languages via interpreter', 'TTY available'],
   },
 
   // ── Eating Disorders ─────────────────────────────────────
@@ -381,6 +472,7 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     textOption: 'Text NEDA to 741741',
     available: 'Mon–Thu 11am–9pm ET, Fri 11am–5pm ET',
     category: 'eating',
+    website: 'https://www.nationaleatingdisorders.org/help-support/contact-helpline',
   },
 
   // ── Aging & Memory ────────────────────────────────────────
@@ -393,5 +485,72 @@ export const CRISIS_RESOURCES: CrisisResource[] = [
     phoneDisplay: '1-800-344-4867',
     available: '24/7',
     category: 'aging',
+    website: 'https://www.alz.org/help-support/resources/helpline',
+  },
+  {
+    id: 'eldercare-locator',
+    name: 'Eldercare Locator',
+    description:
+      'Free resource connecting older adults and caregivers to local services including in-home care, transportation, meals, and elder abuse reporting.',
+    phone: '18006771116',
+    phoneDisplay: '1-800-677-1116',
+    available: 'Mon–Fri 8am–9pm ET',
+    category: 'aging',
+    website: 'https://eldercare.acl.gov',
+    languages: ['Español disponible', 'Translation services available'],
+  },
+
+  // ── Housing & Homelessness ────────────────────────────────
+  {
+    id: 'hud-housing',
+    name: 'HUD Housing Counseling Hotline',
+    description:
+      'Free or low-cost official housing counseling — foreclosure prevention, rental assistance, reverse mortgage guidance, and homelessness services.',
+    phone: '18005694287',
+    phoneDisplay: '1-800-569-4287',
+    available: '24/7',
+    category: 'housing',
+    website: 'https://www.hud.gov/i_want_to/talk_to_a_housing_counselor',
+    languages: ['Español disponible'],
+  },
+
+  // ── Disability Services ───────────────────────────────────
+  {
+    id: 'ada-national',
+    name: 'ADA National Network',
+    description:
+      'Free information, guidance, and technical assistance on the Americans with Disabilities Act including employment, housing, and public access rights.',
+    phone: '18009494232',
+    phoneDisplay: '1-800-949-4232',
+    available: 'Mon–Fri 9am–5pm (local time zone)',
+    category: 'disability',
+    website: 'https://adata.org',
+    languages: ['TTY: 1-800-949-4232', 'Español disponible'],
+  },
+
+  // ── Financial Crisis ──────────────────────────────────────
+  {
+    id: 'nfcc',
+    name: 'NFCC Financial Counseling',
+    description:
+      'Free and low-cost credit counseling, debt management, housing counseling, and bankruptcy education from a nonprofit financial counselor.',
+    phone: '18003882227',
+    phoneDisplay: '1-800-388-2227',
+    available: 'Mon–Fri 8am–8pm ET',
+    category: 'financial',
+    website: 'https://www.nfcc.org',
+    languages: ['Español disponible'],
+  },
+  {
+    id: 'cfpb',
+    name: 'Consumer Financial Protection Bureau',
+    description:
+      'Federal agency helping consumers with mortgage issues, debt collection, credit reporting errors, financial scams, and predatory lending complaints.',
+    phone: '18554112372',
+    phoneDisplay: '1-855-411-2372',
+    available: 'Mon–Fri 8am–8pm ET',
+    category: 'financial',
+    website: 'https://www.consumerfinance.gov',
+    languages: ['Español: (855) 411-2372', 'TTY: (855) 729-2372'],
   },
 ];

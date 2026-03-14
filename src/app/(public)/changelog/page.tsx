@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'Changelog — ORAN',
@@ -32,7 +33,7 @@ const TYPE_LABELS: Record<ChangeType, { label: string; bg: string; text: string 
 const RELEASES: Release[] = [
   {
     version: '0.10.0',
-    date: 'March 2026',
+    date: 'March 13, 2026',
     summary: 'Team, Press, and Changelog pages; footer expanded across all role variants.',
     highlight: true,
     changes: [
@@ -179,8 +180,28 @@ export default function ChangelogPage() {
         </ol>
       </div>
 
+      {/* Watch for updates */}
+      <div className="mt-12 flex items-center gap-4 rounded-lg border border-gray-200 bg-white px-5 py-4">
+        <span className="shrink-0 text-xl" aria-hidden="true">👁</span>
+        <div>
+          <p className="text-sm font-medium text-gray-900">Watch for new releases</p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Star or watch the{' '}
+            <a
+              href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-indigo-600 underline"
+            >
+              GitHub repository
+            </a>{' '}
+            to receive release notifications. An RSS/Atom feed is planned for v1.0.
+          </p>
+        </div>
+      </div>
+
       {/* Pre-release notice */}
-      <div className="mt-12 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4">
+      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4">
         <p className="text-sm leading-relaxed text-amber-800">
           <span className="font-semibold">Actively maintained, pre-1.0.</span>{' '}
           ORAN is in continuous development. Breaking changes to APIs, data models, or UI may occur without a deprecation period
@@ -212,6 +233,30 @@ export default function ChangelogPage() {
           View issues
         </a>
       </div>
+
+      {/* Related */}
+      <nav aria-label="Related pages" className="mt-8 border-t border-gray-200 pt-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Related</p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Link href="/about" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">About ORAN</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <a
+            href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <span className="font-medium text-gray-900">GitHub Releases</span>
+            <span className="text-gray-400" aria-hidden="true">↗</span>
+          </a>
+          <Link href="/partnerships" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Get Involved</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </nav>
 
     </div>
   );

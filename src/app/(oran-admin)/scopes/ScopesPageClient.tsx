@@ -462,7 +462,7 @@ function GrantsTab() {
                                   value={decisionReason}
                                   onChange={(e) => setDecisionReason(e.target.value)}
                                   rows={2}
-                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action"
                                   placeholder="Reason for decision..."
                                   maxLength={5000}
                                 />
@@ -623,9 +623,9 @@ function ScopeCenterInner() {
             role="tab"
             aria-selected={activeTab === value}
             onClick={() => setActiveTab(value)}
-            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            className={`inline-flex min-h-[44px] items-center gap-1.5 px-4 text-sm font-medium transition-colors border-b-2 -mb-px ${
               activeTab === value
-                ? 'border-indigo-600 text-indigo-700'
+                ? 'border-action text-action-base'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >

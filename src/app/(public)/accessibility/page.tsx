@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-const LAST_EVALUATED_ISO = '2026-03-06';
-const LAST_EVALUATED_DISPLAY = 'March 6, 2026';
+const LAST_EVALUATED_ISO = '2026-03-13';
+const LAST_EVALUATED_DISPLAY = 'March 13, 2026';
 
 export const metadata: Metadata = {
   title: 'Accessibility Statement',
@@ -32,7 +32,7 @@ const TESTING_MATRIX = [
 
 const KNOWN_ISSUES = [
   {
-    issue: 'Map component (Mapbox GL)',
+    issue: 'Map component (Azure Maps)',
     detail:
       'The interactive map does not currently meet keyboard-only navigation requirements. A list-view fallback is available for all map search results.',
     severity: 'Medium' as const,
@@ -175,12 +175,86 @@ export default function AccessibilityPage() {
         </Link>
       </section>
 
+      {/* External resources */}
+      <section className="mb-10">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Accessibility resources</h2>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <a
+            href="https://www.w3.org/TR/WCAG21/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <div>
+              <p className="font-medium text-gray-900">WCAG 2.1 Guidelines</p>
+              <p className="mt-0.5 text-xs text-gray-500">W3C — official specification</p>
+            </div>
+            <span className="shrink-0 text-gray-400" aria-hidden="true">↗</span>
+          </a>
+          <a
+            href="https://webaim.org/resources/contrastchecker/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <div>
+              <p className="font-medium text-gray-900">WebAIM Contrast Checker</p>
+              <p className="mt-0.5 text-xs text-gray-500">Color contrast verification tool</p>
+            </div>
+            <span className="shrink-0 text-gray-400" aria-hidden="true">↗</span>
+          </a>
+          <a
+            href="https://www.deque.com/axe/devtools/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <div>
+              <p className="font-medium text-gray-900">axe DevTools</p>
+              <p className="mt-0.5 text-xs text-gray-500">Browser extension for a11y auditing</p>
+            </div>
+            <span className="shrink-0 text-gray-400" aria-hidden="true">↗</span>
+          </a>
+          <a
+            href="https://www.nvaccess.org/download/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <div>
+              <p className="font-medium text-gray-900">NVDA Screen Reader</p>
+              <p className="mt-0.5 text-xs text-gray-500">Free Windows screen reader (NV Access)</p>
+            </div>
+            <span className="shrink-0 text-gray-400" aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </section>
+
       {/* Footer note */}
-      <div className="border-t border-gray-200 pt-6 text-xs text-gray-600">
+      <div className="mb-8 border-t border-gray-200 pt-6 text-xs text-gray-600">
         This statement was last evaluated on{' '}
         <time dateTime={LAST_EVALUATED_ISO}>{LAST_EVALUATED_DISPLAY}</time>. It is updated
         when evaluations are refreshed or known issues change.
       </div>
+
+      {/* Related policies */}
+      <nav aria-label="Related policies" className="border-t border-gray-200 pt-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Related</p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Link href="/terms" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Terms of Use</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/privacy" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Privacy Policy</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/contact" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Contact us</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </nav>
     </div>
   );
 }

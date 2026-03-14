@@ -960,7 +960,6 @@ export function ChatWindow({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-700">Verified records only</p>
-            <p className="mt-1 text-sm text-stone-600">Start with a plain-language question or refine the active search scope below.</p>
           </div>
           <div className="flex items-center gap-2">
             {messages.length > 0 && (
@@ -1284,11 +1283,7 @@ export function ChatWindow({
               </div>
             )}
             <div className="max-w-xl text-center">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Start here</p>
-              <p className="mt-3 text-2xl font-semibold tracking-tight text-stone-900">What do you need help with?</p>
-              <p className="mt-2 text-sm leading-6 text-stone-500">
-                Tap a topic below or type your own question.
-              </p>
+              <p className="text-2xl font-semibold tracking-tight text-stone-900">What do you need help with?</p>
             </div>
             <div className="grid w-full max-w-2xl gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {SUGGESTION_CHIPS.map((chip) => (
@@ -1303,14 +1298,7 @@ export function ChatWindow({
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap justify-center gap-2">
-              <SectionBadge>Stored records only</SectionBadge>
-              <SectionBadge>No personal data collected</SectionBadge>
-              <SectionBadge>Session-based guidance</SectionBadge>
-            </div>
-            <p className="max-w-[22rem] text-center text-[11px] text-stone-400">
-              Results come from verified service records only — no personal data collected.
-            </p>
+
           </div>
           </div>
         )}
@@ -1448,10 +1436,6 @@ export function ChatWindow({
           </div>
         )}
         <div className="rounded-[24px] border border-orange-100 bg-white/95 p-2 shadow-[0_12px_32px_rgba(234,88,12,0.08)]">
-          <div className="mb-2 flex items-center justify-between gap-3 px-2 pt-1">
-            <p className="text-xs font-medium text-stone-500">Ask for a service, then refine by trust, timing, or delivery.</p>
-            <p className="text-[11px] text-stone-400">Shift + Enter for a new line</p>
-          </div>
           <div className="flex gap-2">
             <textarea
               ref={inputRef}

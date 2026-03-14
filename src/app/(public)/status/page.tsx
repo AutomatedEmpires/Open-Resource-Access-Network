@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
-const LAST_UPDATED_ISO = '2026-03-06';
-const LAST_UPDATED_DISPLAY = 'March 6, 2026';
+const LAST_UPDATED_ISO = '2026-03-13';
+const LAST_UPDATED_DISPLAY = 'March 13, 2026';
 
 export const metadata: Metadata = {
   title: 'System Status',
@@ -148,10 +149,50 @@ export default function StatusPage() {
         </div>
       </section>
 
+      {/* Stay informed */}
+      <section className="mb-8">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Stay informed</h2>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <a
+            href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <div>
+              <p className="font-medium text-gray-900">GitHub Releases</p>
+              <p className="mt-0.5 text-xs text-gray-500">Watch releases for platform updates</p>
+            </div>
+            <span className="shrink-0 text-gray-400" aria-hidden="true">↗</span>
+          </a>
+          <a
+            href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/issues?q=is%3Aissue+label%3Aincident"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <div>
+              <p className="font-medium text-gray-900">Incident labels on GitHub</p>
+              <p className="mt-0.5 text-xs text-gray-500">All past incidents are filed as issues</p>
+            </div>
+            <span className="shrink-0 text-gray-400" aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </section>
+
       {/* Footer note */}
-      <div className="border-t border-gray-200 pt-6 text-xs text-gray-600">
-        Status is maintained statically and updated during incidents. For urgent production
-        issues, open an issue on{' '}
+      <div className="mb-8 border-t border-gray-200 pt-6 text-xs text-gray-600">
+        Status is maintained statically and updated during incidents. For underlying Azure platform
+        health, see{' '}
+        <a
+          href="https://azure.status.microsoft/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gray-500 underline hover:text-gray-700"
+        >
+          Azure Status
+        </a>
+        . To report a production issue, open an issue on{' '}
         <a
           href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/issues"
           target="_blank"
@@ -162,6 +203,30 @@ export default function StatusPage() {
         </a>
         .
       </div>
+
+      {/* Related */}
+      <nav aria-label="Related pages" className="mt-6 border-t border-gray-200 pt-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Related</p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Link href="/changelog" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Changelog</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/contact" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Contact</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <a
+            href="https://azure.status.microsoft/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <span className="font-medium text-gray-900">Azure Status</span>
+            <span className="text-gray-400" aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </nav>
     </div>
   );
 }

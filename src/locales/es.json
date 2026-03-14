@@ -1,50 +1,68 @@
 {
-  "_locale": "placeholder — strings not yet translated; en.json serves as fallback",
   "chat": {
     "crisis": {
-      "title": "It sounds like you may be in crisis. Please reach out for help immediately.",
-      "emergency": "Emergency: Call 911",
-      "crisis_line": "Crisis Line: Call or text 988",
-      "community_line": "Community Resources: Call 211"
+      "title": "Parece que puede estar en crisis. Por favor busque ayuda de inmediato.",
+      "emergency": "Emergencia: Llame al 911",
+      "crisis_line": "L\u00ednea de Crisis: Llame o env\u00ede mensaje al 988",
+      "community_line": "Recursos Comunitarios: Llame al 211"
     },
     "disclaimer": {
-      "eligibility": "Results shown are from verified records. Eligibility is determined by each service provider — ORAN does not guarantee qualification. Always confirm with the provider."
+      "eligibility": "Los resultados mostrados provienen de registros verificados. La elegibilidad es determinada por cada proveedor de servicios \u2014 ORAN no garantiza la calificaci\u00f3n. Siempre confirme con el proveedor."
     },
     "input": {
-      "placeholder": "Describe what you need help with...",
-      "send": "Send"
+      "placeholder": "Describa en qu\u00e9 necesita ayuda...",
+      "send": "Enviar"
     },
     "quota": {
-      "exceeded": "You've reached the message limit for this session. Please start a new conversation."
+      "exceeded": "Ha alcanzado el l\u00edmite de mensajes para esta sesi\u00f3n. Por favor inicie una nueva conversaci\u00f3n."
     }
   },
   "service": {
     "confidence": {
-      "high": "High confidence",
-      "medium": "Medium confidence — information may have changed",
-      "low": "Low confidence — please verify before visiting",
-      "unverified": "Unverified record"
+      "high": "Alta confianza",
+      "medium": "Confianza media \u2014 la informaci\u00f3n puede haber cambiado",
+      "low": "Baja confianza \u2014 verifique antes de visitar",
+      "unverified": "Registro no verificado"
     },
-    "eligibility_hint": "You may qualify for this service. Confirm eligibility with the provider."
+    "eligibility_hint": "Puede calificar para este servicio. Confirme la elegibilidad con el proveedor."
   },
   "common": {
-    "loading": "Loading...",
+    "loading": "Cargando...",
     "error": {
-      "generic": "Something went wrong. Please try again.",
-      "not_found": "Not found."
+      "generic": "Algo sali\u00f3 mal. Por favor intente de nuevo.",
+      "not_found": "No encontrado."
     },
     "button": {
-      "save": "Save",
-      "cancel": "Cancel",
-      "submit": "Submit",
-      "close": "Close"
-    }
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "submit": "Enviar",
+      "close": "Cerrar"
+    },
+    "language": "Idioma",
+    "select_language": "Seleccionar idioma",
+    "skip_to_main": "Saltar al contenido principal"
   },
   "nav": {
-    "chat": "Find Services",
-    "map": "Map",
-    "directory": "Directory",
-    "saved": "Saved",
-    "profile": "Profile"
+    "chat": "Encontrar Servicios",
+    "map": "Mapa",
+    "directory": "Directorio",
+    "saved": "Guardados",
+    "profile": "Perfil",
+    "report": "Reportar",
+    "about": "Acerca de",
+    "get_involved": "Participar",
+    "explore": "Explorar",
+    "open_menu": "Abrir men\u00fa de navegaci\u00f3n",
+    "close_menu": "Cerrar men\u00fa de navegaci\u00f3n",
+    "main_label": "Navegaci\u00f3n principal",
+    "legal_label": "V\u00ednculos legales",
+    "notifications": "Notificaciones"
+  },
+  "footer": {
+    "tagline": "Conectando personas con servicios verificados \u2014 ayuda real, r\u00e1pidamente.",
+    "crisis_resources": "Recursos de Crisis",
+    "crisis_resources_aria": "Abrir recursos de crisis y l\u00edneas de ayuda",
+    "legal_aria": "V\u00ednculos legales",
+    "copyright_suffix": "Red de Acceso a Recursos Abiertos"
   }
 }

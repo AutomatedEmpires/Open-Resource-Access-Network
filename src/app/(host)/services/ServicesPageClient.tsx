@@ -10,7 +10,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, ArrowRight, Briefcase, Download, ExternalLink, Pencil, Plus, Search, Trash2,
+  ArrowLeft, ArrowRight, Briefcase, Clock, Download, ExternalLink, Pencil, Plus, Search, Trash2,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -65,6 +65,14 @@ const STATUS_LABELS: Record<ServiceStatus, { label: string; color: string }> = {
   inactive: { label: 'Inactive', color: 'bg-yellow-100 text-yellow-800' },
   defunct: { label: 'Defunct', color: 'bg-error-muted text-error-deep' },
 };
+
+const STALE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+function isStale(updatedAt: string): boolean {
+  return Date.now() - new Date(updatedAt).getTime() > STALE_MS;
+}
+function formatUpdated(updatedAt: string): string {
+  return new Date(updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 export default function ServicesPage() {
   const [data, setData] = useState<ListResponse | null>(null);
@@ -297,9 +305,17 @@ export default function ServicesPage() {
                     <div>
                       <div className="flex items-start justify-between gap-2">
                         <h2 className="text-sm font-semibold text-gray-900">{service.name}</h2>
-                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${status.color}`}>
-                          {status.label}
-                        </span>
+                        <div className="flex shrink-0 flex-wrap gap-1">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${status.color}`}>
+                            {status.label}
+                          </span>
+                          {isStale(service.updated_at) && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                              <Clock className="h-3 w-3" aria-hidden="true" />
+                              Stale
+                            </span>
+                          )}
+                        </div>
                       </div>
                       {service.organization_name && (
                         <p className="mt-0.5 text-xs text-gray-500">{service.organization_name}</p>
@@ -319,22 +335,27 @@ export default function ServicesPage() {
                       </div>
                     </div>
 
-                    <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
-                      <Link href={`/resource-studio?compose=listing&serviceId=${service.id}`}>
-                        <Button variant="outline" size="sm" className="gap-1">
-                          <Pencil className="h-3 w-3" aria-hidden="true" />
-                          Open in Studio
+                    <div className="mt-3 flex items-center justify-between gap-2 border-t border-gray-100 pt-3">
+                      <span className="text-xs text-gray-400">
+                        Updated {formatUpdated(service.updated_at)}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Link href={`/resource-studio?compose=listing&serviceId=${service.id}`}>
+                          <Button variant="outline" size="sm" className="gap-1">
+                            <Pencil className="h-3 w-3" aria-hidden="true" />
+                            Open in Studio
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1 text-error-base hover:border-error-accent hover:text-error-strong"
+                          onClick={() => setDeletingId(service.id)}
+                        >
+                          <Trash2 className="h-3 w-3" aria-hidden="true" />
+                          Delete
                         </Button>
-                      </Link>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1 text-error-base hover:border-error-accent hover:text-error-strong"
-                        onClick={() => setDeletingId(service.id)}
-                      >
-                        <Trash2 className="h-3 w-3" aria-hidden="true" />
-                        Delete
-                      </Button>
+                      </div>
                     </div>
                   </div>
                 );

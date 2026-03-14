@@ -2,16 +2,18 @@
  * Crisis Resources Modal
  *
  * Full-screen on mobile, large centered panel on desktop.
- * Category-filterable grid of verified national crisis hotlines.
+ * Category-filterable, searchable grid of verified national crisis hotlines.
  *
  * Safety contract: emergency resources always rendered first (data order).
+ * The emergency quick-access strip (911 / 988 / 211) is always visible
+ * regardless of active filter or search state.
  */
 
 'use client';
 
 import React, { useState, useMemo } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { X, Phone, MessageSquare, AlertTriangle, Globe } from 'lucide-react';
+import { X, Phone, MessageSquare, AlertTriangle, Globe, ExternalLink, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   CRISIS_RESOURCES,
@@ -34,24 +36,39 @@ function buildTelHref(phone: string): string {
 
 function ResourceCard({ resource }: { resource: CrisisResource }) {
   const colors = CRISIS_CATEGORY_COLORS[resource.category];
+  const isEmergency = resource.phone === '911';
 
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 rounded-lg border p-4 bg-white transition-shadow hover:shadow-sm',
+        'flex flex-col gap-2.5 rounded-xl border p-4 bg-white transition-all hover:shadow-md',
+        resource.featured ? 'border-2' : 'border',
         colors.border,
       )}
     >
-      {/* Category badge */}
-      <span
-        className={cn(
-          'inline-block w-fit text-xs font-medium px-2 py-0.5 rounded-full',
-          colors.bg,
-          colors.text,
+      {/* Category badge + website link */}
+      <div className="flex items-start justify-between gap-2">
+        <span
+          className={cn(
+            'inline-block w-fit text-xs font-medium px-2 py-0.5 rounded-full',
+            colors.bg,
+            colors.text,
+          )}
+        >
+          {CRISIS_CATEGORY_LABELS[resource.category]}
+        </span>
+        {resource.website && (
+          <a
+            href={resource.website}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-0.5 flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+            aria-label={`Visit ${resource.name} website (opens in new tab)`}
+          >
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+          </a>
         )}
-      >
-        {CRISIS_CATEGORY_LABELS[resource.category]}
-      </span>
+      </div>
 
       {/* Name */}
       <h3 className="text-sm font-semibold text-gray-900 leading-snug">
@@ -63,10 +80,24 @@ function ResourceCard({ resource }: { resource: CrisisResource }) {
         {resource.description}
       </p>
 
+      {/* Language / accessibility tags */}
+      {resource.languages && resource.languages.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {resource.languages.map((lang) => (
+            <span
+              key={lang}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600"
+            >
+              <Globe className="h-2.5 w-2.5 text-gray-400" aria-hidden="true" />
+              {lang}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Contact actions */}
-      <div className="flex flex-wrap gap-2 pt-1">
+      <div className="flex flex-wrap gap-2 pt-0.5">
         {resource.textOnly ? (
-          /* Text-only short code — no tel: link */
           <span className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-bold text-gray-900">
             <MessageSquare className="h-3.5 w-3.5 text-gray-400" aria-hidden="true" />
             {resource.phoneDisplay}
@@ -74,10 +105,15 @@ function ResourceCard({ resource }: { resource: CrisisResource }) {
         ) : (
           <a
             href={buildTelHref(resource.phone)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-bold text-gray-900 transition-colors hover:bg-gray-100 min-h-[36px]"
+            className={cn(
+              'inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-bold transition-colors min-h-[40px]',
+              isEmergency
+                ? 'bg-red-600 text-white border border-red-700 hover:bg-red-700'
+                : 'bg-green-600 text-white border border-green-700 hover:bg-green-700',
+            )}
             aria-label={`Call ${resource.name}: ${resource.phoneDisplay}`}
           >
-            <Phone className="h-3.5 w-3.5 text-gray-400" aria-hidden="true" />
+            <Phone className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
             {resource.phoneDisplay}
           </a>
         )}
@@ -98,7 +134,7 @@ function ResourceCard({ resource }: { resource: CrisisResource }) {
       </div>
 
       {/* Availability */}
-      <p className="text-[11px] text-gray-400">{resource.available}</p>
+      <p className="text-[11px] text-gray-400 mt-0.5">{resource.available}</p>
     </div>
   );
 }
@@ -121,6 +157,7 @@ interface CrisisModalProps {
 
 export function CrisisModal({ open, onClose }: CrisisModalProps) {
   const [activeFilter, setActiveFilter] = useState<FilterValue>(ALL_FILTER);
+  const [search, setSearch] = useState('');
 
   // Preserve the order categories appear in data (emergency first)
   const orderedCategories = useMemo<CrisisCategory[]>(() => {
@@ -135,16 +172,39 @@ export function CrisisModal({ open, onClose }: CrisisModalProps) {
     return out;
   }, []);
 
-  const filtered = useMemo(
-    () =>
+  // Count per category for filter chip badges
+  const categoryCounts = useMemo(() => {
+    const counts: Partial<Record<CrisisCategory, number>> = {};
+    for (const r of CRISIS_RESOURCES) {
+      counts[r.category] = (counts[r.category] ?? 0) + 1;
+    }
+    return counts;
+  }, []);
+
+  // Combined search + category filter
+  const filtered = useMemo(() => {
+    const byCategory =
       activeFilter === ALL_FILTER
         ? CRISIS_RESOURCES
-        : CRISIS_RESOURCES.filter((r) => r.category === activeFilter),
-    [activeFilter],
-  );
+        : CRISIS_RESOURCES.filter((r) => r.category === activeFilter);
+
+    const q = search.trim().toLowerCase();
+    if (!q) return byCategory;
+
+    return byCategory.filter(
+      (r) =>
+        r.name.toLowerCase().includes(q) ||
+        r.description.toLowerCase().includes(q) ||
+        r.phoneDisplay.toLowerCase().includes(q),
+    );
+  }, [activeFilter, search]);
 
   function handleOpenChange(next: boolean) {
-    if (!next) onClose();
+    if (!next) {
+      onClose();
+      setSearch('');
+      setActiveFilter(ALL_FILTER);
+    }
   }
 
   return (
@@ -187,7 +247,7 @@ export function CrisisModal({ open, onClose }: CrisisModalProps) {
                   Crisis Resources
                 </DialogPrimitive.Title>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Verified national hotlines — available 24/7
+                  {CRISIS_RESOURCES.length} verified national hotlines — available 24/7 and free
                 </p>
               </div>
             </div>
@@ -199,6 +259,27 @@ export function CrisisModal({ open, onClose }: CrisisModalProps) {
             >
               <X className="h-5 w-5 text-gray-600" aria-hidden="true" />
             </DialogPrimitive.Close>
+          </div>
+
+          {/* ── Search ─────────────────────────────────── */}
+          <div className="flex-shrink-0 border-b border-gray-100 px-4 py-2.5">
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                aria-hidden="true"
+              />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search resources by name, description, or phone…"
+                className={cn(
+                  'w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-4 text-sm text-gray-900 placeholder:text-gray-400',
+                  'focus:border-red-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-200',
+                )}
+                aria-label="Search crisis resources"
+              />
+            </div>
           </div>
 
           {/* ── Category filter chips ───────────────────── */}
@@ -218,12 +299,13 @@ export function CrisisModal({ open, onClose }: CrisisModalProps) {
                   : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50',
               )}
             >
-              All Resources
+              All ({CRISIS_RESOURCES.length})
             </button>
 
             {orderedCategories.map((cat) => {
               const colors = CRISIS_CATEGORY_COLORS[cat];
               const isActive = activeFilter === cat;
+              const count = categoryCounts[cat] ?? 0;
               return (
                 <button
                   key={cat}
@@ -237,7 +319,7 @@ export function CrisisModal({ open, onClose }: CrisisModalProps) {
                       : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50',
                   )}
                 >
-                  {CRISIS_CATEGORY_LABELS[cat]}
+                  {CRISIS_CATEGORY_LABELS[cat]} ({count})
                 </button>
               );
             })}
@@ -245,11 +327,70 @@ export function CrisisModal({ open, onClose }: CrisisModalProps) {
 
           {/* ── Scrollable resource grid ────────────────── */}
           <div className="flex-1 overflow-y-auto p-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filtered.map((resource: CrisisResource) => (
-                <ResourceCard key={resource.id} resource={resource} />
-              ))}
+            {/* Always-visible emergency quick-access strip */}
+            <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border-2 border-red-200 bg-red-50 px-4 py-3">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-red-700">
+                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                Immediate emergency:
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <a
+                  href="tel:911"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-red-700 transition-colors"
+                  aria-label="Call 911 for emergencies"
+                >
+                  <Phone className="h-3.5 w-3.5" aria-hidden="true" />
+                  911
+                </a>
+                <a
+                  href="tel:988"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-purple-700 transition-colors"
+                  aria-label="Call or text 988 for mental health crisis"
+                >
+                  <Phone className="h-3.5 w-3.5" aria-hidden="true" />
+                  988 Crisis
+                </a>
+                <a
+                  href="tel:211"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-blue-700 transition-colors"
+                  aria-label="Call 211 for community services"
+                >
+                  <Phone className="h-3.5 w-3.5" aria-hidden="true" />
+                  211 Help
+                </a>
+              </div>
             </div>
+
+            {/* Result count + empty state */}
+            {filtered.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+                <Search className="h-8 w-8 text-gray-300" aria-hidden="true" />
+                <p className="text-sm font-medium text-gray-500">No resources found</p>
+                <p className="text-xs text-gray-400">Try a different search term or category</p>
+                <button
+                  type="button"
+                  onClick={() => { setSearch(''); setActiveFilter(ALL_FILTER); }}
+                  className="mt-2 text-xs font-medium text-red-600 underline hover:text-red-800"
+                >
+                  Clear filters
+                </button>
+              </div>
+            ) : (
+              <>
+                {(search || activeFilter !== ALL_FILTER) && (
+                  <p className="mb-3 text-xs text-gray-400">
+                    Showing {filtered.length} resource{filtered.length !== 1 ? 's' : ''}
+                    {activeFilter !== ALL_FILTER && ` in ${CRISIS_CATEGORY_LABELS[activeFilter]}`}
+                    {search && ` matching "${search}"`}
+                  </p>
+                )}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {filtered.map((resource: CrisisResource) => (
+                    <ResourceCard key={resource.id} resource={resource} />
+                  ))}
+                </div>
+              </>
+            )}
 
             {/* Footer note */}
             <p className="mt-8 pb-2 text-center text-xs text-gray-400">

@@ -67,6 +67,18 @@ const CHANNELS: Channel[] = [
     border: 'border-violet-200',
     bg: 'bg-violet-50',
   },
+  {
+    icon: '📰',
+    title: 'Press & media',
+    description:
+      'Journalist, blogger, or partner organization writing about ORAN? Find the fact sheet, brand assets, suggested boilerplate, and media contact on the Press & Media page. Include your publication and deadline in your outreach.',
+    cta: 'Press & media page',
+    href: '/about/press',
+    external: false,
+    response: 'Typically 2–3 business days',
+    border: 'border-sky-200',
+    bg: 'bg-sky-50',
+  },
 ];
 
 export default function ContactPage() {
@@ -142,11 +154,13 @@ export default function ContactPage() {
 
       {/* General inquiries */}
       <div className="rounded-lg border border-gray-200 bg-gray-50 px-5 py-5">
-        <p className="text-sm font-medium text-gray-900">General inquiries & press</p>
+        <p className="text-sm font-medium text-gray-900">General inquiries &amp; press</p>
         <p className="mt-2 text-sm leading-relaxed text-gray-600">
-          For general questions, press inquiries, or topics not covered above, a direct contact
-          form with category routing is under development. In the meantime, general inquiries may
-          be directed via{' '}
+          For press inquiries, visit the{' '}
+          <Link href="/about/press" className="text-indigo-600 underline hover:text-indigo-800">
+            Press &amp; Media page
+          </Link>
+          . For general questions not covered above, start a discussion on{' '}
           <a
             href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/discussions"
             target="_blank"
@@ -155,9 +169,28 @@ export default function ContactPage() {
           >
             GitHub Discussions
           </a>
-          .
+          . A unified contact form with category routing is in development.
         </p>
       </div>
+
+      {/* Related */}
+      <nav aria-label="Related pages" className="mt-8 border-t border-gray-200 pt-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Related</p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Link href="/security" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Security Policy</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/privacy" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Privacy Policy</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/partnerships" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Get Involved</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </nav>
     </div>
   );
 }

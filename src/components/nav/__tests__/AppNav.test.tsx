@@ -78,7 +78,7 @@ describe('AppNav', () => {
     const activeLink = links.find((child) => child.props.href === '/saved');
     const toggle = collectElements(element, (child) => child.type === 'button')[0];
 
-    expect(links).toHaveLength(7);
+    expect(links).toHaveLength(9);
     expect(activeLink?.props['aria-current']).toBe('page');
     expect(toggle.props['aria-expanded']).toBe(false);
     expect(toggle.props['aria-label']).toBe('Open navigation');

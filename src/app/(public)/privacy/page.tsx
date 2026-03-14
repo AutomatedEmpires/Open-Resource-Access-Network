@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-const LAST_UPDATED_ISO = '2026-03-06';
-const LAST_UPDATED_DISPLAY = 'March 6, 2026';
+const LAST_UPDATED_ISO = '2026-03-13';
+const LAST_UPDATED_DISPLAY = 'March 13, 2026';
 const VERSION = '0.9 — Pre-release (pending legal review)';
 
 export const metadata: Metadata = {
@@ -60,9 +60,9 @@ const THIRD_PARTIES: { name: string; purpose: string; link: string }[] = [
     link: 'https://privacy.microsoft.com/en-US/privacystatement',
   },
   {
-    name: 'Mapbox',
-    purpose: 'Map tiles and geocoding for location search',
-    link: 'https://www.mapbox.com/legal/privacy',
+    name: 'Azure Maps (Microsoft)',
+    purpose: 'Map tiles, geocoding, and location search',
+    link: 'https://privacy.microsoft.com/en-US/privacystatement',
   },
 ];
 
@@ -331,6 +331,25 @@ export default function PrivacyPage() {
           Contact us →
         </Link>
       </div>
+
+      {/* Related policies */}
+      <nav aria-label="Related policies" className="mt-8 border-t border-gray-200 pt-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Related policies</p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Link href="/terms" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Terms of Use</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/security" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Security Policy</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/accessibility" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Accessibility</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </nav>
     </div>
   );
 }

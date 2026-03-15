@@ -175,7 +175,7 @@ export default function Home() {
       <main id="main-content" tabIndex={-1} className="flex-1">
 
         {/* ══ HERO ══════════════════════════════════════════════ */}
-        <section className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 px-4 py-24 sm:py-32 text-center">
+        <section className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 px-4 py-12 sm:py-24 md:py-32 text-center">
           {/* Subtle grid texture */}
           <div className="pointer-events-none absolute inset-0 bg-white/5" aria-hidden="true" />
           <div className="pointer-events-none absolute inset-0 opacity-30" aria-hidden="true">
@@ -191,16 +191,16 @@ export default function Home() {
 
           <div className="relative mx-auto max-w-3xl">
             {/* Identity badge */}
-            <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-indigo-200 backdrop-blur-sm">
+            <div className="mb-5 sm:mb-8 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-indigo-200 backdrop-blur-sm">
               <span className="h-1.5 w-1.5 rounded-full bg-green-400" aria-hidden="true" />
               Open source &middot; Community-verified &middot; Always free
             </div>
 
-            <h1 className="mb-5 text-4xl font-bold tracking-tight text-white sm:text-6xl leading-tight">
+            <h1 className="mb-4 text-3xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl leading-tight">
               Universal access to<br className="hidden sm:block" /> verified community services
             </h1>
 
-            <p className="mb-10 text-lg leading-relaxed text-indigo-200 max-w-xl mx-auto">
+            <p className="mb-7 sm:mb-10 text-base sm:text-lg leading-relaxed text-indigo-200 max-w-xl mx-auto">
               ORAN is the open civic platform connecting people to government, nonprofit, and
               community programs — with real-time verification, no hallucinated data, and full
               provenance transparency.
@@ -229,7 +229,7 @@ export default function Home() {
               </div>
               <button
                 type="submit"
-                className="flex-shrink-0 bg-orange-500 px-8 text-sm font-semibold text-white transition-colors hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-400"
+                className="flex-shrink-0 bg-orange-500 px-5 sm:px-8 text-sm font-semibold text-white transition-colors hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-400"
               >
                 Search
               </button>
@@ -264,7 +264,7 @@ export default function Home() {
         </section>
 
         {/* ══ BROWSE BY NEED ══════════════════════════════════════ */}
-        <section className="border-b border-gray-100 bg-slate-50 px-4 py-8">
+        <section className="border-b border-gray-100 bg-slate-50 px-4 py-6 sm:py-8">
           <div className="mx-auto max-w-4xl">
             <p className="mb-4 text-center text-[11px] font-semibold uppercase tracking-widest text-gray-400">
               Browse by need
@@ -284,13 +284,13 @@ export default function Home() {
         </section>
 
         {/* ══ SEEKERS ══════════════════════════════════════════════ */}
-        <section className="bg-white px-4 py-20 sm:py-28">
+        <section className="bg-white px-4 py-12 sm:py-20 md:py-28">
           <div className="mx-auto max-w-5xl">
-            <div className="mx-auto mb-12 max-w-2xl text-center">
+            <div className="mx-auto mb-8 sm:mb-12 max-w-2xl text-center">
               <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-indigo-500">
                 For individuals seeking help
               </p>
-              <h2 className="mb-4 text-3xl font-bold text-gray-900 sm:text-4xl">
+              <h2 className="mb-4 text-2xl font-bold text-gray-900 sm:text-3xl md:text-4xl">
                 Real answers, not AI guesses
               </h2>
               <p className="leading-relaxed text-gray-500">
@@ -331,13 +331,13 @@ export default function Home() {
         </section>
 
         {/* ══ ORGANIZATIONS ════════════════════════════════════════ */}
-        <section className="border-y border-emerald-100 bg-emerald-50 px-4 py-20 sm:py-28">
+        <section className="border-y border-emerald-100 bg-emerald-50 px-4 py-12 sm:py-20 md:py-28">
           <div className="mx-auto max-w-5xl">
-            <div className="mx-auto mb-12 max-w-2xl text-center">
+            <div className="mx-auto mb-8 sm:mb-12 max-w-2xl text-center">
               <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-emerald-600">
                 For service providers &amp; nonprofits
               </p>
-              <h2 className="mb-4 text-3xl font-bold text-gray-900 sm:text-4xl">
+              <h2 className="mb-4 text-2xl font-bold text-gray-900 sm:text-3xl md:text-4xl">
                 Get discovered. Stay verified. Build trust.
               </h2>
               <p className="leading-relaxed text-gray-500">
@@ -372,13 +372,13 @@ export default function Home() {
         </section>
 
         {/* ══ COMMUNITY PARTNERS ═══════════════════════════════════ */}
-        <section className="border-b border-violet-100 bg-violet-50 px-4 py-20 sm:py-28">
+        <section className="border-b border-violet-100 bg-violet-50 px-4 py-12 sm:py-20 md:py-28">
           <div className="mx-auto max-w-5xl">
-            <div className="mx-auto mb-12 max-w-2xl text-center">
+            <div className="mx-auto mb-8 sm:mb-12 max-w-2xl text-center">
               <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-violet-600">
                 For community contributors &amp; admins
               </p>
-              <h2 className="mb-4 text-3xl font-bold text-gray-900 sm:text-4xl">
+              <h2 className="mb-4 text-2xl font-bold text-gray-900 sm:text-3xl md:text-4xl">
                 Help build the civic data layer
               </h2>
               <p className="leading-relaxed text-gray-500">
@@ -413,13 +413,13 @@ export default function Home() {
         </section>
 
         {/* ══ WHY ORAN ══════════════════════════════════════════════ */}
-        <section className="bg-white px-4 py-20 sm:py-24">
+        <section className="bg-white px-4 py-12 sm:py-20 md:py-24">
           <div className="mx-auto max-w-4xl">
-            <div className="mx-auto mb-12 max-w-2xl text-center">
+            <div className="mx-auto mb-8 sm:mb-12 max-w-2xl text-center">
               <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">
                 Why ORAN
               </p>
-              <h2 className="mb-4 text-3xl font-bold text-gray-900">
+              <h2 className="mb-4 text-2xl font-bold text-gray-900 sm:text-3xl">
                 Built for the gaps other tools ignore
               </h2>
               <p className="leading-relaxed text-gray-500">
@@ -446,7 +446,7 @@ export default function Home() {
         </section>
 
         {/* ══ MISSION STRIP ══════════════════════════════════════════ */}
-        <section className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 px-4 py-20 text-center sm:py-28">
+        <section className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 px-4 py-12 text-center sm:py-20 md:py-28">
           <div className="pointer-events-none absolute inset-0 bg-white/5" aria-hidden="true" />
           <div className="pointer-events-none absolute inset-0 opacity-20" aria-hidden="true">
             <div className="grid h-full w-full grid-cols-6 border-x border-white/10 sm:grid-cols-12">
@@ -462,10 +462,10 @@ export default function Home() {
             <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-indigo-300">
               Our commitment
             </p>
-            <h2 className="mb-5 text-3xl font-bold text-white sm:text-4xl">
+            <h2 className="mb-4 text-2xl font-bold text-white sm:text-3xl md:text-4xl">
               Open source. Community-governed.<br className="hidden sm:block" /> Free to use.
             </h2>
-            <p className="mb-10 text-lg leading-relaxed text-indigo-200">
+            <p className="mb-7 sm:mb-10 text-base sm:text-lg leading-relaxed text-indigo-200">
               ORAN is MIT licensed, WCAG 2.1 AA accessible, and built on the principle that verified
               resource access should never be gated behind a paywall or dependent on a commercial
               AI&apos;s accuracy.

@@ -266,7 +266,7 @@ function SignInContent() {
     <main className="container mx-auto max-w-lg px-4 py-12">
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         {/* Header */}
-        <div className="px-8 pt-8 pb-2 text-center">
+        <div className="px-5 sm:px-8 pt-6 sm:pt-8 pb-2 text-center">
           <h1 className="text-xl font-bold text-gray-900">Welcome to ORAN</h1>
           <p className="mt-1 text-sm text-gray-700">
             How would you like to use ORAN?
@@ -274,7 +274,7 @@ function SignInContent() {
         </div>
 
         {/* Path selector */}
-        <div role="radiogroup" aria-label="Account type" className="px-6 pt-4 pb-2">
+        <div role="radiogroup" aria-label="Account type" className="px-4 sm:px-6 pt-4 pb-2">
           <div className="grid grid-cols-3 gap-2">
             {PATHS.map(({ id, label, icon: Icon }) => {
               const isActive = selected === id;
@@ -300,7 +300,7 @@ function SignInContent() {
         </div>
 
         {/* Dynamic content area */}
-        <div className="px-8 pb-8 pt-4">
+        <div className="px-5 sm:px-8 pb-6 sm:pb-8 pt-4">
           <p className="text-sm text-gray-700 text-center mb-5" data-testid="path-detail">
             {activePath.detail}
           </p>

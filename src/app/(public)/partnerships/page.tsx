@@ -361,7 +361,7 @@ export default function PartnershipsPage() {
       </section>
 
       {/* ── GitHub banner ────────────────────────────────────── */}
-      <div className="mb-8 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-5 py-4">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-gray-200 bg-gray-50 px-5 py-4">
         <div>
           <p className="text-sm font-medium text-gray-900">Open-source contributor?</p>
           <p className="mt-0.5 text-xs text-gray-500">

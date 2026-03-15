@@ -279,7 +279,7 @@ export default function AboutPage() {
       </section>
 
       {/* Open source banner */}
-      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-5 py-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-gray-200 bg-gray-50 px-5 py-4">
         <div>
           <p className="text-sm font-medium text-gray-900">Open source</p>
           <p className="mt-0.5 text-xs text-gray-500">MIT licensed · Auditable · Community-driven</p>

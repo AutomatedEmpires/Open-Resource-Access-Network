@@ -31,7 +31,7 @@ export function DiscoverySurfaceTabs({
             key={item.href}
             href={item.href}
             aria-current={active ? 'page' : undefined}
-            className={`inline-flex min-h-[44px] items-center justify-center rounded-full px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${
+            className={`inline-flex min-h-[36px] sm:min-h-[44px] items-center justify-center rounded-full px-2.5 py-1.5 text-xs sm:text-sm font-medium transition-colors sm:px-4 ${
               active
                 ? 'bg-white text-slate-900 shadow-sm'
                 : 'text-slate-500 hover:text-slate-900'

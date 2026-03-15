@@ -40,7 +40,6 @@
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.1",
     "ioredis": "^5.10.0",
     "leaflet": "^1.9.4",
@@ -73,6 +72,7 @@
     "axe-core": "^4.11.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "drizzle-kit": "^0.31.9",
     "jest-axe": "^10.0.0",
     "jsdom": "^28.1.0",
     "react": "^19.2.4",
@@ -81,5 +81,8 @@
     "typescript": "^5",
     "vitest": "^4.0.18",
     "vitest-axe": "^0.1.0"
+  },
+  "overrides": {
+    "undici": "^7.24.0"
   }
 }

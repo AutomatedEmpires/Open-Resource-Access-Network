@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, MapPin, List, AlertTriangle, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, MapPin, AlertTriangle, X, ChevronDown, ChevronUp, SlidersHorizontal, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -152,8 +152,6 @@ export default function MapPage() {
   const [savedSyncEnabled] = useState(() => isServerSyncEnabledOnDevice());
   const savedIdsRef = useRef<Set<string>>(new Set());
   const resultsContainerRef = useRef<HTMLDivElement>(null);
-  /** Mobile-only toggle between map and list view */
-  const [mobileView, setMobileView] = useState<'map' | 'list'>('map');
   const [activeCategory, setActiveCategory] = useState<DiscoveryNeedId | null>(initialCategoryFromUrl);
   const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter>(() => {
     const value = searchParams.get('confidence');
@@ -229,7 +227,6 @@ export default function MapPage() {
         const lat = roundForPrivacy(pos.coords.latitude);
         const lng = roundForPrivacy(pos.coords.longitude);
         setDeviceCenter({ lat, lng });
-        setMobileView('map');
         setSearchMode('bbox');
         setIsAreaDirty(true);
         success('Centered near your location (not saved).');
@@ -905,36 +902,89 @@ export default function MapPage() {
     });
   }, [hasSearchContext, resetResultsToEmpty, runSearch, selectedAttributes, selectedTaxonomyIds, taxonomyIdsParam]);
 
-  return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)]">
-      <div className="container mx-auto max-w-6xl px-4 pt-4 pb-8 md:py-8">
-        <section className="rounded-[30px] border border-slate-200/80 bg-white/92 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
-            <PageHeader
-              eyebrow="Verified discovery"
-              title="Service Map"
-              actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/map" />}
-              badges={(
-                <>
-                  <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
-                  {deviceCenter ? <PageHeaderBadge tone="accent">Approximate location active</PageHeaderBadge> : null}
-                  {hasActiveRefinements ? <PageHeaderBadge>Refinements on</PageHeaderBadge> : null}
-                </>
-              )}
-            />
+  // ── Mobile bottom-sheet state ──────────────────────────────────────────
+  const [bottomSheetSnap, setBottomSheetSnap] = useState<'peek' | 'half' | 'full'>('peek');
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffsetY, setDragOffsetY] = useState(0);
+  const dragStartY = useRef<number | null>(null);
+  const dragSnapRef = useRef<'peek' | 'half' | 'full'>('peek');
 
-            <ErrorBoundary>
-              <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-4">
-        {/* Search bar */}
-        <FormSection
-          className="mb-3"
-        >
-          <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-            <FormField id="map-search" label="Search services to plot" className="w-full">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" aria-hidden="true" />
+  const handleSheetTouchStart = useCallback((e: React.TouchEvent) => {
+    dragStartY.current = e.touches[0].clientY;
+    dragSnapRef.current = bottomSheetSnap;
+    setIsDragging(true);
+    setDragOffsetY(0);
+  }, [bottomSheetSnap]);
+
+  const handleSheetTouchMove = useCallback((e: React.TouchEvent) => {
+    if (dragStartY.current === null) return;
+    const raw = e.touches[0].clientY - dragStartY.current;
+    const clamped =
+      dragSnapRef.current === 'full' ? Math.max(0, raw) :
+      dragSnapRef.current === 'peek' ? Math.min(0, raw) :
+      raw;
+    setDragOffsetY(clamped);
+  }, []);
+
+  const handleSheetTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (dragStartY.current === null) return;
+    const delta = e.changedTouches[0].clientY - dragStartY.current;
+    setIsDragging(false);
+    setDragOffsetY(0);
+    dragStartY.current = null;
+    if (Math.abs(delta) < 12) {
+      setBottomSheetSnap((prev) => prev === 'peek' ? 'half' : prev === 'half' ? 'full' : 'peek');
+      return;
+    }
+    if (delta < -60) {
+      setBottomSheetSnap((prev) => prev === 'peek' ? 'half' : 'full');
+    } else if (delta > 60) {
+      setBottomSheetSnap((prev) => prev === 'full' ? 'half' : 'peek');
+    }
+  }, []);
+
+  // translateY: 100% = full sheet height (= container height between header and bottom nav)
+  const sheetBaseTranslate =
+    bottomSheetSnap === 'full' ? '0%' :
+    bottomSheetSnap === 'half' ? '52%' :
+    'calc(100% - 80px)';
+
+  return (
+    <>
+      {/* ── MOBILE: Full-screen Zillow-style map (below md) ────────────────────── */}
+      {isMobile && (
+        <>
+          {/*
+           * The seeker layout has a sticky header (h-14) and a fixed bottom nav (h-14).
+           * This container fills the exact gap between them.
+           */}
+          <div className="fixed top-14 bottom-14 inset-x-0 overflow-hidden bg-white">
+
+            {/* Full-screen map */}
+            <div className="absolute inset-0">
+              <ErrorBoundary>
+                <MapContainer
+                  className="w-full h-full"
+                  centerLat={deviceCenter?.lat}
+                  centerLng={deviceCenter?.lng}
+                  zoom={deviceCenter ? 12 : undefined}
+                  services={services}
+                  discoveryContext={mapDiscoveryContext}
+                  onBoundsChange={handleBoundsChange}
+                />
+              </ErrorBoundary>
+            </div>
+
+            {/* Floating search bar */}
+            <div className="absolute top-0 left-0 right-0 px-3 pt-3 z-30 pointer-events-none">
+              <form
+                onSubmit={handleSubmit}
+                className="pointer-events-auto flex items-center gap-1.5 rounded-2xl bg-white/95 backdrop-blur-md shadow-[0_4px_20px_rgba(15,23,42,0.12)] border border-slate-200 overflow-hidden h-12 pl-3 pr-1"
+              >
+                <Search className="h-4 w-4 text-slate-400 flex-shrink-0" aria-hidden="true" />
                 <input
                   ref={searchInputRef}
-                  id="map-search"
                   value={query}
                   onChange={(e) => {
                     setQuery(e.target.value);
@@ -943,387 +993,775 @@ export default function MapPage() {
                     }
                   }}
                   type="search"
-                  placeholder="Search for services (e.g., food bank, shelter)"
-                  className="min-h-[46px] w-full rounded-2xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
-                  aria-label="Search services to plot"
+                  placeholder="Search services…"
+                  className="flex-1 text-sm outline-none bg-transparent min-w-0 text-slate-700 placeholder:text-slate-400"
+                  aria-label="Search services"
                 />
                 {query && (
                   <button
                     type="button"
                     onClick={handleClearSearch}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-slate-400 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                    className="p-1.5 text-slate-400"
                     aria-label="Clear search"
                   >
                     <X className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
                 )}
-              </div>
-            </FormField>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button type="submit" disabled={!canSearch || isLoading} className="w-full sm:w-auto">
-                Search
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleUseMyLocation}
-                disabled={isLocating}
-                title="Opt-in: uses device location in-session only; not stored"
-                className="w-full sm:w-auto"
-              >
-                {isLocating ? 'Locating…' : 'Use my location'}
-              </Button>
-            </div>
-          </form>
-        </FormSection>
-
-        <div className="mb-3 rounded-[20px] border border-slate-200 bg-slate-50/80 p-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => setShowAdvancedFilters((current) => !current)}
-              className="inline-flex min-h-[40px] items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-              aria-expanded={showAdvancedFilters || hasActiveRefinements}
-            >
-              Refine map
-              {hasActiveRefinements ? (
-                <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
-                  {appliedFilterItems.length || 1}
-                </span>
-              ) : null}
-              {showAdvancedFilters || hasActiveRefinements ? (
-                <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
-              ) : (
-                <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-              )}
-            </button>
-            <p className="text-xs text-slate-500">
-              {savedSyncEnabled ? 'Saves can sync to your account.' : 'Saves stay on this device.'}
-            </p>
-          </div>
-
-          {(showAdvancedFilters || hasActiveRefinements) && (
-            <div className="mt-4 space-y-4">
-              <SeekerDiscoveryFilters
-                activeCategory={activeCategory}
-                onCategoryClick={handleCategoryClick}
-                taxonomyError={taxonomyError}
-                taxonomyTerms={taxonomyTerms}
-                isLoadingTaxonomy={isLoadingTaxonomy}
-                quickTaxonomyTerms={quickTaxonomyTerms}
-                selectedTaxonomyIds={selectedTaxonomyIds}
-                onToggleTaxonomyId={toggleTaxonomyId}
-                taxonomyDialogOpen={taxonomyDialogOpen}
-                onTaxonomyOpenChange={setTaxonomyDialogOpen}
-                taxonomySearch={taxonomySearch}
-                onTaxonomySearchChange={setTaxonomySearch}
-                onClearTaxonomyFilters={clearTaxonomyFilters}
-                groupedTaxonomyTerms={groupedTaxonomyTerms}
-                visibleTaxonomyTermsCount={visibleTaxonomyTerms.length}
-                dimensionLabels={DIMENSION_LABELS}
-                categoryGroupLabel="Filter by service category"
-                showCategoryLabel={false}
-              />
-
-              {/* Service attribute dimension filters (delivery, cost, access) */}
-              <div className="rounded-[18px] border border-slate-200 bg-white p-4">
-          <button
-            type="button"
-            onClick={() => setAttributeSectionOpen((v) => !v)}
-            className="mb-2 flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
-            aria-expanded={attributeSectionOpen || hasActiveAttributes}
-          >
-            Service type filters
-            {hasActiveAttributes && (
-              <span className="ml-1 rounded-full bg-info-muted text-action-strong px-1.5 py-0.5 text-[10px] font-semibold">
-                {Object.values(selectedAttributes).flat().length}
-              </span>
-            )}
-            {attributeSectionOpen ? (
-              <ChevronUp className="h-3 w-3" aria-hidden="true" />
-            ) : (
-              <ChevronDown className="h-3 w-3" aria-hidden="true" />
-            )}
-          </button>
-
-          {(attributeSectionOpen || hasActiveAttributes) && (
-            <div className="space-y-2">
-              {SEEKER_ATTRIBUTE_DIMENSIONS.map((dim) => {
-                const def = SERVICE_ATTRIBUTES_TAXONOMY[dim];
-                if (!def) return null;
-                const commonTags = def.tags.filter((t) => t.common);
-                const activeTags = selectedAttributes[dim] ?? [];
-                return (
-                  <div key={dim} className="flex flex-col gap-1.5" role="group" aria-label={def.name}>
-                    <span className="text-xs font-medium text-stone-500">{def.name}:</span>
-                    <div className="flex flex-wrap gap-1.5">
-                    {commonTags.map((t) => {
-                      const isActive = activeTags.includes(t.tag);
-                      return (
-                        <button
-                          key={t.tag}
-                          type="button"
-                          onClick={() => toggleAttribute(dim, t.tag)}
-                          className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
-                            isActive
-                                ? 'bg-slate-900 text-white shadow-sm'
-                                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                          }`}
-                          aria-pressed={isActive}
-                          title={t.description}
-                        >
-                          {DISCOVERY_ATTRIBUTE_LABELS[t.tag] ?? t.tag.replace(/_/g, ' ')}
-                        </button>
-                      );
-                    })}
-                    </div>
-                  </div>
-                );
-              })}
-              {hasActiveAttributes && (
+                <button
+                  type="submit"
+                  disabled={!canSearch || isLoading}
+                  className="flex items-center justify-center h-9 w-9 rounded-xl bg-sky-600 text-white flex-shrink-0 disabled:opacity-40"
+                  aria-label="Search"
+                >
+                  <Search className="h-4 w-4" aria-hidden="true" />
+                </button>
                 <button
                   type="button"
-                  onClick={clearAttributes}
-                  className="text-xs font-medium text-sky-700 hover:underline"
+                  onClick={() => setMobileFiltersOpen(true)}
+                  className="relative flex items-center justify-center h-9 w-9 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 flex-shrink-0"
+                  aria-label={`Filters${hasActiveRefinements ? ` (${appliedFilterItems.length} active)` : ''}`}
                 >
-                  Clear service type filters
+                  <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                  {hasActiveRefinements && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-sky-600 text-[9px] font-bold text-white">
+                      {appliedFilterItems.length}
+                    </span>
+                  )}
                 </button>
-              )}
-            </div>
-          )}
-              </div>
+              </form>
 
-              {/* Confidence + sort controls */}
-              <FormSection
-                className="rounded-[18px] border border-slate-200 bg-white p-4"
-              >
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <FormField id="map-confidence" label="Trust:" className="w-40 max-w-full">
-              <select
-                id="map-confidence"
-                value={confidenceFilter}
-                onChange={(e) => {
-                  const next = e.target.value as ConfidenceFilter;
-                  setConfidenceFilter(next);
-                  if (boundsRef.current) {
-                    void runSearch({ bbox: boundsRef.current, confidence: next });
-                  } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false)) {
-                    void runSearch({ confidence: next });
-                  }
-                }}
-                className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
-              >
-                {CONFIDENCE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </FormField>
-            <FormField id="map-sort" label="Sort:" className="w-44 max-w-full">
-              <select
-                id="map-sort"
-                value={sortBy}
-                onChange={(e) => {
-                  const next = e.target.value as SortOption;
-                  setSortBy(next);
-                  if (boundsRef.current) {
-                    void runSearch({ bbox: boundsRef.current, sort: next });
-                  } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false)) {
-                    void runSearch({ sort: next });
-                  }
-                }}
-                className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
-              >
-                {SORT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </FormField>
-          </div>
-              </FormSection>
-            </div>
-          )}
-        </div>
-
-        <SeekerAppliedFilters items={appliedFilterItems} onClearAll={clearAllFilters} />
-        {hasActiveRefinements && (
-          <DiscoveryContextPanel
-            discoveryContext={mapDiscoveryContext}
-            taxonomyLabelById={taxonomyLabelById}
-            title="Current map scope"
-            description="The map and list stay inside this scope until you change it."
-            className="mb-3 border-slate-200 bg-slate-50"
-          />
-        )}
-
-        {/* Mobile view toggle — only visible below md */}
-        <div className="mb-3 flex gap-1 rounded-[18px] border border-orange-100 bg-white/80 p-1 shadow-[0_8px_24px_rgba(234,88,12,0.04)] md:hidden">
-          <button
-            type="button"
-            onClick={() => setMobileView('map')}
-            className={`flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
-              mobileView === 'map'
-                ? 'bg-action-base text-white shadow-sm'
-                : 'border border-orange-200 bg-white text-stone-700 hover:bg-orange-50'
-            }`}
-          >
-            <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-            Map view
-          </button>
-          <button
-            type="button"
-            onClick={() => setMobileView('list')}
-            className={`flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-lg text-xs font-medium transition-colors flex-1 justify-center ${
-              mobileView === 'list'
-                ? 'bg-action-base text-white shadow-sm'
-                : 'border border-orange-200 bg-white text-stone-700 hover:bg-orange-50'
-            }`}
-          >
-            <List className="h-3.5 w-3.5" aria-hidden="true" />
-            List ({data?.total ?? 0})
-          </button>
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div
-            role="alert"
-            className="mb-4 flex items-start gap-2 rounded-[20px] border border-error-soft bg-error-subtle p-4 text-sm text-error-deep shadow-[0_12px_32px_rgba(127,29,29,0.08)]"
-          >
-            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
-            <div>
-              <p className="font-medium">Search failed</p>
-              <p className="text-xs mt-0.5">{error}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Split-pane layout: stacked on mobile, side-by-side on desktop */}
-        <div className="md:grid md:grid-cols-[1fr_380px] md:gap-4 md:items-start">
-          {/* Map column */}
-          <div className={`overflow-hidden rounded-[24px] border border-slate-200 bg-white/92 p-2 shadow-[0_18px_50px_rgba(15,23,42,0.06)] md:sticky md:top-24 ${
-            mobileView === 'list' ? 'hidden md:block' : ''
-          }`}>
-            <div className="relative">
-              <MapContainer
-                className="w-full h-[50vh] md:h-[calc(100vh-16rem)]"
-                centerLat={deviceCenter?.lat}
-                centerLng={deviceCenter?.lng}
-                zoom={deviceCenter ? 12 : undefined}
-                services={services}
-                discoveryContext={mapDiscoveryContext}
-                onBoundsChange={handleBoundsChange}
-              />
-
-              {/* Mobile: show CTA only after pan/zoom */}
-              {isMobile && isAreaDirty && (
-                <div className="absolute left-0 right-0 top-3 flex justify-center px-3 pointer-events-none">
-                  <Button
+              {/* Active filter chips — horizontal scroll */}
+              {appliedFilterItems.length > 0 && (
+                <div
+                  className="pointer-events-auto mt-2 flex gap-1.5 overflow-x-auto pb-1"
+                  style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}
+                >
+                  {appliedFilterItems.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={item.onClick}
+                      className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-white/95 border border-slate-200 px-2.5 py-1 text-xs text-slate-700 shadow-sm"
+                      aria-label={item.ariaLabel}
+                    >
+                      {item.label}
+                      {item.showRemoveIcon !== false && <X className="h-2.5 w-2.5 text-slate-400" aria-hidden="true" />}
+                    </button>
+                  ))}
+                  <button
                     type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={searchThisArea}
-                    className="gap-1.5 text-xs pointer-events-auto"
+                    onClick={clearAllFilters}
+                    className="flex-shrink-0 inline-flex items-center rounded-full bg-slate-800 px-2.5 py-1 text-xs text-white shadow-sm"
                   >
-                    <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                    Search this area
-                  </Button>
+                    Clear all
+                  </button>
                 </div>
               )}
             </div>
 
-            {/* Desktop: always-visible control */}
-            <div className="mt-3 hidden items-center gap-3 px-2 pb-1 md:flex">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={searchThisArea}
-                className="gap-1.5 text-xs"
+            {/* "Search this area" pill — floats below search bar */}
+            {isAreaDirty && (
+              <div
+                className="absolute left-0 right-0 z-30 flex justify-center pointer-events-none"
+                style={{ top: `${56 + (appliedFilterItems.length > 0 ? 40 : 0) + 8}px` }}
               >
-                <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                Search this area
-              </Button>
-              {searchMode === 'bbox' && (
-                <span className="text-xs text-stone-500">Updates as you pan.</span>
-              )}
+                <button
+                  type="button"
+                  onClick={searchThisArea}
+                  className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-white shadow-[0_4px_16px_rgba(15,23,42,0.14)] border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <MapPin className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+                  Search this area
+                </button>
+              </div>
+            )}
+
+            {/* Error banner */}
+            {error && (
+              <div
+                role="alert"
+                className="absolute left-3 right-3 z-30 flex items-start gap-2 rounded-2xl border border-error-soft bg-white/95 p-3 shadow-md"
+                style={{ top: `${56 + (appliedFilterItems.length > 0 ? 40 : 0) + (isAreaDirty ? 48 : 8)}px` }}
+              >
+                <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                <div>
+                  <p className="text-xs font-medium">Search failed</p>
+                  <p className="text-xs mt-0.5 opacity-80">{error}</p>
+                </div>
+              </div>
+            )}
+
+            {/* ── Bottom sheet ─────────────────────────────────────────── */}
+            <div
+              className="absolute left-0 right-0 bottom-0 z-20 flex flex-col h-full"
+              style={{
+                transform: isDragging
+                  ? `translateY(calc(${sheetBaseTranslate} + ${dragOffsetY}px))`
+                  : `translateY(${sheetBaseTranslate})`,
+                transition: isDragging ? 'none' : 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
+              }}
+            >
+              {/* Drag handle + header */}
+              <div
+                className="flex-shrink-0 rounded-t-[24px] bg-white border-t border-l border-r border-slate-200 shadow-[0_-6px_24px_rgba(15,23,42,0.10)] pt-2.5 px-4 pb-3 select-none cursor-grab active:cursor-grabbing"
+                onTouchStart={handleSheetTouchStart}
+                onTouchMove={handleSheetTouchMove}
+                onTouchEnd={handleSheetTouchEnd}
+                role="button"
+                tabIndex={0}
+                aria-label={`${bottomSheetSnap === 'peek' ? 'Expand' : 'Collapse'} results panel`}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setBottomSheetSnap((prev) => prev === 'peek' ? 'half' : prev === 'half' ? 'full' : 'peek');
+                  }
+                }}
+              >
+                <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-300" />
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 leading-tight">
+                      {isLoading
+                        ? 'Searching…'
+                        : data
+                          ? `${data.total} service${data.total !== 1 ? 's' : ''} found`
+                          : 'Explore services'}
+                    </p>
+                    {pinnedCount > 0 && data && (
+                      <p className="text-xs text-slate-400 mt-0.5">{pinnedCount} pinned on map</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isLoading && <Loader2 className="h-4 w-4 animate-spin text-slate-400" aria-hidden="true" />}
+                    {isAreaDirty && !isLoading && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); searchThisArea(); }}
+                        className="flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2.5 py-1 text-xs font-semibold text-sky-700"
+                      >
+                        <Search className="h-3 w-3" aria-hidden="true" />
+                        Search area
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Scrollable results */}
+              <div
+                ref={resultsContainerRef}
+                tabIndex={-1}
+                className="flex-1 overflow-y-auto bg-white border-l border-r border-slate-200 outline-none"
+              >
+                <div className="px-4 py-3 pb-8">
+                  {isLoading && (
+                    <div className="space-y-3" role="status" aria-busy="true" aria-label="Loading results">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <SkeletonCard key={`m-skel-${i}`} />
+                      ))}
+                    </div>
+                  )}
+
+                  {!isLoading && !data && !error && (
+                    <div className="flex flex-col items-center py-12 text-center">
+                      <MapPin className="h-10 w-10 text-slate-200 mb-3" aria-hidden="true" />
+                      <p className="text-sm font-semibold text-slate-700">Ready to search</p>
+                      <p className="mt-1 text-xs text-slate-400 max-w-[220px]">
+                        Type above, use filters, or pan the map to search an area.
+                      </p>
+                    </div>
+                  )}
+
+                  {!isLoading && data && data.results.length === 0 && (
+                    <div className="flex flex-col items-center py-12 text-center">
+                      <p className="text-sm font-semibold text-slate-700">No matches in this area</p>
+                      <p className="mt-1 text-xs text-slate-400">Try different keywords or pan to a new area.</p>
+                    </div>
+                  )}
+
+                  {!isLoading && data && data.results.length > 0 && (
+                    <>
+                      <p className="mb-3 text-xs text-slate-400" role="status" aria-live="polite">
+                        {data.results.length} of {data.total} shown
+                        {pinnedCount > 0 && <span className="ml-1">· {pinnedCount} on map</span>}
+                      </p>
+                      <div className="space-y-3">
+                        {data.results.map((r) => (
+                          <div key={r.service.service.id} className="flex items-stretch gap-3">
+                            <ConfidenceRing enriched={r.service} />
+                            <div className="flex-1 min-w-0">
+                              <ServiceCard
+                                enriched={r.service}
+                                compact
+                                isSaved={savedIds.has(r.service.service.id)}
+                                onToggleSave={toggleSave}
+                                savedSyncEnabled={savedSyncEnabled}
+                                href={buildServiceDetailHref(r.service.service.id)}
+                                discoveryContext={mapDiscoveryContext}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Sheet floor */}
+              <div className="flex-shrink-0 bg-white border-l border-r border-b border-slate-200" />
             </div>
           </div>
 
-          {/* Results column */}
-          <div
-            ref={resultsContainerRef}
-            tabIndex={-1}
-            className={`mt-4 rounded-[24px] border border-slate-200 bg-white/92 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.06)] outline-none md:mt-0 md:max-h-[calc(100vh-16rem)] md:overflow-y-auto ${
-              mobileView === 'map' ? 'hidden md:block' : ''
-            }`}
-          >
-            {isLoading && (
+          {/* ── Mobile filters overlay (page-level, above header + bottom nav) ── */}
+          {mobileFiltersOpen && (
+            <div
+              className="fixed inset-0 z-[var(--z-modal)] flex flex-col justify-end"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Filters"
+            >
               <div
-                className="space-y-3"
-                role="status"
-                aria-busy="true"
-                aria-label="Loading map results"
-              >
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <SkeletonCard key={`map-skeleton-${i}`} />
-                ))}
-              </div>
-            )}
+                className="absolute inset-0 bg-black/40"
+                onClick={() => setMobileFiltersOpen(false)}
+                aria-hidden="true"
+              />
+              <div className="relative flex flex-col bg-white rounded-t-3xl max-h-[88vh] shadow-[0_-12px_40px_rgba(15,23,42,0.18)]">
+                {/* Handle + header */}
+                <div className="flex-shrink-0 px-5 pt-3 pb-4 border-b border-slate-100">
+                  <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-300" />
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-base font-semibold text-slate-800">Filters</h2>
+                    <button
+                      type="button"
+                      onClick={() => setMobileFiltersOpen(false)}
+                      className="flex items-center justify-center h-8 w-8 rounded-full bg-slate-100 text-slate-500"
+                      aria-label="Close filters"
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
 
-            {!isLoading && !data && !error && (
-              <div className="rounded-[20px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/70 p-6 text-center shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
-                <MapPin className="mx-auto mb-2 h-8 w-8 text-orange-200" aria-hidden="true" />
-                <p className="text-sm font-semibold text-stone-800">Ready to search</p>
-                <p className="mt-1 text-xs text-stone-500">
-                  Type a keyword above, tap a category chip, or pan the map and tap <strong>Search this area</strong>.
-                </p>
-              </div>
-            )}
+                {/* Scrollable filter content */}
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+                  <SeekerDiscoveryFilters
+                    activeCategory={activeCategory}
+                    onCategoryClick={handleCategoryClick}
+                    taxonomyError={taxonomyError}
+                    taxonomyTerms={taxonomyTerms}
+                    isLoadingTaxonomy={isLoadingTaxonomy}
+                    quickTaxonomyTerms={quickTaxonomyTerms}
+                    selectedTaxonomyIds={selectedTaxonomyIds}
+                    onToggleTaxonomyId={toggleTaxonomyId}
+                    taxonomyDialogOpen={taxonomyDialogOpen}
+                    onTaxonomyOpenChange={setTaxonomyDialogOpen}
+                    taxonomySearch={taxonomySearch}
+                    onTaxonomySearchChange={setTaxonomySearch}
+                    onClearTaxonomyFilters={clearTaxonomyFilters}
+                    groupedTaxonomyTerms={groupedTaxonomyTerms}
+                    visibleTaxonomyTermsCount={visibleTaxonomyTerms.length}
+                    dimensionLabels={DIMENSION_LABELS}
+                    categoryGroupLabel="Filter by service category"
+                    showCategoryLabel={false}
+                  />
 
-            {!isLoading && data && (
-              <>
-                <p className="mb-3 text-xs text-stone-500" role="status" aria-live="polite">
-                  {data.results.length === 0
-                    ? 'No matches'
-                    : `${data.results.length} of ${data.total} shown`}
-                  {pinnedCount > 0 && data.results.length > 0 && (
-                    <span className="ml-1">· {pinnedCount} pinned</span>
+                  {/* Service attribute filters */}
+                  <div className="rounded-[18px] border border-slate-200 bg-white p-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Service Type</p>
+                    <div className="space-y-3">
+                      {SEEKER_ATTRIBUTE_DIMENSIONS.map((dim) => {
+                        const def = SERVICE_ATTRIBUTES_TAXONOMY[dim];
+                        if (!def) return null;
+                        const commonTags = def.tags.filter((t) => t.common);
+                        const activeTags = selectedAttributes[dim] ?? [];
+                        return (
+                          <div key={dim} className="flex flex-col gap-1.5" role="group" aria-label={def.name}>
+                            <span className="text-xs font-medium text-stone-500">{def.name}:</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {commonTags.map((t) => {
+                                const isActive = activeTags.includes(t.tag);
+                                return (
+                                  <button
+                                    key={t.tag}
+                                    type="button"
+                                    onClick={() => toggleAttribute(dim, t.tag)}
+                                    className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[36px] flex-shrink-0 ${
+                                      isActive ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
+                                    }`}
+                                    aria-pressed={isActive}
+                                  >
+                                    {DISCOVERY_ATTRIBUTE_LABELS[t.tag] ?? t.tag.replace(/_/g, ' ')}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Trust + Sort */}
+                  <div className="rounded-[18px] border border-slate-200 bg-white p-4 space-y-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Quality & Order</p>
+                    <FormField id="mf-confidence" label="Trust level:">
+                      <select
+                        id="mf-confidence"
+                        value={confidenceFilter}
+                        onChange={(e) => setConfidenceFilter(e.target.value as ConfidenceFilter)}
+                        className="w-full min-h-[44px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                      >
+                        {CONFIDENCE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </FormField>
+                    <FormField id="mf-sort" label="Sort by:">
+                      <select
+                        id="mf-sort"
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as SortOption)}
+                        className="w-full min-h-[44px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                      >
+                        {SORT_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </FormField>
+                  </div>
+
+                  {/* Location */}
+                  <div className="rounded-[18px] border border-slate-200 bg-white p-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Location</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => { handleUseMyLocation(); setMobileFiltersOpen(false); }}
+                      disabled={isLocating}
+                      className="w-full"
+                    >
+                      {isLocating ? 'Locating…' : 'Use my location'}
+                    </Button>
+                    {deviceCenter && (
+                      <p className="mt-2 text-center text-xs text-slate-400">Approximate location active (not saved)</p>
+                    )}
+                  </div>
+
+                  {hasActiveRefinements && (
+                    <button
+                      type="button"
+                      onClick={clearAllFilters}
+                      className="w-full py-2 text-center text-sm font-medium text-slate-500 hover:text-red-600"
+                    >
+                      Clear all filters
+                    </button>
                   )}
-                </p>
-                {data.results.length === 0 ? (
-                  <div className="rounded-[20px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/60 p-6 text-center shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
-                    <p className="text-sm font-semibold text-stone-800">No matches in this area</p>
-                    <p className="mt-1 text-xs text-stone-500">Try different keywords, a broader category, or pan to a new area.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {data.results.map((r) => (
-                      <div key={r.service.service.id} className="flex items-stretch gap-3">
-                        <ConfidenceRing enriched={r.service} />
-                        <div className="flex-1">
-                          <ServiceCard
-                            enriched={r.service}
-                            compact
-                            isSaved={savedIds.has(r.service.service.id)}
-                            onToggleSave={toggleSave}
-                            savedSyncEnabled={savedSyncEnabled}
-                            href={buildServiceDetailHref(r.service.service.id)}
-                            discoveryContext={mapDiscoveryContext}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                </div>
+
+                {/* Sticky apply button */}
+                <div
+                  className="flex-shrink-0 border-t border-slate-100 bg-white px-5 py-4"
+                  style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+                >
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setMobileFiltersOpen(false);
+                      setBottomSheetSnap('half');
+                      if (boundsRef.current) {
+                        void runSearch({ bbox: boundsRef.current });
+                      } else if (canSearch) {
+                        void runSearch();
+                      }
+                    }}
+                    className="w-full"
+                  >
+                    Search with filters
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── DESKTOP: Existing card/sidebar layout (md+) ──────────────────────── */}
+      {!isMobile && (
+        <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)]">
+          <div className="container mx-auto max-w-6xl px-4 pt-4 pb-8 md:py-8">
+            <section className="rounded-[30px] border border-slate-200/80 bg-white/92 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+              <PageHeader
+                eyebrow="Verified discovery"
+                title="Service Map"
+                actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/map" />}
+                badges={(
+                  <>
+                    <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
+                    {deviceCenter ? <PageHeaderBadge tone="accent">Approximate location active</PageHeaderBadge> : null}
+                    {hasActiveRefinements ? <PageHeaderBadge>Refinements on</PageHeaderBadge> : null}
+                  </>
                 )}
-              </>
-            )}
-              </div>
-        </div>
-              </div>
-            </ErrorBoundary>
-        </section>
-      </div>
-    </main>
+              />
+
+              <ErrorBoundary>
+                <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-4">
+                  {/* Search bar */}
+                  <FormSection className="mb-3">
+                    <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+                      <FormField id="map-search" label="Search services to plot" className="w-full">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" aria-hidden="true" />
+                          <input
+                            ref={searchInputRef}
+                            id="map-search"
+                            value={query}
+                            onChange={(e) => {
+                              setQuery(e.target.value);
+                              if (activeCategory && !isDiscoveryNeedSearchText(activeCategory, e.target.value)) {
+                                setActiveCategory(null);
+                              }
+                            }}
+                            type="search"
+                            placeholder="Search for services (e.g., food bank, shelter)"
+                            className="min-h-[46px] w-full rounded-2xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                            aria-label="Search services to plot"
+                          />
+                          {query && (
+                            <button
+                              type="button"
+                              onClick={handleClearSearch}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-slate-400 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                              aria-label="Clear search"
+                            >
+                              <X className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                          )}
+                        </div>
+                      </FormField>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button type="submit" disabled={!canSearch || isLoading} className="w-full sm:w-auto">
+                          Search
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleUseMyLocation}
+                          disabled={isLocating}
+                          title="Opt-in: uses device location in-session only; not stored"
+                          className="w-full sm:w-auto"
+                        >
+                          {isLocating ? 'Locating…' : 'Use my location'}
+                        </Button>
+                      </div>
+                    </form>
+                  </FormSection>
+
+                  <div className="mb-3 rounded-[20px] border border-slate-200 bg-slate-50/80 p-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvancedFilters((current) => !current)}
+                        className="inline-flex min-h-[40px] items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                        aria-expanded={showAdvancedFilters || hasActiveRefinements}
+                      >
+                        Refine map
+                        {hasActiveRefinements ? (
+                          <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
+                            {appliedFilterItems.length || 1}
+                          </span>
+                        ) : null}
+                        {showAdvancedFilters || hasActiveRefinements ? (
+                          <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                        )}
+                      </button>
+                      <p className="text-xs text-slate-500">
+                        {savedSyncEnabled ? 'Saves can sync to your account.' : 'Saves stay on this device.'}
+                      </p>
+                    </div>
+
+                    {(showAdvancedFilters || hasActiveRefinements) && (
+                      <div className="mt-4 space-y-4">
+                        <SeekerDiscoveryFilters
+                          activeCategory={activeCategory}
+                          onCategoryClick={handleCategoryClick}
+                          taxonomyError={taxonomyError}
+                          taxonomyTerms={taxonomyTerms}
+                          isLoadingTaxonomy={isLoadingTaxonomy}
+                          quickTaxonomyTerms={quickTaxonomyTerms}
+                          selectedTaxonomyIds={selectedTaxonomyIds}
+                          onToggleTaxonomyId={toggleTaxonomyId}
+                          taxonomyDialogOpen={taxonomyDialogOpen}
+                          onTaxonomyOpenChange={setTaxonomyDialogOpen}
+                          taxonomySearch={taxonomySearch}
+                          onTaxonomySearchChange={setTaxonomySearch}
+                          onClearTaxonomyFilters={clearTaxonomyFilters}
+                          groupedTaxonomyTerms={groupedTaxonomyTerms}
+                          visibleTaxonomyTermsCount={visibleTaxonomyTerms.length}
+                          dimensionLabels={DIMENSION_LABELS}
+                          categoryGroupLabel="Filter by service category"
+                          showCategoryLabel={false}
+                        />
+
+                        {/* Service attribute dimension filters */}
+                        <div className="rounded-[18px] border border-slate-200 bg-white p-4">
+                          <button
+                            type="button"
+                            onClick={() => setAttributeSectionOpen((v) => !v)}
+                            className="mb-2 flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
+                            aria-expanded={attributeSectionOpen || hasActiveAttributes}
+                          >
+                            Service type filters
+                            {hasActiveAttributes && (
+                              <span className="ml-1 rounded-full bg-info-muted text-action-strong px-1.5 py-0.5 text-[10px] font-semibold">
+                                {Object.values(selectedAttributes).flat().length}
+                              </span>
+                            )}
+                            {attributeSectionOpen ? (
+                              <ChevronUp className="h-3 w-3" aria-hidden="true" />
+                            ) : (
+                              <ChevronDown className="h-3 w-3" aria-hidden="true" />
+                            )}
+                          </button>
+                          {(attributeSectionOpen || hasActiveAttributes) && (
+                            <div className="space-y-2">
+                              {SEEKER_ATTRIBUTE_DIMENSIONS.map((dim) => {
+                                const def = SERVICE_ATTRIBUTES_TAXONOMY[dim];
+                                if (!def) return null;
+                                const commonTags = def.tags.filter((t) => t.common);
+                                const activeTags = selectedAttributes[dim] ?? [];
+                                return (
+                                  <div key={dim} className="flex flex-col gap-1.5" role="group" aria-label={def.name}>
+                                    <span className="text-xs font-medium text-stone-500">{def.name}:</span>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {commonTags.map((t) => {
+                                        const isActive = activeTags.includes(t.tag);
+                                        return (
+                                          <button
+                                            key={t.tag}
+                                            type="button"
+                                            onClick={() => toggleAttribute(dim, t.tag)}
+                                            className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
+                                              isActive
+                                                ? 'bg-slate-900 text-white shadow-sm'
+                                                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                            }`}
+                                            aria-pressed={isActive}
+                                            title={t.description}
+                                          >
+                                            {DISCOVERY_ATTRIBUTE_LABELS[t.tag] ?? t.tag.replace(/_/g, ' ')}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {hasActiveAttributes && (
+                                <button
+                                  type="button"
+                                  onClick={clearAttributes}
+                                  className="text-xs font-medium text-sky-700 hover:underline"
+                                >
+                                  Clear service type filters
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <FormSection className="rounded-[18px] border border-slate-200 bg-white p-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                            <FormField id="map-confidence" label="Trust:" className="w-40 max-w-full">
+                              <select
+                                id="map-confidence"
+                                value={confidenceFilter}
+                                onChange={(e) => {
+                                  const next = e.target.value as ConfidenceFilter;
+                                  setConfidenceFilter(next);
+                                  if (boundsRef.current) {
+                                    void runSearch({ bbox: boundsRef.current, confidence: next });
+                                  } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false)) {
+                                    void runSearch({ confidence: next });
+                                  }
+                                }}
+                                className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                              >
+                                {CONFIDENCE_OPTIONS.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                            </FormField>
+                            <FormField id="map-sort" label="Sort:" className="w-44 max-w-full">
+                              <select
+                                id="map-sort"
+                                value={sortBy}
+                                onChange={(e) => {
+                                  const next = e.target.value as SortOption;
+                                  setSortBy(next);
+                                  if (boundsRef.current) {
+                                    void runSearch({ bbox: boundsRef.current, sort: next });
+                                  } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false)) {
+                                    void runSearch({ sort: next });
+                                  }
+                                }}
+                                className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                              >
+                                {SORT_OPTIONS.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                            </FormField>
+                          </div>
+                        </FormSection>
+                      </div>
+                    )}
+                  </div>
+
+                  <SeekerAppliedFilters items={appliedFilterItems} onClearAll={clearAllFilters} />
+                  {hasActiveRefinements && (
+                    <DiscoveryContextPanel
+                      discoveryContext={mapDiscoveryContext}
+                      taxonomyLabelById={taxonomyLabelById}
+                      title="Current map scope"
+                      description="The map and list stay inside this scope until you change it."
+                      className="mb-3 border-slate-200 bg-slate-50"
+                    />
+                  )}
+
+                  {/* Error */}
+                  {error && (
+                    <div
+                      role="alert"
+                      className="mb-4 flex items-start gap-2 rounded-[20px] border border-error-soft bg-error-subtle p-4 text-sm text-error-deep shadow-[0_12px_32px_rgba(127,29,29,0.08)]"
+                    >
+                      <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                      <div>
+                        <p className="font-medium">Search failed</p>
+                        <p className="text-xs mt-0.5">{error}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Split-pane: map left, results right */}
+                  <div className="md:grid md:grid-cols-[1fr_380px] md:gap-4 md:items-start">
+                    <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white/92 p-2 shadow-[0_18px_50px_rgba(15,23,42,0.06)] md:sticky md:top-24">
+                      <div className="relative">
+                        <MapContainer
+                          className="w-full h-[calc(100vh-16rem)]"
+                          centerLat={deviceCenter?.lat}
+                          centerLng={deviceCenter?.lng}
+                          zoom={deviceCenter ? 12 : undefined}
+                          services={services}
+                          discoveryContext={mapDiscoveryContext}
+                          onBoundsChange={handleBoundsChange}
+                        />
+                        {isAreaDirty && (
+                          <div className="absolute left-0 right-0 top-3 flex justify-center px-3 pointer-events-none">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={searchThisArea}
+                              className="gap-1.5 text-xs pointer-events-auto"
+                            >
+                              <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                              Search this area
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-3 hidden items-center gap-3 px-2 pb-1 md:flex">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={searchThisArea}
+                          className="gap-1.5 text-xs"
+                        >
+                          <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                          Search this area
+                        </Button>
+                        {searchMode === 'bbox' && (
+                          <span className="text-xs text-stone-500">Updates as you pan.</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div
+                      ref={resultsContainerRef}
+                      tabIndex={-1}
+                      className="mt-4 rounded-[24px] border border-slate-200 bg-white/92 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.06)] outline-none md:mt-0 md:max-h-[calc(100vh-16rem)] md:overflow-y-auto"
+                    >
+                      {isLoading && (
+                        <div className="space-y-3" role="status" aria-busy="true" aria-label="Loading map results">
+                          {Array.from({ length: 4 }).map((_, i) => (
+                            <SkeletonCard key={`map-skeleton-${i}`} />
+                          ))}
+                        </div>
+                      )}
+
+                      {!isLoading && !data && !error && (
+                        <div className="rounded-[20px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/70 p-6 text-center shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
+                          <MapPin className="mx-auto mb-2 h-8 w-8 text-orange-200" aria-hidden="true" />
+                          <p className="text-sm font-semibold text-stone-800">Ready to search</p>
+                          <p className="mt-1 text-xs text-stone-500">
+                            Type a keyword above, tap a category chip, or pan the map and tap{' '}
+                            <strong>Search this area</strong>.
+                          </p>
+                        </div>
+                      )}
+
+                      {!isLoading && data && (
+                        <>
+                          <p className="mb-3 text-xs text-stone-500" role="status" aria-live="polite">
+                            {data.results.length === 0
+                              ? 'No matches'
+                              : `${data.results.length} of ${data.total} shown`}
+                            {pinnedCount > 0 && data.results.length > 0 && (
+                              <span className="ml-1">· {pinnedCount} pinned</span>
+                            )}
+                          </p>
+                          {data.results.length === 0 ? (
+                            <div className="rounded-[20px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/60 p-6 text-center shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
+                              <p className="text-sm font-semibold text-stone-800">No matches in this area</p>
+                              <p className="mt-1 text-xs text-stone-500">
+                                Try different keywords, a broader category, or pan to a new area.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {data.results.map((r) => (
+                                <div key={r.service.service.id} className="flex items-stretch gap-3">
+                                  <ConfidenceRing enriched={r.service} />
+                                  <div className="flex-1">
+                                    <ServiceCard
+                                      enriched={r.service}
+                                      compact
+                                      isSaved={savedIds.has(r.service.service.id)}
+                                      onToggleSave={toggleSave}
+                                      savedSyncEnabled={savedSyncEnabled}
+                                      href={buildServiceDetailHref(r.service.service.id)}
+                                      discoveryContext={mapDiscoveryContext}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </ErrorBoundary>
+            </section>
+          </div>
+        </main>
+      )}
+    </>
   );
 }
 

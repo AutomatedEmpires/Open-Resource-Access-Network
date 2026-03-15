@@ -114,7 +114,7 @@ export function PageHeader({ eyebrow, title, icon, subtitle, badges, actions, cl
 
         {/* Right: optional actions — scrollable on very small screens, right-aligned on sm+ */}
         {actions && (
-          <div className="flex flex-shrink-0 items-center gap-2 overflow-x-auto scrollbar-none sm:mt-0.5">
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-2 sm:mt-0.5">
             {actions}
           </div>
         )}

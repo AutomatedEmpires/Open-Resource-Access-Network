@@ -317,7 +317,7 @@ export function ServiceCard({
           <button
             type="button"
             onClick={() => setShowMoreDetails((current) => !current)}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white"
             aria-expanded={showMoreDetails}
           >
             {showMoreDetails ? 'Hide details' : 'More details'}
@@ -419,7 +419,7 @@ export function ServiceCard({
             Contact{contacts.length > 1 ? 's' : ''}
           </p>
           {contacts.slice(0, 2).map((c) => (
-            <p key={c.id} className="text-xs mt-0.5">
+            <p key={c.id} className="text-xs mt-0.5 break-all">
               {[c.name, c.title, c.email].filter(Boolean).join(' · ')}
             </p>
           ))}
@@ -427,7 +427,7 @@ export function ServiceCard({
       )}
 
       {showMoreDetails && !compact && serviceAreas && serviceAreas.length > 0 && (
-        <div className="mt-2 text-xs text-gray-500 flex items-center gap-1">
+        <div className="mt-2 text-xs text-gray-500 flex flex-wrap items-center gap-1">
           <Globe2 className="h-3.5 w-3.5 text-gray-400" aria-hidden="true" />
           Serves: {serviceAreas.map((sa) => sa.name ?? sa.extentType ?? 'Custom area').join(', ')}
         </div>

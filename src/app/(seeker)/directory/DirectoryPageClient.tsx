@@ -1028,7 +1028,7 @@ export default function DirectoryPage() {
                     <button
                       type="button"
                       onClick={() => setShowAdvancedFilters((current) => !current)}
-                      className="inline-flex min-h-[40px] items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
                       aria-expanded={showAdvancedFilters || hasActiveRefinements}
                     >
                       Refine results
@@ -1073,7 +1073,7 @@ export default function DirectoryPage() {
                   <button
                     type="button"
                     onClick={() => setAttributeSectionOpen((v) => !v)}
-                    className="mb-2 flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
+                    className="mb-2 inline-flex min-h-[44px] items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
                     aria-expanded={attributeSectionOpen || hasActiveAttributes}
                   >
                     Service type filters
@@ -1127,7 +1127,7 @@ export default function DirectoryPage() {
                         <button
                           type="button"
                           onClick={clearAttributes}
-                          className="text-xs font-medium text-sky-700 hover:underline"
+                          className="inline-flex min-h-[44px] items-center px-2 text-xs font-medium text-sky-700 hover:underline"
                         >
                           Clear service type filters
                         </button>
@@ -1238,7 +1238,7 @@ export default function DirectoryPage() {
                           size="sm"
                           onClick={() => void runSearch(Math.max(1, page - 1))}
                           disabled={page <= 1 || isLoading || isFetchingMore}
-                          className="gap-1"
+                          className="min-h-[44px] gap-1"
                           aria-label="Previous page of results"
                         >
                           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -1250,7 +1250,7 @@ export default function DirectoryPage() {
                           size="sm"
                           onClick={() => void runSearch(page + 1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, true)}
                           disabled={!data.hasMore || isLoading || isFetchingMore}
-                          className="gap-1"
+                          className="min-h-[44px] gap-1"
                           aria-label="Next page of results"
                         >
                           Next
@@ -1334,7 +1334,7 @@ export default function DirectoryPage() {
                             size="sm"
                             onClick={() => void runSearch(Math.max(1, page - 1))}
                             disabled={page <= 1 || isLoading || isFetchingMore}
-                            className="gap-1"
+                            className="min-h-[44px] gap-1"
                           >
                             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                             Prev
@@ -1345,7 +1345,7 @@ export default function DirectoryPage() {
                             size="sm"
                             onClick={() => void runSearch(page + 1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, true)}
                             disabled={!data.hasMore || isLoading || isFetchingMore}
-                            className="gap-1"
+                            className="min-h-[44px] gap-1"
                           >
                             Next
                             <ArrowRight className="h-4 w-4" aria-hidden="true" />

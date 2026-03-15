@@ -954,7 +954,7 @@ export function ChatWindow({
   }, [applyQuotaState]);
 
   return (
-    <div className="flex h-[calc(100dvh-13rem)] flex-col overflow-hidden rounded-[26px] border border-orange-100/90 bg-gradient-to-b from-white via-orange-50/40 to-rose-50/50 shadow-[0_18px_55px_rgba(234,88,12,0.12)] md:h-auto md:max-h-[80vh]">
+    <div className="flex min-h-[300px] h-[calc(100dvh-13rem)] flex-col overflow-hidden rounded-[26px] border border-orange-100/90 bg-gradient-to-b from-white via-orange-50/40 to-rose-50/50 shadow-[0_18px_55px_rgba(234,88,12,0.12)] md:h-auto md:max-h-[80vh]">
       {/* Header — quota indicator + actions */}
       <div className="border-b border-orange-100/80 bg-gradient-to-b from-orange-50/80 to-white px-4 py-3 md:px-5">
         <div className="flex items-start justify-between gap-4">
@@ -966,7 +966,7 @@ export function ChatWindow({
               <button
                 type="button"
                 onClick={clearConversation}
-                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700"
+                className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700"
                 title="Clear conversation"
                 aria-label="Clear conversation"
               >
@@ -1025,7 +1025,7 @@ export function ChatWindow({
 
           <Dialog open={taxonomyDialogOpen} onOpenChange={handleTaxonomyOpenChange}>
             <DialogTrigger asChild>
-              <Button type="button" variant="outline" size="sm" className="rounded-full border-orange-100 bg-white text-xs shadow-sm hover:bg-orange-50">
+              <Button type="button" variant="outline" size="sm" className="min-h-[44px] rounded-full border-orange-100 bg-white text-xs shadow-sm hover:bg-orange-50">
                 Tags{selectedTaxonomyIds.length > 0 ? ` (${selectedTaxonomyIds.length})` : ''}
               </Button>
             </DialogTrigger>
@@ -1140,7 +1140,7 @@ export function ChatWindow({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
+                size="default"
                 onClick={() => {
                   setTrustFilter('all');
                   setSelectedTaxonomyIds([]);
@@ -1156,7 +1156,7 @@ export function ChatWindow({
                 <button
                   type="button"
                   onClick={() => _clearSessionContextField('activeNeedId')}
-                  className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
+                  className="inline-flex min-h-[44px] items-center rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                 >
                   Need: {formatFilterLabel(sessionContext.activeNeedId)} x
                 </button>
@@ -1165,7 +1165,7 @@ export function ChatWindow({
                 <button
                   type="button"
                   onClick={() => _clearSessionContextField('activeCity')}
-                  className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
+                  className="inline-flex min-h-[44px] items-center rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                 >
                   City: {sessionContext.activeCity} x
                 </button>
@@ -1174,7 +1174,7 @@ export function ChatWindow({
                 <button
                   type="button"
                   onClick={() => _clearSessionContextField('urgency')}
-                  className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
+                  className="inline-flex min-h-[44px] items-center rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                 >
                   Urgency: {formatFilterLabel(sessionContext.urgency)} x
                 </button>
@@ -1183,7 +1183,7 @@ export function ChatWindow({
                 <button
                   type="button"
                   onClick={() => _clearSessionContextField('trustFilter')}
-                  className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
+                  className="inline-flex min-h-[44px] items-center rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                 >
                   Trust: {formatFilterLabel(sessionContext.trustFilter)} x
                 </button>
@@ -1192,7 +1192,7 @@ export function ChatWindow({
                 <button
                   type="button"
                   onClick={() => _clearSessionContextField('taxonomyTermIds')}
-                  className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
+                  className="inline-flex min-h-[44px] items-center rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                 >
                   Tags: {sessionContext.taxonomyTermIds.length} x
                 </button>
@@ -1218,7 +1218,7 @@ export function ChatWindow({
                       profileShapingEnabled: !ignoreProfileShaping,
                     }));
                   }}
-                  className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
+                  className="inline-flex min-h-[44px] items-center rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                 >
                   Delivery: {formatFilterLabel(mode)} x
                 </button>
@@ -1232,7 +1232,7 @@ export function ChatWindow({
                     key={`${taxonomy}-${tag}`}
                     type="button"
                     onClick={() => _removeSessionAttributeTag(taxonomy, tag)}
-                    className="rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
+                    className="inline-flex min-h-[44px] items-center rounded-full border border-emerald-100 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900 shadow-sm"
                   >
                     {formatFilterLabel(tag)} x
                   </button>
@@ -1315,7 +1315,7 @@ export function ChatWindow({
                   : 'rounded-[24px] rounded-tl-md border border-orange-100/90 bg-white/96 px-4 py-3 text-sm text-stone-800 shadow-[0_12px_32px_rgba(234,88,12,0.08)]'
               }`}
             >
-              <p>{msg.content}</p>
+              <p className="break-words">{msg.content}</p>
               {msg.role === 'assistant' && (
                 <div className="space-y-2 mt-2">
                   {(msg as AssistantMessage).resultSummary && (
@@ -1339,7 +1339,7 @@ export function ChatWindow({
                             type="button"
                             onClick={() => handleChipClick(suggestion)}
                             disabled={isLoading || quotaRemaining === 0}
-                            className="rounded-full border border-orange-200 bg-white px-2.5 py-1 text-[11px] font-medium text-orange-900 disabled:opacity-50"
+                            className="inline-flex min-h-[44px] items-center rounded-full border border-orange-200 bg-white px-2.5 py-1 text-[11px] font-medium text-orange-900 disabled:opacity-50"
                           >
                             {suggestion}
                           </button>
@@ -1357,7 +1357,7 @@ export function ChatWindow({
                             type="button"
                             onClick={() => handleChipClick(suggestion)}
                             disabled={isLoading || quotaRemaining === 0}
-                            className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-medium text-emerald-900 disabled:opacity-50"
+                            className="inline-flex min-h-[44px] items-center rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-medium text-emerald-900 disabled:opacity-50"
                           >
                             {suggestion}
                           </button>
@@ -1387,7 +1387,7 @@ export function ChatWindow({
                   ))}
                 </div>
               )}
-              <span className={`block text-[10px] mt-1 select-none ${
+              <span className={`block text-[11px] mt-1 select-none ${
                 msg.role === 'user' ? 'text-orange-100 text-right' : 'text-stone-400'
               }`}>{formatTime(msg.timestamp)}</span>
             </div>
@@ -1426,10 +1426,10 @@ export function ChatWindow({
             <p className="font-medium">Low message budget</p>
             <p className="mt-1">You can keep this search scope and continue in Directory or Map if needed.</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <a href={_directoryHandoffHref} className="rounded-full border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900 shadow-sm">
+              <a href={_directoryHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900 shadow-sm">
                 Open Directory
               </a>
-              <a href={_mapHandoffHref} className="rounded-full border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900 shadow-sm">
+              <a href={_mapHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900 shadow-sm">
                 Open Map
               </a>
             </div>
@@ -1467,16 +1467,16 @@ export function ChatWindow({
             <p className="font-medium">Message limit reached.</p>
             <p className="mt-1">Continue with the same scope in Directory or Map, or start a fresh chat session.</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <a href={_directoryHandoffHref} className="rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 shadow-sm">
+              <a href={_directoryHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 shadow-sm">
                 Open Directory
               </a>
-              <a href={_mapHandoffHref} className="rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 shadow-sm">
+              <a href={_mapHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 shadow-sm">
                 Open Map
               </a>
               <button
                 type="button"
                 onClick={_startNewSession}
-                className="rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 shadow-sm"
+                className="inline-flex min-h-[44px] items-center rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 shadow-sm"
               >
                 Start new chat session
               </button>

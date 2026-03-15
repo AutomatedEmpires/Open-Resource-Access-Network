@@ -316,7 +316,7 @@ describe('DirectoryPageClient', () => {
     expect(screen.getByText('Search: rent help')).toBeInTheDocument();
     expect(screen.getAllByText('Trust: High confidence only').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Sort: Name (Z-A)').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Tag: Housing Navigation').length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('Tag: Housing Navigation')).length).toBeGreaterThan(0);
     expect(screen.getByText('Delivery: By Phone')).toBeInTheDocument();
     expect(screen.getByText('Access: No ID Required')).toBeInTheDocument();
   });

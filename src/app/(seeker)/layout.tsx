@@ -104,7 +104,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
           <div className="flex min-w-0 items-center gap-3">
             <Link
               href="/"
-              className="flex items-center gap-2 text-lg font-semibold tracking-tight text-slate-900 transition-colors hover:text-sky-700"
+              className="flex min-h-[44px] items-center gap-2 text-lg font-semibold tracking-tight text-slate-900 transition-colors hover:text-sky-700"
             >
               ORAN
             </Link>
@@ -127,7 +127,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
             <button
               type="button"
               onClick={() => setCommandPaletteOpen(true)}
-              className="inline-flex min-h-10 items-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+              className="inline-flex min-h-[44px] items-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
               aria-label="Open quick actions"
             >
               Quick actions
@@ -202,7 +202,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
               <Link
                 key={href}
                 href={href}
-                className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-xs font-medium transition-colors ${
+                className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-[10px] sm:text-xs font-medium transition-colors overflow-hidden ${
                   active ? 'text-action-base' : 'text-slate-400 hover:text-slate-700'
                 }`}
                 aria-current={active ? 'page' : undefined}

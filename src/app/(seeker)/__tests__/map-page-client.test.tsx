@@ -158,6 +158,25 @@ function renderWithToast(ui: React.ReactElement) {
   return render(ui);
 }
 
+function getMapSearchBox() {
+  return screen.getByRole('searchbox', { name: /Search services(?: to plot)?/i });
+}
+
+function getRefineMapButton() {
+  return screen.getByRole('button', { name: /^(Refine map|Filters)$/i });
+}
+
+async function clickUseMyLocationControl() {
+  const directButton = screen.queryByRole('button', { name: 'Use my location' });
+  if (directButton) {
+    fireEvent.click(directButton);
+    return;
+  }
+
+  fireEvent.click(screen.getByRole('button', { name: /^Filters(?: \(\d+ active\))?$/i }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Use my location' }));
+}
+
 function makeSearchResponse(overrides: Record<string, unknown> = {}) {
   return {
     results: [
@@ -393,7 +412,7 @@ describe('MapPageClient', () => {
 
     renderWithToast(<MapPage />);
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+    fireEvent.change(getMapSearchBox(), {
       target: { value: 'shelter' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -413,7 +432,7 @@ describe('MapPageClient', () => {
 
     renderWithToast(<MapPage />);
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+    fireEvent.change(getMapSearchBox(), {
       target: { value: 'food' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -443,7 +462,7 @@ describe('MapPageClient', () => {
 
     renderWithToast(<MapPage />);
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+    fireEvent.change(getMapSearchBox(), {
       target: { value: 'legal aid' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -453,22 +472,24 @@ describe('MapPageClient', () => {
   });
 
   it('does not bbox-query until bounds exist and then supports mobile list toggle', async () => {
+    setMatchMedia(true);
+
     mockApi([{ ok: true, body: makeSearchResponse() }]);
 
     renderWithToast(<MapPage />);
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+    fireEvent.change(getMapSearchBox(), {
       target: { value: 'shelter' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     await screen.findByText('Shelter');
 
     expect(getSearchCalls()).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Search this area' }));
+    expect(screen.queryByRole('button', { name: 'Search this area' })).not.toBeInTheDocument();
     expect(getSearchCalls()).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole('button', { name: 'List (2)' }));
-    expect(screen.getByRole('button', { name: 'Map view' })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Expand results panel' }), { key: 'Enter' });
+    expect(screen.getByRole('button', { name: 'Collapse results panel' })).toBeInTheDocument();
   });
 
   it('shows no-match state and supports clearing typed query', async () => {
@@ -481,7 +502,7 @@ describe('MapPageClient', () => {
 
     renderWithToast(<MapPage />);
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+    fireEvent.change(getMapSearchBox(), {
       target: { value: 'rare query' },
     });
     expect(screen.getByRole('button', { name: 'Clear search' })).toBeInTheDocument();
@@ -489,14 +510,13 @@ describe('MapPageClient', () => {
     expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
     expect(replaceMock).toHaveBeenCalledWith('/map', { scroll: false });
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+    fireEvent.change(getMapSearchBox(), {
       target: { value: 'rare query' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
 
-    expect(await screen.findByText('No matches')).toBeInTheDocument();
     expect(await screen.findByText('No matches in this area')).toBeInTheDocument();
-    expect(await screen.findByText('Try different keywords, a broader category, or pan to a new area.')).toBeInTheDocument();
+    expect(await screen.findByText('Try different keywords or pan to a new area.')).toBeInTheDocument();
   });
 
   it('surfaces permission-denied geolocation errors', async () => {
@@ -517,7 +537,7 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
+    await clickUseMyLocationControl();
     await waitFor(() => {
       expect(toastInfoMock).toHaveBeenCalledWith('Requesting device location…');
       expect(toastErrorMock).toHaveBeenCalledWith('Location permission denied.');
@@ -542,8 +562,8 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
+    await clickUseMyLocationControl();
+    await clickUseMyLocationControl();
 
     await waitFor(() => {
       expect(toastErrorMock).toHaveBeenCalledWith('Location request timed out.');
@@ -556,7 +576,7 @@ describe('MapPageClient', () => {
     mockApi([{ ok: true, body: makeSearchResponse() }]);
 
     renderWithToast(<MapPage />);
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+    fireEvent.change(getMapSearchBox(), {
       target: { value: 'shelter' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -578,7 +598,7 @@ describe('MapPageClient', () => {
     mockApi([{ ok: true, body: makeSearchResponse() }]);
 
     renderWithToast(<MapPage />);
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+    fireEvent.change(getMapSearchBox(), {
       target: { value: 'shelter' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -621,7 +641,7 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
+    await clickUseMyLocationControl();
 
     await waitFor(() => {
       expect(toastSuccessMock).toHaveBeenCalledWith('Centered near your location (not saved).');
@@ -660,10 +680,10 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
+    fireEvent.click(getRefineMapButton());
     await screen.findByText('Filters unavailable');
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+    fireEvent.change(getMapSearchBox(), {
       target: { value: 'fallback' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -704,17 +724,17 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
+    fireEvent.click(getRefineMapButton());
     await screen.findByRole('button', { name: 'Food Assistance' });
 
     const initialSearchCalls = getSearchCalls().length;
-    fireEvent.submit(screen.getByRole('searchbox', { name: 'Search services to plot' }).closest('form')!);
+    fireEvent.submit(getMapSearchBox().closest('form')!);
     expect(getSearchCalls().length).toBe(initialSearchCalls);
 
     fireEvent.click(screen.getByRole('button', { name: 'Food Assistance' }));
     expect(getSearchCalls().length).toBe(initialSearchCalls + 1);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Search this area' }));
+    expect(screen.queryByRole('button', { name: 'Search this area' })).not.toBeInTheDocument();
     expect(getSearchCalls().length).toBe(initialSearchCalls + 1);
   });
 
@@ -760,9 +780,9 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
+    fireEvent.click(getRefineMapButton());
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+    fireEvent.change(getMapSearchBox(), {
       target: { value: 'food' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
@@ -833,7 +853,7 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
+    fireEvent.click(getRefineMapButton());
 
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
     await screen.findByText('Shelter');
@@ -849,13 +869,13 @@ describe('MapPageClient', () => {
 
   it('clears a stale category chip when the user types a different query', async () => {
     renderWithToast(<MapPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
+    fireEvent.click(getRefineMapButton());
 
     const categoryButton = screen.getByRole('button', { name: 'Food' });
     fireEvent.click(categoryButton);
     expect(categoryButton).toHaveAttribute('aria-pressed', 'true');
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+    fireEvent.change(getMapSearchBox(), {
       target: { value: 'legal aid' },
     });
 
@@ -866,9 +886,9 @@ describe('MapPageClient', () => {
     mockApi([{ ok: true, body: makeSearchResponse() }]);
 
     renderWithToast(<MapPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
+    fireEvent.click(getRefineMapButton());
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+    fireEvent.change(getMapSearchBox(), {
       target: { value: 'rare typed query' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
@@ -902,7 +922,7 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Refine map' }));
+    fireEvent.click(getRefineMapButton());
     expect(await screen.findByText('Filters unavailable')).toBeInTheDocument();
   });
 
@@ -947,7 +967,7 @@ describe('MapPageClient', () => {
     ]);
 
     renderWithToast(<MapPage />);
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search services to plot' }), {
+    fireEvent.change(getMapSearchBox(), {
       target: { value: 'confidence' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));

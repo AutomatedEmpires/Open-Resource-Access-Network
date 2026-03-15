@@ -25,7 +25,7 @@ const APPROVED_ARBITRARY = new Set([
 
   // ── Viewport / content-well heights ─────────────────────────────────────
   'h-[60vh]', 'h-[50vh]', 'min-h-[60vh]',
-  'max-h-[85vh]', 'max-h-[80vh]',
+  'max-h-[85vh]', 'max-h-[80vh]', 'max-h-[88vh]',
   'h-[calc(100dvh-13rem)]', 'h-[calc(100vh-16rem)]', 'max-h-[calc(100vh-16rem)]',
 
   // ── Truncation constraints ────────────────────────────────────────────────
@@ -53,7 +53,7 @@ const APPROVED_ARBITRARY = new Set([
   'tracking-[0.22em]', 'tracking-[0.24em]', 'tracking-[0.24em]',
 
   // ── Border radius (chat & card surfaces) ──────────────────────────────────
-  'rounded-[18px]', 'rounded-[22px]', 'rounded-[24px]', 'rounded-[26px]',
+  'rounded-[18px]', 'rounded-[22px]', 'rounded-[24px]', 'rounded-[26px]', 'rounded-t-[24px]',
   'rounded-[28px]', 'rounded-[30px]',
 
   // ── Surface gradients (chat, seeker cards, panels) ────────────────────────
@@ -105,6 +105,10 @@ const APPROVED_ARBITRARY = new Set([
   'shadow-[0_18px_40px_rgba(15,23,42,0.08)]',
   'shadow-[0_24px_80px_rgba(15,23,42,0.08)]',
   'shadow-[0_24px_80px_rgba(234,88,12,0.10)]',
+  'shadow-[0_4px_20px_rgba(15,23,42,0.12)]',
+  'shadow-[0_4px_16px_rgba(15,23,42,0.14)]',
+  'shadow-[0_-6px_24px_rgba(15,23,42,0.10)]',
+  'shadow-[0_-12px_40px_rgba(15,23,42,0.18)]',
   'shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]',
 ]);
 

@@ -9,7 +9,7 @@ const fetchMock = vi.hoisted(() => vi.fn());
 vi.mock('@/components/ui/error-boundary', () => ({ ErrorBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock('@/components/ui/button', () => ({ Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button> }));
 
-import SecurityPage from '@/app/(oran-admin)/security/page';
+import SecurityPage from '@/app/(oran-admin)/admin-security/page';
 
 beforeEach(() => {
   vi.clearAllMocks();

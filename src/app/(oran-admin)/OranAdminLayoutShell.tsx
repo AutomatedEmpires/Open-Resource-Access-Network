@@ -23,7 +23,7 @@ const NAV_ITEMS = [
   { href: '/approvals', label: 'Approvals' },
   { href: '/appeals', label: 'Appeals' },
   { href: '/reports', label: 'Reports' },
-  { href: '/security', label: 'Security' },
+  { href: '/admin-security', label: 'Security' },
   { href: '/discovery-preview', label: 'Discovery Preview' },
   { href: '/forms', label: 'Forms' },
   { href: '/scopes', label: 'Scopes' },

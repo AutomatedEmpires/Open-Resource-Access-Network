@@ -16,7 +16,7 @@ const PROTECTED_ROUTES: { pattern: RegExp; minRole: OranRole }[] = [
   { pattern: /^\/(saved|profile|appeal|notifications)/, minRole: 'seeker' },
   { pattern: /^\/(host|host-forms|resource-studio|claim|org|locations|services|admins)/, minRole: 'host_member' },
   { pattern: /^\/(queue|verify|coverage|dashboard|community-forms)/, minRole: 'community_admin' },
-  { pattern: /^\/(operations|approvals|rules|audit|zone-management|ingestion|appeals|reports|security|scopes|triage|templates|discovery-preview|forms)/, minRole: 'oran_admin' },
+  { pattern: /^\/(operations|approvals|rules|audit|zone-management|ingestion|appeals|reports|admin-security|scopes|triage|templates|discovery-preview|forms)/, minRole: 'oran_admin' },
 ];
 
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

@@ -126,7 +126,7 @@ export default function OperationsPageClient() {
             <MetricCard href="/reports" label="Open reports" value={data.summary.reports_open} tone="bg-amber-100 text-amber-900" />
             <MetricCard href="/reports" label="High-risk reports" value={data.summary.high_risk_reports_open} tone="bg-rose-100 text-rose-800" />
             <MetricCard href="/scopes" label="Pending scope grants" value={data.summary.scopes_pending} tone="bg-indigo-100 text-indigo-800" />
-            <MetricCard href="/security" label="Integrity-held services" value={data.summary.integrity_held_services} tone="bg-emerald-100 text-emerald-800" />
+            <MetricCard href="/admin-security" label="Integrity-held services" value={data.summary.integrity_held_services} tone="bg-emerald-100 text-emerald-800" />
           </section>
 
           <div className="grid gap-6 lg:grid-cols-5">
@@ -181,7 +181,7 @@ export default function OperationsPageClient() {
                 </div>
                 <div className="mt-4 grid gap-3 text-sm">
                   <Link href="/reports" className="rounded-xl border border-gray-200 px-3 py-3 hover:bg-slate-50">Trust and safety report review</Link>
-                  <Link href="/security" className="rounded-xl border border-gray-200 px-3 py-3 hover:bg-slate-50">Privileged account controls</Link>
+                  <Link href="/admin-security" className="rounded-xl border border-gray-200 px-3 py-3 hover:bg-slate-50">Privileged account controls</Link>
                   <Link href="/approvals" className="rounded-xl border border-gray-200 px-3 py-3 hover:bg-slate-50">Submission approvals</Link>
                   <Link href="/scopes" className="rounded-xl border border-gray-200 px-3 py-3 hover:bg-slate-50">Scope grant governance</Link>
                   <Link href="/ingestion" className="rounded-xl border border-gray-200 px-3 py-3 hover:bg-slate-50">Ingestion oversight</Link>

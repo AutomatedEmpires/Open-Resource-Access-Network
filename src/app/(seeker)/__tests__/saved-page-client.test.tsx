@@ -291,7 +291,7 @@ describe('SavedPageClient', () => {
     render(<SavedPage />);
 
     await screen.findByText('No saved services yet');
-    expect(screen.getByRole('link', { name: 'Find services via Chat' })).toHaveAttribute(
+      expect(screen.getByRole('link', { name: 'Open Chat' })).toHaveAttribute(
       'href',
       '/chat?q=food&category=food_assistance',
     );

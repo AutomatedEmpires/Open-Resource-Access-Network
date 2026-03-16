@@ -70,7 +70,7 @@ This document provides an auditable snapshot of operational readiness for produc
 
 1. Run first formal incident tabletop and record outcomes.
 2. Measure and publish first RTO/RPO baseline from DR drill.
-3. Add automated runbook staleness checks (review date enforcement) in CI.
+3. Keep runbook freshness automation green and expand it if metadata rules tighten.
 
 ## Governance Links
 

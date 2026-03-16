@@ -229,7 +229,7 @@ function mockDetailSideQueries() {
 beforeEach(() => {
   vi.clearAllMocks();
   vaultMocks.createFormTemplate.mockResolvedValue(mockTemplate());
-  vaultMocks.createFormInstance.mockResolvedValue(mockInstance());
+  vaultMocks.createFormInstance.mockResolvedValue({ instance: mockInstance(), reusedExistingDraft: false });
   vaultMocks.getAccessibleFormInstance.mockResolvedValue(null);
   vaultMocks.listAccessibleFormInstances.mockResolvedValue({ instances: [] });
   vaultMocks.updateFormInstanceDraft.mockResolvedValue(undefined);
@@ -360,7 +360,7 @@ describe('resource submission service', () => {
 
   it('creates resource submission and resolves detail', async () => {
     mockDetailSideQueries();
-    vaultMocks.createFormInstance.mockResolvedValue(mockInstance());
+    vaultMocks.createFormInstance.mockResolvedValue({ instance: mockInstance(), reusedExistingDraft: false });
 
     const detail = await createResourceSubmission({
       variant: 'listing',
@@ -404,7 +404,7 @@ describe('resource submission service', () => {
       if (sql.includes('INSERT INTO source_records')) return { rows: [{ id: 'sr-1' }] };
       return { rows: [] };
     });
-    dbMocks.withTransaction.mockImplementation(async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }));
+    dbMocks.withTransaction.mockImplementation(async (fn: (_client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }));
 
     await submitResourceSubmission('instance-1', 'actor-1', 'host_member');
     expect(clientQuery).toHaveBeenCalled();
@@ -507,13 +507,148 @@ describe('resource submission service', () => {
     expect(clientQuery).toHaveBeenCalledWith(
       expect.stringContaining("SET payload = COALESCE(payload, '{}'::jsonb) ||"),
       [
-        JSON.stringify({
-          projectionSourceRecordId: 'proj-sr-2',
-          projectedOrganizationId: 'org-1',
-          projectedServiceId: 'svc-1',
-        }),
+        expect.stringContaining('"projectionSourceRecordId":"proj-sr-2"'),
         'sub-1',
       ],
+    );
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO confidence_scores'),
+      ['svc-1', 92, 92, 0, 0],
+    );
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO hsds_export_snapshots'),
+      expect.arrayContaining(['service', 'svc-1']),
+    );
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO lifecycle_events'),
+      expect.arrayContaining(['service', 'svc-1', 'published', 'submission', 'published', 'human', 'actor-1']),
+    );
+  });
+
+  it('reuses matching active org and service before projecting listing submissions', async () => {
+    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'instance-1' }]);
+    const clientQuery = vi.fn(async (sql: string, _params?: unknown[]) => {
+      if (sql.includes('pg_advisory_xact_lock')) {
+        expect(params).toEqual(['live-publication:example.org|existing org|example.org/service|existing service']);
+        return { rows: [{ pg_advisory_xact_lock: '' }] };
+      }
+      if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
+        const draft = createEmptyResourceSubmissionDraft('listing', 'host');
+        draft.organization.name = 'Existing Org';
+        draft.organization.url = 'https://example.org';
+        draft.service.name = 'Existing Service';
+        draft.service.url = 'https://example.org/service';
+        return {
+          rows: [{
+            submission_id: 'sub-1',
+            submission_type: 'new_service',
+            target_type: 'system',
+            target_id: null,
+            submitted_by_user_id: 'submitter-1',
+            form_data: { draft },
+          }],
+        };
+      }
+      if (sql.includes('FROM organizations') && sql.includes("regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')")) {
+        expect(params).toEqual(['example.org']);
+        return { rows: [{ id: 'org-existing' }] };
+      }
+      if (sql.includes('FROM services') && sql.includes("regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')")) {
+        expect(params).toEqual(['org-existing', 'example.org/service']);
+        return { rows: [{ id: 'svc-existing' }] };
+      }
+      if (sql.includes('UPDATE organizations')) return { rows: [] };
+      if (sql.includes('UPDATE services')) return { rows: [] };
+      if (sql.includes('SELECT location_id FROM service_at_location')) return { rows: [] };
+      if (sql.includes('INSERT INTO source_systems')) return { rows: [{ id: 'sys-1' }] };
+      if (sql.includes('FROM source_feeds')) return { rows: [] };
+      if (sql.includes('INSERT INTO source_feeds')) return { rows: [{ id: 'feed-1' }] };
+      if (sql.includes('FROM source_records')) return { rows: [] };
+      if (sql.includes('INSERT INTO source_records')) return { rows: [{ id: 'proj-sr-3' }] };
+      return { rows: [] };
+    });
+    dbMocks.withTransaction.mockImplementation(async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }));
+
+    const result = await projectApprovedResourceSubmission('instance-1', 'actor-1');
+
+    expect(result.organizationId).toBe('org-existing');
+    expect(result.serviceId).toBe('svc-existing');
+    expect(clientQuery).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO organizations'), expect.anything());
+    expect(clientQuery).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO services'), expect.anything());
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE submissions'),
+      ['svc-existing', 'sub-1'],
+    );
+    expect(
+      clientQuery.mock.calls.some(
+        ([sql]) => typeof sql === 'string' && sql.includes("name = COALESCE(NULLIF($2, ''), name)") && sql.includes('UPDATE services'),
+      ),
+    ).toBe(true);
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE hsds_export_snapshots'),
+      ['service', 'svc-existing'],
+    );
+  });
+
+  it('links approved public submissions to host-managed live records without overwriting them', async () => {
+    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'instance-1' }]);
+    const clientQuery = vi.fn(async (sql: string, _params?: unknown[]) => {
+      if (sql.includes('pg_advisory_xact_lock')) return { rows: [{ pg_advisory_xact_lock: '' }] };
+      if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
+        const draft = createEmptyResourceSubmissionDraft('listing', 'public');
+        draft.organization.name = 'Existing Org';
+        draft.organization.url = 'https://example.org';
+        draft.service.name = 'Existing Service';
+        draft.service.url = 'https://example.org/service';
+        return {
+          rows: [{
+            submission_id: 'sub-2',
+            submission_type: 'new_service',
+            target_type: 'system',
+            target_id: null,
+            submitted_by_user_id: 'submitter-2',
+            form_data: { draft },
+          }],
+        };
+      }
+      if (sql.includes('FROM organizations') && sql.includes("regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')")) {
+        return { rows: [{ id: 'org-existing' }] };
+      }
+      if (sql.includes('FROM services') && sql.includes("regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')")) {
+        return { rows: [{ id: 'svc-existing' }] };
+      }
+      if (sql.includes('FROM hsds_export_snapshots')) {
+        return {
+          rows: [{
+            hsds_payload: {
+              meta: {
+                generatedBy: 'oran-resource-submission-projection',
+                channel: 'host',
+                publicationSourceKind: 'host_submission',
+              },
+            },
+            generated_at: '2026-03-16T00:00:00.000Z',
+          }],
+        };
+      }
+      if (sql.includes('INSERT INTO source_systems')) return { rows: [{ id: 'sys-1' }] };
+      if (sql.includes('FROM source_feeds')) return { rows: [] };
+      if (sql.includes('INSERT INTO source_feeds')) return { rows: [{ id: 'feed-1' }] };
+      if (sql.includes('FROM source_records')) return { rows: [] };
+      if (sql.includes('INSERT INTO source_records')) return { rows: [{ id: 'proj-sr-4' }] };
+      return { rows: [] };
+    });
+    dbMocks.withTransaction.mockImplementation(async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }));
+
+    const result = await projectApprovedResourceSubmission('instance-1', 'actor-2');
+
+    expect(result).toEqual({ organizationId: 'org-existing', serviceId: 'svc-existing' });
+    expect(clientQuery).not.toHaveBeenCalledWith(expect.stringContaining('UPDATE organizations'), expect.anything());
+    expect(clientQuery).not.toHaveBeenCalledWith(expect.stringContaining('UPDATE services'), expect.anything());
+    expect(clientQuery).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO hsds_export_snapshots'), expect.anything());
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO lifecycle_events'),
+      expect.arrayContaining(['service', 'svc-existing', 'linked_existing']),
     );
   });
 

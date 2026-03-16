@@ -29,9 +29,15 @@ Ensure runbooks remain current, accurate, and executable by enforcing review cad
 2. Assign owner and review deadline.
 3. Block release if critical runbooks are stale beyond grace period.
 
-## Automation Recommendation
+## Automation Status
 
-Add CI check to parse runbook metadata and fail when critical runbooks are overdue.
+Implemented in CI via `.github/workflows/runbook-freshness.yml` and `scripts/check-runbook-freshness.mjs`.
+
+Operator expectation:
+
+- keep the workflow green on PRs and scheduled checks
+- treat missing `Next review due (UTC)` metadata as a governance defect
+- update this runbook whenever review cadence rules change
 
 ## References
 

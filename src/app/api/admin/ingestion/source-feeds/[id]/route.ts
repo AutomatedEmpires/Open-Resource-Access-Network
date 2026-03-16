@@ -17,6 +17,10 @@ import {
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import {
+  isHighRiskSourceFeedUpdate,
+  queueIngestionControlChange,
+} from '@/services/ingestion/controlChanges';
 import { mergeSourceFeedState, SourceFeedStatePatchSchema } from '../state';
 
 const JurisdictionScopeSchema = z.object({
@@ -125,14 +129,44 @@ export async function PUT(
     }
 
     const { state, ...feedUpdates } = parsed.data;
+    const existingState = state ? await stores.sourceFeedStates.getByFeedId(id) : null;
+    const nextState = state
+      ? mergeSourceFeedState(id, existingState, state, { actorId: session?.userId ?? null })
+      : null;
+
+    if (state && isHighRiskSourceFeedUpdate({ state })) {
+      const { submissionId } = await queueIngestionControlChange({
+        submittedByUserId: session?.userId ?? 'unknown',
+        actorRole: session?.role ?? 'oran_admin',
+        targetId: id,
+        title: `Source feed rollout queued: ${existing.feedName}`,
+        summary: `Auto-publish rollout for source feed ${existing.feedName} requires second approval before automation widens.`,
+        payload: {
+          entityType: 'source_feed',
+          action: 'update',
+          entityId: id,
+          entityLabel: existing.feedName,
+          summary: `Publication mode ${existingState?.publicationMode ?? 'review_required'} -> ${nextState?.publicationMode ?? existingState?.publicationMode ?? 'review_required'}`,
+          beforeState: {
+            feed: existing,
+            state: existingState,
+          },
+          feedPatch: Object.keys(feedUpdates).length > 0 ? feedUpdates : undefined,
+          nextState,
+        },
+      });
+
+      return NextResponse.json(
+        { queued: true, submissionId, status: 'pending_second_approval' },
+        { status: 202 },
+      );
+    }
+
     if (Object.keys(feedUpdates).length > 0) {
       await stores.sourceFeeds.update(id, feedUpdates);
     }
     if (state) {
-      const existingState = await stores.sourceFeedStates.getByFeedId(id);
-      await stores.sourceFeedStates.upsert(
-        mergeSourceFeedState(id, existingState, state, { actorId: session?.userId ?? null }),
-      );
+      await stores.sourceFeedStates.upsert(nextState!);
     }
 
     return NextResponse.json({ updated: true });
@@ -156,8 +190,31 @@ export async function DELETE(
     if (!existing) {
       return NextResponse.json({ error: 'Source feed not found.' }, { status: 404 });
     }
-    await stores.sourceFeeds.deactivate(id);
-    return NextResponse.json({ deactivated: true });
+    const session = await getAuthContext();
+    const state = await stores.sourceFeedStates.getByFeedId(id);
+    const { submissionId } = await queueIngestionControlChange({
+      submittedByUserId: session?.userId ?? 'unknown',
+      actorRole: session?.role ?? 'oran_admin',
+      targetId: id,
+      title: `Source feed deactivation queued: ${existing.feedName}`,
+      summary: `Deactivating source feed ${existing.feedName} requires second approval because it can remove a live ingestion feed.`,
+      payload: {
+        entityType: 'source_feed',
+        action: 'deactivate',
+        entityId: id,
+        entityLabel: existing.feedName,
+        summary: `Deactivate source feed ${existing.feedName}`,
+        beforeState: {
+          feed: existing,
+          state,
+        },
+      },
+    });
+
+    return NextResponse.json(
+      { queued: true, submissionId, status: 'pending_second_approval' },
+      { status: 202 },
+    );
   } catch (error) {
     captureException(error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });

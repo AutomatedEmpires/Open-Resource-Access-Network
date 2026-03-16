@@ -2076,6 +2076,9 @@ export const services = pgTable(
     licenses: text('licenses'),
     estimatedWaitDays: integer('estimated_wait_days'),
     capacityStatus: text('capacity_status').default('available'),
+    integrityHoldAt: timestamp('integrity_hold_at', { withTimezone: true }),
+    integrityHoldReason: text('integrity_hold_reason'),
+    integrityHeldByUserId: text('integrity_held_by_user_id'),
     embedding: vector1024('embedding'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -2086,6 +2089,7 @@ export const services = pgTable(
     index('idx_services_organization').on(table.organizationId),
     index('idx_services_status').on(table.status),
     index('idx_services_capacity_status').on(table.capacityStatus),
+    index('idx_services_integrity_hold_at').on(table.integrityHoldAt),
   ]
 );
 
@@ -2506,6 +2510,42 @@ export const savedServices = pgTable(
 
 export type SavedServiceRow = typeof savedServices.$inferSelect;
 export type NewSavedServiceRow = typeof savedServices.$inferInsert;
+
+export const savedCollections = pgTable(
+  'saved_collections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id').notNull(),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_saved_collections_user_name').on(table.userId, table.name),
+    index('idx_saved_collections_user').on(table.userId),
+  ]
+);
+
+export type SavedCollectionRow = typeof savedCollections.$inferSelect;
+export type NewSavedCollectionRow = typeof savedCollections.$inferInsert;
+
+export const savedCollectionServices = pgTable(
+  'saved_collection_services',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    collectionId: uuid('collection_id').notNull().references(() => savedCollections.id, { onDelete: 'cascade' }),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    savedAt: timestamp('saved_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('idx_saved_collection_services_unique').on(table.collectionId, table.serviceId),
+    index('idx_saved_collection_services_collection').on(table.collectionId),
+    index('idx_saved_collection_services_service').on(table.serviceId),
+  ]
+);
+
+export type SavedCollectionServiceRow = typeof savedCollectionServices.$inferSelect;
+export type NewSavedCollectionServiceRow = typeof savedCollectionServices.$inferInsert;
 
 export const verificationEvidence = pgTable(
   'verification_evidence',

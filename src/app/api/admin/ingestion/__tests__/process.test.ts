@@ -90,6 +90,13 @@ beforeEach(() => {
         { stage: 'fetch', status: 'completed', durationMs: 50, details: {} },
       ],
     },
+    publication: {
+      published: true,
+      reason: 'published',
+      serviceId: 'svc-live-1',
+      organizationId: 'org-live-1',
+      locationId: 'loc-live-1',
+    },
   });
 });
 
@@ -155,6 +162,13 @@ describe('admin ingestion process route', () => {
       candidateId: 'cand-1',
       confidenceScore: 82,
       confidenceTier: 'green',
+      publication: {
+        published: true,
+        reason: 'published',
+        serviceId: 'svc-live-1',
+        organizationId: 'org-live-1',
+        locationId: 'loc-live-1',
+      },
       stages: [
         { stage: 'fetch', status: 'completed', durationMs: 50 },
       ],

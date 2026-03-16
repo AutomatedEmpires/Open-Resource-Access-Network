@@ -60,6 +60,35 @@ Verification is a set of independent checks producing evidence and pass/fail/unk
 - Records become “public” only after a reviewer approves.
 - The agent may propose changes, but approval is required.
 
+Source-aware publication policy:
+
+- Trusted, policy-approved machine sources may auto-publish after source assertion, canonical federation, confidence evaluation, and safety checks.
+- Host-controlled listing submissions may auto-publish when submitted by an authenticated organization operator through the managed host workflow.
+- Allowlisted crawl/manual candidates may auto-publish when they satisfy the publish-readiness threshold; otherwise they remain in the human review lane.
+- Community/public submissions remain review-required.
+- Low-confidence, policy-failed, or flagged items always route to human review.
+- Every live publication lane must take the same transaction-scoped merge lock and resolve existing active organization/service/location rows before inserting, so simultaneous host, crawler, and feed events converge on one live identity instead of creating duplicates.
+- Host-controlled ownership is preserved at the workflow layer; non-host lanes may refresh an existing live record but must not implicitly seize control by creating a parallel live listing.
+- After identity convergence, every lane must apply the same source-authority ranking before overwriting the current live snapshot. Current precedence is: `host_submission` > `community_review` > `canonical_feed` > `candidate_allowlisted` > `unknown`.
+- A weaker incoming source may attach provenance, linkage, and lifecycle events to an existing published record, but it must not silently downgrade stronger current seeker-visible data.
+- Incoming omissions or nulls must not erase existing live fields during update flows. Publication refreshes are non-destructive by default, and destructive removals should be treated as explicit reviewable changes rather than accidental blanks.
+
+Integrity and resilience extensions:
+
+- High-risk mutations must be protected against compromised or conflicted actors. Source trust changes, bulk suppression, threshold changes, ownership transfer, and other integrity-sensitive actions should require stronger controls than ordinary review.
+- ORAN should treat repeated flags, clustered complaints, repeated contact reuse, suspicious evidence reuse, and bursty actor behavior as abuse signals that can narrow automation and raise review priority.
+- Silence is a signal. Long-silent organizations, long-silent host owners, long-silent reviewers, and long-silent sources should be surfaced explicitly and may downgrade trust or force re-review.
+- Dependency outages must narrow automation. When critical verification dependencies degrade, ORAN should preserve last-known-good data and reduce autonomous mutation scope instead of acting as if checks still passed.
+- Review, audit, and lifecycle history for high-risk decisions should be tamper-evident or versioned so reversals and overrides remain forensically understandable.
+- Replay and recovery logic must not allow infrastructure retries to outrank newer human decisions.
+
+Current implemented tranche:
+
+- High-risk ingestion control mutations now route through `submission_type='ingestion_control_change'` with `pending_second_approval` status instead of applying directly when they change source trust, source-system trust tier, source-feed auto-publish posture, or deactivate ingestion authorities.
+- ORAN-admin ingestion overview now surfaces silent-feed counts plus a degraded-mode recommendation so operators can narrow automation when active or auto-publish feeds fall behind health expectations.
+- ORAN-admin ingestion overview now also surfaces silent-reviewer backlog and silent owner-organization coverage gaps so long-inactive human operators are treated as integrity risk, not just staffing noise.
+- The internal SLA/escalation job now reassigns stalled submissions away from silent reviewers and sends owner-continuity outreach alerts when active live listings sit under silent host-admin coverage.
+
 ### 7) Reverification
 
 - Scheduled re-checks on a cadence.
@@ -67,6 +96,7 @@ Verification is a set of independent checks producing evidence and pass/fail/unk
   - downgrade confidence
   - flag for review
   - optionally unpublish if critical data becomes invalid
+- Every publish path that materializes a live listing must stamp deterministic `lastVerifiedAt` and `reverifyAt` metadata so feed, crawler, and submission-origin records can be re-checked on the same operational cadence.
 
 ## When the agent operates (triggers)
 
@@ -179,6 +209,12 @@ Reverification cadence (post-publish):
 - Likely band (60–79) → `reverifyAt = now + 90d`
 - Possible (<60) → `reverifyAt = now + 30d` OR keep in review until improved
 
+Silence-sensitive follow-on policy:
+
+- A published listing that repeatedly misses reverification, accumulates unresolved complaints, or loses all responsive owner contact should move through explicit risk states such as watched, at-risk, dormant, or integrity-hold rather than remaining silently trusted.
+- A source feed that stays silent or degraded past its expected heartbeat should be downgraded operationally and may lose auto-publish eligibility until revalidated.
+- A reviewer or admin whose assignments remain untouched past operational thresholds should lose assignment priority and trigger supervisor visibility.
+
 ## Jurisdiction + routing (right admin for the right area)
 
 The agent must compute a **jurisdiction hint** so the system can route items to the correct admin group.
@@ -250,6 +286,10 @@ Operational follow-through:
 - Published-listing dedupe is a separate concern:
   - suspected duplicates are surfaced through embeddings-based duplicate review
   - merges remain human-approved so ORAN-native fields and HSDS export mappings are not silently collapsed
+- Approved structured submissions must also run deterministic collision resolution before projection:
+  - first reuse an explicitly linked org/service when present
+  - otherwise attempt active-record matching by official URL, then normalized exact name within the organization
+  - if a collision is found, update the existing listing instead of creating a second live row
 
 ## Published listing hygiene (staleness, flags, and suppression)
 

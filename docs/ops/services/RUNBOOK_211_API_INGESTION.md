@@ -54,6 +54,7 @@ Implemented:
 - publication-mode routing in the poll loop for `canonical_only`, `review_required`, and controlled `auto_publish`
 - replay-safe checkpoint advancement for discovered 211 organization batches
 - admin replay-from-checkpoint and bulk feed-state operations for large-scale rollout and recovery
+- `report:211-feed-status` CLI for operator-safe feed diagnostics using persisted feed state, source-record windows, canonical provenance counts, publication posture, replay cursors, and recent feed errors
 
 Not yet operationally complete:
 
@@ -182,6 +183,18 @@ Staging canary execution sequence:
    - sample organization-name, service-name, and city matches between source records and canonical outputs
 5. Sign off on the artifact before widening the canary scope or changing publication policy.
 
+211 feed diagnostics command:
+
+`npm run report:211-feed-status -- --feed-id <source-feed-id> --hours 72 --format markdown --out reports/211-feed-status-<date>.md`
+
+Use this when operators need a concise view of:
+
+- current feed health (`healthy`, `attention`, `degraded`, `paused`, `inactive`)
+- last attempt status and replay cursor state
+- recent source-record volume and normalization outcome
+- canonical entity counts tied back to the feed via provenance
+- publication reasons and decision-reason aggregates from the last poll summary
+
 Best-practice constraints:
 
 - no auto-publish in this phase
@@ -296,7 +309,7 @@ Recurring tasks:
 Required runbook follow-ons:
 
 - add 211-specific alerts and KQL references to `docs/ops/monitoring/MONITORING_QUERIES.md`
-- extend `docs/ops/services/RUNBOOK_INGESTION.md` with 211-specific poller diagnostics once scheduler work exists
+- keep `report:211-feed-status` aligned with feed-state schema and poller audit outputs as scheduler behavior evolves
 - record measured RTO/RPO for 211 ingest rollback and replay drills
 - retain the latest `report:211-canary` artifact for each staging scope expansion and production go-live review
 

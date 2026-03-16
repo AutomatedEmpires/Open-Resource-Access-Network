@@ -17,6 +17,10 @@ import {
 	ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
 	ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import {
+	isHighRiskSourceSystemUpdate,
+	queueIngestionControlChange,
+} from '@/services/ingestion/controlChanges';
 
 const JurisdictionScopeSchema = z.object({
 	kind: z.enum(['local', 'regional', 'statewide', 'national', 'virtual']).optional(),
@@ -133,6 +137,7 @@ export async function PUT(
 	if (guard) return guard;
 
 	try {
+		const session = await getAuthContext();
 		const { id } = await params;
 		const body = await req.json();
 		const parsed = UpdateSourceSystemSchema.safeParse(body);
@@ -147,6 +152,30 @@ export async function PUT(
 		const existing = await stores.sourceSystems.getById(id);
 		if (!existing) {
 			return NextResponse.json({ error: 'Source system not found.' }, { status: 404 });
+		}
+
+		if (isHighRiskSourceSystemUpdate(existing, parsed.data)) {
+			const { submissionId } = await queueIngestionControlChange({
+				submittedByUserId: session?.userId ?? 'unknown',
+				actorRole: session?.role ?? 'oran_admin',
+				targetId: id,
+				title: `Source system trust change queued: ${existing.name}`,
+				summary: `Trust tier change for source system ${existing.name} requires second approval before source authority changes.`,
+				payload: {
+					entityType: 'source_system',
+					action: 'update',
+					entityId: id,
+					entityLabel: existing.name,
+					summary: `Trust tier ${existing.trustTier ?? 'unknown'} -> ${parsed.data.trustTier ?? existing.trustTier ?? 'unknown'}`,
+					beforeState: existing as Record<string, unknown>,
+					patch: parsed.data,
+				},
+			});
+
+			return NextResponse.json(
+				{ queued: true, submissionId, status: 'pending_second_approval' },
+				{ status: 202 },
+			);
 		}
 
 		await stores.sourceSystems.update(id, parsed.data);
@@ -165,6 +194,7 @@ export async function DELETE(
 	if (guard) return guard;
 
 	try {
+		const session = await getAuthContext();
 		const { id } = await params;
 		const stores = await loadStores();
 		const existing = await stores.sourceSystems.getById(id);
@@ -172,8 +202,26 @@ export async function DELETE(
 			return NextResponse.json({ error: 'Source system not found.' }, { status: 404 });
 		}
 
-		await stores.sourceSystems.deactivate(id);
-		return NextResponse.json({ deactivated: true });
+		const { submissionId } = await queueIngestionControlChange({
+			submittedByUserId: session?.userId ?? 'unknown',
+			actorRole: session?.role ?? 'oran_admin',
+			targetId: id,
+			title: `Source system deactivation queued: ${existing.name}`,
+			summary: `Deactivating source system ${existing.name} requires second approval because it can remove a structured ingestion lane.`,
+			payload: {
+				entityType: 'source_system',
+				action: 'deactivate',
+				entityId: id,
+				entityLabel: existing.name,
+				summary: `Deactivate source system ${existing.name}`,
+				beforeState: existing as Record<string, unknown>,
+			},
+		});
+
+		return NextResponse.json(
+			{ queued: true, submissionId, status: 'pending_second_approval' },
+			{ status: 202 },
+		);
 	} catch (error) {
 		captureException(error instanceof Error ? error : new Error(String(error)));
 		return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });

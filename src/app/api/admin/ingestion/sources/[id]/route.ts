@@ -18,6 +18,10 @@ import {
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import {
+  isHighRiskSourceUpdate,
+  queueIngestionControlChange,
+} from '@/services/ingestion/controlChanges';
 
 const UpdateSourceSchema = z.object({
   displayName: z.string().min(1).max(200).optional(),
@@ -160,6 +164,30 @@ export async function PUT(
       updatedAt: new Date().toISOString(),
     };
 
+    if (isHighRiskSourceUpdate(existing, parsed.data)) {
+      const { submissionId } = await queueIngestionControlChange({
+        submittedByUserId: session.userId,
+        actorRole: session.role ?? 'oran_admin',
+        targetId: id,
+        title: `Source trust change queued: ${existing.displayName}`,
+        summary: `Trust level change for source ${existing.displayName} requires second approval before publication authority changes.`,
+        payload: {
+          entityType: 'source',
+          action: 'update',
+          entityId: id,
+          entityLabel: existing.displayName,
+          summary: `Trust level ${existing.trustLevel ?? 'unknown'} -> ${parsed.data.trustLevel ?? existing.trustLevel ?? 'unknown'}`,
+          beforeState: existing as Record<string, unknown>,
+          nextState: merged,
+        },
+      });
+
+      return NextResponse.json(
+        { queued: true, submissionId, status: 'pending_second_approval' },
+        { status: 202 },
+      );
+    }
+
     await stores.sourceRegistry.upsert(merged);
 
     return NextResponse.json({ updated: true });
@@ -207,10 +235,31 @@ export async function DELETE(
 
     const db = getDrizzle();
     const stores = createIngestionStores(db);
+    const existing = await stores.sourceRegistry.getById(id);
+    if (!existing) {
+      return NextResponse.json({ error: 'Source not found.' }, { status: 404 });
+    }
 
-    await stores.sourceRegistry.deactivate(id);
+    const { submissionId } = await queueIngestionControlChange({
+      submittedByUserId: session.userId,
+      actorRole: session.role ?? 'oran_admin',
+      targetId: id,
+      title: `Source deactivation queued: ${existing.displayName}`,
+      summary: `Deactivating source ${existing.displayName} requires second approval because it can remove a publisher from ingestion coverage.`,
+      payload: {
+        entityType: 'source',
+        action: 'deactivate',
+        entityId: id,
+        entityLabel: existing.displayName,
+        summary: `Deactivate source ${existing.displayName}`,
+        beforeState: existing as Record<string, unknown>,
+      },
+    });
 
-    return NextResponse.json({ deactivated: true });
+    return NextResponse.json(
+      { queued: true, submissionId, status: 'pending_second_approval' },
+      { status: 202 },
+    );
   } catch (error) {
     captureException(error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });

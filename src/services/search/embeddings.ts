@@ -214,6 +214,7 @@ export async function getServicesNeedingEmbedding(
      FROM services
      WHERE embedding IS NULL
        AND status = 'active'
+       AND integrity_hold_at IS NULL
      ORDER BY updated_at DESC
      LIMIT $1`,
     [limit]

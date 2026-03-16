@@ -5,6 +5,21 @@ import type { PoolClient } from 'pg';
 import type { AuthContext } from '@/services/auth/session';
 import { executeQuery, withTransaction } from '@/services/db/postgres';
 import {
+  appendLifecycleEvent,
+  buildPublicationLifecycleWindow,
+  replaceCurrentSnapshot,
+  upsertConfidenceScore,
+} from '@/services/publication/livePublication';
+import {
+  decidePublicationOverwrite,
+  type PublicationSourceKind,
+} from '@/services/publication/liveAuthority';
+import {
+  acquireLivePublicationAdvisoryLock,
+  resolveExistingLiveOrganizationId,
+  resolveExistingLiveServiceId,
+} from '@/services/publication/liveEntityMerge';
+import {
   createFormInstance,
   createFormTemplate,
   getAccessibleFormInstance,
@@ -146,6 +161,33 @@ function resolveSubmissionTargetType(
   if (ownerOrganizationId) return 'organization';
   return 'system';
 }
+
+async function resolveExistingEntitiesForDraft(
+  client: PoolClient,
+  draft: ResourceSubmissionDraft,
+): Promise<ResourceSubmissionDraft> {
+  const ownerOrganizationId = await resolveExistingLiveOrganizationId(client, {
+    ownerOrganizationId: draft.ownerOrganizationId,
+    organizationName: draft.organization.name,
+    organizationUrl: draft.organization.url,
+  });
+  const existingServiceId = draft.variant === 'listing' && ownerOrganizationId
+    ? await resolveExistingLiveServiceId(client, ownerOrganizationId, {
+        existingServiceId: draft.existingServiceId,
+        serviceName: draft.service.name,
+        serviceUrl: draft.service.url,
+      })
+    : null;
+
+  return {
+    ...draft,
+    ownerOrganizationId: ownerOrganizationId ?? draft.ownerOrganizationId ?? null,
+    existingServiceId: existingServiceId ?? draft.existingServiceId ?? null,
+  };
+}
+
+const HOST_LISTING_PUBLICATION_CONFIDENCE = 92;
+const REVIEWED_LISTING_PUBLICATION_CONFIDENCE = 85;
 
 function buildSeedWeek(): ResourceSubmissionDraft['locations'][number]['schedule'] {
   return createEmptyResourceSubmissionDraft('listing', 'host').locations[0]?.schedule ?? [];
@@ -373,7 +415,9 @@ async function buildResourceSubmissionDetail(instance: FormInstance): Promise<Re
     slaDeadline: instance.sla_deadline,
     confidenceScore: confidenceRows[0]?.score ?? null,
     verificationConfidence: confidenceRows[0]?.verification_confidence ?? null,
-    reverifyAt: null,
+    reverifyAt: typeof supplemental.payload.reverifyAt === 'string'
+      ? supplemental.payload.reverifyAt
+      : null,
     reviewerNotes: instance.reviewer_notes,
     sourceRecordId: typeof supplemental.payload.sourceRecordId === 'string'
       ? supplemental.payload.sourceRecordId
@@ -987,7 +1031,7 @@ export async function createResourceSubmission(input: CreateResourceSubmissionIn
   const completion = computeResourceSubmissionCards(draft);
   const ownerOrganizationId = input.ownerOrganizationId ?? draft.ownerOrganizationId ?? null;
   const existingServiceId = input.existingServiceId ?? draft.existingServiceId ?? null;
-  const instance = await createFormInstance({
+  const { instance } = await createFormInstance({
     template,
     submittedByUserId: input.submittedByUserId,
     ownerOrganizationId,
@@ -1183,16 +1227,16 @@ async function replaceServiceBundleFromDraft(
     await client.query(
       `UPDATE services
           SET organization_id = $1,
-              name = $2,
-              description = $3,
-              url = $4,
-              email = $5,
-              interpretation_services = $6,
-              application_process = $7,
-              wait_time = $8,
-              fees = $9,
-              accreditations = $10,
-              licenses = $11,
+              name = COALESCE(NULLIF($2, ''), name),
+              description = COALESCE(NULLIF($3, ''), description),
+              url = COALESCE(NULLIF($4, ''), url),
+              email = COALESCE(NULLIF($5, ''), email),
+              interpretation_services = COALESCE(NULLIF($6, ''), interpretation_services),
+              application_process = COALESCE(NULLIF($7, ''), application_process),
+              wait_time = COALESCE(NULLIF($8, ''), wait_time),
+              fees = COALESCE(NULLIF($9, ''), fees),
+              accreditations = COALESCE(NULLIF($10, ''), accreditations),
+              licenses = COALESCE(NULLIF($11, ''), licenses),
               status = 'active',
               updated_by_user_id = $12,
               updated_at = NOW()
@@ -1419,6 +1463,71 @@ async function replaceServiceBundleFromDraft(
   return serviceId;
 }
 
+function getListingPublicationConfidence(draft: ResourceSubmissionDraft): number {
+  return draft.channel === 'host'
+    ? HOST_LISTING_PUBLICATION_CONFIDENCE
+    : REVIEWED_LISTING_PUBLICATION_CONFIDENCE;
+}
+
+function buildSubmissionHsdsPayload(input: {
+  submissionId: string;
+  organizationId: string;
+  serviceId: string;
+  draft: ResourceSubmissionDraft;
+  confidenceScore: number;
+  reverifyAt: string;
+}): Record<string, unknown> {
+  const publicationSourceKind: PublicationSourceKind = input.draft.channel === 'host'
+    ? 'host_submission'
+    : 'community_review';
+
+  return {
+    meta: {
+      generatedBy: 'oran-resource-submission-projection',
+      generatedAt: new Date().toISOString(),
+      sourceSubmissionId: input.submissionId,
+      channel: input.draft.channel,
+      variant: input.draft.variant,
+      reverifyAt: input.reverifyAt,
+      publicationSourceKind,
+    },
+    organization: {
+      id: input.organizationId,
+      name: input.draft.organization.name || input.draft.service.name || 'Untitled organization',
+      description: input.draft.organization.description || input.draft.service.description || null,
+      url: input.draft.organization.url || null,
+      email: input.draft.organization.email || null,
+      phone: input.draft.organization.phone || null,
+    },
+    service: {
+      id: input.serviceId,
+      organizationId: input.organizationId,
+      name: input.draft.service.name || 'Untitled service',
+      description: input.draft.service.description || null,
+      url: input.draft.service.url || null,
+      email: input.draft.service.email || null,
+      status: 'active',
+      confidenceScore: input.confidenceScore,
+    },
+    locations: input.draft.locations
+      .filter((location) => location.name.trim() || location.address1.trim() || location.city.trim())
+      .map((location) => ({
+        name: location.name.trim() || null,
+        description: location.description.trim() || null,
+        transportation: location.transportation.trim() || null,
+        address: {
+          line1: location.address1.trim() || null,
+          line2: location.address2.trim() || null,
+          city: location.city.trim() || null,
+          region: location.region.trim() || null,
+          stateProvince: location.stateProvince.trim() || null,
+          postalCode: location.postalCode.trim() || null,
+          country: location.country.trim() || 'US',
+        },
+      })),
+  };
+}
+
 export async function projectApprovedResourceSubmission(
   identifier: string,
   actorUserId: string,
@@ -1453,8 +1562,18 @@ export async function projectApprovedResourceSubmission(
     if (!row) {
       return { organizationId: null, serviceId: null };
     }
+    const rawDraft = normalizeResourceSubmissionDraft(readObject(row.form_data).draft, 'listing', 'host');
 
-    const draft = normalizeResourceSubmissionDraft(readObject(row.form_data).draft, 'listing', 'host');
+    await acquireLivePublicationAdvisoryLock(client, {
+      ownerOrganizationId: rawDraft.ownerOrganizationId,
+      existingServiceId: rawDraft.existingServiceId,
+      organizationName: rawDraft.organization.name,
+      organizationUrl: rawDraft.organization.url,
+      serviceName: rawDraft.service.name,
+      serviceUrl: rawDraft.service.url,
+    });
+
+    const draft = await resolveExistingEntitiesForDraft(client, rawDraft);
 
     if (draft.variant === 'claim' || row.submission_type === 'org_claim') {
       const organizationId = await upsertOrganizationFromDraft(client, draft, actorUserId);
@@ -1514,8 +1633,84 @@ export async function projectApprovedResourceSubmission(
       return { organizationId, serviceId: null };
     }
 
-    const organizationId = await upsertOrganizationFromDraft(client, draft, actorUserId);
-    const serviceId = await replaceServiceBundleFromDraft(client, organizationId, draft, actorUserId);
+    const incomingSourceKind: PublicationSourceKind = draft.channel === 'host'
+      ? 'host_submission'
+      : 'community_review';
+    const overwriteDecision = draft.existingServiceId
+      ? await decidePublicationOverwrite(client, draft.existingServiceId, incomingSourceKind)
+      : null;
+    const shouldOverwriteExisting = overwriteDecision?.shouldOverwrite ?? true;
+
+    const organizationId = shouldOverwriteExisting || !draft.ownerOrganizationId
+      ? await upsertOrganizationFromDraft(client, draft, actorUserId)
+      : draft.ownerOrganizationId;
+    const serviceId = draft.existingServiceId ?? await replaceServiceBundleFromDraft(client, organizationId, draft, actorUserId);
+
+    const resolvedServiceId = shouldOverwriteExisting
+      ? serviceId
+      : draft.existingServiceId ?? serviceId;
+
+    if (draft.existingServiceId && shouldOverwriteExisting) {
+      await replaceServiceBundleFromDraft(client, organizationId, {
+        ...draft,
+        existingServiceId: resolvedServiceId,
+      }, actorUserId);
+    }
+
+    const publicationWindow = buildPublicationLifecycleWindow(getListingPublicationConfidence(draft));
+
+    if (shouldOverwriteExisting) {
+      await upsertConfidenceScore(client, {
+        serviceId: resolvedServiceId,
+        score: publicationWindow.confidenceScore,
+      });
+    }
+
+    if (shouldOverwriteExisting) {
+      await replaceCurrentSnapshot(client, {
+        entityType: 'service',
+        entityId: resolvedServiceId,
+        hsdsPayload: buildSubmissionHsdsPayload({
+          submissionId: row.submission_id,
+          organizationId,
+          serviceId: resolvedServiceId,
+          draft,
+          confidenceScore: publicationWindow.confidenceScore,
+          reverifyAt: publicationWindow.reverifyAt,
+        }),
+        replaceCurrent: Boolean(draft.existingServiceId),
+      });
+    }
+
+    await appendLifecycleEvent(client, {
+      entityType: 'service',
+      entityId: resolvedServiceId,
+      eventType: shouldOverwriteExisting
+        ? draft.existingServiceId ? 'republished' : 'published'
+        : 'linked_existing',
+      fromStatus: shouldOverwriteExisting
+        ? draft.existingServiceId ? 'published' : 'submission'
+        : 'published',
+      toStatus: 'published',
+      actorType: 'human',
+      actorId: actorUserId,
+      metadata: {
+        submissionId: row.submission_id,
+        organizationId,
+        channel: draft.channel,
+        variant: draft.variant,
+        confidenceScore: publicationWindow.confidenceScore,
+        confidenceTier: publicationWindow.confidenceTier,
+        reverifyAt: publicationWindow.reverifyAt,
+        overwriteSuppressed: !shouldOverwriteExisting,
+        authorityReason: overwriteDecision?.reason ?? null,
+        currentAuthority: overwriteDecision?.current?.sourceKind ?? null,
+        incomingAuthority: incomingSourceKind,
+      },
+      identifiersAffected: 1,
+      snapshotsInvalidated: shouldOverwriteExisting && draft.existingServiceId ? 1 : 0,
+    });
+
     await client.query(
       `UPDATE submissions
           SET target_type = 'service',
@@ -1523,7 +1718,7 @@ export async function projectApprovedResourceSubmission(
               service_id = $1,
               updated_at = NOW()
         WHERE id = $2`,
-      [serviceId, row.submission_id],
+      [resolvedServiceId, row.submission_id],
     );
 
     const projectionSourceRecordId = await attachApprovedProjectionAssertion(
@@ -1535,7 +1730,7 @@ export async function projectApprovedResourceSubmission(
       draft,
       {
         organizationId,
-        serviceId,
+          serviceId: resolvedServiceId,
         targetType: 'service',
         submissionType: row.submission_type,
       },
@@ -1543,10 +1738,20 @@ export async function projectApprovedResourceSubmission(
     await updateSubmissionPayload(client, row.submission_id, {
       projectionSourceRecordId,
       projectedOrganizationId: organizationId,
-      projectedServiceId: serviceId,
+      projectedServiceId: resolvedServiceId,
+      publishedAt: shouldOverwriteExisting ? publicationWindow.lastVerifiedAt : null,
+      lastVerifiedAt: shouldOverwriteExisting ? publicationWindow.lastVerifiedAt : null,
+      reverifyAt: shouldOverwriteExisting ? publicationWindow.reverifyAt : null,
+      publicationConfidenceScore: shouldOverwriteExisting ? publicationWindow.confidenceScore : null,
+      publicationConfidenceTier: shouldOverwriteExisting ? publicationWindow.confidenceTier : null,
+      publicationManagedBy: draft.channel === 'host' ? 'host_organization' : 'community_review',
+      publicationOwnerOrganizationId: draft.channel === 'host' ? organizationId : null,
+      publicationOverwriteSuppressed: !shouldOverwriteExisting,
+      publicationAuthorityReason: overwriteDecision?.reason ?? null,
+      currentPublicationAuthority: overwriteDecision?.current?.sourceKind ?? null,
     });
 
-    return { organizationId, serviceId };
+    return { organizationId, serviceId: resolvedServiceId };
   });
 }
 

@@ -96,6 +96,9 @@ describe('escalateBreachedSubmissions', () => {
       renotified: 0,
       reassigned: 0,
       escalatedToOran: 0,
+      silentReviewerReassignments: 0,
+      ownerOutreachAlerts: 0,
+      integrityHoldsApplied: 0,
     });
   });
 
@@ -116,6 +119,10 @@ describe('escalateBreachedSubmissions', () => {
       // 2. Re-notify assignee (notification insert)
       .mockResolvedValueOnce([{ id: 'notif-renotify' }])
       // 3. Query org host_admins
+      .mockResolvedValueOnce([])
+      // 4. Silent reviewer scan
+      .mockResolvedValueOnce([])
+      // 5. Silent owner org scan
       .mockResolvedValueOnce([]);
 
     const result = await escalateBreachedSubmissions();
@@ -150,6 +157,10 @@ describe('escalateBreachedSubmissions', () => {
       // 4. Reassign submission
       .mockResolvedValueOnce([])
       // 5. Notify new assignee
+      .mockResolvedValueOnce([])
+      // 6. Silent reviewer scan
+      .mockResolvedValueOnce([])
+      // 7. Silent owner org scan
       .mockResolvedValueOnce([]);
 
     const result = await escalateBreachedSubmissions();
@@ -172,7 +183,9 @@ describe('escalateBreachedSubmissions', () => {
         jurisdiction_county: null,
       }])
       // Already has a reassigned notification → skip
-      .mockResolvedValueOnce([{ id: 'existing-notif' }]);
+      .mockResolvedValueOnce([{ id: 'existing-notif' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     const result = await escalateBreachedSubmissions();
 
@@ -212,6 +225,10 @@ describe('escalateBreachedSubmissions', () => {
       // 8. Reassign to ORAN admin
       .mockResolvedValueOnce([])
       // 9. Insert escalation marker
+      .mockResolvedValueOnce([])
+      // 10. Silent reviewer scan
+      .mockResolvedValueOnce([])
+      // 11. Silent owner org scan
       .mockResolvedValueOnce([]);
 
     const result = await escalateBreachedSubmissions();
@@ -233,7 +250,9 @@ describe('escalateBreachedSubmissions', () => {
         jurisdiction_county: null,
       }])
       // Already escalated
-      .mockResolvedValueOnce([{ id: 'existing-escalation' }]);
+      .mockResolvedValueOnce([{ id: 'existing-escalation' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     const result = await escalateBreachedSubmissions();
 
@@ -256,14 +275,15 @@ describe('escalateBreachedSubmissions', () => {
       // Not yet processed
       .mockResolvedValueOnce([])
       // No ORAN admins available
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
 
     const result = await escalateBreachedSubmissions();
 
     // Should NOT transition status since nobody can handle it
     expect(result.escalatedToOran).toBe(0);
-    // Only 3 calls: breached query + idempotency check + ORAN admin query
-    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(3);
+    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(5);
   });
 
   it('does not reassign when no admin with capacity exists', async () => {
@@ -282,11 +302,81 @@ describe('escalateBreachedSubmissions', () => {
       // Not yet processed
       .mockResolvedValueOnce([])
       // No available admin
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
 
     const result = await escalateBreachedSubmissions();
 
     expect(result.reassigned).toBe(0);
+  });
+
+  it('reclaims stalled assignments from silent reviewers', async () => {
+    const breachedAt = new Date(Date.now() - 2 * 60 * 60 * 1000);
+
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([{
+        id: 'sub-50',
+        submission_type: 'service_verification',
+        assigned_to_user_id: 'admin-50',
+        submitted_by_user_id: 'user-50',
+        sla_deadline: breachedAt.toISOString(),
+        jurisdiction_state: 'WA',
+        jurisdiction_county: 'King',
+      }])
+      .mockResolvedValueOnce([{
+        id: 'sub-stalled',
+        assigned_to_user_id: 'admin-silent',
+        submitted_by_user_id: 'submitter-silent',
+        jurisdiction_state: 'WA',
+        jurisdiction_county: 'King',
+      }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        user_id: 'admin-active',
+        pending_count: 1,
+        max_pending: 10,
+      }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const result = await escalateBreachedSubmissions();
+
+    expect(result.silentReviewerReassignments).toBe(1);
+  });
+
+  it('alerts silent owner organizations with active listings', async () => {
+    const breachedAt = new Date(Date.now() - 2 * 60 * 60 * 1000);
+
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([{
+        id: 'sub-60',
+        submission_type: 'service_verification',
+        assigned_to_user_id: 'admin-60',
+        submitted_by_user_id: 'user-60',
+        sla_deadline: breachedAt.toISOString(),
+        jurisdiction_state: 'CA',
+        jurisdiction_county: 'Alameda',
+      }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        organization_id: 'org-1',
+        organization_name: 'Silent Org',
+        active_service_count: 3,
+        host_admin_user_ids: ['host-1', 'host-2'],
+      }])
+      .mockResolvedValueOnce([{ user_id: 'oran-1', pending_count: 2, max_pending: 20 }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const result = await escalateBreachedSubmissions();
+
+    expect(result.ownerOutreachAlerts).toBe(1);
   });
 });
 

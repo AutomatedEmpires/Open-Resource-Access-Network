@@ -212,6 +212,7 @@ export const SUBMISSION_TRANSITIONS: Record<SubmissionStatus, readonly Submissio
  * Submission types that require two-person (second-approver) gating.
  */
 export const TWO_PERSON_REQUIRED_TYPES: readonly SubmissionType[] = [
+  'ingestion_control_change',
   'org_claim',
   'removal_request',
 ] as const;
@@ -400,7 +401,7 @@ export const PERMISSIONS = {
 // ============================================================
 
 /** Maximum messages per chat session */
-export const MAX_CHAT_QUOTA = 50;
+export const MAX_CHAT_QUOTA = 20;
 
 /** 24-hour quota window in milliseconds — enforces cooldown between quota exhaustion and renewal */
 export const CHAT_QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;

@@ -7,6 +7,11 @@ const authMocks = vi.hoisted(() => ({ getAuthContext: vi.fn() }));
 const requireMinRoleMock = vi.hoisted(() => vi.fn());
 const getDrizzleMock = vi.hoisted(() => vi.fn());
 const storeFactoryMocks = vi.hoisted(() => ({ createIngestionStores: vi.fn() }));
+const controlChangeMocks = vi.hoisted(() => ({
+  isHighRiskSourceSystemUpdate: vi.fn(),
+  isHighRiskSourceFeedUpdate: vi.fn(),
+  queueIngestionControlChange: vi.fn(),
+}));
 const sourceSystemsStore = vi.hoisted(() => ({ getById: vi.fn(), update: vi.fn(), deactivate: vi.fn() }));
 const sourceFeedsStore = vi.hoisted(() => ({ listBySystem: vi.fn(), getById: vi.fn(), update: vi.fn(), deactivate: vi.fn() }));
 const sourceFeedStatesStore = vi.hoisted(() => ({ getByFeedId: vi.fn(), upsert: vi.fn() }));
@@ -18,6 +23,7 @@ vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/auth/guards', () => ({ requireMinRole: requireMinRoleMock }));
 vi.mock('@/services/db/drizzle', () => ({ getDrizzle: getDrizzleMock }));
 vi.mock('@/agents/ingestion/persistence/storeFactory', () => storeFactoryMocks);
+vi.mock('@/services/ingestion/controlChanges', () => controlChangeMocks);
 
 function createRequest(jsonBody?: unknown) {
   return {
@@ -70,6 +76,9 @@ beforeEach(() => {
     notes: null,
   });
   sourceFeedStatesStore.upsert.mockResolvedValue({ sourceFeedId: 'feed-1', publicationMode: 'review_required' });
+  controlChangeMocks.isHighRiskSourceSystemUpdate.mockReturnValue(false);
+  controlChangeMocks.isHighRiskSourceFeedUpdate.mockReturnValue(false);
+  controlChangeMocks.queueIngestionControlChange.mockResolvedValue({ submissionId: 'sub-1' });
 });
 
 describe('source system and feed detail routes', () => {
@@ -91,12 +100,25 @@ describe('source system and feed detail routes', () => {
     expect(response.status).toBe(200);
   });
 
+  it('queues high-risk source system trust changes', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1', role: 'oran_admin' });
+    controlChangeMocks.isHighRiskSourceSystemUpdate.mockReturnValueOnce(true);
+    const { PUT } = await import('../source-systems/[id]/route');
+    const response = await PUT(createRequest({ trustTier: 'blocked' }), createRouteContext('sys-1'));
+
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenCalledOnce();
+    expect(sourceSystemsStore.update).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
+  });
+
   it('deactivates a source system', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1', role: 'oran_admin' });
     const { DELETE } = await import('../source-systems/[id]/route');
     const response = await DELETE(createRequest(), createRouteContext('sys-1'));
 
-    expect(sourceSystemsStore.deactivate).toHaveBeenCalledWith('sys-1');
-    expect(response.status).toBe(200);
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenCalledOnce();
+    expect(sourceSystemsStore.deactivate).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
   });
 
   it('gets a source feed', async () => {
@@ -129,6 +151,7 @@ describe('source system and feed detail routes', () => {
   });
 
   it('updates and deactivates a source feed', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1', role: 'oran_admin' });
     const route = await import('../source-feeds/[id]/route');
     const updateResponse = await route.PUT(
       createRequest({
@@ -164,9 +187,29 @@ describe('source system and feed detail routes', () => {
       lastAttemptSummary: {},
       notes: null,
     });
-    expect(sourceFeedsStore.deactivate).toHaveBeenCalledWith('feed-1');
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenCalledOnce();
+    expect(sourceFeedsStore.deactivate).not.toHaveBeenCalled();
     expect(updateResponse.status).toBe(200);
-    expect(deleteResponse.status).toBe(200);
+    expect(deleteResponse.status).toBe(202);
+  });
+
+  it('queues high-risk feed rollout changes for second approval', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1', role: 'oran_admin' });
+    controlChangeMocks.isHighRiskSourceFeedUpdate.mockReturnValueOnce(true);
+    const route = await import('../source-feeds/[id]/route');
+    const response = await route.PUT(
+      createRequest({
+        state: {
+          publicationMode: 'auto_publish',
+          autoPublishApproved: true,
+        },
+      }),
+      createRouteContext('feed-1'),
+    );
+
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenCalledOnce();
+    expect(sourceFeedStatesStore.upsert).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
   });
 
   it('queues a single feed replay from checkpoint', async () => {
@@ -226,5 +269,26 @@ describe('source system and feed detail routes', () => {
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ updated: 2 });
+  });
+
+  it('queues high-risk bulk feed rollout changes instead of applying them directly', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1', role: 'oran_admin' });
+    sourceFeedsStore.getById.mockImplementation(async (id: string) => ({ id, sourceSystemId: 'sys-1', feedName: `Feed ${id}` }));
+    controlChangeMocks.isHighRiskSourceFeedUpdate.mockReturnValueOnce(true);
+
+    const { POST } = await import('../source-feeds/bulk/route');
+    const response = await POST(createRequest({
+      feedIds: ['feed-1', 'feed-2'],
+      state: { publicationMode: 'auto_publish', autoPublishApproved: true },
+    }));
+
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenCalledTimes(2);
+    expect(sourceFeedStatesStore.upsert).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({
+      queued: 2,
+      submissionIds: ['sub-1', 'sub-1'],
+      status: 'pending_second_approval',
+    });
   });
 });

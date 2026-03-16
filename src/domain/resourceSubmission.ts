@@ -184,6 +184,11 @@ export function createEmptyResourceSubmissionDraft(
   return resourceSubmissionDraftSchema.parse({
     variant,
     channel,
+    organization: {},
+    service: {},
+    taxonomy: {},
+    access: {},
+    evidence: {},
     locations: variant === 'listing' ? [resourceLocationSchema.parse({})] : [],
   });
 }

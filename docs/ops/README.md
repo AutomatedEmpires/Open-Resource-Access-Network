@@ -43,6 +43,8 @@ This directory is the operational control plane for production support, incident
 | [RUNBOOK_LLM_OUTAGE.md](services/RUNBOOK_LLM_OUTAGE.md) | Azure OpenAI degradation affecting ingestion extraction |
 | [RUNBOOK_DATABASE_INCIDENT.md](services/RUNBOOK_DATABASE_INCIDENT.md) | DB connectivity, saturation, lock contention, migration incidents |
 | [RUNBOOK_AUTH_OUTAGE.md](services/RUNBOOK_AUTH_OUTAGE.md) | Entra/NextAuth failures, role enforcement degradation, auth recovery |
+| [RUNBOOK_ACCOUNT_AND_FORM_RESILIENCE.md](services/RUNBOOK_ACCOUNT_AND_FORM_RESILIENCE.md) | Code-backed registration and managed-form hardening controls, diagnostics, and validation |
+| [RUNBOOK_MEMBERSHIP_SCOPE_AND_REVIEWER_GOVERNANCE.md](services/RUNBOOK_MEMBERSHIP_SCOPE_AND_REVIEWER_GOVERNANCE.md) | Host membership lifecycle, scope-grant operations, reviewer dormancy handling, and explicit governance gaps |
 | [RUNBOOK_QUEUE_BACKLOG.md](services/RUNBOOK_QUEUE_BACKLOG.md) | Queue growth, poison queue handling, throughput restoration |
 | [RUNBOOK_WEB_APP_DEGRADATION.md](services/RUNBOOK_WEB_APP_DEGRADATION.md) | Web/API latency or error degradation response |
 | [RUNBOOK_FUNCTION_APP_FAILURE.md](services/RUNBOOK_FUNCTION_APP_FAILURE.md) | Function host/runtime failure diagnosis and recovery |

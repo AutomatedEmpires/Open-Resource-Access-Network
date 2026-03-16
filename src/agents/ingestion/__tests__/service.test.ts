@@ -13,6 +13,7 @@ const pollHsdsFeedMock = vi.hoisted(() => vi.fn());
 const normalize211SourceRecordMock = vi.hoisted(() => vi.fn());
 const normalizeSourceRecordMock = vi.hoisted(() => vi.fn());
 const autoPublishMock = vi.hoisted(() => vi.fn());
+const publishCandidateToLiveServiceMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../pipeline/orchestrator', () => ({
   createPipelineOrchestrator: createPipelineOrchestratorMock,
@@ -37,6 +38,9 @@ vi.mock('../normalizeSourceRecord', () => ({
 }));
 vi.mock('../autoPublish', () => ({
   autoPublish: autoPublishMock,
+}));
+vi.mock('../livePublish', () => ({
+  publishCandidateToLiveService: publishCandidateToLiveServiceMock,
 }));
 
 async function loadServiceModule() {
@@ -93,7 +97,11 @@ function createStores() {
       updatePublicationStatus: vi.fn(),
     },
     candidates: {
+      getById: vi.fn(),
       listDueForReverify: vi.fn(),
+    },
+    publishReadiness: {
+      meetsThreshold: vi.fn().mockResolvedValue(false),
     },
     assignments: {
       listOverdue: vi.fn(),
@@ -213,6 +221,11 @@ beforeEach(() => {
     decisions: [{ canonicalServiceId: 'svc-1', eligible: true, reason: 'auto-publish' }],
     errors: [],
   });
+  publishCandidateToLiveServiceMock.mockResolvedValue({
+    serviceId: 'svc-live-1',
+    organizationId: 'org-live-1',
+    locationId: 'loc-live-1',
+  });
 });
 
 describe('ingestion service', () => {
@@ -270,6 +283,62 @@ describe('ingestion service', () => {
       }),
     );
     expect(result.pipeline).toEqual(expect.objectContaining({ candidateId: 'cand-1', evidenceId: 'ev-1' }));
+  });
+
+  it('auto-publishes allowlisted high-readiness pipeline candidates', async () => {
+    const stores = createStores();
+    stores.sourceRegistry.findForUrl.mockResolvedValue({
+      id: 'src-1',
+      trustLevel: 'allowlisted',
+    });
+    stores.sourceRegistry.listActive.mockResolvedValue([{ id: 'src-1' }]);
+    stores.publishReadiness.meetsThreshold.mockResolvedValue(true);
+
+    const { createIngestionService } = await loadServiceModule();
+    const service = createIngestionService(stores as never);
+
+    await service.runPipeline({
+      sourceUrl: 'https://example.gov/feed',
+      triggeredBy: 'oran-1',
+    });
+
+    expect(publishCandidateToLiveServiceMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stores,
+        candidateId: 'cand-1',
+        publishedByUserId: 'oran-1',
+      }),
+    );
+    expect(stores.audit.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'publish.approved',
+        actorType: 'human',
+        actorId: 'oran-1',
+        targetType: 'service',
+        targetId: 'svc-live-1',
+        inputs: expect.objectContaining({
+          candidateId: 'cand-1',
+          publicationChannel: 'candidate_auto_publish',
+        }),
+      }),
+    );
+  });
+
+  it('keeps candidates in review when readiness threshold is not met', async () => {
+    const stores = createStores();
+    stores.sourceRegistry.findForUrl.mockResolvedValue({
+      id: 'src-1',
+      trustLevel: 'allowlisted',
+    });
+    stores.sourceRegistry.listActive.mockResolvedValue([{ id: 'src-1' }]);
+    stores.publishReadiness.meetsThreshold.mockResolvedValue(false);
+
+    const { createIngestionService } = await loadServiceModule();
+    const service = createIngestionService(stores as never);
+
+    await service.runPipeline({ sourceUrl: 'https://example.gov/feed' });
+
+    expect(publishCandidateToLiveServiceMock).not.toHaveBeenCalled();
   });
 
   it('falls back to the provided registry when the source registry store cannot list active entries', async () => {

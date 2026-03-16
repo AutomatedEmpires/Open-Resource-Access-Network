@@ -13,6 +13,18 @@
 import crypto from 'node:crypto';
 
 import { withTransaction } from '@/services/db/postgres';
+import {
+  appendLifecycleEvent,
+  replaceCurrentSnapshot,
+  upsertConfidenceScore,
+} from '@/services/publication/livePublication';
+import { decidePublicationOverwrite } from '@/services/publication/liveAuthority';
+import {
+  acquireLivePublicationAdvisoryLock,
+  resolveExistingLiveLocationId,
+  resolveExistingLiveOrganizationId,
+  resolveExistingLiveServiceId,
+} from '@/services/publication/liveEntityMerge';
 
 import type { IngestionStores } from './stores';
 import type {
@@ -20,8 +32,6 @@ import type {
   CanonicalServiceRow,
   CanonicalLocationRow,
 } from '@/db/schema';
-
-const HSDS_PROFILE_URI = 'https://openreferral.org/imls/hsds/';
 
 // ── Public types ──────────────────────────────────────────────
 
@@ -56,6 +66,7 @@ function buildHsdsPayloadFromCanonical(input: {
       generatedAt: new Date().toISOString(),
       canonicalServiceId: input.svc.id,
       canonicalOrganizationId: input.org.id,
+      publicationSourceKind: 'canonical_feed',
     },
     organization: {
       id: input.organizationId,
@@ -126,18 +137,6 @@ export async function promoteToLive(
       ? await stores.canonicalLocations.getByIds(locationIds)
       : [];
 
-  // 4. Determine INSERT vs UPDATE
-  const isUpdate = Boolean(canonicalService.publishedServiceId);
-  const organizationId =
-    canonicalOrg.publishedOrganizationId ?? crypto.randomUUID();
-  const serviceId = canonicalService.publishedServiceId ?? crypto.randomUUID();
-
-  // Resolve live location IDs (re-use existing if previously promoted)
-  const liveLocations = canonicalLocations.map((loc) => ({
-    liveId: loc.publishedLocationId ?? crypto.randomUUID(),
-    canonical: loc,
-  }));
-
   const confidenceSummary =
     (canonicalService.sourceConfidenceSummary as Record<string, unknown>) ?? {};
 
@@ -149,31 +148,101 @@ export async function promoteToLive(
   const numericRaw = Number(rawScore);
   if (!Number.isFinite(numericRaw)) {
     console.warn(
-      `[promoteToLive] Non-numeric confidence score for service ${serviceId}: ${String(rawScore)}`,
+      `[promoteToLive] Non-numeric confidence score for canonical service ${canonicalServiceId}: ${String(rawScore)}`,
     );
   }
   const confidenceScore = Number.isFinite(numericRaw)
     ? Math.min(Math.max(numericRaw, 0), 100)
     : 0;
 
-  const hsdsPayload = buildHsdsPayloadFromCanonical({
-    organizationId,
-    serviceId,
-    org: canonicalOrg,
-    svc: canonicalService,
-    locations: liveLocations,
-    confidenceSummary,
-  });
+  let organizationId = canonicalOrg.publishedOrganizationId ?? '';
+  let serviceId = canonicalService.publishedServiceId ?? '';
+  let liveLocations: Array<{ liveId: string; canonical: CanonicalLocationRow; existed: boolean }> = [];
+  let organizationExists = Boolean(canonicalOrg.publishedOrganizationId);
+  let serviceExists = Boolean(canonicalService.publishedServiceId);
+  let isUpdate = serviceExists;
 
   // 6. Atomic transaction: write to live tables
   await withTransaction(async (client) => {
+    await acquireLivePublicationAdvisoryLock(client, {
+      ownerOrganizationId: canonicalOrg.publishedOrganizationId,
+      existingServiceId: canonicalService.publishedServiceId,
+      organizationName: canonicalOrg.name,
+      organizationUrl: canonicalOrg.url,
+      serviceName: canonicalService.name,
+      serviceUrl: canonicalService.url,
+    });
+
+    if (!organizationId) {
+      const matchedOrganizationId = await resolveExistingLiveOrganizationId(client, {
+        organizationName: canonicalOrg.name,
+        organizationUrl: canonicalOrg.url,
+      });
+      organizationId = matchedOrganizationId ?? crypto.randomUUID();
+      organizationExists = Boolean(matchedOrganizationId);
+    }
+
+    if (!serviceId) {
+      const matchedServiceId = await resolveExistingLiveServiceId(client, organizationId, {
+        serviceName: canonicalService.name,
+        serviceUrl: canonicalService.url,
+      });
+      serviceId = matchedServiceId ?? crypto.randomUUID();
+      serviceExists = Boolean(matchedServiceId);
+      isUpdate = serviceExists;
+    }
+
+    const overwriteDecision = serviceExists
+      ? await decidePublicationOverwrite(client, serviceId, 'canonical_feed')
+      : null;
+    const shouldOverwriteExisting = overwriteDecision?.shouldOverwrite ?? true;
+
+    liveLocations = await Promise.all(
+      canonicalLocations.map(async (loc) => {
+        if (loc.publishedLocationId) {
+          return { liveId: loc.publishedLocationId, canonical: loc, existed: true };
+        }
+
+        const matchedLocationId = await resolveExistingLiveLocationId(client, serviceId, {
+          name: loc.name,
+          address1: loc.addressLine1,
+          city: loc.addressCity,
+          region: loc.addressRegion,
+          postalCode: loc.addressPostalCode,
+          country: loc.addressCountry,
+        });
+
+        return {
+          liveId: matchedLocationId ?? crypto.randomUUID(),
+          canonical: loc,
+          existed: Boolean(matchedLocationId),
+        };
+      }),
+    );
+
+    const hsdsPayload = buildHsdsPayloadFromCanonical({
+      organizationId,
+      serviceId,
+      org: canonicalOrg,
+      svc: canonicalService,
+      locations: liveLocations,
+      confidenceSummary,
+    });
+
     // ── Organization ────────────────────────────────────────
-    if (isUpdate && canonicalOrg.publishedOrganizationId) {
+    if (organizationExists && shouldOverwriteExisting) {
       await client.query(
         `UPDATE organizations
-         SET name = $2, description = $3, url = $4, email = $5,
-             tax_status = $6, tax_id = $7, year_incorporated = $8,
-             legal_status = $9, phone = $10, updated_at = NOW()
+         SET name = COALESCE(NULLIF($2, ''), name),
+             description = COALESCE(NULLIF($3, ''), description),
+             url = COALESCE(NULLIF($4, ''), url),
+             email = COALESCE(NULLIF($5, ''), email),
+             tax_status = COALESCE(NULLIF($6, ''), tax_status),
+             tax_id = COALESCE(NULLIF($7, ''), tax_id),
+             year_incorporated = COALESCE($8, year_incorporated),
+             legal_status = COALESCE(NULLIF($9, ''), legal_status),
+             phone = COALESCE(NULLIF($10, ''), phone),
+             updated_at = NOW()
          WHERE id = $1`,
         [
           organizationId,
@@ -188,7 +257,7 @@ export async function promoteToLive(
           canonicalOrg.phone ?? null,
         ],
       );
-    } else {
+    } else if (!organizationExists) {
       await client.query(
         `INSERT INTO organizations
            (id, name, description, url, email, tax_status, tax_id,
@@ -210,13 +279,22 @@ export async function promoteToLive(
     }
 
     // ── Service ─────────────────────────────────────────────
-    if (isUpdate && canonicalService.publishedServiceId) {
+    if (serviceExists && shouldOverwriteExisting) {
       await client.query(
         `UPDATE services
-         SET organization_id = $2, name = $3, description = $4, url = $5,
-             email = $6, status = $7, interpretation_services = $8,
-             application_process = $9, wait_time = $10, fees = $11,
-             accreditations = $12, licenses = $13, updated_at = NOW()
+         SET organization_id = $2,
+             name = COALESCE(NULLIF($3, ''), name),
+             description = COALESCE(NULLIF($4, ''), description),
+             url = COALESCE(NULLIF($5, ''), url),
+             email = COALESCE(NULLIF($6, ''), email),
+             status = $7,
+             interpretation_services = COALESCE(NULLIF($8, ''), interpretation_services),
+             application_process = COALESCE(NULLIF($9, ''), application_process),
+             wait_time = COALESCE(NULLIF($10, ''), wait_time),
+             fees = COALESCE(NULLIF($11, ''), fees),
+             accreditations = COALESCE(NULLIF($12, ''), accreditations),
+             licenses = COALESCE(NULLIF($13, ''), licenses),
+             updated_at = NOW()
          WHERE id = $1`,
         [
           serviceId,
@@ -234,7 +312,7 @@ export async function promoteToLive(
           canonicalService.licenses ?? null,
         ],
       );
-    } else {
+    } else if (!serviceExists) {
       await client.query(
         `INSERT INTO services
            (id, organization_id, name, description, url, email, status,
@@ -260,13 +338,21 @@ export async function promoteToLive(
     }
 
     // ── Locations + addresses ───────────────────────────────
-    for (const { liveId, canonical } of liveLocations) {
-      const locationExists = Boolean(canonical.publishedLocationId);
+    for (const { liveId, canonical, existed } of liveLocations) {
+      if (!shouldOverwriteExisting && existed) {
+        continue;
+      }
+      const locationExists = existed;
       if (locationExists) {
         await client.query(
           `UPDATE locations
-           SET organization_id = $2, name = $3, latitude = $4, longitude = $5,
-               description = $6, transportation = $7, updated_at = NOW()
+           SET organization_id = $2,
+               name = COALESCE(NULLIF($3, ''), name),
+               latitude = COALESCE($4, latitude),
+               longitude = COALESCE($5, longitude),
+               description = COALESCE(NULLIF($6, ''), description),
+               transportation = COALESCE(NULLIF($7, ''), transportation),
+               updated_at = NOW()
            WHERE id = $1`,
           [
             liveId,
@@ -330,7 +416,7 @@ export async function promoteToLive(
     // ── Phone ───────────────────────────────────────────────
     // Delete existing phones for this service+org before re-inserting
     // to avoid unbounded accumulation on re-promote.
-    if (isUpdate) {
+    if (shouldOverwriteExisting && isUpdate) {
       await client.query(
         `DELETE FROM phones WHERE service_id = $1 AND organization_id = $2`,
         [serviceId, organizationId],
@@ -342,7 +428,7 @@ export async function promoteToLive(
       .split(/[;,]/)
       .map((p: string) => p.trim())
       .filter(Boolean);
-    for (const num of phoneNumbers) {
+    for (const num of shouldOverwriteExisting ? phoneNumbers : []) {
       await client.query(
         `INSERT INTO phones
            (service_id, organization_id, number, type)
@@ -352,17 +438,12 @@ export async function promoteToLive(
     }
 
     // ── Confidence score ────────────────────────────────────
-    await client.query(
-      `INSERT INTO confidence_scores
-         (service_id, score, verification_confidence, eligibility_match,
-          constraint_fit, computed_at)
-       VALUES ($1, $2, $2, 0, 0, NOW())
-       ON CONFLICT (service_id) DO UPDATE
-         SET score = EXCLUDED.score,
-             verification_confidence = EXCLUDED.verification_confidence,
-             computed_at = NOW()`,
-      [serviceId, confidenceScore],
-    );
+    if (shouldOverwriteExisting) {
+      await upsertConfidenceScore(client, {
+        serviceId,
+        score: confidenceScore,
+      });
+    }
 
     // ── Entity identifiers ──────────────────────────────────
     await client.query(
@@ -375,60 +456,39 @@ export async function promoteToLive(
       [serviceId, canonicalServiceId],
     );
 
-    // ── HSDS export snapshot ────────────────────────────────
-    // Withdraw previous snapshots for this entity
-    if (isUpdate) {
-      await client.query(
-        `UPDATE hsds_export_snapshots
-         SET status = 'superseded', withdrawn_at = NOW()
-         WHERE entity_type = 'service' AND entity_id = $1 AND status = 'current'`,
-        [serviceId],
-      );
+    if (shouldOverwriteExisting) {
+      await replaceCurrentSnapshot(client, {
+        entityType: 'service',
+        entityId: serviceId,
+        hsdsPayload,
+        replaceCurrent: serviceExists,
+      });
     }
 
-    // Determine next snapshot version
-    const versionResult = await client.query(
-      `SELECT COALESCE(MAX(snapshot_version), 0) + 1 AS next_version
-       FROM hsds_export_snapshots
-       WHERE entity_type = 'service' AND entity_id = $1`,
-      [serviceId],
-    );
-    const nextVersion = versionResult.rows[0]?.next_version ?? 1;
-
-    await client.query(
-      `INSERT INTO hsds_export_snapshots
-         (entity_type, entity_id, snapshot_version, hsds_payload,
-          profile_uri, status, generated_at, created_at)
-       VALUES ('service', $1, $2, $3::jsonb, $4, 'current', NOW(), NOW())`,
-      [
-        serviceId,
-        nextVersion,
-        JSON.stringify(hsdsPayload),
-        HSDS_PROFILE_URI,
-      ],
-    );
-
-    // ── Lifecycle event ─────────────────────────────────────
-    await client.query(
-      `INSERT INTO lifecycle_events
-         (entity_type, entity_id, event_type, from_status, to_status,
-          actor_type, actor_id, metadata, identifiers_affected,
-          snapshots_invalidated, created_at)
-       VALUES ('service', $1, $2, $3, 'published', 'system', $4, $5::jsonb,
-               1, $6, NOW())`,
-      [
-        serviceId,
-        isUpdate ? 'republished' : 'promoted',
-        isUpdate ? 'published' : 'canonical',
-        actorId,
-        JSON.stringify({
-          canonicalServiceId,
-          canonicalOrganizationId: canonicalOrg.id,
-          locationCount: liveLocations.length,
-        }),
-        isUpdate ? 1 : 0,
-      ],
-    );
+    await appendLifecycleEvent(client, {
+      entityType: 'service',
+      entityId: serviceId,
+      eventType: shouldOverwriteExisting
+        ? isUpdate ? 'republished' : 'promoted'
+        : 'linked_existing',
+      fromStatus: shouldOverwriteExisting
+        ? isUpdate ? 'published' : 'canonical'
+        : 'published',
+      toStatus: 'published',
+      actorType: 'system',
+      actorId,
+      metadata: {
+        canonicalServiceId,
+        canonicalOrganizationId: canonicalOrg.id,
+        locationCount: liveLocations.length,
+        overwriteSuppressed: !shouldOverwriteExisting,
+        authorityReason: overwriteDecision?.reason ?? null,
+        currentAuthority: overwriteDecision?.current?.sourceKind ?? null,
+        incomingAuthority: 'canonical_feed',
+      },
+      identifiersAffected: 1,
+      snapshotsInvalidated: shouldOverwriteExisting && isUpdate ? 1 : 0,
+    });
   });
 
   // 7. Update canonical entities with their live IDs and publication status

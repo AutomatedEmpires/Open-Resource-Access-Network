@@ -121,6 +121,34 @@ beforeEach(() => {
 });
 
 describe('resource submissions item route', () => {
+  it('auto-publishes host listing submissions on submit', async () => {
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: 'host-1',
+      role: 'host_admin',
+      orgIds: ['org-1'],
+      orgRoles: new Map([['org-1', 'host_admin']]),
+    });
+    resourceSubmissionMocks.getResourceSubmissionDetailForActor
+      .mockResolvedValueOnce(makeDetail('draft'))
+      .mockResolvedValueOnce(makeDetail('approved'));
+
+    const { PUT } = await loadItemRoute();
+    const response = await PUT(
+      createRequest({
+        method: 'PUT',
+        jsonBody: { action: 'submit', draft: makeDetail('draft').draft },
+      }),
+      createContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(resourceSubmissionMocks.submitResourceSubmission).toHaveBeenCalledWith('form-1', 'host-1', 'host_admin');
+    expect(workflowMocks.advance).toHaveBeenNthCalledWith(1, expect.objectContaining({ toStatus: 'submitted' }));
+    expect(workflowMocks.advance).toHaveBeenNthCalledWith(2, expect.objectContaining({ toStatus: 'auto_checking', metadata: expect.objectContaining({ policy: 'host_auto_publish' }) }));
+    expect(workflowMocks.advance).toHaveBeenNthCalledWith(3, expect.objectContaining({ toStatus: 'approved', metadata: expect.objectContaining({ policy: 'host_auto_publish' }) }));
+    expect(resourceSubmissionMocks.projectApprovedResourceSubmission).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'host-1');
+  });
+
   it('submits a public resource draft using the shared submit path', async () => {
     authMocks.getAuthContext.mockResolvedValue(null);
     resourceSubmissionMocks.getResourceSubmissionDetailForPublic

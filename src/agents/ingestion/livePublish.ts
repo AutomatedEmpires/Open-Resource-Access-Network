@@ -2,12 +2,23 @@ import crypto from 'node:crypto';
 
 import type { GeocodingResult } from '@/services/geocoding/azureMaps';
 import { withTransaction } from '@/services/db/postgres';
+import {
+  appendLifecycleEvent,
+  buildPublicationLifecycleWindow,
+  replaceCurrentSnapshot,
+  upsertConfidenceScore,
+} from '@/services/publication/livePublication';
+import { decidePublicationOverwrite } from '@/services/publication/liveAuthority';
+import {
+  acquireLivePublicationAdvisoryLock,
+  resolveExistingLiveLocationId,
+  resolveExistingLiveOrganizationId,
+  resolveExistingLiveServiceId,
+} from '@/services/publication/liveEntityMerge';
 
 import type { ExtractedCandidate } from './contracts';
 import type { IngestionStores } from './stores';
 import type { ResourceTag } from './tags';
-
-const HSDS_PROFILE_URI = 'https://openreferral.org/imls/hsds/';
 
 type AcceptedSuggestionMap = Map<string, string>;
 
@@ -136,6 +147,7 @@ function buildHsdsPayload(input: {
       generatedBy: 'oran-ingestion-publish',
       generatedAt: new Date().toISOString(),
       sourceCandidateId: input.candidateId,
+      publicationSourceKind: 'candidate_allowlisted',
       oranTags: input.resourceTags.map((tag) => ({
         type: tag.tagType,
         value: tag.tagValue,
@@ -208,69 +220,167 @@ export async function publishCandidateToLiveService(
     }
   }
 
-  const organizationId = crypto.randomUUID();
-  const serviceId = crypto.randomUUID();
-  const locationId = publishable.address || geocodeResult ? crypto.randomUUID() : undefined;
-  const mergedServiceTags = resourceTags.map((tag) => ({
-    ...tag,
-    serviceId,
-    candidateId: undefined,
-  }));
   const serviceAttributes = buildServiceAttributes(publishable);
-  const hsdsPayload = buildHsdsPayload({
-    candidateId: options.candidateId,
-    organizationId,
-    serviceId,
-    locationId,
-    candidate: publishable,
-    resourceTags: mergedServiceTags,
-    confidenceScore,
-    geocodeResult,
-  });
-  const snapshotVersion = 1;
+  const publicationWindow = buildPublicationLifecycleWindow(confidenceScore);
+  let organizationId = '';
+  let serviceId = '';
+  let locationId: string | undefined;
 
   await withTransaction(async (client) => {
-    await client.query(
-      `INSERT INTO organizations
-         (id, name, description, url, phone, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-      [
-        organizationId,
-        publishable.organizationName,
-        publishable.description,
-        publishable.websiteUrl ?? null,
-        publishable.phone ?? null,
-      ],
-    );
+    await acquireLivePublicationAdvisoryLock(client, {
+      organizationName: publishable.organizationName,
+      organizationUrl: publishable.websiteUrl,
+      serviceName: publishable.serviceName,
+      serviceUrl: publishable.websiteUrl,
+    });
 
-    await client.query(
-      `INSERT INTO services
-         (id, organization_id, name, description, url, status, application_process, fees, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, NOW(), NOW())`,
-      [
-        serviceId,
-        organizationId,
-        publishable.serviceName,
-        publishable.description,
-        publishable.websiteUrl ?? null,
-        publishable.acceptedValues.get('intake_process') ?? null,
-        publishable.acceptedValues.get('fees') ?? null,
-      ],
-    );
+    const matchedOrganizationId = await resolveExistingLiveOrganizationId(client, {
+      organizationName: publishable.organizationName,
+      organizationUrl: publishable.websiteUrl,
+    });
+    organizationId = matchedOrganizationId ?? crypto.randomUUID();
 
-    if (locationId) {
+    const matchedServiceId = await resolveExistingLiveServiceId(client, organizationId, {
+      serviceName: publishable.serviceName,
+      serviceUrl: publishable.websiteUrl,
+    });
+    serviceId = matchedServiceId ?? crypto.randomUUID();
+
+    const overwriteDecision = matchedServiceId
+      ? await decidePublicationOverwrite(client, serviceId, 'candidate_allowlisted')
+      : null;
+    const shouldOverwriteExisting = overwriteDecision?.shouldOverwrite ?? true;
+
+    if (matchedOrganizationId && shouldOverwriteExisting) {
       await client.query(
-        `INSERT INTO locations
-           (id, organization_id, name, latitude, longitude, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+        `UPDATE organizations
+            SET name = COALESCE(NULLIF($2, ''), name),
+                description = COALESCE(NULLIF($3, ''), description),
+                url = COALESCE(NULLIF($4, ''), url),
+                phone = COALESCE(NULLIF($5, ''), phone),
+                updated_at = NOW()
+          WHERE id = $1`,
         [
-          locationId,
           organizationId,
-          publishable.serviceName,
-          geocodeResult?.lat ?? null,
-          geocodeResult?.lon ?? null,
+          publishable.organizationName,
+          publishable.description,
+          publishable.websiteUrl ?? null,
+          publishable.phone ?? null,
         ],
       );
+    } else if (!matchedOrganizationId) {
+      await client.query(
+        `INSERT INTO organizations
+           (id, name, description, url, phone, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+        [
+          organizationId,
+          publishable.organizationName,
+          publishable.description,
+          publishable.websiteUrl ?? null,
+          publishable.phone ?? null,
+        ],
+      );
+    }
+
+    const mergedServiceTags = resourceTags.map((tag) => ({
+      ...tag,
+      serviceId,
+      candidateId: undefined,
+    }));
+
+    if (matchedServiceId && shouldOverwriteExisting) {
+      await client.query(
+        `UPDATE services
+            SET organization_id = $2,
+                name = COALESCE(NULLIF($3, ''), name),
+                description = COALESCE(NULLIF($4, ''), description),
+                url = COALESCE(NULLIF($5, ''), url),
+                status = 'active',
+                application_process = COALESCE(NULLIF($6, ''), application_process),
+                fees = COALESCE(NULLIF($7, ''), fees),
+                updated_at = NOW()
+          WHERE id = $1`,
+        [
+          serviceId,
+          organizationId,
+          publishable.serviceName,
+          publishable.description,
+          publishable.websiteUrl ?? null,
+          publishable.acceptedValues.get('intake_process') ?? null,
+          publishable.acceptedValues.get('fees') ?? null,
+        ],
+      );
+    } else if (!matchedServiceId) {
+      await client.query(
+        `INSERT INTO services
+           (id, organization_id, name, description, url, status, application_process, fees, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, NOW(), NOW())`,
+        [
+          serviceId,
+          organizationId,
+          publishable.serviceName,
+          publishable.description,
+          publishable.websiteUrl ?? null,
+          publishable.acceptedValues.get('intake_process') ?? null,
+          publishable.acceptedValues.get('fees') ?? null,
+        ],
+      );
+    }
+
+    const hsdsPayload = buildHsdsPayload({
+      candidateId: options.candidateId,
+      organizationId,
+      serviceId,
+      locationId: undefined,
+      candidate: publishable,
+      resourceTags: mergedServiceTags,
+      confidenceScore,
+      geocodeResult,
+    });
+
+    if (shouldOverwriteExisting && (publishable.address || geocodeResult)) {
+      const matchedLocationId = await resolveExistingLiveLocationId(client, serviceId, {
+        name: publishable.serviceName,
+        address1: publishable.address?.line1,
+        city: publishable.address?.city,
+        region: publishable.address?.region,
+        postalCode: publishable.address?.postalCode,
+        country: publishable.address?.country,
+      });
+      locationId = matchedLocationId ?? crypto.randomUUID();
+
+      if (matchedLocationId) {
+        await client.query(
+          `UPDATE locations
+              SET organization_id = $2,
+                  name = COALESCE(NULLIF($3, ''), name),
+                  latitude = COALESCE($4, latitude),
+                  longitude = COALESCE($5, longitude),
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [
+            locationId,
+            organizationId,
+            publishable.serviceName,
+            geocodeResult?.lat ?? null,
+            geocodeResult?.lon ?? null,
+          ],
+        );
+      } else {
+        await client.query(
+          `INSERT INTO locations
+             (id, organization_id, name, latitude, longitude, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+          [
+            locationId,
+            organizationId,
+            publishable.serviceName,
+            geocodeResult?.lat ?? null,
+            geocodeResult?.lon ?? null,
+          ],
+        );
+      }
 
       await client.query(
         `INSERT INTO service_at_location (service_id, location_id, created_at)
@@ -280,6 +390,7 @@ export async function publishCandidateToLiveService(
       );
 
       if (publishable.address) {
+        await client.query(`DELETE FROM addresses WHERE location_id = $1`, [locationId]);
         await client.query(
           `INSERT INTO addresses
              (location_id, address_1, address_2, city, region, state_province, postal_code, country)
@@ -295,9 +406,24 @@ export async function publishCandidateToLiveService(
           ],
         );
       }
+
+      Object.assign(hsdsPayload, {
+        location: {
+          id: locationId,
+          address: publishable.address ?? null,
+          latitude: geocodeResult?.lat ?? null,
+          longitude: geocodeResult?.lon ?? null,
+        },
+      });
     }
 
-    if (publishable.phone) {
+    if (shouldOverwriteExisting && publishable.phone) {
+      await client.query(
+        `DELETE FROM phones
+          WHERE service_id = $1
+            AND regexp_replace(number, '\\D', '', 'g') = regexp_replace($2, '\\D', '', 'g')`,
+        [serviceId, publishable.phone],
+      );
       await client.query(
         `INSERT INTO phones
            (service_id, organization_id, location_id, number, type)
@@ -306,14 +432,14 @@ export async function publishCandidateToLiveService(
       );
     }
 
-    await client.query(
-      `INSERT INTO confidence_scores
-         (service_id, score, verification_confidence, eligibility_match, constraint_fit, computed_at)
-       VALUES ($1, $2, $2, 0, 0, NOW())`,
-      [serviceId, confidenceScore],
-    );
+    if (shouldOverwriteExisting) {
+      await upsertConfidenceScore(client, {
+        serviceId,
+        score: confidenceScore,
+      });
+    }
 
-    if (mergedServiceTags.length > 0) {
+    if (shouldOverwriteExisting && mergedServiceTags.length > 0) {
       const tagValuesSql: string[] = [];
       const tagParams: unknown[] = [];
       mergedServiceTags.forEach((tag, index) => {
@@ -340,7 +466,7 @@ export async function publishCandidateToLiveService(
       );
     }
 
-    if (serviceAttributes.length > 0) {
+    if (shouldOverwriteExisting && serviceAttributes.length > 0) {
       const attributeValuesSql: string[] = [];
       const attributeParams: unknown[] = [];
       serviceAttributes.forEach((attribute, index) => {
@@ -362,7 +488,7 @@ export async function publishCandidateToLiveService(
         .filter((tag) => tag.tagType === 'category')
         .map((tag) => tag.tagValue),
     );
-    if (categoryTags.length > 0) {
+    if (shouldOverwriteExisting && categoryTags.length > 0) {
       await client.query(
         `INSERT INTO service_taxonomy (service_id, taxonomy_term_id)
          SELECT $1, tt.id
@@ -379,9 +505,17 @@ export async function publishCandidateToLiveService(
            published_service_id = $2,
            published_at = NOW(),
            published_by_user_id = $3,
+           last_verified_at = $4::timestamptz,
+           reverify_at = $5::timestamptz,
            updated_at = NOW()
        WHERE candidate_id = $1`,
-      [options.candidateId, serviceId, options.publishedByUserId],
+      [
+        options.candidateId,
+        serviceId,
+        options.publishedByUserId,
+        publicationWindow.lastVerifiedAt,
+        publicationWindow.reverifyAt,
+      ],
     );
 
     await client.query(
@@ -409,27 +543,42 @@ export async function publishCandidateToLiveService(
       [serviceId, serviceId],
     );
 
-    await client.query(
-      `INSERT INTO hsds_export_snapshots
-         (entity_type, entity_id, snapshot_version, hsds_payload, profile_uri, status, generated_at, created_at)
-       VALUES ('service', $1, $2, $3::jsonb, $4, 'current', NOW(), NOW())`,
-      [serviceId, snapshotVersion, JSON.stringify(hsdsPayload), HSDS_PROFILE_URI],
-    );
+    if (shouldOverwriteExisting) {
+      await replaceCurrentSnapshot(client, {
+        entityType: 'service',
+        entityId: serviceId,
+        hsdsPayload,
+        replaceCurrent: Boolean(matchedServiceId),
+      });
+    }
 
-    await client.query(
-      `INSERT INTO lifecycle_events
-         (entity_type, entity_id, event_type, from_status, to_status, actor_type, actor_id, metadata, identifiers_affected, snapshots_invalidated, created_at)
-       VALUES ('service', $1, 'published', 'candidate', 'published', 'human', $2, $3::jsonb, 1, 0, NOW())`,
-      [
-        serviceId,
-        options.publishedByUserId,
-        JSON.stringify({
-          candidateId: options.candidateId,
-          organizationId,
-          locationId,
-        }),
-      ],
-    );
+    await appendLifecycleEvent(client, {
+      entityType: 'service',
+      entityId: serviceId,
+      eventType: shouldOverwriteExisting
+        ? matchedServiceId ? 'republished' : 'published'
+        : 'linked_existing',
+      fromStatus: shouldOverwriteExisting
+        ? matchedServiceId ? 'published' : 'candidate'
+        : 'published',
+      toStatus: 'published',
+      actorType: 'human',
+      actorId: options.publishedByUserId,
+      metadata: {
+        candidateId: options.candidateId,
+        organizationId,
+        locationId,
+        confidenceScore: publicationWindow.confidenceScore,
+        confidenceTier: publicationWindow.confidenceTier,
+        reverifyAt: publicationWindow.reverifyAt,
+        overwriteSuppressed: !shouldOverwriteExisting,
+        authorityReason: overwriteDecision?.reason ?? null,
+        currentAuthority: overwriteDecision?.current?.sourceKind ?? null,
+        incomingAuthority: 'candidate_allowlisted',
+      },
+      identifiersAffected: 1,
+      snapshotsInvalidated: shouldOverwriteExisting && matchedServiceId ? 1 : 0,
+    });
 
     if (geocodeResult) {
       await client.query(

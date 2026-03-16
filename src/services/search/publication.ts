@@ -7,11 +7,15 @@ export const PUBLISHED_RECORD_STATUS = 'active' as const;
 export const DEFAULT_PUBLICATION_PAGE_SIZE = 20;
 export const MAX_PUBLICATION_PAGE_SIZE = 100;
 
+export function buildIntegrityHoldPredicate(serviceAlias = 's'): string {
+  return `${serviceAlias}.integrity_hold_at IS NULL`;
+}
+
 export function buildPublishedServicePredicate(
   serviceAlias = 's',
   organizationAlias = 'o',
 ): string {
-  return `${serviceAlias}.status = '${PUBLISHED_RECORD_STATUS}' AND ${organizationAlias}.status = '${PUBLISHED_RECORD_STATUS}'`;
+  return `${serviceAlias}.status = '${PUBLISHED_RECORD_STATUS}' AND ${organizationAlias}.status = '${PUBLISHED_RECORD_STATUS}' AND ${buildIntegrityHoldPredicate(serviceAlias)}`;
 }
 
 export function buildPublishedOrganizationPredicate(organizationAlias = 'o'): string {
@@ -178,10 +182,11 @@ export async function getPublishedOrganizationDetail(deps: PublicationDeps, orga
 
   const services = await deps.executeQuery<Record<string, unknown>>(
     `SELECT id, name, alternate_name, description, url, email,
-            status, created_at, updated_at
+            status, integrity_hold_at, integrity_hold_reason, created_at, updated_at
      FROM services
      WHERE organization_id = $1
        AND status = '${PUBLISHED_RECORD_STATUS}'
+       AND integrity_hold_at IS NULL
      ORDER BY name`,
     [organizationId],
   );

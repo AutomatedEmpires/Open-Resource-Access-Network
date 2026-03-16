@@ -10,6 +10,10 @@ import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import {
+  isHighRiskSourceFeedUpdate,
+  queueIngestionControlChange,
+} from '@/services/ingestion/controlChanges';
 import { mergeSourceFeedState, SourceFeedStatePatchSchema } from '../state';
 
 const BulkUpdateSourceFeedsSchema = z.object({
@@ -81,24 +85,66 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    for (const feedId of parsed.data.feedIds) {
+    const shouldQueueHighRisk = parsed.data.state && isHighRiskSourceFeedUpdate({ state: parsed.data.state });
+    const queuedSubmissionIds: string[] = [];
+
+    for (const [index, feedId] of parsed.data.feedIds.entries()) {
+      const feed = feeds[index]!;
+      const existingState = (parsed.data.state || parsed.data.useCheckpointAsReplay)
+        ? await stores.sourceFeedStates.getByFeedId(feedId)
+        : null;
+
+      const replayFromCursor = parsed.data.useCheckpointAsReplay
+        ? (existingState?.checkpointCursor ?? existingState?.replayFromCursor ?? '0')
+        : parsed.data.state?.replayFromCursor;
+
+      const nextState = parsed.data.state || parsed.data.useCheckpointAsReplay
+        ? mergeSourceFeedState(feedId, existingState, {
+          ...(parsed.data.state ?? {}),
+          replayFromCursor,
+        }, { actorId: session?.userId ?? null })
+        : null;
+
+      if (shouldQueueHighRisk) {
+        const { submissionId } = await queueIngestionControlChange({
+          submittedByUserId: session?.userId ?? 'unknown',
+          actorRole: session?.role ?? 'oran_admin',
+          targetId: feedId,
+          title: `Source feed rollout queued: ${feed.feedName}`,
+          summary: `Bulk auto-publish rollout for source feed ${feed.feedName} requires second approval before automation widens.`,
+          payload: {
+            entityType: 'source_feed',
+            action: 'update',
+            entityId: feedId,
+            entityLabel: feed.feedName,
+            summary: `Bulk publication mode ${existingState?.publicationMode ?? 'review_required'} -> ${nextState?.publicationMode ?? existingState?.publicationMode ?? 'review_required'}`,
+            beforeState: {
+              feed,
+              state: existingState,
+            },
+            feedPatch: parsed.data.isActive !== undefined ? { isActive: parsed.data.isActive } : undefined,
+            nextState,
+          },
+        });
+        queuedSubmissionIds.push(submissionId);
+        continue;
+      }
+
       if (parsed.data.isActive !== undefined) {
         await stores.sourceFeeds.update(feedId, { isActive: parsed.data.isActive });
       }
 
       if (parsed.data.state || parsed.data.useCheckpointAsReplay) {
-        const existingState = await stores.sourceFeedStates.getByFeedId(feedId);
-        const replayFromCursor = parsed.data.useCheckpointAsReplay
-          ? (existingState?.checkpointCursor ?? existingState?.replayFromCursor ?? '0')
-          : parsed.data.state?.replayFromCursor;
-
-        await stores.sourceFeedStates.upsert(
-          mergeSourceFeedState(feedId, existingState, {
-            ...(parsed.data.state ?? {}),
-            replayFromCursor,
-          }, { actorId: session?.userId ?? null }),
-        );
+        await stores.sourceFeedStates.upsert(nextState!);
       }
+    }
+
+    if (queuedSubmissionIds.length > 0) {
+      return NextResponse.json({
+        queued: queuedSubmissionIds.length,
+        submissionIds: queuedSubmissionIds,
+        status: 'pending_second_approval',
+      }, { status: 202 });
     }
 
     return NextResponse.json({ updated: parsed.data.feedIds.length });

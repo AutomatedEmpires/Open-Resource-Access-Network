@@ -384,4 +384,141 @@ describe('promoteToLive', () => {
       expect.arrayContaining(['(206) 555-0100']),
     );
   });
+
+  it('adopts matching existing live organization and service rows when canonical ids are not linked yet', async () => {
+    const stores = createMockStores();
+    const clientQueryMock = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('pg_advisory_xact_lock')) {
+        expect(params).toEqual(['live-publication:acme.org|acme nonprofit|acme.org/pantry|food pantry']);
+        return { rows: [{ pg_advisory_xact_lock: '' }], rowCount: 1 };
+      }
+      if (sql.includes('FROM organizations') && sql.includes("regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')")) {
+        return { rows: [{ id: 'live-org-existing' }], rowCount: 1 };
+      }
+      if (sql.includes('FROM services') && sql.includes("regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')")) {
+        return { rows: [{ id: 'live-svc-existing' }], rowCount: 1 };
+      }
+      if (sql.includes('FROM service_at_location sal')) {
+        return { rows: [{ id: 'live-loc-existing' }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    withTransactionMock.mockImplementation(async (cb: (c: unknown) => unknown) =>
+      cb({ query: clientQueryMock }),
+    );
+
+    stores.canonicalServices.getById.mockResolvedValue(buildCanonicalService());
+    stores.canonicalOrganizations.getById.mockResolvedValue(buildCanonicalOrg());
+    stores.canonicalServiceLocations.listByService.mockResolvedValue([
+      { id: 'csl-1', canonicalServiceId: 'canon-svc-1', canonicalLocationId: 'canon-loc-1' },
+    ]);
+    stores.canonicalLocations.getByIds.mockResolvedValue([buildCanonicalLocation()]);
+
+    const { promoteToLive } = await loadModule();
+    const result = await promoteToLive({
+      stores: stores as never,
+      canonicalServiceId: 'canon-svc-1',
+      actorId: 'system',
+    });
+
+    expect(result).toEqual({
+      organizationId: 'live-org-existing',
+      serviceId: 'live-svc-existing',
+      locationIds: ['live-loc-existing'],
+      isUpdate: true,
+    });
+    expect(clientQueryMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO organizations'),
+      expect.anything(),
+    );
+    expect(clientQueryMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO services'),
+      expect.anything(),
+    );
+    expect(clientQueryMock).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE organizations'),
+      expect.arrayContaining(['live-org-existing', 'Acme Nonprofit']),
+    );
+    expect(clientQueryMock).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE services'),
+      expect.arrayContaining(['live-svc-existing', 'live-org-existing', 'Food Pantry']),
+    );
+    expect(
+      clientQueryMock.mock.calls.some(
+        ([sql]) => typeof sql === 'string' && sql.includes("description = COALESCE(NULLIF($4, ''), description)") && sql.includes('UPDATE services'),
+      ),
+    ).toBe(true);
+    expect(stores.canonicalOrganizations.update).toHaveBeenCalledWith('canon-org-1', {
+      publishedOrganizationId: 'live-org-existing',
+    });
+    expect(stores.canonicalServices.update).toHaveBeenCalledWith('canon-svc-1', {
+      publishedServiceId: 'live-svc-existing',
+    });
+  });
+
+  it('links canonical services to host-managed live rows without overwriting higher-authority snapshots', async () => {
+    const stores = createMockStores();
+    const clientQueryMock = vi.fn(async (sql: string) => {
+      if (sql.includes('pg_advisory_xact_lock')) return { rows: [{ pg_advisory_xact_lock: '' }], rowCount: 1 };
+      if (sql.includes('FROM organizations') && sql.includes("regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')")) {
+        return { rows: [{ id: 'live-org-host' }], rowCount: 1 };
+      }
+      if (sql.includes('FROM services') && sql.includes("regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')")) {
+        return { rows: [{ id: 'live-svc-host' }], rowCount: 1 };
+      }
+      if (sql.includes('FROM service_at_location sal')) {
+        return { rows: [{ id: 'live-loc-host' }], rowCount: 1 };
+      }
+      if (sql.includes('FROM hsds_export_snapshots')) {
+        return {
+          rows: [{
+            hsds_payload: {
+              meta: {
+                generatedBy: 'oran-resource-submission-projection',
+                channel: 'host',
+                publicationSourceKind: 'host_submission',
+              },
+            },
+            generated_at: '2026-03-16T00:00:00.000Z',
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    withTransactionMock.mockImplementation(async (cb: (c: unknown) => unknown) =>
+      cb({ query: clientQueryMock }),
+    );
+
+    stores.canonicalServices.getById.mockResolvedValue(buildCanonicalService());
+    stores.canonicalOrganizations.getById.mockResolvedValue(buildCanonicalOrg());
+    stores.canonicalServiceLocations.listByService.mockResolvedValue([
+      { id: 'csl-1', canonicalServiceId: 'canon-svc-1', canonicalLocationId: 'canon-loc-1' },
+    ]);
+    stores.canonicalLocations.getByIds.mockResolvedValue([buildCanonicalLocation()]);
+
+    const { promoteToLive } = await loadModule();
+    const result = await promoteToLive({
+      stores: stores as never,
+      canonicalServiceId: 'canon-svc-1',
+      actorId: 'system',
+    });
+
+    expect(result).toEqual({
+      organizationId: 'live-org-host',
+      serviceId: 'live-svc-host',
+      locationIds: ['live-loc-host'],
+      isUpdate: true,
+    });
+    expect(clientQueryMock).not.toHaveBeenCalledWith(expect.stringContaining('UPDATE organizations'), expect.anything());
+    expect(clientQueryMock).not.toHaveBeenCalledWith(expect.stringContaining('UPDATE services'), expect.anything());
+    expect(clientQueryMock).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO hsds_export_snapshots'), expect.anything());
+    expect(clientQueryMock).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO lifecycle_events'),
+      expect.arrayContaining(['linked_existing']),
+    );
+    expect(stores.canonicalServices.update).toHaveBeenCalledWith('canon-svc-1', {
+      publishedServiceId: 'live-svc-host',
+    });
+  });
 });

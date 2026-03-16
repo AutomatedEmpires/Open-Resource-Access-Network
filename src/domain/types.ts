@@ -97,6 +97,9 @@ export interface Service {
   estimatedWaitDays?: number | null;
   /** Current capacity status: 'available', 'limited', 'waitlist', 'closed' */
   capacityStatus?: ServiceCapacityStatus | null;
+  integrityHoldAt?: string | null;
+  integrityHoldReason?: string | null;
+  integrityHeldByUserId?: string | null;
   createdByUserId?: string | null;
   updatedByUserId?: string | null;
   updatedAt: Date;
@@ -243,6 +246,7 @@ export interface VerificationQueueEntry {
 export type SubmissionType =
   | 'service_verification'
   | 'confidence_regression'
+  | 'ingestion_control_change'
   | 'org_claim'
   | 'data_correction'
   | 'new_service'

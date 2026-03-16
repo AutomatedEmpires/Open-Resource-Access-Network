@@ -44,6 +44,21 @@ interface NormalizationBatchResult {
   canonicalLocationIds: string[];
 }
 
+type CandidateAutoPublishReason =
+  | 'no_candidate'
+  | 'source_not_allowlisted'
+  | 'readiness_threshold_not_met'
+  | 'published'
+  | 'publish_failed';
+
+interface CandidateAutoPublishOutcome {
+  published: boolean;
+  reason: CandidateAutoPublishReason;
+  serviceId?: string;
+  organizationId?: string;
+  locationId?: string;
+}
+
 async function appendPollAuditEvent(
   stores: IngestionStores,
   event: {
@@ -375,6 +390,85 @@ function getSupportedSourceFeedHandler(feed: { feedHandler?: string | null }): S
   return null;
 }
 
+function resolvePublicationActor(triggeredBy?: string): {
+  actorType: 'system' | 'service_principal' | 'human';
+  actorId: string;
+} {
+  if (!triggeredBy) {
+    return { actorType: 'service_principal', actorId: 'ingestion-service' };
+  }
+
+  if (triggeredBy === 'system') {
+    return { actorType: 'system', actorId: 'system' };
+  }
+
+  if (triggeredBy.endsWith('-service')) {
+    return { actorType: 'service_principal', actorId: triggeredBy };
+  }
+
+  return { actorType: 'human', actorId: triggeredBy };
+}
+
+async function maybeAutoPublishPipelineCandidate(
+  stores: IngestionStores,
+  result: PipelineResult,
+  triggeredBy?: string,
+): Promise<CandidateAutoPublishOutcome> {
+  if (!result.candidateId) {
+    return { published: false, reason: 'no_candidate' };
+  }
+
+  if (result.sourceCheck?.trustLevel !== 'allowlisted') {
+    return { published: false, reason: 'source_not_allowlisted' };
+  }
+
+  const meetsThreshold = await stores.publishReadiness.meetsThreshold(result.candidateId);
+  if (!meetsThreshold) {
+    return { published: false, reason: 'readiness_threshold_not_met' };
+  }
+
+  try {
+    const { publishCandidateToLiveService } = await import('./livePublish');
+    const published = await publishCandidateToLiveService({
+      stores,
+      candidateId: result.candidateId,
+      publishedByUserId: triggeredBy ?? 'ingestion-service',
+    });
+    const actor = resolvePublicationActor(triggeredBy);
+
+    await stores.audit.append({
+      eventId: crypto.randomUUID(),
+      correlationId: result.correlationId,
+      eventType: 'publish.approved',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      targetType: 'service',
+      targetId: published.serviceId,
+      timestamp: new Date().toISOString(),
+      inputs: {
+        candidateId: result.candidateId,
+        sourceUrl: result.sourceUrl,
+        publicationChannel: 'candidate_auto_publish',
+      },
+      outputs: {
+        organizationId: published.organizationId,
+        locationId: published.locationId ?? null,
+      },
+      evidenceRefs: result.evidenceId ? [result.evidenceId] : [],
+    });
+
+    return {
+      published: true,
+      reason: 'published',
+      serviceId: published.serviceId,
+      organizationId: published.organizationId,
+      locationId: published.locationId,
+    };
+  } catch {
+    return { published: false, reason: 'publish_failed' };
+  }
+}
+
 // ============================================================
 // Service Types
 // ============================================================
@@ -395,6 +489,8 @@ export interface RunPipelineResult {
   job: IngestionJob;
   /** Pipeline execution result */
   pipeline: PipelineResult;
+  /** Publication outcome for candidate-backed runs */
+  publication?: CandidateAutoPublishOutcome;
 }
 
 export interface IngestionService {
@@ -522,6 +618,9 @@ export function createIngestionService(
       // 7. Persist audit output for the completed pipeline
       await persistPipelineResults(stores, pipelineResult, correlationId, options.triggeredBy);
 
+      // 7a. Auto-publish allowlisted high-readiness candidates; fall back to review when policy blocks.
+      const publication = await maybeAutoPublishPipelineCandidate(stores, pipelineResult, options.triggeredBy);
+
       // 8. Update job stats
       const completedJob: IngestionJob = {
         ...updatedJob,
@@ -535,7 +634,11 @@ export function createIngestionService(
       };
       await stores.jobs.update(completedJob);
 
-      return { job: completedJob, pipeline: pipelineResult };
+      return {
+        job: completedJob,
+        pipeline: pipelineResult,
+        publication: publication.reason === 'no_candidate' ? undefined : publication,
+      };
     },
 
     async runBatch(urls: string[], triggeredBy?: string): Promise<RunPipelineResult[]> {

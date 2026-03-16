@@ -47,11 +47,29 @@ interface AdminCandidate {
   max_pending: number;
 }
 
+interface SilentReviewerAssignment {
+  id: string;
+  assigned_to_user_id: string;
+  submitted_by_user_id: string;
+  jurisdiction_state: string | null;
+  jurisdiction_county: string | null;
+}
+
+interface SilentOwnerOrganization {
+  organization_id: string;
+  organization_name: string | null;
+  active_service_count: number;
+  host_admin_user_ids: string[];
+}
+
 export interface EscalationResult {
   warnings: number;
   renotified: number;
   reassigned: number;
   escalatedToOran: number;
+  silentReviewerReassignments: number;
+  ownerOutreachAlerts: number;
+  integrityHoldsApplied: number;
 }
 
 // ============================================================
@@ -125,6 +143,9 @@ export async function escalateBreachedSubmissions(): Promise<EscalationResult> {
     renotified: 0,
     reassigned: 0,
     escalatedToOran: 0,
+    silentReviewerReassignments: 0,
+    ownerOutreachAlerts: 0,
+    integrityHoldsApplied: 0,
   };
 
   const breached = await executeQuery<BreachedSubmission>(
@@ -165,7 +186,216 @@ export async function escalateBreachedSubmissions(): Promise<EscalationResult> {
     }
   }
 
+  result.silentReviewerReassignments = await reclaimSilentReviewerAssignments();
+  const ownerContinuity = await alertSilentOwnerOrganizations();
+  result.ownerOutreachAlerts = ownerContinuity.alerts;
+  result.integrityHoldsApplied = ownerContinuity.integrityHoldsApplied;
+
   return result;
+}
+
+async function reclaimSilentReviewerAssignments(): Promise<number> {
+  const stalled = await executeQuery<SilentReviewerAssignment>(
+    `WITH reviewer_activity AS (
+       SELECT actor_user_id, MAX(created_at) AS last_review_at
+       FROM submission_transitions
+       WHERE actor_role IN ('community_admin', 'oran_admin')
+       GROUP BY actor_user_id
+     )
+     SELECT s.id, s.assigned_to_user_id, s.submitted_by_user_id,
+            s.jurisdiction_state, s.jurisdiction_county
+     FROM submissions s
+     LEFT JOIN reviewer_activity ra ON ra.actor_user_id = s.assigned_to_user_id
+     WHERE s.status IN ('submitted', 'auto_checking', 'needs_review', 'under_review', 'pending_second_approval')
+       AND s.assigned_to_user_id IS NOT NULL
+       AND COALESCE(ra.last_review_at, s.updated_at, s.created_at) < NOW() - INTERVAL '14 days'
+       AND COALESCE(s.updated_at, s.created_at) < NOW() - INTERVAL '72 hours'
+     ORDER BY COALESCE(s.updated_at, s.created_at) ASC`,
+    [],
+  );
+
+  let reassigned = 0;
+
+  for (const sub of stalled) {
+    const idempotencyBase = `silent_reassign_${sub.id}`;
+    const existing = await executeQuery<{ id: string }>(
+      `SELECT id FROM notification_events WHERE idempotency_key = $1`,
+      [`${idempotencyBase}_marker`],
+    );
+    if (existing.length > 0) continue;
+
+    const nextAdmin = await findNextAvailableAdmin(
+      sub.jurisdiction_state,
+      sub.jurisdiction_county,
+      sub.assigned_to_user_id,
+    );
+    if (!nextAdmin) continue;
+
+    await executeQuery(
+      `UPDATE submissions
+       SET assigned_to_user_id = $1, updated_at = NOW()
+       WHERE id = $2`,
+      [nextAdmin.user_id, sub.id],
+    );
+
+    await executeQuery(
+      `INSERT INTO notification_events
+         (recipient_user_id, event_type, title, body,
+          resource_type, resource_id, action_url, idempotency_key)
+       VALUES ($1, 'submission_assigned',
+               'Submission reassigned due to reviewer inactivity',
+               'Submission ' || $2 || ' has been reassigned because the previous reviewer was inactive.',
+               'submission', $2, '/verify?id=' || $2, $3)
+       ON CONFLICT (idempotency_key) DO NOTHING`,
+      [nextAdmin.user_id, sub.id, `${idempotencyBase}_notify`],
+    );
+
+    await executeQuery(
+      `INSERT INTO notification_events
+         (recipient_user_id, event_type, title, body,
+          resource_type, resource_id, idempotency_key)
+       VALUES ($1, 'system_alert',
+               'Silent-reviewer reassignment marker',
+               'Submission ' || $2 || ' was reassigned after silent-reviewer detection.',
+               'submission', $2, $3)
+       ON CONFLICT (idempotency_key) DO NOTHING`,
+      [sub.submitted_by_user_id, sub.id, `${idempotencyBase}_marker`],
+    );
+
+    reassigned += 1;
+  }
+
+  return reassigned;
+}
+
+async function alertSilentOwnerOrganizations(): Promise<{ alerts: number; integrityHoldsApplied: number }> {
+  const organizations = await executeQuery<SilentOwnerOrganization>(
+    `WITH host_admin_activity AS (
+       SELECT
+         om.organization_id,
+         om.user_id,
+         GREATEST(
+           COALESCE(om.updated_at, om.created_at),
+           COALESCE(up.updated_at, up.created_at),
+           COALESCE(MAX(host_sub.created_at), TIMESTAMPTZ 'epoch')
+         ) AS last_owner_activity
+       FROM organization_members om
+       LEFT JOIN user_profiles up ON up.user_id = om.user_id
+       LEFT JOIN submissions host_sub
+         ON host_sub.submitted_by_user_id = om.user_id
+        AND host_sub.submission_type IN ('service_verification', 'new_service', 'org_claim')
+       WHERE om.role = 'host_admin'
+         AND om.status = 'active'
+       GROUP BY om.organization_id, om.user_id, om.updated_at, om.created_at, up.updated_at, up.created_at
+     ),
+     silent_owner_orgs AS (
+       SELECT
+         ha.organization_id,
+         ARRAY_AGG(ha.user_id) AS host_admin_user_ids,
+         COUNT(*) FILTER (WHERE ha.last_owner_activity < NOW() - INTERVAL '30 days') AS silent_admins,
+         COUNT(*) AS total_admins
+       FROM host_admin_activity ha
+       GROUP BY ha.organization_id
+     )
+     SELECT o.id AS organization_id,
+            o.name AS organization_name,
+            COUNT(s.id)::int AS active_service_count,
+            soo.host_admin_user_ids
+     FROM silent_owner_orgs soo
+     JOIN organizations o ON o.id = soo.organization_id
+     JOIN services s ON s.organization_id = o.id AND s.status = 'active'
+     WHERE soo.total_admins > 0
+       AND soo.silent_admins = soo.total_admins
+     GROUP BY o.id, o.name, soo.host_admin_user_ids
+     ORDER BY COUNT(s.id) DESC, o.name ASC`,
+    [],
+  );
+
+  if (organizations.length === 0) return { alerts: 0, integrityHoldsApplied: 0 };
+
+  const oranAdmins = await findOranAdmins();
+  let alerted = 0;
+  let integrityHoldsApplied = 0;
+
+  for (const org of organizations) {
+    const idempotencyBase = `silent_owner_org_${org.organization_id}`;
+    const existing = await executeQuery<{ id: string }>(
+      `SELECT id FROM notification_events WHERE idempotency_key = $1`,
+      [`${idempotencyBase}_marker`],
+    );
+    if (existing.length > 0) continue;
+
+    for (const userId of org.host_admin_user_ids) {
+      await executeQuery(
+        `INSERT INTO notification_events
+           (recipient_user_id, event_type, title, body,
+            resource_type, resource_id, action_url, idempotency_key)
+         VALUES ($1, 'system_alert',
+                 'Owner continuity check required',
+                 $2,
+                 'organization', $3, '/resource-studio', $4)
+         ON CONFLICT (idempotency_key) DO NOTHING`,
+        [
+          userId,
+          `Your organization still has ${org.active_service_count} active listing${org.active_service_count === 1 ? '' : 's'}, but ORAN detected no recent host-admin activity. Confirm stewardship or update the listings.`,
+          org.organization_id,
+          `${idempotencyBase}_host_${userId}`,
+        ],
+      );
+    }
+
+    for (const admin of oranAdmins) {
+      await executeQuery(
+        `INSERT INTO notification_events
+           (recipient_user_id, event_type, title, body,
+            resource_type, resource_id, action_url, idempotency_key)
+         VALUES ($1, 'system_alert',
+                 'Silent owner organization with active listings',
+                 $2,
+                 'organization', $3, '/ingestion', $4)
+         ON CONFLICT (idempotency_key) DO NOTHING`,
+        [
+          admin.user_id,
+          `${org.organization_name ?? 'An organization'} has ${org.active_service_count} active listing${org.active_service_count === 1 ? '' : 's'} but no recently active host admin. Prioritize outreach before relying on those records for automation.`,
+          org.organization_id,
+          `${idempotencyBase}_oran_${admin.user_id}`,
+        ],
+      );
+    }
+
+    const heldServices = await executeQuery<{ id: string }>(
+      `UPDATE services
+       SET integrity_hold_at = NOW(),
+           integrity_hold_reason = $1,
+           integrity_held_by_user_id = 'system',
+           updated_at = NOW()
+       WHERE organization_id = $2
+         AND status = 'active'
+         AND integrity_hold_at IS NULL
+       RETURNING id`,
+      [
+        'silent_owner_continuity',
+        org.organization_id,
+      ],
+    );
+    integrityHoldsApplied += heldServices.length;
+
+    await executeQuery(
+      `INSERT INTO notification_events
+         (recipient_user_id, event_type, title, body,
+          resource_type, resource_id, idempotency_key)
+       VALUES ($1, 'system_alert',
+               'Silent owner organization marker',
+               'Organization ' || $2 || ' triggered owner continuity outreach.',
+               'organization', $2, $3)
+       ON CONFLICT (idempotency_key) DO NOTHING`,
+      [org.host_admin_user_ids[0] ?? oranAdmins[0]?.user_id ?? 'system', org.organization_id, `${idempotencyBase}_marker`],
+    );
+
+    alerted += 1;
+  }
+
+  return { alerts: alerted, integrityHoldsApplied };
 }
 
 /**

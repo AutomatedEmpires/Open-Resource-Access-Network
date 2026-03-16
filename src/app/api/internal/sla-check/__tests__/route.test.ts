@@ -55,6 +55,9 @@ describe('POST /api/internal/sla-check', () => {
       renotified: 0,
       reassigned: 0,
       escalatedToOran: 0,
+      silentReviewerReassignments: 0,
+      ownerOutreachAlerts: 0,
+      integrityHoldsApplied: 0,
     });
   });
 
@@ -88,6 +91,9 @@ describe('POST /api/internal/sla-check', () => {
       renotified: 1,
       reassigned: 0,
       escalatedToOran: 0,
+      silentReviewerReassignments: 2,
+      ownerOutreachAlerts: 1,
+      integrityHoldsApplied: 3,
     });
 
     const res = await POST(makeRequest('test-secret-key'));
@@ -98,6 +104,9 @@ describe('POST /api/internal/sla-check', () => {
     expect(body.warningCount).toBe(2);
     expect(body.breachedCount).toBe(3);
     expect(body.escalation.renotified).toBe(1);
+    expect(body.escalation.silentReviewerReassignments).toBe(2);
+    expect(body.escalation.ownerOutreachAlerts).toBe(1);
+    expect(body.escalation.integrityHoldsApplied).toBe(3);
     expect(body.checkedAt).toBeDefined();
   });
 

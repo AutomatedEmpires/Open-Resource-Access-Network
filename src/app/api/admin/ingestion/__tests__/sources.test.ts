@@ -11,6 +11,10 @@ const getDrizzleMock = vi.hoisted(() => vi.fn());
 const storeFactoryMocks = vi.hoisted(() => ({
   createIngestionStores: vi.fn(),
 }));
+const controlChangeMocks = vi.hoisted(() => ({
+  isHighRiskSourceUpdate: vi.fn(),
+  queueIngestionControlChange: vi.fn(),
+}));
 const sourceRegistryStore = vi.hoisted(() => ({
   listActive: vi.fn(),
   upsert: vi.fn(),
@@ -36,6 +40,7 @@ vi.mock('@/services/db/drizzle', () => ({
   getDrizzle: getDrizzleMock,
 }));
 vi.mock('@/agents/ingestion/persistence/storeFactory', () => storeFactoryMocks);
+vi.mock('@/services/ingestion/controlChanges', () => controlChangeMocks);
 
 function createRequest(options: {
   search?: string;
@@ -94,6 +99,8 @@ beforeEach(() => {
   sourceRegistryStore.upsert.mockResolvedValue(undefined);
   sourceRegistryStore.getById.mockResolvedValue(null);
   sourceRegistryStore.deactivate.mockResolvedValue(undefined);
+  controlChangeMocks.isHighRiskSourceUpdate.mockReturnValue(false);
+  controlChangeMocks.queueIngestionControlChange.mockResolvedValue({ submissionId: 'sub-1' });
 });
 
 describe('admin ingestion source routes', () => {
@@ -288,16 +295,51 @@ describe('admin ingestion source routes', () => {
     });
   });
 
+  it('queues high-risk trust updates for second approval', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1', role: 'oran_admin' });
+    controlChangeMocks.isHighRiskSourceUpdate.mockReturnValueOnce(true);
+    sourceRegistryStore.getById.mockResolvedValueOnce({
+      id: 'source-1',
+      displayName: 'Old Name',
+      trustLevel: 'quarantine',
+      domainRules: [{ type: 'suffix', value: 'old.example.org' }],
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const { PUT } = await loadSourceDetailRoute();
+
+    const response = await PUT(
+      createRequest({ jsonBody: { trustLevel: 'allowlisted' } }),
+      createRouteContext('source-1')
+    );
+
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenCalledOnce();
+    expect(sourceRegistryStore.upsert).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({
+      queued: true,
+      submissionId: 'sub-1',
+      status: 'pending_second_approval',
+    });
+  });
+
   it('deactivates a source through the detail route', async () => {
-    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1', role: 'oran_admin' });
+    sourceRegistryStore.getById.mockResolvedValueOnce({
+      id: 'source-1',
+      displayName: 'Example Source',
+      trustLevel: 'allowlisted',
+    });
     const { DELETE } = await loadSourceDetailRoute();
 
     const response = await DELETE(createRequest(), createRouteContext('source-1'));
 
-    expect(sourceRegistryStore.deactivate).toHaveBeenCalledWith('source-1');
-    expect(response.status).toBe(200);
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenCalledOnce();
+    expect(sourceRegistryStore.deactivate).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({
-      deactivated: true,
+      queued: true,
+      submissionId: 'sub-1',
+      status: 'pending_second_approval',
     });
   });
 
@@ -359,7 +401,7 @@ describe('admin ingestion source routes', () => {
   });
 
   it('covers source detail route error handling', async () => {
-    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1', role: 'oran_admin' });
     const { GET, PUT, DELETE } = await loadSourceDetailRoute();
 
     sourceRegistryStore.getById.mockRejectedValueOnce(new Error('read failed'));
@@ -379,7 +421,12 @@ describe('admin ingestion source routes', () => {
     );
     expect(putBadJson.status).toBe(500);
 
-    sourceRegistryStore.deactivate.mockRejectedValueOnce(new Error('deactivate failed'));
+    sourceRegistryStore.getById.mockResolvedValueOnce({
+      id: 'source-1',
+      displayName: 'Example Source',
+      trustLevel: 'allowlisted',
+    });
+    controlChangeMocks.queueIngestionControlChange.mockRejectedValueOnce(new Error('queue failed'));
     const delFailed = await DELETE(createRequest(), createRouteContext('source-1'));
     expect(delFailed.status).toBe(500);
 

@@ -68,6 +68,8 @@ describe('admin ingestion overview route', () => {
           auto_publish_feeds: '2',
           failed_feeds: '1',
           running_feeds: '1',
+          silent_feeds: '2',
+          silent_auto_publish_feeds: '1',
         },
       ])
       .mockResolvedValueOnce([{ pending_source_records: '3', errored_source_records: '1' }])
@@ -84,6 +86,31 @@ describe('admin ingestion overview route', () => {
       ])
       .mockResolvedValueOnce([
         {
+          silent_reviewers: '2',
+          stalled_reviewer_assignments: '4',
+          silent_host_admins: '3',
+          silent_owner_organizations: '2',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          reclaimed_assignments_24h: '2',
+          owner_outreach_alerts_24h: '1',
+          integrity_held_services: '6',
+          integrity_holds_24h: '3',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          kind: 'silent_reassignment',
+          title: 'Silent-reviewer reassignment marker',
+          resource_type: 'submission',
+          resource_id: 'sub-77',
+          created_at: '2026-03-16T05:58:00Z',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
           lifecycle_events_24h: '11',
           export_snapshots_24h: '15',
           approved_submissions_24h: '3',
@@ -95,7 +122,7 @@ describe('admin ingestion overview route', () => {
 
     expect(rateLimitMock).toHaveBeenCalledWith('198.51.100.7', expect.any(Object));
     expect(requireMinRoleMock).toHaveBeenCalledWith({ userId: 'oran-1' }, 'oran_admin');
-    expect(executeQueryMock).toHaveBeenCalledTimes(7);
+    expect(executeQueryMock).toHaveBeenCalledTimes(10);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       overview: {
@@ -105,6 +132,8 @@ describe('admin ingestion overview route', () => {
           pausedFeeds: 1,
           autoPublishFeeds: 2,
           failedFeeds: 1,
+          silentFeeds: 2,
+          silentAutoPublishFeeds: 1,
           runningFeeds: 1,
           pendingSourceRecords: 3,
           erroredSourceRecords: 1,
@@ -126,11 +155,45 @@ describe('admin ingestion overview route', () => {
           underReview: 4,
           pendingDecision: 12,
           slaBreached: 2,
+          silentReviewers: 2,
+          stalledReviewerAssignments: 4,
+        },
+        workforce: {
+          silentHostAdmins: 3,
+          silentOwnerOrganizations: 2,
+        },
+        incidents: {
+          reclaimedAssignments24h: 2,
+          ownerOutreachAlerts24h: 1,
+          integrityHeldServices: 6,
+          integrityHolds24h: 3,
+          recentActions: [
+            {
+              kind: 'silent_reassignment',
+              title: 'Silent-reviewer reassignment marker',
+              resourceType: 'submission',
+              resourceId: 'sub-77',
+              createdAt: '2026-03-16T05:58:00Z',
+            },
+          ],
         },
         publication: {
           lifecycleEvents24h: 11,
           exportSnapshots24h: 15,
           approvedSubmissions24h: 3,
+        },
+        health: {
+          degradedModeRecommended: true,
+          degradedModeSeverity: 'degraded',
+          degradedModeReasons: [
+            '1 auto-publish feed are silent past the health window',
+            '2 active feeds are silent and should be reviewed before further automation',
+            '4 pending submissions are assigned to 2 silent reviewers',
+            '2 owner organizations have no recently active host admin',
+          ],
+          freezeAutoPublish: true,
+          requireReviewOnly: true,
+          requireOwnerOutreach: true,
         },
       },
     });

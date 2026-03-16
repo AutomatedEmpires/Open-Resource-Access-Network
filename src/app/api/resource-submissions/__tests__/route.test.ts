@@ -14,6 +14,7 @@ const rateLimitMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
 const resourceSubmissionMocks = vi.hoisted(() => ({
   createResourceSubmission: vi.fn(),
+  getResourceSubmissionDetailForActor: vi.fn(),
   listAccessibleResourceSubmissions: vi.fn(),
   setResourceSubmissionPublicAccessToken: vi.fn(),
 }));
@@ -58,10 +59,67 @@ beforeEach(() => {
   guardMocks.requireMinRole.mockReturnValue(true);
   guardMocks.requireOrgAccess.mockReturnValue(true);
   resourceSubmissionMocks.listAccessibleResourceSubmissions.mockResolvedValue([]);
+  resourceSubmissionMocks.getResourceSubmissionDetailForActor.mockResolvedValue(null);
   captureExceptionMock.mockResolvedValue(undefined);
 });
 
 describe('resource submissions collection route', () => {
+  it('returns persisted review metadata when listing submissions', async () => {
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: 'host-1',
+      role: 'host_admin',
+      orgIds: ['org-1'],
+      orgRoles: new Map([['org-1', 'host_admin']]),
+    });
+    resourceSubmissionMocks.listAccessibleResourceSubmissions.mockResolvedValue([
+      {
+        id: 'form-1',
+        status: 'approved',
+      },
+    ]);
+    resourceSubmissionMocks.getResourceSubmissionDetailForActor.mockResolvedValue({
+      instance: {
+        id: 'form-1',
+        submission_id: 'submission-1',
+        status: 'approved',
+        submission_type: 'new_service',
+        title: 'Host listing',
+        updated_at: '2026-03-16T00:00:00.000Z',
+        submitted_at: '2026-03-16T00:00:00.000Z',
+        owner_organization_id: 'org-1',
+      },
+      draft: {
+        variant: 'listing',
+        channel: 'host',
+        organization: { name: 'Org Name' },
+        service: { name: 'Service Name' },
+        evidence: { sourceName: 'Host source' },
+      },
+      cards: [],
+      reviewMeta: {
+        submissionId: 'submission-1',
+        reverifyAt: '2026-06-14T00:00:00.000Z',
+      },
+      transitions: [],
+    });
+
+    const { GET } = await loadCollectionRoute();
+    const response = await GET(createRequest());
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      results: [
+        expect.objectContaining({
+          id: 'form-1',
+          submissionId: 'submission-1',
+          reviewMeta: expect.objectContaining({
+            reverifyAt: '2026-06-14T00:00:00.000Z',
+          }),
+        }),
+      ],
+    });
+  });
+
   it('creates an anonymous public draft and returns a public access token', async () => {
     resourceSubmissionMocks.createResourceSubmission.mockResolvedValue({
       instance: { id: 'form-1', submission_id: 'submission-1' },

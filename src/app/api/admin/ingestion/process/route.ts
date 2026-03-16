@@ -95,6 +95,15 @@ export async function POST(req: NextRequest) {
       candidateId: result.pipeline.candidateId,
       confidenceScore: result.pipeline.confidenceScore,
       confidenceTier: result.pipeline.confidenceTier,
+      publication: result.publication
+        ? {
+            published: result.publication.published,
+            reason: result.publication.reason,
+            serviceId: result.publication.serviceId,
+            organizationId: result.publication.organizationId,
+            locationId: result.publication.locationId,
+          }
+        : undefined,
       stages: result.pipeline.stages.map((s) => ({
         stage: s.stage,
         status: s.status,

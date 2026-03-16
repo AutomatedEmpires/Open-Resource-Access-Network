@@ -174,6 +174,8 @@ interface IngestionOverview {
     pausedFeeds: number;
     autoPublishFeeds: number;
     failedFeeds: number;
+    silentFeeds: number;
+    silentAutoPublishFeeds: number;
     runningFeeds: number;
     pendingSourceRecords: number;
     erroredSourceRecords: number;
@@ -195,11 +197,38 @@ interface IngestionOverview {
     underReview: number;
     pendingDecision: number;
     slaBreached: number;
+    silentReviewers: number;
+    stalledReviewerAssignments: number;
+  };
+  workforce: {
+    silentHostAdmins: number;
+    silentOwnerOrganizations: number;
+  };
+  incidents: {
+    reclaimedAssignments24h: number;
+    ownerOutreachAlerts24h: number;
+    integrityHeldServices: number;
+    integrityHolds24h: number;
+    recentActions: Array<{
+      kind: string;
+      title: string;
+      resourceType: string | null;
+      resourceId: string | null;
+      createdAt: string;
+    }>;
   };
   publication: {
     lifecycleEvents24h: number;
     exportSnapshots24h: number;
     approvedSubmissions24h: number;
+  };
+  health: {
+    degradedModeRecommended: boolean;
+    degradedModeSeverity: 'normal' | 'elevated' | 'degraded';
+    degradedModeReasons: string[];
+    freezeAutoPublish: boolean;
+    requireReviewOnly: boolean;
+    requireOwnerOutreach: boolean;
   };
 }
 
@@ -353,6 +382,12 @@ function OverviewCard({
       </dl>
     </div>
   );
+}
+
+function formatIncidentKind(kind: string): string {
+  if (kind === 'silent_reassignment') return 'Silent reassignment';
+  if (kind === 'owner_continuity') return 'Owner continuity';
+  return kind.replace(/_/g, ' ');
 }
 
 // ============================================================
@@ -599,11 +634,11 @@ function SourcesTab() {
           },
         }),
       });
-      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      const body = (await response.json().catch(() => null)) as { error?: string; queued?: boolean } | null;
       if (!response.ok) {
         throw new Error(body?.error ?? 'Failed to update source feed');
       }
-      success('Source feed controls updated.');
+      success(body?.queued ? 'Source feed controls queued for second approval.' : 'Source feed controls updated.');
       await fetchSources();
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Failed to update source feed';
@@ -701,8 +736,15 @@ function SourcesTab() {
           </Button>
         </div>
         {overviewError ? <FormAlert variant="error" message={overviewError} /> : null}
+        {overview?.health.degradedModeRecommended ? (
+          <FormAlert
+            variant="warning"
+            message={`Degraded-mode recommendation: ${overview.health.degradedModeReasons.join('; ')}`}
+          />
+        ) : null}
         {overview ? (
-          <div className="grid gap-4 xl:grid-cols-2">
+          <>
+            <div className="grid gap-4 xl:grid-cols-2">
             <OverviewCard
               title="Feed governance"
               subtitle="Structured source polling and assertion health."
@@ -710,6 +752,15 @@ function SourcesTab() {
                 { label: 'Active feeds', value: overview.feeds.activeFeeds },
                 { label: 'Paused feeds', value: overview.feeds.pausedFeeds },
                 { label: 'Failed feeds', value: overview.feeds.failedFeeds },
+              ]}
+            />
+            <OverviewCard
+              title="Feed resilience"
+              subtitle="Silent lanes and automation risk that can narrow publication safely."
+              metrics={[
+                { label: 'Silent feeds', value: overview.feeds.silentFeeds },
+                { label: 'Silent auto-publish', value: overview.feeds.silentAutoPublishFeeds },
+                { label: 'Auto-publish feeds', value: overview.feeds.autoPublishFeeds },
               ]}
             />
             <OverviewCard
@@ -731,6 +782,24 @@ function SourcesTab() {
               ]}
             />
             <OverviewCard
+              title="Human continuity"
+              subtitle="Silent reviewers and inactive owner coverage that can stall verification."
+              metrics={[
+                { label: 'Silent reviewers', value: overview.submissions.silentReviewers },
+                { label: 'Stalled assignments', value: overview.submissions.stalledReviewerAssignments },
+                { label: 'Silent owner orgs', value: overview.workforce.silentOwnerOrganizations },
+              ]}
+            />
+            <OverviewCard
+              title="Integrity interventions"
+              subtitle="Automatic reassignments, outreach triggers, and seeker-visible holds applied by policy."
+              metrics={[
+                { label: 'Reclaimed 24h', value: overview.incidents.reclaimedAssignments24h },
+                { label: 'Outreach alerts 24h', value: overview.incidents.ownerOutreachAlerts24h },
+                { label: 'Held services', value: overview.incidents.integrityHeldServices },
+              ]}
+            />
+            <OverviewCard
               title="Recent publication"
               subtitle="Signals that seeker-visible state has changed in the last 24 hours."
               metrics={[
@@ -739,7 +808,33 @@ function SourcesTab() {
                 { label: 'Snapshots 24h', value: overview.publication.exportSnapshots24h },
               ]}
             />
-          </div>
+            </div>
+            <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="mb-2">
+                <p className="text-sm font-semibold text-gray-900">Recent integrity actions</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Latest silent-reviewer reassignments and owner continuity interventions generated by the internal control loop.
+                </p>
+              </div>
+              {overview.incidents.recentActions.length === 0 ? (
+                <div className="rounded-lg bg-gray-50 px-3 py-4 text-sm text-gray-500">No recent integrity actions.</div>
+              ) : (
+                <div className="space-y-2">
+                  {overview.incidents.recentActions.map((action) => (
+                    <div key={`${action.kind}-${action.resourceId ?? 'none'}-${action.createdAt}`} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-gray-900">{action.title}</p>
+                        <span className="text-xs uppercase tracking-wide text-gray-500">{formatIncidentKind(action.kind)}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {action.resourceType ?? 'resource'} {action.resourceId ?? 'unknown'} • {new Date(action.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
         ) : overviewError ? null : (
           <div className="rounded-lg border border-dashed border-gray-300 bg-white px-4 py-6 text-sm text-gray-500">
             Overview data unavailable.

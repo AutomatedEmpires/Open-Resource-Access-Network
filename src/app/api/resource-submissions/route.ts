@@ -10,6 +10,7 @@ import { captureException } from '@/services/telemetry/sentry';
 import { isDatabaseConfigured } from '@/services/db/postgres';
 import {
   createResourceSubmission,
+  getResourceSubmissionDetailForActor,
   listAccessibleResourceSubmissions,
   setResourceSubmissionPublicAccessToken,
   type ResourceSubmissionDetail,
@@ -17,8 +18,6 @@ import {
 import {
   RESOURCE_SUBMISSION_CHANNELS,
   RESOURCE_SUBMISSION_VARIANTS,
-  computeResourceSubmissionCards,
-  normalizeResourceSubmissionDraft,
 } from '@/domain/resourceSubmission';
 import {
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -107,42 +106,12 @@ export async function GET(req: NextRequest) {
 
   try {
     const instances = await listAccessibleResourceSubmissions(authCtx);
-    const details = instances
-      .filter((instance) => (parsed.data.status ? instance.status === parsed.data.status : true))
-      .map((instance) => {
-        const draft = normalizeResourceSubmissionDraft(
-          (instance.form_data as Record<string, unknown>)?.draft,
-          instance.template_slug.includes('claim') ? 'claim' : 'listing',
-          instance.template_slug.includes('public') ? 'public' : 'host',
-        );
-
-        return buildListItem({
-          instance,
-          draft,
-          cards: computeResourceSubmissionCards(draft),
-          reviewMeta: {
-            submissionId: instance.submission_id,
-            status: instance.status,
-            submissionType: instance.submission_type,
-            targetType: instance.target_type,
-            targetId: instance.target_id,
-            submittedByUserId: instance.submitted_by_user_id,
-            submittedByLabel: null,
-            assignedToUserId: instance.assigned_to_user_id,
-            assignedToLabel: null,
-            reviewedAt: instance.reviewed_at,
-            resolvedAt: instance.resolved_at,
-            submittedAt: instance.submitted_at,
-            slaDeadline: instance.sla_deadline,
-            confidenceScore: null,
-            verificationConfidence: null,
-            reverifyAt: null,
-            reviewerNotes: instance.reviewer_notes,
-            sourceRecordId: null,
-          },
-          transitions: [],
-        });
-      });
+    const details = (await Promise.all(
+      instances.map((instance) => getResourceSubmissionDetailForActor(authCtx, instance.id)),
+    ))
+      .filter((detail): detail is ResourceSubmissionDetail => Boolean(detail))
+      .filter((detail) => (parsed.data.status ? detail.instance.status === parsed.data.status : true))
+      .map(buildListItem);
 
     return NextResponse.json({ results: details }, {
       headers: { 'Cache-Control': 'private, no-store' },

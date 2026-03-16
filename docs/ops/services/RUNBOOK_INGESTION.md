@@ -208,6 +208,21 @@ curl -X POST "https://<web-app>.azurewebsites.net/api/internal/confidence-regres
    -d '{"limit": 100}'
 ```
 
+### 211 feed diagnostics
+
+When the issue is specific to HSDS / 211 feed polling rather than the generic queue pipeline, generate a feed-state report from persisted telemetry:
+
+```bash
+npm run report:211-feed-status -- --feed-id <source-feed-id> --hours 72 --format markdown --out reports/211-feed-status-<date>.md
+```
+
+Review:
+
+- feed health classification and replay cursor state
+- recent source-record counts and normalization outcome
+- canonical entity counts tied to the feed via provenance
+- publication reason and decision-reason aggregates from the latest poll summary
+
 ### Restart function app
 
 ```bash

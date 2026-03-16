@@ -79,7 +79,7 @@ const RELEASES: Release[] = [
     date: 'May 2025',
     summary: 'Core API routes, database schema, and authentication foundation.',
     changes: [
-      { type: 'feat',    text: 'Database schema — organizations, services, locations, phones, schedules, eligibility, taxonomy, verification queue.' },
+      { type: 'feat',    text: 'Database schema — organizations, services, locations, phones, schedules, eligibility, taxonomy, and the initial legacy verification queue schema later superseded by the submissions pipeline.' },
       { type: 'feat',    text: 'API routes — /api/search, /api/chat, /api/host/*, /api/community/*, /api/oran-admin/* behind role middleware.' },
       { type: 'feat',    text: 'Chat API — streaming response pipeline with retrieval-first query expansion.' },
       { type: 'feat',    text: 'Import tooling — CSV / HSDS JSON ingestion scripts for seeding from 211 data exports.' },

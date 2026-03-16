@@ -113,8 +113,8 @@ const ORG_FEATURES: Array<{ icon: React.ElementType; title: string; body: string
 const PARTNER_FEATURES: Array<{ icon: React.ElementType; title: string; body: string }> = [
   {
     icon: CheckCircle2,
-    title: 'Structured verification queue',
-    body: 'Volunteer admins work through a curated queue of records flagged for confidence decay, unverified submissions, or local coverage gaps.',
+    title: 'Structured review queue',
+    body: 'Volunteer admins work through a curated review queue of records flagged for confidence decay, unverified submissions, or local coverage gaps.',
   },
   {
     icon: Database,

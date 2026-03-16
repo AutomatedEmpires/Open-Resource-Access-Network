@@ -96,10 +96,20 @@ export interface UpdateFormSubmissionOperationalInput {
   slaBreached?: boolean;
 }
 
+export interface CreateFormInstanceResult {
+  instance: FormInstance;
+  reusedExistingDraft: boolean;
+}
+
 function readObject(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function normalizeOptionalText(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
 function buildBlobStoragePrefix(
@@ -367,7 +377,7 @@ export async function getAccessibleFormInstance(
   return rows[0] ?? null;
 }
 
-export async function createFormInstance(input: CreateFormInstanceInput): Promise<FormInstance> {
+export async function createFormInstance(input: CreateFormInstanceInput): Promise<CreateFormInstanceResult> {
   return withTransaction(async (client) => {
     if (input.template.storage_scope === 'organization' && !input.ownerOrganizationId) {
       throw new Error('Organization-scoped templates require an owning organization');
@@ -377,6 +387,10 @@ export async function createFormInstance(input: CreateFormInstanceInput): Promis
       throw new Error('Community-scoped templates require a coverage zone');
     }
 
+    if ((input.recipientUserId || input.recipientOrganizationId) && !input.recipientRole) {
+      throw new Error('Recipient role is required when routing to a specific user or organization');
+    }
+
     const routing = extractRoutingConfig(readObject(input.template.schema_json), input.template);
     const recipientRole = input.recipientRole ?? routing.defaultRecipientRole ?? input.template.default_target_role ?? null;
     const recipientUserId = input.recipientUserId ?? routing.autoAssignUserId ?? null;
@@ -384,6 +398,96 @@ export async function createFormInstance(input: CreateFormInstanceInput): Promis
     const submissionType = input.submissionType ?? routing.submissionType ?? 'managed_form';
     const targetType = input.targetType ?? routing.targetType ?? 'form_template';
     const targetId = input.targetId ?? (targetType === 'form_template' ? input.template.id : null);
+    const title = normalizeOptionalText(input.title) ?? input.template.title;
+    const notes = normalizeOptionalText(input.notes);
+    const formData = input.formData ?? {};
+    const attachmentManifest = input.attachmentManifest ?? [];
+    const payload = {
+      template_id: input.template.id,
+      template_version: input.template.version,
+      storage_scope: input.template.storage_scope,
+      routing,
+      ...readObject(input.payload),
+    };
+    const evidence = input.evidence ?? [];
+    const createKey = JSON.stringify({
+      submittedByUserId: input.submittedByUserId,
+      templateId: input.template.id,
+      storageScope: input.template.storage_scope,
+      ownerOrganizationId: input.ownerOrganizationId ?? null,
+      coverageZoneId: input.coverageZoneId ?? null,
+      recipientRole,
+      recipientUserId,
+      recipientOrganizationId: input.recipientOrganizationId ?? null,
+      submissionType,
+      targetType,
+      targetId,
+      serviceId: input.serviceId ?? null,
+      title,
+      notes,
+      priority,
+      formData,
+      attachmentManifest,
+      payload,
+      evidence,
+    });
+
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [createKey]);
+
+    const existingDraft = await client.query<FormInstance>(
+      `${INSTANCE_SELECT}
+       WHERE s.status = 'draft'
+         AND s.submitted_by_user_id = $1
+         AND fi.template_id = $2
+         AND fi.storage_scope = $3
+         AND fi.owner_organization_id IS NOT DISTINCT FROM $4
+         AND fi.coverage_zone_id IS NOT DISTINCT FROM $5
+         AND fi.recipient_role IS NOT DISTINCT FROM $6
+         AND fi.recipient_user_id IS NOT DISTINCT FROM $7
+         AND fi.recipient_organization_id IS NOT DISTINCT FROM $8
+         AND s.submission_type = $9
+         AND s.target_type = $10
+         AND s.target_id IS NOT DISTINCT FROM $11
+         AND s.service_id IS NOT DISTINCT FROM $12
+         AND s.assigned_to_user_id IS NOT DISTINCT FROM $7
+         AND s.title = $13
+         AND s.notes IS NOT DISTINCT FROM $14
+         AND s.priority = $15
+         AND fi.form_data = $16::jsonb
+         AND fi.attachment_manifest = $17::jsonb
+         AND s.payload = $18::jsonb
+         AND s.evidence = $19::jsonb
+       ORDER BY s.created_at DESC
+       LIMIT 1`,
+      [
+        input.submittedByUserId,
+        input.template.id,
+        input.template.storage_scope,
+        input.ownerOrganizationId ?? null,
+        input.coverageZoneId ?? null,
+        recipientRole,
+        recipientUserId,
+        input.recipientOrganizationId ?? null,
+        submissionType,
+        targetType,
+        targetId,
+        input.serviceId ?? null,
+        title,
+        notes,
+        priority,
+        JSON.stringify(formData),
+        JSON.stringify(attachmentManifest),
+        JSON.stringify(payload),
+        JSON.stringify(evidence),
+      ],
+    );
+
+    if (existingDraft.rows[0]) {
+      return {
+        instance: existingDraft.rows[0],
+        reusedExistingDraft: true,
+      };
+    }
 
     const submissionRows = await client.query<{ id: string }>(
       `INSERT INTO submissions
@@ -397,16 +501,10 @@ export async function createFormInstance(input: CreateFormInstanceInput): Promis
         targetId,
         input.submittedByUserId,
         recipientUserId,
-        input.title ?? input.template.title,
-        input.notes ?? null,
-        JSON.stringify({
-          template_id: input.template.id,
-          template_version: input.template.version,
-          storage_scope: input.template.storage_scope,
-          routing,
-          ...readObject(input.payload),
-        }),
-        JSON.stringify(input.evidence ?? []),
+        title,
+        notes,
+        JSON.stringify(payload),
+        JSON.stringify(evidence),
         priority,
         input.serviceId ?? null,
       ],
@@ -438,8 +536,8 @@ export async function createFormInstance(input: CreateFormInstanceInput): Promis
         recipientUserId,
         input.recipientOrganizationId ?? null,
         blobStoragePrefix,
-        JSON.stringify(input.formData ?? {}),
-        JSON.stringify(input.attachmentManifest ?? []),
+        JSON.stringify(formData),
+        JSON.stringify(attachmentManifest),
       ],
     );
 
@@ -449,7 +547,10 @@ export async function createFormInstance(input: CreateFormInstanceInput): Promis
       [submissionId],
     );
 
-    return result.rows[0]!;
+    return {
+      instance: result.rows[0]!,
+      reusedExistingDraft: false,
+    };
   });
 }
 

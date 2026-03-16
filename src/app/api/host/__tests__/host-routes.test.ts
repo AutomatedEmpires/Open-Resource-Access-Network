@@ -22,6 +22,16 @@ const hostPortalIntakeMocks = vi.hoisted(() => ({
   createHostPortalSourceAssertion: vi.fn(),
   queueServiceVerificationSubmission: vi.fn(),
 }));
+const resourceSubmissionMocks = vi.hoisted(() => ({
+  createResourceSubmission: vi.fn(),
+  getResourceSubmissionDetailForActor: vi.fn(),
+}));
+const submissionExecutionMocks = vi.hoisted(() => ({
+  processSubmittedResourceSubmission: vi.fn(),
+}));
+const workflowMocks = vi.hoisted(() => ({
+  applySla: vi.fn(),
+}));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
@@ -34,10 +44,10 @@ vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
 }));
 vi.mock('@/services/auth', () => authMocks);
-vi.mock('@/services/workflow/engine', () => ({
-  applySla: vi.fn(),
-}));
+vi.mock('@/services/workflow/engine', () => workflowMocks);
 vi.mock('@/services/ingestion/hostPortalIntake', () => hostPortalIntakeMocks);
+vi.mock('@/services/resourceSubmissions/service', () => resourceSubmissionMocks);
+vi.mock('@/services/resourceSubmissions/submissionExecution', () => submissionExecutionMocks);
 
 type JsonRequestOptions = {
   search?: string;
@@ -136,6 +146,39 @@ beforeEach(() => {
     sourceRecordId: 'source-record-1',
   });
   hostPortalIntakeMocks.queueServiceVerificationSubmission.mockResolvedValue('submission-1');
+  resourceSubmissionMocks.createResourceSubmission.mockResolvedValue({
+    instance: {
+      id: 'form-1',
+      submission_id: 'submission-1',
+    },
+    draft: { variant: 'listing', channel: 'host' },
+    cards: [],
+    reviewMeta: {
+      submissionId: 'submission-1',
+      targetId: null,
+      sourceRecordId: 'source-record-1',
+    },
+    transitions: [],
+  });
+  resourceSubmissionMocks.getResourceSubmissionDetailForActor.mockResolvedValue({
+    instance: {
+      id: 'form-1',
+      submission_id: 'submission-1',
+      status: 'approved',
+    },
+    draft: { variant: 'listing', channel: 'host' },
+    cards: [],
+    reviewMeta: {
+      submissionId: 'submission-1',
+      targetId: 'svc-live-1',
+      sourceRecordId: 'source-record-1',
+    },
+    transitions: [],
+  });
+  submissionExecutionMocks.processSubmittedResourceSubmission.mockResolvedValue({
+    success: true,
+    autoPublished: true,
+  });
 
   captureExceptionMock.mockResolvedValue(undefined);
 });
@@ -574,6 +617,55 @@ describe('host services collection route', () => {
     await expect(response.json()).resolves.toEqual({
       error: 'Cannot add services to a defunct organization',
     });
+  });
+
+  it('creates host services through the shared resource submission flow', async () => {
+    authMocks.shouldEnforceAuth.mockReturnValue(true);
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: 'user-1',
+      role: 'host_admin',
+      orgIds: ['org-1'],
+      orgRoles: new Map([['org-1', 'host_admin']]),
+    });
+    authMocks.requireOrgAccess.mockReturnValue(true);
+    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'org-1', status: 'active' }]);
+    const { POST } = await loadServicesCollectionRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          organizationId: '11111111-1111-4111-8111-111111111111',
+          name: 'Shelter Intake',
+          description: 'Walk-in intake service',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({
+      detail: expect.any(Object),
+      queuedForReview: false,
+      published: true,
+      submissionId: 'submission-1',
+      serviceId: 'svc-live-1',
+      sourceRecordId: 'source-record-1',
+      message: 'Service published and added to your live listings.',
+    });
+    expect(resourceSubmissionMocks.createResourceSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variant: 'listing',
+        channel: 'host',
+        ownerOrganizationId: '11111111-1111-4111-8111-111111111111',
+        submittedByUserId: 'user-1',
+      }),
+    );
+    expect(submissionExecutionMocks.processSubmittedResourceSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: 'user-1',
+        actorRole: 'host_admin',
+        allowAutoApprove: true,
+      }),
+    );
   });
 });
 
@@ -1848,19 +1940,38 @@ describe('host claim route', () => {
       orgIds: [],
       orgRoles: new Map(),
     });
-    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: {
-      query: ReturnType<typeof vi.fn>;
-    }) => Promise<unknown>) => {
-      const client = {
-        query: vi
-          .fn()
-          .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })    // org INSERT
-          .mockResolvedValueOnce({ rows: [{ id: 'svc-1' }] })    // service INSERT
-          .mockResolvedValueOnce({ rows: [{ id: 'sub-1' }] })    // submission INSERT RETURNING id
-          .mockResolvedValueOnce({ rows: [] })                     // transition INSERT
-          .mockResolvedValueOnce({ rows: [] }),                    // notification INSERT
-      };
-      return callback(client);
+    resourceSubmissionMocks.createResourceSubmission.mockResolvedValueOnce({
+      instance: {
+        id: 'claim-form-1',
+        submission_id: 'claim-sub-1',
+      },
+      draft: { variant: 'claim', channel: 'host' },
+      cards: [],
+      reviewMeta: {
+        submissionId: 'claim-sub-1',
+        targetId: null,
+        sourceRecordId: 'source-record-1',
+      },
+      transitions: [],
+    });
+    resourceSubmissionMocks.getResourceSubmissionDetailForActor.mockResolvedValueOnce({
+      instance: {
+        id: 'claim-form-1',
+        submission_id: 'claim-sub-1',
+        status: 'needs_review',
+      },
+      draft: { variant: 'claim', channel: 'host' },
+      cards: [],
+      reviewMeta: {
+        submissionId: 'claim-sub-1',
+        targetId: null,
+        sourceRecordId: 'source-record-1',
+      },
+      transitions: [],
+    });
+    submissionExecutionMocks.processSubmittedResourceSubmission.mockResolvedValueOnce({
+      success: true,
+      autoPublished: false,
     });
     const { POST } = await loadClaimRoute();
 
@@ -1876,10 +1987,19 @@ describe('host claim route', () => {
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({
       success: true,
-      organizationId: 'org-1',
-      serviceId: 'svc-1',
+      queuedForReview: true,
+      submissionId: 'claim-sub-1',
+      instanceId: 'claim-form-1',
+      detail: expect.any(Object),
       message: 'Claim submitted. A community administrator will review your request.',
     });
+    expect(resourceSubmissionMocks.createResourceSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variant: 'claim',
+        channel: 'host',
+        submittedByUserId: 'user-1',
+      }),
+    );
   });
 
   it('returns 405 for GET requests', async () => {

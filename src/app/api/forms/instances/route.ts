@@ -15,6 +15,8 @@ import {
   getVisibleFormTemplateAudiences,
   deriveFormFieldDefinitions,
   computeVisibleFields,
+  extractRoutingConfig,
+  validateAttachmentManifest,
   validateFormData,
 } from '@/domain/forms';
 import {
@@ -37,11 +39,26 @@ const CreateInstanceSchema = z.object({
   recipientRole: z.enum(FORM_RECIPIENT_ROLES).nullable().optional(),
   recipientUserId: z.string().min(1).max(200).nullable().optional(),
   recipientOrganizationId: z.string().uuid().nullable().optional(),
-  title: z.string().max(200).nullable().optional(),
-  notes: z.string().max(5000).nullable().optional(),
+  title: z.string().trim().max(200).nullable().optional(),
+  notes: z.string().trim().max(5000).nullable().optional(),
   formData: z.record(z.string(), z.unknown()).default({}),
   attachmentManifest: z.array(z.unknown()).default([]),
+}).superRefine((value, ctx) => {
+  if ((value.recipientUserId || value.recipientOrganizationId) && !value.recipientRole) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['recipientRole'],
+      message: 'Recipient role is required when routing to a specific user or organization',
+    });
+  }
 });
+
+const MAX_FORM_DATA_BYTES = 50_000;
+const MAX_ATTACHMENT_MANIFEST_BYTES = 25_000;
+
+function measureJsonBytes(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value), 'utf8');
+}
 
 function getIp(req: NextRequest): string {
   return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
@@ -159,6 +176,28 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const formDataBytes = measureJsonBytes(parsed.data.formData);
+    if (formDataBytes > MAX_FORM_DATA_BYTES) {
+      return NextResponse.json(
+        { error: 'Form data exceeds the maximum supported payload size' },
+        { status: 400 },
+      );
+    }
+
+    const attachmentManifestBytes = measureJsonBytes(parsed.data.attachmentManifest);
+    if (attachmentManifestBytes > MAX_ATTACHMENT_MANIFEST_BYTES) {
+      return NextResponse.json(
+        { error: 'Attachment manifest exceeds the maximum supported payload size' },
+        { status: 400 },
+      );
+    }
+
+    const routing = extractRoutingConfig(template.schema_json ?? {}, template);
+    const attachmentError = validateAttachmentManifest(parsed.data.attachmentManifest, routing);
+    if (attachmentError) {
+      return NextResponse.json({ error: attachmentError }, { status: 400 });
+    }
+
     // Validate formData against template field definitions
     const fields = deriveFormFieldDefinitions(
       template.schema_json ?? {},
@@ -167,7 +206,7 @@ export async function POST(req: NextRequest) {
     const visibleFields = computeVisibleFields(fields, parsed.data.formData);
     const validationErrors = validateFormData(fields, parsed.data.formData, visibleFields);
 
-    const instance = await createFormInstance({
+    const { instance, reusedExistingDraft } = await createFormInstance({
       template,
       submittedByUserId: authCtx.userId,
       ownerOrganizationId: parsed.data.ownerOrganizationId ?? null,
@@ -183,8 +222,12 @@ export async function POST(req: NextRequest) {
 
     const hasWarnings = Object.keys(validationErrors).length > 0;
     return NextResponse.json(
-      { instance, ...(hasWarnings ? { validationWarnings: validationErrors } : {}) },
-      { status: 201 },
+      {
+        instance,
+        ...(hasWarnings ? { validationWarnings: validationErrors } : {}),
+        ...(reusedExistingDraft ? { reusedExistingDraft: true } : {}),
+      },
+      { status: reusedExistingDraft ? 200 : 201 },
     );
   } catch (error) {
     await captureException(error, { feature: 'api_forms_instances_create' });

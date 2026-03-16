@@ -7,24 +7,25 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { executeQuery, withTransaction, isDatabaseConfigured } from '@/services/db/postgres';
+import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, isOranAdmin, requireOrgAccess } from '@/services/auth';
-import { applySla } from '@/services/workflow/engine';
 import {
-  createHostPortalSourceAssertion,
-  queueServiceVerificationSubmission,
-  type HostPortalDayScheduleInput,
-  type HostPortalPhoneInput,
-  type HostServiceRequestedChanges,
-} from '@/services/ingestion/hostPortalIntake';
+  createResourceSubmission,
+  getResourceSubmissionDetailForActor,
+} from '@/services/resourceSubmissions/service';
+import { processSubmittedResourceSubmission } from '@/services/resourceSubmissions/submissionExecution';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   DEFAULT_PAGE_SIZE,
 } from '@/domain/constants';
+import {
+  createEmptyResourceSubmissionDraft,
+  type ResourceSubmissionDraft,
+} from '@/domain/resourceSubmission';
 import type { Service } from '@/domain/types';
 
 // ============================================================
@@ -77,8 +78,9 @@ function getIp(req: NextRequest): string {
   return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
 }
 
-function buildRequestedChanges(
+function buildCreateDraft(
   input: {
+    organizationId: string;
     name: string;
     description?: string;
     url?: string;
@@ -89,27 +91,59 @@ function buildRequestedChanges(
     fees?: string;
     accreditations?: string;
     licenses?: string;
-    phones?: HostPortalPhoneInput[];
-    schedule?: HostPortalDayScheduleInput[];
+    phones?: Array<{
+      number: string;
+      extension?: string;
+      type: 'voice' | 'fax' | 'text' | 'hotline' | 'tty';
+      description?: string;
+    }>;
+    schedule?: Array<{
+      day: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
+      opens: string;
+      closes: string;
+      closed: boolean;
+    }>;
   },
-): HostServiceRequestedChanges {
-  const requested: HostServiceRequestedChanges = {
+): ResourceSubmissionDraft {
+  const draft = createEmptyResourceSubmissionDraft('listing', 'host');
+  draft.ownerOrganizationId = input.organizationId;
+  draft.service = {
+    ...draft.service,
     name: input.name,
+    description: input.description ?? '',
+    url: input.url ?? '',
+    email: input.email ?? '',
+    interpretationServices: input.interpretationServices ?? '',
+    applicationProcess: input.applicationProcess ?? '',
+    waitTime: input.waitTime ?? '',
+    fees: input.fees ?? '',
+    accreditations: input.accreditations ?? '',
+    licenses: input.licenses ?? '',
+    phones: (input.phones ?? []).map((phone) => ({
+      number: phone.number,
+      extension: phone.extension ?? '',
+      type: phone.type,
+      description: phone.description ?? '',
+    })),
+  };
+  draft.evidence = {
+    ...draft.evidence,
+    sourceName: 'Host service create',
+    sourceUrl: input.url ?? '',
+    contactEmail: input.email ?? '',
+    submitterRelationship: 'Organization operator',
+    notes: 'Service submitted via host portal.',
   };
 
-  if (input.description !== undefined) requested.description = input.description;
-  if (input.url !== undefined) requested.url = input.url;
-  if (input.email !== undefined) requested.email = input.email;
-  if (input.interpretationServices !== undefined) requested.interpretationServices = input.interpretationServices;
-  if (input.applicationProcess !== undefined) requested.applicationProcess = input.applicationProcess;
-  if (input.waitTime !== undefined) requested.waitTime = input.waitTime;
-  if (input.fees !== undefined) requested.fees = input.fees;
-  if (input.accreditations !== undefined) requested.accreditations = input.accreditations;
-  if (input.licenses !== undefined) requested.licenses = input.licenses;
-  if (input.phones !== undefined) requested.phones = input.phones;
-  if (input.schedule !== undefined) requested.schedule = input.schedule;
+  if (input.schedule?.some((day) => !day.closed)) {
+    draft.locations[0] = {
+      ...draft.locations[0],
+      name: 'Primary service location',
+      schedule: input.schedule.map((day) => ({ ...day })),
+    };
+  }
 
-  return requested;
+  return draft;
 }
 
 // ============================================================
@@ -286,34 +320,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Cannot add services to a defunct organization' }, { status: 400 });
     }
 
-    const result = await withTransaction(async (client) => {
-      // 1. Create the service
-      const svcRows = await client.query<Service>(
-        `INSERT INTO services
-           (organization_id, name, description, url, email, status,
-            interpretation_services, application_process, wait_time, fees,
-            accreditations, licenses, created_by_user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-         RETURNING *`,
-        [
-          d.organizationId,
-          d.name,
-          d.description ?? null,
-          d.url ?? null,
-          d.email ?? null,
-          'inactive',
-          d.interpretationServices ?? null,
-          d.applicationProcess ?? null,
-          d.waitTime ?? null,
-          d.fees ?? null,
-          d.accreditations ?? null,
-          d.licenses ?? null,
-          authCtx.userId,
-        ],
-      );
-      const service = svcRows.rows[0];
-
-      const requestedChanges = buildRequestedChanges({
+    const detail = await createResourceSubmission({
+      variant: 'listing',
+      channel: 'host',
+      submittedByUserId: authCtx.userId,
+      actorRole: authCtx.role,
+      ownerOrganizationId: d.organizationId,
+      title: `Service listing: ${d.name}`,
+      notes: 'Service submitted via host portal.',
+      draft: buildCreateDraft({
+        organizationId: d.organizationId,
         name: d.name,
         description: d.description,
         url: d.url,
@@ -326,81 +342,33 @@ export async function POST(req: NextRequest) {
         licenses: d.licenses,
         phones: d.phones,
         schedule: d.schedule,
-      });
-
-      const assertion = await createHostPortalSourceAssertion(client, {
-        actorUserId: authCtx.userId,
-        actorRole: authCtx.role,
-        recordType: 'host_service_create',
-        recordId: service.id,
-        canonicalSourceUrl: `oran://host-portal/services/${service.id}`,
-        payload: {
-          organizationId: d.organizationId,
-          serviceId: service.id,
-          requestedChanges,
-        },
-      });
-
-      const submissionId = await queueServiceVerificationSubmission(client, {
-        serviceId: service.id,
-        submittedByUserId: authCtx.userId,
-        actorRole: authCtx.role,
-        title: `Service verification: ${service.name}`,
-        notes: 'Service submitted via host portal.',
-        payload: {
-          flow: 'host_portal',
-          changeType: 'host_service_create',
-          sourceRecordId: assertion.sourceRecordId,
-          organizationId: d.organizationId,
-          serviceId: service.id,
-          currentStatus: service.status,
-          requestedChanges,
-        },
-      });
-
-      // 2. Insert phones if provided
-      if (d.phones && d.phones.length > 0) {
-        for (const ph of d.phones) {
-          await client.query(
-            `INSERT INTO phones (service_id, number, extension, type, description)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [service.id, ph.number, ph.extension ?? null, ph.type === 'text' ? 'sms' : ph.type, ph.description ?? null],
-          );
-        }
-      }
-
-      // 3. Insert schedule rows for non-closed days
-      if (d.schedule && d.schedule.length > 0) {
-        for (const ds of d.schedule) {
-          if (ds.closed) continue;
-          await client.query(
-            `INSERT INTO schedules (service_id, days, opens_at, closes_at)
-             VALUES ($1, $2, $3, $4)`,
-            [service.id, [ds.day], ds.opens, ds.closes],
-          );
-        }
-      }
-
-      return {
-        service,
-        submissionId,
-        sourceRecordId: assertion.sourceRecordId,
-      };
+      }),
     });
 
-    try {
-      await applySla(result.submissionId, 'service_verification');
-    } catch {
-      // SLA is best-effort.
+    const processed = await processSubmittedResourceSubmission({
+      detail,
+      actorUserId: authCtx.userId,
+      actorRole: authCtx.role,
+      allowAutoApprove: true,
+    });
+    if (!processed.success) {
+      return NextResponse.json({ error: processed.error ?? 'Unable to create service submission.' }, { status: 409 });
     }
+
+    const refreshed = await getResourceSubmissionDetailForActor(authCtx, detail.instance.id);
+    const responseDetail = refreshed ?? detail;
 
     return NextResponse.json(
       {
-        ...result.service,
-        queuedForReview: true,
-        submissionId: result.submissionId,
-        sourceRecordId: result.sourceRecordId,
-        message: 'Service submitted for review. It will publish after approval.',
+        detail: responseDetail,
+        queuedForReview: !processed.autoPublished,
+        published: processed.autoPublished,
+        submissionId: detail.instance.submission_id,
+        serviceId: processed.autoPublished ? responseDetail.reviewMeta.targetId : null,
+        sourceRecordId: responseDetail.reviewMeta.sourceRecordId,
+        message: processed.autoPublished
+          ? 'Service published and added to your live listings.'
+          : 'Service submitted for review. It will publish after approval.',
       },
       { status: 201 },
     );

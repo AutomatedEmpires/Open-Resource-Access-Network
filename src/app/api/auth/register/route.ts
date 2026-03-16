@@ -16,6 +16,17 @@ import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { captureException } from '@/services/telemetry/sentry';
 import { isCredentialsAuthEnabled } from '@/lib/auth';
 
+const COMMON_WEAK_PASSWORDS = new Set([
+  'password',
+  'password1',
+  'password123',
+  'qwerty123',
+  'letmein123',
+  'welcome123',
+  'admin123',
+  'changeme123',
+]);
+
 // ============================================================
 // REQUEST SCHEMA
 // ============================================================
@@ -23,24 +34,26 @@ import { isCredentialsAuthEnabled } from '@/lib/auth';
 const RegisterSchema = z.object({
   username: z
     .string()
+    .trim()
     .min(3, 'Username must be at least 3 characters')
     .max(32, 'Username must be 32 characters or fewer')
     .regex(/^[a-zA-Z0-9._-]+$/, 'Username may only use letters, numbers, dots, dashes, or underscores')
-    .transform((value) => value.trim().toLowerCase()),
+    .transform((value) => value.toLowerCase()),
   email: z
     .string()
+    .trim()
     .email('Invalid email address')
     .max(255)
-    .transform((e) => e.trim().toLowerCase()),
+    .transform((e) => e.toLowerCase()),
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
     .max(128),
   displayName: z
     .string()
+    .trim()
     .min(1, 'Display name is required')
-    .max(100)
-    .transform((n) => n.trim()),
+    .max(100),
   phone: z
     .string()
     .max(32)
@@ -60,6 +73,46 @@ const RegisterSchema = z.object({
       return hasLeadingPlus ? `+${digits}` : digits;
     })
     .refine((phone) => phone === null || phone.length >= 7, 'Invalid phone number'),
+  website: z.string().trim().max(200).optional().default(''),
+}).superRefine((value, ctx) => {
+  const password = value.password;
+  const lowerPassword = password.toLowerCase();
+
+  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['password'],
+      message: 'Password must include uppercase, lowercase, and numeric characters',
+    });
+  }
+
+  if (COMMON_WEAK_PASSWORDS.has(lowerPassword)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['password'],
+      message: 'Password is too common. Choose a stronger password',
+    });
+  }
+
+  const derivedTokens = new Set<string>();
+  derivedTokens.add(value.username);
+  derivedTokens.add(value.email.split('@')[0] ?? '');
+  for (const token of value.displayName.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (token.length >= 3) {
+      derivedTokens.add(token);
+    }
+  }
+
+  for (const token of derivedTokens) {
+    if (token.length >= 3 && lowerPassword.includes(token)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['password'],
+        message: 'Password cannot contain your username, email name, or display name',
+      });
+      break;
+    }
+  }
 });
 
 // ============================================================
@@ -115,14 +168,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse and validate body
-    const body: unknown = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+
     const parsed = RegisterSchema.safeParse(body);
     if (!parsed.success) {
       const firstError = parsed.error.issues[0]?.message ?? 'Invalid input';
       return NextResponse.json({ error: firstError }, { status: 400 });
     }
 
-    const { username, email, password, displayName, phone } = parsed.data;
+    const { username, email, password, displayName, phone, website } = parsed.data;
+
+    if (website) {
+      return NextResponse.json(
+        { success: true, message: 'Account created. You can now sign in.' },
+        { status: 201 },
+      );
+    }
 
     const pool = getPgPool();
 

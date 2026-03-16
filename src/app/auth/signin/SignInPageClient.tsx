@@ -102,6 +102,26 @@ const ERROR_MESSAGES: Record<string, string> = {
   AccessDenied: 'Access denied. You may not have permission to sign in.',
 };
 
+interface RegistrationPayloadInput {
+  username: string;
+  email: string;
+  password: string;
+  displayName: string;
+  phone: string;
+  website: string;
+}
+
+function buildRegistrationPayload(input: RegistrationPayloadInput) {
+  return {
+    username: input.username,
+    email: input.email,
+    password: input.password,
+    displayName: input.displayName,
+    phone: input.phone || undefined,
+    website: input.website,
+  };
+}
+
 // ============================================================
 // PROVIDER LOGOS
 // ============================================================
@@ -158,6 +178,7 @@ function SignInContent() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [phone, setPhone] = useState('');
+  const [website, setWebsite] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -243,7 +264,9 @@ function SignInContent() {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, password, displayName, phone: phone || undefined }),
+        body: JSON.stringify(
+          buildRegistrationPayload({ username, email, password, displayName, phone, website }),
+        ),
       });
 
       const data = await res.json();
@@ -432,6 +455,23 @@ function SignInContent() {
                 description={isRegistering ? 'Enter the account details ORAN will use for this sign-in path.' : 'Use your email address, username, or phone number with your password to continue.'}
               >
                 {isRegistering && (
+                  <div
+                    aria-hidden="true"
+                    style={{ position: 'absolute', left: '-10000px', top: 'auto', width: '1px', height: '1px', overflow: 'hidden' }}
+                  >
+                    <label htmlFor="website">Website</label>
+                    <input
+                      id="website"
+                      type="text"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      value={website}
+                      onChange={(e) => setWebsite(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                {isRegistering && (
                   <FormField id="displayName" label="Display Name" required>
                     <input
                       id="displayName"
@@ -618,7 +658,7 @@ function SignInContent() {
 // EXPORTS
 // ============================================================
 
-export { detectPath, PATHS, ERROR_MESSAGES };
+export { buildRegistrationPayload, detectPath, PATHS, ERROR_MESSAGES };
 export type { UserPath };
 
 export default function SignInPage() {

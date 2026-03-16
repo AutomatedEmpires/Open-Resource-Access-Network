@@ -58,6 +58,29 @@ describe('POST /api/auth/register', () => {
     const pool = dbMocks.getPgPool.mock.results[0].value;
     expect(pool.query).toHaveBeenCalledTimes(2);
     expect(bcryptMocks.hash).toHaveBeenCalledWith('StrongPass123', 12);
+    expect(pool.query.mock.calls[0][1]).toEqual(['test@example.com', 'test-user', '1234567890']);
+    expect(pool.query.mock.calls[1][1]).toEqual([
+      'uuid-1',
+      'Test User',
+      'test-user',
+      'test@example.com',
+      'hashed-password',
+      '1234567890',
+    ]);
+  });
+
+  it('returns 400 for invalid JSON bodies', async () => {
+    const headers = new Headers();
+    headers.set('x-forwarded-for', '9.8.7.6');
+
+    const { POST } = await import('../route');
+    const res = await POST({
+      headers,
+      json: vi.fn().mockRejectedValue(new Error('bad json')),
+    } as never);
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: 'Invalid JSON body' });
   });
 
   it('returns 503 when database is unavailable', async () => {
@@ -100,6 +123,64 @@ describe('POST /api/auth/register', () => {
     const res = await POST(createRequest({ email: 'not-email' }));
 
     expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for whitespace-only display names', async () => {
+    const { POST } = await import('../route');
+    const res = await POST(createRequest({
+      username: 'user-one',
+      email: 'user@example.com',
+      password: 'StrongPass123',
+      displayName: '   ',
+    }));
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: 'Display name is required' });
+  });
+
+  it('returns 400 for passwords missing character class diversity', async () => {
+    const { POST } = await import('../route');
+    const res = await POST(createRequest({
+      username: 'user-one',
+      email: 'user@example.com',
+      password: 'alllowercase1',
+      displayName: 'User One',
+    }));
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: 'Password must include uppercase, lowercase, and numeric characters',
+    });
+  });
+
+  it('returns 400 for passwords derived from account identity', async () => {
+    const { POST } = await import('../route');
+    const res = await POST(createRequest({
+      username: 'caseworker',
+      email: 'caseworker@example.com',
+      password: 'Caseworker2026',
+      displayName: 'Case Worker',
+    }));
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: 'Password cannot contain your username, email name, or display name',
+    });
+  });
+
+  it('swallows honeypot submissions without creating an account', async () => {
+    const { POST } = await import('../route');
+    const res = await POST(createRequest({
+      username: 'test-user',
+      email: 'test@example.com',
+      password: 'StrongPass123',
+      displayName: 'Test User',
+      website: 'https://spam.invalid',
+    }));
+
+    expect(res.status).toBe(201);
+    expect(dbMocks.getPgPool).not.toHaveBeenCalled();
+    expect(bcryptMocks.hash).not.toHaveBeenCalled();
   });
 
   it('returns 409 for duplicate email', async () => {

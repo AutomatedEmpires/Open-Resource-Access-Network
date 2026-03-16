@@ -144,7 +144,7 @@ beforeEach(() => {
     total: 1,
   });
   vaultMocks.getFormTemplateById.mockResolvedValue(makeTemplate());
-  vaultMocks.createFormInstance.mockResolvedValue(makeInstance());
+  vaultMocks.createFormInstance.mockResolvedValue({ instance: makeInstance(), reusedExistingDraft: false });
 });
 
 describe('GET /api/forms/instances', () => {
@@ -251,5 +251,96 @@ describe('POST /api/forms/instances', () => {
         recipientRole: 'community_admin',
       }),
     );
+  });
+
+  it('reuses an existing matching draft instead of creating a duplicate draft', async () => {
+    vaultMocks.createFormInstance.mockResolvedValueOnce({
+      instance: makeInstance(),
+      reusedExistingDraft: true,
+    });
+
+    const { POST } = await loadRoute();
+    const response = await POST(
+      createPostRequest({
+        templateId: TEMPLATE_ID,
+        ownerOrganizationId: ORGANIZATION_ID,
+        formData: {},
+        attachmentManifest: [],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        reusedExistingDraft: true,
+        instance: expect.objectContaining({ id: INSTANCE_ID }),
+      }),
+    );
+  });
+
+  it('rejects specific recipient routing without a recipient role', async () => {
+    const { POST } = await loadRoute();
+    const response = await POST(
+      createPostRequest({
+        templateId: TEMPLATE_ID,
+        ownerOrganizationId: ORGANIZATION_ID,
+        recipientUserId: 'reviewer-1',
+        formData: {},
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        error: expect.objectContaining({
+          fieldErrors: expect.objectContaining({
+            recipientRole: ['Recipient role is required when routing to a specific user or organization'],
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('rejects attachment manifests when the template disables attachments', async () => {
+    vaultMocks.getFormTemplateById.mockResolvedValueOnce(
+      makeTemplate({
+        schema_json: {
+          fields: [{ key: 'summary', label: 'Summary', type: 'textarea' }],
+          routing: { attachmentsEnabled: false },
+        },
+      }),
+    );
+
+    const { POST } = await loadRoute();
+    const response = await POST(
+      createPostRequest({
+        templateId: TEMPLATE_ID,
+        ownerOrganizationId: ORGANIZATION_ID,
+        formData: {},
+        attachmentManifest: [{ mimeType: 'application/pdf', url: 'https://example.test/file.pdf' }],
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Attachments are not allowed for this form template',
+    });
+  });
+
+  it('rejects oversized form payloads before draft creation', async () => {
+    const { POST } = await loadRoute();
+    const response = await POST(
+      createPostRequest({
+        templateId: TEMPLATE_ID,
+        ownerOrganizationId: ORGANIZATION_ID,
+        formData: { summary: 'A'.repeat(60_000) },
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Form data exceeds the maximum supported payload size',
+    });
+    expect(vaultMocks.createFormInstance).not.toHaveBeenCalled();
   });
 });

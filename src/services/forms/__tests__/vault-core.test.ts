@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FormTemplate } from '@/domain/forms';
 import type { OranRole } from '@/domain/types';
 
 /* ──────────────────────────────────────────────────────
@@ -35,7 +36,7 @@ function makeAuthCtx(role: OranRole = 'oran_admin', userId = 'user-admin-1') {
   };
 }
 
-function makeTemplate(overrides: Record<string, unknown> = {}) {
+function makeTemplate(overrides: Record<string, unknown> = {}): FormTemplate {
   return {
     id: TEMPLATE_ID,
     slug: 'host-intake',
@@ -317,6 +318,27 @@ describe('listAccessibleFormInstances', () => {
   });
 });
 
+describe('createFormInstance', () => {
+  it('rejects explicit recipient targets without a recipient role', async () => {
+    dbMocks.withTransaction.mockImplementation(async (callback) => {
+      const query = vi.fn();
+      return callback({ query });
+    });
+
+    const { createFormInstance } = await loadVault();
+
+    await expect(
+      createFormInstance({
+        template: makeTemplate(),
+        submittedByUserId: 'user-1',
+        ownerOrganizationId: 'org-1',
+        recipientUserId: 'reviewer-1',
+        formData: {},
+      }),
+    ).rejects.toThrow('Recipient role is required when routing to a specific user or organization');
+  });
+});
+
 /* ──────────────────────────────────────────────────────
    getAccessibleFormInstance
    ────────────────────────────────────────────────────── */
@@ -375,6 +397,8 @@ describe('createFormInstance', () => {
     const instanceResult = makeInstance();
 
     mockClient.query
+      .mockResolvedValueOnce({ rows: [] }) // advisory lock
+      .mockResolvedValueOnce({ rows: [] }) // existing draft lookup
       .mockResolvedValueOnce({ rows: [{ id: SUBMISSION_ID }] }) // INSERT submission
       .mockResolvedValueOnce({ rows: [] }) // INSERT form_instance
       .mockResolvedValueOnce({ rows: [instanceResult] }); // SELECT joined
@@ -387,16 +411,44 @@ describe('createFormInstance', () => {
       title: 'Test form',
     });
 
-    expect(result).toEqual(instanceResult);
-    expect(mockClient.query).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({ instance: instanceResult, reusedExistingDraft: false });
+    expect(mockClient.query).toHaveBeenCalledTimes(5);
 
-    // First call: INSERT submissions
-    const [subSql] = mockClient.query.mock.calls[0];
+    const [lockSql] = mockClient.query.mock.calls[0];
+    expect(lockSql).toContain('pg_advisory_xact_lock');
+
+    const [lookupSql] = mockClient.query.mock.calls[1];
+    expect(lookupSql).toContain("WHERE s.status = 'draft'");
+
+    // Third call: INSERT submissions
+    const [subSql] = mockClient.query.mock.calls[2];
     expect(subSql).toContain('INSERT INTO submissions');
 
-    // Second call: INSERT form_instances
-    const [fiSql] = mockClient.query.mock.calls[1];
+    // Fourth call: INSERT form_instances
+    const [fiSql] = mockClient.query.mock.calls[3];
     expect(fiSql).toContain('INSERT INTO form_instances');
+  });
+
+  it('reuses an existing matching draft when the same create request is retried', async () => {
+    const template = makeTemplate();
+    const existingInstance = makeInstance({ title: 'Retried draft' });
+
+    mockClient.query
+      .mockResolvedValueOnce({ rows: [] }) // advisory lock
+      .mockResolvedValueOnce({ rows: [existingInstance] }); // existing draft lookup
+
+    const { createFormInstance } = await loadVault();
+    const result = await createFormInstance({
+      template: template as import('@/domain/forms').FormTemplate,
+      submittedByUserId: 'user-1',
+      ownerOrganizationId: 'org-1',
+      title: 'Retried draft',
+      formData: {},
+      attachmentManifest: [],
+    });
+
+    expect(result).toEqual({ instance: existingInstance, reusedExistingDraft: true });
+    expect(mockClient.query).toHaveBeenCalledTimes(2);
   });
 
   it('throws when organization-scoped template has no owner org', async () => {
@@ -433,6 +485,8 @@ describe('createFormInstance', () => {
     const instanceResult = makeInstance({ priority: 2 });
 
     mockClient.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: SUBMISSION_ID }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [instanceResult] });
@@ -444,7 +498,7 @@ describe('createFormInstance', () => {
       ownerOrganizationId: 'org-1',
     });
 
-    const [, subParams] = mockClient.query.mock.calls[0];
+    const [, subParams] = mockClient.query.mock.calls[2];
     expect(subParams).toContain(2); // routing.defaultPriority
   });
 
@@ -453,6 +507,8 @@ describe('createFormInstance', () => {
     const instanceResult = makeInstance({ priority: 3 });
 
     mockClient.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: SUBMISSION_ID }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [instanceResult] });
@@ -465,7 +521,7 @@ describe('createFormInstance', () => {
       priority: 3,
     });
 
-    const [, subParams] = mockClient.query.mock.calls[0];
+    const [, subParams] = mockClient.query.mock.calls[2];
     expect(subParams).toContain(3);
   });
 });

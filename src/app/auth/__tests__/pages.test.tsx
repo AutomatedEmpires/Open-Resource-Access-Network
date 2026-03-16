@@ -237,4 +237,24 @@ describe('auth pages', () => {
 
     expect(JSON.stringify(oauthGroup)).toContain('Sign in with Email, Username, or Phone');
   });
+
+  it('builds the registration payload with optional phone normalization and the honeypot field', async () => {
+    const { buildRegistrationPayload } = await import('../signin/SignInPageClient');
+
+    expect(buildRegistrationPayload({
+      username: 'user-1',
+      email: 'user@example.com',
+      password: 'StrongPass123',
+      displayName: 'User One',
+      phone: '',
+      website: '',
+    })).toEqual({
+      username: 'user-1',
+      email: 'user@example.com',
+      password: 'StrongPass123',
+      displayName: 'User One',
+      phone: undefined,
+      website: '',
+    });
+  });
 });

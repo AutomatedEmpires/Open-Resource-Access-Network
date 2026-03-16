@@ -179,14 +179,14 @@ describe('portal layouts', () => {
     usePathnameMock.mockReturnValue('/map/cluster');
     const { default: SeekerLayout } = await loadSeekerLayout();
 
-    const { container } = render(<SeekerLayout>Child</SeekerLayout>);
+    const { container } = render(<SeekerLayout>Child</SeekerLayout>) as { container: HTMLElement };
     const main = container.querySelectorAll('#main-content');
-    const mapLinks = Array.from(container.querySelectorAll('a[href="/map"]'));
+    const mapLinks = Array.from(container.querySelectorAll('a[href="/map"]')) as HTMLAnchorElement[];
     const chatLink = container.querySelector('a[href="/chat"]');
 
     expect(main).toHaveLength(1);
     expect(mapLinks).toHaveLength(2);
-    expect(mapLinks.every((link) => link.getAttribute('aria-current') === 'page')).toBe(true);
+    expect(mapLinks.every((link: HTMLAnchorElement) => link.getAttribute('aria-current') === 'page')).toBe(true);
     expect(chatLink).toBeTruthy();
   });
 });

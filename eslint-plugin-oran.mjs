@@ -19,7 +19,7 @@ const APPROVED_ARBITRARY = new Set([
 
   // ── Accessibility icon / badge sizes (inside labeled containers) ─────────
   'min-h-[28px]', 'min-h-[32px]', 'min-h-[36px]', 'min-h-[38px]', 'min-h-[40px]', 'min-h-[46px]', 'min-h-[48px]',
-  'min-h-[54px]', 'min-h-[60px]', 'min-h-[80px]',
+  'min-h-[54px]', 'min-h-[60px]', 'min-h-[80px]', 'min-h-[300px]',
   'min-w-[14px]', 'min-w-[16px]', 'min-w-[24px]', 'min-w-[28px]', 'min-w-[36px]',
   'min-w-[48px]', 'min-w-[120px]', 'min-w-[160px]', 'min-w-[200px]',
 

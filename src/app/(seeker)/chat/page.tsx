@@ -7,9 +7,9 @@ import type { Metadata } from 'next';
 import ChatPageContent from './ChatPageClient';
 
 export const metadata: Metadata = {
-  title: 'Find Services',
+  title: 'Chat',
   description:
-    'Search verified government, nonprofit, and community service records. Ask in your own words — results come from real, confirmed listings only.',
+    'Chat with ORAN to search verified government, nonprofit, and community service records. Results come from stored, confirmed listings only.',
   robots: { index: false, follow: false },
 };
 

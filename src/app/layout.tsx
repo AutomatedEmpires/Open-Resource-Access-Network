@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Patrick_Hand, Caveat } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { CrisisFloatingButton } from "@/components/crisis/CrisisFloatingButton";
@@ -10,10 +10,19 @@ import { isRTL, getMessages } from "@/services/i18n/i18n";
 // FONTS
 // ============================================================
 
-const inter = Inter({
+// Patrick Hand — primary UI / body font (clean, legible handwriting style)
+const patrickHand = Patrick_Hand({
+  weight: "400",
   subsets: ["latin"],
   display: "swap",
   variable: "--font-sans",
+});
+
+// Caveat — display / heading accent font (bold, expressive handwriting)
+const caveat = Caveat({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-display",
 });
 
 // ============================================================
@@ -74,16 +83,9 @@ export default async function RootLayout({
   const messages = getMessages(locale);
 
   return (
-    <html lang={locale} dir={dir} className={inter.variable} suppressHydrationWarning>
+    <html lang={locale} dir={dir} className={`${patrickHand.variable} ${caveat.variable}`} suppressHydrationWarning>
       <body className="antialiased font-sans">
-        {/* Theme init — runs synchronously before paint to avoid flash.
-             Reads oran-theme from localStorage; falls back to OS preference. */}
-        <script
-          dangerouslySetInnerHTML={{
-            // biome-ignore lint: intentionally using dangerouslySetInnerHTML for blocking init
-            __html: `try{var t=localStorage.getItem('oran-theme');if(t==='dark'||(t===null&&matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}`,
-          }}
-        />
+
         {/* Skip to main content — WCAG 2.4.1: must be first focusable element */}
         <a
           href="#main-content"

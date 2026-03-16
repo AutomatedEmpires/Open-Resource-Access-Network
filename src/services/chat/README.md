@@ -15,6 +15,7 @@
 - Third-party or informational crisis language must return immediate safety guidance without falsely triggering the self-harm crisis hard gate.
 - Chat responses must disclose retrieval outcome via `retrievalStatus`, inherited-scope use via `activeContextUsed` + `sessionContext`, the normalized turn framing via `searchInterpretation`, and deterministic post-ranking guidance via `resultSummary` + `followUpSuggestions`.
 - Post-ranking diversification may vary the final visible set across organizations, but it must remain deterministic and must not bypass trust-first ordering.
+- Out-of-scope handling must state the ORAN mission boundary plainly: verified service discovery only, using stored ORAN records only, with refusal for unrelated or inappropriate requests.
 
 Authenticated chat may shape retrieval with deterministic profile signals, but only through schema-backed mappings and only as a secondary ordering hint after trust.
 

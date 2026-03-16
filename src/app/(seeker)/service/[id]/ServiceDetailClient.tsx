@@ -193,10 +193,10 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
   const formattedAddress = service ? formatAddress(service) : null;
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(191,219,254,0.42),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(167,243,208,0.2),_transparent_24%),linear-gradient(180deg,_#f8fbff_0%,_#f5f7fb_55%,_#eef4f7_100%)]">
+    <main className="min-h-screen bg-white">
       <div className="container mx-auto max-w-7xl px-4 pt-4 pb-8 md:py-8">
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
-          <section className="rounded-[30px] border border-white/70 bg-white/85 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+          <section className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm md:p-8">
             <ErrorBoundary>
         {/* Breadcrumb navigation */}
         <Breadcrumb
@@ -243,7 +243,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
 
         {/* Not found */}
         {notFound && !isLoading && (
-          <div className="rounded-[24px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/60 p-10 text-center shadow-[0_18px_50px_rgba(234,88,12,0.06)]">
+          <div className="rounded-[24px] border border-slate-200 bg-white p-10 text-center shadow-sm">
             <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-400" aria-hidden="true" />
             <h1 className="mb-2 text-2xl font-bold tracking-tight text-stone-900">Service not found</h1>
             <p className="mb-4 text-sm text-stone-600">
@@ -260,7 +260,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
 
         {/* Service card */}
         {service && !isLoading && !notFound && (
-          <div className="rounded-[24px] border border-orange-100/90 bg-gradient-to-b from-white to-orange-50/60 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-5">
+          <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-5">
             <PageHeader
               eyebrow="Verified service record"
               title={service.service.name}
@@ -531,7 +531,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
           </section>
 
           <aside className="space-y-4 lg:sticky lg:top-6">
-            <div className="rounded-[24px] border border-rose-100 bg-gradient-to-br from-rose-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(251,113,133,0.10)]">
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Record view</p>
               <h2 className="mt-2 text-lg font-semibold text-stone-900">One record, multiple ways to continue</h2>
               <ul className="mt-3 space-y-3 text-sm leading-6 text-stone-600">
@@ -541,7 +541,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               </ul>
             </div>
 
-            <div className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 to-orange-50 p-5 shadow-[0_12px_40px_rgba(16,185,129,0.10)]">
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Eligibility caution</p>
               <p className="mt-2 text-sm leading-6 text-stone-700">
                 ORAN can show who may qualify and which documents may be needed, but it never guarantees eligibility. Confirm current intake rules directly with the provider.

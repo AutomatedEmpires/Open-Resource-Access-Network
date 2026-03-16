@@ -115,9 +115,10 @@ Return ChatResponse (with eligibility disclaimer always included)
 
 ### Stage 2: Quota Check
 
-- Each chat session has a message quota (`MAX_CHAT_QUOTA = 50` messages)
+- Chat uses a shared message cap (`MAX_CHAT_QUOTA = 20` messages)
 - Session identified by `sessionId` from request
 - Count stored in-memory per session with TTL + bounded eviction (future: Redis)
+- API enforcement also applies the same cap across the active 24-hour identity/device window
 - On quota exceeded: friendly message explaining the limit with option to start new session
 - Temporary search-unavailable responses do not consume quota, so infrastructure faults do not burn seeker turns
 
@@ -170,8 +171,8 @@ Intent also extracts:
 ### Stage 4b: Scope Guard
 
 - After intent detection and before retrieval, the orchestrator applies a deterministic out-of-scope guard for requests that are clearly not about finding services or support resources
-- Examples: weather, sports scores, stock prices, generic trivia, unrelated translation requests
-- On out-of-scope detection, the system returns a boundary message explaining that chat is for finding services from stored records only
+- Examples: weather, sports scores, stock prices, generic trivia, unrelated translation requests, sexual-roleplay prompts, and harmful how-to requests unrelated to service discovery
+- On out-of-scope detection, the system returns a boundary message explaining that ORAN Chat is only for finding services from stored records and refuses unrelated or inappropriate requests
 - Out-of-scope handling still respects crisis-first behavior because crisis routing happens earlier in the pipeline
 
 ### Stage 5: Profile Hydration

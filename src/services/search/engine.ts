@@ -164,6 +164,8 @@ export function buildOrderByClause(sortBy: SortBy | undefined, sortDistanceExpr:
   switch (sortBy) {
     case 'trust':
       return 'cs.verification_confidence DESC NULLS LAST, profile_match_score DESC, cs.score DESC NULLS LAST';
+    case 'distance':
+      return `${sortDistanceExpr} ASC NULLS LAST, cs.verification_confidence DESC NULLS LAST, profile_match_score DESC, cs.score DESC NULLS LAST`;
     case 'name_asc':
       return 's.name ASC';
     case 'name_desc':
@@ -246,6 +248,14 @@ export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): B
       const geoClause = buildBboxWhereClause(query.geo, paramIdx);
       conditions.push(geoClause.sql);
       params.push(...geoClause.params);
+      const bboxCenterLat = (query.geo.minLat + query.geo.maxLat) / 2;
+      const bboxCenterLng = (query.geo.minLng + query.geo.maxLng) / 2;
+      distanceExpr = `ST_Distance(
+        l.geom::geography,
+        ST_SetSRID(ST_MakePoint($${paramIdx + geoClause.params.length + 2}, $${paramIdx + geoClause.params.length + 1}), 4326)::geography
+      )`;
+      params.push(bboxCenterLat, bboxCenterLng);
+      paramIdx += 2;
       paramIdx += geoClause.params.length;
     }
   }

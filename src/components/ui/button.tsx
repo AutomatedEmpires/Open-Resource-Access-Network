@@ -9,24 +9,24 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-[var(--transition-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium tracking-wide transition-[var(--transition-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-40',
   {
     variants: {
       variant: {
         default:
-          'bg-action-base text-white shadow-[0_10px_24px_rgba(249,115,22,0.24)] hover:bg-action-strong',
+          'bg-action-base text-white shadow-sm hover:bg-action-strong',
         destructive:
           'bg-error-base text-white shadow-sm hover:bg-error-strong',
         outline:
-          'border border-orange-100 bg-[var(--bg-surface)] text-stone-700 shadow-sm hover:bg-orange-50 hover:text-stone-900 dark:hover:bg-slate-700',
+          'border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm hover:bg-[var(--bg-surface-alt)] hover:border-[var(--text-secondary)]',
         secondary:
-          'bg-orange-100 text-stone-900 shadow-sm hover:bg-orange-200',
+          'bg-[var(--bg-surface-alt)] text-[var(--text-primary)] shadow-sm hover:bg-[var(--border)]',
         ghost:
-          'hover:bg-orange-50 hover:text-stone-900',
+          'hover:bg-[var(--bg-surface-alt)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]',
         link:
-          'text-action-base underline-offset-4 hover:underline',
+          'text-[var(--text-primary)] underline-offset-4 hover:underline',
         crisis:
-          'bg-error-strong text-white shadow hover:bg-error-deep font-bold',
+          'bg-error-strong text-white shadow hover:bg-error-deep font-bold tracking-wide',
       },
       size: {
         default: 'h-9 px-4 py-2',

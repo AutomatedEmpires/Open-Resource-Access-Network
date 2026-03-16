@@ -18,6 +18,7 @@ import {
   TileLayer,
   Marker,
   Popup,
+  ScaleControl,
   useMap,
   useMapEvents,
 } from 'react-leaflet';
@@ -175,6 +176,7 @@ export function LeafletFallback({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           maxZoom={19}
         />
+        <ScaleControl position="bottomleft" imperial metric={false} />
 
         <MapController
           centerLat={centerLat}

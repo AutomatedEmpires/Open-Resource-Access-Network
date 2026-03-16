@@ -114,7 +114,7 @@ describe('ChatPageClient', () => {
       initialTaxonomyTermIds: [],
       initialAttributeFilters: undefined,
     });
-    expect(screen.getAllByRole('heading', { name: 'Find Services' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('heading', { name: 'Chat' }).length).toBeGreaterThan(0);
 
     randomSpy.mockRestore();
   });

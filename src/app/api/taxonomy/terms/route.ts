@@ -41,8 +41,15 @@ export type TaxonomyTermDTO = {
 export async function GET(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json(
-      { error: 'Taxonomy is temporarily unavailable (database not configured).' },
-      { status: 503 }
+      {
+        terms: [],
+        warning: 'Taxonomy terms are unavailable because the database is not configured.',
+      },
+      {
+        headers: {
+          'Cache-Control': 'private, no-store',
+        },
+      }
     );
   }
 

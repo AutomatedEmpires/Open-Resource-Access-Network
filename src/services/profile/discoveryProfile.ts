@@ -4,7 +4,7 @@ import {
   type DiscoveryNeedId,
 } from '@/domain/discoveryNeeds';
 import type { DiscoveryLinkState } from '@/services/search/discovery';
-import type { SearchFilters, SearchPreferenceSignals } from '@/services/search/types';
+import type { SearchPreferenceSignals } from '@/services/search/types';
 
 import {
   ACCESSIBILITY_NEED_VALUES,
@@ -145,29 +145,6 @@ function sanitizeEnumValue<T extends string>(
   return allowed.includes(value as T) ? (value as T) : undefined;
 }
 
-function buildAttributeFilters(profile: SeekerProfile): SearchFilters['attributeFilters'] | undefined {
-  const delivery = uniqueStrings([
-    ...profile.preferredDeliveryModes,
-    ...profile.accessibilityNeeds.flatMap((value) => ACCESSIBILITY_TO_DELIVERY_TAGS[value] ?? []),
-  ]);
-
-  const access = uniqueStrings([
-    ...profile.accessibilityNeeds.flatMap((value) => ACCESSIBILITY_TO_ACCESS_TAGS[value] ?? []),
-    ...profile.documentationBarriers.flatMap((value) => DOCUMENTATION_BARRIER_TO_ACCESS_TAGS[value] ?? []),
-    ...(profile.urgencyWindow ? (URGENCY_WINDOW_TO_ACCESS_TAGS[profile.urgencyWindow] ?? []) : []),
-  ]);
-
-  const filters: Record<string, string[]> = {};
-  if (delivery.length > 0) {
-    filters.delivery = delivery;
-  }
-  if (access.length > 0) {
-    filters.access = access;
-  }
-
-  return Object.keys(filters).length > 0 ? filters : undefined;
-}
-
 function buildProfileSignals(profile: SeekerProfile, locale?: string): SearchPreferenceSignals | undefined {
   const populationTags = uniqueStrings([
     ...profile.selfIdentifiers.map((value) => SELF_IDENTIFIER_TO_POPULATION_TAG[value]),
@@ -246,11 +223,8 @@ export function buildSeekerDiscoveryProfile(
   const interestSearchText = uniqueStrings(
     normalizedProfile.serviceInterests.map((interest) => getDiscoveryNeedSearchText(interest)),
   );
-  const attributeFilters = buildAttributeFilters(normalizedProfile);
-
   const browseState: DiscoveryLinkState = {
     needId: primaryNeedId,
-    attributeFilters,
   };
 
   const profileSignals = buildProfileSignals(normalizedProfile, options.locale);

@@ -59,7 +59,7 @@ describe('Breadcrumb', () => {
 
     const separators = screen.getAllByText('/');
     expect(separators).toHaveLength(2);
-    separators.forEach(sep => {
+    separators.forEach((sep: HTMLElement) => {
       expect(sep).toHaveAttribute('aria-hidden', 'true');
     });
   });

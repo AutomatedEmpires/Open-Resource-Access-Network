@@ -1,8 +1,5 @@
 @import "tailwindcss";
 
-/* Enables dark: utilities via .dark class on <html> */
-@custom-variant dark (&:where(.dark, .dark *));
-
 /* ─── Custom utilities ─────────────────────────────────────────────────────── */
 
 /* Hide scrollbars while preserving scroll behaviour (used on context strip, chip rows) */
@@ -15,8 +12,8 @@
 }
 
 :root {
-  --background: #fffcf9;
-  --foreground: #1c1412;
+  --background: #FFFFFF;
+  --foreground: #09090B;
 
   /* Z-Index scale — named layers to prevent ad-hoc stacking conflicts */
   --z-skip-link: 100;
@@ -27,13 +24,19 @@
   --z-sticky: 30;
   --z-elevated: 20;
 
-  /* Semantic color tokens — light mode defaults */
-  --bg-page: #fff8f2;
-  --bg-surface: #fffdf9;
-  --border: #f1e3d4;
-  --text-primary: #2f241d;
-  --text-secondary: #6a5a4d;
-  --text-muted: #8a7768;
+  /* ── White / Neutral semantic color tokens ── light mode ───────────────
+   * Palette: Near-Black #09090B · Zinc-600 #52525B · Zinc-400 #A1A1AA
+   *          Off-White #FAFAFA · White #FFFFFF
+   * ----------------------------------------------------------------------- */
+  --bg-page:        #FFFFFF;   /* white — main page background              */
+  --bg-surface:     #FFFFFF;   /* white — cards, panels, inputs             */
+  --bg-surface-alt: #FFFFFF;   /* white — keep page flow visually unified   */
+  --border:         #E4E4E7;   /* light neutral gray — dividers/borders     */
+  --border-subtle:  #F1F1F5;   /* very subtle separator                     */
+
+  --text-primary:   #09090B;   /* near-black — headings, body               */
+  --text-secondary: #52525B;   /* zinc-600 — supporting text                */
+  --text-muted:     #A1A1AA;   /* zinc-400 — placeholders, captions         */
 
   /* Motion tokens — zero-out under prefers-reduced-motion */
   --transition-fast:     150ms ease;
@@ -49,65 +52,64 @@
   }
 }
 
-/* Dark mode token overrides — applied when .dark is on <html> */
-.dark {
-  --background: #130f0b;
-  --foreground: #fef7f0;
-  --bg-page: #130f0b;
-  --bg-surface: #221711;
-  --border: #3d2d22;
-  --text-primary: #fef7f0;
-  --text-secondary: #c4a08c;
-  --text-muted: #8c6050;
-}
+
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-ring: #f97316;
+  --color-ring: #52525B;
 
   /* ── Semantic status colour tokens ───────────────────────────────────────
-   * Use these instead of raw Tailwind palette classes (bg-red-50, bg-blue-600).
-   * Keeps the design system expressive and easy to retheme.
+   * White / Neutral design system.
+   * Action/brand uses near-black → zinc scale for a clean civic look.
+   * Error remains red (safety-critical — must stay recognizable).
    * ─────────────────────────────────────────────────────────────────────── */
 
-  /* Error / danger (red scale) */
-  --color-error-subtle:  #fef2f2;   /* = red-50  — subtle alert background    */
-  --color-error-muted:   #fee2e2;   /* = red-100 — icon circle, muted alert   */
-  --color-error-soft:    #fecaca;   /* = red-200 — error borders, outlines    */
-  --color-error-accent:  #fca5a5;   /* = red-300 — error ring / focus borders */
-  --color-error-pale:    #f87171;   /* = red-400 — pale error tint            */
-  --color-error-light:   #ef4444;   /* = red-500 — light error emphasis text  */
-  --color-error-base:    #dc2626;   /* = red-600 — standard error/delete bg   */
-  --color-error-strong:  #b91c1c;   /* = red-700 — delete/danger action bg    */
-  --color-error-deep:    #991b1b;   /* = red-800 — dark error / hover bg      */
+  /* Error / danger (red scale — unchanged for safety-critical visibility) */
+  --color-error-subtle:  #fef2f2;
+  --color-error-muted:   #fee2e2;
+  --color-error-soft:    #fecaca;
+  --color-error-accent:  #fca5a5;
+  --color-error-pale:    #f87171;
+  --color-error-light:   #ef4444;
+  --color-error-base:    #dc2626;
+  --color-error-strong:  #b91c1c;
+  --color-error-deep:    #991b1b;
 
-  /* Info / primary / action (warm coral scale) */
-  --color-info-subtle:   #fff7ed;   /* = orange-50 — active nav, info bg      */
-  --color-info-muted:    #ffedd5;   /* = orange-100 — count badge, info muted */
-  --color-action:        #fb923c;   /* = orange-400 — bright accent           */
-  --color-action-base:   #f97316;   /* = orange-500 — primary action          */
-  --color-action-strong: #ea580c;   /* = orange-600 — hover / dark action     */
-  --color-action-soft:   #fed7aa;   /* = orange-200 — action borders          */
-  --color-action-pale:   #fdba74;   /* = orange-300 — pale action border      */
-  --color-action-mid:    #fb923c;   /* = orange-400 — mid action accent       */
-  --color-action-deep:   #9a3412;   /* = orange-800 — dark action text        */
-  --color-action-max:    #7c2d12;   /* = orange-900 — deepest action          */
+  /* Action / brand — Neutral Zinc scale (Near-Black → Off-White) */
+  --color-info-subtle:   #FFFFFF;   /* white — bg tints            */
+  --color-info-muted:    #FFFFFF;   /* white — keep surfaces flat  */
+  --color-action-soft:   #E4E4E7;   /* light gray border           */
+  --color-action-pale:   #D4D4D8;   /* zinc-300                    */
+  --color-action:        #A1A1AA;   /* zinc-400 mid                */
+  --color-action-base:   #52525B;   /* zinc-600 — primary action   */
+  --color-action-strong: #3F3F46;   /* zinc-700 — hover            */
+  --color-action-deep:   #27272A;   /* zinc-800                    */
+  --color-action-max:    #09090B;   /* near-black — deepest        */
+  --color-action-mid:    #A1A1AA;   /* alias for mid accent        */
 
-  /* --font-sans is injected as a CSS variable by next/font Inter (layout.tsx) */
-  --font-sans: var(--font-sans, system-ui, Arial, Helvetica, sans-serif);
-  --font-mono: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  /* -- font-display is injected by Caveat (layout.tsx) */
+  --font-sans:    var(--font-sans,    system-ui, Arial, Helvetica, sans-serif);
+  --font-display: var(--font-display, system-ui, Arial, Helvetica, sans-serif);
+  --font-mono:    Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans, system-ui, Arial, Helvetica, sans-serif);
+  /* Slightly increased base letter-spacing suits handwriting fonts */
+  letter-spacing: 0.01em;
+}
+
+/* Display/heading font utility */
+.font-display {
+  font-family: var(--font-display, system-ui, Arial, Helvetica, sans-serif);
 }
 
 /* Ensure focus rings are always visible — WCAG 2.4.7 */
 :focus-visible {
-  outline: 2px solid #0d9488;
+  outline: 2px solid #52525B;
   outline-offset: 2px;
 }
 

@@ -50,7 +50,6 @@ export default function ChatPage() {
       needId: storedDiscoveryIntent.needId ?? urlDiscoveryIntent.needId,
       confidenceFilter: storedDiscoveryIntent.confidenceFilter ?? urlDiscoveryIntent.confidenceFilter,
       sortBy: storedDiscoveryIntent.sortBy ?? urlDiscoveryIntent.sortBy,
-      taxonomyTermIds: storedDiscoveryIntent.taxonomyTermIds ?? urlDiscoveryIntent.taxonomyTermIds,
       attributeFilters: storedDiscoveryIntent.attributeFilters ?? urlDiscoveryIntent.attributeFilters,
       page: storedDiscoveryIntent.page ?? urlDiscoveryIntent.page,
     };
@@ -80,12 +79,12 @@ export default function ChatPage() {
 
   if (!sessionId) {
     return (
-      <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)]">
+      <main className="min-h-screen bg-white">
         <div className="container mx-auto max-w-6xl px-4 py-6 md:py-8">
-          <div className="rounded-[28px] border border-slate-200/80 bg-white/92 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-8">
             <PageHeader
-              eyebrow="Seeker assistant"
-              title="Find Services"
+              eyebrow="Seeker chat"
+              title="Chat"
               actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/chat" />}
               badges={(
                 <>
@@ -105,12 +104,12 @@ export default function ChatPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)]">
+    <main className="min-h-screen bg-white">
       <div className="container mx-auto max-w-6xl px-4 pt-4 pb-6 md:py-8">
-        <section className="rounded-[30px] border border-slate-200/80 bg-white/92 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
+        <section className="flex flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white p-4 shadow-sm md:h-[calc(100dvh-13rem)] md:p-8">
             <PageHeader
-              eyebrow="Seeker assistant"
-              title="Find Services"
+              eyebrow="Seeker chat"
+              title="Chat"
               actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/chat" />}
               badges={(
                 <>
@@ -120,16 +119,17 @@ export default function ChatPage() {
               )}
             />
             <ErrorBoundary>
-              <ChatWindow
-                sessionId={sessionId}
-                initialPrompt={initialPrompt}
-                initialNeedId={discoveryIntent.needId}
-                initialTrustFilter={discoveryIntent.confidenceFilter}
-                initialSortBy={discoveryIntent.sortBy}
-                initialPage={discoveryIntent.page}
-                initialTaxonomyTermIds={discoveryIntent.taxonomyTermIds}
-                initialAttributeFilters={discoveryIntent.attributeFilters}
-              />
+              <div className="min-h-0 flex-1">
+                <ChatWindow
+                  sessionId={sessionId}
+                  initialPrompt={initialPrompt}
+                  initialNeedId={discoveryIntent.needId}
+                  initialTrustFilter={discoveryIntent.confidenceFilter}
+                  initialSortBy={discoveryIntent.sortBy}
+                  initialPage={discoveryIntent.page}
+                  initialAttributeFilters={discoveryIntent.attributeFilters}
+                />
+              </div>
             </ErrorBoundary>
         </section>
       </div>

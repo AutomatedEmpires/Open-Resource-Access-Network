@@ -42,7 +42,7 @@ export type SearchFilters = z.infer<typeof SearchFiltersSchema> & {
 // SORT OPTIONS
 // ============================================================
 
-export const SORT_OPTIONS = ['relevance', 'trust', 'name_asc', 'name_desc'] as const;
+export const SORT_OPTIONS = ['relevance', 'trust', 'distance', 'name_asc', 'name_desc'] as const;
 export type SortBy = (typeof SORT_OPTIONS)[number];
 
 export const SortBySchema = z.enum(SORT_OPTIONS).default('relevance');
@@ -113,8 +113,9 @@ export type SearchQuery = {
    * Sort order for results. Defaults to 'relevance'.
    * - relevance: trust DESC, score DESC, distance ASC (default)
    * - trust: verification_confidence DESC
-   * - name_asc: service name A-Z
-   * - name_desc: service name Z-A
+  * - distance: nearest eligible service first using query geo or map viewport center
+  * - name_asc: service name A-Z
+  * - name_desc: service name Z-A
    */
   sortBy?: SortBy;
 };

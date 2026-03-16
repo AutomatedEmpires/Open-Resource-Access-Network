@@ -25,7 +25,7 @@ import {
 } from '@/services/saved/client';
 
 const NAV_ITEMS = [
-  { href: '/chat',      label: 'Find',      icon: MessageCircle },
+  { href: '/chat',      label: 'Chat',      icon: MessageCircle },
   { href: '/directory', label: 'Directory', icon: List },
   { href: '/map',       label: 'Map',       icon: MapPin },
   { href: '/saved',     label: 'Saved',     icon: Bookmark },
@@ -81,7 +81,7 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
     pathname === href || pathname.startsWith(href + '/');
 
   return (
-      <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)] text-[var(--text-primary)]">
+      <div className="flex min-h-screen flex-col bg-white text-[var(--text-primary)]">
       {/* Skip-to-main-content: first focusable element for keyboard / screen-reader users */}
       <a
         href="#main-content"
@@ -97,14 +97,13 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
       />
 
       {/* ── Top bar ─────────────────────────────────────── */}
-      <header className="sticky top-0 z-[var(--z-nav)] border-b border-slate-200/80 bg-white/88 backdrop-blur">
-        <div className="container mx-auto max-w-6xl flex items-center justify-between px-4 h-14">
+      <header className="sticky top-0 z-[var(--z-nav)] border-b border-slate-200/80 bg-white/95 backdrop-blur">
+        <div className="container mx-auto flex h-[4.5rem] max-w-7xl items-center justify-between px-4">
 
-          {/* Brand */}
           <div className="flex min-w-0 items-center gap-3">
             <Link
               href="/"
-              className="flex min-h-[44px] items-center gap-2 text-lg font-semibold tracking-tight text-slate-900 transition-colors hover:text-sky-700"
+              className="flex min-h-[44px] items-center gap-2 text-2xl font-bold tracking-tight text-slate-900 transition-colors hover:text-slate-900"
             >
               ORAN
             </Link>
@@ -123,18 +122,8 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
             <Search className="h-5 w-5" aria-hidden="true" />
           </button>
 
-          <div className="hidden items-center gap-2 md:flex">
-            <button
-              type="button"
-              onClick={() => setCommandPaletteOpen(true)}
-              className="inline-flex min-h-[44px] items-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
-              aria-label="Open quick actions"
-            >
-              Quick actions
-            </button>
-
-            {/* Desktop nav — hidden on mobile (bottom nav takes over) */}
-            <nav className="flex items-center gap-1" aria-label="Primary navigation">
+          <div className="hidden flex-1 items-center justify-center md:flex">
+            <nav className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm" aria-label="Primary navigation">
               {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
                 const active = isActive(href);
                 const isSavedItem = href === '/saved';
@@ -142,18 +131,18 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
                   <Link
                     key={href}
                     href={href}
-                    className={`relative flex min-h-[44px] items-center gap-1.5 rounded-full px-3 py-2 text-sm transition-colors ${
+                    className={`relative inline-flex min-h-[50px] items-center gap-2 rounded-full px-5 py-2.5 text-base transition-colors ${
                       active
-                        ? 'bg-slate-100 text-slate-950 font-semibold shadow-sm'
+                        ? 'border border-slate-200 bg-slate-50 font-semibold text-slate-950'
                         : 'font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900'
                     }`}
                     aria-current={active ? 'page' : undefined}
                   >
-                    <Icon className="h-4 w-4" aria-hidden="true" />
+                    <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
                     {label}
                     {isSavedItem && savedCount > 0 && (
                       <span
-                        className={`ml-0.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold min-w-[16px] h-4 px-1 leading-none ${
+                        className={`ml-0.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none ${
                           active ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'
                         }`}
                         aria-label={`${savedCount} saved`}
@@ -165,6 +154,17 @@ export default function SeekerLayout({ children }: { children: React.ReactNode }
                 );
               })}
             </nav>
+          </div>
+
+          <div className="hidden items-center gap-2 md:flex">
+            <button
+              type="button"
+              onClick={() => setCommandPaletteOpen(true)}
+              className="inline-flex min-h-[44px] items-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+              aria-label="Open quick actions"
+            >
+              Quick actions
+            </button>
           </div>
         </div>
       </header>

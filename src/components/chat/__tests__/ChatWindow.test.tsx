@@ -176,7 +176,7 @@ describe('ChatWindow', () => {
 
     expect(screen.getByRole('note', { name: 'Eligibility disclaimer' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
-    expect(screen.getByText('What do you need help with?')).toBeInTheDocument();
+    expect(screen.getByText('What verified help do you need?')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Food pantry near me' }));
 
@@ -198,7 +198,6 @@ describe('ChatWindow', () => {
         initialTrustFilter="HIGH"
         initialSortBy="name_desc"
         initialPage={3}
-        initialTaxonomyTermIds={['a1000000-4000-4000-8000-000000000001']}
         initialAttributeFilters={{ delivery: ['virtual'], access: ['walk_in'] }}
       />,
     );
@@ -206,7 +205,6 @@ describe('ChatWindow', () => {
     expect(screen.getByText('Using current browse context')).toBeInTheDocument();
     expect(screen.getByLabelText('Chat message input')).toHaveValue('food');
     expect(screen.getByText('Trust: High confidence only')).toBeInTheDocument();
-    expect(screen.getByText('Tags: 1')).toBeInTheDocument();
     expect(screen.getByText('Virtual')).toBeInTheDocument();
     expect(screen.getByText('Walk In')).toBeInTheDocument();
 
@@ -221,7 +219,6 @@ describe('ChatWindow', () => {
       profileMode: 'use',
       filters: {
         trust: 'HIGH',
-        taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
         attributeFilters: {
           delivery: ['virtual'],
           access: ['walk_in'],
@@ -274,7 +271,6 @@ describe('ChatWindow', () => {
         initialTrustFilter="HIGH"
         initialSortBy="name_desc"
         initialPage={3}
-        initialTaxonomyTermIds={['a1000000-4000-4000-8000-000000000001']}
         initialAttributeFilters={{ delivery: ['virtual'] }}
       />,
     );
@@ -292,7 +288,6 @@ describe('ChatWindow', () => {
         needId: 'food_assistance',
         confidenceFilter: 'HIGH',
         sortBy: 'name_desc',
-        taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
         attributeFilters: { delivery: ['virtual'] },
         page: 3,
       },
@@ -300,69 +295,13 @@ describe('ChatWindow', () => {
     });
   });
 
-  it('loads taxonomy tags, filters them, applies valid tag IDs, and sends trust filter payload', async () => {
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === '/api/chat/quota') {
-        return {
-          ok: true,
-          json: async () => ({ remaining: 50, resetAt: null }),
-        } as Response;
-      }
-      if (url.includes('/api/taxonomy/terms')) {
-        return {
-          ok: true,
-          json: async () => ({
-            terms: [
-              {
-                id: 'not-a-uuid',
-                term: 'Invalid Tag',
-                description: null,
-                parentId: null,
-                taxonomy: 'demo',
-                serviceCount: 1,
-              },
-              {
-                id: 'a1000000-4000-4000-8000-000000000001',
-                term: 'Food Assistance',
-                description: 'Food help',
-                parentId: null,
-                taxonomy: 'demo',
-                serviceCount: 4,
-              },
-            ],
-          }),
-        } as Response;
-      }
-      if (url === '/api/chat') {
-        return {
-          ok: true,
-          json: async () => makeChatResponse(),
-        } as Response;
-      }
-      return {
-        ok: true,
-        json: async () => ({}),
-      } as Response;
-    });
-
-    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
-
-    fireEvent.click(screen.getAllByRole('button', { name: 'Tags' })[0]);
-    await screen.findByRole('heading', { name: 'Filter by service tags' });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Invalid Tag' }));
-
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search service tags' }), {
-      target: { value: 'zzzz' },
-    });
-    expect(screen.getByText('No matching tags.')).toBeInTheDocument();
-
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search service tags' }), {
-      target: { value: 'food' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Food Assistance' }));
-    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+  it('sends trust and canonical attribute filters without taxonomy-term filters', async () => {
+    render(
+      <ChatWindow
+        sessionId="11111111-1111-4111-8111-111111111111"
+        initialAttributeFilters={{ delivery: ['virtual'] }}
+      />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'High confidence only' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
@@ -376,19 +315,7 @@ describe('ChatWindow', () => {
     const body = JSON.parse(String((chatCall?.[1] as { body: string }).body));
     expect(body.filters).toEqual({
       trust: 'HIGH',
-      taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
-      target: { value: 'rent help' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
-
-    await waitFor(() => {
-      const chatCalls = getChatCalls();
-      const secondBody = JSON.parse(String((chatCalls.at(-1)?.[1] as { body: string }).body));
-      expect(secondBody.filters).toEqual({ trust: 'HIGH' });
+      attributeFilters: { delivery: ['virtual'] },
     });
   });
 
@@ -398,7 +325,6 @@ describe('ChatWindow', () => {
         sessionId="11111111-1111-4111-8111-111111111111"
         initialPrompt="food"
         initialTrustFilter="HIGH"
-        initialTaxonomyTermIds={['a1000000-4000-4000-8000-000000000001']}
         initialAttributeFilters={{ delivery: ['virtual'] }}
       />,
     );
@@ -410,19 +336,13 @@ describe('ChatWindow', () => {
     expect(screen.getByRole('button', { name: 'All results' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('shows taxonomy fetch failure and chat fallback when chat response is non-ok', async () => {
+  it('shows chat fallback when the chat response is non-ok', async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/chat/quota') {
         return {
           ok: true,
           json: async () => ({ remaining: 50, resetAt: null }),
-        } as Response;
-      }
-      if (url.includes('/api/taxonomy/terms')) {
-        return {
-          ok: false,
-          json: async () => ({ error: 'taxonomy offline' }),
         } as Response;
       }
       if (url === '/api/chat') {
@@ -438,9 +358,6 @@ describe('ChatWindow', () => {
     });
 
     render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
-
-    fireEvent.click(screen.getAllByRole('button', { name: 'Tags' })[0]);
-    expect(await screen.findByRole('alert')).toHaveTextContent('taxonomy offline');
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
       target: { value: 'help' },
@@ -508,7 +425,7 @@ describe('ChatWindow', () => {
 
     await screen.findByText('Immediate Help Available');
     expect(
-      screen.getAllByRole('alert').some((el) =>
+      screen.getAllByRole('alert').some((el: HTMLElement) =>
         String(el.textContent).includes('Message limit reached.'),
       ),
     ).toBe(true);

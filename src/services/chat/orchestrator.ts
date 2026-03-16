@@ -335,7 +335,7 @@ export function assembleOutOfScopeResponse(
 
   return {
     message:
-      'I can help find services and community resources. Tell me what kind of help you need, such as housing, food, healthcare, mental health, transportation, childcare, employment, legal help, or utility assistance.',
+      'I’m ORAN Chat. I only help with verified service discovery from stored ORAN records, so I can’t answer unrelated, off-brand, or inappropriate requests. If you need help finding services, tell me the need, such as housing, food, healthcare, mental health, transportation, childcare, employment, legal help, or utility assistance.',
     services: [],
     isCrisis: false,
     intent,
@@ -813,6 +813,8 @@ const OUT_OF_SCOPE_PATTERNS: RegExp[] = [
   /\b(write code|debug this code|python code|javascript code|typescript code)\b/i,
   /\b(system prompt|prompt injection|ignore previous instructions|what model are you|who are you)\b/i,
   /\b(translate this|summarize this article|capital of|sports score|recipe)\b/i,
+  /\b(porn|porno|erotic|sex chat|sexual roleplay|nudes|onlyfans|hookup advice|dating advice)\b/i,
+  /\b(hack(ing)?|malware|phishing|ransomware|ddos|steal passwords|fake id|forged documents|make a bomb|build a weapon|buy a gun illegally)\b/i,
 ];
 
 function isOutOfScopeRequest(message: string, intent: Intent): boolean {
@@ -878,7 +880,7 @@ export async function orchestrateChat(
   if (quota.exceeded) {
     const intent = detectIntent(message);
     return {
-      message: `You've reached the message limit for this session (${MAX_CHAT_QUOTA} messages). Start a new chat session or continue in Directory or Map with the same search scope.`,
+      message: `You've reached the current message limit (${MAX_CHAT_QUOTA} messages). Start a new chat session or continue in Directory or Map with the same search scope.`,
       services: [],
       isCrisis: false,
       intent,

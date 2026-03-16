@@ -62,36 +62,41 @@ export default function HostLayoutShell({ children }: { children: React.ReactNod
       >
         Skip to main content
       </a>
-      <header aria-label="Host portal navigation" className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
-        {/* Top bar — brand + desktop nav + user menu */}
-        <div className="container mx-auto max-w-7xl flex items-center justify-between px-4 h-14">
-          <Link href="/host" className="shrink-0 font-bold text-gray-900 tracking-tight">
-            ORAN Host
-          </Link>
+      <header aria-label="Host portal navigation" className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-white/95 backdrop-blur">
+        <div className="container mx-auto flex h-[4.5rem] max-w-7xl items-center justify-between px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link href="/host" className="shrink-0 text-2xl font-bold tracking-tight text-gray-900">
+              ORAN
+            </Link>
+            <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 md:inline-flex">
+              Organization
+            </span>
+          </div>
 
-          {/* Desktop nav (lg and up) */}
-          <div className="hidden lg:flex items-center gap-2">
-            <nav className="flex items-center gap-1" aria-label="Host navigation">
+          <div className="hidden flex-1 items-center justify-center lg:flex">
+            <nav className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm" aria-label="Host navigation">
               {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
                 <Link
                   key={href}
                   href={href}
-                  className={`flex items-center gap-1.5 min-h-[44px] px-3 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`inline-flex min-h-[50px] items-center gap-2 rounded-full px-5 py-2.5 text-base transition-colors whitespace-nowrap ${
                     isActive(href)
-                      ? 'bg-teal-50 text-teal-800'
-                      : 'text-stone-500 hover:text-stone-900 hover:bg-stone-50'
+                      ? 'border border-slate-200 bg-slate-50 font-semibold text-slate-950'
+                      : 'font-medium text-stone-500 hover:bg-stone-50 hover:text-stone-900'
                   }`}
                   aria-current={isActive(href) ? 'page' : undefined}
                 >
-                  <Icon className="h-4 w-4" aria-hidden="true" />
+                  <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
                   {label}
                 </Link>
               ))}
             </nav>
+          </div>
+
+          <div className="hidden lg:flex items-center">
             <PortalUserMenu />
           </div>
 
-          {/* Mobile: user menu only in top bar */}
           <div className="flex lg:hidden items-center">
             <PortalUserMenu />
           </div>
@@ -109,7 +114,7 @@ export default function HostLayoutShell({ children }: { children: React.ReactNod
                 href={href}
                 className={`flex flex-col items-center justify-center gap-0.5 min-h-[44px] min-w-16 px-2 py-1 text-[10px] font-medium transition-colors whitespace-nowrap border-b-2 ${
                   isActive(href)
-                    ? 'border-teal-600 text-teal-800'
+                    ? 'border-slate-900 text-slate-900'
                     : 'border-transparent text-stone-500 hover:text-stone-800 hover:border-stone-300'
                 }`}
                 aria-current={isActive(href) ? 'page' : undefined}

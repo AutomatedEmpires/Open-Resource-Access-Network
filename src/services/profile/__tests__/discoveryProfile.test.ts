@@ -22,10 +22,6 @@ describe('buildSeekerDiscoveryProfile', () => {
     expect(discoveryProfile.interestSearchText).toEqual(['housing', 'food']);
     expect(discoveryProfile.browseState).toEqual({
       needId: 'housing',
-      attributeFilters: {
-        delivery: ['phone', 'virtual', 'hybrid'],
-        access: ['interpreter_on_site', 'no_id_required', 'same_day'],
-      },
     });
     expect(discoveryProfile.profileSignals).toEqual({
       populationTags: ['pregnant', 'single_parent'],
@@ -47,7 +43,6 @@ describe('buildSeekerDiscoveryProfile', () => {
 
     expect(discoveryProfile.browseState).toEqual({
       needId: null,
-      attributeFilters: undefined,
     });
     expect(discoveryProfile.profileSignals).toBeUndefined();
     expect(discoveryProfile.hasPersonalization).toBe(false);

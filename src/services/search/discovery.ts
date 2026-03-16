@@ -29,6 +29,7 @@ export const DISCOVERY_SORT_OPTIONS: ReadonlyArray<{
 }> = [
   { value: 'relevance', label: 'Relevance' },
   { value: 'trust', label: 'Trust (highest)' },
+  { value: 'distance', label: 'Distance (nearest)' },
   { value: 'name_asc', label: 'Name (A-Z)' },
   { value: 'name_desc', label: 'Name (Z-A)' },
 ] as const;
@@ -162,7 +163,7 @@ export function parseDiscoveryUrlState(searchParams: DiscoveryUrlParamsLike): Di
         ? confidence
         : undefined,
     sortBy:
-    sort === 'relevance' || sort === 'trust' || sort === 'name_asc' || sort === 'name_desc'
+    sort === 'relevance' || sort === 'trust' || sort === 'distance' || sort === 'name_asc' || sort === 'name_desc'
         ? sort
         : undefined,
     taxonomyTermIds: sanitizeDiscoveryTaxonomyTermIds(searchParams.get('taxonomyIds')),

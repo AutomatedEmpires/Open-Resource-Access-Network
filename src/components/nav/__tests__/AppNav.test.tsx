@@ -18,17 +18,13 @@ vi.mock('next/navigation', () => ({
   usePathname: usePathnameMock,
 }));
 vi.mock('lucide-react', () => ({
-  MessageCircle: 'svg',
+  ChevronDown: 'svg',
   List: 'svg',
   MapPin: 'svg',
-  Bookmark: 'svg',
-  Flag: 'svg',
-  User: 'svg',
   Menu: 'svg',
+  MessageCircle: 'svg',
+  User: 'svg',
   X: 'svg',
-}));
-vi.mock('../NotificationBell', () => ({
-  NotificationBell: () => null,
 }));
 vi.mock('../LanguageSwitcher', () => ({
   LanguageSwitcher: () => null,
@@ -40,10 +36,16 @@ vi.mock('@/contexts/LocaleContext', () => ({
       'nav.directory': 'Directory',
       'nav.map': 'Map',
       'nav.saved': 'Saved',
-      'nav.report': 'Report',
       'nav.profile': 'Profile',
-      'nav.about': 'About',
       'nav.get_involved': 'Get Involved',
+      'nav.submit_listing': 'Submit a Listing',
+      'nav.register_organization': 'Register an Organization',
+      'nav.become_community_admin': 'Become a Community Admin',
+      'nav.become_oran_admin': 'Become an ORAN Admin',
+      'nav.notifications': 'Notifications',
+      'nav.invitations': 'Invitations',
+      'nav.profile_menu_aria': 'Open profile menu',
+      'nav.get_involved_menu_aria': 'Open get involved menu',
       'nav.explore': 'Explore',
       'nav.open_menu': 'Open navigation',
       'nav.close_menu': 'Close navigation',
@@ -87,7 +89,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   usePathnameMock.mockReturnValue('/saved');
-  useStateMock.mockReturnValue([false, vi.fn()]);
+  useStateMock.mockReturnValue([{ mobileOpen: false, openMenu: null }, vi.fn()]);
 });
 
 describe('AppNav', () => {
@@ -96,11 +98,12 @@ describe('AppNav', () => {
 
     const element = AppNav() as React.ReactElement<any, any>;
     const links = collectElements(element, (child) => child.type === 'a');
-    const activeLink = links.find((child) => child.props.href === '/saved');
-    const toggle = collectElements(element, (child) => child.type === 'button')[0];
+    const activeLink = links.find((child) => child.props.href === '/chat');
+    const buttons = collectElements(element, (child) => child.type === 'button');
+    const toggle = buttons[2];
 
-    expect(links).toHaveLength(9);
-    expect(activeLink?.props['aria-current']).toBe('page');
+    expect(links.map((child) => child.props.href)).toEqual(['/', '/chat', '/map', '/directory']);
+    expect(activeLink?.props['aria-current']).toBeUndefined();
     expect(toggle.props['aria-expanded']).toBe(false);
     expect(toggle.props['aria-label']).toBe('Open navigation');
   });
@@ -108,12 +111,13 @@ describe('AppNav', () => {
   it('renders the mobile drawer when open and closes it from the toggle or a link', async () => {
     const setMobileOpenMock = vi.fn();
     usePathnameMock.mockReturnValue('/map/nearby');
-    useStateMock.mockReturnValue([true, setMobileOpenMock]);
+    useStateMock.mockReturnValue([{ mobileOpen: true, openMenu: null }, setMobileOpenMock]);
     const { AppNav } = await loadAppNav();
 
     const element = AppNav() as React.ReactElement<any, any>;
     const links = collectElements(element, (child) => child.type === 'a');
-    const toggle = collectElements(element, (child) => child.type === 'button')[0];
+    const buttons = collectElements(element, (child) => child.type === 'button');
+    const toggle = buttons[2];
     const mobileNav = collectElements(element, (child) => child.props.id === 'mobile-nav')[0];
     const mobileMapLink = links
       .filter((child) => child.props.href === '/map')
@@ -128,6 +132,6 @@ describe('AppNav', () => {
     expect(setMobileOpenMock).toHaveBeenCalledWith(expect.any(Function));
 
     mobileMapLink?.props.onClick();
-    expect(setMobileOpenMock).toHaveBeenCalledWith(false);
+    expect(setMobileOpenMock).toHaveBeenCalledWith(expect.any(Function));
   });
 });

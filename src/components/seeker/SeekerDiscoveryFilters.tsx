@@ -38,8 +38,10 @@ interface SeekerDiscoveryFiltersProps {
   visibleTaxonomyTermsCount: number;
   dimensionLabels: Record<string, string>;
   categoryGroupLabel?: string;
+  showCategories?: boolean;
   showCategoryLabel?: boolean;
   showTagsLabel?: boolean;
+  showTags?: boolean;
   className?: string;
 }
 
@@ -61,37 +63,41 @@ export function SeekerDiscoveryFilters({
   visibleTaxonomyTermsCount,
   dimensionLabels,
   categoryGroupLabel = 'Quick category filters',
+  showCategories = true,
   showCategoryLabel = true,
   showTagsLabel = true,
+  showTags = true,
   className = '',
 }: SeekerDiscoveryFiltersProps) {
   return (
     <div className={className}>
-      <div className="mb-2 flex flex-wrap items-center gap-2" role="group" aria-label={categoryGroupLabel}>
-        {showCategoryLabel ? (
-          <span className="text-xs font-medium text-gray-500">Categories:</span>
-        ) : null}
-        {QUICK_DISCOVERY_NEEDS.map((need) => {
-          const selected = activeCategory === need.id;
-          return (
-            <button
-              key={need.id}
-              type="button"
-              onClick={() => onCategoryClick(need.id)}
-              className={`inline-flex min-h-[44px] flex-shrink-0 items-center justify-center rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                selected
-                  ? 'border-action bg-action text-white'
-                  : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
-              }`}
-              aria-pressed={selected}
-            >
-              {need.label}
-            </button>
-          );
-        })}
-      </div>
+      {showCategories ? (
+        <div className="mb-2 flex flex-wrap items-center gap-2" role="group" aria-label={categoryGroupLabel}>
+          {showCategoryLabel ? (
+            <span className="text-xs font-medium text-gray-500">Categories:</span>
+          ) : null}
+          {QUICK_DISCOVERY_NEEDS.map((need) => {
+            const selected = activeCategory === need.id;
+            return (
+              <button
+                key={need.id}
+                type="button"
+                onClick={() => onCategoryClick(need.id)}
+                className={`inline-flex min-h-[44px] flex-shrink-0 items-center justify-center rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  selected
+                    ? 'border-action bg-action text-white'
+                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                }`}
+                aria-pressed={selected}
+              >
+                {need.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
-      {(isLoadingTaxonomy || taxonomyError || taxonomyTerms.length > 0) && (
+      {showTags && (isLoadingTaxonomy || taxonomyError || taxonomyTerms.length > 0) && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           {showTagsLabel ? <span className="text-xs font-medium text-gray-500">Tags:</span> : null}
 

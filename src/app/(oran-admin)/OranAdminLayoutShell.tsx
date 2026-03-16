@@ -63,22 +63,27 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
       >
         Skip to main content
       </a>
-      <header className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
-        <div className="container mx-auto max-w-7xl flex items-center justify-between px-4 h-14">
-          <Link href="/approvals" className="font-bold text-gray-900 tracking-tight rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-action focus-visible:ring-offset-1">
-            ORAN Admin
-          </Link>
+      <header className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-white/95 backdrop-blur">
+        <div className="container mx-auto flex h-[4.5rem] max-w-7xl items-center justify-between px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link href="/approvals" className="rounded text-2xl font-bold tracking-tight text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-action focus-visible:ring-offset-1">
+              ORAN
+            </Link>
+            <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 md:inline-flex">
+              Admin
+            </span>
+          </div>
 
-          <div className="flex items-center gap-2">
-            <nav className="flex items-center gap-1 overflow-x-auto" aria-label="ORAN admin navigation">
+          <div className="hidden flex-1 items-center justify-center lg:flex">
+            <nav className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm overflow-x-auto" aria-label="ORAN admin navigation">
               {NAV_ITEMS.map(({ href, label }) => (
                 <Link
                   key={href}
                   href={href}
-                  className={`inline-flex items-center min-h-[44px] px-3 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`inline-flex min-h-[50px] items-center rounded-full px-5 py-2.5 text-base transition-colors whitespace-nowrap ${
                     isActive(href)
-                      ? 'bg-teal-50 text-teal-800'
-                      : 'text-stone-500 hover:text-stone-900 hover:bg-stone-50'
+                      ? 'border border-slate-200 bg-slate-50 font-semibold text-slate-950'
+                      : 'font-medium text-stone-500 hover:bg-stone-50 hover:text-stone-900'
                   }`}
                   aria-current={isActive(href) ? 'page' : undefined}
                 >
@@ -86,9 +91,31 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
                 </Link>
               ))}
             </nav>
+          </div>
+
+          <div className="flex items-center gap-2">
             <PortalUserMenu />
           </div>
         </div>
+
+        <nav className="border-t border-[var(--border)] overflow-x-auto scrollbar-none lg:hidden" aria-label="ORAN admin navigation">
+          <div className="flex items-center px-2">
+            {NAV_ITEMS.map(({ href, label }) => (
+              <Link
+                key={href}
+                href={href}
+                className={`inline-flex min-h-[44px] shrink-0 items-center px-3 text-sm font-medium transition-colors whitespace-nowrap border-b-2 ${
+                  isActive(href)
+                    ? 'border-slate-900 text-slate-900'
+                    : 'border-transparent text-stone-500 hover:text-stone-900'
+                }`}
+                aria-current={isActive(href) ? 'page' : undefined}
+              >
+                {label}
+              </Link>
+            ))}
+          </div>
+        </nav>
       </header>
 
       <OranAdminContextStrip />

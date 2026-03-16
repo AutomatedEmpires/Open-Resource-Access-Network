@@ -33,15 +33,16 @@ beforeEach(() => {
 });
 
 describe('api/taxonomy/terms route', () => {
-  it('returns 503 when the database is unavailable', async () => {
+  it('returns an empty term list when the database is unavailable', async () => {
     dbMocks.isDatabaseConfigured.mockReturnValue(false);
     const { GET } = await loadRoute();
 
     const response = await GET(createRequest());
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      error: 'Taxonomy is temporarily unavailable (database not configured).',
+      terms: [],
+      warning: 'Taxonomy terms are unavailable because the database is not configured.',
     });
   });
 

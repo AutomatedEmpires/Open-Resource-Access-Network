@@ -3,24 +3,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, MapPin, AlertTriangle, X, ChevronDown, ChevronUp, SlidersHorizontal, Loader2 } from 'lucide-react';
+import { Search, MapPin, AlertTriangle, X, ChevronDown, SlidersHorizontal, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
   type DiscoveryNeedId,
+  QUICK_DISCOVERY_NEEDS,
   resolveDiscoveryNeedId,
   isDiscoveryNeedSearchText,
   getDiscoveryNeedSearchText,
 } from '@/domain/discoveryNeeds';
 import { SERVICE_ATTRIBUTES_TAXONOMY } from '@/domain/taxonomy';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
-import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { ServiceCard } from '@/components/directory/ServiceCard';
-import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
 import { DiscoverySurfaceTabs } from '@/components/seeker/DiscoverySurfaceTabs';
-import { SeekerAppliedFilters, type SeekerAppliedFilterItem } from '@/components/seeker/SeekerAppliedFilters';
-import { SeekerDiscoveryFilters } from '@/components/seeker/SeekerDiscoveryFilters';
+import { type SeekerAppliedFilterItem } from '@/components/seeker/SeekerAppliedFilters';
 import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
 import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
 import {
@@ -34,21 +32,18 @@ import {
   buildDiscoveryHref,
   buildDiscoveryUrlParams,
   buildSearchApiParamsFromDiscovery,
-  DISCOVERY_CONFIDENCE_OPTIONS,
-  DISCOVERY_SORT_OPTIONS,
   hasMeaningfulDiscoveryState,
   parseDiscoveryAttributeFilters,
   parseDiscoveryUrlState,
   resolveDiscoverySearchText,
-  type DiscoveryConfidenceFilter,
   type DiscoverySortOption,
 } from '@/services/search/discovery';
-import type { SearchResponse } from '@/services/search/types';
+import type { SearchResponse, SearchResult } from '@/services/search/types';
 import type { EnrichedService } from '@/domain/types';
 import { FormField } from '@/components/ui/form-field';
-import { FormSection } from '@/components/ui/form-section';
 import { useToast } from '@/components/ui/toast';
 import { DISCOVERY_ATTRIBUTE_LABELS } from '@/services/search/discoveryPresentation';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 // Azure Maps SDK accesses `window` at module evaluation time — must be loaded
 // client-side only. The ssr:false dynamic import prevents SSR prerender errors.
@@ -66,20 +61,30 @@ const MapContainer = dynamic(
 
 const DEFAULT_LIMIT = 12;
 const DEBOUNCE_MS = 600;
-type ConfidenceFilter = DiscoveryConfidenceFilter;
-type SortOption = DiscoverySortOption;
+type ConfidenceFilter = 'all';
+type SortOption = 'relevance' | 'distance';
+const VALID_SORT_OPTIONS: SortOption[] = ['relevance', 'distance'];
 
-const CONFIDENCE_OPTIONS = DISCOVERY_CONFIDENCE_OPTIONS;
-const SORT_OPTIONS = DISCOVERY_SORT_OPTIONS;
+function normalizeSortOption(value: DiscoverySortOption | string | null | undefined): SortOption {
+  return VALID_SORT_OPTIONS.includes(value as SortOption) ? (value as SortOption) : 'distance';
+}
 
-/** Seeker-facing attribute dimensions — show common tags as quick filter chips */
-const SEEKER_ATTRIBUTE_DIMENSIONS = ['delivery', 'cost', 'access'] as const;
+const SORT_OPTIONS: Array<{ value: SortOption; label: string; description: string }> = [
+  { value: 'distance', label: 'Nearby first', description: 'Shows the closest results in the current map area first.' },
+  { value: 'relevance', label: 'Balanced results', description: 'Mixes relevance, verification, and nearby results.' },
+];
+
+/** Canonical resource taxonomy dimensions exposed on the seeker map */
+const SEEKER_ATTRIBUTE_DIMENSIONS = ['delivery', 'cost', 'access', 'culture', 'population', 'situation'] as const;
 
 /** Human-readable labels for taxonomy dimension keys */
 const DIMENSION_LABELS: Record<string, string> = {
   delivery: 'Delivery Method',
   cost: 'Cost & Payment',
   access: 'Access',
+  culture: 'Culture & Identity',
+  population: 'Population Focus',
+  situation: 'Situational Context',
   eligibility: 'Eligibility',
   languages: 'Languages',
   temporal: 'Schedule',
@@ -92,17 +97,69 @@ interface Bounds {
   maxLng: number;
 }
 
-type TaxonomyTermDTO = {
-  id: string;
-  term: string;
-  description: string | null;
-  parentId: string | null;
-  taxonomy: string | null;
-  serviceCount: number;
-};
+function formatDistance(meters: number | null | undefined): string | null {
+  if (typeof meters !== 'number' || !Number.isFinite(meters) || meters < 0) return null;
+  const miles = meters / 1609.344;
+  if (miles < 0.2) {
+    return `${Math.round(meters / 160.934)} min walk`;
+  }
+  if (miles < 10) {
+    return `${miles.toFixed(1)} mi away`;
+  }
+  return `${Math.round(miles)} mi away`;
+}
 
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+function hasPinnedLocation(service: EnrichedService): boolean {
+  return service.location?.latitude != null && service.location?.longitude != null;
+}
+
+function getAttributeTags(service: EnrichedService, taxonomy: string): string[] {
+  return service.attributes
+    ?.filter((attribute) => attribute.taxonomy === taxonomy)
+    .map((attribute) => attribute.tag) ?? [];
+}
+
+function getOffMapReason(service: EnrichedService): string {
+  const deliveryTags = getAttributeTags(service, 'delivery');
+  const supportsOnline = deliveryTags.includes('virtual') || deliveryTags.includes('hybrid');
+  const supportsPhone = deliveryTags.includes('phone');
+
+  if (supportsOnline && supportsPhone) {
+    return 'Available online or by phone';
+  }
+  if (supportsOnline) {
+    return 'Available online';
+  }
+  if (supportsPhone) {
+    return 'Available by phone';
+  }
+
+  const namedServiceArea = service.serviceAreas?.find((area) => area.name?.trim())?.name?.trim();
+  if (namedServiceArea) {
+    return `Serves ${namedServiceArea}`;
+  }
+
+  const extentType = service.serviceAreas?.find((area) => area.extentType)?.extentType;
+  switch (extentType) {
+    case 'nationwide':
+      return 'Serves people nationwide';
+    case 'state':
+      return 'Serves a wider state area';
+    case 'county':
+      return 'Serves a wider county area';
+    case 'city':
+    case 'zip':
+      return 'Serves a wider local area';
+    default:
+      break;
+  }
+
+  const serviceRegion = service.organization.serviceRegion?.trim();
+  if (serviceRegion) {
+    return `Serves ${serviceRegion}`;
+  }
+
+  return 'No precise map location listed';
 }
 
 export default function MapPage() {
@@ -124,45 +181,32 @@ export default function MapPage() {
   // Opt-in device geolocation (in-session only; never stored)
   const [isLocating, setIsLocating] = useState(false);
   const [deviceCenter, setDeviceCenter] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationState, setLocationState] = useState<'idle' | 'requesting' | 'granted' | 'denied' | 'unsupported'>('idle');
 
-  // Taxonomy filters (IDs are canonical DB UUIDs)
-  const [taxonomyTerms, setTaxonomyTerms] = useState<TaxonomyTermDTO[]>([]);
-  const [isLoadingTaxonomy, setIsLoadingTaxonomy] = useState(false);
-  const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
-  const [selectedTaxonomyIds, setSelectedTaxonomyIds] = useState<string[]>(() => {
-    const raw = searchParams.get('taxonomyIds');
-    if (!raw) return [];
-    return raw.split(',').map((s) => s.trim()).filter((s) => s && isUuid(s));
-  });
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string[]>>(
     () => parseDiscoveryAttributeFilters(searchParams.get('attributes')) ?? {},
   );
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [attributeSectionOpen, setAttributeSectionOpen] = useState(false);
-  const [taxonomyDialogOpen, setTaxonomyDialogOpen] = useState(false);
-  const [taxonomySearch, setTaxonomySearch] = useState('');
+  const [desktopFiltersOpen, setDesktopFiltersOpen] = useState(false);
 
   // Track latest bounds from the map for bbox-on-pan queries
   const boundsRef = useRef<Bounds | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [hasMapBounds, setHasMapBounds] = useState(false);
   const [isAreaDirty, setIsAreaDirty] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [savedSyncEnabled] = useState(() => isServerSyncEnabledOnDevice());
   const savedIdsRef = useRef<Set<string>>(new Set());
   const resultsContainerRef = useRef<HTMLDivElement>(null);
   const [activeCategory, setActiveCategory] = useState<DiscoveryNeedId | null>(initialCategoryFromUrl);
-  const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter>(() => {
-    const value = searchParams.get('confidence');
-    return value === 'HIGH' || value === 'LIKELY' ? value : 'all';
-  });
   const [sortBy, setSortBy] = useState<SortOption>(() => {
-    const value = searchParams.get('sort');
-    const valid: SortOption[] = ['relevance', 'trust', 'name_asc', 'name_desc'];
-    return valid.includes(value as SortOption) ? (value as SortOption) : 'relevance';
+    return normalizeSortOption(searchParams.get('sort'));
   });
+  const confidenceFilter = 'all' as const;
   const { success, error: toastError, info } = useToast();
+  const didRequestLocationRef = useRef(false);
+  const didInitialMobileSearchRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -173,54 +217,26 @@ export default function MapPage() {
     return () => mq.removeEventListener('change', update);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadTerms() {
-      setIsLoadingTaxonomy(true);
-      setTaxonomyError(null);
-      try {
-        const res = await fetch('/api/taxonomy/terms?limit=250', {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-        });
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as { error?: string } | null;
-          throw new Error(body?.error ?? 'Failed to load filters');
-        }
-        const json = (await res.json()) as { terms: TaxonomyTermDTO[] };
-        if (!cancelled) {
-          setTaxonomyTerms(Array.isArray(json.terms) ? json.terms : []);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setTaxonomyError(e instanceof Error ? e.message : 'Failed to load filters');
-        }
-      } finally {
-        if (!cancelled) setIsLoadingTaxonomy(false);
-      }
-    }
-
-    void loadTerms();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const roundForPrivacy = useCallback((value: number): number => {
     // ~0.01° ≈ 1km (varies by latitude); used to reduce precision exposure.
     return Math.round(value * 100) / 100;
   }, []);
 
-  const handleUseMyLocation = useCallback(() => {
+  const requestDeviceLocation = useCallback((announce = true) => {
     if (isLocating) return;
     if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
-      toastError('Device location is not available in this browser.');
+      setLocationState('unsupported');
+      if (announce) {
+        toastError('Device location is not available in this browser.');
+      }
       return;
     }
 
     setIsLocating(true);
-    info('Requesting device location…');
+    setLocationState('requesting');
+    if (announce) {
+      info('Requesting device location…');
+    }
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -229,17 +245,23 @@ export default function MapPage() {
         setDeviceCenter({ lat, lng });
         setSearchMode('bbox');
         setIsAreaDirty(true);
-        success('Centered near your location (not saved).');
+        setLocationState('granted');
+        if (announce) {
+          success('Centered near your location (not saved).');
+        }
         setIsLocating(false);
       },
       (err) => {
+        setLocationState(err.code === err.PERMISSION_DENIED ? 'denied' : 'idle');
         const message =
           err.code === err.PERMISSION_DENIED
             ? 'Location permission denied.'
             : err.code === err.TIMEOUT
               ? 'Location request timed out.'
               : 'Location unavailable.';
-        toastError(message);
+        if (announce) {
+          toastError(message);
+        }
         setIsLocating(false);
       },
       {
@@ -249,6 +271,16 @@ export default function MapPage() {
       },
     );
   }, [info, isLocating, roundForPrivacy, success, toastError]);
+
+  const handleUseMyLocation = useCallback(() => {
+    requestDeviceLocation(true);
+  }, [requestDeviceLocation]);
+
+  useEffect(() => {
+    if (didRequestLocationRef.current || deviceCenter || isLocating) return;
+    didRequestLocationRef.current = true;
+    requestDeviceLocation(false);
+  }, [deviceCenter, isLocating, requestDeviceLocation]);
 
   // Load saved IDs from localStorage on mount
   useEffect(() => {
@@ -285,12 +317,10 @@ export default function MapPage() {
   const hasSearchContext = useCallback((
     nextQuery: string,
     nextCategory: DiscoveryNeedId | null,
-    nextTaxonomyIds: string[],
     nextAttributes: Record<string, string[]>,
     hasBounds = false,
   ) => {
     return Boolean(resolveDiscoverySearchText(nextQuery, nextCategory))
-      || nextTaxonomyIds.length > 0
       || Object.keys(nextAttributes).length > 0
       || hasBounds;
   }, []);
@@ -298,19 +328,17 @@ export default function MapPage() {
   const hasShareableIntent = useCallback((
     nextQuery: string,
     nextCategory: DiscoveryNeedId | null,
-    nextTaxonomyIds: string[],
     nextAttributes: Record<string, string[]>,
-  ) => hasSearchContext(nextQuery, nextCategory, nextTaxonomyIds, nextAttributes, false), [hasSearchContext]);
+  ) => hasSearchContext(nextQuery, nextCategory, nextAttributes, false), [hasSearchContext]);
 
   const pushUrlState = useCallback((
     nextQuery: string,
     nextConfidence: ConfidenceFilter,
     nextSort: SortOption,
     nextCategory: DiscoveryNeedId | null,
-    nextTaxonomyIds: string[],
     nextAttributes: Record<string, string[]>,
   ) => {
-    if (!hasShareableIntent(nextQuery, nextCategory, nextTaxonomyIds, nextAttributes)) {
+    if (!hasShareableIntent(nextQuery, nextCategory, nextAttributes)) {
       router.replace('/map', { scroll: false });
       return;
     }
@@ -320,7 +348,6 @@ export default function MapPage() {
       needId: nextCategory,
       confidenceFilter: nextConfidence,
       sortBy: nextSort,
-      taxonomyTermIds: nextTaxonomyIds,
       attributeFilters: nextAttributes,
     });
     const qs = params.toString();
@@ -330,49 +357,30 @@ export default function MapPage() {
   const resetResultsToEmpty = useCallback(() => {
     setData(null);
     setError(null);
-    pushUrlState('', 'all', 'relevance', null, [], {});
+    pushUrlState('', 'all', 'distance', null, {});
   }, [pushUrlState]);
 
   const canSearch = useMemo(
-    () => hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false),
-    [activeCategory, hasSearchContext, query, selectedAttributes, selectedTaxonomyIds],
+    () => hasSearchContext(query, activeCategory, selectedAttributes, hasMapBounds),
+    [activeCategory, hasMapBounds, hasSearchContext, query, selectedAttributes],
   );
-
-  const taxonomyIdsParam = useMemo(() => {
-    return selectedTaxonomyIds.length > 0 ? selectedTaxonomyIds.join(',') : '';
-  }, [selectedTaxonomyIds]);
-
-  // Sort by service count so the most-used tags surface first (H3)
-  const quickTaxonomyTerms = useMemo(
-    () => [...taxonomyTerms].sort((a, b) => b.serviceCount - a.serviceCount).slice(0, 6),
-    [taxonomyTerms],
-  );
-
-  const visibleTaxonomyTerms = useMemo(() => {
-    const trimmed = taxonomySearch.trim().toLowerCase();
-    if (!trimmed) return taxonomyTerms;
-    return taxonomyTerms.filter((t) => t.term.toLowerCase().includes(trimmed));
-  }, [taxonomySearch, taxonomyTerms]);
-
-  /** Terms grouped by taxonomy dimension — used in the "More filters" dialog */
-  const groupedTaxonomyTerms = useMemo(() => {
-    const groups: Record<string, TaxonomyTermDTO[]> = {};
-    for (const t of visibleTaxonomyTerms) {
-      const key = t.taxonomy ?? 'other';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(t);
-    }
-    return groups;
-  }, [visibleTaxonomyTerms]);
 
   const services: EnrichedService[] = useMemo(() => {
     return data?.results?.map((r) => r.service) ?? [];
   }, [data]);
 
-  const pinnedCount = useMemo(
-    () => services.filter((s) => s.location?.latitude != null && s.location?.longitude != null).length,
-    [services],
+  const pinnedResults = useMemo<SearchResult[]>(
+    () => (data?.results ?? []).filter((result) => hasPinnedLocation(result.service)),
+    [data],
   );
+
+  const offMapResults = useMemo<SearchResult[]>(
+    () => (data?.results ?? []).filter((result) => !hasPinnedLocation(result.service)),
+    [data],
+  );
+
+  const pinnedCount = pinnedResults.length;
+  const offMapCount = offMapResults.length;
 
   const directoryHref = useMemo(() => {
     const params = buildDiscoveryUrlParams({
@@ -380,54 +388,11 @@ export default function MapPage() {
       needId: activeCategory,
       confidenceFilter,
       sortBy,
-      taxonomyTermIds: selectedTaxonomyIds,
       attributeFilters: selectedAttributes,
     });
     const qs = params.toString();
     return qs ? `/directory?${qs}` : '/directory';
-  }, [activeCategory, confidenceFilter, query, selectedAttributes, selectedTaxonomyIds, sortBy]);
-
-  const selectedTagLabel = useMemo(() => {
-    if (selectedTaxonomyIds.length === 0) return null;
-    const byId = new Map(taxonomyTerms.map((term) => [term.id, term.term] as const));
-    const names = selectedTaxonomyIds.map((id) => byId.get(id)).filter((value): value is string => Boolean(value));
-    const total = selectedTaxonomyIds.length;
-
-    if (names.length === 0) return `Tags: ${total}`;
-    if (total === 1) return `Tag: ${names[0]}`;
-    if (names.length === 1) return `Tags: ${names[0]} +${total - 1}`;
-    if (total === 2) return `Tags: ${names[0]}, ${names[1]}`;
-    return `Tags: ${names[0]}, ${names[1]} +${total - 2}`;
-  }, [selectedTaxonomyIds, taxonomyTerms]);
-
-  const selectedTagsKnown = useMemo(() => {
-    if (selectedTaxonomyIds.length === 0) return [] as Array<{ id: string; term: string }>;
-    const byId = new Map(taxonomyTerms.map((term) => [term.id, term.term] as const));
-    return selectedTaxonomyIds
-      .map((id) => {
-        const term = byId.get(id);
-        return term ? { id, term } : null;
-      })
-      .filter((value): value is { id: string; term: string } => Boolean(value));
-  }, [selectedTaxonomyIds, taxonomyTerms]);
-
-  const appliedTagChips = useMemo(() => {
-    if (selectedTaxonomyIds.length === 0) {
-      return {
-        chips: [] as Array<{ id: string; term: string }>,
-        remaining: 0,
-        hasUnknown: false,
-      };
-    }
-
-    const chips = selectedTagsKnown.slice(0, 2);
-    const unknown = selectedTaxonomyIds.length - selectedTagsKnown.length;
-    return {
-      chips,
-      remaining: Math.max(0, selectedTaxonomyIds.length - chips.length),
-      hasUnknown: unknown > 0,
-    };
-  }, [selectedTagsKnown, selectedTaxonomyIds.length]);
+  }, [activeCategory, confidenceFilter, query, selectedAttributes, sortBy]);
 
   const mapDiscoveryContext = useMemo(() => {
     return {
@@ -435,10 +400,9 @@ export default function MapPage() {
       needId: activeCategory,
       confidenceFilter,
       sortBy,
-      taxonomyTermIds: selectedTaxonomyIds,
       attributeFilters: selectedAttributes,
     };
-  }, [activeCategory, confidenceFilter, query, selectedAttributes, selectedTaxonomyIds, sortBy]);
+  }, [activeCategory, confidenceFilter, query, selectedAttributes, sortBy]);
 
   const chatHref = useMemo(() => {
     return buildDiscoveryHref('/chat', mapDiscoveryContext);
@@ -453,13 +417,6 @@ export default function MapPage() {
     [chatHref, directoryHref],
   );
 
-  const taxonomyLabelById = useMemo<Record<string, string>>(() => {
-    return taxonomyTerms.reduce<Record<string, string>>((acc, term) => {
-      acc[term.id] = term.term;
-      return acc;
-    }, {});
-  }, [taxonomyTerms]);
-
   const buildServiceDetailHref = useCallback((serviceId: string) => {
     return buildDiscoveryHref(`/service/${serviceId}`, mapDiscoveryContext);
   }, [mapDiscoveryContext]);
@@ -468,7 +425,6 @@ export default function MapPage() {
   const runSearch = useCallback(
     async (opts?: {
       bbox?: Bounds;
-      taxonomyIds?: string;
       attributes?: Record<string, string[]>;
       confidence?: ConfidenceFilter;
       sort?: SortOption;
@@ -477,7 +433,6 @@ export default function MapPage() {
     }) => {
       const trimmed = (opts?.text ?? query).trim();
       const bbox = opts?.bbox;
-      const taxonomyIds = opts?.taxonomyIds;
       const effectiveAttributes = opts?.attributes ?? selectedAttributes;
       const effectiveConfidence = opts?.confidence !== undefined ? opts.confidence : confidenceFilter;
       const effectiveSort = opts?.sort !== undefined ? opts.sort : sortBy;
@@ -490,16 +445,13 @@ export default function MapPage() {
       setError(null);
 
       try {
-        const effectiveTaxonomyIds = taxonomyIds ?? taxonomyIdsParam;
-        const effectiveTaxonomyIdList = effectiveTaxonomyIds ? effectiveTaxonomyIds.split(',').filter(Boolean) : [];
-        if (!hasSearchContext(trimmed, effectiveCategory, effectiveTaxonomyIdList, effectiveAttributes, Boolean(bbox))) {
+        if (!hasSearchContext(trimmed, effectiveCategory, effectiveAttributes, Boolean(bbox))) {
           setIsLoading(false);
           return;
         }
         const params = buildSearchApiParamsFromDiscovery({
           text: trimmed || categorySearchText,
           needId: effectiveCategory,
-          taxonomyTermIds: effectiveTaxonomyIdList,
           attributeFilters: effectiveAttributes,
           confidenceFilter: effectiveConfidence,
           sortBy: effectiveSort,
@@ -534,7 +486,6 @@ export default function MapPage() {
           effectiveConfidence,
           effectiveSort,
           effectiveCategory,
-          effectiveTaxonomyIdList,
           effectiveAttributes,
         );
       } catch (e) {
@@ -544,37 +495,12 @@ export default function MapPage() {
         setIsLoading(false);
       }
     },
-    [activeCategory, confidenceFilter, hasSearchContext, pushUrlState, query, selectedAttributes, sortBy, taxonomyIdsParam],
+    [activeCategory, confidenceFilter, hasSearchContext, pushUrlState, query, selectedAttributes, sortBy],
   );
-
-  const toggleTaxonomyId = useCallback((id: string) => {
-    setSelectedTaxonomyIds((prev) => {
-      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-      const nextParam = next.length > 0 ? next.join(',') : '';
-
-      // Re-run the current search context so filters feel immediate.
-      if (boundsRef.current) {
-        void runSearch({ bbox: boundsRef.current, taxonomyIds: nextParam });
-      } else if (hasSearchContext(query, activeCategory, next, selectedAttributes, false)) {
-        void runSearch({ taxonomyIds: nextParam });
-      }
-
-      return next;
-    });
-  }, [activeCategory, hasSearchContext, query, runSearch, selectedAttributes]);
-
-  const clearTaxonomyFilters = useCallback(() => {
-    setSelectedTaxonomyIds([]);
-    if (boundsRef.current) {
-      void runSearch({ bbox: boundsRef.current, taxonomyIds: '' });
-    } else if (hasSearchContext(query, activeCategory, [], selectedAttributes, false)) {
-      void runSearch({ taxonomyIds: '' });
-    }
-  }, [activeCategory, hasSearchContext, query, runSearch, selectedAttributes]);
 
   const clearCategory = useCallback(() => {
     setActiveCategory(null);
-    if (!hasSearchContext(query, null, selectedTaxonomyIds, selectedAttributes, Boolean(boundsRef.current))) {
+    if (!hasSearchContext(query, null, selectedAttributes, Boolean(boundsRef.current))) {
       resetResultsToEmpty();
       return;
     }
@@ -583,29 +509,29 @@ export default function MapPage() {
       return;
     }
     void runSearch({ category: null, attributes: selectedAttributes });
-  }, [hasSearchContext, query, resetResultsToEmpty, runSearch, selectedAttributes, selectedTaxonomyIds]);
-
-  const clearTrust = useCallback(() => {
-    setConfidenceFilter('all');
-    if (boundsRef.current) {
-      void runSearch({ bbox: boundsRef.current, confidence: 'all' });
-    } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false)) {
-      void runSearch({ confidence: 'all' });
-    }
-  }, [activeCategory, hasSearchContext, query, runSearch, selectedAttributes, selectedTaxonomyIds]);
+  }, [hasSearchContext, query, resetResultsToEmpty, runSearch, selectedAttributes]);
 
   const clearSort = useCallback(() => {
-    setSortBy('relevance');
+    setSortBy('distance');
     if (boundsRef.current) {
-      void runSearch({ bbox: boundsRef.current, sort: 'relevance' });
-    } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false)) {
-      void runSearch({ sort: 'relevance' });
+      void runSearch({ bbox: boundsRef.current, sort: 'distance' });
+    } else if (hasSearchContext(query, activeCategory, selectedAttributes, false)) {
+      void runSearch({ sort: 'distance' });
     }
-  }, [activeCategory, hasSearchContext, query, runSearch, selectedAttributes, selectedTaxonomyIds]);
+  }, [activeCategory, hasSearchContext, query, runSearch, selectedAttributes]);
+
+  const applySort = useCallback((next: SortOption) => {
+    setSortBy(next);
+    if (boundsRef.current) {
+      void runSearch({ bbox: boundsRef.current, sort: next });
+    } else if (hasSearchContext(query, activeCategory, selectedAttributes, false)) {
+      void runSearch({ sort: next });
+    }
+  }, [activeCategory, hasSearchContext, query, runSearch, selectedAttributes]);
 
   const clearAttributes = useCallback(() => {
     setSelectedAttributes({});
-    if (!hasSearchContext(query, activeCategory, selectedTaxonomyIds, {}, Boolean(boundsRef.current))) {
+    if (!hasSearchContext(query, activeCategory, {}, Boolean(boundsRef.current))) {
       resetResultsToEmpty();
       return;
     }
@@ -614,7 +540,7 @@ export default function MapPage() {
       return;
     }
     void runSearch({ attributes: {} });
-  }, [activeCategory, hasSearchContext, query, resetResultsToEmpty, runSearch, selectedTaxonomyIds]);
+  }, [activeCategory, hasSearchContext, query, resetResultsToEmpty, runSearch]);
 
   const toggleAttribute = useCallback((dimension: string, tag: string) => {
     setSelectedAttributes((prev) => {
@@ -629,24 +555,22 @@ export default function MapPage() {
       }
       if (boundsRef.current) {
         void runSearch({ bbox: boundsRef.current, attributes: next });
-      } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, next, false)) {
+      } else if (hasSearchContext(query, activeCategory, next, false)) {
         void runSearch({ attributes: next });
       }
       return next;
     });
-  }, [activeCategory, hasSearchContext, query, runSearch, selectedTaxonomyIds]);
+  }, [activeCategory, hasSearchContext, query, runSearch]);
 
   const hasActiveAttributes = useMemo(() => Object.keys(selectedAttributes).length > 0, [selectedAttributes]);
   const hasActiveRefinements = useMemo(
     () => Boolean(
       activeCategory
       || deviceCenter
-      || selectedTaxonomyIds.length > 0
       || hasActiveAttributes
-      || confidenceFilter !== 'all'
-      || sortBy !== 'relevance',
+      || sortBy !== 'distance',
     ),
-    [activeCategory, confidenceFilter, deviceCenter, hasActiveAttributes, selectedTaxonomyIds.length, sortBy],
+    [activeCategory, deviceCenter, hasActiveAttributes, sortBy],
   );
 
   // Keyboard shortcut: "/" focuses the search input (standard for search-centric pages)
@@ -666,25 +590,28 @@ export default function MapPage() {
   const clearAllFilters = useCallback(() => {
     setQuery('');
     setActiveCategory(null);
-    setSelectedTaxonomyIds([]);
     setSelectedAttributes({});
-    setTaxonomySearch('');
-    setConfidenceFilter('all');
-    setSortBy('relevance');
+    setSortBy('distance');
     if (boundsRef.current) {
       void runSearch({
         bbox: boundsRef.current,
         text: '',
         category: null,
-        taxonomyIds: '',
         attributes: {},
-        confidence: 'all',
-        sort: 'relevance',
+        sort: 'distance',
       });
       return;
     }
     resetResultsToEmpty();
   }, [resetResultsToEmpty, runSearch]);
+
+  const openFiltersPanel = useCallback(() => {
+    if (isMobile) {
+      setMobileFiltersOpen(true);
+      return;
+    }
+    setDesktopFiltersOpen(true);
+  }, [isMobile]);
 
   const appliedFilterItems = useMemo<SeekerAppliedFilterItem[]>(() => {
     const items: SeekerAppliedFilterItem[] = [];
@@ -698,38 +625,6 @@ export default function MapPage() {
       });
     }
 
-    appliedTagChips.chips.forEach((tag) => {
-      items.push({
-        id: `tag-${tag.id}`,
-        label: `Tag: ${tag.term}`,
-        onClick: () => toggleTaxonomyId(tag.id),
-        ariaLabel: `Remove tag ${tag.term}`,
-        title: 'Remove tag',
-      });
-    });
-
-    if (appliedTagChips.remaining > 0) {
-      items.push({
-        id: 'tags-more',
-        label: `+${appliedTagChips.remaining} more`,
-        onClick: () => setTaxonomyDialogOpen(true),
-        ariaLabel: `View ${appliedTagChips.remaining} more tag filters`,
-        title: 'View more tags',
-        showRemoveIcon: false,
-      });
-    }
-
-    if (appliedTagChips.hasUnknown && appliedTagChips.chips.length === 0) {
-      items.push({
-        id: 'tags-summary',
-        label: selectedTagLabel ?? `Tags: ${selectedTaxonomyIds.length}`,
-        onClick: () => setTaxonomyDialogOpen(true),
-        ariaLabel: `View tag filters (${selectedTaxonomyIds.length})`,
-        title: 'View tag filters',
-        showRemoveIcon: false,
-      });
-    }
-
     if (Object.keys(selectedAttributes).length > 0) {
       items.push({
         id: 'service-filters',
@@ -739,16 +634,7 @@ export default function MapPage() {
       });
     }
 
-    if (confidenceFilter !== 'all') {
-      items.push({
-        id: 'trust',
-        label: `Trust: ${confidenceFilter === 'HIGH' ? 'High' : 'Likely+'}`,
-        onClick: clearTrust,
-        ariaLabel: 'Clear trust filter',
-      });
-    }
-
-    if (sortBy !== 'relevance') {
+    if (sortBy !== 'distance') {
       items.push({
         id: 'sort',
         label: `Sort: ${SORT_OPTIONS.find((option) => option.value === sortBy)?.label ?? sortBy}`,
@@ -760,19 +646,11 @@ export default function MapPage() {
     return items;
   }, [
     activeCategory,
-    appliedTagChips.chips,
-    appliedTagChips.hasUnknown,
-    appliedTagChips.remaining,
     clearAttributes,
     clearCategory,
     clearSort,
-    clearTrust,
-    confidenceFilter,
     selectedAttributes,
-    selectedTagLabel,
-    selectedTaxonomyIds.length,
     sortBy,
-    toggleTaxonomyId,
   ]);
 
   const handleCategoryClick = useCallback((category: DiscoveryNeedId) => {
@@ -807,10 +685,17 @@ export default function MapPage() {
   const handleBoundsChange = useCallback(
     (bounds: Bounds) => {
       boundsRef.current = bounds;
+      setHasMapBounds(true);
       if (searchMode !== 'bbox') return; // only auto re-query in bbox mode
 
-      // Mobile behavior: Zillow-like “Search this area” CTA.
+      // Mobile behavior: populate once automatically, then switch to explicit "Search this area".
       if (isMobile) {
+        if (!didInitialMobileSearchRef.current) {
+          didInitialMobileSearchRef.current = true;
+          setIsAreaDirty(false);
+          void runSearch({ bbox: bounds });
+          return;
+        }
         setIsAreaDirty(true);
         return;
       }
@@ -821,7 +706,7 @@ export default function MapPage() {
         void runSearch({ bbox: bounds });
       }, DEBOUNCE_MS);
     },
-    [isMobile, searchMode, runSearch],
+    [isMobile, runSearch, searchMode],
   );
 
   // cleanup on unmount
@@ -850,25 +735,19 @@ export default function MapPage() {
       : storedDiscoveryIntent;
     const effectiveCategory = effectiveDiscoveryIntent.needId ?? null;
     const effectiveQuery = resolveDiscoverySearchText(effectiveDiscoveryIntent.text, effectiveCategory);
-    const effectiveConfidence = effectiveDiscoveryIntent.confidenceFilter ?? confidenceFilter;
-    const effectiveSort = effectiveDiscoveryIntent.sortBy ?? sortBy;
-    const effectiveTaxonomyIds = (effectiveDiscoveryIntent.taxonomyTermIds ?? []).filter((value) => isUuid(value));
+    const effectiveSort = normalizeSortOption(effectiveDiscoveryIntent.sortBy ?? sortBy);
     const effectiveAttributes = effectiveDiscoveryIntent.attributeFilters ?? {};
-    if (!hasSearchContext(effectiveQuery, effectiveCategory, effectiveTaxonomyIds, effectiveAttributes, false)) return;
+    if (!hasSearchContext(effectiveQuery, effectiveCategory, effectiveAttributes, false)) return;
 
     didAutoRun.current = true;
     setQuery(effectiveQuery);
     setActiveCategory(effectiveCategory);
-    setConfidenceFilter(effectiveConfidence);
     setSortBy(effectiveSort);
-    setSelectedTaxonomyIds(effectiveTaxonomyIds);
     setSelectedAttributes(effectiveAttributes);
     void runSearch({
       text: effectiveQuery,
       category: effectiveCategory,
-      taxonomyIds: effectiveTaxonomyIds.length > 0 ? effectiveTaxonomyIds.join(',') : undefined,
       attributes: effectiveAttributes,
-      confidence: effectiveConfidence,
       sort: effectiveSort,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -878,7 +757,7 @@ export default function MapPage() {
     setQuery('');
     setActiveCategory(null);
 
-    if (!hasSearchContext('', null, selectedTaxonomyIds, selectedAttributes, Boolean(boundsRef.current))) {
+    if (!hasSearchContext('', null, selectedAttributes, Boolean(boundsRef.current))) {
       resetResultsToEmpty();
       return;
     }
@@ -888,7 +767,6 @@ export default function MapPage() {
         bbox: boundsRef.current,
         text: '',
         category: null,
-        taxonomyIds: taxonomyIdsParam || undefined,
         attributes: selectedAttributes,
       });
       return;
@@ -897,10 +775,9 @@ export default function MapPage() {
     void runSearch({
       text: '',
       category: null,
-      taxonomyIds: taxonomyIdsParam || undefined,
       attributes: selectedAttributes,
     });
-  }, [hasSearchContext, resetResultsToEmpty, runSearch, selectedAttributes, selectedTaxonomyIds, taxonomyIdsParam]);
+  }, [hasSearchContext, resetResultsToEmpty, runSearch, selectedAttributes]);
 
   // ── Mobile bottom-sheet state ──────────────────────────────────────────
   const [bottomSheetSnap, setBottomSheetSnap] = useState<'peek' | 'half' | 'full'>('peek');
@@ -1127,8 +1004,11 @@ export default function MapPage() {
                           ? `${data.total} service${data.total !== 1 ? 's' : ''} found`
                           : 'Explore services'}
                     </p>
-                    {pinnedCount > 0 && data && (
-                      <p className="text-xs text-slate-400 mt-0.5">{pinnedCount} pinned on map</p>
+                    {data && (pinnedCount > 0 || offMapCount > 0) && (
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {pinnedCount > 0 ? `${pinnedCount} pinned on map` : 'No precise pins'}
+                        {offMapCount > 0 ? ` · ${offMapCount} off-map but applicable` : ''}
+                      </p>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
@@ -1184,25 +1064,63 @@ export default function MapPage() {
                       <p className="mb-3 text-xs text-slate-400" role="status" aria-live="polite">
                         {data.results.length} of {data.total} shown
                         {pinnedCount > 0 && <span className="ml-1">· {pinnedCount} on map</span>}
+                        {offMapCount > 0 && <span className="ml-1">· {offMapCount} off-map</span>}
                       </p>
-                      <div className="space-y-3">
-                        {data.results.map((r) => (
-                          <div key={r.service.service.id} className="flex items-stretch gap-3">
-                            <ConfidenceRing enriched={r.service} />
-                            <div className="flex-1 min-w-0">
-                              <ServiceCard
-                                enriched={r.service}
-                                compact
-                                isSaved={savedIds.has(r.service.service.id)}
-                                onToggleSave={toggleSave}
-                                savedSyncEnabled={savedSyncEnabled}
-                                href={buildServiceDetailHref(r.service.service.id)}
-                                discoveryContext={mapDiscoveryContext}
-                              />
+                      {pinnedResults.length > 0 ? (
+                        <div className="space-y-3">
+                          {pinnedResults.map((r) => (
+                            <div key={r.service.service.id} className="flex items-stretch gap-3">
+                              <ConfidenceRing enriched={r.service} />
+                              <div className="flex-1 min-w-0">
+                                <ServiceCard
+                                  enriched={r.service}
+                                  compact
+                                  isSaved={savedIds.has(r.service.service.id)}
+                                  onToggleSave={toggleSave}
+                                  savedSyncEnabled={savedSyncEnabled}
+                                  href={buildServiceDetailHref(r.service.service.id)}
+                                  discoveryContext={mapDiscoveryContext}
+                                />
+                              </div>
                             </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {offMapResults.length > 0 ? (
+                        <div className={pinnedResults.length > 0 ? 'mt-4 space-y-3' : 'space-y-3'}>
+                          <div className="rounded-[20px] border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+                            <p className="font-semibold">Also applicable but not pinned</p>
+                            <p className="mt-1 text-xs text-sky-800">
+                              These services matched your search, but they only list online, phone, or broad service-area coverage.
+                            </p>
+                            <a
+                              href={directoryHref}
+                              className="mt-2 inline-flex items-center rounded-full border border-sky-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-sky-800 hover:bg-sky-100"
+                            >
+                              Open the full directory list
+                            </a>
                           </div>
-                        ))}
-                      </div>
+                          {offMapResults.map((r) => (
+                            <div key={r.service.service.id} className="flex items-stretch gap-3">
+                              <ConfidenceRing enriched={r.service} />
+                              <div className="flex-1 min-w-0">
+                                <div className="mb-2 inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-800">
+                                  {getOffMapReason(r.service)}
+                                </div>
+                                <ServiceCard
+                                  enriched={r.service}
+                                  compact
+                                  isSaved={savedIds.has(r.service.service.id)}
+                                  onToggleSave={toggleSave}
+                                  savedSyncEnabled={savedSyncEnabled}
+                                  href={buildServiceDetailHref(r.service.service.id)}
+                                  discoveryContext={mapDiscoveryContext}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </>
                   )}
                 </div>
@@ -1226,7 +1144,7 @@ export default function MapPage() {
                 onClick={() => setMobileFiltersOpen(false)}
                 aria-hidden="true"
               />
-              <div className="relative flex flex-col bg-white rounded-t-3xl max-h-[88vh] shadow-[0_-12px_40px_rgba(15,23,42,0.18)]">
+              <div className="relative flex max-h-[88vh] flex-col rounded-t-3xl bg-white shadow-2xl">
                 {/* Handle + header */}
                 <div className="flex-shrink-0 px-5 pt-3 pb-4 border-b border-slate-100">
                   <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-300" />
@@ -1245,39 +1163,61 @@ export default function MapPage() {
 
                 {/* Scrollable filter content */}
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-                  <SeekerDiscoveryFilters
-                    activeCategory={activeCategory}
-                    onCategoryClick={handleCategoryClick}
-                    taxonomyError={taxonomyError}
-                    taxonomyTerms={taxonomyTerms}
-                    isLoadingTaxonomy={isLoadingTaxonomy}
-                    quickTaxonomyTerms={quickTaxonomyTerms}
-                    selectedTaxonomyIds={selectedTaxonomyIds}
-                    onToggleTaxonomyId={toggleTaxonomyId}
-                    taxonomyDialogOpen={taxonomyDialogOpen}
-                    onTaxonomyOpenChange={setTaxonomyDialogOpen}
-                    taxonomySearch={taxonomySearch}
-                    onTaxonomySearchChange={setTaxonomySearch}
-                    onClearTaxonomyFilters={clearTaxonomyFilters}
-                    groupedTaxonomyTerms={groupedTaxonomyTerms}
-                    visibleTaxonomyTermsCount={visibleTaxonomyTerms.length}
-                    dimensionLabels={DIMENSION_LABELS}
-                    categoryGroupLabel="Filter by service category"
-                    showCategoryLabel={false}
-                  />
-
-                  {/* Service attribute filters */}
                   <div className="rounded-[18px] border border-slate-200 bg-white p-4">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Service Type</p>
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Category</p>
+                        <p className="mt-1 text-sm text-slate-600">Start with the kind of help you need right now.</p>
+                      </div>
+                      {activeCategory ? (
+                        <Button type="button" variant="outline" size="sm" onClick={clearCategory}>
+                          Clear
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Service category">
+                      {QUICK_DISCOVERY_NEEDS.map((need) => {
+                        const active = activeCategory === need.id;
+                        return (
+                          <button
+                            key={need.id}
+                            type="button"
+                            onClick={() => handleCategoryClick(need.id)}
+                            className={`rounded-xl border px-3 py-3 text-left text-sm ${active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700'}`}
+                            aria-pressed={active}
+                          >
+                            <div className="font-semibold">{need.label}</div>
+                            <div className={`mt-1 text-xs ${active ? 'text-slate-200' : 'text-slate-500'}`}>
+                              Browse {need.label.toLowerCase()} nearby.
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Canonical service-detail filters */}
+                  <div className="rounded-[18px] border border-slate-200 bg-white p-4">
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Service details</p>
+                        <p className="mt-1 text-sm text-slate-600">Use the canonical service taxonomy that powers resource records and search validation.</p>
+                      </div>
+                      {hasActiveAttributes ? (
+                        <Button type="button" variant="outline" size="sm" onClick={clearAttributes}>
+                          Clear
+                        </Button>
+                      ) : null}
+                    </div>
                     <div className="space-y-3">
                       {SEEKER_ATTRIBUTE_DIMENSIONS.map((dim) => {
                         const def = SERVICE_ATTRIBUTES_TAXONOMY[dim];
                         if (!def) return null;
-                        const commonTags = def.tags.filter((t) => t.common);
+                        const commonTags = def.tags.filter((t) => t.common).slice(0, 8);
                         const activeTags = selectedAttributes[dim] ?? [];
                         return (
                           <div key={dim} className="flex flex-col gap-1.5" role="group" aria-label={def.name}>
-                            <span className="text-xs font-medium text-stone-500">{def.name}:</span>
+                            <span className="text-xs font-medium text-stone-500">{DIMENSION_LABELS[dim] ?? def.name}:</span>
                             <div className="flex flex-wrap gap-1.5">
                               {commonTags.map((t) => {
                                 const isActive = activeTags.includes(t.tag);
@@ -1302,33 +1242,23 @@ export default function MapPage() {
                     </div>
                   </div>
 
-                  {/* Trust + Sort */}
+                  {/* Sort */}
                   <div className="rounded-[18px] border border-slate-200 bg-white p-4 space-y-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Quality & Order</p>
-                    <FormField id="mf-confidence" label="Trust level:">
-                      <select
-                        id="mf-confidence"
-                        value={confidenceFilter}
-                        onChange={(e) => setConfidenceFilter(e.target.value as ConfidenceFilter)}
-                        className="w-full min-h-[44px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
-                      >
-                        {CONFIDENCE_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </FormField>
-                    <FormField id="mf-sort" label="Sort by:">
-                      <select
-                        id="mf-sort"
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as SortOption)}
-                        className="w-full min-h-[44px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
-                      >
-                        {SORT_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </FormField>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order</p>
+                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Result order">
+                      {SORT_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setSortBy(opt.value)}
+                          className={`rounded-xl border px-3 py-3 text-left text-sm ${sortBy === opt.value ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700'}`}
+                          aria-pressed={sortBy === opt.value}
+                        >
+                          <div className="font-semibold">{opt.label}</div>
+                          <div className={`mt-1 text-xs ${sortBy === opt.value ? 'text-slate-200' : 'text-slate-500'}`}>{opt.description}</div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Location */}
@@ -1341,10 +1271,13 @@ export default function MapPage() {
                       disabled={isLocating}
                       className="w-full"
                     >
-                      {isLocating ? 'Locating…' : 'Use my location'}
+                      {isLocating ? 'Locating…' : locationState === 'denied' ? 'Try location again' : 'Allow location'}
                     </Button>
                     {deviceCenter && (
                       <p className="mt-2 text-center text-xs text-slate-400">Approximate location active (not saved)</p>
+                    )}
+                    {!deviceCenter && !isLocating && locationState !== 'unsupported' && (
+                      <p className="mt-2 text-center text-xs text-slate-400">Location is requested automatically when this map opens.</p>
                     )}
                   </div>
 
@@ -1388,373 +1321,490 @@ export default function MapPage() {
 
       {/* ── DESKTOP: Existing card/sidebar layout (md+) ──────────────────────── */}
       {!isMobile && (
-        <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)]">
-          <div className="container mx-auto max-w-6xl px-4 pt-4 pb-8 md:py-8">
-            <section className="rounded-[30px] border border-slate-200/80 bg-white/92 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur md:p-8">
-              <PageHeader
-                eyebrow="Verified discovery"
-                title="Service Map"
-                actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/map" />}
-                badges={(
-                  <>
-                    <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
-                    {deviceCenter ? <PageHeaderBadge tone="accent">Approximate location active</PageHeaderBadge> : null}
-                    {hasActiveRefinements ? <PageHeaderBadge>Refinements on</PageHeaderBadge> : null}
-                  </>
-                )}
-              />
+        <main className="min-h-screen bg-[var(--bg-page)]">
+          <div className="container mx-auto max-w-7xl px-4 pt-4 pb-8 md:py-8">
+            <section className="rounded-[30px] border border-slate-200 bg-white p-4 shadow-xl md:p-6">
+              <div className="mb-4 flex flex-col gap-4 border-b border-slate-200 pb-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Verified discovery</span>
+                    <span className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Verified records only</span>
+                    {deviceCenter ? (
+                      <span className="inline-flex items-center rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">Approximate location active</span>
+                    ) : null}
+                    {hasActiveRefinements ? (
+                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">Refinements on</span>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-col gap-1 md:flex-row md:items-end md:gap-3">
+                    <h1 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-5xl">Map</h1>
+                    <p className="pb-1 text-sm text-slate-500">Find verified help nearby with the least amount of effort.</p>
+                  </div>
+                </div>
+                <div className="flex flex-shrink-0 items-center">
+                  <DiscoverySurfaceTabs items={surfaceTabs} currentHref="/map" />
+                </div>
+              </div>
 
               <ErrorBoundary>
-                <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-4">
-                  {/* Search bar */}
-                  <FormSection className="mb-3">
-                    <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-                      <FormField id="map-search" label="Search services to plot" className="w-full">
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" aria-hidden="true" />
-                          <input
-                            ref={searchInputRef}
-                            id="map-search"
-                            value={query}
-                            onChange={(e) => {
-                              setQuery(e.target.value);
-                              if (activeCategory && !isDiscoveryNeedSearchText(activeCategory, e.target.value)) {
-                                setActiveCategory(null);
-                              }
-                            }}
-                            type="search"
-                            placeholder="Search for services (e.g., food bank, shelter)"
-                            className="min-h-[46px] w-full rounded-2xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
-                            aria-label="Search services to plot"
-                          />
-                          {query && (
-                            <button
-                              type="button"
-                              onClick={handleClearSearch}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-slate-400 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
-                              aria-label="Clear search"
-                            >
-                              <X className="h-3.5 w-3.5" aria-hidden="true" />
-                            </button>
-                          )}
-                        </div>
-                      </FormField>
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <Button type="submit" disabled={!canSearch || isLoading} className="w-full sm:w-auto">
-                          Search
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handleUseMyLocation}
-                          disabled={isLocating}
-                          title="Opt-in: uses device location in-session only; not stored"
-                          className="w-full sm:w-auto"
-                        >
-                          {isLocating ? 'Locating…' : 'Use my location'}
-                        </Button>
-                      </div>
-                    </form>
-                  </FormSection>
-
-                  <div className="mb-3 rounded-[20px] border border-slate-200 bg-slate-50/80 p-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setShowAdvancedFilters((current) => !current)}
-                        className="inline-flex min-h-[40px] items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-                        aria-expanded={showAdvancedFilters || hasActiveRefinements}
-                      >
-                        Refine map
-                        {hasActiveRefinements ? (
-                          <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
-                            {appliedFilterItems.length || 1}
-                          </span>
-                        ) : null}
-                        {showAdvancedFilters || hasActiveRefinements ? (
-                          <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
-                        ) : (
-                          <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-                        )}
-                      </button>
-                      <p className="text-xs text-slate-500">
-                        {savedSyncEnabled ? 'Saves can sync to your account.' : 'Saves stay on this device.'}
-                      </p>
-                    </div>
-
-                    {(showAdvancedFilters || hasActiveRefinements) && (
-                      <div className="mt-4 space-y-4">
-                        <SeekerDiscoveryFilters
-                          activeCategory={activeCategory}
-                          onCategoryClick={handleCategoryClick}
-                          taxonomyError={taxonomyError}
-                          taxonomyTerms={taxonomyTerms}
-                          isLoadingTaxonomy={isLoadingTaxonomy}
-                          quickTaxonomyTerms={quickTaxonomyTerms}
-                          selectedTaxonomyIds={selectedTaxonomyIds}
-                          onToggleTaxonomyId={toggleTaxonomyId}
-                          taxonomyDialogOpen={taxonomyDialogOpen}
-                          onTaxonomyOpenChange={setTaxonomyDialogOpen}
-                          taxonomySearch={taxonomySearch}
-                          onTaxonomySearchChange={setTaxonomySearch}
-                          onClearTaxonomyFilters={clearTaxonomyFilters}
-                          groupedTaxonomyTerms={groupedTaxonomyTerms}
-                          visibleTaxonomyTermsCount={visibleTaxonomyTerms.length}
-                          dimensionLabels={DIMENSION_LABELS}
-                          categoryGroupLabel="Filter by service category"
-                          showCategoryLabel={false}
-                        />
-
-                        {/* Service attribute dimension filters */}
-                        <div className="rounded-[18px] border border-slate-200 bg-white p-4">
-                          <button
-                            type="button"
-                            onClick={() => setAttributeSectionOpen((v) => !v)}
-                            className="mb-2 flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
-                            aria-expanded={attributeSectionOpen || hasActiveAttributes}
-                          >
-                            Service type filters
-                            {hasActiveAttributes && (
-                              <span className="ml-1 rounded-full bg-info-muted text-action-strong px-1.5 py-0.5 text-[10px] font-semibold">
-                                {Object.values(selectedAttributes).flat().length}
-                              </span>
-                            )}
-                            {attributeSectionOpen ? (
-                              <ChevronUp className="h-3 w-3" aria-hidden="true" />
-                            ) : (
-                              <ChevronDown className="h-3 w-3" aria-hidden="true" />
-                            )}
-                          </button>
-                          {(attributeSectionOpen || hasActiveAttributes) && (
-                            <div className="space-y-2">
-                              {SEEKER_ATTRIBUTE_DIMENSIONS.map((dim) => {
-                                const def = SERVICE_ATTRIBUTES_TAXONOMY[dim];
-                                if (!def) return null;
-                                const commonTags = def.tags.filter((t) => t.common);
-                                const activeTags = selectedAttributes[dim] ?? [];
-                                return (
-                                  <div key={dim} className="flex flex-col gap-1.5" role="group" aria-label={def.name}>
-                                    <span className="text-xs font-medium text-stone-500">{def.name}:</span>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {commonTags.map((t) => {
-                                        const isActive = activeTags.includes(t.tag);
-                                        return (
-                                          <button
-                                            key={t.tag}
-                                            type="button"
-                                            onClick={() => toggleAttribute(dim, t.tag)}
-                                            className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-medium transition-colors min-h-[44px] flex-shrink-0 ${
-                                              isActive
-                                                ? 'bg-slate-900 text-white shadow-sm'
-                                                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                                            }`}
-                                            aria-pressed={isActive}
-                                            title={t.description}
-                                          >
-                                            {DISCOVERY_ATTRIBUTE_LABELS[t.tag] ?? t.tag.replace(/_/g, ' ')}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                              {hasActiveAttributes && (
-                                <button
-                                  type="button"
-                                  onClick={clearAttributes}
-                                  className="text-xs font-medium text-sky-700 hover:underline"
-                                >
-                                  Clear service type filters
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        <FormSection className="rounded-[18px] border border-slate-200 bg-white p-4">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-                            <FormField id="map-confidence" label="Trust:" className="w-40 max-w-full">
-                              <select
-                                id="map-confidence"
-                                value={confidenceFilter}
-                                onChange={(e) => {
-                                  const next = e.target.value as ConfidenceFilter;
-                                  setConfidenceFilter(next);
-                                  if (boundsRef.current) {
-                                    void runSearch({ bbox: boundsRef.current, confidence: next });
-                                  } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false)) {
-                                    void runSearch({ confidence: next });
-                                  }
-                                }}
-                                className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
-                              >
-                                {CONFIDENCE_OPTIONS.map((opt) => (
-                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                              </select>
-                            </FormField>
-                            <FormField id="map-sort" label="Sort:" className="w-44 max-w-full">
-                              <select
-                                id="map-sort"
-                                value={sortBy}
-                                onChange={(e) => {
-                                  const next = e.target.value as SortOption;
-                                  setSortBy(next);
-                                  if (boundsRef.current) {
-                                    void runSearch({ bbox: boundsRef.current, sort: next });
-                                  } else if (hasSearchContext(query, activeCategory, selectedTaxonomyIds, selectedAttributes, false)) {
-                                    void runSearch({ sort: next });
-                                  }
-                                }}
-                                className="min-h-[44px] rounded-xl border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
-                              >
-                                {SORT_OPTIONS.map((opt) => (
-                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                              </select>
-                            </FormField>
-                          </div>
-                        </FormSection>
-                      </div>
-                    )}
-                  </div>
-
-                  <SeekerAppliedFilters items={appliedFilterItems} onClearAll={clearAllFilters} />
-                  {hasActiveRefinements && (
-                    <DiscoveryContextPanel
-                      discoveryContext={mapDiscoveryContext}
-                      taxonomyLabelById={taxonomyLabelById}
-                      title="Current map scope"
-                      description="The map and list stay inside this scope until you change it."
-                      className="mb-3 border-slate-200 bg-slate-50"
-                    />
-                  )}
-
-                  {/* Error */}
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-4">
                   {error && (
                     <div
                       role="alert"
                       className="mb-4 flex items-start gap-2 rounded-[20px] border border-error-soft bg-error-subtle p-4 text-sm text-error-deep shadow-[0_12px_32px_rgba(127,29,29,0.08)]"
                     >
-                      <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                      <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden="true" />
                       <div>
                         <p className="font-medium">Search failed</p>
-                        <p className="text-xs mt-0.5">{error}</p>
+                        <p className="mt-0.5 text-xs">{error}</p>
                       </div>
                     </div>
                   )}
 
-                  {/* Split-pane: map left, results right */}
-                  <div className="md:grid md:grid-cols-[1fr_380px] md:gap-4 md:items-start">
-                    <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white/92 p-2 shadow-[0_18px_50px_rgba(15,23,42,0.06)] md:sticky md:top-24">
-                      <div className="relative">
-                        <MapContainer
-                          className="w-full h-[calc(100vh-16rem)]"
-                          centerLat={deviceCenter?.lat}
-                          centerLng={deviceCenter?.lng}
-                          zoom={deviceCenter ? 12 : undefined}
-                          services={services}
-                          discoveryContext={mapDiscoveryContext}
-                          onBoundsChange={handleBoundsChange}
-                        />
-                        {isAreaDirty && (
-                          <div className="absolute left-0 right-0 top-3 flex justify-center px-3 pointer-events-none">
+                  <div className="grid gap-4 xl:grid-cols-12 xl:items-stretch">
+                    <div className="order-2 xl:order-1 xl:col-span-7">
+                      <div className="flex h-full flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-lg xl:sticky xl:top-24">
+                        <div className="border-b border-slate-200 px-4 py-4 md:px-5">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">Start with a common need</p>
+                              <p className="text-xs text-slate-500">Choose one clear topic to focus the map instantly.</p>
+                            </div>
+                            {deviceCenter ? (
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-600">
+                                Approximate location active
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4" role="group" aria-label="Common resource terms">
+                            {QUICK_DISCOVERY_NEEDS.map((need) => {
+                              const selected = activeCategory === need.id;
+                              return (
+                                <button
+                                  key={need.id}
+                                  type="button"
+                                  onClick={() => handleCategoryClick(need.id)}
+                                  className={`inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
+                                    selected
+                                      ? 'border-slate-900 bg-slate-900 text-white'
+                                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                  }`}
+                                  aria-pressed={selected}
+                                >
+                                  <span aria-hidden="true" className="text-base leading-none">{need.icon}</span>
+                                  {need.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="flex min-h-0 flex-1 flex-col p-3 md:p-4">
+                          <div className="relative min-h-96 flex-1 overflow-hidden rounded-[20px] border border-slate-200 bg-white">
+                            <MapContainer
+                              className="h-full min-h-96 w-full"
+                              centerLat={deviceCenter?.lat}
+                              centerLng={deviceCenter?.lng}
+                              zoom={deviceCenter ? 12 : undefined}
+                              services={services}
+                              discoveryContext={mapDiscoveryContext}
+                              onBoundsChange={handleBoundsChange}
+                            />
+                            {isAreaDirty && (
+                              <div className="pointer-events-none absolute left-0 right-0 top-3 flex justify-center px-3">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={searchThisArea}
+                                  className="pointer-events-auto gap-1.5 bg-white text-xs shadow-sm"
+                                >
+                                  <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                                  Search this area
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="mt-3 flex items-center gap-3">
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
                               onClick={searchThisArea}
-                              className="gap-1.5 text-xs pointer-events-auto"
+                              className="gap-1.5 bg-white text-xs"
                             >
                               <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
                               Search this area
                             </Button>
+                            {searchMode === 'bbox' && (
+                              <span className="text-xs text-stone-500">Updates as you pan.</span>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      <div className="mt-3 hidden items-center gap-3 px-2 pb-1 md:flex">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={searchThisArea}
-                          className="gap-1.5 text-xs"
-                        >
-                          <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                          Search this area
-                        </Button>
-                        {searchMode === 'bbox' && (
-                          <span className="text-xs text-stone-500">Updates as you pan.</span>
-                        )}
+                        </div>
                       </div>
                     </div>
 
-                    <div
-                      ref={resultsContainerRef}
-                      tabIndex={-1}
-                      className="mt-4 rounded-[24px] border border-slate-200 bg-white/92 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.06)] outline-none md:mt-0 md:max-h-[calc(100vh-16rem)] md:overflow-y-auto"
-                    >
-                      {isLoading && (
-                        <div className="space-y-3" role="status" aria-busy="true" aria-label="Loading map results">
-                          {Array.from({ length: 4 }).map((_, i) => (
-                            <SkeletonCard key={`map-skeleton-${i}`} />
-                          ))}
-                        </div>
-                      )}
-
-                      {!isLoading && !data && !error && (
-                        <div className="rounded-[20px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/70 p-6 text-center shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
-                          <MapPin className="mx-auto mb-2 h-8 w-8 text-orange-200" aria-hidden="true" />
-                          <p className="text-sm font-semibold text-stone-800">Ready to search</p>
-                          <p className="mt-1 text-xs text-stone-500">
-                            Type a keyword above, tap a category chip, or pan the map and tap{' '}
-                            <strong>Search this area</strong>.
-                          </p>
-                        </div>
-                      )}
-
-                      {!isLoading && data && (
-                        <>
-                          <p className="mb-3 text-xs text-stone-500" role="status" aria-live="polite">
-                            {data.results.length === 0
-                              ? 'No matches'
-                              : `${data.results.length} of ${data.total} shown`}
-                            {pinnedCount > 0 && data.results.length > 0 && (
-                              <span className="ml-1">· {pinnedCount} pinned</span>
-                            )}
-                          </p>
-                          {data.results.length === 0 ? (
-                            <div className="rounded-[20px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/60 p-6 text-center shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
-                              <p className="text-sm font-semibold text-stone-800">No matches in this area</p>
-                              <p className="mt-1 text-xs text-stone-500">
-                                Try different keywords, a broader category, or pan to a new area.
-                              </p>
+                    <div className="order-1 xl:order-2 xl:col-span-5">
+                      <div className="flex h-full flex-col gap-4 xl:sticky xl:top-24">
+                        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-lg">
+                          <div className="space-y-4">
+                            <div>
+                              <p className="text-base font-semibold text-slate-900">Search and refine</p>
+                              <p className="text-sm text-slate-500">Type what you need, then narrow only if the first results are not right.</p>
                             </div>
-                          ) : (
-                            <div className="space-y-3">
-                              {data.results.map((r) => (
-                                <div key={r.service.service.id} className="flex items-stretch gap-3">
-                                  <ConfidenceRing enriched={r.service} />
-                                  <div className="flex-1">
-                                    <ServiceCard
-                                      enriched={r.service}
-                                      compact
-                                      isSaved={savedIds.has(r.service.service.id)}
-                                      onToggleSave={toggleSave}
-                                      savedSyncEnabled={savedSyncEnabled}
-                                      href={buildServiceDetailHref(r.service.service.id)}
-                                      discoveryContext={mapDiscoveryContext}
-                                    />
-                                  </div>
+
+                            <form onSubmit={handleSubmit} className="space-y-3">
+                              <FormField id="map-search" label="Search resources" className="w-full">
+                                <div className="relative">
+                                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
+                                  <input
+                                    ref={searchInputRef}
+                                    id="map-search"
+                                    value={query}
+                                    onChange={(e) => {
+                                      setQuery(e.target.value);
+                                      if (activeCategory && !isDiscoveryNeedSearchText(activeCategory, e.target.value)) {
+                                        setActiveCategory(null);
+                                      }
+                                    }}
+                                    type="search"
+                                    placeholder="Food bank, shelter, clinic…"
+                                    className="min-h-[48px] w-full rounded-2xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                                    aria-label="Search services"
+                                  />
+                                  {query && (
+                                    <button
+                                      type="button"
+                                      onClick={handleClearSearch}
+                                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-slate-400 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                                      aria-label="Clear search"
+                                    >
+                                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                                    </button>
+                                  )}
                                 </div>
+                              </FormField>
+                              <Button type="submit" disabled={!canSearch || isLoading} className="w-full">
+                                Search map
+                              </Button>
+                            </form>
+
+                            <div className="rounded-[18px] border border-slate-200 bg-slate-50 p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-slate-800">Location</p>
+                                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                                    {deviceCenter
+                                      ? 'Using your approximate device location to center the map. It is not saved.'
+                                      : isLocating || locationState === 'requesting'
+                                        ? 'Requesting your approximate device location for nearby results.'
+                                        : locationState === 'denied'
+                                          ? 'Location was blocked. Allow it to start near you.'
+                                          : locationState === 'unsupported'
+                                            ? 'This browser cannot provide device location.'
+                                            : 'The map asks for your approximate location when this page opens.'}
+                                  </p>
+                                </div>
+                                {!deviceCenter && locationState !== 'unsupported' ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={handleUseMyLocation}
+                                    disabled={isLocating}
+                                    className="shrink-0"
+                                  >
+                                    {isLocating ? 'Locating…' : locationState === 'denied' ? 'Try again' : 'Allow'}
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className="rounded-[18px] border border-slate-200 bg-slate-50 p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-800">Refine results</p>
+                                  <p className="mt-1 text-xs leading-relaxed text-slate-500">Open one filter panel to narrow by service details or list order.</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={openFiltersPanel}
+                                  className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                                  aria-haspopup="dialog"
+                                  aria-expanded={desktopFiltersOpen}
+                                >
+                                  Filters
+                                  {hasActiveRefinements ? (
+                                    <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
+                                      {appliedFilterItems.length || 1}
+                                    </span>
+                                  ) : null}
+                                  <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {appliedFilterItems.length > 0 && (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {appliedFilterItems.map((item) => (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={item.onClick}
+                                  className="inline-flex min-h-[36px] items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700"
+                                  aria-label={item.ariaLabel}
+                                  title={item.title}
+                                >
+                                  {item.label}
+                                  {item.showRemoveIcon !== false ? <X className="h-3 w-3 text-slate-400" aria-hidden="true" /> : null}
+                                </button>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={clearAllFilters}
+                                className="inline-flex min-h-[36px] items-center rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white"
+                              >
+                                Clear all
+                              </button>
+                            </div>
+                          )}
+
+                          <p className="mt-4 text-xs text-slate-500">
+                            {savedSyncEnabled ? 'Saved places can sync to your account.' : 'Saved places stay on this device.'}
+                          </p>
+                        </div>
+
+                        <div
+                          id="map-results"
+                          ref={resultsContainerRef}
+                          tabIndex={-1}
+                          className="flex-1 rounded-[24px] border border-slate-200 bg-white p-4 shadow-lg outline-none xl:min-h-0 xl:overflow-y-auto"
+                        >
+                          {isLoading && (
+                            <div className="space-y-3" role="status" aria-busy="true" aria-label="Loading map results">
+                              {Array.from({ length: 4 }).map((_, i) => (
+                                <SkeletonCard key={`map-skeleton-${i}`} />
                               ))}
                             </div>
                           )}
-                        </>
-                      )}
+
+                          {!isLoading && !data && !error && (
+                            <div className="rounded-[20px] border border-slate-200 bg-white p-6 text-center shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                              <MapPin className="mx-auto mb-2 h-8 w-8 text-slate-300" aria-hidden="true" />
+                              <p className="text-sm font-semibold text-stone-800">Ready to search</p>
+                              <p className="mt-1 text-xs text-stone-500">
+                                Search, tap a common category, or pan the map and use <strong>Search this area</strong>.
+                              </p>
+                            </div>
+                          )}
+
+                          {!isLoading && data && (
+                            <>
+                              <p className="mb-3 text-xs text-stone-500" role="status" aria-live="polite">
+                                {data.results.length === 0 ? 'No matches' : `${data.results.length} of ${data.total} shown`}
+                                {pinnedCount > 0 && data.results.length > 0 && <span className="ml-1">· {pinnedCount} pinned</span>}
+                                {offMapCount > 0 && data.results.length > 0 && <span className="ml-1">· {offMapCount} off-map</span>}
+                              </p>
+                              {data.results.length === 0 ? (
+                                <div className="rounded-[20px] border border-slate-200 bg-white p-6 text-center shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                                  <p className="text-sm font-semibold text-stone-800">No matches in this area</p>
+                                  <p className="mt-1 text-xs text-stone-500">
+                                    Try different keywords, a broader category, or pan to a new area.
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  {pinnedResults.map((r) => (
+                                    <div key={r.service.service.id} className="flex items-stretch gap-3">
+                                      <ConfidenceRing enriched={r.service} />
+                                      <div className="flex-1">
+                                        {formatDistance(r.distanceMeters) ? (
+                                          <div className="mb-2 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                                            {formatDistance(r.distanceMeters)}
+                                          </div>
+                                        ) : null}
+                                        <ServiceCard
+                                          enriched={r.service}
+                                          compact
+                                          isSaved={savedIds.has(r.service.service.id)}
+                                          onToggleSave={toggleSave}
+                                          savedSyncEnabled={savedSyncEnabled}
+                                          href={buildServiceDetailHref(r.service.service.id)}
+                                          discoveryContext={mapDiscoveryContext}
+                                        />
+                                      </div>
+                                    </div>
+                                  ))}
+                                  {offMapResults.length > 0 ? (
+                                    <div className={pinnedResults.length > 0 ? 'mt-4 space-y-3' : 'space-y-3'}>
+                                      <div className="rounded-[20px] border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+                                        <p className="font-semibold">Also applicable but not pinned</p>
+                                        <p className="mt-1 text-xs text-sky-800">
+                                          These services matched your search, but they only list online, phone, or broad service-area coverage.
+                                        </p>
+                                        <a
+                                          href={directoryHref}
+                                          className="mt-2 inline-flex items-center rounded-full border border-sky-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-sky-800 hover:bg-sky-100"
+                                        >
+                                          Open the full directory list
+                                        </a>
+                                      </div>
+                                      {offMapResults.map((r) => (
+                                        <div key={r.service.service.id} className="flex items-stretch gap-3">
+                                          <ConfidenceRing enriched={r.service} />
+                                          <div className="flex-1">
+                                            <div className="mb-2 inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-800">
+                                              {getOffMapReason(r.service)}
+                                            </div>
+                                            <ServiceCard
+                                              enriched={r.service}
+                                              compact
+                                              isSaved={savedIds.has(r.service.service.id)}
+                                              onToggleSave={toggleSave}
+                                              savedSyncEnabled={savedSyncEnabled}
+                                              href={buildServiceDetailHref(r.service.service.id)}
+                                              discoveryContext={mapDiscoveryContext}
+                                            />
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
+
+                  <Dialog open={desktopFiltersOpen} onOpenChange={setDesktopFiltersOpen}>
+                    <DialogContent className="max-w-3xl rounded-[28px] border border-slate-200 bg-white p-0 shadow-2xl">
+                      <DialogHeader className="border-b border-slate-200 px-6 py-5 text-left">
+                        <DialogTitle className="text-xl font-semibold text-slate-900">Filters</DialogTitle>
+                        <DialogDescription className="mt-1 text-sm text-slate-500">
+                          Narrow the map by category, service details, and list order in one place.
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="space-y-5 overflow-y-auto px-6 py-5" style={{ maxHeight: '78vh' }}>
+                        <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">Category</p>
+                              <p className="mt-1 text-xs text-slate-500">Start with the type of help you need, then refine with service details below.</p>
+                            </div>
+                            {activeCategory ? (
+                              <Button type="button" variant="outline" size="sm" onClick={clearCategory}>
+                                Clear category
+                              </Button>
+                            ) : null}
+                          </div>
+
+                          <div className="grid gap-2 md:grid-cols-2" role="group" aria-label="Service category">
+                            {QUICK_DISCOVERY_NEEDS.map((need) => {
+                              const selected = activeCategory === need.id;
+                              return (
+                                <button
+                                  key={need.id}
+                                  type="button"
+                                  onClick={() => handleCategoryClick(need.id)}
+                                  className={`flex items-start justify-between rounded-xl border px-4 py-3 text-left ${selected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+                                  aria-pressed={selected}
+                                >
+                                  <div>
+                                    <div className="font-semibold">{need.label}</div>
+                                    <div className={`mt-1 text-xs ${selected ? 'text-slate-200' : 'text-slate-500'}`}>
+                                      Browse {need.label.toLowerCase()} nearby.
+                                    </div>
+                                  </div>
+                                  {selected ? <span className="text-xs font-semibold">Active</span> : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">Service details</p>
+                              <p className="mt-1 text-xs text-slate-500">Canonical service tags from the resource taxonomy. These match what the API validates.</p>
+                            </div>
+                            {hasActiveAttributes ? (
+                              <Button type="button" variant="outline" size="sm" onClick={clearAttributes}>
+                                Clear details
+                              </Button>
+                            ) : null}
+                          </div>
+
+                          <div className="space-y-4">
+                            {SEEKER_ATTRIBUTE_DIMENSIONS.map((dim) => {
+                              const def = SERVICE_ATTRIBUTES_TAXONOMY[dim];
+                              if (!def) return null;
+                              const commonTags = def.tags.filter((t) => t.common).slice(0, 8);
+                              const activeTags = selectedAttributes[dim] ?? [];
+                              return (
+                                <div key={dim} className="rounded-[18px] border border-slate-200 bg-white p-4" role="group" aria-label={def.name}>
+                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{DIMENSION_LABELS[dim] ?? def.name}</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {commonTags.map((t) => {
+                                      const isActive = activeTags.includes(t.tag);
+                                      return (
+                                        <button
+                                          key={t.tag}
+                                          type="button"
+                                          onClick={() => toggleAttribute(dim, t.tag)}
+                                          className={`inline-flex min-h-[40px] items-center justify-center rounded-full border px-3 py-1 text-xs font-medium ${isActive ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+                                          aria-pressed={isActive}
+                                          title={t.description}
+                                        >
+                                          {DISCOVERY_ATTRIBUTE_LABELS[t.tag] ?? t.tag.replace(/_/g, ' ')}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">Result list order</p>
+                              <p className="mt-1 text-xs text-slate-500">Map pins stay the same. This only changes the order of the list on the right.</p>
+                            </div>
+                          </div>
+                          <div className="grid gap-2" role="group" aria-label="Result list order">
+                            {SORT_OPTIONS.map((opt) => (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => applySort(opt.value)}
+                                className={`flex items-start justify-between rounded-xl border px-4 py-3 text-left ${sortBy === opt.value ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+                                aria-pressed={sortBy === opt.value}
+                              >
+                                <div>
+                                  <div className="font-semibold">{opt.label}</div>
+                                  <div className={`mt-1 text-xs ${sortBy === opt.value ? 'text-slate-200' : 'text-slate-500'}`}>{opt.description}</div>
+                                </div>
+                                {sortBy === opt.value ? <span className="text-xs font-semibold">Active</span> : null}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-6 py-4">
+                        <Button type="button" variant="outline" onClick={clearAllFilters}>Clear all</Button>
+                        <Button type="button" onClick={() => setDesktopFiltersOpen(false)}>Done</Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               </ErrorBoundary>
             </section>
@@ -1787,8 +1837,8 @@ function ConfidenceRing({ enriched }: { enriched: EnrichedService }) {
   return (
     <div
       className="flex-shrink-0 w-10"
-      aria-label={score == null ? 'Trust score unknown' : `Trust ${Math.round(value)} percent`}
-      title={score == null ? 'Trust score unknown' : `Trust: ${Math.round(value)}%`}
+      aria-label={score == null ? 'Verification score unknown' : `Verification ${Math.round(value)} percent`}
+      title={score == null ? 'Verification score unknown' : `Verification: ${Math.round(value)}%`}
     >
       <svg width="40" height="40" viewBox="0 0 40 40" role="img" aria-hidden="true">
         <circle

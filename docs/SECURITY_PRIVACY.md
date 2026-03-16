@@ -10,6 +10,7 @@ Implemented today:
 
 - Zod validation at API boundaries for all endpoints (all 34+ API routes).
 - Chat pipeline includes crisis-first gate (before quota and rate limiting), quota/rate limiting logic.
+- Chat requests are capped at 20 messages per 24-hour identity/device window, with an additional matching session-scoped cap for local resilience.
 - Rate limiting on all API routes, including auth endpoints, with `Retry-After` headers on 429 responses.
 - Same-origin protection for authenticated, cookie-based write APIs enforced centrally in `src/proxy.ts` for `/api/profile`, `/api/saved`, `/api/user/**`, `/api/host/**`, `/api/community/**`, `/api/admin/**`, `/api/templates/**`, and `/api/submissions/appeal`.
 - Protected route authentication gating via middleware (JWT extraction + role enforcement via `isRoleAtLeast()`).

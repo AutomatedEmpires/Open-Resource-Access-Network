@@ -165,10 +165,13 @@ export function MapContainer({
 
   // ── fetch scoped auth from server-side broker ─────────────
   const fetchMapsAuth = useCallback(async (): Promise<MapsClientAuthResponse | null> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
     try {
       const res = await fetch('/api/maps/token', {
         credentials: 'same-origin',
         cache: 'no-store',
+        signal: controller.signal,
       });
       if (!res.ok) return null;
       const body = (await res.json()) as Partial<MapsClientAuthResponse>;
@@ -181,6 +184,8 @@ export function MapContainer({
       };
     } catch {
       return null;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }, []);
 
@@ -190,6 +195,7 @@ export function MapContainer({
     if (mapRef.current) return; // already initialised
 
     let cancelled = false;
+    let readyTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
     (async () => {
       const mapsAuth = await fetchMapsAuth();
@@ -217,9 +223,21 @@ export function MapContainer({
         const popup = new atlas.Popup({ closeButton: true, pixelOffset: [0, -18] });
         popupRef.current = popup;
         mapRef.current = map;
+        map.controls.add(new atlas.control.ScaleControl({ maxWidth: 120, unit: 'imperial' }), {
+          position: atlas.ControlPosition.BottomLeft,
+        });
+        readyTimeoutId = setTimeout(() => {
+          if (cancelled || mapRef.current !== map) return;
+          setUseLeafletFallback(true);
+          setIsLoading(false);
+        }, 5000);
 
         map.events.add('ready', () => {
           if (cancelled) return;
+          if (readyTimeoutId) {
+            clearTimeout(readyTimeoutId);
+            readyTimeoutId = null;
+          }
           setIsLoading(false);
 
           // Fire initial bounds
@@ -253,8 +271,13 @@ export function MapContainer({
           });
         }
       } catch (e) {
+        if (readyTimeoutId) {
+          clearTimeout(readyTimeoutId);
+          readyTimeoutId = null;
+        }
         if (!cancelled) {
           setMapError(e instanceof Error ? e.message : 'Failed to initialise Azure Maps');
+          setUseLeafletFallback(true);
           setIsLoading(false);
         }
       }
@@ -262,6 +285,9 @@ export function MapContainer({
 
     return () => {
       cancelled = true;
+      if (readyTimeoutId) {
+        clearTimeout(readyTimeoutId);
+      }
       try {
         markersRef.current = [];
         popupRef.current = null;

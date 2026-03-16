@@ -74,18 +74,18 @@ export function ChatServiceCard({
   };
 
   return (
-    <div className="border border-gray-200 rounded-lg p-3 bg-white shadow-sm">
+    <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h4 className="font-semibold text-gray-900 text-sm leading-tight">
+          <h4 className="text-sm font-semibold leading-tight text-slate-900">
             <Link
               href={serviceHref}
-              className="hover:underline text-blue-600"
+              className="transition-colors hover:text-slate-700 hover:underline"
             >
               {card.serviceName}
             </Link>
           </h4>
-          <p className="text-xs text-gray-500 truncate flex items-center gap-1">
+          <p className="flex items-center gap-1 truncate text-xs text-slate-500">
             {card.organizationName}
             {(card as ServiceCard & { orgVerifiedAt?: string }).orgVerifiedAt && (
               <span
@@ -103,13 +103,13 @@ export function ChatServiceCard({
             <button
               type="button"
               onClick={() => onToggleSave(card.serviceId)}
-              className="p-1 rounded-md hover:bg-gray-100 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-slate-200 bg-white p-1 transition-colors hover:bg-slate-50"
               aria-label={savedToggleCopy.ariaLabel}
               title={savedToggleCopy.title}
             >
               {isSaved
-                ? <BookmarkCheck className="h-4 w-4 text-blue-600" aria-hidden="true" />
-                : <Bookmark className="h-4 w-4 text-gray-400" aria-hidden="true" />}
+                ? <BookmarkCheck className="h-4 w-4 text-slate-900" aria-hidden="true" />
+                : <Bookmark className="h-4 w-4 text-slate-400" aria-hidden="true" />}
             </button>
           )}
           <Badge
@@ -124,23 +124,23 @@ export function ChatServiceCard({
       </div>
 
       {card.description && (
-        <p className="text-xs text-gray-600 mt-2 line-clamp-2">{card.description}</p>
+        <p className="mt-2 line-clamp-2 text-xs text-slate-600">{card.description}</p>
       )}
 
-      <div className="mt-2 space-y-1 text-xs text-gray-500">
+      <div className="mt-3 space-y-1 text-xs text-slate-500">
         {card.address && (
           <div className="flex items-start gap-1.5">
-            <MapPin className="h-3.5 w-3.5 flex-shrink-0 mt-0.5 text-gray-400" aria-hidden="true" />
+            <MapPin className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-400" aria-hidden="true" />
             <span>{card.address}</span>
           </div>
         )}
 
         {card.phone && (
           <div className="flex items-center gap-1.5">
-            <Phone className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" aria-hidden="true" />
+            <Phone className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" aria-hidden="true" />
             <a
               href={`tel:${card.phone}`}
-              className="text-blue-600 hover:underline"
+              className="text-slate-900 hover:underline"
               aria-label={`Call ${card.serviceName} at ${card.phone}`}
             >
               {card.phone}
@@ -150,33 +150,36 @@ export function ChatServiceCard({
 
         {card.scheduleDescription && (
           <div className="flex items-start gap-1.5">
-            <Clock className="h-3.5 w-3.5 flex-shrink-0 mt-0.5 text-gray-400" aria-hidden="true" />
+            <Clock className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-400" aria-hidden="true" />
             <span>{card.scheduleDescription}</span>
           </div>
         )}
       </div>
 
-      {/* Actionable links derived from verified records */}
-      {card.links && card.links.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {card.links.slice(0, 3).map((link) => (
-            <a
-              key={link.url}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-2 text-xs text-blue-700 hover:bg-blue-100 transition-colors min-h-[44px]"
-            >
-              <ExternalLink className="h-3 w-3" aria-hidden="true" />
-              {link.label}
-            </a>
-          ))}
-        </div>
-      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Link
+          href={serviceHref}
+          className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-slate-200 bg-slate-900 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-slate-800"
+        >
+          ORAN details
+        </Link>
+        {card.links?.slice(0, 2).map((link) => (
+          <a
+            key={link.url}
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
+          >
+            <ExternalLink className="h-3 w-3" aria-hidden="true" />
+            {link.label}
+          </a>
+        ))}
+      </div>
 
       {card.matchReasons && card.matchReasons.length > 0 && (
-        <div className="mt-2">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Why this may fit</p>
+        <div className="mt-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Why this may fit</p>
           <div className="mt-1 flex flex-wrap gap-1.5">
             {card.matchReasons.map((reason) => (
               <span
@@ -193,12 +196,12 @@ export function ChatServiceCard({
       <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2">{card.eligibilityHint}</p>
 
       {/* Feedback + report actions */}
-      <div className="mt-2 flex flex-wrap items-center gap-3">
+      <div className="mt-3 flex flex-wrap items-center gap-3">
         {!showFeedback && (
           <button
             type="button"
             onClick={() => setShowFeedback(true)}
-            className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 transition-colors min-h-[44px]"
+            className="inline-flex min-h-[44px] items-center gap-1 text-xs text-slate-500 transition-colors hover:text-slate-900"
             title="Rate this result — did it match what you needed?"
           >
             <MessageSquare className="h-3 w-3" aria-hidden="true" />
@@ -207,7 +210,7 @@ export function ChatServiceCard({
         )}
         <Link
           href={reportHref}
-          className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-red-600 transition-colors min-h-[44px]"
+          className="inline-flex min-h-[44px] items-center gap-1 text-xs text-slate-400 transition-colors hover:text-red-600"
           title="Report incorrect information — wrong address, closed, or other data issue"
         >
           <Flag className="h-3 w-3" aria-hidden="true" />

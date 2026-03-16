@@ -90,8 +90,11 @@ flowchart TD
 
 | Element | Mobile behaviour |
 |---------|-----------------|
-| Search/filter panel | Same stacking as directory |
+| Search/refine panel | Search first, then location state, then expandable refinement |
+| Common need chips | Icon-led quick topics stay visible as large tap targets |
 | Map canvas | Full-width, fixed height |
+| Map scale | Visible distance scale for orientation |
+| Result order | `Best fit` or `Nearest first` for the result list |
 | Results sidebar | Collapses to bottom on mobile |
 
 ### `/service/:id` — ServiceDetailClient

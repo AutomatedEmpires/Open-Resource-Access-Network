@@ -882,9 +882,9 @@ export default function ProfilePage() {
   // RENDER
   // ============================================================
   return (
-    <main className="min-h-screen bg-gradient-to-b from-orange-50 via-rose-50 to-emerald-50">
+    <main className="min-h-screen bg-white">
       <div className="container mx-auto max-w-4xl px-4 py-6 md:py-8">
-      <section className="rounded-[30px] border border-orange-100/80 bg-white/90 p-5 shadow-[0_24px_80px_rgba(234,88,12,0.10)] backdrop-blur md:p-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm md:p-8">
       <PageHeader
         eyebrow="Private seeker profile"
         title="Profile"

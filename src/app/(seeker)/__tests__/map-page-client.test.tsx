@@ -162,19 +162,23 @@ function getMapSearchBox() {
   return screen.getByRole('searchbox', { name: /Search services(?: to plot)?/i });
 }
 
+function getSearchSubmitButton() {
+  return screen.getByRole('button', { name: /^(Search|Search map)$/i });
+}
+
 function getRefineMapButton() {
   return screen.getByRole('button', { name: /^(Refine map|Filters)$/i });
 }
 
 async function clickUseMyLocationControl() {
-  const directButton = screen.queryByRole('button', { name: 'Use my location' });
+  const directButton = screen.queryByRole('button', { name: /^(Use my location|Allow|Allow location|Try again|Try location again)$/i });
   if (directButton) {
     fireEvent.click(directButton);
     return;
   }
 
   fireEvent.click(screen.getByRole('button', { name: /^Filters(?: \(\d+ active\))?$/i }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Use my location' }));
+  fireEvent.click(await screen.findByRole('button', { name: /^(Use my location|Allow|Allow location|Try again|Try location again)$/i }));
 }
 
 function makeSearchResponse(overrides: Record<string, unknown> = {}) {
@@ -249,6 +253,7 @@ beforeEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
   fetchMock.mockReset();
+  setMatchMedia(false);
   navigationState.searchParams = new URLSearchParams();
   localStorage.clear();
   global.fetch = fetchMock as unknown as typeof fetch;
@@ -281,8 +286,8 @@ describe('MapPageClient', () => {
   it('renders initial state and waits for a manual search', () => {
     renderWithToast(<MapPage />);
 
-    expect(screen.getByRole('heading', { name: 'Service Map' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled();
+    expect(screen.getByRole('heading', { name: 'Map' })).toBeInTheDocument();
+    expect(getSearchSubmitButton()).toBeDisabled();
     expect(screen.getByTestId('map-container')).toBeInTheDocument();
   });
 
@@ -301,72 +306,24 @@ describe('MapPageClient', () => {
 
     const searchUrl = String(getSearchCalls().at(-1)?.[0]);
     expect(searchUrl).toContain('q=housing');
-    expect(searchUrl).toContain('attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D');
+    expect(searchUrl).not.toContain('attributes=');
     expect(replaceMock).toHaveBeenCalledWith(
-      '/map?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
+      '/map?q=housing&category=housing',
       { scroll: false },
     );
     expect(screen.getByRole('link', { name: 'Directory' })).toHaveAttribute(
       'href',
-      '/directory?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
+      '/directory?q=housing&category=housing',
     );
     expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
       'href',
-      '/chat?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
+      '/chat?q=housing&category=housing',
     );
-  });
-
-  it('renders the shared current map scope summary from canonical discovery state', async () => {
-    const taxonomyId = 'a1000000-4000-4000-8000-000000000001';
-    navigationState.searchParams = new URLSearchParams(
-      `q=housing&category=housing&confidence=HIGH&sort=name_desc&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%7D`,
-    );
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-
-      if (url.includes('/api/taxonomy/terms')) {
-        return {
-          ok: true,
-          json: async () => ({
-            terms: [{
-              id: taxonomyId,
-              term: 'Housing Navigation',
-              description: null,
-              parentId: null,
-              taxonomy: 'demo',
-              serviceCount: 12,
-            }],
-          }),
-        } as Response;
-      }
-
-      if (url.includes('/api/search?')) {
-        return {
-          ok: true,
-          json: async () => makeSearchResponse(),
-        } as Response;
-      }
-
-      return {
-        ok: false,
-        json: async () => ({ error: `Unexpected request: ${url}` }),
-      } as Response;
-    });
-
-    renderWithToast(<MapPage />);
-
-    await screen.findByText('Current map scope');
-    expect(screen.getByText('Need: Housing')).toBeInTheDocument();
-    expect(screen.getAllByText('Trust: High confidence only').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Sort: Name (Z-A)').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Tag: Housing Navigation').length).toBeGreaterThan(0);
-    expect(screen.getByText('Delivery: By Phone')).toBeInTheDocument();
   });
 
   it('auto-runs canonical map URLs and keeps the shareable filter state normalized', async () => {
-    const taxonomyId = 'a1000000-0000-4000-8000-000000000001';
     navigationState.searchParams = new URLSearchParams(
-      `category=food&confidence=HIGH&sort=name_desc&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D`,
+      'category=food&sort=distance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
     );
     mockApi([{ ok: true, body: makeSearchResponse() }]);
 
@@ -376,32 +333,29 @@ describe('MapPageClient', () => {
 
     const searchUrl = String(getSearchCalls().at(-1)?.[0]);
     expect(searchUrl).toContain('q=food');
-    expect(searchUrl).toContain('minConfidenceScore=80');
-    expect(searchUrl).toContain('sortBy=name_desc');
-    expect(searchUrl).toContain(`taxonomyIds=${taxonomyId}`);
+    expect(searchUrl).toContain('sortBy=distance');
     expect(replaceMock).toHaveBeenCalledWith(
-      `/map?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D`,
+      '/map?q=food&sort=distance&category=food_assistance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
       { scroll: false },
     );
     expect(screen.getByRole('link', { name: 'Directory' })).toHaveAttribute(
       'href',
-      `/directory?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D`,
+      '/directory?q=food&sort=distance&category=food_assistance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
     );
     expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
       'href',
-      `/chat?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D`,
+      '/chat?q=food&sort=distance&category=food_assistance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
     );
     expect(screen.getByRole('link', { name: 'details-svc-1' })).toHaveAttribute(
       'href',
-      `/service/svc-1?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=${taxonomyId}&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D`,
+      '/service/svc-1?q=food&sort=distance&category=food_assistance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
     );
     expect(mapContainerMock).toHaveBeenLastCalledWith(expect.objectContaining({
       discoveryContext: {
         text: 'food',
         needId: 'food_assistance',
-        confidenceFilter: 'HIGH',
-        sortBy: 'name_desc',
-        taxonomyTermIds: [taxonomyId],
+        confidenceFilter: 'all',
+        sortBy: 'distance',
         attributeFilters: { delivery: ['virtual'] },
       },
     }));
@@ -415,12 +369,14 @@ describe('MapPageClient', () => {
     fireEvent.change(getMapSearchBox(), {
       target: { value: 'shelter' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(getSearchSubmitButton());
 
     await screen.findByText('Shelter');
     expect(screen.getByRole('status')).toHaveTextContent('2 of 2 shown');
     expect(screen.getByTestId('map-service-count')).toHaveTextContent('2');
     expect(screen.getByRole('button', { name: 'Search this area' })).toBeInTheDocument();
+    expect(screen.getByText('Also applicable but not pinned')).toBeInTheDocument();
+    expect(screen.getByText('No precise map location listed')).toBeInTheDocument();
   });
 
   it('re-queries with bbox in "search this area" mode and debounces pan updates', async () => {
@@ -435,7 +391,7 @@ describe('MapPageClient', () => {
     fireEvent.change(getMapSearchBox(), {
       target: { value: 'food' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(getSearchSubmitButton());
     await screen.findByText('Shelter');
 
     fireEvent.click(screen.getByRole('button', { name: 'emit-bounds' }));
@@ -465,7 +421,7 @@ describe('MapPageClient', () => {
     fireEvent.change(getMapSearchBox(), {
       target: { value: 'legal aid' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(getSearchSubmitButton());
 
     await screen.findByText('Search failed');
     expect(screen.getByText('search service unavailable')).toBeInTheDocument();
@@ -481,7 +437,7 @@ describe('MapPageClient', () => {
     fireEvent.change(getMapSearchBox(), {
       target: { value: 'shelter' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(getSearchSubmitButton());
     await screen.findByText('Shelter');
 
     expect(getSearchCalls()).toHaveLength(1);
@@ -513,7 +469,7 @@ describe('MapPageClient', () => {
     fireEvent.change(getMapSearchBox(), {
       target: { value: 'rare query' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(getSearchSubmitButton());
 
     expect(await screen.findByText('No matches in this area')).toBeInTheDocument();
     expect(await screen.findByText('Try different keywords or pan to a new area.')).toBeInTheDocument();
@@ -579,7 +535,7 @@ describe('MapPageClient', () => {
     fireEvent.change(getMapSearchBox(), {
       target: { value: 'shelter' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(getSearchSubmitButton());
     await screen.findByText('Shelter');
 
     expect(screen.getAllByText('saved').length).toBeGreaterThan(0);
@@ -601,7 +557,7 @@ describe('MapPageClient', () => {
     fireEvent.change(getMapSearchBox(), {
       target: { value: 'shelter' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(getSearchSubmitButton());
     await screen.findByText('Shelter');
 
     fireEvent.click(screen.getByRole('button', { name: 'toggle-svc-1' }));
@@ -654,17 +610,9 @@ describe('MapPageClient', () => {
     expect(map).toHaveAttribute('data-zoom', '12');
   });
 
-  it('shows taxonomy and search fallback errors when response bodies are not JSON', async () => {
+  it('shows search fallback errors when response bodies are not JSON', async () => {
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('/api/taxonomy/terms')) {
-        return {
-          ok: false,
-          json: async () => {
-            throw new Error('bad taxonomy body');
-          },
-        } as unknown as Response;
-      }
       if (url.includes('/api/search?')) {
         return {
           ok: false,
@@ -680,191 +628,41 @@ describe('MapPageClient', () => {
     });
 
     renderWithToast(<MapPage />);
-    fireEvent.click(getRefineMapButton());
-    await screen.findByText('Filters unavailable');
-
     fireEvent.change(getMapSearchBox(), {
       target: { value: 'fallback' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(getSearchSubmitButton());
     expect((await screen.findAllByText('Search failed')).length).toBeGreaterThan(0);
   });
 
-  it('blocks empty submits but allows taxonomy-only search without requiring typed text', async () => {
-    const taxonomyId = 'a1000000-0000-0000-0000-000000000001';
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('/api/taxonomy/terms')) {
-        return {
-          ok: true,
-          json: async () => ({
-            terms: [
-              {
-                id: taxonomyId,
-                term: 'Food Assistance',
-                description: null,
-                parentId: null,
-                taxonomy: 'demo',
-                serviceCount: 3,
-              },
-            ],
-          }),
-        } as Response;
-      }
-      if (url.includes('/api/search?')) {
-        return {
-          ok: true,
-          json: async () => makeSearchResponse(),
-        } as Response;
-      }
-      return {
-        ok: false,
-        json: async () => ({ error: `Unexpected request: ${url}` }),
-      } as Response;
-    });
-
+  it('blocks empty submits but allows canonical attribute-only search without typed text', async () => {
+    mockApi([{ ok: true, body: makeSearchResponse() }]);
     renderWithToast(<MapPage />);
     fireEvent.click(getRefineMapButton());
-    await screen.findByRole('button', { name: 'Food Assistance' });
+    await screen.findByRole('button', { name: 'By Phone' });
 
     const initialSearchCalls = getSearchCalls().length;
     fireEvent.submit(getMapSearchBox().closest('form')!);
     expect(getSearchCalls().length).toBe(initialSearchCalls);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Food Assistance' }));
-    expect(getSearchCalls().length).toBe(initialSearchCalls + 1);
+    fireEvent.click(screen.getByRole('button', { name: 'By Phone' }));
+
+    await waitFor(() => {
+      expect(getSearchCalls().length).toBe(initialSearchCalls + 1);
+      expect(String(getSearchCalls().at(-1)?.[0])).toContain('attributes=');
+    });
 
     expect(screen.queryByRole('button', { name: 'Search this area' })).not.toBeInTheDocument();
-    expect(getSearchCalls().length).toBe(initialSearchCalls + 1);
   });
 
-  it('supports taxonomy dialog filtering, applying terms, and clearing applied terms', async () => {
-    const termId = 'a1000000-0000-0000-0000-000000000001';
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('/api/taxonomy/terms')) {
-        return {
-          ok: true,
-          json: async () => ({
-            terms: [
-              {
-                id: termId,
-                term: 'Food Assistance',
-                description: 'Food help',
-                parentId: null,
-                taxonomy: 'demo',
-                serviceCount: 4,
-              },
-              {
-                id: 'a2000000-0000-0000-0000-000000000002',
-                term: 'Housing Support',
-                description: null,
-                parentId: null,
-                taxonomy: 'demo',
-                serviceCount: 2,
-              },
-            ],
-          }),
-        } as Response;
-      }
-      if (url.includes('/api/search?')) {
-        return {
-          ok: true,
-          json: async () => makeSearchResponse(),
-        } as Response;
-      }
-      return {
-        ok: false,
-        json: async () => ({ error: `Unexpected request: ${url}` }),
-      } as Response;
-    });
-
+  it('shows canonical filter controls in the unified dialog', async () => {
     renderWithToast(<MapPage />);
     fireEvent.click(getRefineMapButton());
 
-    fireEvent.change(getMapSearchBox(), {
-      target: { value: 'food' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
-    await screen.findByText('Shelter');
-
-    fireEvent.click(screen.getByRole('button', { name: 'More filters' }));
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search service tags' }), {
-      target: { value: 'zzzz' },
-    });
-    expect(screen.getByText('No matching tags.')).toBeInTheDocument();
-
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search service tags' }), {
-      target: { value: 'food' },
-    });
-    const dialogButtons = screen.getAllByRole('button', { name: 'Food Assistance' });
-    fireEvent.click(dialogButtons.at(-1)!);
-
-    await waitFor(() => {
-      const latest = String(getSearchCalls().at(-1)?.[0]);
-      expect(latest).toContain(`taxonomyIds=${termId}`);
-      expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
-    });
-
-    expect(screen.getByRole('button', { name: /Remove tag Food Assistance/i })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
-    await waitFor(() => {
-      const latest = String(getSearchCalls().at(-1)?.[0]);
-      expect(latest).not.toContain('taxonomyIds=');
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /Remove tag Food Assistance/i })).not.toBeInTheDocument();
-    });
-  });
-
-  it('re-runs taxonomy filtering when a category chip is the only active search driver', async () => {
-    const termId = 'a1000000-0000-0000-0000-000000000001';
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('/api/taxonomy/terms')) {
-        return {
-          ok: true,
-          json: async () => ({
-            terms: [
-              {
-                id: termId,
-                term: 'Food Assistance',
-                description: null,
-                parentId: null,
-                taxonomy: 'demo',
-                serviceCount: 4,
-              },
-            ],
-          }),
-        } as Response;
-      }
-      if (url.includes('/api/search?')) {
-        return {
-          ok: true,
-          json: async () => makeSearchResponse(),
-        } as Response;
-      }
-      return {
-        ok: false,
-        json: async () => ({ error: `Unexpected request: ${url}` }),
-      } as Response;
-    });
-
-    renderWithToast(<MapPage />);
-    fireEvent.click(getRefineMapButton());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
-    await screen.findByText('Shelter');
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
-
-    await waitFor(() => {
-      const latest = String(getSearchCalls().at(-1)?.[0]);
-      expect(latest).toContain('q=food');
-      expect(latest).toContain(`taxonomyIds=${termId}`);
-    });
+    expect(await screen.findByText('Service details')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Food' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'By Phone' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Nearby first' })).toBeInTheDocument();
   });
 
   it('clears a stale category chip when the user types a different query', async () => {
@@ -898,32 +696,6 @@ describe('MapPageClient', () => {
       expect(latest).toContain('q=food');
       expect(latest).not.toContain('rare+typed+query');
     });
-  });
-
-  it('shows taxonomy fallback text when filter terms fail to load', async () => {
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('/api/taxonomy/terms')) {
-        return {
-          ok: false,
-          json: async () => ({ error: 'taxonomy unavailable' }),
-        } as Response;
-      }
-      if (url.includes('/api/search?')) {
-        return {
-          ok: true,
-          json: async () => makeSearchResponse(),
-        } as Response;
-      }
-      return {
-        ok: false,
-        json: async () => ({ error: `Unexpected request: ${url}` }),
-      } as Response;
-    });
-
-    renderWithToast(<MapPage />);
-    fireEvent.click(getRefineMapButton());
-    expect(await screen.findByText('Filters unavailable')).toBeInTheDocument();
   });
 
   it('renders confidence-ring labels for known and unknown confidence scores', async () => {
@@ -970,7 +742,7 @@ describe('MapPageClient', () => {
     fireEvent.change(getMapSearchBox(), {
       target: { value: 'confidence' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    fireEvent.click(getSearchSubmitButton());
 
     await screen.findByText('High Confidence');
     expect(screen.getByLabelText('Trust 90 percent')).toBeInTheDocument();

@@ -43,7 +43,7 @@
     "skip_to_main": "Skip to main content"
   },
   "nav": {
-    "chat": "Find Services",
+    "chat": "Chat",
     "map": "Map",
     "directory": "Directory",
     "saved": "Saved",
@@ -51,6 +51,13 @@
     "report": "Report",
     "about": "About",
     "get_involved": "Get Involved",
+    "submit_listing": "Submit a Listing",
+    "register_organization": "Register an Organization",
+    "become_community_admin": "Become a Community Admin",
+    "become_oran_admin": "Become an ORAN Admin",
+    "invitations": "Invitations",
+    "profile_menu_aria": "Open profile menu",
+    "get_involved_menu_aria": "Open get involved menu",
     "explore": "Explore",
     "open_menu": "Open navigation menu",
     "close_menu": "Close navigation menu",

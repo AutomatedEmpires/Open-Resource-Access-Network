@@ -60,36 +60,41 @@ export default function CommunityAdminLayoutShell({ children }: { children: Reac
       >
         Skip to main content
       </a>
-      <header aria-label="Community Admin portal" className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-[var(--bg-surface)]">
-        {/* Primary bar: brand + desktop nav + user menu */}
-        <div className="container mx-auto max-w-7xl flex items-center justify-between px-4 h-14">
-          <Link href="/dashboard" className="font-bold text-[var(--text-default,#111827)] tracking-tight shrink-0">
-            ORAN Community Admin
-          </Link>
+      <header aria-label="Community Admin portal" className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-white/95 backdrop-blur">
+        <div className="container mx-auto flex h-[4.5rem] max-w-7xl items-center justify-between px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link href="/dashboard" className="shrink-0 text-2xl font-bold tracking-tight text-[var(--text-default,#111827)]">
+              ORAN
+            </Link>
+            <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 md:inline-flex">
+              Admin
+            </span>
+          </div>
 
-          {/* Desktop nav — hidden on mobile */}
-          <div className="hidden md:flex items-center gap-2">
-            <nav className="flex items-center gap-1" aria-label="Community admin navigation">
+          <div className="hidden flex-1 items-center justify-center md:flex">
+            <nav className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm" aria-label="Community admin navigation">
               {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
                 <Link
                   key={href}
                   href={href}
-                  className={`inline-flex min-h-[44px] items-center gap-1.5 px-3 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  className={`inline-flex min-h-[50px] items-center gap-2 rounded-full px-5 py-2.5 text-base transition-colors whitespace-nowrap ${
                     isActive(href)
-                      ? 'bg-[var(--bg-active,#f3f4f6)] text-[var(--text-default,#111827)]'
-                      : 'text-gray-500 hover:text-[var(--text-default,#111827)] hover:bg-[var(--bg-hover,#f9fafb)]'
+                      ? 'border border-slate-200 bg-slate-50 font-semibold text-[var(--text-default,#111827)]'
+                      : 'font-medium text-gray-500 hover:bg-[var(--bg-hover,#f9fafb)] hover:text-[var(--text-default,#111827)]'
                   }`}
                   aria-current={isActive(href) ? 'page' : undefined}
                 >
-                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
                   {label}
                 </Link>
               ))}
             </nav>
+          </div>
+
+          <div className="hidden md:flex items-center">
             <PortalUserMenu />
           </div>
 
-          {/* Mobile: user menu only */}
           <div className="md:hidden">
             <PortalUserMenu />
           </div>
@@ -107,7 +112,7 @@ export default function CommunityAdminLayoutShell({ children }: { children: Reac
                 href={href}
                 className={`inline-flex min-h-[44px] shrink-0 items-center gap-1.5 px-3 text-sm font-medium transition-colors whitespace-nowrap border-b-2 ${
                   isActive(href)
-                    ? 'border-[var(--color-action-base,#f97316)] text-[var(--text-default,#111827)]'
+                    ? 'border-slate-900 text-[var(--text-default,#111827)]'
                     : 'border-transparent text-gray-500 hover:text-[var(--text-default,#111827)]'
                 }`}
                 aria-current={isActive(href) ? 'page' : undefined}

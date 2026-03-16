@@ -10,7 +10,7 @@ const BASE_URL = 'https://openresourceaccessnetwork.com';
 export const metadata: Metadata = {
   title: 'ORAN — Open Resource Access Network',
   description:
-    'Find verified government, nonprofit, and community services near you. Search real, confirmed service records — no hallucinated information.',
+    'Find verified government, nonprofit, and community services near you. Real, confirmed records — structured, searchable, and maintained by real people.',
   alternates: { canonical: '/' },
   openGraph: {
     title: 'ORAN — Open Resource Access Network',
@@ -78,7 +78,7 @@ const SEEKER_FEATURES: Array<{ icon: React.ElementType; title: string; body: str
   {
     icon: Shield,
     title: 'Verified records only',
-    body: 'Every phone number, address, and service detail is retrieved from a confirmed source record — never hallucinated by an AI.',
+    body: 'Every phone number, address, and service detail comes from a confirmed, structured source record — reviewed and dated.',
   },
   {
     icon: CheckCircle2,
@@ -123,8 +123,8 @@ const PARTNER_FEATURES: Array<{ icon: React.ElementType; title: string; body: st
   },
   {
     icon: Globe,
-    title: 'Fully open source',
-    body: 'MIT licensed and deeply auditable. Contribute to scoring models, ingestion pipelines, or UI — all in the open.',
+    title: 'Fully open platform',
+    body: 'Built for transparency. Every scoring model, ingestion pipeline, and matching rule is documented and inspectable by the community that depends on it.',
   },
   {
     icon: MessageCircle,
@@ -136,9 +136,9 @@ const PARTNER_FEATURES: Array<{ icon: React.ElementType; title: string; body: st
 // ── Competitive differentiators ──────────────────────────────
 const WHY_ORAN = [
   {
-    label: 'vs. AI chatbots',
-    title: 'Zero hallucinations',
-    body: 'ORAN never invents phone numbers, addresses, or service hours. Every result is retrieved from a verified, stored record.',
+    label: 'vs. generic chatbots',
+    title: 'Reliable by design',
+    body: 'ORAN only surfaces records that exist in its verified database. No invented contact details, no fabricated service hours — ever.',
   },
   {
     label: 'vs. search engines',
@@ -152,14 +152,14 @@ const WHY_ORAN = [
   },
   {
     label: 'vs. proprietary directories',
-    title: 'Open source & auditable',
-    body: 'MIT licensed. Anyone can inspect how records are scored, how data flows, and how the matching logic works.',
+    title: 'Transparent & auditable',
+    body: 'No black boxes. Anyone can inspect how records are scored, how data flows, and how the matching logic works.',
   },
 ];
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="flex min-h-screen flex-col bg-[var(--bg-page)]">
       {/* JSON-LD */}
       <script
         type="application/ld+json"
@@ -175,35 +175,21 @@ export default function Home() {
       <main id="main-content" tabIndex={-1} className="flex-1">
 
         {/* ══ HERO ══════════════════════════════════════════════ */}
-        <section className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 px-4 py-12 sm:py-24 md:py-32 text-center">
-          {/* Subtle grid texture */}
-          <div className="pointer-events-none absolute inset-0 bg-white/5" aria-hidden="true" />
-          <div className="pointer-events-none absolute inset-0 opacity-30" aria-hidden="true">
-            <div className="grid h-full w-full grid-cols-6 border-x border-white/10 sm:grid-cols-12">
-              {Array.from({ length: 12 }).map((_, index) => (
-                <div
-                  key={`hero-grid-${index}`}
-                  className={index < 11 ? 'hidden border-r border-white/10 sm:block' : 'hidden sm:block'}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="relative mx-auto max-w-3xl">
+        <section className="border-b border-[var(--border)] bg-white px-4 py-14 sm:py-24 md:py-32 text-center">
+          <div className="mx-auto max-w-3xl">
             {/* Identity badge */}
-            <div className="mb-5 sm:mb-8 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-indigo-200 backdrop-blur-sm">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-400" aria-hidden="true" />
-              Open source &middot; Community-verified &middot; Always free
+            <div className="mb-5 sm:mb-8 inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-white px-4 py-1.5 text-xs font-medium text-[var(--text-secondary)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]" aria-hidden="true" />
+              Community-verified &middot; Always free
             </div>
 
-            <h1 className="mb-4 text-3xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl leading-tight">
-              Universal access to<br className="hidden sm:block" /> verified community services
+            <h1 className="mb-4 font-display text-3xl font-bold tracking-tight text-[var(--text-primary)] sm:text-5xl lg:text-6xl leading-tight">
+              Find verified services<br className="hidden sm:block" /> for real needs
             </h1>
 
-            <p className="mb-7 sm:mb-10 text-base sm:text-lg leading-relaxed text-indigo-200 max-w-xl mx-auto">
-              ORAN is the open civic platform connecting people to government, nonprofit, and
-              community programs — with real-time verification, no hallucinated data, and full
-              provenance transparency.
+            <p className="mb-7 sm:mb-10 text-base sm:text-lg leading-relaxed text-[var(--text-secondary)] max-w-xl mx-auto">
+              ORAN connects people to confirmed government, nonprofit, and community programs.
+              Every record is structured, sourced, and reviewed — so the results you see are real.
             </p>
 
             {/* Search form */}
@@ -212,24 +198,24 @@ export default function Home() {
               method="get"
               role="search"
               aria-label="Search community services"
-              className="mb-6 flex max-w-2xl mx-auto items-stretch overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10"
+              className="mb-6 flex max-w-2xl mx-auto items-stretch overflow-hidden rounded-xl shadow-sm ring-1 ring-[var(--border)]"
             >
               <div className="relative flex-1">
                 <Search
-                  className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                  className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]"
                   aria-hidden="true"
                 />
                 <input
                   type="search"
                   name="q"
-                  placeholder="Food assistance, housing support, mental health…"
+                  placeholder="Food assistance, housing, mental health…"
                   aria-label="Search for a service or need"
-                  className="h-full w-full border-0 bg-white py-4 pl-11 pr-4 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-0"
+                  className="h-full w-full border-0 bg-white py-4 pl-11 pr-4 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-0"
                 />
               </div>
               <button
                 type="submit"
-                className="flex-shrink-0 bg-orange-500 px-5 sm:px-8 text-sm font-semibold text-white transition-colors hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-orange-400"
+                className="flex-shrink-0 border-l border-[var(--border)] bg-white px-5 sm:px-8 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--text-muted)]"
               >
                 Search
               </button>
@@ -237,24 +223,17 @@ export default function Home() {
 
             {/* Quick-access pills */}
             <div className="flex flex-wrap items-center justify-center gap-3">
-              <span className="text-xs text-indigo-400">or explore</span>
-              <Link
-                href="/chat"
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-white/20"
-              >
-                <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
-                Guided chat
-              </Link>
+              <span className="text-xs text-[var(--text-muted)]">or explore</span>
               <Link
                 href="/directory"
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-white/20"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white px-4 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-gray-50 hover:text-[var(--text-primary)]"
               >
                 <List className="h-3.5 w-3.5" aria-hidden="true" />
                 Directory
               </Link>
               <Link
                 href="/map"
-                className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-white/20"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white px-4 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-gray-50 hover:text-[var(--text-primary)]"
               >
                 <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
                 Map view
@@ -264,9 +243,9 @@ export default function Home() {
         </section>
 
         {/* ══ BROWSE BY NEED ══════════════════════════════════════ */}
-        <section className="border-b border-gray-100 bg-slate-50 px-4 py-6 sm:py-8">
+        <section className="border-b border-[var(--border)] bg-white px-4 py-6 sm:py-8">
           <div className="mx-auto max-w-4xl">
-            <p className="mb-4 text-center text-[11px] font-semibold uppercase tracking-widest text-gray-400">
+            <p className="mb-4 text-center text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
               Browse by need
             </p>
             <div className="flex flex-wrap justify-center gap-2">
@@ -274,7 +253,7 @@ export default function Home() {
                 <Link
                   key={href}
                   href={href}
-                  className="inline-flex items-center rounded-full border border-gray-200 bg-white px-4 py-1.5 text-sm font-medium text-gray-600 shadow-sm transition-colors hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+                  className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-1.5 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-page)] hover:text-[var(--text-primary)]"
                 >
                   {label}
                 </Link>
@@ -284,18 +263,18 @@ export default function Home() {
         </section>
 
         {/* ══ SEEKERS ══════════════════════════════════════════════ */}
-        <section className="bg-white px-4 py-12 sm:py-20 md:py-28">
+        <section className="bg-[var(--bg-page)] px-4 py-12 sm:py-20 md:py-28">
           <div className="mx-auto max-w-5xl">
             <div className="mx-auto mb-8 sm:mb-12 max-w-2xl text-center">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-indigo-500">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
                 For individuals seeking help
               </p>
-              <h2 className="mb-4 text-2xl font-bold text-gray-900 sm:text-3xl md:text-4xl">
-                Real answers, not AI guesses
+              <h2 className="mb-4 text-2xl font-bold text-[var(--text-primary)] sm:text-3xl md:text-4xl">
+                Real answers, fast
               </h2>
-              <p className="leading-relaxed text-gray-500">
-                When accuracy matters — and it always does — ORAN retrieves real, verified service
-                records and presents them clearly. No generated content, no stale data, no guesswork.
+              <p className="leading-relaxed text-[var(--text-secondary)]">
+                When accuracy matters — and with services it always does — ORAN retrieves real,
+                verified records and presents them clearly. No guesswork, no stale data.
               </p>
             </div>
 
@@ -306,7 +285,7 @@ export default function Home() {
             </div>
 
             <div className="flex flex-wrap justify-center gap-3">
-              <Button asChild size="lg" className="gap-2">
+              <Button asChild size="lg" variant="outline" className="gap-2 text-[var(--text-primary)]">
                 <Link href="/chat">
                   <MessageCircle className="h-4 w-4" aria-hidden="true" />
                   Find services with chat
@@ -314,16 +293,16 @@ export default function Home() {
               </Button>
               <Link
                 href="/directory"
-                className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-5 py-2.5 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
               >
-                <List className="h-4 w-4 text-gray-400" aria-hidden="true" />
+                <List className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
                 Browse directory
               </Link>
               <Link
                 href="/map"
-                className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-5 py-2.5 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
               >
-                <MapPin className="h-4 w-4 text-gray-400" aria-hidden="true" />
+                <MapPin className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
                 View map
               </Link>
             </div>
@@ -331,16 +310,16 @@ export default function Home() {
         </section>
 
         {/* ══ ORGANIZATIONS ════════════════════════════════════════ */}
-        <section className="border-y border-emerald-100 bg-emerald-50 px-4 py-12 sm:py-20 md:py-28">
+        <section className="border-y border-[var(--border)] bg-white px-4 py-12 sm:py-20 md:py-28">
           <div className="mx-auto max-w-5xl">
             <div className="mx-auto mb-8 sm:mb-12 max-w-2xl text-center">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-emerald-600">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
                 For service providers &amp; nonprofits
               </p>
-              <h2 className="mb-4 text-2xl font-bold text-gray-900 sm:text-3xl md:text-4xl">
+              <h2 className="mb-4 text-2xl font-bold text-[var(--text-primary)] sm:text-3xl md:text-4xl">
                 Get discovered. Stay verified. Build trust.
               </h2>
-              <p className="leading-relaxed text-gray-500">
+              <p className="leading-relaxed text-[var(--text-secondary)]">
                 ORAN gives organizations a dedicated portal to manage listings, build
                 provenance-backed credibility, and reach people actively searching for their
                 programs — without proprietary lock-in.
@@ -356,14 +335,14 @@ export default function Home() {
             <div className="flex flex-wrap justify-center gap-3">
               <Link
                 href="/partnerships/organizations"
-                className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--text-primary)] bg-white px-6 py-2.5 text-sm font-semibold text-[var(--text-primary)] shadow-sm transition-colors hover:bg-gray-50"
               >
                 List your organization
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <Link
                 href="/about"
-                className="inline-flex items-center gap-2 rounded-md border border-emerald-200 bg-white px-5 py-2.5 text-sm font-medium text-emerald-700 shadow-sm transition-colors hover:bg-emerald-50"
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-5 py-2.5 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:bg-[var(--bg-page)] hover:text-[var(--text-primary)]"
               >
                 Learn more
               </Link>
@@ -372,16 +351,16 @@ export default function Home() {
         </section>
 
         {/* ══ COMMUNITY PARTNERS ═══════════════════════════════════ */}
-        <section className="border-b border-violet-100 bg-violet-50 px-4 py-12 sm:py-20 md:py-28">
+        <section className="border-b border-[var(--border)] bg-[var(--bg-page)] px-4 py-12 sm:py-20 md:py-28">
           <div className="mx-auto max-w-5xl">
             <div className="mx-auto mb-8 sm:mb-12 max-w-2xl text-center">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-violet-600">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
                 For community contributors &amp; admins
               </p>
-              <h2 className="mb-4 text-2xl font-bold text-gray-900 sm:text-3xl md:text-4xl">
+              <h2 className="mb-4 text-2xl font-bold text-[var(--text-primary)] sm:text-3xl md:text-4xl">
                 Help build the civic data layer
               </h2>
-              <p className="leading-relaxed text-gray-500">
+              <p className="leading-relaxed text-[var(--text-secondary)]">
                 ORAN is only as good as the people maintaining it. Community partners — volunteer
                 admins, civic technologists, and local advocates — are how verified data stays
                 accurate at scale.
@@ -397,14 +376,14 @@ export default function Home() {
             <div className="flex flex-wrap justify-center gap-3">
               <Link
                 href="/partnerships/admins"
-                className="inline-flex items-center gap-2 rounded-md bg-violet-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700"
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--text-primary)] bg-white px-6 py-2.5 text-sm font-semibold text-[var(--text-primary)] shadow-sm transition-colors hover:bg-gray-50"
               >
                 Become a volunteer admin
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <Link
                 href="/partnerships"
-                className="inline-flex items-center gap-2 rounded-md border border-violet-200 bg-white px-5 py-2.5 text-sm font-medium text-violet-700 shadow-sm transition-colors hover:bg-violet-50"
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-5 py-2.5 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
               >
                 Explore all partnerships
               </Link>
@@ -413,18 +392,18 @@ export default function Home() {
         </section>
 
         {/* ══ WHY ORAN ══════════════════════════════════════════════ */}
-        <section className="bg-white px-4 py-12 sm:py-20 md:py-24">
+        <section className="bg-[var(--bg-surface)] px-4 py-12 sm:py-20 md:py-24">
           <div className="mx-auto max-w-4xl">
             <div className="mx-auto mb-8 sm:mb-12 max-w-2xl text-center">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
                 Why ORAN
               </p>
-              <h2 className="mb-4 text-2xl font-bold text-gray-900 sm:text-3xl">
-                Built for the gaps other tools ignore
+              <h2 className="mb-4 text-2xl font-bold text-[var(--text-primary)] sm:text-3xl">
+                Built for the gaps other tools leave open
               </h2>
-              <p className="leading-relaxed text-gray-500">
-                AI tools hallucinate. Search engines return pages, not answers. Legacy databases go
-                stale. ORAN is purpose-built for the problem they all fail at.
+              <p className="leading-relaxed text-[var(--text-secondary)]">
+                Generic search returns pages, not answers. Unverified directories go stale.
+                ORAN is purpose-built for the problem they all fall short on.
               </p>
             </div>
 
@@ -432,13 +411,13 @@ export default function Home() {
               {WHY_ORAN.map(({ label, title, body }) => (
                 <div
                   key={label}
-                  className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm"
+                  className="rounded-xl border border-[var(--border)] bg-[var(--bg-page)] p-6"
                 >
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-indigo-500">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                     {label}
                   </p>
-                  <h3 className="mb-2 text-base font-semibold text-gray-900">{title}</h3>
-                  <p className="text-sm leading-relaxed text-gray-500">{body}</p>
+                  <h3 className="mb-2 text-base font-semibold text-[var(--text-primary)]">{title}</h3>
+                  <p className="text-sm leading-relaxed text-[var(--text-secondary)]">{body}</p>
                 </div>
               ))}
             </div>
@@ -446,41 +425,30 @@ export default function Home() {
         </section>
 
         {/* ══ MISSION STRIP ══════════════════════════════════════════ */}
-        <section className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 px-4 py-12 text-center sm:py-20 md:py-28">
-          <div className="pointer-events-none absolute inset-0 bg-white/5" aria-hidden="true" />
-          <div className="pointer-events-none absolute inset-0 opacity-20" aria-hidden="true">
-            <div className="grid h-full w-full grid-cols-6 border-x border-white/10 sm:grid-cols-12">
-              {Array.from({ length: 12 }).map((_, index) => (
-                <div
-                  key={`mission-grid-${index}`}
-                  className={index < 11 ? 'hidden border-r border-white/10 sm:block' : 'hidden sm:block'}
-                />
-              ))}
-            </div>
-          </div>
-          <div className="relative mx-auto max-w-2xl">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-indigo-300">
+        <section className="border-t border-[var(--border)] bg-white px-4 py-12 text-center sm:py-20 md:py-28">
+          <div className="mx-auto max-w-2xl">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
               Our commitment
             </p>
-            <h2 className="mb-4 text-2xl font-bold text-white sm:text-3xl md:text-4xl">
-              Open source. Community-governed.<br className="hidden sm:block" /> Free to use.
+            <h2 className="mb-4 font-display text-2xl font-bold text-[var(--text-primary)] sm:text-3xl md:text-4xl">
+              Community-governed.<br className="hidden sm:block" /> Free to use. Built to last.
             </h2>
-            <p className="mb-7 sm:mb-10 text-base sm:text-lg leading-relaxed text-indigo-200">
-              ORAN is MIT licensed, WCAG 2.1 AA accessible, and built on the principle that verified
-              resource access should never be gated behind a paywall or dependent on a commercial
-              AI&apos;s accuracy.
+            <p className="mb-7 sm:mb-10 text-base sm:text-lg leading-relaxed text-[var(--text-secondary)]">
+              ORAN is built on the principle that verified resource access should never be gated
+              behind a paywall. WCAG 2.1 AA accessible, continuously maintained, and free for
+              every person who needs it.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Link
                 href="/about"
-                className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-indigo-900"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--text-primary)] bg-white px-6 py-3 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[var(--text-muted)] focus:ring-offset-2"
               >
                 Learn about our mission
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
               <Link
                 href="/partnerships/organizations"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-indigo-900"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-6 py-3 text-sm font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-page)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-muted)] focus:ring-offset-2"
               >
                 Partner with us
               </Link>
@@ -508,12 +476,12 @@ function FeatureTile({
 }) {
   return (
     <div className="flex gap-4">
-      <div className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-white shadow-sm">
-        <Icon className="h-4 w-4 text-gray-600" aria-hidden="true" />
+      <div className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
+        <Icon className="h-4 w-4 text-[var(--text-secondary)]" aria-hidden="true" />
       </div>
       <div>
-        <p className="text-sm font-semibold text-gray-900">{title}</p>
-        <p className="mt-0.5 text-sm leading-relaxed text-gray-500">{body}</p>
+        <p className="text-sm font-semibold text-[var(--text-primary)]">{title}</p>
+        <p className="mt-0.5 text-sm leading-relaxed text-[var(--text-secondary)]">{body}</p>
       </div>
     </div>
   );

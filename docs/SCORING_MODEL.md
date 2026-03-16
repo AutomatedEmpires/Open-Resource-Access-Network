@@ -84,6 +84,7 @@ These hints are not a fourth public score and are not shown to seekers as a trus
 Rules:
 
 - Trust remains primary in ordering (`verification_confidence` first).
+- Explicit seeker-facing `distance` sort is allowed as an alternate deterministic ordering for map/list surfaces, but it may only use stored coordinates and may not widen eligibility or bypass trust/confidence floors.
 - Profile match is a secondary sort only.
 - Only exact, schema-backed taxonomy mappings may contribute to profile match.
 - Profile match may never override crisis routing, trust filtering, or the eligibility disclaimer.

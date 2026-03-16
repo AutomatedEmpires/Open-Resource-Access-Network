@@ -447,7 +447,7 @@ describe('orchestrateChat', () => {
     );
 
     expect(response.retrievalStatus).toBe('out_of_scope');
-    expect(response.message.toLowerCase()).toContain('find services');
+    expect(response.message).toContain('ORAN Chat');
     expect(retrieveServices).not.toHaveBeenCalled();
   });
 

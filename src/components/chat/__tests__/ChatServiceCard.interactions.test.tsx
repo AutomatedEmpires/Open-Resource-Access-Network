@@ -93,7 +93,7 @@ describe('ChatServiceCard interactions', () => {
     expect(screen.getByText('Offers phone support')).toBeInTheDocument();
     expect(screen.getByText('Does not require ID')).toBeInTheDocument();
 
-    const externalLinks = screen.getAllByRole('link').filter((link) =>
+    const externalLinks = screen.getAllByRole('link').filter((link: HTMLElement) =>
       link.getAttribute('href')?.startsWith('https://'),
     );
     expect(externalLinks).toHaveLength(3);

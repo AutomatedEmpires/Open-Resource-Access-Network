@@ -15,7 +15,7 @@ function withNodeEnv<T>(nodeEnv: string | undefined, fn: () => T): T {
 
 describe('i18n t()', () => {
   it('returns English strings for known keys', () => {
-    expect(t('nav.chat')).toBe('Find Services');
+    expect(t('nav.chat')).toBe('Chat');
   });
 
   it('interpolates template params and preserves missing placeholders', () => {

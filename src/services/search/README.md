@@ -8,6 +8,7 @@
 - Queries must be parameterized.
 - Authenticated chat may pass deterministic `profileSignals`, but they may only re-order already eligible results.
 - Personalized chat retrieval must bypass the shared Redis cache.
+- Explicit `sortBy='distance'` is allowed for seeker map/list flows and must remain deterministic, derived only from stored coordinates plus the query geo or visible map viewport center.
 
 Primary entry points:
 

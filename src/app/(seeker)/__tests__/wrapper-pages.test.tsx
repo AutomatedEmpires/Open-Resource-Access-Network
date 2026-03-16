@@ -38,7 +38,7 @@ describe('seeker wrapper pages', () => {
     const results = await axe(container);
 
     expect(element.type).toBeDefined();
-    expect(chatMetadata.title).toBe('Find Services');
+    expect(chatMetadata.title).toBe('Chat');
     expect(results).toHaveNoViolations();
   });
 

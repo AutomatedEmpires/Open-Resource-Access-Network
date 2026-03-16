@@ -125,7 +125,7 @@ describe('ChatWindow interactions', () => {
     const body = JSON.parse(String((chatCall?.[1] as { body: string }).body));
     expect(body.profileMode).toBe('use');
     expect(screen.getByRole('note', { name: 'Verification tip' })).toBeInTheDocument();
-    expect(screen.getByText('25 msgs left')).toBeInTheDocument();
+    expect(screen.getByText('25 left today')).toBeInTheDocument();
     expect(screen.getByTestId('service-svc-1')).toBeInTheDocument();
     expect(screen.queryByText('Immediate Help Available')).not.toBeInTheDocument();
 

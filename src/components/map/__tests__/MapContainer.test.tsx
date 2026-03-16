@@ -32,6 +32,7 @@ vi.mock('azure-maps-control', () => {
     options: unknown;
     handlers: Record<string, Array<{ target?: unknown; handler: (...args: any[]) => void }>>;
     markers: { add: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> };
+    controls: { add: ReturnType<typeof vi.fn> };
     events: { add: ReturnType<typeof vi.fn> };
     getCamera: ReturnType<typeof vi.fn>;
     setCamera: ReturnType<typeof vi.fn>;
@@ -46,6 +47,9 @@ vi.mock('azure-maps-control', () => {
       this.markers = {
         add: vi.fn(),
         remove: vi.fn(),
+      };
+      this.controls = {
+        add: vi.fn(),
       };
       this.events = {
         add: vi.fn(
@@ -103,6 +107,18 @@ vi.mock('azure-maps-control', () => {
     HtmlMarker: HtmlMarkerMock,
     AuthenticationType: {
       sas: 'sas',
+    },
+    ControlPosition: {
+      BottomLeft: 'bottom-left',
+    },
+    control: {
+      ScaleControl: class ScaleControlMock {
+        options: unknown;
+
+        constructor(options: unknown) {
+          this.options = options;
+        }
+      },
     },
     data: {
       BoundingBox: {

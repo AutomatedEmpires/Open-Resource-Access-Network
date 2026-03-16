@@ -49,7 +49,11 @@ export default function HostLayoutShell({ children }: { children: React.ReactNod
     );
   }
 
-  if (status === 'unauthenticated' || (status === 'authenticated' && !isRoleAtLeast(session.user.role, 'host_member'))) {
+  if (
+    status === 'unauthenticated'
+    || (status === 'authenticated' && session.user.accountStatus === 'frozen')
+    || (status === 'authenticated' && !isRoleAtLeast(session.user.role, 'host_member'))
+  ) {
     return <AccessDenied portalName="Host" requiredRole="host_member" />;
   }
 

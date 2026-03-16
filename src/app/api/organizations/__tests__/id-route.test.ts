@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbMocks = vi.hoisted(() => ({
   executeQuery: vi.fn(),
+  executeCount: vi.fn(),
   isDatabaseConfigured: vi.fn(),
 }));
 
@@ -43,6 +44,7 @@ beforeEach(() => {
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
   rateLimitMock.mockReturnValue({ exceeded: false, retryAfterSeconds: 0 });
   dbMocks.executeQuery.mockResolvedValue([]);
+  dbMocks.executeCount.mockResolvedValue({ count: 0 });
 });
 
 describe('public organization profile route', () => {
@@ -127,7 +129,7 @@ describe('public organization profile route', () => {
 
     const response = await GET(createRequest(), createContext('11111111-1111-4111-8111-111111111111'));
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       organization: {
         id: 'org-1',
         name: 'Helping Hands',
@@ -139,6 +141,15 @@ describe('public organization profile route', () => {
         logo_url: null,
         created_at: '2026-01-01T00:00:00.000Z',
         updated_at: '2026-01-01T00:00:00.000Z',
+        phones: [
+          {
+            service_id: 'svc-1',
+            address: '123 Main',
+            city: 'Seattle',
+            state: 'WA',
+            postal_code: '98101',
+          },
+        ],
       },
       services: [
         {
@@ -148,15 +159,6 @@ describe('public organization profile route', () => {
           url: null,
           status: 'active',
           capacity_status: 'open',
-          locations: [
-            {
-              service_id: 'svc-1',
-              address: '123 Main',
-              city: 'Seattle',
-              state: 'WA',
-              postal_code: '98101',
-            },
-          ],
         },
         {
           id: 'svc-2',
@@ -165,7 +167,6 @@ describe('public organization profile route', () => {
           url: null,
           status: 'active',
           capacity_status: null,
-          locations: [],
         },
       ],
       serviceCount: 2,

@@ -19,6 +19,13 @@ const hostPortalIntakeMocks = vi.hoisted(() => ({
   createHostPortalSourceAssertion: vi.fn(),
   queueServiceVerificationSubmission: vi.fn(),
 }));
+const resourceSubmissionMocks = vi.hoisted(() => ({
+  createResourceSubmission: vi.fn(),
+  getResourceSubmissionDetailForActor: vi.fn(),
+}));
+const submissionExecutionMocks = vi.hoisted(() => ({
+  processSubmittedResourceSubmission: vi.fn(),
+}));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
@@ -32,6 +39,8 @@ vi.mock('@/services/workflow/engine', () => ({
   applySla: vi.fn(),
 }));
 vi.mock('@/services/ingestion/hostPortalIntake', () => hostPortalIntakeMocks);
+vi.mock('@/services/resourceSubmissions/service', () => resourceSubmissionMocks);
+vi.mock('@/services/resourceSubmissions/submissionExecution', () => submissionExecutionMocks);
 
 type RequestOptions = {
   search?: string;
@@ -92,6 +101,18 @@ beforeEach(() => {
     sourceRecordId: 'source-record-1',
   });
   hostPortalIntakeMocks.queueServiceVerificationSubmission.mockResolvedValue('submission-1');
+  resourceSubmissionMocks.createResourceSubmission.mockResolvedValue({
+    instance: { id: 'instance-1', submission_id: 'submission-1' },
+    reviewMeta: { sourceRecordId: 'source-record-1', targetId: null },
+  });
+  resourceSubmissionMocks.getResourceSubmissionDetailForActor.mockResolvedValue({
+    instance: { id: 'instance-1', submission_id: 'submission-1' },
+    reviewMeta: { sourceRecordId: 'source-record-1', targetId: null },
+  });
+  submissionExecutionMocks.processSubmittedResourceSubmission.mockResolvedValue({
+    success: true,
+    autoPublished: false,
+  });
 });
 
 describe('host locations collection route coverage', () => {
@@ -137,6 +158,7 @@ describe('host locations collection route coverage', () => {
     authMocks.getAuthContext.mockResolvedValueOnce({
       userId: 'user-1',
       role: 'host_admin',
+      accountStatus: 'active',
       orgIds: ['org-1'],
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
@@ -294,6 +316,7 @@ describe('host services collection route coverage', () => {
     authMocks.getAuthContext.mockResolvedValueOnce({
       userId: 'user-1',
       role: 'host_member',
+      accountStatus: 'active',
       orgIds: [],
       orgRoles: new Map(),
     });
@@ -315,6 +338,7 @@ describe('host services collection route coverage', () => {
     authMocks.getAuthContext.mockResolvedValueOnce({
       userId: 'user-1',
       role: 'host_admin',
+      accountStatus: 'active',
       orgIds: ['org-1'],
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
@@ -340,6 +364,7 @@ describe('host services collection route coverage', () => {
     authMocks.getAuthContext.mockResolvedValueOnce({
       userId: 'user-1',
       role: 'host_admin',
+      accountStatus: 'active',
       orgIds: ['org-1'],
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
@@ -360,20 +385,11 @@ describe('host services collection route coverage', () => {
     authMocks.getAuthContext.mockResolvedValueOnce({
       userId: 'user-1',
       role: 'host_admin',
+      accountStatus: 'active',
       orgIds: ['org-1'],
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
     dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'org-1', status: 'active' }]);
-
-    const clientQuery = vi
-      .fn()
-      .mockResolvedValueOnce({
-        rows: [{ id: 'svc-1', organization_id: '11111111-1111-4111-8111-111111111111', name: 'Pantry Service', status: 'inactive' }],
-      })
-      .mockResolvedValueOnce({ rows: [] });
-    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: { query: typeof clientQuery }) => Promise<unknown>) => {
-      return callback({ query: clientQuery });
-    });
 
     const { POST } = await loadServicesCollectionRoute();
     const response = await POST(
@@ -387,14 +403,16 @@ describe('host services collection route coverage', () => {
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({
-      id: 'svc-1',
-      organization_id: '11111111-1111-4111-8111-111111111111',
-      name: 'Pantry Service',
-      status: 'inactive',
+      detail: {
+        instance: { id: 'instance-1', submission_id: 'submission-1' },
+        reviewMeta: { sourceRecordId: 'source-record-1', targetId: null },
+      },
       queuedForReview: true,
       submissionId: 'submission-1',
       sourceRecordId: 'source-record-1',
       message: 'Service submitted for review. It will publish after approval.',
+      published: false,
+      serviceId: null,
     });
   });
 
@@ -402,11 +420,12 @@ describe('host services collection route coverage', () => {
     authMocks.getAuthContext.mockResolvedValueOnce({
       userId: 'user-1',
       role: 'host_admin',
+      accountStatus: 'active',
       orgIds: ['org-1'],
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
     dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'org-1', status: 'active' }]);
-    dbMocks.withTransaction.mockRejectedValueOnce(new Error('insert failed'));
+    resourceSubmissionMocks.createResourceSubmission.mockRejectedValueOnce(new Error('insert failed'));
     const { POST } = await loadServicesCollectionRoute();
 
     const response = await POST(

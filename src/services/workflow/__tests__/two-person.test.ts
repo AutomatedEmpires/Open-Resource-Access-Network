@@ -27,8 +27,38 @@ beforeEach(() => {
 });
 
 describe('workflow/two-person', () => {
-  it('requestGrant returns not found when scope is missing', async () => {
+  it('requestGrant rejects unknown target users', async () => {
     clientQueryMock.mockResolvedValueOnce({ rows: [] });
+
+    const result = await requestGrant({
+      userId: 'missing-user',
+      scopeName: 'submission:approve',
+      requestedByUserId: 'admin-1',
+      justification: 'Need elevated access',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Target user not found');
+  });
+
+  it('requestGrant rejects frozen target users', async () => {
+    clientQueryMock.mockResolvedValueOnce({ rows: [{ user_id: 'user-frozen', account_status: 'frozen' }] });
+
+    const result = await requestGrant({
+      userId: 'user-frozen',
+      scopeName: 'submission:approve',
+      requestedByUserId: 'admin-1',
+      justification: 'Need elevated access',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Cannot grant scopes to a frozen account');
+  });
+
+  it('requestGrant returns not found when scope is missing', async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ user_id: 'user-1', account_status: 'active' }] })
+      .mockResolvedValueOnce({ rows: [] });
 
     const result = await requestGrant({
       userId: 'user-1',
@@ -43,6 +73,7 @@ describe('workflow/two-person', () => {
 
   it('requestGrant rejects when user already has active grant', async () => {
     clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ user_id: 'user-2', account_status: 'active' }] })
       .mockResolvedValueOnce({ rows: [{ id: 'scope-1', requires_approval: true }] })
       .mockResolvedValueOnce({ rows: [{ id: 'grant-1' }] });
 
@@ -59,6 +90,7 @@ describe('workflow/two-person', () => {
 
   it('requestGrant returns existing pending grant id when duplicate pending request exists', async () => {
     clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ user_id: 'user-3', account_status: 'active' }] })
       .mockResolvedValueOnce({ rows: [{ id: 'scope-2', requires_approval: true }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: 'pending-1' }] });
@@ -76,6 +108,7 @@ describe('workflow/two-person', () => {
 
   it('requestGrant directly grants when two-person flag is disabled', async () => {
     clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ user_id: 'user-4', account_status: 'active' }] })
       .mockResolvedValueOnce({ rows: [{ id: 'scope-3', requires_approval: true }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
@@ -95,6 +128,7 @@ describe('workflow/two-person', () => {
 
   it('requestGrant creates pending grant when two-person approval is required', async () => {
     clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ user_id: 'user-5', account_status: 'active' }] })
       .mockResolvedValueOnce({ rows: [{ id: 'scope-4', requires_approval: true }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
@@ -137,7 +171,7 @@ describe('workflow/two-person', () => {
         status: 'approved',
         expires_at: new Date(Date.now() + 3600_000).toISOString(),
       }],
-    });
+    }).mockResolvedValueOnce({ rows: [{ user_id: 'user-6', account_status: 'active' }] });
 
     const result = await decideGrant({
       grantId: 'pending-3',
@@ -163,6 +197,7 @@ describe('workflow/two-person', () => {
           expires_at: new Date(Date.now() - 3600_000).toISOString(),
         }],
       })
+      .mockResolvedValueOnce({ rows: [{ user_id: 'user-7', account_status: 'active' }] })
       .mockResolvedValueOnce({ rows: [] });
 
     const result = await decideGrant({
@@ -187,7 +222,7 @@ describe('workflow/two-person', () => {
         status: 'pending',
         expires_at: new Date(Date.now() + 3600_000).toISOString(),
       }],
-    });
+    }).mockResolvedValueOnce({ rows: [{ user_id: 'user-8', account_status: 'active' }] });
 
     const result = await decideGrant({
       grantId: 'pending-5',
@@ -213,6 +248,7 @@ describe('workflow/two-person', () => {
           expires_at: new Date(Date.now() + 3600_000).toISOString(),
         }],
       })
+      .mockResolvedValueOnce({ rows: [{ user_id: 'user-9', account_status: 'active' }] })
       .mockResolvedValue({ rows: [] });
 
     const result = await decideGrant({
@@ -223,6 +259,32 @@ describe('workflow/two-person', () => {
     });
 
     expect(result).toEqual({ success: true, grantId: 'pending-6' });
+  });
+
+  it('decideGrant rejects frozen target users', async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'pending-7',
+          user_id: 'user-frozen',
+          scope_id: 'scope-11',
+          organization_id: null,
+          requested_by_user_id: 'admin-1',
+          status: 'pending',
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [{ user_id: 'user-frozen', account_status: 'frozen' }] });
+
+    const result = await decideGrant({
+      grantId: 'pending-7',
+      decidedByUserId: 'admin-2',
+      decision: 'approved',
+      reason: 'Attempted while frozen',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Cannot approve a grant for a frozen account');
   });
 
   it('revokeGrant returns false when no active grant exists', async () => {

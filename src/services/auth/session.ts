@@ -8,7 +8,7 @@
 
 import { getServerSession } from 'next-auth';
 import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
-import type { OranRole } from '@/domain/types';
+import type { AccountStatus, OranRole } from '@/domain/types';
 
 // ============================================================
 // TYPES
@@ -19,6 +19,8 @@ export interface AuthContext {
   userId: string;
   /** User's primary role (highest privilege level) */
   role: OranRole;
+  /** Effective account status from user_profiles */
+  accountStatus: AccountStatus;
   /** Organization IDs this user is a member of (host_member or host_admin) */
   orgIds: string[];
   /** Role per organization (for fine-grained checks) */
@@ -29,6 +31,10 @@ interface OrgMemberRow {
   organization_id: string;
   role: string;
   status: string;
+}
+
+interface UserSecurityRow {
+  account_status: AccountStatus | null;
 }
 
 // ============================================================
@@ -78,6 +84,22 @@ async function orgMembersTableExists(): Promise<boolean> {
   }
 }
 
+async function getAccountStatus(userId: string): Promise<AccountStatus> {
+  if (!isDatabaseConfigured()) {
+    return 'active';
+  }
+
+  try {
+    const rows = await executeQuery<UserSecurityRow>(
+      `SELECT account_status FROM user_profiles WHERE user_id = $1`,
+      [userId],
+    );
+    return rows[0]?.account_status ?? 'active';
+  } catch {
+    return 'active';
+  }
+}
+
 // ============================================================
 // MAIN
 // ============================================================
@@ -111,6 +133,11 @@ export async function getAuthContext(): Promise<AuthContext | null> {
       return null;
     }
 
+    const accountStatus = await getAccountStatus(userId);
+    if (accountStatus !== 'active') {
+      return null;
+    }
+
     // Extract role from session metadata if available
     const sessionRole = (session.user as { role?: string }).role;
 
@@ -119,6 +146,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
       return {
         userId,
         role: 'oran_admin',
+        accountStatus,
         orgIds: [],
         orgRoles: new Map(),
       };
@@ -129,6 +157,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
       return {
         userId,
         role: 'community_admin',
+        accountStatus,
         orgIds: [],
         orgRoles: new Map(),
       };
@@ -163,6 +192,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
     return {
       userId,
       role,
+      accountStatus,
       orgIds,
       orgRoles,
     };

@@ -95,7 +95,7 @@ Can request, approve, deny, or revoke scope grants. Scope grant decisions enforc
 2. Host applies to claim organization → pending review → oran_admin approves → `host_admin` for that org
 3. host_admin invites team members → `host_member` for that org
 4. oran_admin designates community verifier → `community_admin` for a coverage zone
-5. oran_admin is manually provisioned in system bootstrap
+5. oran_admin is manually provisioned in system bootstrap, for example with `scripts/provision-owner-access.mjs` for credentials-backed operator bootstrap
 
 ---
 

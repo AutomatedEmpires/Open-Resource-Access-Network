@@ -47,7 +47,11 @@ export default function CommunityAdminLayoutShell({ children }: { children: Reac
     );
   }
 
-  if (status === 'unauthenticated' || (status === 'authenticated' && !isRoleAtLeast(session.user.role, 'community_admin'))) {
+  if (
+    status === 'unauthenticated'
+    || (status === 'authenticated' && session.user.accountStatus === 'frozen')
+    || (status === 'authenticated' && !isRoleAtLeast(session.user.role, 'community_admin'))
+  ) {
     return <AccessDenied portalName="Community Admin" requiredRole="community_admin" />;
   }
 

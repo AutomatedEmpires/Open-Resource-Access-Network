@@ -282,7 +282,7 @@ describe('authOptions', () => {
   });
 
   it('jwt callback uses DB role when available', async () => {
-    mockPoolQuery.mockResolvedValue({ rows: [{ role: 'host_admin' }] });
+    mockPoolQuery.mockResolvedValue({ rows: [{ role: 'host_admin', account_status: 'active' }] });
     const { authOptions } = await loadAuthModule();
     const jwt = authOptions.callbacks?.jwt;
 
@@ -295,6 +295,7 @@ describe('authOptions', () => {
     expect(token).toMatchObject({
       sub: 'user-1',
       role: 'host_admin',
+      accountStatus: 'active',
     });
   });
 
@@ -312,6 +313,7 @@ describe('authOptions', () => {
     expect(token).toMatchObject({
       sub: 'user-2',
       role: 'host_admin',
+      accountStatus: 'active',
     });
   });
 
@@ -329,6 +331,7 @@ describe('authOptions', () => {
         name: 'A User',
         id: 'user-3',
         role: 'oran_admin',
+        accountStatus: 'active',
       },
     });
   });
@@ -415,6 +418,7 @@ describe('authOptions', () => {
         name: 'Test User',
         id: 'user-no-role',
         role: 'seeker',
+        accountStatus: 'active',
       },
     });
   });

@@ -119,7 +119,7 @@ describe('ChatServiceCard', () => {
     );
     const feedbackForm = collectElements(element, (child) => child.type === 'feedback-form')[0];
 
-    expect(externalLinks).toHaveLength(3);
+    expect(externalLinks).toHaveLength(2);
     expect(feedbackForm.props.serviceId).toBe('svc-1');
     expect(typeof feedbackForm.props.sessionId).toBe('string');
   });

@@ -11,11 +11,12 @@
 
 ## Purpose And Scope
 
-This runbook explains the governance and access-control operations that are actually implemented in ORAN today for host membership changes, scope grants, org-claim promotion, and reviewer silence handling. It also records the important gaps so operators do not assume first-class controls exist when they currently do not.
+This runbook explains the governance and access-control operations that are actually implemented in ORAN today for host membership changes, account freeze and restore, scope grants, org-claim promotion, and reviewer silence handling. It also records the important gaps so operators do not assume first-class controls exist when they currently do not.
 
 ## Safety Constraints (Must Always Hold)
 
 - No self-service registration may mint `host_admin`, `community_admin`, or `oran_admin` access.
+- Frozen accounts must not regain host membership, scope grants, or org-claim promotion through side paths.
 - Host membership changes must not strand an organization without an active `host_admin`.
 - Scope grants must preserve two-person separation between requester and approver.
 - Silence handling must preserve seeker-visible integrity by reassigning dormant reviewer work and restricting silently orphaned live listings.
@@ -59,6 +60,7 @@ Implemented today:
 - pending grants are listed excluding the requester’s own decisions
 - approve or deny uses the two-person approval service
 - revoke uses explicit revoke flow with reason
+- grant request and grant approval both fail closed for frozen target accounts
 
 Primary implementation:
 
@@ -66,7 +68,26 @@ Primary implementation:
 - `src/app/api/admin/scopes/grants/[id]/route.ts`
 - `src/services/workflow/two-person.ts`
 
-### 4. Silence and dormancy handling for reviewers and owner organizations
+### 4. Platform account freeze and restore
+
+Implemented today:
+
+- ORAN-admin can freeze or restore a user account with a required operator note
+- frozen users are denied authenticated request context through the shared session helper and NextAuth session shaping
+- host-team invite/reactivation flow rejects frozen users
+- org-claim approval rejects frozen claimants before promotion to `host_admin`
+- account freeze is non-destructive and preserves audit history plus security metadata
+
+Primary implementation:
+
+- `db/migrations/0053_account_status_and_security_controls.sql`
+- `src/lib/auth.ts`
+- `src/services/auth/session.ts`
+- `src/app/api/admin/security/accounts/route.ts`
+- `src/app/api/host/admins/route.ts`
+- `src/app/api/admin/approvals/route.ts`
+
+### 5. Silence and dormancy handling for reviewers and owner organizations
 
 Implemented today:
 
@@ -95,7 +116,8 @@ Primary implementation:
 
 These are not first-class platform controls today:
 
-- global user ban or suspension workflow across ORAN
+- dual-control suspension for `oran_admin` peers
+- role- or surface-specific suspension modes such as read-only admin access
 - first-class organization suspension or platform-wide org removal workflow with staged approvals
 - planned reviewer leave scheduling such as “pause me for two months and resume safely later”
 - return-to-duty re-attestation flow for dormant reviewers or admins
@@ -126,6 +148,8 @@ Host team-management and scope-grant validation should use the existing focused 
 Suggested checks:
 
 ```bash
+npx vitest run src/services/workflow/__tests__/two-person.test.ts src/app/api/host/__tests__/host-admins-extra-coverage.test.ts src/app/api/admin/__tests__/approvals-zones-extra.test.ts src/app/api/admin/__tests__/routes.test.ts src/app/api/admin/__tests__/scopes-routes.test.ts
+
 npx tsc --noEmit
 ```
 
@@ -136,8 +160,11 @@ If changing host-admin or scope-grant behavior, run the corresponding focused Vi
 - `docs/governance/ROLES_PERMISSIONS.md`
 - `docs/contracts/AUTHZ_CONTRACT.md`
 - `docs/DECISIONS/ADR-0011-ingestion-integrity-and-resilience-controls.md`
+- `src/app/api/admin/security/accounts/route.ts`
 - `src/app/api/host/admins/route.ts`
 - `src/app/api/host/admins/[id]/route.ts`
+- `src/app/api/admin/approvals/route.ts`
 - `src/app/api/admin/scopes/grants/route.ts`
 - `src/app/api/admin/scopes/grants/[id]/route.ts`
+- `src/services/workflow/two-person.ts`
 - `src/services/escalation/engine.ts`

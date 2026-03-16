@@ -93,7 +93,17 @@ describe('SavedPageClient', () => {
         ok: true,
         json: async () => ({ savedIds: ['svc-server'] }),
       })
-      .mockResolvedValueOnce({ ok: true }) // /api/user/saved backfill
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: async () => ({ collections: [], serviceAssignments: {} }),
+      })
+      .mockResolvedValueOnce({ ok: true }) // /api/saved backfill
+      .mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: async () => ({ collections: [], serviceAssignments: {} }),
+      })
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
@@ -106,7 +116,7 @@ describe('SavedPageClient', () => {
 
     await screen.findByText('Server Save');
     expect(screen.getByText('Local Save')).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/saved', {
+    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/saved', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ serviceId: 'svc-local' }),
@@ -310,6 +320,10 @@ describe('SavedPageClient', () => {
     localStorage.setItem(PREFS_KEY, JSON.stringify({ serverSyncEnabled: true }));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(['svc-1']));
     fetchMock
+      .mockResolvedValueOnce({
+        status: 401,
+        ok: false,
+      })
       .mockResolvedValueOnce({
         status: 401,
         ok: false,

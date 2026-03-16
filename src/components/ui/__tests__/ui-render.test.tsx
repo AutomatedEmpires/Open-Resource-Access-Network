@@ -66,7 +66,7 @@ describe('ui render components', () => {
 
     expect(buttonElement.props.className).toContain('bg-action-base');
     expect(linkElement.type).toBeDefined();
-    expect(linkElement.props.className).toContain('text-action-base');
+    expect(linkElement.props.className).toContain('text-[var(--text-primary)]');
   });
 
   it('builds skeleton primitives and preset compositions', () => {

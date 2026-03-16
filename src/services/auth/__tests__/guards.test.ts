@@ -22,6 +22,7 @@ import type { AuthContext } from '../session';
 const hostAdminCtx: AuthContext = {
   userId: 'user-1',
   role: 'host_admin',
+  accountStatus: 'active',
   orgIds: ['org-1'],
   orgRoles: new Map([['org-1', 'host_admin']]),
 };
@@ -29,6 +30,7 @@ const hostAdminCtx: AuthContext = {
 const oranAdminCtx: AuthContext = {
   userId: 'user-2',
   role: 'oran_admin',
+  accountStatus: 'active',
   orgIds: [],
   orgRoles: new Map(),
 };

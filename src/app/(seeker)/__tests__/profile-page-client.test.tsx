@@ -104,15 +104,15 @@ describe('ProfilePageClient', () => {
     await screen.findByText('No saved services yet.');
     expect(screen.getByRole('link', { name: 'Browse services' })).toHaveAttribute(
       'href',
-      '/directory?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%5D%7D',
+      '/directory?q=housing&category=housing',
     );
     expect(screen.getByRole('link', { name: 'Ask chat' })).toHaveAttribute(
       'href',
-      '/chat?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%5D%7D',
+      '/chat?q=housing&category=housing',
     );
     expect(screen.getByRole('link', { name: 'Map view' })).toHaveAttribute(
       'href',
-      '/map?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%5D%7D',
+      '/map?q=housing&category=housing',
     );
   });
 
@@ -231,7 +231,7 @@ describe('ProfilePageClient', () => {
     fireEvent.click(syncToggle);
 
     await waitFor(() => {
-      const syncCall = fetchMock.mock.calls[2];
+      const syncCall = fetchMock.mock.calls.find((call) => String(call[0]) === '/api/profile' && (call[1] as RequestInit | undefined)?.method === 'PUT');
       expect(syncCall?.[0]).toBe('/api/profile');
       expect(syncCall?.[1]).toMatchObject({
         method: 'PUT',
@@ -432,31 +432,40 @@ describe('ProfilePageClient', () => {
   it('shows export and delete failures for authenticated users without clearing local data', async () => {
     localStorage.setItem(PREFS_KEY, JSON.stringify({ approximateCity: 'Dallas', language: 'en' }));
     localStorage.setItem(SAVED_KEY, JSON.stringify(['svc-1']));
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          profile: {
-            userId: 'user-1',
-            preferredLocale: 'en',
-            approximateCity: 'Dallas',
-          },
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ preferences: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-      });
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url === '/api/profile') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            profile: {
+              userId: 'user-1',
+              preferredLocale: 'en',
+              approximateCity: 'Dallas',
+            },
+          }),
+        } as Response;
+      }
+
+      if (url === '/api/user/notifications/preferences') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ preferences: [] }),
+        } as Response;
+      }
+
+      if (url === '/api/user/data-export' || url === '/api/user/data-delete') {
+        return {
+          ok: false,
+          status: 500,
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
 
     render(<ProfilePage />);
     await screen.findByText('You are signed in. Your preferences are syncing across devices.');

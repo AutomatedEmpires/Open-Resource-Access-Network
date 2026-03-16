@@ -169,6 +169,24 @@ describe('admin approvals extra coverage', () => {
     expect(engineMocks.releaseLock).toHaveBeenCalledWith(SUBMISSION_ID, 'admin-1', false);
   });
 
+  it('blocks approving claims for frozen submitters', async () => {
+    const { POST } = await loadApprovalsRoute();
+
+    engineMocks.acquireLock.mockResolvedValueOnce(true);
+    dbMocks.executeQuery.mockResolvedValueOnce([{ account_status: 'frozen' }]);
+
+    const response = await POST(
+      createRequest({
+        jsonBody: { submissionId: SUBMISSION_ID, decision: 'approved' },
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: 'Cannot approve an organization claim for a frozen account' });
+    expect(engineMocks.releaseLock).toHaveBeenCalledWith(SUBMISSION_ID, 'admin-1', false);
+    expect(engineMocks.advance).not.toHaveBeenCalled();
+  });
+
   it('updates reviewer notes and returns success payload', async () => {
     const { POST } = await loadApprovalsRoute();
 

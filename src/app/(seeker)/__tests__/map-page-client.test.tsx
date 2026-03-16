@@ -308,16 +308,16 @@ describe('MapPageClient', () => {
     expect(searchUrl).toContain('q=housing');
     expect(searchUrl).not.toContain('attributes=');
     expect(replaceMock).toHaveBeenCalledWith(
-      '/map?q=housing&category=housing',
+      '/map?q=housing&sort=distance&category=housing',
       { scroll: false },
     );
     expect(screen.getByRole('link', { name: 'Directory' })).toHaveAttribute(
       'href',
-      '/directory?q=housing&category=housing',
+      '/directory?q=housing&sort=distance&category=housing',
     );
     expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
       'href',
-      '/chat?q=housing&category=housing',
+      '/chat?q=housing&sort=distance&category=housing',
     );
   });
 
@@ -442,7 +442,6 @@ describe('MapPageClient', () => {
 
     expect(getSearchCalls()).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Search this area' })).not.toBeInTheDocument();
-    expect(getSearchCalls()).toHaveLength(1);
 
     fireEvent.keyDown(screen.getByRole('button', { name: 'Expand results panel' }), { key: 'Enter' });
     expect(screen.getByRole('button', { name: 'Collapse results panel' })).toBeInTheDocument();
@@ -472,7 +471,7 @@ describe('MapPageClient', () => {
     fireEvent.click(getSearchSubmitButton());
 
     expect(await screen.findByText('No matches in this area')).toBeInTheDocument();
-    expect(await screen.findByText('Try different keywords or pan to a new area.')).toBeInTheDocument();
+    expect(await screen.findByText('Try different keywords, a broader category, or pan to a new area.')).toBeInTheDocument();
   });
 
   it('surfaces permission-denied geolocation errors', async () => {
@@ -652,7 +651,7 @@ describe('MapPageClient', () => {
       expect(String(getSearchCalls().at(-1)?.[0])).toContain('attributes=');
     });
 
-    expect(screen.queryByRole('button', { name: 'Search this area' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Search this area' })).toBeInTheDocument();
   });
 
   it('shows canonical filter controls in the unified dialog', async () => {
@@ -662,7 +661,7 @@ describe('MapPageClient', () => {
     expect(await screen.findByText('Service details')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Food' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'By Phone' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Nearby first' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Nearby first/i })).toBeInTheDocument();
   });
 
   it('clears a stale category chip when the user types a different query', async () => {
@@ -745,9 +744,9 @@ describe('MapPageClient', () => {
     fireEvent.click(getSearchSubmitButton());
 
     await screen.findByText('High Confidence');
-    expect(screen.getByLabelText('Trust 90 percent')).toBeInTheDocument();
-    expect(screen.getByLabelText('Trust 65 percent')).toBeInTheDocument();
-    expect(screen.getByLabelText('Trust 20 percent')).toBeInTheDocument();
-    expect(screen.getByLabelText('Trust score unknown')).toBeInTheDocument();
+    expect(screen.getByLabelText('Verification 90 percent')).toBeInTheDocument();
+    expect(screen.getByLabelText('Verification 65 percent')).toBeInTheDocument();
+    expect(screen.getByLabelText('Verification 20 percent')).toBeInTheDocument();
+    expect(screen.getByLabelText('Verification score unknown')).toBeInTheDocument();
   });
 });

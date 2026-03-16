@@ -21,7 +21,6 @@ vi.mock('@/components/chat/ChatWindow', () => ({
     initialTrustFilter?: string;
     initialSortBy?: string;
     initialPage?: number;
-    initialTaxonomyTermIds?: string[];
     initialAttributeFilters?: Record<string, string[]>;
   }) => {
     chatWindowMock(props);
@@ -57,7 +56,6 @@ describe('ChatPageClient', () => {
       initialTrustFilter: undefined,
       initialSortBy: undefined,
       initialPage: 1,
-      initialTaxonomyTermIds: [],
       initialAttributeFilters: undefined,
     });
     expect(screen.getByTestId('chat-window')).toHaveTextContent('session:existing-session-id');
@@ -90,7 +88,6 @@ describe('ChatPageClient', () => {
       initialTrustFilter: 'HIGH',
       initialSortBy: 'name_desc',
       initialPage: 3,
-      initialTaxonomyTermIds: ['a1000000-0000-4000-8000-000000000001'],
       initialAttributeFilters: { delivery: ['virtual'] },
     });
   });
@@ -111,7 +108,6 @@ describe('ChatPageClient', () => {
       initialTrustFilter: undefined,
       initialSortBy: undefined,
       initialPage: 1,
-      initialTaxonomyTermIds: [],
       initialAttributeFilters: undefined,
     });
     expect(screen.getAllByRole('heading', { name: 'Chat' }).length).toBeGreaterThan(0);
@@ -138,20 +134,16 @@ describe('ChatPageClient', () => {
         initialTrustFilter: undefined,
         initialSortBy: undefined,
         initialPage: 1,
-        initialTaxonomyTermIds: [],
-        initialAttributeFilters: {
-          delivery: ['phone'],
-          access: ['no_id_required', 'same_day'],
-        },
+        initialAttributeFilters: undefined,
       });
     });
     expect(screen.getByRole('link', { name: 'Directory' })).toHaveAttribute(
       'href',
-      '/directory?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
+      '/directory?q=housing&category=housing',
     );
     expect(screen.getByRole('link', { name: 'Map' })).toHaveAttribute(
       'href',
-      '/map?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
+      '/map?q=housing&category=housing',
     );
   });
 });

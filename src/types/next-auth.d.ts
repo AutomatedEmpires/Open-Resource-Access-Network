@@ -5,7 +5,7 @@
  * (role, id) on Session and JWT.
  */
 
-import type { OranRole } from '@/domain/types';
+import type { AccountStatus, OranRole } from '@/domain/types';
 import 'next-auth';
 import 'next-auth/jwt';
 
@@ -14,6 +14,7 @@ declare module 'next-auth' {
     user: {
       id: string;
       role: OranRole;
+      accountStatus: AccountStatus;
       name?: string | null;
       email?: string | null;
       image?: string | null;
@@ -22,11 +23,13 @@ declare module 'next-auth' {
 
   interface User {
     role?: OranRole;
+    accountStatus?: AccountStatus;
   }
 }
 
 declare module 'next-auth/jwt' {
   interface JWT {
     role?: OranRole;
+    accountStatus?: AccountStatus;
   }
 }

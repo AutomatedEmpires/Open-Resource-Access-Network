@@ -96,7 +96,7 @@ describe('ChatServiceCard interactions', () => {
     const externalLinks = screen.getAllByRole('link').filter((link: HTMLElement) =>
       link.getAttribute('href')?.startsWith('https://'),
     );
-    expect(externalLinks).toHaveLength(3);
+    expect(externalLinks).toHaveLength(2);
     expect(screen.queryByRole('link', { name: 'More' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save this service' }));

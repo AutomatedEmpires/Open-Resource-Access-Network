@@ -196,6 +196,7 @@ describe('host admins collection extra coverage', () => {
     const query = vi
       .fn()
       .mockResolvedValueOnce({ rows: [{ id: ORG_ID }] })
+      .mockResolvedValueOnce({ rows: [{ user_id: USER_ID, account_status: 'active' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({
         rows: [{ id: MEMBER_ID, user_id: USER_ID, organization_id: ORG_ID, role: 'host_member', status: 'pending_invite' }],
@@ -219,7 +220,33 @@ describe('host admins collection extra coverage', () => {
     expect(response.status).toBe(201);
     const body = await response.json();
     expect(body.status).toBe('pending_invite');
-    expect(query.mock.calls[2]?.[1]).toEqual([ORG_ID, USER_ID, 'host_member', 'pending_invite']);
+    expect(query.mock.calls[3]?.[1]).toEqual([ORG_ID, USER_ID, 'host_member', 'pending_invite']);
+  });
+
+  it('blocks inviting or restoring frozen accounts', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: USER_ID });
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ id: ORG_ID }] })
+      .mockResolvedValueOnce({ rows: [{ user_id: USER_ID, account_status: 'frozen' }] });
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: { query: typeof query }) => Promise<unknown>) => {
+      return callback({ query });
+    });
+
+    const { POST } = await loadAdminsCollectionRoute();
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          organizationId: ORG_ID,
+          userId: USER_ID,
+          role: 'host_member',
+          inviteMode: false,
+        },
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: 'Cannot invite or restore access for a frozen account' });
   });
 
   it('returns 500 and captures exceptions when POST transaction fails', async () => {

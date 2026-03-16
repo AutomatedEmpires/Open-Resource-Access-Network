@@ -154,7 +154,7 @@ function getOffMapReason(service: EnrichedService): string {
       break;
   }
 
-  const serviceRegion = service.organization.serviceRegion?.trim();
+  const serviceRegion = service.organization?.serviceRegion?.trim();
   if (serviceRegion) {
     return `Serves ${serviceRegion}`;
   }

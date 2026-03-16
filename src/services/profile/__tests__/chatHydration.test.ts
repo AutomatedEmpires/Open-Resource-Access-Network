@@ -41,10 +41,6 @@ describe('hydrateChatContext', () => {
       primaryNeedId: 'housing',
       browsePreference: {
         needId: 'housing',
-        attributeFilters: {
-          delivery: ['phone'],
-          access: ['interpreter_on_site', 'no_id_required', 'same_day'],
-        },
       },
       householdType: 'single_parent',
       housingSituation: 'shelter',

@@ -50,6 +50,11 @@ interface OrganizationMember {
   updated_at: string | null;
 }
 
+interface UserSecurityRow {
+  user_id: string;
+  account_status: 'active' | 'frozen' | null;
+}
+
 /**
  * GET /api/host/admins?organizationId=<uuid>
  * List organization members for a specific org.
@@ -216,6 +221,18 @@ export async function POST(req: NextRequest) {
       );
       if (orgCheck.rows.length === 0) {
         return { error: 'Organization not found', status: 404 };
+      }
+
+      const userSecurity = await client.query<UserSecurityRow>(
+        `SELECT user_id, account_status
+         FROM user_profiles
+         WHERE user_id = $1
+         LIMIT 1`,
+        [userId],
+      );
+
+      if ((userSecurity.rows[0]?.account_status ?? 'active') === 'frozen') {
+        return { error: 'Cannot invite or restore access for a frozen account', status: 409 };
       }
 
       // Check if user is already a member

@@ -163,9 +163,12 @@ npx tsc --noEmit
 Not implemented in this lane:
 
 - required MFA or 2SV for credentials users
-- global user ban or suspension workflow
 - first-class agency onboarding or listing-removal intake workflow
 - multi-draft dedupe beyond exact same launch request
+
+Related controls now live elsewhere in the repo:
+
+- non-destructive account freeze and restore exists through the ORAN-admin security controls, but it is not specific to the registration or managed-form contract covered here
 
 These belong in governance backlog work, not emergency edits to the current registration or forms contract.
 
@@ -173,6 +176,7 @@ These belong in governance backlog work, not emergency edits to the current regi
 
 - `docs/solutions/SIGNUP_FORMS_ADVERSARIAL_SCENARIOS_VI.md`
 - `docs/ui/FORM_FLOW_EVIDENCE_MAP.md`
+- `src/app/api/admin/security/accounts/route.ts`
 - `src/app/api/auth/register/route.ts`
 - `src/app/api/forms/instances/route.ts`
 - `src/services/forms/vault.ts`

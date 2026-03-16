@@ -31,6 +31,7 @@ function makeAuthCtx(role: OranRole = 'oran_admin', userId = 'user-admin-1') {
   return {
     userId,
     role,
+    accountStatus: 'active' as const,
     orgIds: [] as string[],
     orgRoles: new Map<string, 'host_member' | 'host_admin'>(),
   };

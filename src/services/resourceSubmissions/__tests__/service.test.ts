@@ -527,7 +527,7 @@ describe('resource submission service', () => {
 
   it('reuses matching active org and service before projecting listing submissions', async () => {
     dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'instance-1' }]);
-    const clientQuery = vi.fn(async (sql: string, _params?: unknown[]) => {
+    const clientQuery = vi.fn(async (sql: string, params?: unknown[]) => {
       if (sql.includes('pg_advisory_xact_lock')) {
         expect(params).toEqual(['live-publication:example.org|existing org|example.org/service|existing service']);
         return { rows: [{ pg_advisory_xact_lock: '' }] };
@@ -653,7 +653,7 @@ describe('resource submission service', () => {
   });
 
   it('gets, lists, and resolves accessible resource submissions', async () => {
-    const auth = { userId: 'u', role: 'oran_admin', orgIds: [], orgRoles: new Map() } as AuthContext;
+    const auth = { userId: 'u', role: 'oran_admin', accountStatus: 'active', orgIds: [], orgRoles: new Map() } as AuthContext;
     vaultMocks.getAccessibleFormInstance
       .mockResolvedValueOnce(mockInstance({ template_slug: 'resource-listing-host' }))
       .mockResolvedValueOnce(mockInstance({ template_slug: 'resource-listing-host' }));

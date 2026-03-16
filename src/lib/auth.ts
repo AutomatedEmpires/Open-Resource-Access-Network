@@ -21,7 +21,7 @@ import AppleProvider from 'next-auth/providers/apple';
 import GoogleProvider from 'next-auth/providers/google';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
-import type { OranRole } from '@/domain/types';
+import type { AccountStatus, OranRole } from '@/domain/types';
 import { getPgPool } from '@/services/db/postgres';
 
 // ============================================================
@@ -102,17 +102,19 @@ export function resolveOranRole(roles?: string[]): OranRole {
  * Look up a user's role from user_profiles in the DB.
  * Returns the DB role if found, otherwise null.
  */
-async function getDbRole(userId: string): Promise<OranRole | null> {
+async function getDbAccountState(userId: string): Promise<{ role: OranRole | null; accountStatus: AccountStatus }> {
   try {
     const pool = getPgPool();
-    const result = await pool.query<{ role: OranRole }>(
-      `SELECT role FROM user_profiles WHERE user_id = $1`,
+    const result = await pool.query<{ role: OranRole; account_status: AccountStatus | null }>(
+      `SELECT role, account_status FROM user_profiles WHERE user_id = $1`,
       [userId],
     );
-    return result.rows[0]?.role ?? null;
+    return {
+      role: result.rows[0]?.role ?? null,
+      accountStatus: result.rows[0]?.account_status ?? 'active',
+    };
   } catch {
-    // If DB is unreachable, fall back to JWT/provider role
-    return null;
+    return { role: null, accountStatus: 'active' };
   }
 }
 
@@ -261,8 +263,9 @@ export const authOptions: AuthOptions = {
                   phone: string | null;
                   password_hash: string;
                   role: OranRole;
+                  account_status: AccountStatus;
                 }>(
-                  `SELECT user_id, display_name, email, username, phone, password_hash, role
+                  `SELECT user_id, display_name, email, username, phone, password_hash, role, account_status
                    FROM user_profiles
                    WHERE auth_provider = 'credentials'
                      AND (
@@ -276,6 +279,7 @@ export const authOptions: AuthOptions = {
 
                 const user = result.rows[0];
                 if (!user || !user.password_hash) return null;
+                if (user.account_status === 'frozen') return null;
 
                 const isValid = await bcrypt.compare(password, user.password_hash);
                 if (!isValid) return null;
@@ -285,6 +289,7 @@ export const authOptions: AuthOptions = {
                   name: user.display_name ?? user.username ?? user.email ?? user.phone ?? identifier,
                   email: user.email ?? undefined,
                   role: user.role,
+                  accountStatus: user.account_status,
                 } as unknown as { id: string; name: string; email: string; role: OranRole };
               } catch {
                 return null;
@@ -306,6 +311,14 @@ export const authOptions: AuthOptions = {
         await ensureUserProfile(user, account.provider);
       }
 
+      if (user?.id) {
+        const state = await getDbAccountState(user.id);
+        if (state.accountStatus === 'frozen') {
+          return false;
+        }
+        user.accountStatus = state.accountStatus;
+      }
+
       return true;
     },
 
@@ -324,13 +337,19 @@ export const authOptions: AuthOptions = {
       if (user) {
         token.sub = user.id;
 
-        // DB role is the source of truth
-        const dbRole = await getDbRole(user.id);
-        if (dbRole) {
-          token.role = dbRole;
+        const state = await getDbAccountState(user.id);
+        token.accountStatus = state.accountStatus;
+        if (state.role) {
+          token.role = state.role;
         } else {
           // Fall back to provider-supplied role
           token.role = user.role ?? 'seeker';
+        }
+      } else if (typeof token.sub === 'string') {
+        const state = await getDbAccountState(token.sub);
+        token.accountStatus = state.accountStatus;
+        if (state.role) {
+          token.role = state.role;
         }
       }
 
@@ -353,6 +372,9 @@ export const authOptions: AuthOptions = {
       if (!token.role) {
         token.role = 'seeker';
       }
+      if (!token.accountStatus) {
+        token.accountStatus = 'active';
+      }
 
       return token;
     },
@@ -365,6 +387,7 @@ export const authOptions: AuthOptions = {
       if (session.user) {
         session.user.id = token.sub ?? '';
         session.user.role = token.role ?? 'seeker';
+        session.user.accountStatus = token.accountStatus ?? 'active';
       }
       return session;
     },

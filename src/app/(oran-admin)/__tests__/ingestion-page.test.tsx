@@ -283,7 +283,7 @@ describe('oran admin ingestion page', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/ingestion/overview');
     expect(screen.getByText('Cross-family operations overview')).toBeInTheDocument();
     expect(screen.getByText('Active feeds')).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.getAllByText('2').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
 

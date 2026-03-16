@@ -12,17 +12,17 @@ State labels:
 
 1. `701` Global ban of a seeker account after confirmed harassment report. Desired control: platform-wide user suspension with appeal and audit trail. State: `gap`.
 2. `702` Suspend a host_member across every organization they belong to after abuse finding. Desired control: cross-org suspension with scoped rollback. State: `gap`.
-3. `703` Freeze an oran_admin account immediately during suspected compromise. Desired control: emergency admin lockout with dual control. State: `gap`.
+3. `703` Freeze an oran_admin account immediately during suspected compromise. Desired control: emergency admin lockout with dual control. State: `partial`.
 4. `704` Put a user into read-only mode while investigation is open. Desired control: temporary restricted mode instead of full deletion. State: `gap`.
-5. `705` Ban a user but preserve their historical submissions for audit. Desired control: access revocation without audit loss. State: `gap`.
+5. `705` Ban a user but preserve their historical submissions for audit. Desired control: access revocation without audit loss. State: `implemented`.
 6. `706` Ban only one org membership while keeping the same user active elsewhere. Desired control: membership-scoped suspension. State: `partial`.
-7. `707` Re-enable an account after wrongful suspension. Desired control: reversible suspension with approver trace. State: `gap`.
+7. `707` Re-enable an account after wrongful suspension. Desired control: reversible suspension with approver trace. State: `implemented`.
 8. `708` Suspend a community_admin from verification while preserving dashboard read access for review. Desired control: duty suspension with least privilege fallback. State: `gap`.
 9. `709` Force sign-out of all sessions for a compromised account. Desired control: token/session revocation. State: `gap`.
-10. `710` Prevent a suspended user from being re-invited into an organization. Desired control: suspension-aware invite checks. State: `gap`.
+10. `710` Prevent a suspended user from being re-invited into an organization. Desired control: suspension-aware invite checks. State: `implemented`.
 11. `711` Mark a user as under fraud review and block new host claims. Desired control: investigation hold on sensitive flows. State: `gap`.
 12. `712` Ban a user because they are automating signup attempts. Desired control: account flagging plus registration abuse intelligence. State: `gap`.
-13. `713` Ban a dormant compromised account without deleting profile data. Desired control: non-destructive access revocation. State: `gap`.
+13. `713` Ban a dormant compromised account without deleting profile data. Desired control: non-destructive access revocation. State: `implemented`.
 14. `714` Suspend a user from notifications but not from core access. Desired control: channel-scoped controls. State: `gap`.
 15. `715` Freeze a user after repeated failed reviewer actions in conflicting jurisdictions. Desired control: anomaly-triggered risk hold. State: `gap`.
 16. `716` Move a user from `oran_admin` down to `community_admin` after role reduction. Desired control: privileged-role demotion workflow. State: `gap`.
@@ -34,14 +34,14 @@ State labels:
 22. `722` Deactivate a user and automatically reassign their active verification work. Desired control: deactivation-driven work handoff. State: `partial`.
 23. `723` Require two ORAN admins to suspend another ORAN admin. Desired control: peer-level dual control for high-risk access changes. State: `gap`.
 24. `724` Restore access after a security incident only if required controls are re-met. Desired control: gated reinstatement checklist. State: `gap`.
-25. `725` Ban a user from ORAN while preserving export/delete privacy rights. Desired control: suspension-aware privacy workflow. State: `gap`.
+25. `725` Ban a user from ORAN while preserving export/delete privacy rights. Desired control: suspension-aware privacy workflow. State: `partial`.
 
 ## Organization Membership And Admin Lifecycle 726-750
 
 1. `726` Remove a host_member from an organization. Desired control: scoped soft-delete. State: `implemented`.
 2. `727` Remove a host_admin from an organization only when another active host_admin remains. Desired control: last-admin guard. State: `implemented`.
 3. `728` Demote a host_admin to host_member with protection against orphaning the org. Desired control: safe demotion. State: `implemented`.
-4. `729` Restore a previously deactivated membership without creating a duplicate row. Desired control: reactivation path. State: `partial`.
+4. `729` Restore a previously deactivated membership without creating a duplicate row. Desired control: reactivation path. State: `implemented`.
 5. `730` Transfer primary operational ownership from one host_admin to another. Desired control: explicit owner handoff flow. State: `gap`.
 6. `731` Remove a pending invite before the user accepts it. Desired control: invite cancellation. State: `partial`.
 7. `732` Prevent self-removal of the last host_admin through the UI and API. Desired control: self-lockout guard. State: `implemented`.
@@ -80,7 +80,7 @@ State labels:
 12. `762` Pause a grant temporarily without revoking it. Desired control: suspended grant state. State: `gap`.
 13. `763` Detect duplicated grant requests for the same user and scope. Desired control: duplicate request suppression. State: `implemented`.
 14. `764` Reissue an expired grant from history without retyping justification. Desired control: renewal workflow. State: `gap`.
-15. `765` Prevent grant creation when the target user is deactivated or suspended. Desired control: subject-state validation. State: `gap`.
+15. `765` Prevent grant creation when the target user is deactivated or suspended. Desired control: subject-state validation. State: `partial`.
 16. `766` Require dual approval for especially risky scopes. Desired control: risk-tiered approval depth. State: `gap`.
 17. `767` Provide a dry-run view of what a requested scope would allow. Desired control: impact preview. State: `gap`.
 18. `768` Let ORAN grant emergency read-only audit access during incidents. Desired control: emergency access workflow. State: `partial`.

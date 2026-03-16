@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fetchMock = vi.hoisted(() => vi.fn());
@@ -129,7 +129,7 @@ describe('ChatWindow interactions', () => {
     expect(screen.getByTestId('service-svc-1')).toBeInTheDocument();
     expect(screen.queryByText('Immediate Help Available')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(within(screen.getByTestId('service-svc-1')).getByRole('button', { name: 'Save' }));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith('/api/saved', expect.objectContaining({
         method: 'POST',
@@ -190,12 +190,12 @@ describe('ChatWindow interactions', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
-    await screen.findByTestId('service-svc-1');
+    await screen.findAllByTestId('service-svc-1');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(within(screen.getAllByTestId('service-svc-1')[0]).getByRole('button', { name: 'Save' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Unsave' })).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Unsave' }).length).toBeGreaterThan(0);
       expect(localStorage.getItem('oran:saved-service-ids')).toBe('["svc-1"]');
     });
     expect(toastSuccessMock).toHaveBeenCalledWith('Saved on this device');

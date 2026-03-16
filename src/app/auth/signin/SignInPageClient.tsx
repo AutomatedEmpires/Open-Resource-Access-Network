@@ -85,7 +85,7 @@ const PATHS: PathOption[] = [
 function detectPath(callbackUrl: string | null): UserPath {
   if (!callbackUrl) return 'seeker';
   if (/^\/(claim|org|services|locations|admins)/.test(callbackUrl)) return 'organization';
-  if (/^\/(approvals|rules|audit|zone-management|ingestion|triage|queue|verify|coverage|appeals|scopes|templates)/.test(callbackUrl))
+  if (/^\/(operations|approvals|rules|audit|zone-management|ingestion|triage|queue|verify|coverage|appeals|reports|security|scopes|templates)/.test(callbackUrl))
     return 'admin';
   return 'seeker';
 }

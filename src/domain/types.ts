@@ -869,3 +869,5 @@ export type OranRole =
   | 'host_admin'
   | 'community_admin'
   | 'oran_admin';
+
+export type AccountStatus = 'active' | 'frozen';

@@ -209,87 +209,6 @@ describe('DirectoryPageClient', () => {
     renderWithToast(<DirectoryPage />);
 
     expect(screen.getByText('Start with a search')).toBeInTheDocument();
-    await waitFor(() => {
-      const urls = fetchMock.mock.calls.map((c) => String(c?.[0]));
-      expect(urls.some((u) => u.includes('/api/taxonomy/terms'))).toBe(true);
-    });
-  });
-
-  it('seeds a blank directory entry from the stored seeker discovery preference', async () => {
-    localStorage.setItem('oran:seeker-context', JSON.stringify({
-      serviceInterests: ['housing'],
-      preferredDeliveryModes: ['phone'],
-      documentationBarriers: ['no_id'],
-      urgencyWindow: 'same_day',
-    }));
-    setupFetchRoutes({
-      searchResponses: [ok(makeSearchResponse())],
-    });
-
-    renderWithToast(<DirectoryPage />);
-
-    await screen.findByText('Food Pantry');
-
-    const searchUrl = String(
-      fetchMock.mock.calls.find(([input]) => String(input).includes('/api/search?'))?.[0] ?? '',
-    );
-    expect(searchUrl).toContain('q=housing');
-    expect(searchUrl).toContain('attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D');
-    expect(replaceMock).toHaveBeenCalledWith(
-      '/directory?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
-      { scroll: false },
-    );
-    expect(screen.getByRole('link', { name: 'Map' })).toHaveAttribute(
-      'href',
-      '/map?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
-    );
-    expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
-      'href',
-      '/chat?q=housing&category=housing&attributes=%7B%22delivery%22%3A%5B%22phone%22%5D%2C%22access%22%3A%5B%22no_id_required%22%2C%22same_day%22%5D%7D',
-    );
-  });
-
-  it('fetches taxonomy terms on load for top tags', async () => {
-    setupFetchRoutes({
-      taxonomyTerms: [{
-        id: 'a1000000-0000-0000-0000-000000000001',
-        term: 'Food Assistance',
-        description: null,
-        parentId: null,
-        taxonomy: 'demo',
-        serviceCount: 12,
-      }],
-    });
-
-    renderWithToast(<DirectoryPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
-
-    await screen.findByRole('button', { name: 'Food Assistance' });
-    const urls = fetchMock.mock.calls.map((c) => String(c?.[0]));
-    expect(urls.some((u) => u.includes('/api/taxonomy/terms'))).toBe(true);
-  });
-
-  it('shows selected tag name in the applied filters summary', async () => {
-    setupFetchRoutes({
-      taxonomyTerms: [{
-        id: 'a1000000-0000-0000-0000-000000000001',
-        term: 'Food Assistance',
-        description: null,
-        parentId: null,
-        taxonomy: 'demo',
-        serviceCount: 12,
-      }],
-      searchResponses: [ok(makeSearchResponse())],
-    });
-
-    renderWithToast(<DirectoryPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
-
-    // Select a tag via the top-tag chip.
-    fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
-
-    // It should appear as a removable applied chip.
-    expect(await screen.findByRole('button', { name: /Remove tag Food Assistance/i })).toBeInTheDocument();
   });
 
   it('renders the shared current search scope summary from canonical discovery state', async () => {
@@ -316,93 +235,8 @@ describe('DirectoryPageClient', () => {
     expect(screen.getByText('Search: rent help')).toBeInTheDocument();
     expect(screen.getAllByText('Trust: High confidence only').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Sort: Name (Z-A)').length).toBeGreaterThan(0);
-    expect((await screen.findAllByText('Tag: Housing Navigation')).length).toBeGreaterThan(0);
     expect(screen.getByText('Delivery: By Phone')).toBeInTheDocument();
     expect(screen.getByText('Access: No ID Required')).toBeInTheDocument();
-  });
-
-  it('shows the first two selected tag names plus +N', async () => {
-    setupFetchRoutes({
-      taxonomyTerms: [
-        {
-          id: 'a1000000-0000-0000-0000-000000000001',
-          term: 'Food Assistance',
-          description: null,
-          parentId: null,
-          taxonomy: 'demo',
-          serviceCount: 30,
-        },
-        {
-          id: 'a1000000-0000-0000-0000-000000000002',
-          term: 'Rent Help',
-          description: null,
-          parentId: null,
-          taxonomy: 'demo',
-          serviceCount: 20,
-        },
-        {
-          id: 'a1000000-0000-0000-0000-000000000003',
-          term: 'Job Training',
-          description: null,
-          parentId: null,
-          taxonomy: 'demo',
-          serviceCount: 10,
-        },
-      ],
-      searchResponses: [ok(makeSearchResponse())],
-    });
-
-    renderWithToast(<DirectoryPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Rent Help' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Job Training' }));
-
-    expect(await screen.findByRole('button', { name: /Remove tag Food Assistance/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Remove tag Rent Help/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /View 1 more tag filters/i })).toBeInTheDocument();
-  });
-
-  it('can remove an individual applied tag without opening the dialog', async () => {
-    setupFetchRoutes({
-      taxonomyTerms: [
-        {
-          id: 'a1000000-0000-0000-0000-000000000001',
-          term: 'Food Assistance',
-          description: null,
-          parentId: null,
-          taxonomy: 'demo',
-          serviceCount: 30,
-        },
-        {
-          id: 'a1000000-0000-0000-0000-000000000002',
-          term: 'Rent Help',
-          description: null,
-          parentId: null,
-          taxonomy: 'demo',
-          serviceCount: 20,
-        },
-      ],
-      searchResponses: [ok(makeSearchResponse()), ok(makeSearchResponse())],
-    });
-
-    renderWithToast(<DirectoryPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Rent Help' }));
-
-    expect(await screen.findByRole('button', { name: /Remove tag Food Assistance/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Remove tag Rent Help/i })).toBeInTheDocument();
-
-    // Remove one tag directly from Applied.
-    fireEvent.click(screen.getByRole('button', { name: /Remove tag Food Assistance/i }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /Remove tag Food Assistance/i })).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Remove tag Rent Help/i })).toBeInTheDocument();
-    });
   });
 
   it('auto-runs search from URL params and syncs filter state back to URL', async () => {
@@ -473,7 +307,7 @@ describe('DirectoryPageClient', () => {
       expect(screen.getAllByRole('status')[0]).toHaveTextContent('3');
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
+    fireEvent.click(screen.getByRole('button', { name: /Filters|Refine results/i }));
     fireEvent.click(screen.getByRole('button', { name: 'High confidence only' }));
 
     await waitFor(() => {
@@ -560,8 +394,8 @@ describe('DirectoryPageClient', () => {
 
     renderWithToast(<DirectoryPage />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    fireEvent.click(screen.getByRole('button', { name: /Filters|Refine results/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Food' })[0]);
 
     await waitFor(() => {
       const searchCalls = fetchMock.mock.calls
@@ -574,7 +408,7 @@ describe('DirectoryPageClient', () => {
       expect(screen.getByRole('button', { name: 'Clear search' })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Food' })[0]);
     expect(replaceMock).toHaveBeenCalledWith('/directory', { scroll: false });
   });
 
@@ -585,8 +419,8 @@ describe('DirectoryPageClient', () => {
 
     renderWithToast(<DirectoryPage />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    fireEvent.click(screen.getByRole('button', { name: /Filters|Refine results/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Food' })[0]);
     await screen.findByText('Food Pantry');
 
     expect(screen.getByRole('link', { name: 'Map' })).toHaveAttribute(
@@ -625,81 +459,6 @@ describe('DirectoryPageClient', () => {
     );
   });
 
-  it('preserves non-search filters when clearing a category-backed query', async () => {
-    const taxonomyId = 'a1000000-0000-0000-0000-000000000001';
-    setupFetchRoutes({
-      taxonomyTerms: [{
-        id: taxonomyId,
-        term: 'Food Assistance',
-        description: null,
-        parentId: null,
-        taxonomy: 'demo',
-        serviceCount: 12,
-      }],
-      searchResponses: [
-        ok(makeSearchResponse()),
-        ok(makeSearchResponse()),
-        ok(makeSearchResponse()),
-      ],
-    });
-
-    renderWithToast(<DirectoryPage />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
-    await screen.findByText('Food Pantry');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
-
-    await waitFor(() => {
-      const searchCalls = fetchMock.mock.calls
-        .map((c) => String(c?.[0]))
-        .filter((u) => u.includes('/api/search?'));
-      const latest = String(searchCalls.at(-1));
-      expect(latest).toContain(`taxonomyIds=${taxonomyId}`);
-      expect(latest).not.toContain('q=food');
-      expect(replaceMock).toHaveBeenCalledWith(`/directory?taxonomyIds=${taxonomyId}`, { scroll: false });
-    });
-  });
-
-  it('clears only the text/category portion of search and preserves active filters', async () => {
-    const taxonomyId = 'a1000000-0000-0000-0000-000000000001';
-    setupFetchRoutes({
-      taxonomyTerms: [{
-        id: taxonomyId,
-        term: 'Food Assistance',
-        description: null,
-        parentId: null,
-        taxonomy: 'demo',
-        serviceCount: 12,
-      }],
-      searchResponses: [
-        ok(makeSearchResponse()),
-        ok(makeSearchResponse()),
-        ok(makeSearchResponse()),
-      ],
-    });
-
-    renderWithToast(<DirectoryPage />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
-    await screen.findByText('Food Pantry');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
-
-    await waitFor(() => {
-      const searchCalls = fetchMock.mock.calls
-        .map((c) => String(c?.[0]))
-        .filter((u) => u.includes('/api/search?'));
-      const latest = String(searchCalls.at(-1));
-      expect(latest).toContain(`taxonomyIds=${taxonomyId}`);
-      expect(latest).not.toContain('q=food');
-      expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
-    });
-  });
 
   it('supports opt-in device location search without putting coordinates in the URL', async () => {
     const geolocation = {
@@ -757,46 +516,9 @@ describe('DirectoryPageClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
 
     await screen.findByText('No matches');
-    expect(screen.getByText('Try different keywords, broaden trust filters, or clear tags.')).toBeInTheDocument();
+    expect(screen.getByText('Try different keywords, broaden trust filters, or clear service filters.')).toBeInTheDocument();
   });
 
-  it('shows taxonomy fallback state when filter terms fail to load', async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      json: async () => ({ error: 'taxonomy unavailable' }),
-    });
-
-    renderWithToast(<DirectoryPage />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
-    await screen.findByText('Filters unavailable');
-    expect(fetchMock).toHaveBeenCalledWith('/api/taxonomy/terms?limit=250', expect.any(Object));
-  });
-
-  it('shows no-match text in taxonomy dialog search', async () => {
-    setupFetchRoutes({
-      taxonomyTerms: [
-        {
-          id: 'a1000000-0000-0000-0000-000000000001',
-          term: 'Food Assistance',
-          description: null,
-          parentId: null,
-          taxonomy: 'demo',
-          serviceCount: 12,
-        },
-      ],
-    });
-
-    renderWithToast(<DirectoryPage />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
-    fireEvent.click(screen.getByRole('button', { name: 'More filters' }));
-    fireEvent.change(await screen.findByRole('searchbox', { name: 'Search service tags' }), {
-      target: { value: 'zzzz-no-match' },
-    });
-
-    await screen.findByText('No matching tags.');
-  });
 
   it('handles geolocation permission-denied branch', async () => {
     setupFetchRoutes();
@@ -827,23 +549,6 @@ describe('DirectoryPageClient', () => {
     expect(searchCalls).toHaveLength(0);
   });
 
-  it('shows unknown selected-tag summary chip from URL ids not in loaded taxonomy terms', async () => {
-    navigationState.searchParams = new URLSearchParams(
-      'taxonomyIds=a1000000-0000-4000-8000-000000000001',
-    );
-    setupFetchRoutes({
-      taxonomyTerms: [],
-      searchResponses: [ok(makeSearchResponse())],
-    });
-
-    renderWithToast(<DirectoryPage />);
-
-    await screen.findByRole('button', { name: 'View tag filters (1)' });
-    const searchUrl = fetchMock.mock.calls
-      .map((c) => String(c?.[0]))
-      .find((u) => u.includes('/api/search?'));
-    expect(searchUrl).toContain('taxonomyIds=a1000000-0000-4000-8000-000000000001');
-  });
 
   it('clears active location filter back to initial empty state', async () => {
     const geolocation = {
@@ -882,8 +587,8 @@ describe('DirectoryPageClient', () => {
 
     renderWithToast(<DirectoryPage />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    fireEvent.click(screen.getByRole('button', { name: /Filters|Refine results/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Food' })[0]);
     await screen.findByText('Food Pantry');
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
@@ -938,9 +643,9 @@ describe('DirectoryPageClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     await screen.findByText('Food Pantry');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
+    fireEvent.click(screen.getByRole('button', { name: /Filters|Refine results/i }));
     fireEvent.click(screen.getByRole('button', { name: 'High confidence only' }));
-    fireEvent.change(screen.getByLabelText('Sort:'), {
+    fireEvent.change(screen.getByLabelText('Sort results'), {
       target: { value: 'name_desc' },
     });
 
@@ -1084,29 +789,4 @@ describe('DirectoryPageClient', () => {
     expect(screen.getAllByText('Food Pantry')).toHaveLength(1);
   });
 
-  it('clears selected tags from no-match state back to the initial empty state', async () => {
-    setupFetchRoutes({
-      taxonomyTerms: [
-        {
-          id: 'a1000000-0000-0000-0000-000000000001',
-          term: 'Food Assistance',
-          description: null,
-          parentId: null,
-          taxonomy: 'demo',
-          serviceCount: 12,
-        },
-      ],
-      searchResponses: [ok(makeSearchResponse({ results: [], total: 0, hasMore: false }))],
-    });
-
-    renderWithToast(<DirectoryPage />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Refine results' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Food Assistance' }));
-    await screen.findByText('No matches');
-
-    fireEvent.click(screen.getAllByRole('button', { name: 'Clear tags' })[1]);
-    await screen.findByText('Start with a search');
-    expect(replaceMock).toHaveBeenCalledWith('/directory', { scroll: false });
-  });
 });

@@ -52,6 +52,7 @@ describe('auth session helpers', () => {
     await expect(getAuthContext()).resolves.toEqual({
       userId: 'user-1',
       role: 'oran_admin',
+      accountStatus: 'active',
       orgIds: [],
       orgRoles: new Map(),
     });
@@ -67,6 +68,7 @@ describe('auth session helpers', () => {
     await expect(getAuthContext()).resolves.toEqual({
       userId: 'user-2',
       role: 'community_admin',
+      accountStatus: 'active',
       orgIds: [],
       orgRoles: new Map(),
     });
@@ -81,6 +83,7 @@ describe('auth session helpers', () => {
     await expect(getAuthContext()).resolves.toEqual({
       userId: 'user@example.org',
       role: 'seeker',
+      accountStatus: 'active',
       orgIds: [],
       orgRoles: new Map(),
     });
@@ -92,6 +95,7 @@ describe('auth session helpers', () => {
     });
     dbMocks.isDatabaseConfigured.mockReturnValue(true);
     dbMocks.executeQuery
+      .mockResolvedValueOnce([{ account_status: 'active' }])
       .mockResolvedValueOnce([{ exists: true }])
       .mockResolvedValueOnce([
         { organization_id: 'org-1', role: 'host_member', status: 'active' },
@@ -105,6 +109,7 @@ describe('auth session helpers', () => {
     expect(result).toEqual({
       userId: 'user-1',
       role: 'host_admin',
+      accountStatus: 'active',
       orgIds: ['org-1', 'org-2'],
       orgRoles: new Map([
         ['org-1', 'host_member'],
@@ -118,12 +123,15 @@ describe('auth session helpers', () => {
       user: { id: 'user-1', role: 'host_member' },
     });
     dbMocks.isDatabaseConfigured.mockReturnValue(true);
-    dbMocks.executeQuery.mockRejectedValueOnce(new Error('no table'));
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([{ account_status: 'active' }])
+      .mockRejectedValueOnce(new Error('no table'));
     const { getAuthContext } = await loadSessionModule();
 
     await expect(getAuthContext()).resolves.toEqual({
       userId: 'user-1',
       role: 'host_member',
+      accountStatus: 'active',
       orgIds: [],
       orgRoles: new Map(),
     });

@@ -49,7 +49,7 @@ describe('seeker wrapper pages', () => {
     const results = await axe(container);
 
     expect(element.type).toBeDefined();
-    expect(mapMetadata.title).toBe('Service Map');
+    expect(mapMetadata.title).toBe('Map');
     expect(results).toHaveNoViolations();
   });
 

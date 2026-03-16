@@ -219,6 +219,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (decision === 'approved') {
+      const submitterRows = await executeQuery<{ account_status: 'active' | 'frozen' | null }>(
+        `SELECT up.account_status
+         FROM submissions sub
+         LEFT JOIN user_profiles up ON up.user_id = sub.submitted_by_user_id
+         WHERE sub.id = $1 AND sub.submission_type = 'org_claim'
+         LIMIT 1`,
+        [submissionId],
+      );
+
+      if ((submitterRows[0]?.account_status ?? 'active') !== 'active') {
+        await releaseLock(submissionId, authCtx.userId, false);
+        return NextResponse.json(
+          { error: 'Cannot approve an organization claim for a frozen account' },
+          { status: 409 },
+        );
+      }
+    }
+
     // Save reviewer notes before advancing
     if (notes) {
       await executeQuery(

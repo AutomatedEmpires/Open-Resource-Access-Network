@@ -19,8 +19,11 @@ import { PortalUserMenu } from '@/components/ui/portal-user-menu';
 import OranAdminContextStrip from '@/components/oran-admin/OranAdminContextStrip';
 
 const NAV_ITEMS = [
+  { href: '/operations', label: 'Operations' },
   { href: '/approvals', label: 'Approvals' },
   { href: '/appeals', label: 'Appeals' },
+  { href: '/reports', label: 'Reports' },
+  { href: '/security', label: 'Security' },
   { href: '/discovery-preview', label: 'Discovery Preview' },
   { href: '/forms', label: 'Forms' },
   { href: '/scopes', label: 'Scopes' },
@@ -50,7 +53,11 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
     );
   }
 
-  if (status === 'unauthenticated' || (status === 'authenticated' && !isRoleAtLeast(session.user.role, 'oran_admin'))) {
+  if (
+    status === 'unauthenticated'
+    || (status === 'authenticated' && session.user.accountStatus === 'frozen')
+    || (status === 'authenticated' && !isRoleAtLeast(session.user.role, 'oran_admin'))
+  ) {
     return <AccessDenied portalName="ORAN Admin" requiredRole="oran_admin" />;
   }
 

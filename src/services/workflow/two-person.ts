@@ -60,6 +60,11 @@ export interface GrantResult {
   error?: string;
 }
 
+interface UserSecurityRow {
+  user_id: string;
+  account_status: 'active' | 'frozen' | null;
+}
+
 // ============================================================
 // SCOPE GRANT REQUESTS
 // ============================================================
@@ -70,6 +75,22 @@ export interface GrantResult {
  */
 export async function requestGrant(req: GrantRequest): Promise<GrantResult> {
   return withTransaction(async (client) => {
+    const userRows = await client.query<UserSecurityRow>(
+      `SELECT user_id, account_status
+       FROM user_profiles
+       WHERE user_id = $1
+       LIMIT 1`,
+      [req.userId],
+    );
+
+    if (userRows.rows.length === 0) {
+      return { success: false, grantId: '', error: 'Target user not found' };
+    }
+
+    if ((userRows.rows[0]?.account_status ?? 'active') !== 'active') {
+      return { success: false, grantId: '', error: 'Cannot grant scopes to a frozen account' };
+    }
+
     // Resolve scope by name
     const scopeRows = await client.query<{ id: string; requires_approval: boolean }>(
       `SELECT id, requires_approval FROM platform_scopes WHERE name = $1 AND is_active = true`,
@@ -226,6 +247,22 @@ export async function decideGrant(decision: GrantDecision): Promise<GrantResult>
     }
 
     const pending = pendingRows.rows[0];
+
+    const userRows = await client.query<UserSecurityRow>(
+      `SELECT user_id, account_status
+       FROM user_profiles
+       WHERE user_id = $1
+       LIMIT 1`,
+      [pending.user_id],
+    );
+
+    if (userRows.rows.length === 0) {
+      return { success: false, grantId: decision.grantId, error: 'Target user not found' };
+    }
+
+    if ((userRows.rows[0]?.account_status ?? 'active') !== 'active') {
+      return { success: false, grantId: decision.grantId, error: 'Cannot approve a grant for a frozen account' };
+    }
 
     if (pending.status !== 'pending') {
       return { success: false, grantId: decision.grantId, error: `Grant already ${pending.status}` };

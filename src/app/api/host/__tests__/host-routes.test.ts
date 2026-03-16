@@ -1464,6 +1464,7 @@ describe('host admins routes', () => {
         query: vi
           .fn()
           .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
+          .mockResolvedValueOnce({ rows: [{ user_id: '22222222-2222-4222-8222-222222222222', account_status: 'active' }] })
           .mockResolvedValueOnce({ rows: [{ id: 'member-1', status: null }] }),
       };
       return callback(client);
@@ -1502,6 +1503,7 @@ describe('host admins routes', () => {
         query: vi
           .fn()
           .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
+          .mockResolvedValueOnce({ rows: [{ user_id: '22222222-2222-4222-8222-222222222222', account_status: 'active' }] })
           .mockResolvedValueOnce({ rows: [{ id: 'member-1', status: 'deactivated' }] })
           .mockResolvedValueOnce({
             rows: [

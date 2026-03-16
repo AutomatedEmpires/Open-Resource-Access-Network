@@ -22,6 +22,7 @@
     "validate:runtime:functions": "node scripts/validate-runtime-env.mjs --target functions",
     "ingest:campaign": "npx tsx scripts/run-ingestion-campaign.ts",
     "bootstrap:source-feed": "node scripts/bootstrap-source-feed.mjs",
+    "provision:owner-access": "node scripts/provision-owner-access.mjs",
     "report:211-canary": "node scripts/run-211-canary-report.mjs",
     "report:211-feed-status": "node scripts/run-211-feed-status-report.mjs",
     "check:bundle": "node scripts/check-bundle-sizes.js",

@@ -2,11 +2,15 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const interMock = vi.hoisted(() => vi.fn(() => ({ variable: '--font-sans' })));
+const patrickHandMock = vi.hoisted(() => vi.fn(() => ({ variable: '--font-hand' })));
+const caveatMock = vi.hoisted(() => vi.fn(() => ({ variable: '--font-display' })));
 const fetchMock = vi.hoisted(() => vi.fn());
 const useAzureMonitorMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/font/google', () => ({
   Inter: interMock,
+  Patrick_Hand: patrickHandMock,
+  Caveat: caveatMock,
 }));
 vi.mock('next/link', () => ({
   default: ({

@@ -16,11 +16,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  User, MapPin, Globe, Sun, Moon, Bell, Shield, Bookmark,
+  User, MapPin, Globe, Sun, Moon, Bell, Shield, Bookmark, MessageCircle,
   ChevronDown, ChevronUp, CheckCircle, Sparkles, Heart,
   Phone, Mail, Info,
   UserCheck, Star, Trash2, LogOut, AlertCircle,
 } from 'lucide-react';
+import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
@@ -904,6 +905,46 @@ export default function ProfilePage() {
           </>
         )}
       />
+
+      <div className="mb-5 rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 shadow-sm md:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Discovery defaults</p>
+            <h2 className="mt-2 text-lg font-semibold text-slate-900">Your profile already shapes search across seeker surfaces</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Service interests, delivery preferences, and documentation barriers flow into the same verified discovery grammar used by chat, directory, and map.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row lg:flex-col lg:items-stretch">
+            <Link href={browseDirectoryHref}>
+              <Button variant="secondary" size="sm" className="w-full gap-1.5 sm:w-auto lg:w-full">
+                <Bookmark className="h-4 w-4" aria-hidden="true" />
+                Open directory
+              </Button>
+            </Link>
+            <Link href={browseChatHref}>
+              <Button variant="outline" size="sm" className="w-full gap-1.5 sm:w-auto lg:w-full">
+                <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                Open chat
+              </Button>
+            </Link>
+            <Link href={browseMapHref}>
+              <Button variant="outline" size="sm" className="w-full gap-1.5 sm:w-auto lg:w-full">
+                <MapPin className="h-4 w-4" aria-hidden="true" />
+                Open map
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        <DiscoveryContextPanel
+          discoveryContext={discoveryProfile.browseState}
+          title="Current seeker search scope"
+          description="This is the portable browse context ORAN uses when handing you from profile into discovery surfaces."
+          className="mt-4 border-slate-200 bg-white"
+        />
+      </div>
 
       <ErrorBoundary>
         <div className="space-y-4">

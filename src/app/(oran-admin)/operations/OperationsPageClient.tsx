@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, ArrowRight, BriefcaseBusiness, FileWarning, RefreshCw, Shield, Users } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BriefcaseBusiness, FileWarning, RefreshCw, Users } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';

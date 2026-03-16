@@ -37,6 +37,7 @@ Optional providers:
 - Apple OAuth is supported only when `ORAN_ENABLE_APPLE_AUTH=1` is set alongside valid Apple client credentials.
 - Google OAuth is supported only when explicitly enabled with `ORAN_ENABLE_GOOGLE_AUTH=1` and matching Google client credentials.
 - Credentials auth accepts email, username, or phone number plus password. It is available in local or test environments and is disabled in production unless `ORAN_ENABLE_CREDENTIALS_AUTH=1` is set deliberately.
+- Credentials auth may coexist with Microsoft Entra on the same account when an existing profile also carries a password hash; this does not introduce SMS/OTP or phone-based MFA.
 - Phone sign-in currently means password-based identifier login against a stored phone number. SMS/OTP phone auth is not implemented.
 
 ### Session Validation

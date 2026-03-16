@@ -71,6 +71,7 @@ Set these as App Service Application Settings (or via Key Vault references):
   - `ORAN_ENABLE_GOOGLE_AUTH=1` only when Google OAuth is intentionally enabled in production
   - `ORAN_ENABLE_CREDENTIALS_AUTH=1` only when email/password auth is intentionally enabled in production
   - Credentials auth now accepts email, username, or phone as the sign-in identifier; this is password-based and not SMS/OTP auth.
+  - Password-based credentials can coexist with Microsoft Entra for the same account when a `password_hash` is present on the existing `user_profiles` row.
 - Optional Sentry:
   - `NEXT_PUBLIC_SENTRY_DSN`
 - Recommended:

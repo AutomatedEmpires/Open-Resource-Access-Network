@@ -501,17 +501,19 @@ describe('credentials authorize', () => {
   it('returns user on valid credentials', async () => {
     const bcrypt = await import('bcryptjs');
     vi.mocked(bcrypt.default.compare).mockResolvedValue(true as never);
-    mockPoolQuery.mockResolvedValue({
-      rows: [{
-        user_id: 'u1',
-        display_name: 'Alice',
-        email: 'alice@example.com',
-        username: 'alice',
-        phone: '+15551234567',
-        password_hash: '$2a$10$hash',
-        role: 'seeker',
-      }],
-    });
+    mockPoolQuery
+      .mockResolvedValueOnce({ rows: [{ column_name: 'account_status' }] })
+      .mockResolvedValueOnce({
+        rows: [{
+          user_id: 'u1',
+          display_name: 'Alice',
+          email: 'alice@example.com',
+          username: 'alice',
+          phone: '+15551234567',
+          password_hash: '$2a$10$hash',
+          role: 'seeker',
+        }],
+      });
 
     const { authOptions } = await loadAuthModule();
     const credProvider = authOptions.providers.find(
@@ -530,9 +532,10 @@ describe('credentials authorize', () => {
       name: 'Alice',
       email: 'alice@example.com',
       role: 'seeker',
+      accountStatus: 'active',
     });
     expect(mockPoolQuery).toHaveBeenCalledWith(
-      expect.stringContaining("LOWER(COALESCE(email, '')) = $1"),
+      expect.stringContaining("COALESCE(password_hash, '') <> ''"),
       ['alice@example.com', 'alice@example.com', '__oran_no_phone__'],
     );
   });
@@ -540,17 +543,19 @@ describe('credentials authorize', () => {
   it('accepts username as the credentials identifier', async () => {
     const bcrypt = await import('bcryptjs');
     vi.mocked(bcrypt.default.compare).mockResolvedValue(true as never);
-    mockPoolQuery.mockResolvedValue({
-      rows: [{
-        user_id: 'u2',
-        display_name: null,
-        email: 'alice@example.com',
-        username: 'alice',
-        phone: null,
-        password_hash: '$2a$10$hash',
-        role: 'host_member',
-      }],
-    });
+    mockPoolQuery
+      .mockResolvedValueOnce({ rows: [{ column_name: 'account_status' }] })
+      .mockResolvedValueOnce({
+        rows: [{
+          user_id: 'u2',
+          display_name: null,
+          email: 'alice@example.com',
+          username: 'alice',
+          phone: null,
+          password_hash: '$2a$10$hash',
+          role: 'host_member',
+        }],
+      });
 
     const { authOptions } = await loadAuthModule();
     const credProvider = authOptions.providers.find(
@@ -569,6 +574,7 @@ describe('credentials authorize', () => {
       name: 'alice',
       email: 'alice@example.com',
       role: 'host_member',
+      accountStatus: 'active',
     });
     expect(mockPoolQuery).toHaveBeenCalledWith(
       expect.stringContaining('regexp_replace'),
@@ -579,17 +585,19 @@ describe('credentials authorize', () => {
   it('accepts phone as the credentials identifier', async () => {
     const bcrypt = await import('bcryptjs');
     vi.mocked(bcrypt.default.compare).mockResolvedValue(true as never);
-    mockPoolQuery.mockResolvedValue({
-      rows: [{
-        user_id: 'u3',
-        display_name: 'Phone User',
-        email: null,
-        username: null,
-        phone: '+15551234567',
-        password_hash: '$2a$10$hash',
-        role: 'seeker',
-      }],
-    });
+    mockPoolQuery
+      .mockResolvedValueOnce({ rows: [{ column_name: 'account_status' }] })
+      .mockResolvedValueOnce({
+        rows: [{
+          user_id: 'u3',
+          display_name: 'Phone User',
+          email: null,
+          username: null,
+          phone: '+15551234567',
+          password_hash: '$2a$10$hash',
+          role: 'seeker',
+        }],
+      });
 
     const { authOptions } = await loadAuthModule();
     const credProvider = authOptions.providers.find(
@@ -608,6 +616,7 @@ describe('credentials authorize', () => {
       name: 'Phone User',
       email: undefined,
       role: 'seeker',
+      accountStatus: 'active',
     });
     expect(mockPoolQuery).toHaveBeenCalledWith(
       expect.stringContaining('regexp_replace'),
@@ -616,7 +625,9 @@ describe('credentials authorize', () => {
   });
 
   it('returns null when user is not found', async () => {
-    mockPoolQuery.mockResolvedValue({ rows: [] });
+    mockPoolQuery
+      .mockResolvedValueOnce({ rows: [{ column_name: 'account_status' }] })
+      .mockResolvedValueOnce({ rows: [] });
     const { authOptions } = await loadAuthModule();
     const credProvider = authOptions.providers.find(
       (p) => (p as unknown as { id: string }).id === 'credentials',
@@ -635,15 +646,17 @@ describe('credentials authorize', () => {
   it('returns null on password mismatch', async () => {
     const bcrypt = await import('bcryptjs');
     vi.mocked(bcrypt.default.compare).mockResolvedValue(false as never);
-    mockPoolQuery.mockResolvedValue({
-      rows: [{
-        user_id: 'u1',
-        display_name: 'Alice',
-        email: 'alice@example.com',
-        password_hash: '$2a$10$hash',
-        role: 'seeker',
-      }],
-    });
+    mockPoolQuery
+      .mockResolvedValueOnce({ rows: [{ column_name: 'account_status' }] })
+      .mockResolvedValueOnce({
+        rows: [{
+          user_id: 'u1',
+          display_name: 'Alice',
+          email: 'alice@example.com',
+          password_hash: '$2a$10$hash',
+          role: 'seeker',
+        }],
+      });
 
     const { authOptions } = await loadAuthModule();
     const credProvider = authOptions.providers.find(
@@ -688,5 +701,88 @@ describe('credentials authorize', () => {
     expect(await credProvider.authorize({})).toBeNull();
     expect(await credProvider.authorize({ identifier: 'a@b.com' })).toBeNull();
     expect(await credProvider.authorize({ password: 'p' })).toBeNull();
+  });
+
+  it('accepts password sign-in for an azure-ad profile when a password hash exists', async () => {
+    const bcrypt = await import('bcryptjs');
+    vi.mocked(bcrypt.default.compare).mockResolvedValue(true as never);
+    mockPoolQuery
+      .mockResolvedValueOnce({ rows: [{ column_name: 'account_status' }] })
+      .mockResolvedValueOnce({
+        rows: [{
+          user_id: 'owner-1',
+          display_name: 'Owner',
+          email: 'jackson@automatedempires.com',
+          username: 'jackson',
+          phone: '+15098508326',
+          password_hash: '$2a$10$hash',
+          role: 'oran_admin',
+          account_status: 'active',
+          auth_provider: 'azure-ad',
+        }],
+      });
+
+    const { authOptions } = await loadAuthModule();
+    const credProvider = authOptions.providers.find(
+      (p) => (p as unknown as { id: string }).id === 'credentials',
+    ) as unknown as {
+      authorize: (creds: { identifier: string; password: string }) => Promise<unknown>;
+    };
+
+    const result = await credProvider.authorize({
+      identifier: 'jackson@automatedempires.com',
+      password: 'Spaceman.0812!',
+    });
+
+    expect(result).toEqual({
+      id: 'owner-1',
+      name: 'Owner',
+      email: 'jackson@automatedempires.com',
+      role: 'oran_admin',
+      accountStatus: 'active',
+    });
+  });
+
+  it('defaults legacy schemas without account_status to active', async () => {
+    const bcrypt = await import('bcryptjs');
+    vi.mocked(bcrypt.default.compare).mockResolvedValue(true as never);
+    mockPoolQuery
+      .mockResolvedValueOnce({ rows: [{ column_name: 'email' }] })
+      .mockResolvedValueOnce({
+        rows: [{
+          user_id: 'legacy-owner',
+          display_name: 'Legacy Owner',
+          email: 'jackson@automatedempires.com',
+          username: 'jackson',
+          phone: '+15098508326',
+          password_hash: '$2a$10$hash',
+          role: 'oran_admin',
+        }],
+      });
+
+    const { authOptions } = await loadAuthModule();
+    const credProvider = authOptions.providers.find(
+      (p) => (p as unknown as { id: string }).id === 'credentials',
+    ) as unknown as {
+      authorize: (creds: { identifier: string; password: string }) => Promise<unknown>;
+    };
+
+    const result = await credProvider.authorize({
+      identifier: 'jackson@automatedempires.com',
+      password: 'Spaceman.0812!',
+    });
+
+    expect(mockPoolQuery).toHaveBeenNthCalledWith(
+      2,
+      expect.not.stringContaining('account_status'),
+      ['jackson@automatedempires.com', 'jackson@automatedempires.com', '__oran_no_phone__'],
+    );
+    expect(result).toEqual({
+      id: 'legacy-owner',
+      name: 'Legacy Owner',
+      email: 'jackson@automatedempires.com',
+      role: 'oran_admin',
+      accountStatus: 'active',
+    });
   });
 });

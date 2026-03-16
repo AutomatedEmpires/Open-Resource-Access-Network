@@ -16,6 +16,7 @@ import Link from 'next/link';
 import { Bookmark, Search, Trash2, MessageCircle, MapPin, AlertTriangle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { ServiceCard } from '@/components/directory/ServiceCard';
@@ -502,6 +503,46 @@ export default function SavedPage() {
                 ) : undefined
               }
             />
+
+            <div className="mb-5 rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 shadow-sm md:p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="max-w-2xl">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Continue discovery</p>
+                  <h2 className="mt-2 text-lg font-semibold text-slate-900">Jump back into the same verified search flow</h2>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Your saved workspace already knows your preferred discovery context. Use it to reopen chat, directory, or map without starting from a blank state.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row lg:flex-col lg:items-stretch">
+                  <Link href={chatHref}>
+                    <Button size="sm" className="w-full gap-1.5 sm:w-auto lg:w-full">
+                      <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                      Continue in chat
+                    </Button>
+                  </Link>
+                  <Link href={directoryHref}>
+                    <Button variant="outline" size="sm" className="w-full gap-1.5 sm:w-auto lg:w-full">
+                      <Search className="h-4 w-4" aria-hidden="true" />
+                      Directory results
+                    </Button>
+                  </Link>
+                  <Link href={mapHref}>
+                    <Button variant="outline" size="sm" className="w-full gap-1.5 sm:w-auto lg:w-full">
+                      <MapPin className="h-4 w-4" aria-hidden="true" />
+                      Map results
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+
+              <DiscoveryContextPanel
+                discoveryContext={discoveryPreference}
+                title="Saved services follow this scope"
+                description="These filters come from your stored seeker preferences and keep cross-surface handoffs consistent."
+                className="mt-4 border-slate-200 bg-white"
+              />
+            </div>
 
             <ErrorBoundary>
               <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-5">

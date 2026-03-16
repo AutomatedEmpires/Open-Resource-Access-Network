@@ -53,6 +53,29 @@ export function isAppleAuthEnabled(): boolean {
   return process.env.ORAN_ENABLE_APPLE_AUTH === '1' && Boolean(process.env.APPLE_CLIENT_ID);
 }
 
+let userProfileSchemaPromise: Promise<{ hasAccountStatus: boolean }> | null = null;
+
+async function getUserProfileSchema(): Promise<{ hasAccountStatus: boolean }> {
+  if (!userProfileSchemaPromise) {
+    userProfileSchemaPromise = (async () => {
+      try {
+        const pool = getPgPool();
+        const result = await pool.query<{ column_name: string }>(
+          `SELECT column_name
+           FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'user_profiles'`,
+        );
+        const columnNames = new Set(result.rows.map((row) => row.column_name));
+        return { hasAccountStatus: columnNames.has('account_status') };
+      } catch {
+        return { hasAccountStatus: true };
+      }
+    })();
+  }
+
+  return userProfileSchemaPromise;
+}
+
 function normalizeUsername(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -104,14 +127,17 @@ export function resolveOranRole(roles?: string[]): OranRole {
  */
 async function getDbAccountState(userId: string): Promise<{ role: OranRole | null; accountStatus: AccountStatus }> {
   try {
+    const { hasAccountStatus } = await getUserProfileSchema();
     const pool = getPgPool();
-    const result = await pool.query<{ role: OranRole; account_status: AccountStatus | null }>(
-      `SELECT role, account_status FROM user_profiles WHERE user_id = $1`,
+    const result = await pool.query<{ role: OranRole; account_status?: AccountStatus | null }>(
+      hasAccountStatus
+        ? `SELECT role, account_status FROM user_profiles WHERE user_id = $1`
+        : `SELECT role FROM user_profiles WHERE user_id = $1`,
       [userId],
     );
     return {
       role: result.rows[0]?.role ?? null,
-      accountStatus: result.rows[0]?.account_status ?? 'active',
+      accountStatus: hasAccountStatus ? (result.rows[0]?.account_status ?? 'active') : 'active',
     };
   } catch {
     return { role: null, accountStatus: 'active' };
@@ -254,6 +280,7 @@ export const authOptions: AuthOptions = {
               const normalizedPhone = normalizePhoneNumber(identifier) ?? '__oran_no_phone__';
 
               try {
+                const { hasAccountStatus } = await getUserProfileSchema();
                 const pool = getPgPool();
                 const result = await pool.query<{
                   user_id: string;
@@ -263,11 +290,11 @@ export const authOptions: AuthOptions = {
                   phone: string | null;
                   password_hash: string;
                   role: OranRole;
-                  account_status: AccountStatus;
+                  account_status?: AccountStatus | null;
                 }>(
-                  `SELECT user_id, display_name, email, username, phone, password_hash, role, account_status
+                  `SELECT user_id, display_name, email, username, phone, password_hash, role${hasAccountStatus ? ', account_status' : ''}
                    FROM user_profiles
-                   WHERE auth_provider = 'credentials'
+                   WHERE COALESCE(password_hash, '') <> ''
                      AND (
                        LOWER(COALESCE(email, '')) = $1
                        OR LOWER(COALESCE(username, '')) = $2
@@ -279,7 +306,7 @@ export const authOptions: AuthOptions = {
 
                 const user = result.rows[0];
                 if (!user || !user.password_hash) return null;
-                if (user.account_status === 'frozen') return null;
+                if ((user.account_status ?? 'active') === 'frozen') return null;
 
                 const isValid = await bcrypt.compare(password, user.password_hash);
                 if (!isValid) return null;
@@ -289,7 +316,7 @@ export const authOptions: AuthOptions = {
                   name: user.display_name ?? user.username ?? user.email ?? user.phone ?? identifier,
                   email: user.email ?? undefined,
                   role: user.role,
-                  accountStatus: user.account_status,
+                  accountStatus: user.account_status ?? 'active',
                 } as unknown as { id: string; name: string; email: string; role: OranRole };
               } catch {
                 return null;

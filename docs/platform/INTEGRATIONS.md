@@ -46,6 +46,7 @@ Optional auth providers are deliberately gated:
 - Apple OAuth is enabled only when `ORAN_ENABLE_APPLE_AUTH=1` is set alongside `APPLE_CLIENT_ID` and `APPLE_CLIENT_SECRET`.
 - Google OAuth is enabled only when `ORAN_ENABLE_GOOGLE_AUTH=1` is set alongside Google client credentials.
 - Credentials auth supports email, username, or phone number plus password and must be explicitly enabled in production with `ORAN_ENABLE_CREDENTIALS_AUTH=1`.
+- A single `user_profiles` row may now support both Microsoft Entra sign-in and password-based credentials sign-in when a password hash is present; credentials lookup is keyed by stored password hash, not by forcing `auth_provider = 'credentials'`.
 - Phone is an alternate identifier for credentials auth only; ORAN does not currently implement SMS or OTP-based phone authentication.
 
 ### Configuration

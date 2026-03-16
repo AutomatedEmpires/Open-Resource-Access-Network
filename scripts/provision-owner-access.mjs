@@ -228,6 +228,7 @@ async function ensureUser(client, account, profileColumns) {
   if (existing.rows[0]?.user_id) {
     const userId = existing.rows[0].user_id;
     await ensureUniquePhone(client, normalizedPhone, userId);
+    const passwordHash = account.password ? await bcrypt.hash(account.password, BCRYPT_ROUNDS) : null;
     const assignments = [
       `display_name = COALESCE($2, display_name)`,
       `username = COALESCE(username, $3)`,
@@ -237,6 +238,11 @@ async function ensureUser(client, account, profileColumns) {
       `updated_at = NOW()`,
       `updated_by_user_id = $6`,
     ];
+    const params = [userId, displayName, username, email, normalizedPhone, BOOTSTRAP_ACTOR];
+    if (passwordHash) {
+      assignments.splice(4, 0, `password_hash = $7`);
+      params.push(passwordHash);
+    }
     if (hasColumn(profileColumns, 'account_status')) {
       assignments.splice(5, 0, `account_status = 'active'`);
     }
@@ -254,7 +260,7 @@ async function ensureUser(client, account, profileColumns) {
       `UPDATE user_profiles
        SET ${assignments.join(',\n           ')}
        WHERE user_id = $1`,
-      [userId, displayName, username, email, normalizedPhone, BOOTSTRAP_ACTOR],
+      params,
     );
     return { status: 'updated', email, userId };
   }

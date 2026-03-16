@@ -75,7 +75,8 @@ This runbook handles outages or degradations affecting Microsoft Entra ID auth, 
 1. Confirm the enabled provider has a complete env set, not only the gate flag.
 2. For credentials auth, determine whether the failure is specific to email, username, or phone identifier lookup.
 3. Remember that phone login is password-based identifier auth, not SMS/OTP.
-4. Re-test Microsoft Entra login separately to confirm the outage is isolated to an optional provider.
+4. If the affected account is primarily Entra-backed, verify whether a `password_hash` exists on the same `user_profiles` row before assuming the account cannot use credentials sign-in.
+5. Re-test Microsoft Entra login separately to confirm the outage is isolated to an optional provider.
 
 ### C. Role Mapping Issues
 

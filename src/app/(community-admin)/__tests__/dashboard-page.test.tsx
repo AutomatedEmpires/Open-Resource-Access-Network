@@ -84,11 +84,20 @@ describe('community admin dashboard page', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/community/queue?assignedToMe=true&limit=1');
     expect(screen.getByText('Jordan')).toBeInTheDocument();
     expect(screen.getAllByText('Central Texas').length).toBeGreaterThan(0);
+    expect(screen.getByText('Operations Queue')).toBeInTheDocument();
+    expect(screen.getByText('Escalations')).toBeInTheDocument();
+    expect(screen.getByText('Shift Briefing')).toBeInTheDocument();
+    expect(screen.getByText('Alert Center')).toBeInTheDocument();
+    expect(screen.getByText('Audit Readiness')).toBeInTheDocument();
+    expect(screen.getByText('Document review evidence')).toBeInTheDocument();
+    expect(screen.getByText('Zone boundary verified')).toBeInTheDocument();
     expect(screen.getByText('Review Queue')).toBeInTheDocument();
     expect(screen.getByText('Continue a Review')).toBeInTheDocument();
+    expect(screen.getByText('Handle Escalations')).toBeInTheDocument();
     expect(screen.getByText('Submitted')).toBeInTheDocument();
     expect(screen.getByText('Under Review')).toBeInTheDocument();
     expect(screen.getByText('SLA Breached')).toBeInTheDocument();
+    expect(screen.getAllByText('Escalated').length).toBeGreaterThan(0);
   });
 
   it('shows API errors and recovers through refresh', async () => {
@@ -115,7 +124,8 @@ describe('community admin dashboard page', () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(4);
-      expect(screen.getByText('No decisions recorded in the last 30 days.')).toBeInTheDocument();
+      expect(screen.getByText('No decisions recorded in the last 7 days.')).toBeInTheDocument();
+      expect(screen.getByText('Audit Readiness')).toBeInTheDocument();
     });
   });
 });

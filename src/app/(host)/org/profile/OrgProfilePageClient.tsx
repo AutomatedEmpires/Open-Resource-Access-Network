@@ -142,17 +142,17 @@ function CompletenessBar({ form, org }: { form: ProfileForm; org: Organization |
   const filled = sections.filter((s) => s.filled).length;
   const pct = Math.round((filled / sections.length) * 100);
 
-  let barColor = 'bg-rose-400';
-  if (pct >= 80) barColor = 'bg-emerald-500';
-  else if (pct >= 50) barColor = 'bg-amber-400';
+  let barColor = 'bg-[var(--text-muted)]';
+  if (pct >= 80) barColor = 'bg-[var(--text-primary)]';
+  else if (pct >= 50) barColor = 'bg-[var(--text-secondary)]';
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
       <div className="flex items-center justify-between mb-2">
-        <p className="text-sm font-semibold text-gray-800">Profile completeness</p>
-        <span className="text-sm font-bold text-gray-900">{pct}%</span>
+        <p className="text-sm font-semibold text-[var(--text-primary)]">Profile completeness</p>
+        <span className="text-sm font-bold text-[var(--text-primary)]">{pct}%</span>
       </div>
-      <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden mb-3">
+      <div className="mb-3 h-2 w-full overflow-hidden rounded-full bg-[var(--border-subtle)]">
         <div
           className={`h-2 rounded-full transition-all duration-500 ${barColor}`}
           style={{ width: `${pct}%` }}
@@ -164,10 +164,10 @@ function CompletenessBar({ form, org }: { form: ProfileForm; org: Organization |
       </div>
       <ul className="grid grid-cols-2 gap-1">
         {sections.map((s) => (
-          <li key={s.label} className="flex items-center gap-1.5 text-xs text-gray-600">
+          <li key={s.label} className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
             {s.filled
-              ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" aria-hidden="true" />
-              : <AlertCircle  className="h-3.5 w-3.5 text-gray-300 shrink-0" aria-hidden="true" />
+              ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[var(--text-primary)]" aria-hidden="true" />
+              : <AlertCircle  className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" aria-hidden="true" />
             }
             {s.label}
           </li>
@@ -180,8 +180,8 @@ function CompletenessBar({ form, org }: { form: ProfileForm; org: Organization |
 function VerifiedBadge({ verifiedAt }: { verifiedAt: string | null | undefined }) {
   if (!verifiedAt) {
     return (
-      <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
-        <div className="flex items-center gap-2 font-medium text-gray-700 mb-1">
+      <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-surface-alt)] p-4 text-sm text-[var(--text-secondary)]">
+        <div className="mb-1 flex items-center gap-2 font-medium text-[var(--text-primary)]">
           <Award className="h-4 w-4" aria-hidden="true" />
           Verified Provider
         </div>
@@ -191,12 +191,12 @@ function VerifiedBadge({ verifiedAt }: { verifiedAt: string | null | undefined }
   }
 
   return (
-    <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm">
-      <div className="flex items-center gap-2 font-semibold text-emerald-800 mb-1">
+    <div className="rounded-xl border border-[var(--text-primary)] bg-[var(--bg-surface-alt)] p-4 text-sm">
+      <div className="mb-1 flex items-center gap-2 font-semibold text-[var(--text-primary)]">
         <Award className="h-4 w-4" aria-hidden="true" />
         Verified Provider
       </div>
-      <p className="text-emerald-700">
+      <p className="text-[var(--text-secondary)]">
         Verified on {new Date(verifiedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.
         Your listings display the Verified badge to seekers.
       </p>
@@ -423,8 +423,8 @@ export default function OrgProfilePageClient() {
                     onClick={() => setSelectedOrgId(o.id)}
                     className={`inline-flex min-h-[44px] items-center rounded-full px-4 text-sm font-medium border transition-colors ${
                       selectedOrgId === o.id
-                        ? 'border-action bg-action text-white'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-action hover:text-action'
+                        ? 'border-[var(--text-primary)] bg-[var(--text-primary)] text-white'
+                        : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:border-[var(--text-primary)] hover:text-[var(--text-primary)]'
                     }`}
                   >
                     {o.name}
@@ -435,10 +435,10 @@ export default function OrgProfilePageClient() {
           )}
 
           {orgs.length === 0 && (
-            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
-              <Building2 className="h-8 w-8 text-gray-300 mx-auto mb-3" aria-hidden="true" />
-              <p className="font-medium text-gray-700">No organizations yet</p>
-              <p className="mt-1 text-sm text-gray-500">
+            <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-surface)] p-8 text-center">
+              <Building2 className="mx-auto mb-3 h-8 w-8 text-[var(--text-muted)]" aria-hidden="true" />
+              <p className="font-medium text-[var(--text-primary)]">No organizations yet</p>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
                 <Link href="/claim" className="text-action-base hover:underline">Claim an organization</Link> to get started.
               </p>
             </div>
@@ -482,7 +482,7 @@ export default function OrgProfilePageClient() {
                         value={form.name}
                         onChange={(e) => setField('name', e.target.value)}
                         maxLength={500}
-                        className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                        className="block min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
                         placeholder="e.g. Community Services Coalition"
                         aria-required="true"
                       />
@@ -500,7 +500,7 @@ export default function OrgProfilePageClient() {
                           value={form.email}
                           onChange={(e) => setField('email', e.target.value)}
                           maxLength={500}
-                          className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                          className="block min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
                           placeholder="info@example.org"
                         />
                       </FormField>
@@ -515,7 +515,7 @@ export default function OrgProfilePageClient() {
                           value={form.url}
                           onChange={(e) => setField('url', e.target.value)}
                           maxLength={2000}
-                          className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                          className="block min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
                           placeholder="https://example.org"
                         />
                       </FormField>
@@ -533,7 +533,7 @@ export default function OrgProfilePageClient() {
                           value={form.logoUrl}
                           onChange={(e) => setField('logoUrl', e.target.value)}
                           maxLength={2000}
-                          className="flex-1 block rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                          className="block min-h-[44px] flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
                           placeholder="https://cdn.example.org/logo.png"
                         />
                         {form.logoUrl.trim() ? (
@@ -541,12 +541,12 @@ export default function OrgProfilePageClient() {
                           <img
                             src={form.logoUrl}
                             alt="Logo preview"
-                            className="h-10 w-10 rounded-lg object-contain border border-gray-200 bg-gray-50 shrink-0"
+                            className="h-10 w-10 shrink-0 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] object-contain"
                             onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
                           />
                         ) : (
-                          <div className="h-10 w-10 rounded-lg border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center shrink-0">
-                            <ImageIcon className="h-4 w-4 text-gray-400" aria-hidden="true" />
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-surface-alt)]">
+                            <ImageIcon className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
                           </div>
                         )}
                       </div>
@@ -571,10 +571,10 @@ export default function OrgProfilePageClient() {
                         onChange={(e) => setField('missionStatement', e.target.value)}
                         maxLength={2000}
                         rows={3}
-                        className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action resize-y"
+                        className="block w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
                         placeholder="e.g. We connect individuals and families experiencing housing instability to stable long-term solutions through wrap-around case management."
                       />
-                      <p className="text-xs text-gray-400 mt-1">{form.missionStatement.length}/2000</p>
+                      <p className="mt-1 text-xs text-[var(--text-muted)]">{form.missionStatement.length}/2000</p>
                     </FormField>
 
                     <FormField
@@ -588,10 +588,10 @@ export default function OrgProfilePageClient() {
                         onChange={(e) => setField('whoWeServe', e.target.value)}
                         maxLength={2000}
                         rows={3}
-                        className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action resize-y"
+                        className="block w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
                         placeholder="e.g. Adults 18+ experiencing homelessness or at imminent risk of homelessness in Maricopa County."
                       />
-                      <p className="text-xs text-gray-400 mt-1">{form.whoWeServe.length}/2000</p>
+                      <p className="mt-1 text-xs text-[var(--text-muted)]">{form.whoWeServe.length}/2000</p>
                     </FormField>
 
                     <FormField
@@ -605,10 +605,10 @@ export default function OrgProfilePageClient() {
                         onChange={(e) => setField('description', e.target.value)}
                         maxLength={5000}
                         rows={5}
-                        className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action resize-y"
+                        className="block w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
                         placeholder="Detailed information about your programs, history, and approach…"
                       />
-                      <p className="text-xs text-gray-400 mt-1">{form.description.length}/5000</p>
+                      <p className="mt-1 text-xs text-[var(--text-muted)]">{form.description.length}/5000</p>
                     </FormField>
                   </div>
                 </FormSection>
@@ -624,14 +624,14 @@ export default function OrgProfilePageClient() {
                     hint="e.g. 'Maricopa County, AZ' or 'ZIP codes 85001–85099' or 'Phoenix metro area'."
                   >
                     <div className="relative">
-                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
+                      <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" aria-hidden="true" />
                       <input
                         id="org-region"
                         type="text"
                         value={form.serviceRegion}
                         onChange={(e) => setField('serviceRegion', e.target.value)}
                         maxLength={500}
-                        className="block w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                        className="block min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
                         placeholder="e.g. Maricopa County, AZ"
                       />
                     </div>
@@ -652,7 +652,7 @@ export default function OrgProfilePageClient() {
                           value={form.socialLinks[key] ?? ''}
                           onChange={(e) => setSocial(key, e.target.value)}
                           maxLength={2000}
-                          className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                          className="block min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
                           placeholder={placeholder}
                         />
                       </FormField>
@@ -684,12 +684,12 @@ export default function OrgProfilePageClient() {
                 <VerifiedBadge verifiedAt={org.verifiedAt} />
 
                 {/* Tips */}
-                <div className="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-800">
-                  <div className="flex items-center gap-2 font-semibold mb-2">
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] p-4 text-sm text-[var(--text-secondary)]">
+                  <div className="mb-2 flex items-center gap-2 font-semibold text-[var(--text-primary)]">
                     <Info className="h-4 w-4 shrink-0" aria-hidden="true" />
                     Profile tips
                   </div>
-                  <ul className="space-y-1.5 list-disc list-inside text-teal-700">
+                  <ul className="list-inside list-disc space-y-1.5 text-[var(--text-secondary)]">
                     <li>A clear <strong>mission statement</strong> is the single biggest driver of seeker trust.</li>
                     <li><strong>Who we serve</strong> helps people self-identify before calling — fewer wrong-number inquiries.</li>
                     <li>A square logo at least 100×100 px looks best on map listing cards.</li>
@@ -698,8 +698,8 @@ export default function OrgProfilePageClient() {
                 </div>
 
                 {/* Quick links */}
-                <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Quick links</p>
+                <div className="space-y-2 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Quick links</p>
                   <Link href="/admins" className="flex items-center gap-2 text-sm text-action-base hover:underline">
                     <Users className="h-4 w-4" aria-hidden="true" />
                     Manage team members

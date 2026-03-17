@@ -61,9 +61,9 @@ interface OrgOption {
 const LIMIT = 12;
 
 const STATUS_LABELS: Record<ServiceStatus, { label: string; color: string }> = {
-  active: { label: 'Active', color: 'bg-green-100 text-green-800' },
-  inactive: { label: 'Inactive', color: 'bg-yellow-100 text-yellow-800' },
-  defunct: { label: 'Defunct', color: 'bg-error-muted text-error-deep' },
+  active: { label: 'Active', color: 'border-[var(--text-primary)] bg-[var(--text-primary)] text-white' },
+  inactive: { label: 'Inactive', color: 'border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]' },
+  defunct: { label: 'Defunct', color: 'border-[var(--color-error-accent)] bg-[var(--color-error-muted)] text-[var(--color-error-deep)]' },
 };
 
 const STALE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
@@ -236,14 +236,14 @@ export default function ServicesPage() {
           <form onSubmit={handleSearch} className="flex flex-wrap items-end gap-2">
             <FormField id="svc-search" label="Search services" className="flex-1 basis-48">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" aria-hidden="true" />
                 <input
                   id="svc-search"
                   type="search"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search services"
-                  className="min-h-[44px] w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-action"
+                  className="min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
                   aria-label="Search services"
                 />
               </div>
@@ -256,7 +256,7 @@ export default function ServicesPage() {
                   setOrgFilter(event.target.value);
                   void fetchServices(1, query, event.target.value);
                 }}
-                className="min-h-[44px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                className="min-h-[44px] rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)]"
                 aria-label="Filter by organization"
               >
                 <option value="">All organizations</option>
@@ -269,7 +269,7 @@ export default function ServicesPage() {
           </form>
         </FormSection>
 
-        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-4 py-2.5 text-sm text-[var(--text-secondary)]">
           <span>This list shows published records. Edits and new listings go through Resource Studio.</span>
           <Link href={composeHref} className="font-medium text-action-base hover:underline whitespace-nowrap">Start a new listing →</Link>
           <Link href="/resource-studio" className="font-medium text-action-base hover:underline whitespace-nowrap">Open draft history →</Link>
@@ -286,9 +286,9 @@ export default function ServicesPage() {
         )}
 
         {!isLoading && data && data.results.length === 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-            <p className="font-medium text-gray-700">No services found</p>
-            <p className="mt-1 text-sm text-gray-500">
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-8 text-center">
+            <p className="font-medium text-[var(--text-primary)]">No services found</p>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
               Start a new listing in{' '}
               <Link href={composeHref} className="text-action-base hover:underline">Resource Studio</Link>.
             </p>
@@ -301,16 +301,16 @@ export default function ServicesPage() {
               {data.results.map((service) => {
                 const status = STATUS_LABELS[service.status];
                 return (
-                  <div key={service.id} className="flex flex-col justify-between rounded-lg border border-gray-200 bg-white p-4">
+                  <div key={service.id} className="flex flex-col justify-between rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4">
                     <div>
                       <div className="flex items-start justify-between gap-2">
-                        <h2 className="text-sm font-semibold text-gray-900">{service.name}</h2>
+                        <h2 className="text-sm font-semibold text-[var(--text-primary)]">{service.name}</h2>
                         <div className="flex shrink-0 flex-wrap gap-1">
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${status.color}`}>
+                          <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${status.color}`}>
                             {status.label}
                           </span>
                           {isStale(service.updated_at) && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2 py-0.5 text-xs font-medium text-[var(--text-secondary)]">
                               <Clock className="h-3 w-3" aria-hidden="true" />
                               Stale
                             </span>
@@ -318,12 +318,12 @@ export default function ServicesPage() {
                         </div>
                       </div>
                       {service.organization_name && (
-                        <p className="mt-0.5 text-xs text-gray-500">{service.organization_name}</p>
+                        <p className="mt-0.5 text-xs text-[var(--text-muted)]">{service.organization_name}</p>
                       )}
                       {service.description && (
-                        <p className="mt-1 text-xs text-gray-600 line-clamp-2">{service.description}</p>
+                        <p className="mt-1 text-xs text-[var(--text-secondary)] line-clamp-2">{service.description}</p>
                       )}
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--text-muted)]">
                         {service.url && (
                           <a href={service.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-action-base hover:underline">
                             <ExternalLink className="h-3 w-3" aria-hidden="true" />
@@ -335,8 +335,8 @@ export default function ServicesPage() {
                       </div>
                     </div>
 
-                    <div className="mt-3 flex items-center justify-between gap-2 border-t border-gray-100 pt-3">
-                      <span className="text-xs text-gray-400">
+                    <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--border-subtle)] pt-3">
+                      <span className="text-xs text-[var(--text-muted)]">
                         Updated {formatUpdated(service.updated_at)}
                       </span>
                       <div className="flex items-center gap-2">
@@ -363,7 +363,7 @@ export default function ServicesPage() {
             </div>
 
             <div className="mt-4 flex items-center justify-between">
-              <p className="text-sm text-gray-600" role="status">
+              <p className="text-sm text-[var(--text-secondary)]" role="status">
                 Page {data.page} · {data.total} total
               </p>
               <div className="flex gap-2">

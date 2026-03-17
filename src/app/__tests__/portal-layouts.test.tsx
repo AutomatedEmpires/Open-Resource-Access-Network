@@ -37,6 +37,10 @@ vi.mock('@/components/ui/skeleton', () => ({
 vi.mock('@/components/footer', () => ({
   AppFooter: () => <div data-testid="app-footer" />,
 }));
+vi.mock('@/components/nav/AppNav', () => ({
+  __esModule: true,
+  default: () => <div data-testid="app-nav" />,
+}));
 vi.mock('lucide-react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('lucide-react')>();
   return { ...actual };
@@ -55,7 +59,7 @@ async function loadOranLayout() {
 }
 
 async function loadSeekerLayout() {
-  return import('../(seeker)/layout');
+  return import('../(seeker)/SeekerLayoutShell');
 }
 
 beforeEach(() => {
@@ -123,6 +127,10 @@ describe('portal layouts', () => {
 
     expect(adminsLink?.getAttribute('aria-current')).toBe('page');
     expect(servicesLink?.getAttribute('aria-current')).toBe(null);
+    expect(screen.getAllByText('Workspace navigation').length).toBeGreaterThan(0);
+    expect(screen.getByText('Workspace core')).toBeInTheDocument();
+    expect(screen.getByText('Record maintenance')).toBeInTheDocument();
+    expect(screen.getAllByText('Mobile-first').length).toBeGreaterThan(0);
     expect(main?.textContent).toContain('Child');
   });
 
@@ -156,6 +164,10 @@ describe('portal layouts', () => {
 
     expect(verifyLink?.getAttribute('aria-current')).toBe('page');
     expect(queueLink?.getAttribute('aria-current')).toBe(null);
+    expect(screen.getAllByText('Workspace navigation').length).toBeGreaterThan(0);
+    expect(screen.getByText('Review workspace')).toBeInTheDocument();
+    expect(screen.getByText('Coverage oversight')).toBeInTheDocument();
+    expect(screen.getAllByText('Mobile-first').length).toBeGreaterThan(0);
     expect(container.querySelector('#main-content')?.textContent).toContain('Child');
   });
 
@@ -177,16 +189,16 @@ describe('portal layouts', () => {
 
   it('renders the seeker shell with active desktop and mobile navigation links', async () => {
     usePathnameMock.mockReturnValue('/map/cluster');
-    const { default: SeekerLayout } = await loadSeekerLayout();
+    const { default: SeekerLayoutShell } = await loadSeekerLayout();
 
-    const { container } = render(<SeekerLayout>Child</SeekerLayout>) as { container: HTMLElement };
+    const { container } = render(<SeekerLayoutShell planEnabled={false}>Child</SeekerLayoutShell>) as { container: HTMLElement };
     const main = container.querySelectorAll('#main-content');
-    const mapLinks = Array.from(container.querySelectorAll('a[href="/map"]')) as HTMLAnchorElement[];
     const chatLink = container.querySelector('a[href="/chat"]');
+    const savedLink = container.querySelector('a[href="/saved"]');
 
     expect(main).toHaveLength(1);
-    expect(mapLinks).toHaveLength(2);
-    expect(mapLinks.every((link: HTMLAnchorElement) => link.getAttribute('aria-current') === 'page')).toBe(true);
+    expect(screen.getByTestId('app-nav')).toBeInTheDocument();
     expect(chatLink).toBeTruthy();
+    expect(savedLink).toBeTruthy();
   });
 });

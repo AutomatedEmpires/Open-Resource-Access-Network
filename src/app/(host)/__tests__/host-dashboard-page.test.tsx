@@ -69,7 +69,15 @@ describe('host dashboard page', () => {
     expect(screen.getByText('14')).toBeInTheDocument();
     expect(screen.getByText('Update Downtown Pantry hours')).toBeInTheDocument();
     expect(screen.getByText('Helping Hands')).toBeInTheDocument();
+    expect(screen.getByText('Action center')).toBeInTheDocument();
+    expect(screen.getAllByText('Pending reviews').length).toBeGreaterThan(0);
+    expect(screen.getByText('Publication alerts')).toBeInTheDocument();
+    expect(screen.getByText('Audit readiness')).toBeInTheDocument();
+    expect(screen.getByText('Review backlog is blocking publication')).toBeInTheDocument();
+    expect(screen.getByText('Complete public trust fields')).toBeInTheDocument();
     expect(screen.getByText('Quick actions')).toBeInTheDocument();
+    expect(screen.getByText('Shift briefing')).toBeInTheDocument();
+    expect(screen.getByText('Workspace guide')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Update Downtown Pantry hours' })).toHaveAttribute(
       'href',
       '/resource-studio?entryId=sub-1',
@@ -101,6 +109,7 @@ describe('host dashboard page', () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(screen.getByText('No active host submissions right now.')).toBeInTheDocument();
+      expect(screen.getByText('Audit readiness')).toBeInTheDocument();
     });
   });
 });

@@ -33,23 +33,23 @@ export default function HostError({
         </svg>
       </div>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">
+      <h1 className="mb-2 text-2xl font-bold text-[var(--text-primary)]">
         Something went wrong
       </h1>
-      <p className="text-gray-600 max-w-md mb-6">
+      <p className="mb-6 max-w-md text-[var(--text-secondary)]">
         We couldn&apos;t load this page. Try again, or return to your organization
         dashboard.
       </p>
 
       {error.digest && (
-        <p className="text-xs text-gray-500 mb-4">Error ID: {error.digest}</p>
+        <p className="mb-4 text-xs text-[var(--text-muted)]">Error ID: {error.digest}</p>
       )}
 
       <div className="flex gap-3">
         <Button onClick={reset}>Try again</Button>
         <Link
           href="/org"
-          className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+          className="rounded-md border border-[var(--border)] bg-[var(--bg-surface-alt)] px-5 py-2.5 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
         >
           Organization dashboard
         </Link>

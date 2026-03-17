@@ -11,29 +11,70 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import {
+  Activity,
+  ArrowRight,
+  BookOpen,
+  ClipboardCheck,
+  FileStack,
+  FileWarning,
+  FolderKanban,
+  LayoutDashboard,
+  LockKeyhole,
+  Map,
+  ScanSearch,
+  Scale,
+  ShieldCheck,
+  ShieldEllipsis,
+} from 'lucide-react';
 import { isRoleAtLeast } from '@/services/auth/roles';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { Skeleton } from '@/components/ui/skeleton';
+import AppNav from '@/components/nav/AppNav';
 import { AppFooter } from '@/components/footer';
-import { PortalUserMenu } from '@/components/ui/portal-user-menu';
 import OranAdminContextStrip from '@/components/oran-admin/OranAdminContextStrip';
 
-const NAV_ITEMS = [
-  { href: '/operations', label: 'Operations' },
-  { href: '/approvals', label: 'Approvals' },
-  { href: '/appeals', label: 'Appeals' },
-  { href: '/reports', label: 'Reports' },
-  { href: '/admin-security', label: 'Security' },
-  { href: '/discovery-preview', label: 'Discovery Preview' },
-  { href: '/forms', label: 'Forms' },
-  { href: '/scopes', label: 'Scopes' },
-  { href: '/rules', label: 'Rules' },
-  { href: '/audit', label: 'Audit' },
-  { href: '/zone-management', label: 'Zones' },
-  { href: '/ingestion', label: 'Ingestion' },
-  { href: '/templates', label: 'Templates' },
-  { href: '/triage', label: 'Triage Queue' },
+const NAV_SECTIONS = [
+  {
+    heading: 'Decision lanes',
+    description: 'Run the daily queues that change trust, routing, and operator resolution state.',
+    items: [
+      { href: '/operations', label: 'Operations', icon: LayoutDashboard, description: 'Portal-wide operator home and backlog overview.' },
+      { href: '/triage', label: 'Triage Queue', icon: FolderKanban, description: 'Claim, route, and settle escalated queue work.' },
+      { href: '/approvals', label: 'Approvals', icon: ClipboardCheck, description: 'Resolve pending approvals before publication closes.' },
+      { href: '/appeals', label: 'Appeals', icon: Scale, description: 'Review disputed decisions and response history.' },
+      { href: '/reports', label: 'Reports', icon: FileWarning, description: 'Handle trust and safety reports with policy context.' },
+    ],
+  },
+  {
+    heading: 'Governance controls',
+    description: 'Manage privileged access, scopes, rule changes, and audit visibility.',
+    items: [
+      { href: '/admin-security', label: 'Security', icon: LockKeyhole, description: 'Review operator controls and held accounts.' },
+      { href: '/scopes', label: 'Scopes', icon: ShieldEllipsis, description: 'Grant and audit sensitive operational scope.' },
+      { href: '/rules', label: 'Rules', icon: ShieldCheck, description: 'Tune platform logic and decision guardrails.' },
+      { href: '/audit', label: 'Audit', icon: BookOpen, description: 'Inspect the authoritative operator trail.' },
+      { href: '/zone-management', label: 'Zones', icon: Map, description: 'Maintain geographic boundaries and coverage policy.' },
+    ],
+  },
+  {
+    heading: 'Platform systems',
+    description: 'Supervise ingestion, templates, discovery, and shared form infrastructure.',
+    items: [
+      { href: '/ingestion', label: 'Ingestion', icon: Activity, description: 'Watch source health, replay flow, and readiness.' },
+      { href: '/forms', label: 'Forms', icon: FileStack, description: 'Review platform form structures and intake behavior.' },
+      { href: '/templates', label: 'Templates', icon: BookOpen, description: 'Control reusable guidance and operator defaults.' },
+      { href: '/discovery-preview', label: 'Discovery Preview', icon: ScanSearch, description: 'Inspect seeker-visible downstream effects before release.' },
+    ],
+  },
 ] as const;
+
+const PRIMARY_LINKS: ReadonlyArray<(typeof NAV_SECTIONS)[number]['items'][number]> = [
+  NAV_SECTIONS[0].items[0],
+  NAV_SECTIONS[0].items[1],
+  NAV_SECTIONS[0].items[4],
+  NAV_SECTIONS[1].items[0],
+];
 
 export default function OranAdminLayoutShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -66,64 +107,84 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
       {/* Skip-to-main-content: first focusable element for keyboard / screen-reader users */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[9999] focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-sky-700 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[9999] focus:rounded-md focus:bg-[var(--bg-surface)] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-[var(--text-primary)] focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
       >
         Skip to main content
       </a>
-      <header className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-white/95 backdrop-blur">
-        <div className="container mx-auto flex h-[4.5rem] max-w-7xl items-center justify-between px-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <Link href="/approvals" className="rounded text-2xl font-bold tracking-tight text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-action focus-visible:ring-offset-1">
-              ORAN
-            </Link>
-            <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 md:inline-flex">
-              Admin
-            </span>
-          </div>
+      <AppNav />
 
-          <div className="hidden flex-1 items-center justify-center lg:flex">
-            <nav className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm overflow-x-auto" aria-label="ORAN admin navigation">
-              {NAV_ITEMS.map(({ href, label }) => (
+      <nav
+        aria-label="ORAN admin workspace navigation"
+        className="sticky top-[4.5rem] z-[calc(var(--z-nav)-1)] border-b border-[var(--border)] bg-white/95 backdrop-blur lg:top-20"
+      >
+        <div className="container mx-auto px-4 py-3">
+          <div className="grid gap-3 lg:hidden">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">Workspace navigation</p>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">Move between operator lanes, governance controls, and platform systems without relying on a long scrolling tab row.</p>
+              </div>
+              <span className="rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1 text-xs font-medium text-[var(--text-primary)]">
+                Mobile-first
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {PRIMARY_LINKS.map(({ href, label, icon: Icon, description }) => (
                 <Link
                   key={href}
                   href={href}
-                  className={`inline-flex min-h-[50px] items-center rounded-full px-5 py-2.5 text-base transition-colors whitespace-nowrap ${
+                  className={`rounded-2xl border p-4 shadow-sm transition-colors ${
                     isActive(href)
-                      ? 'border border-slate-200 bg-slate-50 font-semibold text-slate-950'
-                      : 'font-medium text-stone-500 hover:bg-stone-50 hover:text-stone-900'
+                      ? 'border-[var(--text-primary)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
+                      : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)] hover:bg-[var(--bg-surface-alt)]'
                   }`}
                   aria-current={isActive(href) ? 'page' : undefined}
                 >
-                  {label}
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-white">
+                        <Icon className="h-4 w-4" aria-hidden="true" />
+                      </div>
+                      <p className="mt-3 text-sm font-semibold">{label}</p>
+                      <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{description}</p>
+                    </div>
+                    <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-[var(--text-muted)]" aria-hidden="true" />
+                  </div>
                 </Link>
               ))}
-            </nav>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <PortalUserMenu />
-          </div>
-        </div>
-
-        <nav className="border-t border-[var(--border)] overflow-x-auto scrollbar-none lg:hidden" aria-label="ORAN admin navigation">
-          <div className="flex items-center px-2">
-            {NAV_ITEMS.map(({ href, label }) => (
-              <Link
-                key={href}
-                href={href}
-                className={`inline-flex min-h-[44px] shrink-0 items-center px-3 text-sm font-medium transition-colors whitespace-nowrap border-b-2 ${
-                  isActive(href)
-                    ? 'border-slate-900 text-slate-900'
-                    : 'border-transparent text-stone-500 hover:text-stone-900'
-                }`}
-                aria-current={isActive(href) ? 'page' : undefined}
-              >
-                {label}
-              </Link>
+          <div className="hidden lg:grid lg:gap-3">
+            {NAV_SECTIONS.map((section) => (
+              <div key={section.heading} className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-3 shadow-sm">
+                <div className="mb-3 px-1">
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">{section.heading}</h2>
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">{section.description}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {section.items.map(({ href, label, icon: Icon }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
+                        isActive(href)
+                          ? 'border-[var(--text-primary)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
+                          : 'border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
+                      }`}
+                      aria-current={isActive(href) ? 'page' : undefined}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
-        </nav>
-      </header>
+        </div>
+      </nav>
 
       <OranAdminContextStrip />
 

@@ -152,14 +152,14 @@ export default function LocationsPage() {
       />
 
       <ErrorBoundary>
-        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-4 py-2.5 text-sm text-[var(--text-secondary)]">
           <span>This page shows published access points. Edits flow through Resource Studio so review history stays attached.</span>
           <Link href={composeHref} className="font-medium text-action-base hover:underline whitespace-nowrap">Start a listing update →</Link>
           <Link href="/resource-studio" className="font-medium text-action-base hover:underline whitespace-nowrap">Open draft history →</Link>
         </div>
 
         <div className="flex gap-2 items-center mb-4">
-          <label htmlFor="loc-org-filter" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+          <label htmlFor="loc-org-filter" className="text-sm font-medium text-[var(--text-primary)] whitespace-nowrap">
             Filter by org
           </label>
           <select
@@ -169,7 +169,7 @@ export default function LocationsPage() {
               setOrgFilter(event.target.value);
               void fetchLocations(1, event.target.value);
             }}
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-h-[44px]"
+            className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm min-h-[44px] text-[var(--text-primary)]"
             aria-label="Filter by organization"
           >
             <option value="">All organizations</option>
@@ -188,9 +188,9 @@ export default function LocationsPage() {
         )}
 
         {!isLoading && data && data.results.length === 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-            <p className="text-gray-700 font-medium">No locations found</p>
-            <p className="mt-1 text-sm text-gray-500">
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-8 text-center">
+            <p className="font-medium text-[var(--text-primary)]">No locations found</p>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
               Start a new listing update in{' '}
               <Link href={composeHref} className="text-action-base hover:underline">Resource Studio</Link>
               .
@@ -204,17 +204,17 @@ export default function LocationsPage() {
               {data.results.map((location) => {
                 const address = formatAddress(location);
                 return (
-                  <div key={location.id} className="rounded-lg border border-gray-200 bg-white p-4 flex flex-col justify-between">
+                  <div key={location.id} className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4 flex flex-col justify-between">
                     <div>
-                      <h2 className="font-semibold text-gray-900 text-sm">{location.name ?? 'Unnamed Location'}</h2>
+                      <h2 className="font-semibold text-[var(--text-primary)] text-sm">{location.name ?? 'Unnamed Location'}</h2>
                       {location.organization_name && (
-                        <p className="mt-0.5 text-xs text-gray-500">{location.organization_name}</p>
+                        <p className="mt-0.5 text-xs text-[var(--text-muted)]">{location.organization_name}</p>
                       )}
                       {location.primary_service_name && (
-                        <p className="mt-1 text-xs text-slate-500">Listing bundle: {location.primary_service_name}</p>
+                        <p className="mt-1 text-xs text-[var(--text-muted)]">Listing bundle: {location.primary_service_name}</p>
                       )}
                       {address && (
-                        <p className="mt-1 text-xs text-gray-600">{address}</p>
+                        <p className="mt-1 text-xs text-[var(--text-secondary)]">{address}</p>
                       )}
                       {location.latitude != null && location.longitude != null && (
                         <a
@@ -229,10 +229,10 @@ export default function LocationsPage() {
                         </a>
                       )}
                       {location.description && (
-                        <p className="mt-1 text-xs text-gray-600 line-clamp-2">{location.description}</p>
+                        <p className="mt-1 text-xs text-[var(--text-secondary)] line-clamp-2">{location.description}</p>
                       )}
                     </div>
-                    <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
+                    <div className="mt-3 flex items-center gap-2 border-t border-[var(--border-subtle)] pt-3">
                       <Link href={buildStudioHref(location)}>
                         <Button variant="outline" size="sm" className="gap-1">
                           <FilePenLine className="h-3 w-3" aria-hidden="true" />
@@ -246,7 +246,7 @@ export default function LocationsPage() {
             </div>
 
             <div className="mt-4 flex items-center justify-between">
-              <p className="text-sm text-gray-600" role="status">
+              <p className="text-sm text-[var(--text-secondary)]" role="status">
                 Page {data.page} · {data.total} total
               </p>
               <div className="flex gap-2">

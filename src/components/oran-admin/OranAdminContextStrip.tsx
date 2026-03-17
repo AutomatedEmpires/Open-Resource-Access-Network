@@ -15,12 +15,12 @@ function ContextChip({
   href?: string;
   title?: string;
 }) {
-  const className = 'inline-flex min-h-[32px] items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1 text-xs font-medium text-gray-700 shadow-sm';
+  const className = 'inline-flex min-h-[32px] items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)] shadow-sm';
 
   if (href) {
     return (
-      <Link href={href} className={`${className} hover:border-blue-200 hover:bg-blue-50 hover:text-blue-800`} title={title}>
-        <span className="text-gray-500" aria-hidden="true">{icon}</span>
+      <Link href={href} className={`${className} hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]`} title={title}>
+        <span className="text-[var(--text-muted)]" aria-hidden="true">{icon}</span>
         <span>{children}</span>
       </Link>
     );
@@ -28,7 +28,7 @@ function ContextChip({
 
   return (
     <span className={className} title={title}>
-      <span className="text-gray-500" aria-hidden="true">{icon}</span>
+      <span className="text-[var(--text-muted)]" aria-hidden="true">{icon}</span>
       <span>{children}</span>
     </span>
   );
@@ -56,7 +56,7 @@ export default function OranAdminContextStrip() {
           </ContextChip>
         </div>
 
-        <Link href="/audit" className="text-xs font-medium text-blue-700 hover:underline">
+        <Link href="/audit" className="text-xs font-medium text-[var(--text-primary)] hover:underline">
           Review the platform audit trail
         </Link>
       </div>

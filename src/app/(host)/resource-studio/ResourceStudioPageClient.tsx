@@ -69,19 +69,19 @@ function formatDate(value: string | null): string {
 function statusTone(status: string): string {
   switch (status) {
     case 'approved':
-      return 'bg-emerald-100 text-emerald-800';
+      return 'border-[var(--text-primary)] bg-[var(--text-primary)] text-white';
     case 'denied':
-      return 'bg-rose-100 text-rose-800';
+      return 'border-[var(--color-error-accent)] bg-[var(--color-error-muted)] text-[var(--color-error-deep)]';
     case 'returned':
-      return 'bg-amber-100 text-amber-900';
+      return 'border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]';
     case 'under_review':
-      return 'bg-sky-100 text-sky-900';
+      return 'border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]';
     case 'submitted':
     case 'needs_review':
     case 'pending_second_approval':
-      return 'bg-violet-100 text-violet-900';
+      return 'border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]';
     default:
-      return 'bg-slate-100 text-slate-700';
+      return 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)]';
   }
 }
 
@@ -110,19 +110,19 @@ function StudioLaunchCard({
   return (
     <Link
       href={href}
-      className="group rounded-3xl border border-slate-200 bg-white p-6 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-action focus-visible:ring-offset-1"
+      className="group rounded-3xl border border-[var(--border)] bg-[var(--bg-surface)] p-6 transition hover:-translate-y-0.5 hover:border-[var(--text-muted)] hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-primary)] focus-visible:ring-offset-1"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">{eyebrow}</p>
-          <h2 className="mt-2 text-xl font-semibold text-slate-900">{title}</h2>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">{description}</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">{eyebrow}</p>
+          <h2 className="mt-2 text-xl font-semibold text-[var(--text-primary)]">{title}</h2>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--text-secondary)]">{description}</p>
         </div>
-        <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface-alt)] p-3 text-[var(--text-secondary)]">
           <Icon className="h-5 w-5" aria-hidden="true" />
         </div>
       </div>
-      <div className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-action-base">
+      <div className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
         Open workflow
         <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" aria-hidden="true" />
       </div>
@@ -218,8 +218,8 @@ export default function ResourceStudioPageClient() {
 
   if (shouldDelayWorkspace) {
     return (
-      <div className="flex min-h-80 items-center justify-center rounded-3xl border border-slate-200 bg-white">
-        <div className="flex items-center gap-3 text-sm text-slate-600">
+      <div className="flex min-h-80 items-center justify-center rounded-3xl border border-[var(--border)] bg-[var(--bg-surface)]">
+        <div className="flex items-center gap-3 text-sm text-[var(--text-secondary)]">
           <Layers3 className="h-4 w-4" aria-hidden="true" />
           Preparing Resource Studio…
         </div>
@@ -304,12 +304,12 @@ export default function ResourceStudioPageClient() {
         />
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-6">
-        <div className="flex flex-col gap-4 border-b border-slate-100 pb-4 lg:flex-row lg:items-end lg:justify-between">
+      <section className="rounded-3xl border border-[var(--border)] bg-[var(--bg-surface)] p-6">
+        <div className="flex flex-col gap-4 border-b border-[var(--border-subtle)] pb-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Submission activity</p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-900">Continue work without losing review context</h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Submission activity</p>
+            <h2 className="mt-2 text-xl font-semibold text-[var(--text-primary)]">Continue work without losing review context</h2>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
               Drafts, submitted items, and returned fixes all reopen in the same card workflow.
             </p>
           </div>
@@ -321,8 +321,8 @@ export default function ResourceStudioPageClient() {
                 onClick={() => setActiveFilter(filter.key)}
                 className={`inline-flex min-h-[44px] items-center rounded-full px-3 text-sm font-medium transition ${
                   activeFilter === filter.key
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    ? 'bg-[var(--text-primary)] text-white'
+                    : 'border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 {filter.label} ({filterCounts[filter.key] ?? 0})
@@ -349,10 +349,10 @@ export default function ResourceStudioPageClient() {
             ))}
           </div>
         ) : filteredSubmissions.length === 0 ? (
-          <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
-            <FileClock className="mx-auto h-8 w-8 text-slate-400" aria-hidden="true" />
-            <h3 className="mt-3 text-lg font-semibold text-slate-900">No submissions in this lane yet</h3>
-            <p className="mt-2 text-sm text-slate-600">
+          <div className="mt-5 rounded-2xl border border-dashed border-[var(--border)] bg-[var(--bg-surface-alt)] px-6 py-10 text-center">
+            <FileClock className="mx-auto h-8 w-8 text-[var(--text-muted)]" aria-hidden="true" />
+            <h3 className="mt-3 text-lg font-semibold text-[var(--text-primary)]">No submissions in this lane yet</h3>
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">
               Start a new listing or claim, then return here to continue drafts, review returned notes, and reopen items already in flight.
             </p>
           </div>
@@ -361,63 +361,63 @@ export default function ResourceStudioPageClient() {
             {filteredSubmissions.map((item) => {
               const completion = completionSummary(item.cards);
               return (
-                <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
+                <div key={item.id} className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface-alt)] p-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                      <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
                         {item.variant === 'claim' ? 'Claim submission' : 'Resource listing'}
                       </p>
-                      <h3 className="mt-1 text-lg font-semibold text-slate-900">
+                      <h3 className="mt-1 text-lg font-semibold text-[var(--text-primary)]">
                         {item.title || item.summary.serviceName || item.summary.organizationName || 'Untitled submission'}
                       </h3>
-                      <p className="mt-1 text-sm text-slate-600">
+                      <p className="mt-1 text-sm text-[var(--text-secondary)]">
                         {item.summary.organizationName || 'Organization pending'}{item.summary.serviceName ? ` · ${item.summary.serviceName}` : ''}
                       </p>
                     </div>
-                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusTone(item.status)}`}>
+                    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusTone(item.status)}`}>
                       {item.status.replace(/_/g, ' ')}
                     </span>
                   </div>
 
-                  <div className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                  <div className="mt-4 grid gap-3 text-sm text-[var(--text-secondary)] sm:grid-cols-2">
                     <div>
-                      <span className="font-medium text-slate-900">Updated</span>
+                      <span className="font-medium text-[var(--text-primary)]">Updated</span>
                       <div>{formatDate(item.updatedAt)}</div>
                     </div>
                     <div>
-                      <span className="font-medium text-slate-900">Submitted</span>
+                      <span className="font-medium text-[var(--text-primary)]">Submitted</span>
                       <div>{formatDate(item.submittedAt)}</div>
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-2xl bg-white p-4">
+                  <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-4">
                     <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="font-medium text-slate-900">Required cards complete</span>
-                      <span className="text-slate-600">{completion.completed}/{completion.total}</span>
+                      <span className="font-medium text-[var(--text-primary)]">Required cards complete</span>
+                      <span className="text-[var(--text-secondary)]">{completion.completed}/{completion.total}</span>
                     </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--border-subtle)]">
                       <div
                         className={`h-full rounded-full transition-all ${
                           completion.total === 0
-                            ? 'bg-slate-300'
+                            ? 'bg-[var(--color-action-pale)]'
                             : completion.completed / completion.total >= 0.8
-                            ? 'bg-emerald-500'
+                            ? 'bg-[var(--text-primary)]'
                             : completion.completed / completion.total >= 0.5
-                            ? 'bg-amber-400'
-                            : 'bg-rose-400'
+                            ? 'bg-[var(--text-secondary)]'
+                            : 'bg-[var(--text-muted)]'
                         }`}
                         style={{ width: `${completion.total === 0 ? 0 : (completion.completed / completion.total) * 100}%` }}
                       />
                     </div>
                     {completion.missing.length > 0 && (
-                      <p className="mt-3 text-sm text-slate-600">
+                      <p className="mt-3 text-sm text-[var(--text-secondary)]">
                         Missing: {completion.missing.join(', ')}
                       </p>
                     )}
                   </div>
 
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-[var(--text-muted)]">
                       Reviewer lane: {item.reviewMeta.targetType || 'pending'}
                     </div>
                     <Link href={`/resource-studio?entryId=${item.id}`}>

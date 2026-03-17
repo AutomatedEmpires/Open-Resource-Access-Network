@@ -94,6 +94,37 @@ export default function OrgDashboardPage() {
     void fetchOrgs(1, query);
   };
 
+  const visibleCount = data?.results.length ?? 0;
+  const verifiedCount = data?.results.filter((org) => Boolean(org.verified_at)).length ?? 0;
+  const profileFollowUpCount = data?.results.filter((org) => !org.url || !org.email || !org.verified_at).length ?? 0;
+
+  const workspaceLanes = [
+    {
+      href: '/resource-studio',
+      label: 'Resource Studio',
+      description: 'Continue claims, drafts, and submission-backed org updates from one place.',
+      icon: FilePenLine,
+    },
+    {
+      href: '/org/profile',
+      label: 'Trust Profile',
+      description: 'Complete verification, trust, and public identity fields that reviewers depend on.',
+      icon: UserCog,
+    },
+    {
+      href: '/services',
+      label: 'Services',
+      description: 'Maintain the seeker-facing service inventory attached to each organization.',
+      icon: Award,
+    },
+    {
+      href: '/admins',
+      label: 'Team Access',
+      description: 'Keep org ownership clear by inviting or pruning host operators.',
+      icon: Plus,
+    },
+  ];
+
   return (
     <div>
       <PageHeader
@@ -143,14 +174,14 @@ export default function OrgDashboardPage() {
           <form onSubmit={handleSearch} className="flex gap-2 items-end">
             <FormField id="org-search" label="Search organizations" className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
                 <input
                   id="org-search"
                   type="search"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search organizations"
-                  className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                  className="min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
                   aria-label="Search organizations"
                 />
               </div>
@@ -159,7 +190,45 @@ export default function OrgDashboardPage() {
           </form>
         </FormSection>
 
-        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
+        <section className="mb-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--text-primary)]">Organization control center</h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">Use this page to inspect published org state, then move into the exact workflow that owns edits, trust completion, or access recovery.</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[28rem]">
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] p-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">Visible results</p>
+                <p className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{visibleCount}</p>
+              </div>
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] p-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">Verified on page</p>
+                <p className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{verifiedCount}</p>
+              </div>
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] p-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">Need follow-up</p>
+                <p className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{profileFollowUpCount}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {workspaceLanes.map(({ href, label, description, icon: Icon }) => (
+              <Link key={href} href={href} className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface-alt)] p-4 transition-shadow hover:shadow-md">
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)]">
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                </div>
+                <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">{label}</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{description}</p>
+                <div className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-action-base">
+                  Open workspace <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-4 py-2.5 text-sm text-[var(--text-secondary)]">
           <span>This page shows published organization records. Structured edits stay attached to the submission audit trail.</span>
           <Link href="/resource-studio?compose=listing" className="font-medium text-action-base hover:underline whitespace-nowrap">Start a structured update →</Link>
           <Link href="/resource-studio" className="font-medium text-action-base hover:underline whitespace-nowrap">Open draft history →</Link>
@@ -178,9 +247,9 @@ export default function OrgDashboardPage() {
         )}
 
         {!isLoading && data && data.results.length === 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-            <p className="text-gray-700 font-medium">No organizations found</p>
-            <p className="mt-1 text-sm text-gray-500">
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-8 text-center">
+            <p className="font-medium text-[var(--text-primary)]">No organizations found</p>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
               <Link href="/resource-studio?compose=claim" className="text-action-base hover:underline">
                 Claim an organization
               </Link>{' '}
@@ -199,15 +268,15 @@ export default function OrgDashboardPage() {
               {data.results.map((org) => (
                 <div
                   key={org.id}
-                  className="rounded-lg border border-gray-200 bg-white p-4 flex flex-col justify-between"
+                  className="flex flex-col justify-between rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4"
                 >
                   <div>
                     <div className="flex items-start justify-between gap-2">
-                      <h2 className="font-semibold text-gray-900 text-sm">{org.name}</h2>
+                      <h2 className="text-sm font-semibold text-[var(--text-primary)]">{org.name}</h2>
                       <div className="flex shrink-0 flex-wrap gap-1">
                         {org.verified_at && (
                           <span
-                            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200"
+                            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--text-primary)] bg-[var(--text-primary)] px-2 py-0.5 text-xs font-medium text-white"
                             title={`Verified ${new Date(org.verified_at).toLocaleDateString()}`}
                           >
                             <Award className="h-3 w-3" aria-hidden="true" />
@@ -218,8 +287,8 @@ export default function OrgDashboardPage() {
                           <span
                             className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border ${
                               org.status === 'defunct'
-                                ? 'bg-red-50 text-red-700 border-red-200'
-                                : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                ? 'border-[var(--color-error-accent)] bg-[var(--color-error-muted)] text-[var(--color-error-deep)]'
+                                : 'border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]'
                             }`}
                           >
                             {org.status.charAt(0).toUpperCase() + org.status.slice(1)}
@@ -228,12 +297,12 @@ export default function OrgDashboardPage() {
                       </div>
                     </div>
                     {org.mission_statement && (
-                      <p className="mt-1 text-xs text-slate-500 italic line-clamp-1">{org.mission_statement}</p>
+                      <p className="mt-1 line-clamp-1 text-xs italic text-[var(--text-muted)]">{org.mission_statement}</p>
                     )}
                     {org.description && (
-                      <p className="mt-1 text-xs text-gray-600 line-clamp-2">{org.description}</p>
+                      <p className="mt-1 line-clamp-2 text-xs text-[var(--text-secondary)]">{org.description}</p>
                     )}
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--text-muted)]">
                       {org.url && (
                         <a
                           href={org.url}
@@ -255,24 +324,24 @@ export default function OrgDashboardPage() {
                     {(org.year_incorporated ?? org.legal_status ?? org.tax_status) && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {org.year_incorporated && (
-                          <span className="inline-flex items-center rounded-md bg-gray-50 border border-gray-200 px-2 py-0.5 text-xs text-gray-500">
+                          <span className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2 py-0.5 text-xs text-[var(--text-secondary)]">
                             Est. {org.year_incorporated}
                           </span>
                         )}
                         {org.legal_status && (
-                          <span className="inline-flex items-center rounded-md bg-gray-50 border border-gray-200 px-2 py-0.5 text-xs text-gray-500">
+                          <span className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2 py-0.5 text-xs text-[var(--text-secondary)]">
                             {org.legal_status}
                           </span>
                         )}
                         {org.tax_status && (
-                          <span className="inline-flex items-center rounded-md bg-gray-50 border border-gray-200 px-2 py-0.5 text-xs text-gray-500">
+                          <span className="inline-flex items-center rounded-md border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2 py-0.5 text-xs text-[var(--text-secondary)]">
                             {org.tax_status}
                           </span>
                         )}
                       </div>
                     )}
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--border-subtle)] pt-3">
                     <Link href={`/resource-studio?compose=listing&organizationId=${org.id}`}>
                       <Button variant="outline" size="sm" className="gap-1">
                         <FilePenLine className="h-3 w-3" aria-hidden="true" />
@@ -291,7 +360,7 @@ export default function OrgDashboardPage() {
             </div>
 
             <div className="mt-4 flex items-center justify-between">
-              <p className="text-sm text-gray-600" role="status">
+              <p className="text-sm text-[var(--text-secondary)]" role="status">
                 Page {data.page} · {data.total} total
               </p>
               <div className="flex gap-2">

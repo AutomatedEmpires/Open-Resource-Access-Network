@@ -5,6 +5,8 @@ import Link from 'next/link';
 import {
   AlertTriangle,
   ArrowRight,
+  BellRing,
+  BookOpen,
   Building2,
   ClipboardList,
   LayoutDashboard,
@@ -15,6 +17,9 @@ import {
   ShieldCheck,
   Users,
   Wrench,
+  CheckSquare2,
+  FileCheck,
+  Siren,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -66,14 +71,14 @@ function MetricCard({
   return (
     <Link
       href={href}
-      className="block rounded-xl border border-gray-200 bg-white p-5 transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-action focus-visible:ring-offset-1"
+      className="block rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-primary)] focus-visible:ring-offset-1"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
-          <p className="mt-1 text-3xl font-bold text-gray-900">{value}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">{label}</p>
+          <p className="mt-1 text-3xl font-bold text-[var(--text-primary)]">{value}</p>
         </div>
-        <div className={`rounded-lg p-2.5 ${tone}`}>
+        <div className={`rounded-lg border p-2.5 ${tone}`}>
           <Icon className="h-5 w-5" aria-hidden="true" />
         </div>
       </div>
@@ -98,16 +103,91 @@ function QuickAction({
   return (
     <Link
       href={href}
-      className="group flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-action focus-visible:ring-offset-1"
+      className="group flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-4 transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-primary)] focus-visible:ring-offset-1"
     >
-      <div className="shrink-0 rounded-lg bg-teal-50 p-2 text-teal-700">
+      <div className="shrink-0 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] p-2 text-[var(--text-secondary)]">
         <Icon className="h-4 w-4" aria-hidden="true" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-gray-900 transition-colors group-hover:text-teal-800">{label}</p>
-        <p className="mt-0.5 text-xs text-gray-500">{description}</p>
+        <p className="text-sm font-semibold text-[var(--text-primary)] transition-colors group-hover:text-[var(--text-primary)]">{label}</p>
+        <p className="mt-0.5 text-xs text-[var(--text-secondary)]">{description}</p>
       </div>
-      <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 transition-colors group-hover:text-teal-600" aria-hidden="true" />
+      <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)] transition-colors group-hover:text-[var(--text-primary)]" aria-hidden="true" />
+    </Link>
+  );
+}
+
+function ActionCenterCard({
+  href,
+  label,
+  count,
+  description,
+  tone = 'neutral',
+}: {
+  href: string;
+  label: string;
+  count: number;
+  description: string;
+  tone?: 'neutral' | 'priority';
+}) {
+  const highlighted = tone === 'priority' && count > 0;
+
+  return (
+    <Link
+      href={href}
+      className={`rounded-xl border p-4 transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-primary)] focus-visible:ring-offset-1 ${
+        highlighted
+          ? 'border-[var(--text-primary)] bg-[var(--bg-surface-alt)]'
+          : 'border-[var(--border)] bg-[var(--bg-surface)]'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-[var(--text-primary)]">{label}</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{description}</p>
+        </div>
+        <span className={`inline-flex min-w-8 items-center justify-center rounded-full px-2 py-1 text-xs font-semibold ${
+          highlighted
+            ? 'bg-[var(--text-primary)] text-[var(--bg-page)]'
+            : 'bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]'
+        }`}>
+          {count}
+        </span>
+      </div>
+      <div className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-action-base">
+        Open workspace <ArrowRight className="h-3 w-3" aria-hidden="true" />
+      </div>
+    </Link>
+  );
+}
+
+function AdvisoryCard({
+  title,
+  body,
+  href,
+  tone = 'neutral',
+}: {
+  title: string;
+  body: string;
+  href: string;
+  tone?: 'neutral' | 'priority';
+}) {
+  const highlighted = tone === 'priority';
+
+  return (
+    <Link
+      href={href}
+      className={`rounded-xl border p-4 transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-primary)] focus-visible:ring-offset-1 ${
+        highlighted
+          ? 'border-[var(--text-primary)] bg-[var(--bg-surface-alt)]'
+          : 'border-[var(--border)] bg-[var(--bg-surface)]'
+      }`}
+    >
+      <p className="text-sm font-semibold text-[var(--text-primary)]">{title}</p>
+      <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{body}</p>
+      <div className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-action-base">
+        Open workspace <ArrowRight className="h-3 w-3" aria-hidden="true" />
+      </div>
     </Link>
   );
 }
@@ -141,6 +221,105 @@ export default function HostDashboardPageClient() {
   useEffect(() => {
     void fetchDashboard();
   }, [fetchDashboard]);
+
+  const actionCenter = data ? [
+    {
+      label: 'Pending reviews',
+      count: data.summary.pendingReviews,
+      href: '/resource-studio',
+      description: 'Returned or newly submitted changes that are still waiting to clear verification.',
+      tone: 'priority' as const,
+    },
+    {
+      label: 'Stale services',
+      count: data.summary.staleServices,
+      href: '/services',
+      description: 'Service records that have aged past the freshness threshold and should be rechecked.',
+      tone: 'priority' as const,
+    },
+    {
+      label: 'Stale locations',
+      count: data.summary.staleLocations,
+      href: '/locations',
+      description: 'Site-level addresses or hours that may no longer reflect current operations.',
+      tone: 'priority' as const,
+    },
+    {
+      label: 'Incomplete org profile',
+      count: data.summary.incompleteOrganizations,
+      href: '/org/profile',
+      description: 'Public trust fields still missing from the organization identity and verification record.',
+      tone: 'neutral' as const,
+    },
+    {
+      label: 'Pending invites',
+      count: data.summary.pendingInvites,
+      href: '/admins',
+      description: 'Team access requests that are still waiting on acceptance or follow-up.',
+      tone: 'neutral' as const,
+    },
+  ] : [];
+
+  const workspaceNotes = data ? [
+    data.summary.pendingReviews > 0
+      ? `${data.summary.pendingReviews} change request${data.summary.pendingReviews === 1 ? '' : 's'} are still blocking publication or verification closure.`
+      : 'No review backlog is currently blocking publication.',
+    data.summary.staleServices + data.summary.staleLocations > 0
+      ? `${data.summary.staleServices + data.summary.staleLocations} record${data.summary.staleServices + data.summary.staleLocations === 1 ? '' : 's'} have gone stale and should be refreshed before seekers rely on them.`
+      : 'Service and location freshness is currently in a healthy range.',
+    data.summary.incompleteOrganizations > 0
+      ? 'Complete organization trust fields before inviting teams to publish or claim additional inventory.'
+      : 'Organization trust fields are complete enough to support publication and team onboarding.',
+  ] : [];
+  const publicationAlerts = data ? [
+    {
+      title: data.summary.pendingReviews > 0 ? 'Review backlog is blocking publication' : 'Review backlog is clear',
+      body: data.summary.pendingReviews > 0
+        ? 'Pending review items can delay publication or leave corrections unshipped. Clear them before opening more work.'
+        : 'No pending review items are blocking publication right now.',
+      href: '/resource-studio',
+      tone: data.summary.pendingReviews > 0 ? 'priority' as const : 'neutral' as const,
+    },
+    {
+      title: data.summary.staleServices + data.summary.staleLocations > 0 ? 'Freshness recovery required' : 'Freshness is within range',
+      body: data.summary.staleServices + data.summary.staleLocations > 0
+        ? 'Stale services and locations should be refreshed before seekers depend on outdated availability or hours.'
+        : 'No stale service or location records are currently overdue.',
+      href: '/services',
+      tone: data.summary.staleServices + data.summary.staleLocations > 0 ? 'priority' as const : 'neutral' as const,
+    },
+    {
+      title: data.summary.pendingInvites > 0 ? 'Team access follow-up pending' : 'Team access is clean',
+      body: data.summary.pendingInvites > 0
+        ? 'Unaccepted invites can slow down shared maintenance and create ambiguity about who owns follow-up.'
+        : 'No unresolved team invitations are blocking operations.',
+      href: '/admins',
+      tone: data.summary.pendingInvites > 0 ? 'priority' as const : 'neutral' as const,
+    },
+  ] : [];
+  const auditReadiness = data ? [
+    {
+      title: 'Complete public trust fields',
+      body: data.summary.incompleteOrganizations > 0
+        ? `${data.summary.incompleteOrganizations} organization profile${data.summary.incompleteOrganizations === 1 ? '' : 's'} still need trust-critical details before publication should expand.`
+        : 'Organization identity and trust fields are complete enough for publication.' ,
+      href: '/org/profile',
+    },
+    {
+      title: 'Resolve returned and pending review work',
+      body: data.summary.pendingReviews > 0
+        ? 'Pending review items should carry corrective action or reviewer-ready evidence before new submissions are opened.'
+        : 'No review item currently requires corrective follow-up.',
+      href: '/resource-studio',
+    },
+    {
+      title: 'Keep service and location data fresh',
+      body: data.summary.staleServices + data.summary.staleLocations > 0
+        ? `${data.summary.staleServices + data.summary.staleLocations} record${data.summary.staleServices + data.summary.staleLocations === 1 ? '' : 's'} are stale and should be refreshed with source-backed edits.`
+        : 'Freshness thresholds are currently being met across services and locations.',
+      href: '/locations',
+    },
+  ] : [];
 
   return (
     <ErrorBoundary>
@@ -183,21 +362,21 @@ export default function HostDashboardPageClient() {
       ) : data && (
         <>
           <section className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            <MetricCard label="Organizations" value={data.summary.organizations} href="/org" icon={Building2} tone="bg-info-muted text-action-base" />
-            <MetricCard label="Services" value={data.summary.services} href="/services" icon={Wrench} tone="bg-green-100 text-green-700" />
-            <MetricCard label="Locations" value={data.summary.locations} href="/locations" icon={MapPin} tone="bg-amber-100 text-amber-700" />
-            <MetricCard label="Team Members" value={data.summary.teamMembers} href="/admins" icon={Users} tone="bg-indigo-100 text-indigo-700" />
-            <MetricCard label="Claims In Flight" value={data.summary.claimsInFlight} href="/resource-studio?compose=claim" icon={Send} tone="bg-purple-100 text-purple-700" />
+            <MetricCard label="Organizations" value={data.summary.organizations} href="/org" icon={Building2} tone="border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]" />
+            <MetricCard label="Services" value={data.summary.services} href="/services" icon={Wrench} tone="border-[var(--text-primary)] bg-[var(--text-primary)] text-white" />
+            <MetricCard label="Locations" value={data.summary.locations} href="/locations" icon={MapPin} tone="border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]" />
+            <MetricCard label="Team Members" value={data.summary.teamMembers} href="/admins" icon={Users} tone="border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]" />
+            <MetricCard label="Claims In Flight" value={data.summary.claimsInFlight} href="/resource-studio?compose=claim" icon={Send} tone="border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]" />
           </section>
 
           <div className="grid gap-6 lg:grid-cols-5">
-            <section className="lg:col-span-3 rounded-xl border border-gray-200 bg-white p-5">
+            <section className="lg:col-span-3 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-900">Operational Snapshot</h2>
-                  <p className="mt-1 text-sm text-gray-500">Review backlog, stale records, and profile completeness that need action.</p>
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-primary)]">Operational Snapshot</h2>
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">Review backlog, stale records, and profile completeness that need action.</p>
                 </div>
-                <ClipboardList className="h-5 w-5 text-gray-300" aria-hidden="true" />
+                <ClipboardList className="h-5 w-5 text-[var(--text-muted)]" aria-hidden="true" />
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -211,16 +390,16 @@ export default function HostDashboardPageClient() {
                   <div
                     key={label}
                     className={`rounded-lg border p-4 ${
-                      value > 0 ? 'border-amber-200 bg-amber-50' : 'border-gray-100 bg-gray-50'
+                      value > 0 ? 'border-[var(--border)] bg-[var(--bg-surface-alt)]' : 'border-[var(--border-subtle)] bg-[var(--bg-surface)]'
                     }`}
                   >
                     <p className={`text-xs font-medium uppercase tracking-wide ${
-                      value > 0 ? 'text-amber-700' : 'text-gray-500'
+                      value > 0 ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
                     }`}>{label}</p>
                     <p className={`mt-1 text-2xl font-bold ${
-                      value > 0 ? 'text-amber-900' : 'text-gray-900'
+                      value > 0 ? 'text-[var(--text-primary)]' : 'text-[var(--text-primary)]'
                     }`}>{value}</p>
-                    <p className="mt-1 text-xs text-gray-500">{note}</p>
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">{note}</p>
                   </div>
                 ))}
               </div>
@@ -229,32 +408,32 @@ export default function HostDashboardPageClient() {
                 <table className="w-full text-sm">
                   <caption className="sr-only">Recent in-flight host submissions</caption>
                   <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500">Submission</th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500">Organization</th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500">Status</th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500">Opened</th>
+                    <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface-alt)]">
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-[var(--text-muted)]">Submission</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-[var(--text-muted)]">Organization</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-[var(--text-muted)]">Status</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-[var(--text-muted)]">Opened</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-[var(--border-subtle)]">
                     {data.recentSubmissions.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="px-3 py-6 text-center text-sm text-gray-400">No active host submissions right now.</td>
+                        <td colSpan={4} className="px-3 py-6 text-center text-sm text-[var(--text-muted)]">No active host submissions right now.</td>
                       </tr>
                     ) : data.recentSubmissions.map((item) => (
                       <tr key={item.id}>
-                        <td className="px-3 py-2.5 text-gray-800">
+                        <td className="px-3 py-2.5 text-[var(--text-primary)]">
                           <Link href={submissionHref(item)} className="font-medium text-action-base hover:underline">
                             {item.title ?? item.submission_type.replace(/_/g, ' ')}
                           </Link>
                         </td>
-                        <td className="px-3 py-2.5 text-gray-500">{item.organization_name ?? 'Pending organization'}</td>
+                        <td className="px-3 py-2.5 text-[var(--text-secondary)]">{item.organization_name ?? 'Pending organization'}</td>
                         <td className="px-3 py-2.5">
-                          <span className="inline-flex items-center rounded-full bg-info-muted px-2.5 py-1 text-xs font-medium text-action-deep">
+                          <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)]">
                             {item.status.replace(/_/g, ' ')}
                           </span>
                         </td>
-                        <td className="px-3 py-2.5 text-gray-500">
+                        <td className="px-3 py-2.5 text-[var(--text-secondary)]">
                           {new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </td>
                       </tr>
@@ -265,10 +444,32 @@ export default function HostDashboardPageClient() {
             </section>
 
             <section className="lg:col-span-2 space-y-4">
-              <div className="rounded-xl border border-gray-200 bg-white p-5">
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="h-5 w-5 text-action-base" aria-hidden="true" />
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-primary)]">Action center</h2>
+                </div>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">Direct routes into the exact work queues that can change seeker-visible accuracy, freshness, and trust.</p>
+                <div className="mt-4 grid gap-3">
+                  {actionCenter.map((item) => <ActionCenterCard key={item.label} {...item} />)}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+                <div className="flex items-center gap-2">
+                  <Siren className="h-5 w-5 text-action-base" aria-hidden="true" />
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-primary)]">Publication alerts</h2>
+                </div>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">High-signal blockers that affect publication speed, freshness, or accountability.</p>
+                <div className="mt-4 grid gap-3">
+                  {publicationAlerts.map((item) => <AdvisoryCard key={item.title} {...item} />)}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="h-5 w-5 text-action-base" aria-hidden="true" />
-                  <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-900">Quick actions</h2>
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-primary)]">Quick actions</h2>
                 </div>
                 <div className="mt-4 grid gap-3">
                   <QuickAction href="/resource-studio" label="Open resource studio" description="Start new listings, reopen drafts, and continue returned fixes through one workflow." icon={Layers3} />
@@ -279,44 +480,55 @@ export default function HostDashboardPageClient() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-gray-200 bg-white p-5">
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-amber-600" aria-hidden="true" />
-                  <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-900">Priority cues</h2>
+                  <BellRing className="h-5 w-5 text-[var(--text-secondary)]" aria-hidden="true" />
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-primary)]">Shift briefing</h2>
                 </div>
                 <ul className="mt-4 space-y-2">
-                  {([
-                    {
-                      count: data.summary.pendingReviews,
-                      positive: 'No review backlog is blocking publication.',
-                      negative: `${data.summary.pendingReviews} host changes are waiting on review.`,
-                    },
-                    {
-                      count: data.summary.incompleteOrganizations,
-                      positive: 'Organization profiles include core trust fields.',
-                      negative: `${data.summary.incompleteOrganizations} profiles still need core trust fields.`,
-                    },
-                    {
-                      count: data.summary.staleServices + data.summary.staleLocations,
-                      positive: 'Service and location freshness is in a healthy range.',
-                      negative: `${data.summary.staleServices + data.summary.staleLocations} records have gone stale and should be revisited.`,
-                    },
-                  ] as const).map((cue, i) => (
+                  {workspaceNotes.map((note) => (
                     <li
-                      key={i}
-                      className={`flex items-start gap-2 rounded-lg px-3 py-2.5 text-sm ${
-                        cue.count > 0 ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-700'
-                      }`}
+                      key={note}
+                      className="flex items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-3 py-2.5 text-sm text-[var(--text-primary)]"
                     >
-                      {cue.count > 0 ? (
-                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
-                      ) : (
-                        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-green-500" aria-hidden="true" />
-                      )}
-                      <span>{cue.count > 0 ? cue.negative : cue.positive}</span>
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-secondary)]" aria-hidden="true" />
+                      <span>{note}</span>
                     </li>
                   ))}
                 </ul>
+                <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-3 py-3 text-sm text-[var(--text-secondary)]">
+                  <div className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
+                    <BookOpen className="h-4 w-4" aria-hidden="true" />
+                    Workspace guide
+                  </div>
+                  <p className="mt-1 text-xs leading-5">
+                    Use Resource Studio for listing and claim flow, Services and Locations for direct record maintenance, and Team for invitation recovery and access hygiene.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+                <div className="flex items-center gap-2">
+                  <FileCheck className="h-5 w-5 text-action-base" aria-hidden="true" />
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-primary)]">Audit readiness</h2>
+                </div>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">Checks that keep host-managed inventory defensible, source-backed, and review-ready.</p>
+                <div className="mt-4 grid gap-3">
+                  {auditReadiness.map((item) => (
+                    <div key={item.title} className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] p-4">
+                      <div className="flex items-start gap-2">
+                        <CheckSquare2 className="mt-0.5 h-4 w-4 shrink-0 text-action-base" aria-hidden="true" />
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--text-primary)]">{item.title}</p>
+                          <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{item.body}</p>
+                          <Link href={item.href} className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-action-base">
+                            Open workspace <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </section>
           </div>

@@ -54,13 +54,13 @@ interface TeamMember {
 }
 
 const MEMBER_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  active:   { label: 'Active',   color: 'bg-green-100 text-green-700' },
-  pending:  { label: 'Pending',  color: 'bg-yellow-100 text-yellow-700' },
-  inactive: { label: 'Inactive', color: 'bg-gray-100 text-gray-600' },
+  active:   { label: 'Active',   color: 'border-[var(--text-primary)] bg-[var(--text-primary)] text-white' },
+  pending:  { label: 'Pending',  color: 'border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]' },
+  inactive: { label: 'Inactive', color: 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-muted)]' },
 };
 
 function getMemberStatusDisplay(status: string) {
-  return MEMBER_STATUS_CONFIG[status] ?? { label: status, color: 'bg-gray-100 text-gray-600' };
+  return MEMBER_STATUS_CONFIG[status] ?? { label: status, color: 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-muted)]' };
 }
 
 type MemberAction =
@@ -319,15 +319,15 @@ export default function AdminsPage() {
       <ErrorBoundary>
         {/* Organization selector (if user has multiple orgs) */}
         {!loadingOrgs && userOrgs.length > 1 && (
-          <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
-            <label htmlFor="org-select" className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="mb-6 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4">
+            <label htmlFor="org-select" className="mb-2 block text-sm font-medium text-[var(--text-primary)]">
               Select Organization
             </label>
             <select
               id="org-select"
               value={organizationId || ''}
               onChange={(e) => setOrganizationId(e.target.value || null)}
-              className="w-full sm:w-64 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-h-[44px]"
+              className="min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] sm:w-64"
             >
               {userOrgs.map((org) => (
                 <option key={org.id} value={org.id}>{org.name}</option>
@@ -338,9 +338,9 @@ export default function AdminsPage() {
 
         {/* Auth-gated notice - show only when no org context available */}
         {!loadingOrgs && !organizationId && (
-          <div className="mb-6 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
-            <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" aria-hidden="true" />
-            <div className="text-sm text-amber-800">
+          <div className="mb-6 flex items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] p-4">
+            <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-[var(--text-secondary)]" aria-hidden="true" />
+            <div className="text-sm text-[var(--text-secondary)]">
               <p className="font-medium">Authentication required</p>
               <p className="mt-1">
                 Team management requires Microsoft Entra ID integration. Sign in and ensure
@@ -351,7 +351,7 @@ export default function AdminsPage() {
         )}
 
         {/* Invite form */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 mb-6">
+        <div className="mb-6 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-6">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -369,7 +369,7 @@ export default function AdminsPage() {
                   type="button"
                   onClick={() => setInviteInputMode('email')}
                   className={`inline-flex min-h-[44px] items-center px-4 text-sm rounded-full ${
-                    inviteInputMode === 'email' ? 'bg-info-muted text-action-deep font-medium' : 'bg-gray-100 text-gray-600'
+                    inviteInputMode === 'email' ? 'border border-[var(--text-primary)] bg-[var(--text-primary)] font-medium text-white' : 'border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]'
                   }`}
                 >
                   Email
@@ -378,7 +378,7 @@ export default function AdminsPage() {
                   type="button"
                   onClick={() => setInviteInputMode('uuid')}
                   className={`inline-flex min-h-[44px] items-center px-4 text-sm rounded-full ${
-                    inviteInputMode === 'uuid' ? 'bg-info-muted text-action-deep font-medium' : 'bg-gray-100 text-gray-600'
+                    inviteInputMode === 'uuid' ? 'border border-[var(--text-primary)] bg-[var(--text-primary)] font-medium text-white' : 'border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]'
                   }`}
                 >
                   User ID
@@ -404,7 +404,7 @@ export default function AdminsPage() {
                         value={inviteEmail}
                         onChange={(e) => setInviteEmail(e.target.value)}
                         placeholder="user@example.com"
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                        className="min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
                       />
                     </FormField>
                   ) : (
@@ -420,7 +420,7 @@ export default function AdminsPage() {
                         value={inviteUserId}
                         onChange={(e) => setInviteUserId(e.target.value)}
                         placeholder="00000000-0000-0000-0000-000000000000"
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-action min-h-[44px]"
+                        className="min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-primary)]"
                         inputMode="text"
                       />
                     </FormField>
@@ -436,7 +436,7 @@ export default function AdminsPage() {
                       id="invite-role"
                       value={inviteRole}
                       onChange={(e) => setInviteRole(e.target.value as HostRole)}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-h-[44px]"
+                      className="min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)]"
                     >
                       {availableRoles.map((r) => (
                         <option key={r.key} value={r.key}>{r.label}</option>
@@ -473,9 +473,9 @@ export default function AdminsPage() {
         </div>
 
         {/* Team members list */}
-        <div className="rounded-lg border border-gray-200 bg-white">
-          <div className="border-b border-gray-100 px-6 py-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">Team Members ({members.length})</h2>
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
+          <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-6 py-3">
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Team Members ({members.length})</h2>
             {organizationId && (
               <Button
                 variant="ghost"
@@ -501,36 +501,36 @@ export default function AdminsPage() {
           )}
 
           {loadingMembers ? (
-            <div className="p-8 text-center text-gray-500">
-              <Loader2 className="mx-auto h-8 w-8 text-gray-300 mb-2 animate-spin" aria-hidden="true" />
+            <div className="p-8 text-center text-[var(--text-secondary)]">
+              <Loader2 className="mx-auto mb-2 h-8 w-8 animate-spin text-[var(--text-muted)]" aria-hidden="true" />
               <p className="text-sm">Loading team members...</p>
             </div>
           ) : membersError ? (
             <div className="p-8 text-center">
-              <AlertTriangle className="mx-auto h-8 w-8 text-amber-500 mb-2" aria-hidden="true" />
-              <p className="text-sm text-amber-700">{membersError}</p>
+              <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-[var(--text-secondary)]" aria-hidden="true" />
+              <p className="text-sm text-[var(--text-secondary)]">{membersError}</p>
             </div>
           ) : members.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              <Users className="mx-auto h-8 w-8 text-gray-300 mb-2" aria-hidden="true" />
+            <div className="p-8 text-center text-[var(--text-secondary)]">
+              <Users className="mx-auto mb-2 h-8 w-8 text-[var(--text-muted)]" aria-hidden="true" />
               <p className="text-sm">No team members yet. Use the form above to add a collaborator.</p>
             </div>
           ) : (
-            <ul className="divide-y divide-gray-100">
+            <ul className="divide-y divide-[var(--border-subtle)]">
               {members.map((m) => (
                 <li key={m.id} className="flex items-center justify-between px-6 py-3 min-h-[54px]">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-info-muted text-action-strong">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]">
                       <Users className="h-4 w-4" aria-hidden="true" />
                     </div>
                     <div className="min-w-0">
                       <p
-                        className="font-mono text-xs font-medium text-gray-700 truncate max-w-[180px]"
+                        className="max-w-[180px] truncate font-mono text-xs font-medium text-[var(--text-primary)]"
                         title={m.userId}
                       >
                         {m.userId.slice(0, 8)}&hellip;
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-[var(--text-muted)]">
                         Added {formatDate(m.addedAt)}
                       </p>
                     </div>
@@ -539,7 +539,7 @@ export default function AdminsPage() {
                     {(() => {
                       const cfg = getMemberStatusDisplay(m.status);
                       return (
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cfg.color}`}>
+                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${cfg.color}`}>
                           {cfg.label}
                         </span>
                       );
@@ -547,7 +547,7 @@ export default function AdminsPage() {
                     <select
                       value={m.role}
                       onChange={(e) => setPendingRoleChange({ memberId: m.id, userId: m.userId, newRole: e.target.value as HostRole })}
-                      className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs min-h-[44px]"
+                      className="min-h-[44px] rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-xs text-[var(--text-primary)]"
                       aria-label={`Change role for member ${m.userId.slice(0, 8)}`}
                       disabled={memberAction?.memberId === m.id}
                     >
@@ -572,18 +572,18 @@ export default function AdminsPage() {
         </div>
 
         {/* Role reference */}
-        <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2 mb-3">
+        <div className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-6">
+          <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-[var(--text-primary)]">
             <Shield className="h-5 w-5 text-action-base" aria-hidden="true" />
             Role Reference
           </h2>
           <div className="space-y-3">
             {availableRoles.map((r) => (
               <div key={r.key} className="flex items-start gap-3">
-                <span className="inline-flex items-center rounded-full bg-info-muted px-2 py-0.5 text-xs font-medium text-action-strong mt-0.5">
+                <span className="mt-0.5 inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2 py-0.5 text-xs font-medium text-[var(--text-primary)]">
                   {r.label}
                 </span>
-                <p className="text-sm text-gray-600">{r.description}</p>
+                <p className="text-sm text-[var(--text-secondary)]">{r.description}</p>
               </div>
             ))}
           </div>

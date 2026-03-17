@@ -15,7 +15,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 const DuplicateSchema = z.object({
   newSlug: z.string().min(3).max(120).regex(/^[a-z0-9-]+$/),
-});
+}).strict();
 
 /**
  * POST /api/forms/templates/[id]/duplicate

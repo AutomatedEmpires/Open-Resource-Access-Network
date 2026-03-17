@@ -12,6 +12,7 @@ import {
   FORM_TEMPLATE_AUDIENCES,
   getVisibleFormTemplateAudiences,
 } from '@/domain/forms';
+import { getIp } from '@/services/security/ip';
 import {
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
@@ -32,12 +33,7 @@ const UpdateTemplateSchema = z.object({
   instructions_markdown: z.string().max(20000).nullable().optional(),
   is_published: z.boolean().optional(),
   blob_storage_prefix: z.string().max(500).nullable().optional(),
-});
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
+}).strict();
 export async function GET(req: NextRequest, ctx: RouteContext) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

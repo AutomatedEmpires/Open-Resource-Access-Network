@@ -6,6 +6,7 @@ import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { isDatabaseConfigured } from '@/services/db/postgres';
 import { bulkUpdateInstanceStatus } from '@/services/forms/vault';
+import { getIp } from '@/services/security/ip';
 import {
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   RATE_LIMIT_WINDOW_MS,
@@ -15,7 +16,7 @@ const BulkActionSchema = z.object({
   instanceIds: z.array(z.string().uuid()).min(1).max(50),
   action: z.enum(['approve', 'deny', 'return']),
   reviewerNotes: z.string().max(5000).nullable().optional(),
-}).superRefine((value, ctx) => {
+}).strict().superRefine((value, ctx) => {
   if ((value.action === 'deny' || value.action === 'return') && !value.reviewerNotes?.trim()) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -24,11 +25,6 @@ const BulkActionSchema = z.object({
     });
   }
 });
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 export async function POST(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

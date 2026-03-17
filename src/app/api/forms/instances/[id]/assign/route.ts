@@ -7,6 +7,7 @@ import { captureException } from '@/services/telemetry/sentry';
 import { isDatabaseConfigured } from '@/services/db/postgres';
 import { getAccessibleFormInstance } from '@/services/forms/vault';
 import { assignSubmission } from '@/services/workflow/engine';
+import { getIp } from '@/services/security/ip';
 import {
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   RATE_LIMIT_WINDOW_MS,
@@ -16,12 +17,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 const AssignSchema = z.object({
   assigneeUserId: z.string().min(1).max(200),
-});
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
+}).strict();
 /**
  * POST /api/forms/instances/[id]/assign
  *

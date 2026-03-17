@@ -19,6 +19,7 @@ import {
   validateAttachmentManifest,
   validateFormData,
 } from '@/domain/forms';
+import { getIp } from '@/services/security/ip';
 import {
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
@@ -43,7 +44,7 @@ const CreateInstanceSchema = z.object({
   notes: z.string().trim().max(5000).nullable().optional(),
   formData: z.record(z.string(), z.unknown()).default({}),
   attachmentManifest: z.array(z.unknown()).default([]),
-}).superRefine((value, ctx) => {
+}).strict().superRefine((value, ctx) => {
   if ((value.recipientUserId || value.recipientOrganizationId) && !value.recipientRole) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -59,11 +60,6 @@ const MAX_ATTACHMENT_MANIFEST_BYTES = 25_000;
 function measureJsonBytes(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value), 'utf8');
 }
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 export async function GET(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

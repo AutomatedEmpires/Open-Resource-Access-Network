@@ -18,6 +18,7 @@ import {
   TemplateRoleScope,
 } from '@/domain/templates';
 import { OranRole } from '@/domain/types';
+import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -26,11 +27,6 @@ import {
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 function visibleScopesForRole(role: OranRole): TemplateRoleScope[] {
   if (role === 'oran_admin' || role === 'community_admin' || role === 'host_admin') {
     return TEMPLATE_VISIBLE_SCOPES[role];

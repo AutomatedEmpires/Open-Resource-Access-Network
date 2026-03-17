@@ -27,6 +27,7 @@ import {
 import type { SubmissionPriority } from '@/domain/types';
 import { advance, applySla, assignSubmission } from '@/services/workflow/engine';
 import { send as sendNotification } from '@/services/notifications/service';
+import { getIp } from '@/services/security/ip';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -42,7 +43,7 @@ const UpdateInstanceSchema = z.object({
   recipientOrganizationId: z.string().uuid().nullable().optional(),
   priority: z.number().int().min(0).max(3).optional(),
   slaDeadline: z.string().datetime().nullable().optional(),
-}).superRefine((value, ctx) => {
+}).strict().superRefine((value, ctx) => {
   if ((value.action === 'deny' || value.action === 'return') && !value.reviewerNotes?.trim()) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -51,11 +52,6 @@ const UpdateInstanceSchema = z.object({
     });
   }
 });
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 function computeDeadlineIso(hoursFromNow: number): string {
   const deadline = new Date();
   deadline.setHours(deadline.getHours() + hoursFromNow);

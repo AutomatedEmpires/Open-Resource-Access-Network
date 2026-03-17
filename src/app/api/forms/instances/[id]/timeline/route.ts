@@ -11,6 +11,7 @@ import {
   RATE_LIMIT_WINDOW_MS,
 } from '@/domain/constants';
 import type { FormTimelineEntry } from '@/domain/forms';
+import { getIp } from '@/services/security/ip';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({ error: 'Invalid form instance ID' }, { status: 400 });
   }
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getIp(req);
   const rl = checkRateLimit(`forms:timeline:get:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS,

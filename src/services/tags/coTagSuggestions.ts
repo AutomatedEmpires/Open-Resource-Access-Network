@@ -227,6 +227,24 @@ const CATEGORY_CO_TAGS: Record<string, Array<{ tag: string; reason: string }>> =
 // PUBLIC API
 // ============================================================
 
+export interface ServiceAttributeTag {
+  tag: string;
+  label: string;
+  dimension: string;
+}
+
+/**
+ * Return the complete flat list of all known service attribute tags,
+ * grouped by dimension. Used by AllTagsBrowser for full taxonomy browsing.
+ */
+export function getAllServiceAttributeTags(): ServiceAttributeTag[] {
+  return Object.entries(TAG_LABELS).map(([tag, { label, dimension }]) => ({
+    tag,
+    label,
+    dimension,
+  }));
+}
+
 /**
  * Get co-tag suggestions for a set of selected category IDs.
  * Returns unique suggestions, excluding tags already present in customTerms.

@@ -62,6 +62,9 @@ These are separate contracts. Do not collapse them into one generic public data 
 | `/api/host/admins` | GET/POST | `host_admin`/`oran_admin` | Yes | Yes (60/30 min) | Team member management |
 | `/api/host/admins/[id]` | GET/PUT/DELETE | `host_admin`/`oran_admin` | Yes (UUID) | Yes | Team member detail |
 | `/api/host/claim` | POST | Conditional | Yes | Yes (30/min) | Org claim; auth if configured |
+| `/api/resource-submissions` | GET/POST | Auth or public create | Yes | Yes (60/30 min) | Canonical listing/claim draft collection |
+| `/api/resource-submissions/[id]` | GET/PUT | Auth or public token | Yes (UUID) | Yes (60/30 min) | Canonical listing/claim draft detail + workflow actions |
+| `/api/resource-submissions/[id]/assist` | POST | Auth or public token | Yes (UUID + body) | Yes (30/min) | Source-link assist that suggests canonical draft fields without publishing |
 | `/api/admin/scopes` | GET/POST | `oran_admin` | Yes | Yes (60/30 min) | Platform scope CRUD |
 | `/api/admin/scopes/grants` | GET/POST | `oran_admin` | Yes | Yes (60/30 min) | Scope grant requests |
 | `/api/admin/scopes/grants/[id]` | PUT/DELETE | `oran_admin` | Yes (UUID) | Yes (30/min) | Grant approve/deny/revoke |

@@ -1,16 +1,19 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
   Building2,
   CheckCircle2,
   Clock3,
+  ExternalLink,
   FileCheck2,
   Loader2,
   MapPin,
+  Phone,
   Plus,
+  RefreshCw,
   Send,
   ShieldAlert,
   ShieldCheck,
@@ -24,18 +27,25 @@ import { FormSection } from '@/components/ui/form-section';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { useToast } from '@/components/ui/toast';
 import { CategoryPicker } from '@/components/ui/category-picker';
+import { AllTagsBrowser } from '@/components/resource-submissions/AllTagsBrowser';
 import { CoTagSuggestionPanel } from '@/components/resource-submissions/CoTagSuggestionPanel';
 import { PhoneEditor, type PhoneEntry } from '@/components/ui/phone-editor';
+import { cn } from '@/lib/utils';
 import { ScheduleEditor, type WeekSchedule } from '@/components/ui/schedule-editor';
 import type { FormInstance } from '@/domain/forms';
-import type {
-  ResourceLocationDraft,
-  ResourceSubmissionCardSummary,
-  ResourceSubmissionChannel,
-  ResourceSubmissionDraft,
-  ResourceSubmissionReviewMeta,
-  ResourceSubmissionVariant,
+import {
+  computeResourceSubmissionCards,
+  type ResourceLocationDraft,
+  type ResourceSubmissionCardSummary,
+  type ResourceSubmissionChannel,
+  type ResourceSubmissionDraft,
+  type ResourceSubmissionReviewMeta,
+  type ResourceSubmissionVariant,
 } from '@/domain/resourceSubmission';
+import {
+  applyResourceSubmissionAssistPatch,
+  type ResourceSubmissionAssistResult,
+} from '@/services/resourceSubmissions/assistShared';
 
 type PortalKind = 'host' | 'public' | 'community_admin' | 'oran_admin';
 type WorkspaceAction = 'save' | 'submit' | 'start_review' | 'approve' | 'deny' | 'return' | 'escalate';
@@ -123,6 +133,8 @@ function emptyLocation(): ResourceLocationDraft {
     name: '',
     description: '',
     transportation: '',
+    placeLabel: '',
+    geoPrecision: 'approximate',
     address1: '',
     address2: '',
     city: '',
@@ -239,6 +251,119 @@ function ArrayChipsEditor({
   );
 }
 
+/**
+ * UrlValidationInput — URL text input with real-time format validation
+ * and a client-side "Open" button to verify the link is reachable.
+ */
+function UrlValidationInput({
+  id,
+  value,
+  onChange,
+  disabled = false,
+  placeholder = 'https://',
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  const isValid =
+    value.trim() === ''
+      ? null
+      : (() => {
+          try {
+            new URL(value.trim());
+            return true;
+          } catch {
+            return false;
+          }
+        })();
+
+  return (
+    <div className="relative flex items-center">
+      <input
+        id={id}
+        type="url"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={cn(
+          'min-h-[44px] w-full rounded-xl border px-3 py-2 text-sm outline-none transition',
+          isValid === true
+            ? 'border-emerald-400 bg-emerald-50/40 pr-20 focus:border-emerald-500'
+            : isValid === false
+              ? 'border-rose-400 bg-rose-50/40 pr-24 focus:border-rose-500'
+              : 'border-slate-300 bg-white focus:border-blue-500',
+        )}
+        disabled={disabled}
+        aria-invalid={isValid === false || undefined}
+      />
+      {isValid === true && (
+        <a
+          href={value.trim()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="absolute right-2 inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-200"
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Open URL in new tab to verify"
+          tabIndex={disabled ? -1 : 0}
+        >
+          Open <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        </a>
+      )}
+      {isValid === false && (
+        <span className="pointer-events-none absolute right-2 text-xs font-medium text-rose-600">
+          Invalid URL
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * PhoneInputWithLink — phone text input with a tel: test link shown
+ * once the value contains enough digits to be plausibly dialable.
+ */
+function PhoneInputWithLink({
+  id,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  const digits = value.replace(/\D/g, '');
+  const dialable = digits.length >= 7 && digits.length <= 15;
+
+  return (
+    <div className="space-y-1">
+      <input
+        id={id}
+        type="tel"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+        disabled={disabled}
+      />
+      {dialable && !disabled && (
+        <a
+          href={`tel:${digits}`}
+          className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
+          aria-label={`Test: dial ${value}`}
+          tabIndex={0}
+        >
+          <Phone className="h-3 w-3" aria-hidden="true" />
+          Test: dial this number
+        </a>
+      )}
+    </div>
+  );
+}
+
 export function ResourceSubmissionWorkspace({
   portal,
   initialVariant,
@@ -261,12 +386,24 @@ export function ResourceSubmissionWorkspace({
   const [reviewerNotes, setReviewerNotes] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isWorking, setIsWorking] = useState(false);
+  const [isAssistWorking, setIsAssistWorking] = useState(false);
   const [alert, setAlert] = useState<{ variant: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [publicAccessToken, setPublicAccessToken] = useState<string | null>(null);
+  const [assistResult, setAssistResult] = useState<ResourceSubmissionAssistResult | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
-  const cards = draft ? (detail?.cards ?? []) : [];
+  const cards = draft ? computeResourceSubmissionCards(draft, detail?.reviewMeta ?? null) : [];
   const canReview = portal === 'community_admin' || portal === 'oran_admin';
   const canEdit = Boolean(draft) && (!canReview || ['submitted', 'needs_review', 'under_review', 'returned', 'draft'].includes(detail?.instance.status ?? 'draft'));
+
+  const retryInitialization = useCallback(() => {
+    if (!entryId) {
+      createdRef.current = false;
+    }
+    setAlert(null);
+    setAssistResult(null);
+    setLoadAttempt((current) => current + 1);
+  }, [entryId]);
 
   useEffect(() => {
     if (!detail) return;
@@ -310,6 +447,7 @@ export function ResourceSubmissionWorkspace({
           setDetail(json.detail);
           setDraft(json.detail.draft);
           setReviewerNotes(json.detail.reviewMeta.reviewerNotes ?? '');
+          setAssistResult(null);
           return;
         }
 
@@ -344,6 +482,7 @@ export function ResourceSubmissionWorkspace({
             setDetail(json.detail);
             setDraft(json.detail.draft);
             setReviewerNotes(json.detail.reviewMeta.reviewerNotes ?? '');
+            setAssistResult(null);
             setIsLoading(false);
             return;
           }
@@ -378,6 +517,7 @@ export function ResourceSubmissionWorkspace({
         setDetail(json.detail);
         setDraft(json.detail.draft);
         setReviewerNotes(json.detail.reviewMeta.reviewerNotes ?? '');
+        setAssistResult(null);
       } catch (loadError) {
         if ((loadError as Error).name === 'AbortError') return;
         setAlert({
@@ -392,7 +532,7 @@ export function ResourceSubmissionWorkspace({
     void initialize();
 
     return () => controller.abort();
-  }, [defaultOwnerOrganizationId, entryId, existingServiceId, initialChannel, initialVariant, portal, publicAccessToken]);
+  }, [defaultOwnerOrganizationId, entryId, existingServiceId, initialChannel, initialVariant, loadAttempt, portal, publicAccessToken]);
 
   const currentStatus = detail?.instance.status ?? 'draft';
 
@@ -422,6 +562,7 @@ export function ResourceSubmissionWorkspace({
       setDetail(body.detail);
       setDraft(body.detail.draft);
       setReviewerNotes(body.detail.reviewMeta.reviewerNotes ?? reviewerNotes);
+      setAssistResult(null);
 
       if (action === 'submit' && portal === 'public' && typeof window !== 'undefined') {
         window.localStorage.removeItem(PUBLIC_DRAFT_STORAGE_KEY);
@@ -446,6 +587,52 @@ export function ResourceSubmissionWorkspace({
     setDraft((current) => (current ? updater(current) : current));
   };
 
+  const runAssist = async () => {
+    if (!detail || !draft) return;
+    const sourceUrl = draft.evidence.sourceUrl.trim();
+    if (!sourceUrl) {
+      error('Add a source URL before running AI assist.');
+      return;
+    }
+
+    setIsAssistWorking(true);
+    setAlert(null);
+    try {
+      const res = await fetch(`/api/resource-submissions/${detail.instance.id}/assist`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(publicAccessToken ? { 'x-resource-submission-token': publicAccessToken } : {}),
+        },
+        body: JSON.stringify({ sourceUrl, draft }),
+      });
+      const body = (await res.json().catch(() => null)) as { error?: string; assist?: ResourceSubmissionAssistResult } | null;
+      if (!res.ok || !body?.assist) {
+        throw new Error(body?.error ?? 'Unable to analyze source link.');
+      }
+
+      setAssistResult(body.assist);
+      if (body.assist.changedFields.length > 0) {
+        success(`AI assist found ${body.assist.changedFields.length} field suggestion${body.assist.changedFields.length === 1 ? '' : 's'}.`);
+      } else {
+        info('AI assist reviewed the source but did not find new fields to fill.');
+      }
+    } catch (assistError) {
+      const message = assistError instanceof Error ? assistError.message : 'Unable to analyze source link.';
+      setAlert({ variant: 'error', message });
+      error(message);
+    } finally {
+      setIsAssistWorking(false);
+    }
+  };
+
+  const applyAssist = () => {
+    if (!draft || !assistResult) return;
+    setDraft(applyResourceSubmissionAssistPatch(draft, assistResult.patch));
+    setAssistResult(null);
+    success('Applied source suggestions to the canonical form.');
+  };
+
   const jumpToCard = (cardId: string) => {
     document.getElementById(`resource-card-${cardId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
@@ -453,6 +640,46 @@ export function ResourceSubmissionWorkspace({
   const hasCompleteRequiredCards = cards.filter((card) => card.id !== 'review').every((card) => card.state !== 'incomplete');
 
   if (isLoading || !draft || !detail) {
+    if (!isLoading && alert?.variant === 'error') {
+      return (
+        <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          {backHref && backLabel ? (
+            <Link href={backHref} className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-800">
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              {backLabel}
+            </Link>
+          ) : null}
+
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" aria-hidden="true" />
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Resource workspace unavailable</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-700">{alert.message}</p>
+                {portal === 'public' ? (
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Public drafts stay tied to the same browser session. If a saved link cannot be resumed, return to submission home and start a fresh draft.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="button" onClick={retryInitialization} className="gap-2">
+              <Loader2 className="h-4 w-4" aria-hidden="true" />
+              Retry workspace
+            </Button>
+            {backHref ? (
+              <Link href={backHref} className="text-sm font-medium text-slate-700 underline underline-offset-2 hover:text-slate-900">
+                Return to submission home
+              </Link>
+            ) : null}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex min-h-80 items-center justify-center rounded-3xl border border-slate-200 bg-white">
         <div className="flex items-center gap-3 text-sm text-slate-600">
@@ -564,6 +791,7 @@ export function ResourceSubmissionWorkspace({
               <div>Assigned: {detail.reviewMeta.assignedToLabel ?? detail.reviewMeta.assignedToUserId ?? 'Unassigned'}</div>
               <div>Source record: {detail.reviewMeta.sourceRecordId ?? 'Created on submit'}</div>
               <div>Reverify: {formatDateTime(detail.reviewMeta.reverifyAt)}</div>
+              <div>Confidence: {detail.reviewMeta.confidenceScore ?? assistResult?.summary.confidence ?? 'Pending'}</div>
             </div>
           </div>
         </aside>
@@ -603,13 +831,11 @@ export function ResourceSubmissionWorkspace({
                     disabled={!canEdit}
                   />
                 </FormField>
-                <FormField id="resource-org-url" label="Organization website">
-                  <input
+                <FormField id="resource-org-url" label="Organization website" hint="Must begin with https:// and be reachable by reviewers.">
+                  <UrlValidationInput
                     id="resource-org-url"
-                    type="url"
                     value={draft.organization.url}
-                    onChange={(event) => updateDraft((current) => ({ ...current, organization: { ...current.organization, url: event.target.value } }))}
-                    className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+                    onChange={(url) => updateDraft((current) => ({ ...current, organization: { ...current.organization, url } }))}
                     disabled={!canEdit}
                   />
                 </FormField>
@@ -637,22 +863,56 @@ export function ResourceSubmissionWorkspace({
                     disabled={!canEdit}
                   />
                 </FormField>
-                <FormField id="resource-org-phone" label="Verification phone">
-                  <input
+                <FormField id="resource-org-phone" label="Verification phone" hint="Include country code for non-US numbers.">
+                  <PhoneInputWithLink
                     id="resource-org-phone"
-                    type="tel"
                     value={draft.organization.phone}
-                    onChange={(event) => updateDraft((current) => ({ ...current, organization: { ...current.organization, phone: event.target.value } }))}
-                    className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+                    onChange={(phone) => updateDraft((current) => ({ ...current, organization: { ...current.organization, phone } }))}
                     disabled={!canEdit}
                   />
                 </FormField>
-                <FormField id="resource-org-tax-status" label="Tax status">
+                <FormField id="resource-org-tax-status" label="Tax status" hint="e.g. 501(c)(3), for-profit, public agency.">
                   <input
                     id="resource-org-tax-status"
                     type="text"
                     value={draft.organization.taxStatus}
                     onChange={(event) => updateDraft((current) => ({ ...current, organization: { ...current.organization, taxStatus: event.target.value } }))}
+                    className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+                    disabled={!canEdit}
+                  />
+                </FormField>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <FormField id="resource-org-tax-id" label="Tax ID (EIN)" hint="9-digit EIN used by reviewers to verify nonprofit status.">
+                  <input
+                    id="resource-org-tax-id"
+                    type="text"
+                    value={draft.organization.taxId}
+                    onChange={(event) => updateDraft((current) => ({ ...current, organization: { ...current.organization, taxId: event.target.value } }))}
+                    className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+                    disabled={!canEdit}
+                    placeholder="XX-XXXXXXX"
+                  />
+                </FormField>
+                <FormField id="resource-org-year-inc" label="Year incorporated" hint="YYYY format.">
+                  <input
+                    id="resource-org-year-inc"
+                    type="text"
+                    value={draft.organization.yearIncorporated}
+                    onChange={(event) => updateDraft((current) => ({ ...current, organization: { ...current.organization, yearIncorporated: event.target.value } }))}
+                    className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+                    disabled={!canEdit}
+                    placeholder="YYYY"
+                    maxLength={4}
+                  />
+                </FormField>
+                <FormField id="resource-org-legal-status" label="Legal status" hint="e.g. Incorporated, LLC, Government.">
+                  <input
+                    id="resource-org-legal-status"
+                    type="text"
+                    value={draft.organization.legalStatus}
+                    onChange={(event) => updateDraft((current) => ({ ...current, organization: { ...current.organization, legalStatus: event.target.value } }))}
                     className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
                     disabled={!canEdit}
                   />
@@ -680,13 +940,11 @@ export function ResourceSubmissionWorkspace({
                         disabled={!canEdit}
                       />
                     </FormField>
-                    <FormField id="resource-service-url" label="Service URL">
-                      <input
+                    <FormField id="resource-service-url" label="Service URL" hint="Publicly accessible intake, signup, or information page.">
+                      <UrlValidationInput
                         id="resource-service-url"
-                        type="url"
                         value={draft.service.url}
-                        onChange={(event) => updateDraft((current) => ({ ...current, service: { ...current.service, url: event.target.value } }))}
-                        className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+                        onChange={(url) => updateDraft((current) => ({ ...current, service: { ...current.service, url } }))}
                         disabled={!canEdit}
                       />
                     </FormField>
@@ -747,12 +1005,35 @@ export function ResourceSubmissionWorkspace({
                         disabled={!canEdit}
                       />
                     </FormField>
-                    <FormField id="resource-service-interpretation" label="Interpretation services">
+                    <FormField id="resource-service-interpretation" label="Interpretation services" hint="Languages and modes available.">
                       <input
                         id="resource-service-interpretation"
                         type="text"
                         value={draft.service.interpretationServices}
                         onChange={(event) => updateDraft((current) => ({ ...current, service: { ...current.service, interpretationServices: event.target.value } }))}
+                        className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+                        disabled={!canEdit}
+                      />
+                    </FormField>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FormField id="resource-service-accreditations" label="Accreditations" hint="e.g. CARF, Joint Commission, NCQA.">
+                      <input
+                        id="resource-service-accreditations"
+                        type="text"
+                        value={draft.service.accreditations}
+                        onChange={(event) => updateDraft((current) => ({ ...current, service: { ...current.service, accreditations: event.target.value } }))}
+                        className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+                        disabled={!canEdit}
+                      />
+                    </FormField>
+                    <FormField id="resource-service-licenses" label="Licenses" hint="State or federal program licenses held.">
+                      <input
+                        id="resource-service-licenses"
+                        type="text"
+                        value={draft.service.licenses}
+                        onChange={(event) => updateDraft((current) => ({ ...current, service: { ...current.service, licenses: event.target.value } }))}
                         className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
                         disabled={!canEdit}
                       />
@@ -969,6 +1250,17 @@ export function ResourceSubmissionWorkspace({
                       readOnly={!canEdit}
                     />
                   </div>
+                  <AllTagsBrowser
+                    customTerms={draft.taxonomy.customTerms}
+                    onAddTag={(customTerms) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        taxonomy: { ...current.taxonomy, customTerms },
+                      }))
+                    }
+                    readOnly={!canEdit}
+                    className="mt-4"
+                  />
                 </FormSection>
               </section>
 
@@ -1025,6 +1317,36 @@ export function ResourceSubmissionWorkspace({
                         <p className="mt-2 text-xs text-slate-400">
                           Examples: <span className="font-mono">94102</span> (ZIP) · <span className="font-mono">San Francisco</span> (city) · <span className="font-mono">Alameda County</span> (county)
                         </p>
+
+                        {/* Sync ZIP codes from location addresses */}
+                        {(() => {
+                          const locationZips = draft.locations
+                            .map((l) => l.postalCode.trim())
+                            .filter((z) => /^\d{5}(-\d{4})?$/.test(z))
+                            .filter((z) => !draft.access.serviceAreas.includes(z));
+                          if (locationZips.length === 0) return null;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateDraft((current) => ({
+                                  ...current,
+                                  access: {
+                                    ...current.access,
+                                    serviceAreas: [
+                                      ...current.access.serviceAreas,
+                                      ...locationZips,
+                                    ],
+                                  },
+                                }))
+                              }
+                              className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100"
+                            >
+                              <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                              Sync {locationZips.length} ZIP{locationZips.length !== 1 ? 's' : ''} from location addresses
+                            </button>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -1109,11 +1431,99 @@ export function ResourceSubmissionWorkspace({
                     id="resource-source-url"
                     type="url"
                     value={draft.evidence.sourceUrl}
-                    onChange={(event) => updateDraft((current) => ({ ...current, evidence: { ...current.evidence, sourceUrl: event.target.value } }))}
+                    onChange={(event) => {
+                      const nextSourceUrl = event.target.value;
+                      updateDraft((current) => ({ ...current, evidence: { ...current.evidence, sourceUrl: nextSourceUrl } }));
+                      setAssistResult(null);
+                    }}
                     className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
                     disabled={!canEdit}
                   />
                 </FormField>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">AI source assist</div>
+                    <p className="mt-1 max-w-2xl text-sm text-slate-600">
+                      Analyze an official source page to suggest missing canonical fields, tags, and evidence notes into this same submission draft.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void runAssist()}
+                      disabled={!canEdit || isAssistWorking || !draft.evidence.sourceUrl.trim()}
+                      className="gap-2"
+                    >
+                      {isAssistWorking ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ShieldCheck className="h-4 w-4" aria-hidden="true" />}
+                      Analyze source
+                    </Button>
+                    {assistResult && assistResult.changedFields.length > 0 && (
+                      <Button type="button" onClick={applyAssist} disabled={!canEdit} className="gap-2">
+                        <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                        Apply suggestions
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {assistResult && (
+                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="text-sm font-semibold text-slate-900">Analysis summary</div>
+                      <dl className="mt-3 space-y-2 text-sm text-slate-600">
+                        <div className="flex items-start justify-between gap-4"><dt>Canonical URL</dt><dd className="max-w-sm break-all text-right">{assistResult.source.canonicalUrl}</dd></div>
+                        <div className="flex items-start justify-between gap-4"><dt>Confidence</dt><dd>{assistResult.summary.confidence}</dd></div>
+                        <div className="flex items-start justify-between gap-4"><dt>LLM assist</dt><dd>{assistResult.summary.llmUsed ? 'Configured' : 'Source-only fallback'}</dd></div>
+                        <div className="flex items-start justify-between gap-4"><dt>Word count</dt><dd>{assistResult.source.wordCount}</dd></div>
+                        <div className="flex items-start justify-between gap-4"><dt>Fields suggested</dt><dd>{assistResult.changedFields.length}</dd></div>
+                      </dl>
+                      {assistResult.summary.categoriesSuggested.length > 0 && (
+                        <div className="mt-3">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Suggested tags</div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {assistResult.summary.categoriesSuggested.slice(0, 8).map((tag) => (
+                              <span key={tag} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="text-sm font-semibold text-slate-900">Completion impact</div>
+                      <div className="mt-3 text-sm text-slate-600">
+                        {assistResult.cardsBefore.filter((card) => card.state === 'complete').length}/{assistResult.cardsBefore.length} complete before
+                        {' → '}
+                        {assistResult.cardsAfter.filter((card) => card.state === 'complete').length}/{assistResult.cardsAfter.length} after apply
+                      </div>
+                      <div className="mt-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Changed fields</div>
+                        {assistResult.changedFields.length === 0 ? (
+                          <p className="mt-2 text-sm text-slate-500">No empty canonical fields were eligible for auto-fill from this source.</p>
+                        ) : (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {assistResult.changedFields.slice(0, 10).map((field) => (
+                              <span key={field} className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700">
+                                {field}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {assistResult.summary.warnings.length > 0 && (
+                        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                          {assistResult.summary.warnings.join(' ')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">

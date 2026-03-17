@@ -18,6 +18,7 @@ import {
 } from '@/services/resourceSubmissions/service';
 import { acquireLock, advance, applySla, assignSubmission } from '@/services/workflow/engine';
 import type { SubmissionStatus, SubmissionType } from '@/domain/types';
+import { getIp } from '@/services/security/ip';
 import {
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
@@ -32,7 +33,7 @@ const UpdateResourceSubmissionSchema = z.object({
   notes: z.string().max(5000).nullable().optional(),
   reviewerNotes: z.string().max(5000).nullable().optional(),
   draft: z.unknown().optional(),
-}).superRefine((value, ctx) => {
+}).strict().superRefine((value, ctx) => {
   if ((value.action === 'deny' || value.action === 'return') && !value.reviewerNotes?.trim()) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -41,11 +42,6 @@ const UpdateResourceSubmissionSchema = z.object({
     });
   }
 });
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 function getPublicAccessToken(req: NextRequest): string | null {
   return req.headers.get('x-resource-submission-token')?.trim()
     || req.nextUrl.searchParams.get('token')?.trim()

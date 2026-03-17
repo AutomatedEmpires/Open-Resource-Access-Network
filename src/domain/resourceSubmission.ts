@@ -9,6 +9,21 @@ export type ResourceSubmissionChannel = (typeof RESOURCE_SUBMISSION_CHANNELS)[nu
 export const RESOURCE_SUBMISSION_MODES = ['draft', 'review', 'history'] as const;
 export type ResourceSubmissionMode = (typeof RESOURCE_SUBMISSION_MODES)[number];
 
+export const RESOURCE_VERIFICATION_STATUSES = ['unverified', 'observed', 'verified', 'invalid'] as const;
+export type ResourceVerificationStatus = (typeof RESOURCE_VERIFICATION_STATUSES)[number];
+
+export const RESOURCE_GEO_PRECISIONS = ['exact', 'approximate', 'postal', 'city', 'county', 'region', 'virtual'] as const;
+export type ResourceGeoPrecision = (typeof RESOURCE_GEO_PRECISIONS)[number];
+
+export const RESOURCE_ATTRIBUTE_DIMENSIONS = ['delivery', 'cost', 'access', 'culture', 'population', 'situation'] as const;
+export type ResourceAttributeDimension = (typeof RESOURCE_ATTRIBUTE_DIMENSIONS)[number];
+
+export const RESOURCE_SERVICE_AREA_TYPES = ['onsite', 'mobile', 'virtual', 'hybrid'] as const;
+export type ResourceServiceAreaType = (typeof RESOURCE_SERVICE_AREA_TYPES)[number];
+
+export const RESOURCE_DUPLICATE_STATUSES = ['unknown', 'clear', 'possible_duplicate', 'linked_existing'] as const;
+export type ResourceDuplicateStatus = (typeof RESOURCE_DUPLICATE_STATUSES)[number];
+
 export interface ResourceSubmissionCardSummary {
   id: string;
   title: string;
@@ -58,6 +73,23 @@ export const resourceScheduleDaySchema = z.object({
 
 export type ResourceScheduleDayDraft = z.infer<typeof resourceScheduleDaySchema>;
 
+export const resourceVerificationTrackSchema = z.object({
+  status: z.enum(RESOURCE_VERIFICATION_STATUSES).default('unverified'),
+  lastCheckedAt: z.string().trim().max(64).default(''),
+  method: z.string().trim().max(120).default(''),
+  canonicalValue: z.string().trim().max(2000).default(''),
+  notes: z.string().trim().max(500).default(''),
+});
+
+export type ResourceVerificationTrackDraft = z.infer<typeof resourceVerificationTrackSchema>;
+
+export const resourceAttributeTagSchema = z.object({
+  dimension: z.enum(RESOURCE_ATTRIBUTE_DIMENSIONS),
+  tag: z.string().trim().min(1).max(100),
+});
+
+export type ResourceAttributeTagDraft = z.infer<typeof resourceAttributeTagSchema>;
+
 const WEEK_TEMPLATE = [
   'Monday',
   'Tuesday',
@@ -73,6 +105,8 @@ export const resourceLocationSchema = z.object({
   name: z.string().trim().max(500).default(''),
   description: z.string().trim().max(5000).default(''),
   transportation: z.string().trim().max(1000).default(''),
+  placeLabel: z.string().trim().max(300).default(''),
+  geoPrecision: z.enum(RESOURCE_GEO_PRECISIONS).default('approximate'),
   address1: z.string().trim().max(500).default(''),
   address2: z.string().trim().max(500).default(''),
   city: z.string().trim().max(200).default(''),
@@ -124,13 +158,16 @@ export const resourceSubmissionDraftSchema = z.object({
   locations: z.array(resourceLocationSchema).default([]),
   taxonomy: z.object({
     categories: z.array(z.string().trim().min(1).max(100)).default([]),
+    attributeTags: z.array(resourceAttributeTagSchema).default([]),
     customTerms: z.array(z.string().trim().min(1).max(120)).default([]),
   }),
   access: z.object({
     eligibilityDescription: z.string().trim().max(3000).default(''),
     minimumAge: z.string().trim().max(4).default(''),
     maximumAge: z.string().trim().max(4).default(''),
+    serviceAreaType: z.enum(RESOURCE_SERVICE_AREA_TYPES).default('onsite'),
     serviceAreas: z.array(z.string().trim().min(1).max(200)).default([]),
+    serviceAreaPostalCodes: z.array(z.string().trim().min(1).max(20)).default([]),
     languages: z.array(z.string().trim().min(1).max(100)).default([]),
     requiredDocuments: z.array(z.string().trim().min(1).max(200)).default([]),
   }),
@@ -140,7 +177,21 @@ export const resourceSubmissionDraftSchema = z.object({
     contactEmail: z.string().trim().max(500).default(''),
     submitterRelationship: z.string().trim().max(300).default(''),
     notes: z.string().trim().max(5000).default(''),
+    verification: z.object({
+      url: resourceVerificationTrackSchema.default({}),
+      email: resourceVerificationTrackSchema.default({}),
+      phone: resourceVerificationTrackSchema.default({}),
+      provenanceNotes: z.string().trim().max(1000).default(''),
+    }).default({}),
   }),
+  review: z.object({
+    duplicateCheck: z.object({
+      status: z.enum(RESOURCE_DUPLICATE_STATUSES).default('unknown'),
+      note: z.string().trim().max(500).default(''),
+    }).default({}),
+    reverifyDays: z.string().trim().max(4).default(''),
+    reverifyReason: z.string().trim().max(500).default(''),
+  }).default({}),
 });
 
 export type ResourceSubmissionDraft = z.infer<typeof resourceSubmissionDraftSchema>;
@@ -177,6 +228,20 @@ function buildSummary(
   };
 }
 
+function hasVerificationEvidence(draft: ResourceSubmissionDraft): boolean {
+  return [draft.evidence.verification?.url, draft.evidence.verification?.email, draft.evidence.verification?.phone]
+    .some((track) => track?.status === 'observed' || track?.status === 'verified');
+}
+
+function hasDuplicateLink(draft: ResourceSubmissionDraft): boolean {
+  return Boolean(
+    draft.ownerOrganizationId ||
+    draft.existingServiceId ||
+    draft.review?.duplicateCheck?.status !== 'unknown' ||
+    draft.review?.duplicateCheck?.note?.trim(),
+  );
+}
+
 export function createEmptyResourceSubmissionDraft(
   variant: ResourceSubmissionVariant,
   channel: ResourceSubmissionChannel,
@@ -189,6 +254,7 @@ export function createEmptyResourceSubmissionDraft(
     taxonomy: {},
     access: {},
     evidence: {},
+    review: {},
     locations: variant === 'listing' ? [resourceLocationSchema.parse({})] : [],
   });
 }
@@ -257,19 +323,21 @@ export function computeResourceSubmissionCards(
     }
 
     const taxonomyChecks = countRequired([
-      draft.taxonomy.categories.length > 0 || draft.taxonomy.customTerms.length > 0,
+      draft.taxonomy.categories.length > 0 || draft.taxonomy.attributeTags.length > 0 || draft.taxonomy.customTerms.length > 0,
     ]);
     const taxonomyMissing: string[] = [];
-    if (draft.taxonomy.categories.length === 0 && draft.taxonomy.customTerms.length === 0) {
-      taxonomyMissing.push('At least one category or taxonomy term');
+    if (draft.taxonomy.categories.length === 0 && draft.taxonomy.attributeTags.length === 0 && draft.taxonomy.customTerms.length === 0) {
+      taxonomyMissing.push('At least one category, attribute tag, or taxonomy term');
     }
 
     const accessChecks = countRequired([
-      draft.access.serviceAreas.length > 0,
+      draft.access.serviceAreas.length > 0 || draft.access.serviceAreaPostalCodes.length > 0,
       draft.access.eligibilityDescription.trim().length > 0,
     ]);
     const accessMissing: string[] = [];
-    if (draft.access.serviceAreas.length === 0) accessMissing.push('Service area');
+    if (draft.access.serviceAreas.length === 0 && draft.access.serviceAreaPostalCodes.length === 0) {
+      accessMissing.push('Service area or ZIP coverage');
+    }
     if (!draft.access.eligibilityDescription.trim()) accessMissing.push('Eligibility or access notes');
 
     cards.push(
@@ -314,12 +382,20 @@ export function computeResourceSubmissionCards(
   const evidenceChecks = countRequired([
     draft.evidence.submitterRelationship.trim().length > 0 || draft.channel === 'public',
     draft.evidence.notes.trim().length > 0,
+    Boolean(
+      draft.evidence.sourceUrl.trim() ||
+      draft.evidence.contactEmail.trim() ||
+      hasVerificationEvidence(draft),
+    ),
   ]);
   const evidenceMissing: string[] = [];
   if (!draft.evidence.submitterRelationship.trim() && draft.channel !== 'public') {
     evidenceMissing.push('Submitter relationship');
   }
   if (!draft.evidence.notes.trim()) evidenceMissing.push('Reviewer notes or evidence summary');
+  if (!draft.evidence.sourceUrl.trim() && !draft.evidence.contactEmail.trim() && !hasVerificationEvidence(draft)) {
+    evidenceMissing.push('Source URL, contact email, or verification signal');
+  }
 
   cards.push(
     buildSummary(
@@ -329,7 +405,7 @@ export function computeResourceSubmissionCards(
       evidenceMissing,
       evidenceChecks.done,
       evidenceChecks.total,
-      !draft.evidence.sourceUrl.trim() && !draft.evidence.contactEmail.trim(),
+      !hasVerificationEvidence(draft),
     ),
     buildSummary(
       'review',
@@ -338,7 +414,7 @@ export function computeResourceSubmissionCards(
       [],
       reviewMeta ? 1 : 0,
       1,
-      reviewMeta === null || (!reviewMeta.submittedAt && !reviewMeta.status),
+      reviewMeta === null || (!reviewMeta.submittedAt && !reviewMeta.status) || !hasDuplicateLink(draft) || !draft.review?.reverifyDays?.trim(),
     ),
   );
 

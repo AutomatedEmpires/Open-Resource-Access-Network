@@ -19,6 +19,7 @@ import {
   RESOURCE_SUBMISSION_CHANNELS,
   RESOURCE_SUBMISSION_VARIANTS,
 } from '@/domain/resourceSubmission';
+import { getIp } from '@/services/security/ip';
 import {
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
@@ -37,7 +38,7 @@ const CreateResourceSubmissionSchema = z.object({
   title: z.string().max(200).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
   draft: z.unknown().optional(),
-}).superRefine((value, ctx) => {
+}).strict().superRefine((value, ctx) => {
   if (value.variant === 'claim' && value.channel !== 'host') {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -46,11 +47,6 @@ const CreateResourceSubmissionSchema = z.object({
     });
   }
 });
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 function buildAnonymousUserId(ip: string): string {
   return `anon_${crypto.createHash('sha256').update(ip).digest('hex').slice(0, 24)}`;
 }

@@ -164,4 +164,17 @@ describe('auth session helpers', () => {
 
     expect(shouldEnforceAuth()).toBe(false);
   });
+
+  // B2: DB error must deny access (return null) instead of assuming active
+  it('returns null when getAccountStatus throws (B2 — frozen on DB error)', async () => {
+    getServerSessionMock.mockResolvedValue({
+      user: { id: 'frozen-user', role: 'seeker' },
+    });
+    dbMocks.isDatabaseConfigured.mockReturnValue(true);
+    // getAccountStatus query throws → should return 'frozen' → getAuthContext returns null
+    dbMocks.executeQuery.mockRejectedValueOnce(new Error('connection refused'));
+    const { getAuthContext } = await loadSessionModule();
+
+    await expect(getAuthContext()).resolves.toBeNull();
+  });
 });

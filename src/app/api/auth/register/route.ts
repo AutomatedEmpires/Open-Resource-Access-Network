@@ -48,7 +48,7 @@ const RegisterSchema = z.object({
   password: z
     .string()
     .min(8, 'Password must be at least 8 characters')
-    .max(128),
+    .max(72, 'Password must be 72 characters or fewer'),
   displayName: z
     .string()
     .trim()

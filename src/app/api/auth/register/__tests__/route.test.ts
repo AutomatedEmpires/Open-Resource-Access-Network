@@ -248,4 +248,32 @@ describe('POST /api/auth/register', () => {
     expect(res.status).toBe(500);
     expect(captureExceptionMock).toHaveBeenCalled();
   });
+
+  // B3: bcrypt silently truncates passwords >72 bytes — Zod must reject them
+  it('accepts a password that is exactly 72 characters', async () => {
+    const { POST } = await import('../route');
+    const password = 'Aa1' + 'x'.repeat(69); // 72 chars with required complexity
+    const res = await POST(createRequest({
+      username: 'user72',
+      email: 'user72@example.com',
+      password,
+      displayName: 'User Seventy Two',
+    }));
+    // Should pass validation (not a 400)
+    expect(res.status).not.toBe(400);
+  });
+
+  it('rejects a password of 73 characters (B3)', async () => {
+    const { POST } = await import('../route');
+    const password = 'Aa1' + 'x'.repeat(70); // 73 chars
+    const res = await POST(createRequest({
+      username: 'user73',
+      email: 'user73@example.com',
+      password,
+      displayName: 'User Seventy Three',
+    }));
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toMatch(/72/);
+  });
 });

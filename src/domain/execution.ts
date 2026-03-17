@@ -27,6 +27,7 @@ export interface SeekerPlanItem {
   whatToBring?: string;
   fallback?: string;
   targetDate?: string;
+  reminderAt?: string;
   linkedService?: SeekerPlanServiceSnapshot;
   createdAt: string;
   updatedAt: string;

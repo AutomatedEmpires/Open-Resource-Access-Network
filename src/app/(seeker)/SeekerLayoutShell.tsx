@@ -26,9 +26,11 @@ const PLAN_NAV_ITEM = { href: '/plan', label: 'Plan', icon: ListTodo } as const;
 export function SeekerLayoutShell({
   children,
   planEnabled,
+  reminderEnabled = false,
 }: {
   children: React.ReactNode;
   planEnabled: boolean;
+  reminderEnabled?: boolean;
 }) {
   const pathname = usePathname();
 
@@ -76,7 +78,7 @@ export function SeekerLayoutShell({
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <SeekerFeatureFlagsProvider value={{ planEnabled }}>
+    <SeekerFeatureFlagsProvider value={{ planEnabled, reminderEnabled }}>
       <div className="flex min-h-screen flex-col bg-white text-[var(--text-primary)]">
       <a
         href="#main-content"

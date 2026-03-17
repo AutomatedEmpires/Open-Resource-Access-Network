@@ -7,9 +7,12 @@ import SeekerLayoutShell from './SeekerLayoutShell';
 
 export default async function SeekerLayout({ children }: { children: React.ReactNode }) {
   const planEnabled = await flagService.isEnabled(FEATURE_FLAGS.SEEKER_PLANS_ENABLED);
+  const reminderEnabled = planEnabled
+    ? await flagService.isEnabled(FEATURE_FLAGS.SEEKER_REMINDERS_ENABLED)
+    : false;
 
   return (
-    <SeekerLayoutShell planEnabled={planEnabled}>
+    <SeekerLayoutShell planEnabled={planEnabled} reminderEnabled={reminderEnabled}>
       {children}
     </SeekerLayoutShell>
   );

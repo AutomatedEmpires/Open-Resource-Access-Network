@@ -4,10 +4,12 @@ import React, { createContext, useContext } from 'react';
 
 interface SeekerFeatureFlagsValue {
   planEnabled: boolean;
+  reminderEnabled: boolean;
 }
 
 const DEFAULT_FLAGS: SeekerFeatureFlagsValue = {
   planEnabled: false,
+  reminderEnabled: false,
 };
 
 const SeekerFeatureFlagsContext = createContext<SeekerFeatureFlagsValue>(DEFAULT_FLAGS);
@@ -17,10 +19,15 @@ export function SeekerFeatureFlagsProvider({
   value,
 }: {
   children: React.ReactNode;
-  value: SeekerFeatureFlagsValue;
+  value: Partial<SeekerFeatureFlagsValue>;
 }) {
+  const mergedValue: SeekerFeatureFlagsValue = {
+    ...DEFAULT_FLAGS,
+    ...value,
+  };
+
   return (
-    <SeekerFeatureFlagsContext.Provider value={value}>
+    <SeekerFeatureFlagsContext.Provider value={mergedValue}>
       {children}
     </SeekerFeatureFlagsContext.Provider>
   );

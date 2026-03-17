@@ -17,6 +17,7 @@
 **Overall posture: STRONG.** No critical vulnerabilities found across 119 API routes, 5 auth modules, 14 chat/search files, 4 internal endpoints, and 2 publish paths. The prior audit's 12 launch blockers are confirmed fixed. This audit covers the surfaces NOT addressed in the original audit.
 
 **Key strengths:**
+
 - 100% of protected routes call `getAuthContext()` with role verification
 - All SQL queries are parameterized — zero injection vectors
 - Published-only filter (`s.status = 'active' AND integrity_hold_at IS NULL`) enforced at SQL layer for all seeker-visible queries

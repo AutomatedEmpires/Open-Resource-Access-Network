@@ -92,6 +92,7 @@ function normalizeItem(value: unknown): SeekerPlanItem | null {
     whatToBring: typeof candidate.whatToBring === 'string' ? candidate.whatToBring : undefined,
     fallback: typeof candidate.fallback === 'string' ? candidate.fallback : undefined,
     targetDate: typeof candidate.targetDate === 'string' ? candidate.targetDate : undefined,
+    reminderAt: typeof candidate.reminderAt === 'string' ? candidate.reminderAt : undefined,
     linkedService: normalizeLinkedService(candidate.linkedService),
     createdAt: candidate.createdAt,
     updatedAt: candidate.updatedAt,
@@ -238,6 +239,7 @@ export function addManualPlanItem(
     note?: string;
     urgency?: SeekerPlanItemUrgency;
     targetDate?: string;
+    reminderAt?: string;
     whyItMatters?: string;
     whatToAsk?: string;
     whatToBring?: string;
@@ -268,6 +270,7 @@ export function addManualPlanItem(
     whatToBring: input.whatToBring?.trim() || undefined,
     fallback: input.fallback?.trim() || undefined,
     targetDate: input.targetDate?.trim() || undefined,
+    reminderAt: input.reminderAt?.trim() || undefined,
     createdAt: now,
     updatedAt: now,
   };
@@ -294,6 +297,7 @@ export function addServicePlanItem(
     note?: string;
     urgency?: SeekerPlanItemUrgency;
     targetDate?: string;
+    reminderAt?: string;
     source?: SeekerPlanItemSource;
   },
 ): { state: SeekerPlansState; item: SeekerPlanItem | null; alreadyExists: boolean } {
@@ -317,6 +321,7 @@ export function addServicePlanItem(
     source: input?.source ?? 'saved_service',
     note: input?.note?.trim() || undefined,
     targetDate: input?.targetDate?.trim() || undefined,
+    reminderAt: input?.reminderAt?.trim() || undefined,
     linkedService,
     createdAt: now,
     updatedAt: now,
@@ -369,6 +374,7 @@ export function updateSeekerPlanItem(
           whatToBring: typeof patch.whatToBring === 'string' ? patch.whatToBring.trim() || undefined : item.whatToBring,
           fallback: typeof patch.fallback === 'string' ? patch.fallback.trim() || undefined : item.fallback,
           targetDate: typeof patch.targetDate === 'string' ? patch.targetDate.trim() || undefined : item.targetDate,
+          reminderAt: typeof patch.reminderAt === 'string' ? patch.reminderAt.trim() || undefined : item.reminderAt,
           updatedAt: now,
         };
       });

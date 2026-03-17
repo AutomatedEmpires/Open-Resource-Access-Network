@@ -91,6 +91,7 @@ describe('seeker plan local storage client', () => {
       note: 'Confirm same-day availability',
       urgency: 'today',
       targetDate: '2026-03-18',
+      reminderAt: '2026-03-18T14:30:00.000Z',
       whyItMatters: 'Need food support before the weekend',
       whatToAsk: 'Ask about hours and required ID',
       whatToBring: 'Photo ID and proof of address',
@@ -102,6 +103,7 @@ describe('seeker plan local storage client', () => {
     expect(item?.note).toBe('Confirm same-day availability');
     expect(item?.urgency).toBe('today');
     expect(item?.targetDate).toBe('2026-03-18');
+    expect(item?.reminderAt).toBe('2026-03-18T14:30:00.000Z');
     expect(item?.whyItMatters).toBe('Need food support before the weekend');
     expect(item?.whatToAsk).toBe('Ask about hours and required ID');
     expect(item?.whatToBring).toBe('Photo ID and proof of address');

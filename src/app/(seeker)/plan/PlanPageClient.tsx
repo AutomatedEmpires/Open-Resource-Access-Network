@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useSeekerFeatureFlags } from '@/components/seeker/SeekerFeatureFlags';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import type { SeekerPlan, SeekerPlanItem, SeekerPlanItemUrgency } from '@/domain/execution';
 import type { EnrichedService } from '@/domain/types';
@@ -56,10 +57,35 @@ interface PlanItemEditorState {
   note: string;
   urgency: SeekerPlanItemUrgency;
   targetDate: string;
+  reminderAtLocal: string;
   whyItMatters: string;
   whatToAsk: string;
   whatToBring: string;
   fallback: string;
+}
+
+function toLocalDateTimeInputValue(value?: string): string {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function fromLocalDateTimeInputValue(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const date = new Date(trimmed);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
 function buildPlanItemEditorState(item: SeekerPlanItem): PlanItemEditorState {
@@ -69,6 +95,7 @@ function buildPlanItemEditorState(item: SeekerPlanItem): PlanItemEditorState {
     note: item.note ?? '',
     urgency: item.urgency,
     targetDate: item.targetDate ?? '',
+    reminderAtLocal: toLocalDateTimeInputValue(item.reminderAt),
     whyItMatters: item.whyItMatters ?? '',
     whatToAsk: item.whatToAsk ?? '',
     whatToBring: item.whatToBring ?? '',
@@ -131,6 +158,7 @@ function PlanCard({
 }
 
 export default function PlanPageClient() {
+  const { reminderEnabled } = useSeekerFeatureFlags();
   const [plansState, setPlansState] = useState(() => readStoredSeekerPlansState());
   const [savedServices, setSavedServices] = useState<EnrichedService[]>([]);
   const [isLoadingSaved, setIsLoadingSaved] = useState(false);
@@ -186,9 +214,15 @@ export default function PlanPageClient() {
   }, [loadSavedServices, syncPlanState]);
 
   const activePlan = useMemo(() => getActiveSeekerPlan(plansState), [plansState]);
-  const activeItems = activePlan?.items ?? [];
+  const activeItems = useMemo(() => activePlan?.items ?? [], [activePlan]);
   const openItems = activeItems.filter((item) => item.status !== 'done');
   const completedItems = activeItems.filter((item) => item.status === 'done');
+  const upcomingReminders = useMemo(
+    () => activeItems
+      .filter((item) => item.status !== 'done' && item.reminderAt)
+      .sort((left, right) => new Date(left.reminderAt ?? '').getTime() - new Date(right.reminderAt ?? '').getTime()),
+    [activeItems],
+  );
   const linkedServiceIds = new Set(activeItems.map((item) => item.linkedService?.serviceId).filter(Boolean));
   const importableSavedServices = savedServices.filter((service) => !linkedServiceIds.has(service.service.id));
 
@@ -252,6 +286,7 @@ export default function PlanPageClient() {
       note: editingItem.note,
       urgency: editingItem.urgency,
       targetDate: editingItem.targetDate,
+      reminderAt: fromLocalDateTimeInputValue(editingItem.reminderAtLocal),
       whyItMatters: editingItem.whyItMatters,
       whatToAsk: editingItem.whatToAsk,
       whatToBring: editingItem.whatToBring,
@@ -436,6 +471,11 @@ export default function PlanPageClient() {
                               </div>
                               {item.note ? <p className="mt-2 text-sm leading-6 text-slate-600">{item.note}</p> : null}
                               {item.targetDate ? <p className="mt-2 text-xs text-slate-500">Target date: {item.targetDate}</p> : null}
+                              {reminderEnabled && item.reminderAt ? (
+                                <p className="mt-2 text-xs text-slate-500">
+                                  Reminder: {new Date(item.reminderAt).toLocaleString()}
+                                </p>
+                              ) : null}
                               {item.whyItMatters ? (
                                 <div className="mt-3 rounded-[18px] border border-slate-200 bg-white px-4 py-3">
                                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Why it matters</p>
@@ -492,7 +532,7 @@ export default function PlanPageClient() {
 
                             <div className="flex shrink-0 flex-wrap gap-2">
                               <Button type="button" variant="outline" size="sm" onClick={() => handleOpenItemEditor(item)}>
-                                Edit details
+                                {reminderEnabled ? 'Edit details & reminder' : 'Edit details'}
                               </Button>
                               <Button type="button" variant="outline" size="sm" onClick={() => setPlansState(toggleSeekerPlanItemComplete(activePlan.id, item.id))}>
                                 {item.status === 'done' ? 'Reopen' : 'Complete'}
@@ -560,9 +600,28 @@ export default function PlanPageClient() {
                     <div className="mt-4 space-y-3 text-sm leading-6 text-slate-700">
                       <p>Plans are local-first on this device and do not replace crisis routing.</p>
                       <p>Linked service items stay grounded in stored ORAN records and keep eligibility caution in force.</p>
+                      {reminderEnabled ? <p>Reminders are local-only in this phase and help you keep your own timing without creating server-side seeker history.</p> : null}
                       <p>Use backups for lower-confidence or time-sensitive options you may need if the first stop fails.</p>
                     </div>
                   </div>
+
+                  {reminderEnabled ? (
+                    <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Upcoming reminders</p>
+                      <div className="mt-4 space-y-3">
+                        {upcomingReminders.length > 0 ? upcomingReminders.slice(0, 5).map((item) => (
+                          <div key={item.id} className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3">
+                            <p className="text-sm font-medium text-slate-950">{item.title}</p>
+                            <p className="mt-1 text-xs text-slate-500">{item.reminderAt ? new Date(item.reminderAt).toLocaleString() : ''}</p>
+                          </div>
+                        )) : (
+                          <div className="rounded-[20px] border border-dashed border-slate-300 px-4 py-4 text-sm text-slate-500">
+                            No reminders scheduled yet. Use the item editor to set one locally on this device.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
 
                   {completedItems.length > 0 ? (
                     <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -638,6 +697,19 @@ export default function PlanPageClient() {
                     className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
                   />
                 </div>
+
+                {reminderEnabled ? (
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Reminder time</label>
+                    <input
+                      type="datetime-local"
+                      value={editingItem.reminderAtLocal}
+                      onChange={(event) => setEditingItem((current) => current ? { ...current, reminderAtLocal: event.target.value } : current)}
+                      className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    />
+                    <p className="mt-2 text-xs text-slate-500">Reminder scheduling is local-first in this phase and stays on this device.</p>
+                  </div>
+                ) : null}
 
                 <div className="md:col-span-2">
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Plan note</label>

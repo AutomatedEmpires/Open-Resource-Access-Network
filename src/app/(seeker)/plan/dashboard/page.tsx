@@ -20,5 +20,7 @@ export default async function DashboardPage() {
     notFound();
   }
 
-  return <DashboardPageClient />;
+  const routeFeasibilityEnabled = await flagService.isEnabled(FEATURE_FLAGS.SEEKER_ROUTE_FEASIBILITY_ENABLED);
+
+  return <DashboardPageClient routeFeasibilityEnabled={routeFeasibilityEnabled} />;
 }

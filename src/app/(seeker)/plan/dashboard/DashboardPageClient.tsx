@@ -6,11 +6,39 @@ import { ArrowRight, BellRing, Bookmark, CalendarClock, CheckCircle2, LayoutDash
 
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
+import type { EnrichedService } from '@/domain/types';
 import { readStoredSeekerProfile, SEEKER_PROFILE_UPDATED_EVENT } from '@/services/profile/clientContext';
 import { readStoredProfilePreferences, PROFILE_PREFERENCES_UPDATED_EVENT } from '@/services/profile/syncPreference';
 import { readStoredSavedServiceCount, SAVED_SERVICES_UPDATED_EVENT } from '@/services/saved/client';
 import { readStoredSeekerPlansState, SEEKER_PLANS_UPDATED_EVENT } from '@/services/plans/client';
 import { buildSeekerExecutionDashboardSummary } from '@/services/plans/dashboard';
+import { buildSeekerPlanFeasibilitySignals } from '@/services/plans/feasibility';
+import { getLinkedServiceExecutionWarnings } from '@/services/plans/snapshotTrust';
+
+interface BatchServiceResponse {
+  results: EnrichedService[];
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function fetchServicesByIds(ids: string[]): Promise<EnrichedService[]> {
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const params = new URLSearchParams({ ids: ids.join(',') });
+  const res = await fetch(`/api/services?${params.toString()}`, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to load current service records');
+  }
+
+  const json = (await res.json()) as BatchServiceResponse;
+  return json.results;
+}
 
 function formatReminder(value?: string): string {
   if (!value) {
@@ -21,11 +49,18 @@ function formatReminder(value?: string): string {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
 }
 
-export default function DashboardPageClient() {
+export default function DashboardPageClient({
+  routeFeasibilityEnabled = false,
+}: {
+  routeFeasibilityEnabled?: boolean;
+}) {
   const [plansState, setPlansState] = useState(() => readStoredSeekerPlansState());
   const [savedCount, setSavedCount] = useState(() => readStoredSavedServiceCount());
   const [profile, setProfile] = useState(() => readStoredSeekerProfile());
   const [preferences, setPreferences] = useState(() => readStoredProfilePreferences());
+  const [feasibilityServices, setFeasibilityServices] = useState<EnrichedService[]>([]);
+  const [isLoadingFeasibility, setIsLoadingFeasibility] = useState(false);
+  const [feasibilityError, setFeasibilityError] = useState<string | null>(null);
 
   useEffect(() => {
     const syncPlans = () => setPlansState(readStoredSeekerPlansState());
@@ -57,6 +92,56 @@ export default function DashboardPageClient() {
   const summary = useMemo(() => buildSeekerExecutionDashboardSummary(plansState), [plansState]);
   const cityLabel = preferences.approximateCity?.trim();
   const profileHeadline = profile.profileHeadline?.trim();
+  const activeLinkedServiceIds = useMemo(() => {
+    const ids = (summary.activePlan?.items ?? [])
+      .map((item) => item.linkedService?.serviceId?.trim())
+      .filter((serviceId): serviceId is string => typeof serviceId === 'string' && UUID_PATTERN.test(serviceId));
+
+    return Array.from(new Set(ids));
+  }, [summary.activePlan]);
+  const feasibilitySignals = useMemo(
+    () => buildSeekerPlanFeasibilitySignals(summary.activePlan?.items ?? [], feasibilityServices),
+    [feasibilityServices, summary.activePlan],
+  );
+
+  useEffect(() => {
+    if (!routeFeasibilityEnabled || activeLinkedServiceIds.length === 0) {
+      setFeasibilityServices([]);
+      setFeasibilityError(null);
+      setIsLoadingFeasibility(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingFeasibility(true);
+    setFeasibilityError(null);
+
+    void fetchServicesByIds(activeLinkedServiceIds)
+      .then((services) => {
+        if (cancelled) {
+          return;
+        }
+
+        setFeasibilityServices(services);
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setFeasibilityServices([]);
+        setFeasibilityError(error instanceof Error ? error.message : 'Failed to load current service records');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingFeasibility(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLinkedServiceIds, routeFeasibilityEnabled]);
 
   return (
     <div className="bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_28%,#ffffff_100%)]">
@@ -165,6 +250,11 @@ export default function DashboardPageClient() {
                   </div>
                   {item.reminderAt ? <p className="mt-3 text-xs text-slate-500">Reminder: {formatReminder(item.reminderAt)}</p> : null}
                   {item.targetDate ? <p className="mt-1 text-xs text-slate-500">Target date: {item.targetDate}</p> : null}
+                  {getLinkedServiceExecutionWarnings(item.linkedService).map((warning) => (
+                    <p key={warning} className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                      {warning}
+                    </p>
+                  ))}
                 </div>
               )) : (
                 <div className="rounded-[24px] border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500">
@@ -231,6 +321,42 @@ export default function DashboardPageClient() {
             </div>
           </div>
         </div>
+
+        {routeFeasibilityEnabled ? (
+          <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Approximate route cues</p>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">Sequence stops only when current records support it</h2>
+              </div>
+              <CheckCircle2 className="h-5 w-5 text-slate-500" aria-hidden="true" />
+            </div>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+              These cues use only linked ORAN service records for the active plan. Timing and distance stay approximate, so confirm directly with the provider before you travel.
+            </p>
+
+            <div className="mt-5 space-y-3">
+              {isLoadingFeasibility ? (
+                <div className="rounded-[24px] border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500">
+                  Loading current record-grounded route cues for your active plan.
+                </div>
+              ) : feasibilityError ? (
+                <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-5 text-sm leading-6 text-amber-900">
+                  Unable to load current service records for route cues right now. Keep using the plan, and confirm hours or location directly before you go.
+                </div>
+              ) : feasibilitySignals.length > 0 ? feasibilitySignals.map((signal) => (
+                <div key={`${signal.itemId}:${signal.title}`} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-medium text-slate-950">{signal.title}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{signal.detail}</p>
+                </div>
+              )) : (
+                <div className="rounded-[24px] border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500">
+                  No route-feasibility cues are available yet. Add linked service steps with stored hours or location detail, then confirm directly before travel.
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );

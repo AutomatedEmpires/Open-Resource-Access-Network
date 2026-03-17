@@ -8,7 +8,7 @@
 
 'use client';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, AlertTriangle, Phone, Trash2, Clock, Plus, SlidersHorizontal, Bookmark, BookmarkCheck, MapPin } from 'lucide-react';
+import { Send, AlertTriangle, Phone, Trash2, Clock, Plus, SlidersHorizontal, Bookmark, BookmarkCheck, MapPin, BellRing, ListTodo } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ELIGIBILITY_DISCLAIMER, MAX_CHAT_QUOTA } from '@/domain/constants';
 import type { DiscoveryNeedId } from '@/domain/discoveryNeeds';
@@ -33,6 +33,17 @@ import {
   writeStoredSavedServiceIds,
 } from '@/services/saved/client';
 import { getSavedTogglePresentation } from '@/services/saved/presentation';
+import { useSeekerFeatureFlags } from '@/components/seeker/SeekerFeatureFlags';
+import { buildPlanServiceSnapshotFromChatCard } from '@/services/plans/snapshots';
+import { buildChatExecutionProposal, type ChatExecutionProposalDraft } from '@/services/chat/executionCommands';
+import {
+  addServicePlanItem,
+  createSeekerPlan,
+  getActiveSeekerPlan,
+  readStoredSeekerPlansState,
+  setActiveSeekerPlan,
+  updateSeekerPlanItem,
+} from '@/services/plans/client';
 import { trackInteraction } from '@/services/telemetry/sentry';
 import type {
   DiscoveryConfidenceFilter,
@@ -141,9 +152,15 @@ interface AssistantMessage {
   searchInterpretation?: SearchInterpretation;
   clarification?: ChatClarification;
   followUpSuggestions?: string[];
+  executionProposal?: ChatExecutionProposal;
 }
 
 type Message = UserMessage | AssistantMessage;
+
+interface ChatExecutionProposal extends ChatExecutionProposalDraft {
+  status: 'pending' | 'applied' | 'cancelled';
+  serviceHref: string;
+}
 
 /** Format timestamp as a short time string (e.g. "2:34 PM") */
 function formatTime(date: Date): string {
@@ -198,6 +215,7 @@ interface StoredMessage {
   searchInterpretation?: SearchInterpretation;
   clarification?: ChatClarification;
   followUpSuggestions?: string[];
+  executionProposal?: ChatExecutionProposal;
 }
 
 function toStoredMessage(message: Message): StoredMessage {
@@ -230,6 +248,7 @@ function fromStoredMessage(message: StoredMessage): Message {
     searchInterpretation: message.searchInterpretation,
     clarification: message.clarification,
     followUpSuggestions: message.followUpSuggestions,
+    executionProposal: message.executionProposal,
   };
 }
 
@@ -781,6 +800,7 @@ export function ChatWindow({
   initialPage,
   initialAttributeFilters,
 }: ChatWindowProps) {
+  const { planEnabled, reminderEnabled } = useSeekerFeatureFlags();
   const initialHasSeededContext = Boolean(initialPrompt?.trim())
     || Boolean(initialTrustFilter && initialTrustFilter !== 'all')
     || Object.keys(initialAttributeFilters ?? {}).length > 0;
@@ -1313,6 +1333,12 @@ export function ChatWindow({
     () => [...messages].reverse().find((message): message is UserMessage => message.role === 'user')?.content ?? input.trim(),
     [input, messages],
   );
+  const latestAssistantResult = useMemo(
+    () => [...messages].reverse().find((message): message is AssistantMessage => message.role === 'assistant' && (message.services?.length ?? 0) > 0),
+    [messages],
+  );
+  const latestAssistantServices = useMemo(() => latestAssistantResult?.services ?? [], [latestAssistantResult]);
+  const latestAssistantDiscoveryContext = latestAssistantResult?.discoveryContext;
 
   const handoffDiscoveryContext = useMemo(
     () => buildHandoffDiscoveryContext(sessionContext, latestUserMessage),
@@ -1445,6 +1471,33 @@ export function ChatWindow({
   const sendMessage = useCallback(async (override?: string) => {
     const trimmed = (override ?? input).trim();
     if (!trimmed || isLoading) return;
+
+    const commandProposal = planEnabled
+      ? buildChatExecutionProposal(trimmed, latestAssistantServices)
+      : null;
+    if (commandProposal && (commandProposal.action !== 'set_reminder' || reminderEnabled)) {
+      const serviceHref = buildDiscoveryHref(`/service/${commandProposal.service.serviceId}`, latestAssistantDiscoveryContext ?? {});
+      const proposal: ChatExecutionProposal = {
+        ...commandProposal,
+        serviceHref,
+        status: 'pending',
+      };
+
+      if (!override) setInput('');
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content: trimmed, timestamp: new Date() },
+        {
+          role: 'assistant',
+          content: proposal.summary,
+          timestamp: new Date(),
+          executionProposal: proposal,
+        },
+      ]);
+      trackInteraction('chat_execution_command_proposed', { action: proposal.action });
+      return;
+    }
+
     const frozenDiscoveryContext: DiscoveryLinkState = {
       text: trimmed,
       needId: showSeededContext ? initialNeedId : undefined,
@@ -1576,8 +1629,12 @@ export function ChatWindow({
     initialSortBy,
     input,
     isLoading,
+    latestAssistantDiscoveryContext,
+    latestAssistantServices,
     quotaRemaining,
+    planEnabled,
     radiusMiles,
+    reminderEnabled,
     seededAttributeFilters,
     sessionId,
     showSeededContext,
@@ -1598,6 +1655,93 @@ export function ChatWindow({
     if (isLoading || quotaRemaining === 0) return;
     void sendMessage(prompt);
   }, [isLoading, quotaRemaining, sendMessage]);
+
+  const updateExecutionProposalStatus = useCallback((messageIndex: number, status: ChatExecutionProposal['status']) => {
+    setMessages((prev) => prev.map((message, index) => {
+      if (index !== messageIndex || message.role !== 'assistant' || !message.executionProposal) {
+        return message;
+      }
+
+      return {
+        ...message,
+        executionProposal: {
+          ...message.executionProposal,
+          status,
+        },
+      };
+    }));
+  }, []);
+
+  const applyExecutionProposal = useCallback((proposal: ChatExecutionProposal) => {
+    const initialState = readStoredSeekerPlansState();
+    const existingPlan = getActiveSeekerPlan(initialState);
+    const ensuredPlan = existingPlan ?? createSeekerPlan('Current plan').plan;
+    if (!ensuredPlan) {
+      return null;
+    }
+
+    setActiveSeekerPlan(ensuredPlan.id);
+    const snapshot = buildPlanServiceSnapshotFromChatCard(proposal.service, proposal.serviceHref);
+    const currentState = readStoredSeekerPlansState();
+    const currentPlan = getActiveSeekerPlan(currentState);
+    const existingItem = currentPlan?.items.find((item) => item.linkedService?.serviceId === proposal.service.serviceId);
+
+    if (proposal.action === 'set_reminder') {
+      if (existingItem && currentPlan) {
+        updateSeekerPlanItem(currentPlan.id, existingItem.id, {
+          reminderAt: proposal.reminderAt,
+          targetDate: proposal.targetDate,
+          urgency: proposal.urgency,
+        });
+      } else {
+        addServicePlanItem(ensuredPlan.id, snapshot, {
+          source: 'chat_service',
+          urgency: proposal.urgency,
+          targetDate: proposal.targetDate,
+          reminderAt: proposal.reminderAt,
+        });
+      }
+
+      return `Local reminder set for ${proposal.service.serviceName}.`;
+    }
+
+    if (existingItem && currentPlan) {
+      updateSeekerPlanItem(currentPlan.id, existingItem.id, {
+        targetDate: proposal.targetDate,
+        urgency: proposal.urgency,
+      });
+      return `${proposal.service.serviceName} is already in your local plan. I updated the timing target.`;
+    }
+
+    addServicePlanItem(ensuredPlan.id, snapshot, {
+      source: 'chat_service',
+      urgency: proposal.urgency,
+      targetDate: proposal.targetDate,
+    });
+    return `${proposal.service.serviceName} added to your local plan.`;
+  }, []);
+
+  const handleConfirmExecutionProposal = useCallback((messageIndex: number, proposal: ChatExecutionProposal) => {
+    const confirmationMessage = applyExecutionProposal(proposal);
+    if (!confirmationMessage) {
+      return;
+    }
+
+    updateExecutionProposalStatus(messageIndex, 'applied');
+    success(confirmationMessage);
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'assistant',
+        content: confirmationMessage,
+        timestamp: new Date(),
+      },
+    ]);
+  }, [applyExecutionProposal, success, updateExecutionProposalStatus]);
+
+  const handleCancelExecutionProposal = useCallback((messageIndex: number) => {
+    updateExecutionProposalStatus(messageIndex, 'cancelled');
+  }, [updateExecutionProposalStatus]);
 
   const clearConversation = useCallback(() => {
     setMessages([]);
@@ -2028,6 +2172,41 @@ export function ChatWindow({
                             {suggestion}
                           </button>
                         ))}
+                      </div>
+                    </div>
+                  )}
+                  {(msg as AssistantMessage).executionProposal && (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-700">
+                      <div className="flex items-start gap-2">
+                        {(msg as AssistantMessage).executionProposal?.action === 'set_reminder'
+                          ? <BellRing className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-500" aria-hidden="true" />
+                          : <ListTodo className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-500" aria-hidden="true" />}
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium">Execution proposal</p>
+                          <p className="mt-1 leading-5">{(msg as AssistantMessage).executionProposal?.detail}</p>
+                          {(msg as AssistantMessage).executionProposal?.status === 'pending' ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmExecutionProposal(idx, (msg as AssistantMessage).executionProposal as ChatExecutionProposal)}
+                                className="inline-flex min-h-[44px] items-center rounded-full border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-medium text-white"
+                              >
+                                {(msg as AssistantMessage).executionProposal?.confirmationLabel}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleCancelExecutionProposal(idx)}
+                                className="inline-flex min-h-[44px] items-center rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700"
+                              >
+                                Not now
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="mt-3 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                              {(msg as AssistantMessage).executionProposal?.status === 'applied' ? 'Applied locally' : 'Left unchanged'}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}

@@ -38,6 +38,7 @@ import {
   createSeekerPlan,
   updateSeekerPlanItem,
 } from '@/services/plans/client';
+import { getLinkedServiceExecutionWarnings } from '@/services/plans/snapshotTrust';
 import { readStoredSavedServiceIds, SAVED_SERVICES_UPDATED_EVENT } from '@/services/saved/client';
 
 interface BatchServiceResponse {
@@ -510,6 +511,11 @@ export default function PlanPageClient() {
                                   <p className="mt-2 text-sm font-semibold text-slate-950">{item.linkedService.serviceName}</p>
                                   <p className="mt-1 text-xs text-slate-500">{item.linkedService.organizationName}</p>
                                   {item.linkedService.address ? <p className="mt-2 text-xs text-slate-500">{item.linkedService.address}</p> : null}
+                                  {getLinkedServiceExecutionWarnings(item.linkedService).map((warning) => (
+                                    <p key={warning} className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                                      {warning}
+                                    </p>
+                                  ))}
                                   <div className="mt-3 flex flex-wrap gap-2">
                                     {item.linkedService.detailHref ? (
                                       <Link

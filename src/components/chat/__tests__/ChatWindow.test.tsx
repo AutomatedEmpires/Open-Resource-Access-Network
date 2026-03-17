@@ -8,6 +8,26 @@ const fetchMock = vi.hoisted(() => vi.fn());
 const trackInteractionMock = vi.hoisted(() => vi.fn());
 const chatServiceCardMock = vi.hoisted(() => vi.fn());
 const toastSuccessMock = vi.hoisted(() => vi.fn());
+const createSeekerPlanMock = vi.hoisted(() => vi.fn(() => ({
+  plan: {
+    id: 'plan-1',
+    title: 'Current plan',
+    items: [],
+  },
+})));
+const addServicePlanItemMock = vi.hoisted(() => vi.fn());
+const updateSeekerPlanItemMock = vi.hoisted(() => vi.fn());
+const getActiveSeekerPlanMock = vi.hoisted(() => vi.fn(() => null));
+const readStoredSeekerPlansStateMock = vi.hoisted(() => vi.fn(() => ({ plans: [], activePlanId: null, archivedPlans: [] })));
+const setActiveSeekerPlanMock = vi.hoisted(() => vi.fn());
+const buildPlanSnapshotMock = vi.hoisted(() => vi.fn((card, href) => ({
+  serviceId: card.serviceId,
+  serviceName: card.serviceName,
+  organizationName: card.organizationName,
+  trustBand: card.confidenceBand,
+  capturedAt: '2026-03-17T12:00:00.000Z',
+  href,
+})));
 const PREFS_KEY = 'oran:preferences';
 
 vi.mock('@/components/ui/button', () => ({
@@ -53,6 +73,29 @@ vi.mock('lucide-react', () => ({
   Bookmark: 'svg',
   BookmarkCheck: 'svg',
   MapPin: 'svg',
+  BellRing: 'svg',
+  ListTodo: 'svg',
+}));
+
+vi.mock('@/components/seeker/SeekerFeatureFlags', () => ({
+  useSeekerFeatureFlags: () => ({
+    planEnabled: true,
+    reminderEnabled: true,
+    dashboardEnabled: true,
+  }),
+}));
+
+vi.mock('@/services/plans/client', () => ({
+  addServicePlanItem: addServicePlanItemMock,
+  createSeekerPlan: createSeekerPlanMock,
+  getActiveSeekerPlan: getActiveSeekerPlanMock,
+  readStoredSeekerPlansState: readStoredSeekerPlansStateMock,
+  setActiveSeekerPlan: setActiveSeekerPlanMock,
+  updateSeekerPlanItem: updateSeekerPlanItemMock,
+}));
+
+vi.mock('@/services/plans/snapshots', () => ({
+  buildPlanServiceSnapshotFromChatCard: buildPlanSnapshotMock,
 }));
 
 vi.mock('@/services/telemetry/sentry', () => ({
@@ -175,6 +218,15 @@ beforeEach(() => {
       json: async () => ({}),
     } as Response;
   });
+  getActiveSeekerPlanMock.mockReset();
+  getActiveSeekerPlanMock.mockReturnValue(null);
+  createSeekerPlanMock.mockClear();
+  addServicePlanItemMock.mockClear();
+  updateSeekerPlanItemMock.mockClear();
+  readStoredSeekerPlansStateMock.mockClear();
+  readStoredSeekerPlansStateMock.mockReturnValue({ plans: [], activePlanId: null, archivedPlans: [] });
+  setActiveSeekerPlanMock.mockClear();
+  buildPlanSnapshotMock.mockClear();
 });
 
 describe('ChatWindow', () => {
@@ -654,5 +706,63 @@ describe('ChatWindow', () => {
     expect(screen.getByText('Showing 2 services from 2 organizations. Prioritized for Denver. Kept the set varied across organizations.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open today' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Phone support only' })).toBeInTheDocument();
+  });
+
+  it('proposes and applies a local add-to-plan command without calling the chat API again', async () => {
+    let chatRequestCount = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
+      if (url === '/api/chat') {
+        chatRequestCount += 1;
+        return {
+          ok: true,
+          json: async () => makeChatResponse({
+            services: [{
+              serviceId: 'svc-1',
+              serviceName: 'Food Pantry One',
+              organizationName: 'Helping Hands',
+              confidenceBand: 'HIGH',
+              confidenceScore: 92,
+              eligibilityHint: 'You may qualify.',
+            }],
+          }),
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response;
+    });
+
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'food pantry' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await screen.findByTestId('chat-card-svc-1');
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'add the first result to my plan tomorrow' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await screen.findByText('Execution proposal');
+    expect(chatRequestCount).toBe(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to plan' }));
+
+    expect(createSeekerPlanMock).toHaveBeenCalled();
+    expect(addServicePlanItemMock).toHaveBeenCalled();
+    expect(toastSuccessMock).toHaveBeenCalledWith('Food Pantry One added to your local plan.');
+    expect(trackInteractionMock).toHaveBeenCalledWith('chat_execution_command_proposed', { action: 'add_to_plan' });
   });
 });

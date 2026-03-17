@@ -84,6 +84,12 @@ User Message
 Return ChatResponse (with eligibility disclaimer always included)
 ```
 
+Client-side execution note:
+
+- The seeker chat surface may intercept explicit local execution commands before the API call when the user references the most recent result set with deterministic phrases such as `add the first result to my plan` or `remind me tomorrow about the second result`.
+- These commands remain local-first, require explicit confirmation in the UI, and only mutate seeker plan/reminder state on the current device.
+- They do not bypass crisis routing, do not invent provider facts, and do not create server-side execution history in the current phase.
+
 ---
 
 ## Stage Details
@@ -210,6 +216,7 @@ For all sessions:
 - Session context is limited to structured scope only, not raw transcript history
 - Current session context may carry forward active need, city, urgency, delivery preferences, trust filter, taxonomy filters, and attribute filters
 - Session context is visible in the UI and can be cleared field-by-field
+- The client may also use the most recent result set as a local reference frame for explicit execution commands, but only through deterministic result ordinals and explicit user confirmation
 
 ### Stage 6: Retrieval
 

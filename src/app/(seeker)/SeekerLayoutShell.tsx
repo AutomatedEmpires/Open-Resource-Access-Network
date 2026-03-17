@@ -21,7 +21,7 @@ const BASE_NAV_ITEMS = [
   { href: '/saved', label: 'Saved', icon: Bookmark },
 ] as const;
 
-const DASHBOARD_NAV_ITEM = { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard } as const;
+const DASHBOARD_NAV_ITEM = { href: '/plan/dashboard', label: 'Dashboard', icon: LayoutDashboard } as const;
 const PLAN_NAV_ITEM = { href: '/plan', label: 'Plan', icon: ListTodo } as const;
 
 export function SeekerLayoutShell({

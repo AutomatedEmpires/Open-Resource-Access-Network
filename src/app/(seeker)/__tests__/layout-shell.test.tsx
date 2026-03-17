@@ -157,4 +157,14 @@ describe('seeker layout shell', () => {
 
     expect(screen.queryByRole('link', { name: 'Plan' })).toBeNull();
   });
+
+  it('shows the dashboard navigation item only when the dashboard flag is on', () => {
+    const { rerender } = render(<SeekerLayoutShell planEnabled reminderEnabled dashboardEnabled={false}>Child</SeekerLayoutShell>);
+
+    expect(screen.queryByRole('link', { name: 'Dashboard' })).toBeNull();
+
+    rerender(<SeekerLayoutShell planEnabled reminderEnabled dashboardEnabled>Child</SeekerLayoutShell>);
+
+    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
+  });
 });

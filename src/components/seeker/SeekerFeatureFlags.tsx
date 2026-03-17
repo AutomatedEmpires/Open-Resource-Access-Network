@@ -5,11 +5,13 @@ import React, { createContext, useContext } from 'react';
 interface SeekerFeatureFlagsValue {
   planEnabled: boolean;
   reminderEnabled: boolean;
+  dashboardEnabled: boolean;
 }
 
 const DEFAULT_FLAGS: SeekerFeatureFlagsValue = {
   planEnabled: false,
   reminderEnabled: false,
+  dashboardEnabled: false,
 };
 
 const SeekerFeatureFlagsContext = createContext<SeekerFeatureFlagsValue>(DEFAULT_FLAGS);

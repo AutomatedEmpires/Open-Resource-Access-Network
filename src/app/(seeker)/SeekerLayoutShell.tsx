@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { MessageCircle, Bookmark, User, ListTodo } from 'lucide-react';
+import { MessageCircle, Bookmark, User, ListTodo, LayoutDashboard } from 'lucide-react';
 
 import AppNav from '@/components/nav/AppNav';
 import { CommandPalette } from '@/components/command/CommandPalette';
@@ -21,16 +21,19 @@ const BASE_NAV_ITEMS = [
   { href: '/saved', label: 'Saved', icon: Bookmark },
 ] as const;
 
+const DASHBOARD_NAV_ITEM = { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard } as const;
 const PLAN_NAV_ITEM = { href: '/plan', label: 'Plan', icon: ListTodo } as const;
 
 export function SeekerLayoutShell({
   children,
   planEnabled,
   reminderEnabled = false,
+  dashboardEnabled = false,
 }: {
   children: React.ReactNode;
   planEnabled: boolean;
   reminderEnabled?: boolean;
+  dashboardEnabled?: boolean;
 }) {
   const pathname = usePathname();
 
@@ -38,7 +41,13 @@ export function SeekerLayoutShell({
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   const navItems = planEnabled
-    ? [BASE_NAV_ITEMS[0], PLAN_NAV_ITEM, BASE_NAV_ITEMS[1], BASE_NAV_ITEMS[2]]
+    ? [
+        BASE_NAV_ITEMS[0],
+        ...(dashboardEnabled ? [DASHBOARD_NAV_ITEM] : []),
+        PLAN_NAV_ITEM,
+        BASE_NAV_ITEMS[1],
+        BASE_NAV_ITEMS[2],
+      ]
     : BASE_NAV_ITEMS;
 
   useEffect(() => {
@@ -78,7 +87,7 @@ export function SeekerLayoutShell({
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <SeekerFeatureFlagsProvider value={{ planEnabled, reminderEnabled }}>
+    <SeekerFeatureFlagsProvider value={{ planEnabled, reminderEnabled, dashboardEnabled }}>
       <div className="flex min-h-screen flex-col bg-white text-[var(--text-primary)]">
       <a
         href="#main-content"

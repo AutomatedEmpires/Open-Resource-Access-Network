@@ -10,9 +10,16 @@ export default async function SeekerLayout({ children }: { children: React.React
   const reminderEnabled = planEnabled
     ? await flagService.isEnabled(FEATURE_FLAGS.SEEKER_REMINDERS_ENABLED)
     : false;
+  const dashboardEnabled = reminderEnabled
+    ? await flagService.isEnabled(FEATURE_FLAGS.SEEKER_EXECUTION_DASHBOARD_ENABLED)
+    : false;
 
   return (
-    <SeekerLayoutShell planEnabled={planEnabled} reminderEnabled={reminderEnabled}>
+    <SeekerLayoutShell
+      planEnabled={planEnabled}
+      reminderEnabled={reminderEnabled}
+      dashboardEnabled={dashboardEnabled}
+    >
       {children}
     </SeekerLayoutShell>
   );

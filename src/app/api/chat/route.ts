@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { MAX_SERVICES_PER_RESPONSE, FEATURE_FLAGS, CHAT_DEVICE_COOKIE } from '@/domain/constants';
+import { MAX_SERVICES_PER_RESPONSE, FEATURE_FLAGS, CHAT_DEVICE_COOKIE, CONFIDENCE_BANDS } from '@/domain/constants';
 import { getAuthContext } from '@/services/auth/session';
 import { checkQuotaByIdentity, incrementQuotaByIdentity } from '@/services/chat/quota';
 import { orchestrateChat, ChatRateLimitExceededError } from '@/services/chat/orchestrator';
@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
     const trust = filters?.trust ?? context.sessionContext?.trustFilter;
     const taxonomyTermIds = filters?.taxonomyTermIds ?? context.sessionContext?.taxonomyTermIds;
     const attributeFilters = mergeAttributeFilters(inheritedAttributeFilters, filters?.attributeFilters);
-    const minConfidenceScore = trust === 'HIGH' ? 80 : trust === 'LIKELY' ? 60 : undefined;
+    const minConfidenceScore = trust === 'HIGH' ? CONFIDENCE_BANDS.HIGH.min : trust === 'LIKELY' ? CONFIDENCE_BANDS.LIKELY.min : undefined;
 
     try {
       const query = buildChatSearchQuery(intent, context, {

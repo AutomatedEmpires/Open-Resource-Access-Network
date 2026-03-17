@@ -510,6 +510,15 @@ export async function runImport(options: ImporterOptions): Promise<ImportReport>
     dryRun,
   };
 
+  if (!dryRun) {
+    report.warnings.push({
+      file: 'hsds-csv-importer',
+      row: 0,
+      field: '',
+      message: 'DB persistence is not yet implemented. Running in validation-only mode. Validated rows will be reported but NOT inserted.',
+    });
+  }
+
   // Process organizations.csv
   const orgFile = path.join(dir, 'organizations.csv');
   if (fs.existsSync(orgFile)) {

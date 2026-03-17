@@ -10,6 +10,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { captureException } from '@/services/telemetry/sentry';
+import { checkRateLimit } from '@/services/security/rateLimit';
+import { getIp } from '@/services/security/ip';
+import { RATE_LIMIT_WINDOW_MS, SEARCH_RATE_LIMIT_MAX_REQUESTS } from '@/domain/constants';
 
 const ParamsSchema = z.object({
   q: z.string().max(200).optional(),
@@ -39,6 +42,18 @@ export type TaxonomyTermDTO = {
 };
 
 export async function GET(req: NextRequest) {
+  const ip = getIp(req);
+  const rl = checkRateLimit(`taxonomy:terms:read:${ip}`, {
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    maxRequests: SEARCH_RATE_LIMIT_MAX_REQUESTS,
+  });
+  if (rl.exceeded) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+
   if (!isDatabaseConfigured()) {
     return NextResponse.json(
       {

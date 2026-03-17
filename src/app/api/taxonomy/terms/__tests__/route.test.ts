@@ -11,11 +11,18 @@ vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
 }));
+vi.mock('@/services/security/rateLimit', () => ({
+  checkRateLimit: () => ({ exceeded: false }),
+}));
+vi.mock('@/services/security/ip', () => ({
+  getIp: () => '127.0.0.1',
+}));
 
 function createRequest(search = '') {
   const url = new URL(`https://oran.test${search}`);
   return {
     nextUrl: url,
+    headers: new Headers(),
   } as never;
 }
 

@@ -16,6 +16,7 @@ import { getAuthContext } from '@/services/auth';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
+  HOST_READ_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
 import { getIp } from '@/services/security/ip';
 import {
@@ -126,6 +127,18 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
+  }
+
+  const ip = getIp(req);
+  const rl = checkRateLimit(`host:claim-service:read:${ip}`, {
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS,
+  });
+  if (rl.exceeded) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
   }
 
   const authCtx = await getAuthContext();

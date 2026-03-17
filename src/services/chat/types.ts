@@ -86,7 +86,7 @@ export const ChatRequestSchema = z.object({
       trust: z.enum(['all', 'LIKELY', 'HIGH']).optional(),
     })
     .optional(),
-});
+}).strict();
 
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
 

@@ -8,13 +8,27 @@
  * Response: { remaining: number; resetAt: string | null }
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getAuthContext } from '@/services/auth/session';
 import { checkQuotaByIdentity } from '@/services/chat/quota';
-import { MAX_CHAT_QUOTA, CHAT_DEVICE_COOKIE } from '@/domain/constants';
+import { MAX_CHAT_QUOTA, CHAT_DEVICE_COOKIE, RATE_LIMIT_WINDOW_MS, SEARCH_RATE_LIMIT_MAX_REQUESTS } from '@/domain/constants';
+import { checkRateLimit } from '@/services/security/rateLimit';
+import { getIp } from '@/services/security/ip';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const ip = getIp(req);
+  const rl = checkRateLimit(`chat:quota:read:${ip}`, {
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    maxRequests: SEARCH_RATE_LIMIT_MAX_REQUESTS,
+  });
+  if (rl.exceeded) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+
   const cookieStore = await cookies();
   const deviceId = cookieStore.get(CHAT_DEVICE_COOKIE)?.value;
 

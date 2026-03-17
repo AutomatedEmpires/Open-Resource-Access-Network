@@ -17,6 +17,7 @@ import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import { getIp } from '@/services/security/ip';
 import {
   computeEffectiveMaxPending,
   type AdminCapacity,
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getIp(req);
   const rateLimit = await checkRateLimitShared(`admin_capacity:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,

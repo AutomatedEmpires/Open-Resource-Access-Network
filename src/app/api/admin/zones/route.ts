@@ -12,6 +12,7 @@ import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
+import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -34,16 +35,11 @@ const CreateZoneSchema = z.object({
   description:    z.string().max(5000).optional(),
   assignedUserId: z.string().max(500).optional(),
   status:         z.enum(['active', 'inactive']).default('active'),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // HANDLERS
 // ============================================================

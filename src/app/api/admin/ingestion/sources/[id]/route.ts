@@ -18,6 +18,7 @@ import {
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import { getIp } from '@/services/security/ip';
 import {
   isHighRiskSourceUpdate,
   queueIngestionControlChange,
@@ -46,12 +47,7 @@ const UpdateSourceSchema = z.object({
     stateProvince: z.string().min(1).optional(),
     countyOrRegion: z.string().min(1).optional(),
   })).optional(),
-});
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
+}).strict();
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

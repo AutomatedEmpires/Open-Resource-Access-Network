@@ -12,6 +12,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { getPgPool, isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
+import { getIp } from '@/services/security/ip';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { captureException } from '@/services/telemetry/sentry';
 import { isCredentialsAuthEnabled } from '@/lib/auth';
@@ -74,7 +75,7 @@ const RegisterSchema = z.object({
     })
     .refine((phone) => phone === null || phone.length >= 7, 'Invalid phone number'),
   website: z.string().trim().max(200).optional().default(''),
-}).superRefine((value, ctx) => {
+}).strict().superRefine((value, ctx) => {
   const password = value.password;
   const lowerPassword = password.toLowerCase();
 
@@ -156,9 +157,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Rate limit
-    const ip =
-      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-      'unknown';
+    const ip = getIp(request);
     const rateLimit = await checkRegisterRateLimit(ip);
     if (rateLimit.exceeded) {
       return NextResponse.json(

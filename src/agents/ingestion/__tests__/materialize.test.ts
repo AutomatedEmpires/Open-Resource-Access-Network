@@ -188,6 +188,7 @@ function createStores() {
     },
     candidates: {
       getByExtractKey: vi.fn(),
+      findByNormalizedName: vi.fn().mockResolvedValue(null),
       create: vi.fn(),
       update: vi.fn(),
       updateConfidenceScore: vi.fn(),

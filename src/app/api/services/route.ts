@@ -12,6 +12,7 @@ import { executeCount, executeQuery, isDatabaseConfigured } from '@/services/db/
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { captureException } from '@/services/telemetry/sentry';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // CONSTANTS
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Rate limiting
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getIp(req);
   const rateLimit = await checkRateLimitShared(`services:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: SERVICES_RATE_LIMIT_MAX,

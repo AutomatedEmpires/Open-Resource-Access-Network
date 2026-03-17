@@ -13,16 +13,12 @@ import NextAuth from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
+import { getIp } from '@/services/security/ip';
 
 /** Max auth requests per window (generous for OAuth callbacks) */
 const AUTH_RATE_LIMIT_MAX = 30;
 
 const nextAuthHandler = NextAuth(authOptions);
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 function rateLimitGuard(req: NextRequest): NextResponse | null {
   const ip = getIp(req);
   const rl = checkRateLimit(`auth:${ip}`, {

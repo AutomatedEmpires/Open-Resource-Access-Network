@@ -20,6 +20,7 @@ import {
   COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
 import type { SubmissionStatus } from '@/domain/types';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // SCHEMA
@@ -29,16 +30,11 @@ const BulkDecisionSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(50),
   decision: z.enum(['approved', 'denied']),
   notes: z.string().max(5000).optional(),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // HANDLER
 // ============================================================

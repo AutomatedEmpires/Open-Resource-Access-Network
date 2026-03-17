@@ -12,6 +12,7 @@ import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
 import { buildCommunitySubmissionScope, getCommunityAdminScope } from '@/services/community/scope';
+import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   COMMUNITY_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -20,11 +21,6 @@ import {
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // HANDLER
 // ============================================================

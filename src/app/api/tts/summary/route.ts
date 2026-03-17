@@ -18,6 +18,7 @@ import { FEATURE_FLAGS, RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS } from '@/
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { synthesizeSpeech, isConfigured } from '@/services/tts/azureSpeech';
 import { captureException } from '@/services/telemetry/sentry';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // VALIDATION
@@ -28,16 +29,11 @@ const BodySchema = z.object({
   text: z.string().min(1).max(2000),
   /** BCP-47 locale code (e.g. 'en', 'es', 'zh'). Defaults to 'en'. */
   locale: z.string().default('en'),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // HANDLER
 // ============================================================

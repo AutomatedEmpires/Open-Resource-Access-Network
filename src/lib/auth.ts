@@ -140,7 +140,9 @@ async function getDbAccountState(userId: string): Promise<{ role: OranRole | nul
       accountStatus: hasAccountStatus ? (result.rows[0]?.account_status ?? 'active') : 'active',
     };
   } catch {
-    return { role: null, accountStatus: 'active' };
+    // B2 fix: deny access on DB error instead of assuming active —
+    // prevents frozen users from authenticating during DB outages.
+    return { role: null, accountStatus: 'frozen' };
   }
 }
 

@@ -169,7 +169,7 @@ describe('SourceCheckStage', () => {
     const result = await stage.execute(context);
     expect(result.status).toBe('completed');
     expect(context.sourceCheck?.allowed).toBe(true);
-    expect(context.sourceCheck?.trustLevel).toBe('allowlisted');
+    expect(context.sourceCheck?.trustLevel).toBe('quarantine');
   });
 
   it('allows .edu URLs', async () => {

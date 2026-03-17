@@ -18,6 +18,7 @@ import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { captureException } from '@/services/telemetry/sentry';
 import { flagService } from '@/services/flags/flags';
 import { triageFeedback } from '@/services/feedback/triage';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // REQUEST SCHEMA
@@ -29,7 +30,7 @@ const FeedbackRequestSchema = z.object({
   rating:         z.number().int().min(1).max(5, 'rating must be between 1 and 5'),
   comment:        z.string().max(1000).optional(),
   contactSuccess: z.boolean().optional(),
-});
+}).strict();
 
 type FeedbackRequest = z.infer<typeof FeedbackRequestSchema>;
 
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getIp(req);
   const rateLimit = await checkRateLimitShared(`feedback:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: FEEDBACK_RATE_LIMIT_MAX_REQUESTS,

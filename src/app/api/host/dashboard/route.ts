@@ -4,6 +4,7 @@ import { getAuthContext, isOranAdmin, shouldEnforceAuth } from '@/services/auth'
 import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
+import { getIp } from '@/services/security/ip';
 import {
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   RATE_LIMIT_WINDOW_MS,
@@ -30,11 +31,6 @@ interface RecentSubmission {
   organization_name: string | null;
   created_at: string;
 }
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 export async function GET(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

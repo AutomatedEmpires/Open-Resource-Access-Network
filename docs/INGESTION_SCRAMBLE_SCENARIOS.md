@@ -20,15 +20,15 @@ Current hardening invariants:
 The first 100 scenarios now collapse onto five solution primitives that are implemented in the live publication layer:
 
 1. Identity convergence:
-	`liveEntityMerge` normalizes org, service, and location identity and reuses existing active rows.
+   `liveEntityMerge` normalizes org, service, and location identity and reuses existing active rows.
 2. Race control:
-	a transaction-scoped advisory lock serializes concurrent publication attempts for the same normalized org/service pair.
+   a transaction-scoped advisory lock serializes concurrent publication attempts for the same normalized org/service pair.
 3. Authority protection:
-	`liveAuthority` prevents weaker lanes from overwriting stronger current snapshots after a match.
+   `liveAuthority` prevents weaker lanes from overwriting stronger current snapshots after a match.
 4. Workflow gating:
-	host, public, candidate, and canonical lanes still respect their review or policy gates before they reach publication.
+   host, public, candidate, and canonical lanes still respect their review or policy gates before they reach publication.
 5. Backfill continuity:
-	when canonical or submission lanes adopt an existing live record, they backfill linkage metadata instead of cloning the listing.
+   when canonical or submission lanes adopt an existing live record, they backfill linkage metadata instead of cloning the listing.
 
 Coverage map for the first 100 scenarios:
 
@@ -152,14 +152,14 @@ Known strategic follow-ons:
 Useful Azure, Microsoft, GitHub, and standards-aligned additions for the next hardening wave:
 
 1. Azure Maps:
-	canonicalize and score address confidence beyond exact address-string matching to reduce location drift and false splits.
+   canonicalize and score address confidence beyond exact address-string matching to reduce location drift and false splits.
 2. Azure AI Search or a pgvector-backed duplicate index:
-	surface near-duplicate org/service candidates before publish when deterministic URL/name checks are insufficient.
+   surface near-duplicate org/service candidates before publish when deterministic URL/name checks are insufficient.
 3. Azure Application Insights:
-	publish lane dashboards for `linked_existing`, `republished`, `published`, and overwrite-suppressed events by source kind.
+   publish lane dashboards for `linked_existing`, `republished`, `published`, and overwrite-suppressed events by source kind.
 4. Azure Functions timer or queue replay harness:
-	run scheduled scenario replays against staging to prove idempotence and authority protection under concurrency.
+   run scheduled scenario replays against staging to prove idempotence and authority protection under concurrency.
 5. GitHub Actions nightly ingestion matrix run:
-	execute focused replay tests and open issues automatically when a scenario regresses.
+   execute focused replay tests and open issues automatically when a scenario regresses.
 6. HSDS and 211 schema validation tooling:
-	validate incoming partner payloads before federation so malformed partner refreshes fail closed to review.
+   validate incoming partner payloads before federation so malformed partner refreshes fail closed to review.

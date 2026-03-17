@@ -19,6 +19,7 @@ import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { captureException } from '@/services/telemetry/sentry';
 import { applySla } from '@/services/workflow/engine';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // REQUEST SCHEMA
@@ -40,7 +41,7 @@ const ReportRequestSchema = z.object({
   serviceId: z.string().uuid('serviceId must be a valid UUID'),
   issueType: z.enum(ISSUE_TYPES, { message: 'Invalid issue type' }),
   comment:   z.string().max(2000, 'Comment must be 2000 characters or fewer').optional(),
-});
+}).strict();
 
 // ============================================================
 // RATE LIMIT
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getIp(req);
   const rateLimit = await checkRateLimitShared(`report:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: REPORT_RATE_LIMIT_MAX,

@@ -22,6 +22,7 @@ import {
   COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
 import type { SubmissionStatus } from '@/domain/types';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // SCHEMAS
@@ -32,16 +33,11 @@ const DecisionSchema = z.object({
     message: 'decision is required',
   }),
   notes: z.string().max(5000).optional(),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 type RouteContext = { params: Promise<{ id: string }> };
 
 function asRecord(value: unknown): Record<string, unknown> {

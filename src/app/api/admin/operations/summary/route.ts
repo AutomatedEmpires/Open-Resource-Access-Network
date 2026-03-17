@@ -5,15 +5,11 @@ import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
+import { getIp } from '@/services/security/ip';
 import {
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   RATE_LIMIT_WINDOW_MS,
 } from '@/domain/constants';
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 export async function GET(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

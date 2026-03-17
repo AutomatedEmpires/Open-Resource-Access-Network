@@ -22,6 +22,7 @@ import {
 } from '@/domain/constants';
 import { buildVectorTopKQuery } from '@/services/search/vectorSearch';
 import type { VectorSimilarityRow } from '@/services/search/vectorSearch';
+import { getIp } from '@/services/security/ip';
 
 const DEDUP_THRESHOLD = 0.92;
 const NEIGHBORS_PER_PROBE = 5;
@@ -31,7 +32,7 @@ const DedupSchema = z.object({
   probeLimit: z.number().int().min(1).max(200).default(50),
   /** Similarity threshold (0–1). Pairs above this are flagged as duplicates. */
   threshold: z.number().min(0.5).max(1.0).default(DEDUP_THRESHOLD),
-});
+}).strict();
 
 interface ServiceProbe {
   id: string;
@@ -43,11 +44,6 @@ interface DedupCluster {
   ids: string[];
   similarity: number;
 }
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 export async function POST(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

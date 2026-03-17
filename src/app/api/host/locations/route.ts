@@ -19,6 +19,7 @@ import {
   DEFAULT_PAGE_SIZE,
 } from '@/domain/constants';
 import type { Location } from '@/domain/types';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // SCHEMAS
@@ -29,14 +30,14 @@ const PhoneInputSchema = z.object({
   extension:   z.string().max(10).optional(),
   type:        z.enum(['voice', 'fax', 'text', 'hotline', 'tty']).default('voice'),
   description: z.string().max(200).optional(),
-});
+}).strict();
 
 const DayScheduleInputSchema = z.object({
   day:    z.enum(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']),
   opens:  z.string().regex(/^\d{2}:\d{2}$/, 'Time must be HH:MM'),
   closes: z.string().regex(/^\d{2}:\d{2}$/, 'Time must be HH:MM'),
   closed: z.boolean().default(false),
-});
+}).strict();
 
 const ListParamsSchema = z.object({
   organizationId: z.string().uuid().optional(),
@@ -61,16 +62,11 @@ const CreateLocationSchema = z.object({
   country:        z.string().max(100).default('US'),
   phones:         z.array(PhoneInputSchema).max(10).optional(),
   schedule:       z.array(DayScheduleInputSchema).min(7).max(7).optional(),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // HANDLERS
 // ============================================================

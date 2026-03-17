@@ -20,6 +20,7 @@ import {
   getUnread,
   getUnreadCount,
 } from '@/services/notifications/service';
+import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   USER_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -39,11 +40,6 @@ const ListParamsSchema = z.object({
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // GET — List notifications
 // ============================================================

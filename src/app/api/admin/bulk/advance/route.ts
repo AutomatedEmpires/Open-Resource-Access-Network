@@ -18,6 +18,7 @@ import {
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
 import type { SubmissionStatus } from '@/domain/types';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // SCHEMAS
@@ -30,16 +31,11 @@ const BulkAdvanceSchema = z.object({
     .max(100, 'Maximum 100 submissions per batch'),
   toStatus: z.string().min(1) as z.ZodType<SubmissionStatus>,
   reason: z.string().max(5000).optional(),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // POST
 // ============================================================

@@ -84,6 +84,7 @@
 **Assumption**: `TWO_PERSON_REQUIRED_TYPES` ensures no single actor can approve critical submissions.
 
 **How it fails**:
+
 1. `checkTwoPersonGate` checks `submission_transitions` for prior reviewers. But `approveTransfer` in the ownership transfer service writes directly to submissions without going through `advance()`, so there's no transition record for the two-person check to find.
 2. The gate only fires for `toStatus === 'approved'`. A malicious admin could move to `pending_second_approval` then have a colluding admin approve via a different code path.
 3. The feature flag `TWO_PERSON_APPROVAL` controls the gate—disabling the flag removes all two-person checks.
@@ -133,6 +134,7 @@
 ### C3: Confidence Score Inflation
 
 **Scenario**: Attacker creates a minimal service page with crafted structure:
+
 - Has `organizationName`, `serviceName`, `description`, `websiteUrl`, `phone` → passes required fields (+20)
 - Page is on a `.gov` subdomain (compromised or purchased expired domain) → source allowlisted (+20)
 - Provides evidence snapshot → +20
@@ -196,6 +198,7 @@
 **Goal**: Take control of a legitimate service without triggering admin review.
 
 Steps:
+
 1. Create org with name exactly matching target service's org name
 2. Call `detectExistingServices(targetName, null, null)` — gets exact name match
 3. Call `initiateTransfer` with `verificationMethod: 'admin_review'`
@@ -211,6 +214,7 @@ Steps:
 **Goal**: Remove a competitor's service from search results.
 
 Steps:
+
 1. Register as host_admin for a new organization
 2. Create a dummy service under your org
 3. Find the target service's org_id via search/API
@@ -226,6 +230,7 @@ Steps:
 **Goal**: Get a low-quality service to green tier (auto-publishable).
 
 Steps:
+
 1. Create a structurally-complete page on a `.gov`-appearing domain (expired .gov domains, or via subdomain of a compromised .gov site)
 2. Ensure page has: org name, service name, description (>10 chars), website URL, phone number, address
 3. Source is allowlisted via `.gov` suffix rule → +20 source points
@@ -242,6 +247,7 @@ Steps:
 **Goal**: Overwhelm admin notification channels.
 
 Steps:
+
 1. Create 100 submissions (no rate limit per user)
 2. Each gets routed to `needs_review`
 3. Use `advance()` to cycle: `needs_review` → `under_review` → `returned` → `submitted` → `needs_review` → `under_review`
@@ -256,6 +262,7 @@ Steps:
 **Goal**: Create unbounded entity clusters that prevent resolution.
 
 Steps:
+
 1. Submit services via HSDS feed with slight name variations: "Food Bank", "Food Bank.", "Food Bank Inc", "The Food Bank"
 2. Each creates a separate `source_record` → separate `canonical_service`
 3. Entity clustering should group these, but `EntityClusterStore.create` accepts any grouping
@@ -342,6 +349,7 @@ Scope: merge/service.ts, ownershipTransfer/service.ts
 ```
 
 Add an `assertAuthorized(actorUserId, requiredRole, resourceId?)` function that:
+
 1. Queries `user_profiles` for the actor's role
 2. Compares against the `ROLE_HIERARCHY` constant
 3. Throws `UnauthorizedError` if insufficient
@@ -375,6 +383,7 @@ Scope: notifications/service.ts
 ```
 
 Add per-recipient rate limiting:
+
 - Max 10 notifications per hour per recipient
 - Max 50 per day per recipient
 - `broadcast()` requires `oran_admin` role

@@ -5,6 +5,7 @@
  * Protected by a shared secret (INTERNAL_API_KEY) — not accessible to end users.
  */
 
+import { timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { checkSlaBreaches } from '@/services/workflow/engine';
 import {
@@ -24,8 +25,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const authHeader = req.headers.get('authorization');
-  if (!authHeader || authHeader !== `Bearer ${apiKey}`) {
+  const authHeader = req.headers.get('authorization') ?? '';
+  const expected = `Bearer ${apiKey}`;
+  const authBuf = Buffer.from(authHeader);
+  const expectedBuf = Buffer.from(expected);
+  if (authBuf.length !== expectedBuf.length || !timingSafeEqual(authBuf, expectedBuf)) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 },

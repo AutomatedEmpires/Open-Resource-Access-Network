@@ -12,6 +12,7 @@ import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { captureException } from '@/services/telemetry/sentry';
+import { getIp } from '@/services/security/ip';
 import {
   EMPTY_SEEKER_PROFILE,
   normalizeSeekerProfile,
@@ -125,7 +126,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Rate limiting
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getIp(req);
   const rateLimit = await checkProfileRateLimit(ip);
   if (rateLimit.exceeded) {
     return NextResponse.json(
@@ -209,7 +210,7 @@ export async function PUT(req: NextRequest) {
   }
 
   // Rate limiting
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getIp(req);
   const rateLimit = await checkProfileRateLimit(ip);
   if (rateLimit.exceeded) {
     return NextResponse.json(

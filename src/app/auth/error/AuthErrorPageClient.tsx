@@ -26,12 +26,12 @@ function ErrorContent() {
 
   return (
     <main className="container mx-auto max-w-md px-4 py-16">
-      <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm text-center">
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-8 text-center shadow-sm">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-error-muted mb-3">
           <AlertTriangle className="h-6 w-6 text-error-base" aria-hidden="true" />
         </div>
-        <h1 className="text-xl font-bold text-gray-900 mb-2">Authentication Error</h1>
-        <p className="text-sm text-gray-600 mb-6">{message}</p>
+        <h1 className="mb-2 text-xl font-bold text-[var(--text-primary)]">Authentication Error</h1>
+        <p className="mb-6 text-sm text-[var(--text-secondary)]">{message}</p>
 
         <div className="flex flex-col gap-3">
           <Link href="/auth/signin">
@@ -39,7 +39,7 @@ function ErrorContent() {
           </Link>
           <Link
             href="/chat"
-            className="inline-flex items-center justify-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors"
+            className="inline-flex items-center justify-center gap-1 text-sm text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
             Continue without signing in
@@ -55,8 +55,8 @@ export default function AuthErrorPage() {
     <Suspense
       fallback={
         <main className="container mx-auto max-w-md px-4 py-16">
-          <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm text-center">
-            <p className="text-gray-500">Loading…</p>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-8 text-center shadow-sm">
+            <p className="text-[var(--text-secondary)]">Loading…</p>
           </div>
         </main>
       }

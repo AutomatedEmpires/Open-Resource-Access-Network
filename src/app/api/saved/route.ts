@@ -14,6 +14,7 @@ import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { captureException } from '@/services/telemetry/sentry';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // CONSTANTS
@@ -35,7 +36,7 @@ interface SavedServiceRow {
 
 const ServiceIdSchema = z.object({
   serviceId: z.string().uuid('serviceId must be a valid UUID'),
-});
+}).strict();
 
 // ============================================================
 // RATE LIMIT HELPER
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Rate limiting
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getIp(req);
   const rateLimit = await checkSavedRateLimit(ip);
   if (rateLimit.exceeded) {
     return NextResponse.json(
@@ -121,7 +122,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Rate limiting
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getIp(req);
   const rateLimit = await checkSavedRateLimit(ip);
   if (rateLimit.exceeded) {
     return NextResponse.json(
@@ -200,7 +201,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   // Rate limiting
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getIp(req);
   const rateLimit = await checkSavedRateLimit(ip);
   if (rateLimit.exceeded) {
     return NextResponse.json(

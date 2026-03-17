@@ -17,6 +17,7 @@ import {
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
 import { mergeServices } from '@/services/merge/service';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // SCHEMAS
@@ -25,16 +26,11 @@ import { mergeServices } from '@/services/merge/service';
 const MergeSchema = z.object({
   targetId: z.string().uuid('targetId must be a valid UUID'),
   sourceId: z.string().uuid('sourceId must be a valid UUID'),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // POST — Execute merge
 // ============================================================

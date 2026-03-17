@@ -19,6 +19,7 @@ import {
   TEMPLATE_CATEGORIES,
   TEMPLATE_ROLE_SCOPES,
 } from '@/domain/templates';
+import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -39,7 +40,7 @@ const CreateTemplateSchema = z.object({
   language:          z.string().length(2).default('en'),
   jurisdiction_scope: z.string().max(200).nullable().default(null),
   is_published:      z.boolean().default(false),
-});
+}).strict();
 
 const ListQuerySchema = z.object({
   category: z.enum(TEMPLATE_CATEGORIES).optional(),
@@ -50,11 +51,6 @@ const ListQuerySchema = z.object({
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // HANDLERS
 // ============================================================

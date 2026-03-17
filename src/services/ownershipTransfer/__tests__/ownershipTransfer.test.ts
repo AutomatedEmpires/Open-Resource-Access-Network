@@ -174,7 +174,7 @@ describe('Ownership Transfer Service', () => {
   // ----------------------------------------------------------
   describe('initiateTransfer', () => {
     it('creates transfer with submission and notifies admin', async () => {
-      const client = setupTransaction(new Map([
+      setupTransaction(new Map([
         ['FROM ownership_transfers', { rows: [] }], // no active transfer
         ['FROM services s', { rows: [{ id: 'svc-001', name: 'Test Service', organization_id: null, url: 'https://test.org', status: 'active', confidence_overall: 85 }] }],
         ['FROM submissions', { rows: [{ assigned_to_user_id: 'user-admin' }] }],

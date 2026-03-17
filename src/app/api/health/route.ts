@@ -11,17 +11,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isDatabaseConfigured, executeQuery } from '@/services/db/postgres';
 import { validateRuntimeEnv } from '@/services/runtime/envContract';
 import { checkRateLimit } from '@/services/security/rateLimit';
+import { getIp } from '@/services/security/ip';
 
 export const dynamic = 'force-dynamic';
 
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, max-age=0',
 };
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 export async function GET(req: NextRequest) {
   const ip = getIp(req);
   const rl = checkRateLimit(`health:${ip}`, {

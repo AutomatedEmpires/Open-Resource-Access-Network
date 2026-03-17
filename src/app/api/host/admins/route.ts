@@ -29,7 +29,7 @@ const InviteMemberSchema = z.object({
   email: z.string().email().max(320).optional(),
   role: z.enum(['host_member', 'host_admin'] as const),
   inviteMode: z.boolean().default(false),
-}).refine(
+}).strict().refine(
   (data) => data.userId || data.email,
   { message: 'Either userId or email must be provided' },
 );
@@ -38,7 +38,7 @@ const InviteMemberSchema = z.object({
 const InviteResponseSchema = z.object({
   membershipId: z.string().uuid(),
   action: z.enum(['accept', 'decline']),
-});
+}).strict();
 
 interface OrganizationMember {
   id: string;

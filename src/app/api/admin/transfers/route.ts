@@ -24,6 +24,7 @@ import {
   executeTransfer,
 } from '@/services/ownershipTransfer/service';
 import { executeQuery } from '@/services/db/postgres';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // SCHEMAS
@@ -44,16 +45,11 @@ const DecisionSchema = z.object({
   }),
   notes: z.string().max(5000).optional(),
   reason: z.string().max(2000).optional(),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // HANDLERS
 // ============================================================

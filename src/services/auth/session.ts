@@ -96,7 +96,9 @@ async function getAccountStatus(userId: string): Promise<AccountStatus> {
     );
     return rows[0]?.account_status ?? 'active';
   } catch {
-    return 'active';
+    // B2 fix: deny access on DB error instead of assuming active —
+    // prevents frozen users from authenticating during DB outages.
+    return 'frozen';
   }
 }
 

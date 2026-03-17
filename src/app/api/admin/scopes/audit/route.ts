@@ -11,6 +11,7 @@ import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
+import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -21,11 +22,6 @@ const ListParamsSchema = z.object({
   page:  z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(DEFAULT_PAGE_SIZE),
 });
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 export async function GET(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

@@ -15,6 +15,7 @@ import {
   queueIngestionControlChange,
 } from '@/services/ingestion/controlChanges';
 import { mergeSourceFeedState, SourceFeedStatePatchSchema } from '../state';
+import { getIp } from '@/services/security/ip';
 
 const BulkUpdateSourceFeedsSchema = z.object({
   feedIds: z.array(z.string().min(1)).min(1).max(200),
@@ -22,11 +23,6 @@ const BulkUpdateSourceFeedsSchema = z.object({
   state: SourceFeedStatePatchSchema.optional(),
   useCheckpointAsReplay: z.boolean().optional(),
 }).strict();
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 async function requireAdmin(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

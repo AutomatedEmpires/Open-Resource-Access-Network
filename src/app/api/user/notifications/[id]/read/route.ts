@@ -11,6 +11,7 @@ import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { markRead } from '@/services/notifications/service';
+import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   USER_WRITE_RATE_LIMIT_MAX_REQUESTS,
@@ -25,11 +26,6 @@ const UuidSchema = z.string().uuid('Invalid notification ID format');
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // PUT — Mark notification as read
 // ============================================================

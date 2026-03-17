@@ -7,6 +7,7 @@
  * Protected by shared secret (INTERNAL_API_KEY via Bearer auth) — not accessible to end users.
  */
 
+import { timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { isDatabaseConfigured } from '@/services/db/postgres';
@@ -18,7 +19,7 @@ import {
 
 const BodySchema = z.object({
   thresholdHours: z.number().int().min(1).max(720).default(24),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
   // Validate internal API key (same pattern as sla-check)
@@ -30,8 +31,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const authHeader = req.headers.get('authorization');
-  if (!authHeader || authHeader !== `Bearer ${apiKey}`) {
+  const authHeader = req.headers.get('authorization') ?? '';
+  const expected = `Bearer ${apiKey}`;
+  const authBuf = Buffer.from(authHeader);
+  const expectedBuf = Buffer.from(expected);
+  if (authBuf.length !== expectedBuf.length || !timingSafeEqual(authBuf, expectedBuf)) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 },

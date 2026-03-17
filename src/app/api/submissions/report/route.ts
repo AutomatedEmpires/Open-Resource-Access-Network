@@ -15,6 +15,7 @@ import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { applySla } from '@/services/workflow/engine';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // SCHEMAS
@@ -38,16 +39,11 @@ const ReportSchema = z.object({
   reason: z.enum(REPORT_REASONS),
   details: z.string().min(5, 'Details must be at least 5 characters').max(2000, 'Details must be at most 2000 characters'),
   contactEmail: z.string().email().optional(),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // POST — Submit a listing report
 // ============================================================

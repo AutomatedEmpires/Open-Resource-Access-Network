@@ -5,6 +5,7 @@
  * source feeds on a schedule. Protected by INTERNAL_API_KEY bearer auth.
  */
 
+import { timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { isDatabaseConfigured } from '@/services/db/postgres';
@@ -21,8 +22,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Internal API not configured' }, { status: 503 });
   }
 
-  const authHeader = req.headers.get('authorization');
-  if (!authHeader || authHeader !== `Bearer ${apiKey}`) {
+  const authHeader = req.headers.get('authorization') ?? '';
+  const expected = `Bearer ${apiKey}`;
+  const authBuf = Buffer.from(authHeader);
+  const expectedBuf = Buffer.from(expected);
+  if (authBuf.length !== expectedBuf.length || !timingSafeEqual(authBuf, expectedBuf)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

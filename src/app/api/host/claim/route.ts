@@ -21,6 +21,7 @@ import {
   getResourceSubmissionDetailForActor,
 } from '@/services/resourceSubmissions/service';
 import { processSubmittedResourceSubmission } from '@/services/resourceSubmissions/submissionExecution';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // SCHEMA
@@ -39,16 +40,11 @@ const ClaimSchema = z.object({
   phone:            z.string().max(30).optional(),
   /** Notes for the reviewer (role at org, how to verify, etc.) */
   claimNotes:       z.string().max(2000).optional(),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // HANDLER
 // ============================================================

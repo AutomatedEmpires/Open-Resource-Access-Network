@@ -21,6 +21,7 @@ import {
   TEMPLATE_CATEGORIES,
   TEMPLATE_ROLE_SCOPES,
 } from '@/domain/templates';
+import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -40,16 +41,11 @@ const UpdateTemplateSchema = z.object({
   language:          z.string().length(2).optional(),
   jurisdiction_scope: z.string().max(200).nullable().optional(),
   is_published:      z.boolean().optional(),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // Admin can see all scopes
 const ALL_SCOPES = TEMPLATE_ROLE_SCOPES;
 

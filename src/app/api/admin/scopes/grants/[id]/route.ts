@@ -13,6 +13,7 @@ import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
 import { decideGrant, revokeGrant } from '@/services/workflow/two-person';
+import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
@@ -27,20 +28,15 @@ const UuidSchema = z.string().uuid('Invalid grant ID format');
 const DecisionSchema = z.object({
   decision: z.enum(['approved', 'denied']),
   reason:   z.string().min(1).max(5000),
-});
+}).strict();
 
 const RevokeSchema = z.object({
   reason: z.string().min(1).max(5000),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // PUT — Approve or deny a pending scope grant
 // ============================================================

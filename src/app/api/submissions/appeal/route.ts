@@ -12,6 +12,7 @@ import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { applySla } from '@/services/workflow/engine';
+import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   USER_WRITE_RATE_LIMIT_MAX_REQUESTS,
@@ -29,16 +30,11 @@ const AppealSchema = z.object({
     description: z.string().optional(),
     fileUrl: z.string().url().optional(),
   })).max(10).optional(),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // POST — Submit an appeal
 // ============================================================

@@ -287,11 +287,11 @@ function SignInContent() {
 
   return (
     <main className="container mx-auto max-w-lg px-4 py-12">
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-sm">
         {/* Header */}
         <div className="px-5 sm:px-8 pt-6 sm:pt-8 pb-2 text-center">
-          <h1 className="text-xl font-bold text-gray-900">Welcome to ORAN</h1>
-          <p className="mt-1 text-sm text-gray-700">
+          <h1 className="text-xl font-bold text-[var(--text-primary)]">Welcome to ORAN</h1>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
             How would you like to use ORAN?
           </p>
         </div>
@@ -310,8 +310,8 @@ function SignInContent() {
                   onClick={() => setSelected(id)}
                   className={`flex flex-col items-center gap-1.5 rounded-lg border-2 px-3 py-3 text-xs font-medium transition-all min-h-[44px] cursor-pointer ${
                     isActive
-                      ? 'border-blue-600 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-gray-100'
+                      ? 'border-[var(--text-primary)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
+                      : 'border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)] hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface)]'
                   }`}
                 >
                   <Icon className="h-5 w-5" aria-hidden="true" />
@@ -324,13 +324,13 @@ function SignInContent() {
 
         {/* Dynamic content area */}
         <div className="px-5 sm:px-8 pb-6 sm:pb-8 pt-4">
-          <p className="text-sm text-gray-700 text-center mb-5" data-testid="path-detail">
+          <p className="mb-5 text-center text-sm text-[var(--text-secondary)]" data-testid="path-detail">
             {activePath.detail}
           </p>
 
-          <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left">
-            <p className="text-sm font-semibold text-slate-900">{activePath.accessTitle}</p>
-            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+          <div className="mb-5 rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] px-4 py-3 text-left">
+            <p className="text-sm font-semibold text-[var(--text-primary)]">{activePath.accessTitle}</p>
+            <ul className="mt-2 space-y-1 text-sm text-[var(--text-secondary)]">
               {activePath.accessNotes.map((note) => (
                 <li key={note}>{note}</li>
               ))}
@@ -357,7 +357,7 @@ function SignInContent() {
           {formSuccess && (
             <div
               role="status"
-              className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700"
+              className="mb-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] p-3 text-sm text-[var(--text-primary)]"
             >
               {formSuccess}
             </div>
@@ -401,10 +401,10 @@ function SignInContent() {
               {hasCredentials && (hasAzureAd || hasGoogle || hasApple) && (
                 <div className="relative my-4">
                   <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-200" />
+                    <div className="w-full border-t border-[var(--border)]" />
                   </div>
                   <div className="relative flex justify-center text-xs">
-                    <span className="bg-white px-3 text-gray-500">or</span>
+                    <span className="bg-[var(--bg-surface)] px-3 text-[var(--text-muted)]">or</span>
                   </div>
                 </div>
               )}
@@ -422,13 +422,13 @@ function SignInContent() {
 
               {/* Sign-up discoverability */}
               {hasCredentials && (
-                <div className="mt-2 text-center border-t border-gray-100 pt-3">
-                  <p className="text-sm text-gray-700">
+                <div className="mt-2 border-t border-[var(--border-subtle)] pt-3 text-center">
+                  <p className="text-sm text-[var(--text-secondary)]">
                     New to ORAN?{' '}
                     <button
                       type="button"
                       onClick={() => { setShowEmailForm(true); setIsRegistering(true); }}
-                      className="font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-2 transition-colors"
+                      className="font-semibold text-[var(--text-primary)] underline underline-offset-2 transition-colors hover:text-[var(--text-secondary)]"
                     >
                       Create a free account
                     </button>
@@ -437,7 +437,7 @@ function SignInContent() {
               )}
 
               {!hasAzureAd && !hasGoogle && !hasCredentials && (
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                <p className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-3 py-3 text-sm text-[var(--text-primary)]">
                   Sign-in is temporarily unavailable. Contact an ORAN administrator if this persists.
                 </p>
               )}
@@ -480,7 +480,7 @@ function SignInContent() {
                       maxLength={100}
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
                       placeholder="Your name"
                     />
                   </FormField>
@@ -497,7 +497,7 @@ function SignInContent() {
                         maxLength={32}
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
                         placeholder="yourname"
                       />
                     </FormField>
@@ -510,7 +510,7 @@ function SignInContent() {
                         maxLength={255}
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
                         placeholder="you@example.com"
                       />
                     </FormField>
@@ -524,7 +524,7 @@ function SignInContent() {
                       maxLength={255}
                       value={identifier}
                       onChange={(e) => setIdentifier(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
                       placeholder="you@example.com, yourname, or +15551234567"
                     />
                   </FormField>
@@ -539,7 +539,7 @@ function SignInContent() {
                     maxLength={128}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
                     placeholder={isRegistering ? 'Create a password (8+ characters)' : 'Your password'}
                   />
                 </FormField>
@@ -560,7 +560,7 @@ function SignInContent() {
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       aria-invalid={confirmPassword.length > 0 && password !== confirmPassword}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
                       placeholder="Re-enter your password"
                     />
                   </FormField>
@@ -574,7 +574,7 @@ function SignInContent() {
                       maxLength={20}
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
                       placeholder="(555) 123-4567"
                     />
                   </FormField>
@@ -603,7 +603,7 @@ function SignInContent() {
                     setConfirmPassword('');
                     setIdentifier('');
                   }}
-                  className="text-blue-600 hover:text-blue-800 transition-colors"
+                  className="text-[var(--text-primary)] transition-colors hover:text-[var(--text-secondary)]"
                 >
                   {isRegistering ? 'Already have an account? Sign in' : 'Need an account? Register'}
                 </button>
@@ -614,7 +614,7 @@ function SignInContent() {
                     setFormError(null);
                     setFormSuccess(null);
                   }}
-                  className="text-gray-600 hover:text-gray-900 transition-colors"
+                  className="text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
                 >
                   Back to options
                 </button>
@@ -623,17 +623,17 @@ function SignInContent() {
           )}
 
           {!showEmailForm && (
-            <p className="mt-3 text-xs text-gray-600 text-center">
+            <p className="mt-3 text-center text-xs text-[var(--text-secondary)]">
               Secure sign-in. Your credentials are encrypted and never shared.
             </p>
           )}
 
           {/* Guest path (seekers only) */}
           {activePath.guestAllowed && (
-            <div className="mt-5 text-center border-t border-gray-100 pt-4">
+            <div className="mt-5 border-t border-[var(--border-subtle)] pt-4 text-center">
               <Link
                 href={effectiveCallback}
-                className="inline-flex items-center gap-1 text-sm text-gray-700 hover:text-gray-900 transition-colors"
+                className="inline-flex items-center gap-1 text-sm text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
               >
                 <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
                 Continue without signing in
@@ -644,10 +644,10 @@ function SignInContent() {
       </div>
 
       {/* Privacy note */}
-      <p className="mt-4 text-xs text-gray-600 text-center max-w-sm mx-auto">
+      <p className="mx-auto mt-4 max-w-sm text-center text-xs text-[var(--text-secondary)]">
         By signing in, you agree to ORAN collecting your name, email, and
         location data to deliver and improve our services.
-        See our <Link href="/privacy" className="underline hover:text-gray-600">Privacy Policy</Link> for
+        See our <Link href="/privacy" className="underline hover:text-[var(--text-primary)]">Privacy Policy</Link> for
         details.
       </p>
     </main>
@@ -666,8 +666,8 @@ export default function SignInPage() {
     <Suspense
       fallback={
         <main className="container mx-auto max-w-lg px-4 py-12">
-          <div className="rounded-xl border border-gray-200 bg-white p-8 shadow-sm text-center">
-            <p className="text-gray-500">Loading…</p>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-8 text-center shadow-sm">
+            <p className="text-[var(--text-secondary)]">Loading…</p>
           </div>
         </main>
       }

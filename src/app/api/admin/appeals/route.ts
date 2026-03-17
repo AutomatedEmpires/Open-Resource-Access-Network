@@ -20,6 +20,7 @@ import {
   DEFAULT_PAGE_SIZE,
 } from '@/domain/constants';
 import type { SubmissionStatus } from '@/domain/types';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // SCHEMAS
@@ -35,7 +36,7 @@ const DecisionSchema = z.object({
   appealId:  z.string().uuid('appealId must be a valid UUID'),
   decision:  z.enum(['approved', 'denied', 'returned']),
   notes:     z.string().max(5000).optional(),
-}).refine(
+}).strict().refine(
   (data) => data.decision === 'approved' || (data.notes && data.notes.trim().length > 0),
   { message: 'Notes are required when denying or returning an appeal', path: ['notes'] },
 );
@@ -43,11 +44,6 @@ const DecisionSchema = z.object({
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // GET — List appeals
 // ============================================================

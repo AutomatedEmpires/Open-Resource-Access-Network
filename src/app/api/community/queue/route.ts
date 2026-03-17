@@ -16,6 +16,7 @@ import { requireMinRole } from '@/services/auth/guards';
 import { buildCommunitySubmissionScope, getCommunityAdminScope } from '@/services/community/scope';
 import { advance, acquireLock, releaseLock } from '@/services/workflow/engine';
 import { computeTriagePriority } from '@/services/queue/triage';
+import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   COMMUNITY_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -43,16 +44,11 @@ const ListParamsSchema = z.object({
 
 const ClaimSchema = z.object({
   submissionId: z.string().uuid('submissionId must be a valid UUID'),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // HANDLERS
 // ============================================================
@@ -287,7 +283,7 @@ export async function POST(req: NextRequest) {
 
 const UnclaimSchema = z.object({
   submissionId: z.string().uuid('submissionId must be a valid UUID'),
-});
+}).strict();
 
 export async function DELETE(req: NextRequest) {
   if (!isDatabaseConfigured()) {

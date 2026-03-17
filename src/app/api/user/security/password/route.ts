@@ -6,19 +6,15 @@ import { getPgPool, isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { isCredentialsAuthEnabled } from '@/lib/auth';
+import { getIp } from '@/services/security/ip';
 
 const UpdatePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(128),
   newPassword: z.string().min(8).max(128),
-});
+}).strict();
 
 const PASSWORD_RATE_LIMIT_MAX = 10;
 const BCRYPT_ROUNDS = 12;
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 export async function POST(req: NextRequest) {
   if (!isCredentialsAuthEnabled()) {
     return NextResponse.json(

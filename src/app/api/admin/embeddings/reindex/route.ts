@@ -17,6 +17,7 @@ import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import { getIp } from '@/services/security/ip';
 import {
   buildServiceEmbeddingText,
   embedForIndexing,
@@ -26,12 +27,7 @@ import {
 
 const ReindexSchema = z.object({
   limit: z.number().int().min(1).max(500).default(100),
-});
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
+}).strict();
 export async function POST(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

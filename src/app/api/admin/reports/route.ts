@@ -14,6 +14,7 @@ import {
   RATE_LIMIT_WINDOW_MS,
 } from '@/domain/constants';
 import type { SubmissionStatus } from '@/domain/types';
+import { getIp } from '@/services/security/ip';
 
 const HIGH_RISK_REASONS = new Set(['suspected_fraud', 'permanently_closed', 'wrong_location']);
 
@@ -40,15 +41,10 @@ const DecisionSchema = z.object({
   reportId: z.string().uuid('reportId must be a valid UUID'),
   decision: z.enum(['approved', 'denied', 'escalated', 'returned']),
   notes: z.string().trim().max(5000).optional(),
-}).refine(
+}).strict().refine(
   (data) => data.decision === 'approved' || Boolean(data.notes?.trim()),
   { path: ['notes'], message: 'Notes are required when denying, escalating, or returning a report' },
 );
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 export async function GET(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

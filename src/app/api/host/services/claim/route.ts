@@ -17,6 +17,7 @@ import {
   RATE_LIMIT_WINDOW_MS,
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import { getIp } from '@/services/security/ip';
 import {
   detectExistingServices,
   initiateTransfer,
@@ -34,7 +35,7 @@ const ClaimServiceSchema = z.object({
     .optional()
     .default('admin_review'),
   transferNotes: z.string().max(2000).optional(),
-});
+}).strict();
 
 const DetectSchema = z.object({
   organizationName: z.string().min(1).max(500),
@@ -45,11 +46,6 @@ const DetectSchema = z.object({
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // POST — Initiate ownership transfer
 // ============================================================

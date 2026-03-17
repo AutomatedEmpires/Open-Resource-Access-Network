@@ -12,15 +12,11 @@ import { checkRateLimit } from '@/services/security/rateLimit';
 import { getPublishedOrganizationDetail } from '@/services/search/publication';
 import { captureException } from '@/services/telemetry/sentry';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // HANDLER
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 const publicationDeps = {
   executeQuery,
   executeCount,

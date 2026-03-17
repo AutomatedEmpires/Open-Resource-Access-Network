@@ -12,6 +12,7 @@ import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
+import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
@@ -20,12 +21,7 @@ import {
 const BatchSchema = z.object({
   urls: z.array(z.string().url()).min(1).max(100),
   priority: z.number().int().min(0).max(10).default(5),
-});
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
+}).strict();
 export async function POST(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

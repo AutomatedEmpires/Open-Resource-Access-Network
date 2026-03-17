@@ -3,7 +3,7 @@
  *
  * Handles persistence of extracted candidates awaiting review.
  */
-import { eq, desc, and, lt, isNull, or } from 'drizzle-orm';
+import { eq, desc, and, lt, isNull, or, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import type { ExtractedCandidate, ReviewStatus } from '../contracts';
@@ -193,6 +193,29 @@ export function createDrizzleCandidateStore(
         .select()
         .from(extractedCandidates)
         .where(eq(extractedCandidates.extractKeySha256, extractKey))
+        .orderBy(desc(extractedCandidates.extractedAt))
+        .limit(1);
+
+      return rows.length > 0 ? rowToCandidate(rows[0]) : null;
+    },
+
+    async findByNormalizedName(orgName, serviceName) {
+      const normalizedOrgName = orgName.trim().toLowerCase();
+      const normalizedServiceName = serviceName.trim().toLowerCase();
+
+      if (!normalizedOrgName || !normalizedServiceName) {
+        return null;
+      }
+
+      const rows = await db
+        .select()
+        .from(extractedCandidates)
+        .where(
+          and(
+            sql`lower(trim(${extractedCandidates.organizationName})) = ${normalizedOrgName}`,
+            sql`lower(trim(${extractedCandidates.serviceName})) = ${normalizedServiceName}`,
+          ),
+        )
         .orderBy(desc(extractedCandidates.extractedAt))
         .limit(1);
 

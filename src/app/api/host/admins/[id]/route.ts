@@ -26,7 +26,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 // Schema for PUT body (update role)
 const UpdateMemberSchema = z.object({
   role: z.enum(['host_member', 'host_admin'] as const),
-});
+}).strict();
 
 interface OrganizationMember {
   id: string;

@@ -17,6 +17,7 @@ import {
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
 import type { Organization } from '@/domain/types';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // SCHEMAS
@@ -31,7 +32,7 @@ const SocialLinksSchema = z.object({
   youtube:   z.string().url().max(2000).optional().nullable(),
   tiktok:    z.string().url().max(2000).optional().nullable(),
   phone:     z.string().max(30).optional().nullable(),
-});
+}).strict();
 
 const UpdateOrgSchema = z.object({
   name:              z.string().min(1).max(500).optional(),
@@ -47,16 +48,11 @@ const UpdateOrgSchema = z.object({
   whoWeServe:        z.string().max(2000).optional(),
   serviceRegion:     z.string().max(500).optional(),
   socialLinks:       SocialLinksSchema.optional(),
-}).refine((d) => Object.keys(d).length > 0, { message: 'At least one field required' });
+}).strict().refine((d) => Object.keys(d).length > 0, { message: 'At least one field required' });
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 type RouteContext = { params: Promise<{ id: string }> };
 
 // ============================================================

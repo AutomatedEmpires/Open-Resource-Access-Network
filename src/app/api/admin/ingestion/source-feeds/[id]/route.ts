@@ -22,6 +22,7 @@ import {
   queueIngestionControlChange,
 } from '@/services/ingestion/controlChanges';
 import { mergeSourceFeedState, SourceFeedStatePatchSchema } from '../state';
+import { getIp } from '@/services/security/ip';
 
 const JurisdictionScopeSchema = z.object({
   kind: z.enum(['local', 'regional', 'statewide', 'national', 'virtual']).optional(),
@@ -45,11 +46,6 @@ const UpdateSourceFeedSchema = z.object({
   isActive: z.boolean().optional(),
   state: SourceFeedStatePatchSchema.optional(),
 }).strict();
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 async function requireAdmin(req: NextRequest, maxRequests: number) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

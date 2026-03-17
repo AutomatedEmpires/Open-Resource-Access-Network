@@ -18,11 +18,7 @@ import {
 } from '@/domain/constants';
 import { assessIngestionDegradedMode } from '@/services/ingestion/feedHealth';
 import { assessIngestionWorkforceHealth } from '@/services/ingestion/workforceHealth';
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
+import { getIp } from '@/services/security/ip';
 function toInt(value: string | number | null | undefined): number {
   if (typeof value === 'number') return value;
   return Number.parseInt(value ?? '0', 10) || 0;

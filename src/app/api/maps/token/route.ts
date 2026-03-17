@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
+import { getIp } from '@/services/security/ip';
 
 /** 60 requests per 5 minutes per IP — generous but bounded */
 const WINDOW_MS = 5 * 60 * 1_000;
@@ -20,7 +21,7 @@ interface MapsClientAuthResponse {
 
 export async function GET(req: NextRequest) {
   const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+    getIp(req);
 
   const rl = await checkRateLimitShared(`maps-token:ip:${ip}`, {
     windowMs: WINDOW_MS,

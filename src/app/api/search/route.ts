@@ -23,6 +23,7 @@ import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { getSearchPreset, mergePresetFilters } from '@/services/search/presets';
 import { PUBLISHED_RECORD_STATUS } from '@/services/search/publication';
 import { captureException } from '@/services/telemetry/sentry';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // QUERY PARAM SCHEMA
@@ -75,7 +76,7 @@ export async function GET(req: NextRequest) {
       { status: 503 }
     );
   }
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getIp(req);
   const rateLimit = await checkRateLimitShared(`search:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: SEARCH_RATE_LIMIT_MAX_REQUESTS,

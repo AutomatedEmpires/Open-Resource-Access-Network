@@ -268,6 +268,7 @@ describe('host organizations collection route', () => {
 
     const { POST } = await loadOrganizationsCollectionRoute();
 
+    getIpMock.mockReturnValue('203.0.113.10');
     const response = await POST(
       createRequest({
         ip: '203.0.113.10',

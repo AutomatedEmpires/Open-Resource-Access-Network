@@ -26,6 +26,7 @@ import { cachedSearch } from '@/services/search/cache';
 import { ServiceSearchEngine } from '@/services/search/engine';
 import type { SearchFilters } from '@/services/search/types';
 import { captureException } from '@/services/telemetry/sentry';
+import { getIp } from '@/services/security/ip';
 
 const RequestSchema = ChatRequestSchema;
 const engine = new ServiceSearchEngine({ executeQuery, executeCount });
@@ -125,7 +126,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getIp(req);
   const rateLimitKey = effectiveUserId ? `chat:user:${effectiveUserId}` : `chat:ip:${ip}`;
 
   async function retrieveServices(intent: Intent, context: ChatContext): Promise<ChatRetrievalResult> {

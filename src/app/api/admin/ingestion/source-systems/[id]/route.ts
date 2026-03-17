@@ -17,6 +17,7 @@ import {
 	ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
 	ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import { getIp } from '@/services/security/ip';
 import {
 	isHighRiskSourceSystemUpdate,
 	queueIngestionControlChange,
@@ -34,7 +35,7 @@ const JurisdictionScopeSchema = z.object({
 const DomainRuleSchema = z.object({
 	type: z.enum(['exact_host', 'suffix']),
 	value: z.string().min(1),
-});
+}).strict();
 
 const ContactInfoSchema = z.object({
 	email: z.string().email().optional(),
@@ -71,11 +72,6 @@ const UpdateSourceSystemSchema = z.object({
 	contactInfo: ContactInfoSchema.optional(),
 	isActive: z.boolean().optional(),
 }).strict();
-
-function getIp(req: NextRequest): string {
-	return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 async function requireAdmin(req: NextRequest, maxRequests: number) {
 	if (!isDatabaseConfigured()) {
 		return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

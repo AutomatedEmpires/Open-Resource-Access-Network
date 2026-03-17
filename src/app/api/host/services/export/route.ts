@@ -15,6 +15,7 @@ import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, isOranAdmin } from '@/services/auth';
+import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -32,11 +33,6 @@ const ExportParamsSchema = z.object({
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 /** Escape a single CSV cell value */
 function csvCell(value: string | null | undefined): string {
   if (value == null) return '';

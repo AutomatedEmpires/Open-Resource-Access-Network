@@ -22,6 +22,7 @@ import {
   NOTIFICATION_EVENT_TYPES,
 } from '@/domain/constants';
 import type { NotificationChannel, NotificationEventType } from '@/domain/types';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // SCHEMAS
@@ -31,20 +32,15 @@ const PreferenceItemSchema = z.object({
   eventType: z.enum(NOTIFICATION_EVENT_TYPES as unknown as [string, ...string[]]) as z.ZodType<NotificationEventType>,
   channel:   z.enum(['in_app', 'email']) as z.ZodType<NotificationChannel>,
   enabled:   z.boolean(),
-});
+}).strict();
 
 const UpdatePreferencesSchema = z.object({
   preferences: z.array(PreferenceItemSchema).min(1).max(100),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // GET — Get notification preferences
 // ============================================================

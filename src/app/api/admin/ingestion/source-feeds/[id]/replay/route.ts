@@ -11,15 +11,11 @@ import {
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
 import { mergeSourceFeedState } from '../../state';
+import { getIp } from '@/services/security/ip';
 
 const ReplaySourceFeedSchema = z.object({
   replayFromCursor: z.string().min(1).optional(),
 }).strict();
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 async function requireAdmin(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

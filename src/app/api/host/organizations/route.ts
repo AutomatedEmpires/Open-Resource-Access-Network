@@ -20,6 +20,7 @@ import {
   DEFAULT_PAGE_SIZE,
 } from '@/domain/constants';
 import type { Organization } from '@/domain/types';
+import { getIp } from '@/services/security/ip';
 
 // ============================================================
 // SCHEMAS
@@ -40,16 +41,11 @@ const CreateOrgSchema = z.object({
   taxId:             z.string().max(100).optional(),
   yearIncorporated:  z.number().int().min(1800).max(2100).optional(),
   legalStatus:       z.string().max(200).optional(),
-});
+}).strict();
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // HANDLERS
 // ============================================================

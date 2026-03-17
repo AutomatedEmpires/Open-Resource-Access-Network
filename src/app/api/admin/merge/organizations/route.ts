@@ -18,6 +18,7 @@ import {
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import { getIp } from '@/services/security/ip';
 import {
   mergeOrganizations,
   previewOrganizationMerge,
@@ -35,11 +36,6 @@ const MergeSchema = z.object({
 // ============================================================
 // HELPERS
 // ============================================================
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
 // ============================================================
 // GET — Preview
 // ============================================================

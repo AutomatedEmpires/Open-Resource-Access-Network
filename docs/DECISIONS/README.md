@@ -26,6 +26,10 @@ Create an ADR before implementing changes to:
 | ADR-0007 | [HSDS / 211 Federation Canonical Model](ADR-0007-hsds-211-federation-canonical-model.md) | Accepted |
 | ADR-0008 | [Chat Profile Hydration and Deterministic Retrieval Shaping](ADR-0008-chat-profile-hydration-and-deterministic-retrieval-shaping.md) | Accepted |
 | ADR-0009 | [Platform Pillars and Subsystem Boundaries](ADR-0009-platform-pillars-and-subsystem-boundaries.md) | Accepted |
+| ADR-0010 | [Source-Aware Agentic Publication Policy](ADR-0010-source-aware-agentic-publication-policy.md) | Accepted |
+| ADR-0011 | [Ingestion Integrity and Resilience Controls](ADR-0011-ingestion-integrity-and-resilience-controls.md) | Accepted |
+| ADR-0012 | [Accept Username Enumeration Risk](ADR-0012-accept-username-enumeration-risk.md) | Accepted |
+| ADR-0013 | [Seeker Execution Local-First Plan Foundation](ADR-0013-seeker-execution-local-first-plan-foundation.md) | Accepted |
 
 ## File naming
 

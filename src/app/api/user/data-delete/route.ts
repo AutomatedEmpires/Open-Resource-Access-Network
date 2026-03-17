@@ -21,11 +21,7 @@ import { isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { getAuthContext } from '@/services/auth/session';
 import { captureException } from '@/services/telemetry/sentry';
-
-function getIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-}
-
+import { getIp } from '@/services/security/ip';
 export async function DELETE(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });

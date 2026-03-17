@@ -179,7 +179,7 @@ export function NotificationBell() {
       <button
         type="button"
         onClick={toggleOpen}
-        className="relative inline-flex items-center justify-center p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors min-h-[44px] min-w-[44px]"
+        className="relative inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-2 text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
         aria-expanded={open}
         aria-haspopup="true"
@@ -187,7 +187,7 @@ export function NotificationBell() {
         <Bell className="h-5 w-5" aria-hidden="true" />
         {unreadCount > 0 && (
           <span
-            className="absolute top-1 right-1 inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none"
+            className="absolute right-1 top-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-slate-900 px-1 text-[10px] font-bold leading-none text-white"
             aria-hidden="true"
           >
             {unreadCount > 99 ? '99+' : unreadCount}
@@ -197,18 +197,18 @@ export function NotificationBell() {
 
       {open && (
         <div
-          className="absolute right-0 mt-1 w-80 max-h-[420px] bg-white border border-gray-200 rounded-lg shadow-lg z-[var(--z-modal)] flex flex-col"
+          className="absolute right-0 z-[var(--z-modal)] mt-1 flex max-h-[420px] w-80 flex-col rounded-lg border border-slate-200 bg-white shadow-lg"
           role="menu"
           aria-label="Notifications"
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <h3 className="text-sm font-semibold text-slate-900">Notifications</h3>
             {unreadCount > 0 && (
               <button
                 type="button"
                 onClick={markAllRead}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                className="text-xs font-medium text-slate-700 hover:text-slate-900"
               >
                 Mark all read
               </button>
@@ -218,34 +218,34 @@ export function NotificationBell() {
           {/* List */}
           <div className="overflow-y-auto flex-1">
             {loading ? (
-              <div className="px-4 py-6 text-center text-sm text-gray-400">Loading…</div>
+              <div className="px-4 py-6 text-center text-sm text-slate-400">Loading…</div>
             ) : notifications.length === 0 ? (
-              <div className="px-4 py-6 text-center text-sm text-gray-400">
+              <div className="px-4 py-6 text-center text-sm text-slate-400">
                 No notifications yet.
               </div>
             ) : (
-              <ul className="divide-y divide-gray-50">
+              <ul className="divide-y divide-slate-100">
                 {notifications.map((n) => (
                   <li
                     key={n.id}
-                    className={`px-4 py-3 hover:bg-gray-50 transition-colors ${
-                      !n.read_at ? 'bg-blue-50/40' : ''
+                    className={`px-4 py-3 transition-colors hover:bg-slate-50 ${
+                      !n.read_at ? 'bg-slate-50' : ''
                     }`}
                   >
                     <div className="flex items-start gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className={`text-sm ${!n.read_at ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                        <p className={`text-sm ${!n.read_at ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>
                           {n.title}
                         </p>
-                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.body}</p>
-                        <p className="text-[10px] text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
+                        <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{n.body}</p>
+                        <p className="mt-1 text-[10px] text-slate-400">{timeAgo(n.created_at)}</p>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
                         {!n.read_at && (
                           <button
                             type="button"
                             onClick={() => markOneRead(n.id)}
-                            className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
+                            className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
                             aria-label={`Mark "${n.title}" as read`}
                           >
                             <Check className="h-3.5 w-3.5" />
@@ -255,7 +255,7 @@ export function NotificationBell() {
                           <Link
                             href={n.action_url}
                             onClick={() => setOpen(false)}
-                            className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
+                            className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
                             aria-label={`View ${n.title}`}
                           >
                             <ExternalLink className="h-3.5 w-3.5" />
@@ -270,11 +270,11 @@ export function NotificationBell() {
           </div>
 
           {/* Footer */}
-          <div className="border-t border-gray-100 px-4 py-2">
+          <div className="border-t border-slate-100 px-4 py-2">
             <Link
               href="/notifications"
               onClick={() => setOpen(false)}
-              className="block text-center text-xs text-blue-600 hover:text-blue-800 font-medium py-1"
+              className="block py-1 text-center text-xs font-medium text-slate-700 hover:text-slate-900"
             >
               View all notifications
             </Link>

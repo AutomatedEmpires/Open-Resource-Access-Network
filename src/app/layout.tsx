@@ -5,6 +5,7 @@ import { Providers } from "./providers";
 import { CrisisFloatingButton } from "@/components/crisis/CrisisFloatingButton";
 import { resolveLocale } from "@/lib/locale";
 import { isRTL, getMessages } from "@/services/i18n/i18n";
+import { SITE, getSiteVerification } from '@/lib/site';
 
 // ============================================================
 // FONTS
@@ -29,38 +30,46 @@ const caveat = Caveat({
 // SITE-WIDE METADATA
 // ============================================================
 
-const BASE_URL = "https://openresourceaccessnetwork.com";
-
 export const metadata: Metadata = {
-  metadataBase: new URL(BASE_URL),
+  metadataBase: new URL(SITE.baseUrl),
   title: {
     template: "%s | ORAN",
-    default: "ORAN — Open Resource Access Network",
+    default: SITE.title,
   },
-  description:
-    "Find verified government, nonprofit, and community services near you. No hallucinated results — real, confirmed information only.",
+  description: SITE.description,
+  applicationName: SITE.acronym,
+  keywords: [
+    'ORAN',
+    'Open Resource Access Network',
+    'verified services',
+    'community services',
+    'nonprofit directory',
+    'government services',
+    'social services',
+    'civic technology',
+  ],
   alternates: {
     canonical: "/",
   },
+  manifest: '/manifest.webmanifest',
   openGraph: {
     type: "website",
-    locale: "en_US",
-    url: BASE_URL,
-    siteName: "ORAN — Open Resource Access Network",
-    title: "ORAN — Open Resource Access Network",
-    description:
-      "Find verified government, nonprofit, and community services near you.",
+    locale: SITE.defaultLocale,
+    url: SITE.baseUrl,
+    siteName: SITE.title,
+    title: SITE.title,
+    description: SITE.description,
   },
   twitter: {
     card: "summary",
-    title: "ORAN — Open Resource Access Network",
-    description:
-      "Find verified government, nonprofit, and community services near you.",
+    title: SITE.title,
+    description: SITE.description,
   },
   robots: {
     index: true,
     follow: true,
   },
+  verification: getSiteVerification(),
 };
 
 /** Viewport — NEVER set maximumScale or userScalable (accessibility requirement) */

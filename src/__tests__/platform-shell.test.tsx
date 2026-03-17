@@ -68,6 +68,10 @@ async function loadSitemap() {
   return import('@/app/sitemap');
 }
 
+async function loadManifest() {
+  return import('@/app/manifest');
+}
+
 async function loadInstrumentation() {
   return import('@/instrumentation');
 }
@@ -135,8 +139,9 @@ describe('platform shell', () => {
 
     const result = await sitemap();
 
-    expect(result).toHaveLength(5);
+    expect(result).toHaveLength(20);
     expect(result.at(-1)?.url).toBe('https://openresourceaccessnetwork.com/service/svc-1');
+    expect(result.some((entry) => entry.url === 'https://openresourceaccessnetwork.com/trust')).toBe(true);
   });
 
   it('returns only static pages when the sitemap fetch fails', async () => {
@@ -145,7 +150,17 @@ describe('platform shell', () => {
 
     const result = await sitemap();
 
-    expect(result).toHaveLength(4);
+    expect(result).toHaveLength(19);
+  });
+
+  it('exports a web manifest for ORAN discovery surfaces', async () => {
+    const { default: manifest } = await loadManifest();
+
+    const result = manifest();
+
+    expect(result.short_name).toBe('ORAN');
+    expect(result.start_url).toBe('/');
+    expect(result.icons?.[0]?.src).toBe('/globe.svg');
   });
 
   it('skips instrumentation outside the node runtime', async () => {

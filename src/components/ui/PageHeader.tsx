@@ -29,9 +29,9 @@ interface PageHeaderBadgeProps {
 }
 
 const PAGE_HEADER_BADGE_STYLES: Record<PageHeaderBadgeTone, string> = {
-  neutral: 'border-slate-200 bg-white/90 text-slate-600',
-  accent: 'border-sky-100 bg-sky-50 text-sky-700',
-  trust: 'border-emerald-100 bg-emerald-50 text-emerald-700',
+  neutral: 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)]',
+  accent: 'border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]',
+  trust: 'border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]',
 };
 
 // ============================================================
@@ -85,13 +85,13 @@ export function PageHeader({ eyebrow, title, icon, subtitle, badges, actions, cl
         {/* Left: icon + title + subtitle + badges */}
         <div className="min-w-0 flex-1">
           {eyebrow && (
-            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
               {eyebrow}
             </div>
           )}
-          <h1 className="flex items-center gap-2.5 text-xl font-semibold tracking-tight text-slate-950 leading-tight sm:text-2xl md:text-[2rem]">
+          <h1 className="flex items-center gap-2.5 text-xl font-semibold tracking-tight text-[var(--text-primary)] leading-tight sm:text-2xl md:text-[2rem]">
             {icon && (
-              <span className="flex-shrink-0 text-sky-600" aria-hidden="true">
+              <span className="flex-shrink-0 text-[var(--text-primary)]" aria-hidden="true">
                 {icon}
               </span>
             )}
@@ -100,7 +100,7 @@ export function PageHeader({ eyebrow, title, icon, subtitle, badges, actions, cl
 
           {/* div not p — accepts any ReactNode incl. inline links and multi-line content */}
           {subtitle && (
-            <div className="mt-1.5 text-sm text-slate-600 leading-relaxed md:text-[15px]">
+            <div className="mt-1.5 text-sm text-[var(--text-secondary)] leading-relaxed md:text-[15px]">
               {subtitle}
             </div>
           )}

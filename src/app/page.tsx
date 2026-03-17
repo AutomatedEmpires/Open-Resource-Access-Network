@@ -4,43 +4,37 @@ import { MessageCircle, List, MapPin, Shield, Building2, Users, ArrowRight, Sear
 import { Button } from '@/components/ui/button';
 import { AppNav } from '@/components/nav/AppNav';
 import { AppFooter } from '@/components/footer';
-
-const BASE_URL = 'https://openresourceaccessnetwork.com';
+import { SITE, buildOrganizationJsonLd, getSameAsLinks, toSafeJsonLd } from '@/lib/site';
 
 export const metadata: Metadata = {
-  title: 'ORAN — Open Resource Access Network',
+  title: SITE.title,
   description:
     'Find verified government, nonprofit, and community services near you. Real, confirmed records — structured, searchable, and maintained by real people.',
   alternates: { canonical: '/' },
   openGraph: {
-    title: 'ORAN — Open Resource Access Network',
-    description: 'Find verified government, nonprofit, and community services near you.',
-    url: BASE_URL,
+    title: SITE.title,
+    description: SITE.description,
+    url: SITE.baseUrl,
     type: 'website',
   },
 };
 
 /** JSON-LD Organization schema for the landing page */
-const orgSchema = {
-  '@context': 'https://schema.org',
-  '@type': 'Organization',
-  name: 'Open Resource Access Network',
-  url: BASE_URL,
-  description:
-    'A civic-grade platform for locating verified government, nonprofit, and community services.',
-};
+const orgSchema = buildOrganizationJsonLd();
 
 /** JSON-LD WebSite schema — enables Google Sitelinks Search Box */
 const websiteSchema = {
   '@context': 'https://schema.org',
   '@type': 'WebSite',
-  name: 'Open Resource Access Network',
-  url: BASE_URL,
+  name: SITE.legalName,
+  alternateName: SITE.acronym,
+  url: SITE.baseUrl,
+  sameAs: getSameAsLinks(),
   potentialAction: {
     '@type': 'SearchAction',
     target: {
       '@type': 'EntryPoint',
-      urlTemplate: `${BASE_URL}/directory?q={search_term_string}`,
+      urlTemplate: `${SITE.baseUrl}/directory?q={search_term_string}`,
     },
     'query-input': 'required name=search_term_string',
   },
@@ -163,11 +157,11 @@ export default function Home() {
       {/* JSON-LD */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(orgSchema).replace(/</g, '\\u003c') }}
+        dangerouslySetInnerHTML={{ __html: toSafeJsonLd(orgSchema) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema).replace(/</g, '\\u003c') }}
+        dangerouslySetInnerHTML={{ __html: toSafeJsonLd(websiteSchema) }}
       />
 
       <AppNav />
@@ -215,7 +209,7 @@ export default function Home() {
               </div>
               <button
                 type="submit"
-                className="flex-shrink-0 border-l border-[var(--border)] bg-white px-5 sm:px-8 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--text-muted)]"
+                className="flex-shrink-0 border-l border-[var(--border)] bg-white px-5 sm:px-8 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-surface-alt)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--text-muted)]"
               >
                 Search
               </button>
@@ -226,14 +220,14 @@ export default function Home() {
               <span className="text-xs text-[var(--text-muted)]">or explore</span>
               <Link
                 href="/directory"
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white px-4 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-gray-50 hover:text-[var(--text-primary)]"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white px-4 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
               >
                 <List className="h-3.5 w-3.5" aria-hidden="true" />
                 Directory
               </Link>
               <Link
                 href="/map"
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white px-4 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-gray-50 hover:text-[var(--text-primary)]"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white px-4 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
               >
                 <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
                 Map view
@@ -335,7 +329,7 @@ export default function Home() {
             <div className="flex flex-wrap justify-center gap-3">
               <Link
                 href="/partnerships/organizations"
-                className="inline-flex items-center gap-2 rounded-lg border border-[var(--text-primary)] bg-white px-6 py-2.5 text-sm font-semibold text-[var(--text-primary)] shadow-sm transition-colors hover:bg-gray-50"
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--text-primary)] bg-white px-6 py-2.5 text-sm font-semibold text-[var(--text-primary)] shadow-sm transition-colors hover:bg-[var(--bg-surface-alt)]"
               >
                 List your organization
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -376,7 +370,7 @@ export default function Home() {
             <div className="flex flex-wrap justify-center gap-3">
               <Link
                 href="/partnerships/admins"
-                className="inline-flex items-center gap-2 rounded-lg border border-[var(--text-primary)] bg-white px-6 py-2.5 text-sm font-semibold text-[var(--text-primary)] shadow-sm transition-colors hover:bg-gray-50"
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--text-primary)] bg-white px-6 py-2.5 text-sm font-semibold text-[var(--text-primary)] shadow-sm transition-colors hover:bg-[var(--bg-surface-alt)]"
               >
                 Become a volunteer admin
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -441,7 +435,7 @@ export default function Home() {
             <div className="flex flex-wrap justify-center gap-4">
               <Link
                 href="/about"
-                className="inline-flex items-center gap-2 rounded-xl border border-[var(--text-primary)] bg-white px-6 py-3 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[var(--text-muted)] focus:ring-offset-2"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--text-primary)] bg-white px-6 py-3 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-surface-alt)] focus:outline-none focus:ring-2 focus:ring-[var(--text-muted)] focus:ring-offset-2"
               >
                 Learn about our mission
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE } from '@/lib/site';
 
 const LAST_UPDATED_ISO = '2026-03-13';
 const LAST_UPDATED_DISPLAY = 'March 13, 2026';
@@ -7,6 +8,13 @@ const LAST_UPDATED_DISPLAY = 'March 13, 2026';
 export const metadata: Metadata = {
   title: 'System Status',
   description: 'Operational status for ORAN platform services.',
+  alternates: { canonical: '/status' },
+  openGraph: {
+    title: 'System Status — ORAN',
+    description: 'Operational status for ORAN platform services.',
+    url: `${SITE.baseUrl}/status`,
+    type: 'website',
+  },
 };
 
 type ComponentStatus = 'operational' | 'degraded' | 'outage' | 'maintenance';
@@ -30,10 +38,10 @@ const STATUS_STYLE: Record<
   ComponentStatus,
   { label: string; dot: string; text: string }
 > = {
-  operational: { label: 'Operational', dot: 'bg-green-500', text: 'text-green-700' },
-  degraded: { label: 'Degraded', dot: 'bg-amber-500', text: 'text-amber-700' },
+  operational: { label: 'Operational', dot: 'bg-gray-900', text: 'text-gray-900' },
+  degraded: { label: 'Degraded', dot: 'bg-gray-500', text: 'text-gray-700' },
   outage: { label: 'Outage', dot: 'bg-red-500', text: 'text-red-700' },
-  maintenance: { label: 'Maintenance', dot: 'bg-blue-500', text: 'text-blue-700' },
+  maintenance: { label: 'Maintenance', dot: 'bg-gray-600', text: 'text-gray-700' },
 };
 
 export default function StatusPage() {
@@ -43,7 +51,7 @@ export default function StatusPage() {
     <div className="container mx-auto max-w-3xl px-4 py-12">
       {/* Page header */}
       <div className="mb-10 border-b border-gray-200 pb-8">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-50">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
           <span className="text-xl" aria-hidden="true">📡</span>
         </div>
         <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">
@@ -61,27 +69,27 @@ export default function StatusPage() {
       <div
         className={`mb-10 flex items-center gap-4 rounded-xl border px-6 py-5 ${
           allOperational
-            ? 'border-green-200 bg-green-50'
-            : 'border-amber-200 bg-amber-50'
+            ? 'border-gray-200 bg-gray-50'
+            : 'border-gray-300 bg-gray-100'
         }`}
       >
         <span
           className={`inline-block h-4 w-4 rounded-full ${
-            allOperational ? 'bg-green-500' : 'bg-amber-500'
+            allOperational ? 'bg-gray-900' : 'bg-gray-600'
           }`}
           aria-hidden="true"
         />
         <div>
           <p
             className={`font-semibold ${
-              allOperational ? 'text-green-800' : 'text-amber-800'
+              allOperational ? 'text-gray-900' : 'text-gray-900'
             }`}
           >
             {allOperational ? 'All systems operational' : 'Service disruption in progress'}
           </p>
           <p
             className={`mt-0.5 text-sm ${
-              allOperational ? 'text-green-700' : 'text-amber-700'
+              allOperational ? 'text-gray-700' : 'text-gray-700'
             }`}
           >
             {allOperational

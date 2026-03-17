@@ -1,9 +1,17 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE } from '@/lib/site';
 
 export const metadata: Metadata = {
   title: 'Security Policy',
   description: 'ORAN security practices and responsible disclosure policy.',
+  alternates: { canonical: '/security' },
+  openGraph: {
+    title: 'Security Policy — ORAN',
+    description: 'ORAN security practices and responsible disclosure policy.',
+    url: `${SITE.baseUrl}/security`,
+    type: 'website',
+  },
 };
 
 const IN_SCOPE = [
@@ -69,14 +77,14 @@ export default function SecurityPage() {
   return (
     <div className="container mx-auto max-w-3xl px-4 py-12">
       {/* Page header */}
-      <div className="mb-10 border-b border-gray-200 pb-8">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-red-50">
+      <div className="mb-10 border-b border-[var(--border)] pb-8">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)]">
           <span className="text-xl" aria-hidden="true">🛡️</span>
         </div>
-        <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">
+        <h1 className="mb-2 text-3xl font-bold tracking-tight text-[var(--text-primary)]">
           Security Policy
         </h1>
-        <p className="text-gray-600 leading-relaxed max-w-xl">
+        <p className="max-w-xl leading-relaxed text-[var(--text-secondary)]">
           ORAN handles authentication, location data, and health-adjacent service queries. We
           take security seriously and welcome responsible disclosure from the research community.
         </p>
@@ -96,48 +104,48 @@ export default function SecurityPage() {
             href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/security/advisories/new"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-5 py-4 text-sm transition-colors hover:border-red-200 hover:bg-red-50"
+            className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-white px-5 py-4 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]"
           >
             <div>
-              <p className="font-medium text-gray-900">GitHub private advisory</p>
-              <p className="mt-0.5 text-gray-500">Preferred method — encrypted, tracked.</p>
+              <p className="font-medium text-[var(--text-primary)]">GitHub private advisory</p>
+              <p className="mt-0.5 text-[var(--text-muted)]">Preferred method — encrypted, tracked.</p>
             </div>
-            <span className="text-gray-400" aria-hidden="true">→</span>
+            <span className="text-[var(--text-muted)]" aria-hidden="true">→</span>
           </a>
           <Link
             href="/contact"
-            className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-5 py-4 text-sm transition-colors hover:border-red-200 hover:bg-red-50"
+            className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-white px-5 py-4 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]"
           >
             <div>
-              <p className="font-medium text-gray-900">Contact form</p>
-              <p className="mt-0.5 text-gray-500">Select &ldquo;Security&rdquo; as the category.</p>
+              <p className="font-medium text-[var(--text-primary)]">Contact form</p>
+              <p className="mt-0.5 text-[var(--text-muted)]">Select &ldquo;Security&rdquo; as the category.</p>
             </div>
-            <span className="text-gray-400" aria-hidden="true">→</span>
+            <span className="text-[var(--text-muted)]" aria-hidden="true">→</span>
           </Link>
         </div>
       </section>
 
       {/* Scope */}
       <section className="mb-10">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Scope</h2>
+        <h2 className="mb-4 text-lg font-semibold text-[var(--text-primary)]">Scope</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <h3 className="mb-3 text-sm font-medium text-green-700">In scope</h3>
+            <h3 className="mb-3 text-sm font-medium text-[var(--text-primary)]">In scope</h3>
             <ul className="space-y-2">
               {IN_SCOPE.map((item) => (
-                <li key={item} className="flex gap-2 text-sm text-gray-700">
-                  <span className="mt-0.5 shrink-0 text-green-500" aria-hidden="true">✓</span>
+                <li key={item} className="flex gap-2 text-sm text-[var(--text-secondary)]">
+                  <span className="mt-0.5 shrink-0 text-[var(--text-primary)]" aria-hidden="true">✓</span>
                   {item}
                 </li>
               ))}
             </ul>
           </div>
           <div>
-            <h3 className="mb-3 text-sm font-medium text-gray-500">Out of scope</h3>
+            <h3 className="mb-3 text-sm font-medium text-[var(--text-muted)]">Out of scope</h3>
             <ul className="space-y-2">
               {OUT_OF_SCOPE.map((item) => (
-                <li key={item} className="flex gap-2 text-sm text-gray-600">
-                  <span className="mt-0.5 shrink-0 text-gray-400" aria-hidden="true">✗</span>
+                <li key={item} className="flex gap-2 text-sm text-[var(--text-secondary)]">
+                  <span className="mt-0.5 shrink-0 text-[var(--text-muted)]" aria-hidden="true">✗</span>
                   {item}
                 </li>
               ))}
@@ -242,7 +250,7 @@ export default function SecurityPage() {
           href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/SECURITY.md"
           target="_blank"
           rel="noopener noreferrer"
-          className="shrink-0 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          className="shrink-0 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2"
         >
           View SECURITY.md →
         </a>

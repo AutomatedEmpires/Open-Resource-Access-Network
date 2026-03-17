@@ -1,11 +1,20 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
+import { SITE } from '@/lib/site';
 
 export const metadata: Metadata = {
-  title: 'Press — ORAN',
+  title: 'Press & Media',
   description:
     'Press kit, media resources, and brand guidelines for the Open Resource Access Network.',
+  alternates: { canonical: '/about/press' },
+  openGraph: {
+    title: 'Press & Media — ORAN',
+    description:
+      'Press kit, fact sheet, trust links, and media-ready boilerplate for the Open Resource Access Network.',
+    url: `${SITE.baseUrl}/about/press`,
+    type: 'article',
+  },
 };
 
 interface PressAsset {
@@ -47,24 +56,29 @@ const BRAND_ASSETS: PressAsset[] = [
 ];
 
 const FACT_SHEET: Stat[] = [
-  { label: 'Full name', value: 'Open Resource Access Network' },
-  { label: 'Abbreviation', value: 'ORAN' },
+  { label: 'Full name', value: SITE.legalName },
+  { label: 'Abbreviation', value: SITE.acronym },
   { label: 'Founded', value: '2024' },
   { label: 'License', value: 'MIT (open source)' },
   {
     label: 'Primary URL',
     value: 'openresourceaccessnetwork.com',
-    href: 'https://openresourceaccessnetwork.com',
+    href: SITE.baseUrl,
   },
   {
     label: 'Codebase',
     value: 'github.com/AutomatedEmpires/Open-Resource-Access-Network',
-    href: 'https://github.com/AutomatedEmpires/Open-Resource-Access-Network',
+    href: SITE.githubUrl,
   },
+  { label: 'Mission', value: SITE.mission },
+  { label: 'Vision', value: SITE.vision },
   { label: 'Service categories', value: '30+' },
   { label: 'Verification model', value: 'Community admin + automated confidence scoring' },
   { label: 'Crisis routing', value: '911 / 988 / 211 — immediate, non-defeatable' },
   { label: 'Data policy', value: 'Retrieval-only — no AI hallucinations in results' },
+  { label: 'Trust center', value: 'openresourceaccessnetwork.com/trust', href: `${SITE.baseUrl}/trust` },
+  { label: 'Status page', value: 'openresourceaccessnetwork.com/status', href: `${SITE.baseUrl}/status` },
+  { label: 'Security policy', value: 'openresourceaccessnetwork.com/security', href: `${SITE.baseUrl}/security` },
 ];
 
 const PRESS_MENTIONS: Mention[] = [
@@ -94,7 +108,7 @@ export default function PressPage() {
 
       {/* Header */}
       <div className="mb-10 border-b border-gray-200 pb-8">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--bg-surface-alt)]">
           <span className="text-xl" aria-hidden="true">📰</span>
         </div>
         <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">Press &amp; Media</h1>
@@ -116,7 +130,7 @@ export default function PressPage() {
           <div className="flex flex-wrap items-center gap-3">
             <Link
               href="/contact"
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
             >
               Contact page
             </Link>
@@ -127,13 +141,41 @@ export default function PressPage() {
         </div>
       </section>
 
+      {/* Source-of-truth links */}
+      <section className="mb-12">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Source-of-truth links</h2>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Link href="/trust" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Trust Center</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/about" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">About ORAN</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <a
+            href={SITE.githubUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <span className="font-medium text-gray-900">GitHub repository</span>
+            <span className="text-gray-400" aria-hidden="true">↗</span>
+          </a>
+          <Link href="/status" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">System Status</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </section>
+
       {/* Suggested boilerplate — journalists need this before the fact sheet */}
       <section className="mb-12">
         <h2 className="mb-3 text-lg font-semibold text-gray-900">Suggested boilerplate</h2>
         <p className="mb-4 text-sm text-gray-500">
           Copy and adapt freely for articles, directories, and partner materials:
         </p>
-        <blockquote className="rounded-lg border-l-4 border-indigo-300 bg-indigo-50 px-5 py-4">
+        <blockquote className="rounded-lg border-l-4 border-gray-300 bg-[var(--bg-surface-alt)] px-5 py-4">
           <p className="leading-relaxed text-gray-800 italic">
             &ldquo;ORAN (Open Resource Access Network) is an open-source, civic-grade platform that connects people to verified
             government, nonprofit, and community services. Results come exclusively from stored, verified records — no AI
@@ -163,7 +205,7 @@ export default function PressPage() {
                         href={href}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
+                        className="inline-flex items-center gap-1 text-gray-700 hover:underline"
                       >
                         {value}
                         <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -205,7 +247,7 @@ export default function PressPage() {
         <div className="mt-4 flex items-center gap-3">
           <Link
             href="/contact"
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-[var(--bg-surface-alt)] hover:text-gray-900"
           >
             Request assets
           </Link>
@@ -246,7 +288,7 @@ export default function PressPage() {
           <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-5 py-8 text-center">
             <p className="text-sm text-gray-500">
               Coverage will be listed here as it is published. If you are writing about ORAN,{' '}
-              <Link href="/contact" className="font-medium text-indigo-600 hover:underline">let us know</Link>.
+              <Link href="/contact" className="font-medium text-gray-700 hover:underline">let us know</Link>.
             </p>
           </div>
         ) : (
@@ -262,7 +304,7 @@ export default function PressPage() {
                     href={m.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="shrink-0 text-xs text-indigo-600 hover:underline"
+                    className="shrink-0 text-xs text-gray-700 hover:underline"
                   >
                     Read <ExternalLink className="inline h-3 w-3" aria-hidden="true" />
                   </a>
@@ -281,7 +323,7 @@ export default function PressPage() {
         </div>
         <Link
           href="/contact"
-          className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+          className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
         >
           Contact us
         </Link>

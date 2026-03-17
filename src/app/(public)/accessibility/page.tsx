@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE } from '@/lib/site';
 
 const LAST_EVALUATED_ISO = '2026-03-13';
 const LAST_EVALUATED_DISPLAY = 'March 13, 2026';
@@ -7,6 +8,13 @@ const LAST_EVALUATED_DISPLAY = 'March 13, 2026';
 export const metadata: Metadata = {
   title: 'Accessibility Statement',
   description: "ORAN's commitment to accessible design and WCAG 2.1 AA conformance.",
+  alternates: { canonical: '/accessibility' },
+  openGraph: {
+    title: 'Accessibility Statement — ORAN',
+    description: "ORAN's commitment to accessible design and WCAG 2.1 AA conformance.",
+    url: `${SITE.baseUrl}/accessibility`,
+    type: 'website',
+  },
 };
 
 const TECHNICAL_APPROACH = [
@@ -49,28 +57,28 @@ export default function AccessibilityPage() {
   return (
     <div className="container mx-auto max-w-3xl px-4 py-12">
       {/* Page header */}
-      <div className="mb-10 border-b border-gray-200 pb-8">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-green-50">
+      <div className="mb-10 border-b border-[var(--border)] pb-8">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)]">
           <span className="text-xl" aria-hidden="true">♿</span>
         </div>
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900 mb-2">
+        <h1 className="mb-2 text-3xl font-bold tracking-tight text-[var(--text-primary)]">
           Accessibility Statement
         </h1>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-[var(--text-muted)]">
           Last evaluated: <time dateTime={LAST_EVALUATED_ISO}>{LAST_EVALUATED_DISPLAY}</time>
         </p>
       </div>
 
       {/* Introduction */}
       <section className="mb-10">
-        <p className="text-gray-700 leading-relaxed">
+        <p className="leading-relaxed text-[var(--text-secondary)]">
           ORAN is committed to making this platform accessible to everyone, including people with
           disabilities. We target conformance with the{' '}
           <a
             href="https://www.w3.org/TR/WCAG21/"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-indigo-600 underline hover:text-indigo-800"
+            className="text-[var(--text-primary)] underline hover:text-[var(--text-secondary)]"
           >
             Web Content Accessibility Guidelines (WCAG) 2.1
           </a>{' '}
@@ -80,13 +88,13 @@ export default function AccessibilityPage() {
 
       {/* Conformance status */}
       <section className="mb-10">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Conformance status</h2>
-        <div className="rounded-lg border border-green-200 bg-green-50 px-5 py-4 mb-3">
-          <p className="text-sm font-medium text-green-800">
+        <h2 className="mb-3 text-lg font-semibold text-[var(--text-primary)]">Conformance status</h2>
+        <div className="mb-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-5 py-4">
+          <p className="text-sm font-medium text-[var(--text-primary)]">
             Target: WCAG 2.1 Level AA — Partial conformance (active improvement in progress)
           </p>
         </div>
-        <p className="text-sm text-gray-600 leading-relaxed">
+        <p className="text-sm leading-relaxed text-[var(--text-secondary)]">
           &ldquo;Partial conformance&rdquo; means some parts of the content do not yet fully conform.
           Known issues and remediation commitments are listed below.
         </p>
@@ -94,11 +102,11 @@ export default function AccessibilityPage() {
 
       {/* Technical approach */}
       <section className="mb-10">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Technical approach</h2>
-        <ul className="space-y-2 text-sm text-gray-700">
+        <h2 className="mb-3 text-lg font-semibold text-[var(--text-primary)]">Technical approach</h2>
+        <ul className="space-y-2 text-sm text-[var(--text-secondary)]">
           {TECHNICAL_APPROACH.map((item) => (
             <li key={item} className="flex gap-2">
-              <span className="mt-0.5 shrink-0 text-green-500" aria-hidden="true">✓</span>
+              <span className="mt-0.5 shrink-0 text-[var(--text-primary)]" aria-hidden="true">✓</span>
               <span>{item}</span>
             </li>
           ))}
@@ -107,15 +115,15 @@ export default function AccessibilityPage() {
 
       {/* Testing matrix */}
       <section className="mb-10">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Tested against</h2>
+        <h2 className="mb-3 text-lg font-semibold text-[var(--text-primary)]">Tested against</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {TESTING_MATRIX.map(({ tool, type }) => (
             <div
               key={tool}
-              className="rounded border border-gray-200 bg-gray-50 px-4 py-3"
+              className="rounded border border-[var(--border)] bg-[var(--bg-surface-alt)] px-4 py-3"
             >
-              <p className="text-sm font-medium text-gray-900">{tool}</p>
-              <p className="mt-0.5 text-xs text-gray-500">{type}</p>
+              <p className="text-sm font-medium text-[var(--text-primary)]">{tool}</p>
+              <p className="mt-0.5 text-xs text-[var(--text-muted)]">{type}</p>
             </div>
           ))}
         </div>
@@ -123,26 +131,26 @@ export default function AccessibilityPage() {
 
       {/* Known issues */}
       <section className="mb-10">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Known issues</h2>
-        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
+        <h2 className="mb-3 text-lg font-semibold text-[var(--text-primary)]">Known issues</h2>
+        <div className="mb-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-5 py-3 text-sm text-[var(--text-secondary)]">
           This section is updated after each accessibility audit. Remediation timelines are best-effort.
         </div>
         <div className="space-y-3">
           {KNOWN_ISSUES.map(({ issue, detail, severity }) => (
-            <div key={issue} className="rounded border border-gray-200 bg-white px-4 py-3">
+            <div key={issue} className="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3">
               <div className="flex items-start justify-between gap-4">
-                <p className="text-sm font-medium text-gray-900">{issue}</p>
+                <p className="text-sm font-medium text-[var(--text-primary)]">{issue}</p>
                 <span
                   className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
                     severity === 'Medium'
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-gray-100 text-gray-600'
+                        ? 'border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
+                      : 'border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]'
                   }`}
                 >
                   {severity}
                 </span>
               </div>
-              <p className="mt-1 text-sm text-gray-600">{detail}</p>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">{detail}</p>
             </div>
           ))}
         </div>
@@ -150,8 +158,8 @@ export default function AccessibilityPage() {
 
       {/* Third-party content */}
       <section className="mb-10">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Third-party content</h2>
-        <p className="text-sm text-gray-700 leading-relaxed">
+        <h2 className="mb-3 text-lg font-semibold text-[var(--text-primary)]">Third-party content</h2>
+        <p className="text-sm leading-relaxed text-[var(--text-secondary)]">
           ORAN embeds third-party components including map tiles and authentication widgets. These
           components are outside our direct control. We select third-party services with an eye
           toward their own accessibility commitments and work to mitigate gaps where possible.
@@ -160,16 +168,16 @@ export default function AccessibilityPage() {
 
       {/* Feedback */}
       <section className="mb-10">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">
+        <h2 className="mb-3 text-lg font-semibold text-[var(--text-primary)]">
           Feedback and accommodation requests
         </h2>
-        <p className="mb-4 text-sm text-gray-700 leading-relaxed">
+        <p className="mb-4 text-sm leading-relaxed text-[var(--text-secondary)]">
           If you experience an accessibility barrier or need content in an alternative format,
           please let us know. We aim to acknowledge accessibility requests within 5 business days.
         </p>
         <Link
           href="/contact"
-          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          className="inline-flex items-center gap-2 rounded-lg border border-[var(--text-primary)] bg-[var(--text-primary)] px-4 py-2 text-sm font-medium text-[var(--bg-page)] hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--text-muted)] focus:ring-offset-2"
         >
           Contact us about accessibility
         </Link>
@@ -177,81 +185,81 @@ export default function AccessibilityPage() {
 
       {/* External resources */}
       <section className="mb-10">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Accessibility resources</h2>
+        <h2 className="mb-4 text-lg font-semibold text-[var(--text-primary)]">Accessibility resources</h2>
         <div className="grid gap-2 sm:grid-cols-2">
           <a
             href="https://www.w3.org/TR/WCAG21/"
             target="_blank"
             rel="noopener noreferrer"
-            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+            className="group flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]"
           >
             <div>
-              <p className="font-medium text-gray-900">WCAG 2.1 Guidelines</p>
-              <p className="mt-0.5 text-xs text-gray-500">W3C — official specification</p>
+              <p className="font-medium text-[var(--text-primary)]">WCAG 2.1 Guidelines</p>
+              <p className="mt-0.5 text-xs text-[var(--text-muted)]">W3C — official specification</p>
             </div>
-            <span className="shrink-0 text-gray-400" aria-hidden="true">↗</span>
+            <span className="shrink-0 text-[var(--text-muted)]" aria-hidden="true">↗</span>
           </a>
           <a
             href="https://webaim.org/resources/contrastchecker/"
             target="_blank"
             rel="noopener noreferrer"
-            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+            className="group flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]"
           >
             <div>
-              <p className="font-medium text-gray-900">WebAIM Contrast Checker</p>
-              <p className="mt-0.5 text-xs text-gray-500">Color contrast verification tool</p>
+              <p className="font-medium text-[var(--text-primary)]">WebAIM Contrast Checker</p>
+              <p className="mt-0.5 text-xs text-[var(--text-muted)]">Color contrast verification tool</p>
             </div>
-            <span className="shrink-0 text-gray-400" aria-hidden="true">↗</span>
+            <span className="shrink-0 text-[var(--text-muted)]" aria-hidden="true">↗</span>
           </a>
           <a
             href="https://www.deque.com/axe/devtools/"
             target="_blank"
             rel="noopener noreferrer"
-            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+            className="group flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]"
           >
             <div>
-              <p className="font-medium text-gray-900">axe DevTools</p>
-              <p className="mt-0.5 text-xs text-gray-500">Browser extension for a11y auditing</p>
+              <p className="font-medium text-[var(--text-primary)]">axe DevTools</p>
+              <p className="mt-0.5 text-xs text-[var(--text-muted)]">Browser extension for a11y auditing</p>
             </div>
-            <span className="shrink-0 text-gray-400" aria-hidden="true">↗</span>
+            <span className="shrink-0 text-[var(--text-muted)]" aria-hidden="true">↗</span>
           </a>
           <a
             href="https://www.nvaccess.org/download/"
             target="_blank"
             rel="noopener noreferrer"
-            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+            className="group flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]"
           >
             <div>
-              <p className="font-medium text-gray-900">NVDA Screen Reader</p>
-              <p className="mt-0.5 text-xs text-gray-500">Free Windows screen reader (NV Access)</p>
+              <p className="font-medium text-[var(--text-primary)]">NVDA Screen Reader</p>
+              <p className="mt-0.5 text-xs text-[var(--text-muted)]">Free Windows screen reader (NV Access)</p>
             </div>
-            <span className="shrink-0 text-gray-400" aria-hidden="true">↗</span>
+            <span className="shrink-0 text-[var(--text-muted)]" aria-hidden="true">↗</span>
           </a>
         </div>
       </section>
 
       {/* Footer note */}
-      <div className="mb-8 border-t border-gray-200 pt-6 text-xs text-gray-600">
+      <div className="mb-8 border-t border-[var(--border)] pt-6 text-xs text-[var(--text-secondary)]">
         This statement was last evaluated on{' '}
         <time dateTime={LAST_EVALUATED_ISO}>{LAST_EVALUATED_DISPLAY}</time>. It is updated
         when evaluations are refreshed or known issues change.
       </div>
 
       {/* Related policies */}
-      <nav aria-label="Related policies" className="border-t border-gray-200 pt-6">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Related</p>
+      <nav aria-label="Related policies" className="border-t border-[var(--border)] pt-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Related</p>
         <div className="grid gap-2 sm:grid-cols-3">
-          <Link href="/terms" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
-            <span className="font-medium text-gray-900">Terms of Use</span>
-            <span className="text-gray-400" aria-hidden="true">→</span>
+          <Link href="/terms" className="group flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]">
+            <span className="font-medium text-[var(--text-primary)]">Terms of Use</span>
+            <span className="text-[var(--text-muted)]" aria-hidden="true">→</span>
           </Link>
-          <Link href="/privacy" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
-            <span className="font-medium text-gray-900">Privacy Policy</span>
-            <span className="text-gray-400" aria-hidden="true">→</span>
+          <Link href="/privacy" className="group flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]">
+            <span className="font-medium text-[var(--text-primary)]">Privacy Policy</span>
+            <span className="text-[var(--text-muted)]" aria-hidden="true">→</span>
           </Link>
-          <Link href="/contact" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
-            <span className="font-medium text-gray-900">Contact us</span>
-            <span className="text-gray-400" aria-hidden="true">→</span>
+          <Link href="/contact" className="group flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]">
+            <span className="font-medium text-[var(--text-primary)]">Contact us</span>
+            <span className="text-[var(--text-muted)]" aria-hidden="true">→</span>
           </Link>
         </div>
       </nav>

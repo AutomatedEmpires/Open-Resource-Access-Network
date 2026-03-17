@@ -14,7 +14,6 @@
 import * as React from 'react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -142,10 +141,10 @@ const variantStyles: Record<ToastVariant, string> = {
 };
 
 const variantIcons: Record<ToastVariant, React.ReactNode> = {
-  success: <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />,
-  error: <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />,
-  warning: <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />,
-  info: <Info className="h-4 w-4 shrink-0" aria-hidden="true" />,
+  success: <span className="text-xs font-bold" aria-hidden="true">OK</span>,
+  error: <span className="text-xs font-bold" aria-hidden="true">!</span>,
+  warning: <span className="text-xs font-bold" aria-hidden="true">!</span>,
+  info: <span className="text-xs font-bold" aria-hidden="true">i</span>,
 };
 
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
@@ -168,7 +167,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
         className="shrink-0 rounded-md p-1 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/50 min-w-[28px] min-h-[28px] flex items-center justify-center"
         aria-label="Dismiss notification"
       >
-        <X className="h-3.5 w-3.5" aria-hidden="true" />
+        <span aria-hidden="true">x</span>
       </button>
     </div>
   );

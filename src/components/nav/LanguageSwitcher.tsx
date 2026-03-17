@@ -116,7 +116,7 @@ export function LanguageSwitcher() {
         aria-expanded={open}
         aria-label={t('common.select_language')}
         title={t('common.select_language')}
-        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md px-2.5 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-gray-50 hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-muted)]"
+        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md px-2.5 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-muted)]"
       >
         <Globe className="h-4 w-4 shrink-0 text-[var(--text-muted)]" aria-hidden="true" />
         <span className="hidden sm:inline">{current.nativeName}</span>
@@ -146,11 +146,11 @@ export function LanguageSwitcher() {
                   aria-selected={isSelected}
                   tabIndex={-1}
                   onClick={() => handleSelect(lang.code)}
-                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors focus:outline-none focus-visible:bg-gray-50 ${
+                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors focus:outline-none focus-visible:bg-[var(--bg-surface-alt)] ${
                     isSelected
-                      ? 'bg-gray-50 font-semibold text-[var(--text-primary)]'
-                      : 'text-[var(--text-secondary)] hover:bg-gray-50 hover:text-[var(--text-primary)]'
-                  } ${idx === focusIndex ? 'bg-gray-50' : ''}`}
+                      ? 'bg-[var(--bg-surface-alt)] font-semibold text-[var(--text-primary)]'
+                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
+                  } ${idx === focusIndex ? 'bg-[var(--bg-surface-alt)]' : ''}`}
                 >
                   <span className="text-base leading-none" aria-hidden="true">
                     {lang.flag}

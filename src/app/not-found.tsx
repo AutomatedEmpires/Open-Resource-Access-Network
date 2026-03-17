@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 
 export default function NotFound() {
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50">
+    <div className="flex min-h-screen flex-col bg-[var(--bg-page)]">
       <AppNav />
 
       <main
@@ -27,13 +27,13 @@ export default function NotFound() {
         className="flex flex-1 flex-col items-center justify-center px-4 py-16 text-center"
       >
         {/* Icon */}
-        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border-2 border-orange-100 bg-orange-50">
-          <MapPin className="h-9 w-9 text-orange-500" aria-hidden="true" />
+        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-surface)]">
+          <MapPin className="h-9 w-9 text-[var(--text-primary)]" aria-hidden="true" />
         </div>
 
         {/* Headline */}
-        <h1 className="mb-3 text-3xl font-bold text-gray-900">Page not found</h1>
-        <p className="mb-10 max-w-md leading-relaxed text-gray-500">
+        <h1 className="mb-3 text-3xl font-bold text-[var(--text-primary)]">Page not found</h1>
+        <p className="mb-10 max-w-md leading-relaxed text-[var(--text-secondary)]">
           We couldn&apos;t find what you were looking for. The page may have moved or
           the link may be incorrect. Here are some starting points:
         </p>
@@ -42,30 +42,30 @@ export default function NotFound() {
         <div className="mb-12 grid w-full max-w-sm grid-cols-2 gap-3">
           <Link
             href="/"
-            className="flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+            className="flex items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
           >
-            <Home className="h-4 w-4 text-gray-400" aria-hidden="true" />
+            <Home className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
             Go home
           </Link>
           <Link
             href="/chat"
-            className="flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-orange-600"
+            className="flex items-center justify-center gap-2 rounded-lg border border-[var(--text-primary)] bg-[var(--text-primary)] px-4 py-3 text-sm font-semibold text-[var(--bg-page)] shadow-sm transition-colors hover:opacity-90"
           >
             <MessageCircle className="h-4 w-4" aria-hidden="true" />
             Find services
           </Link>
           <Link
             href="/directory"
-            className="flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+            className="flex items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
           >
-            <List className="h-4 w-4 text-gray-400" aria-hidden="true" />
+            <List className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
             Directory
           </Link>
           <Link
             href="/map"
-            className="flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+            className="flex items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-sm font-medium text-[var(--text-secondary)] shadow-sm transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
           >
-            <MapPin className="h-4 w-4 text-gray-400" aria-hidden="true" />
+            <MapPin className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
             View map
           </Link>
         </div>

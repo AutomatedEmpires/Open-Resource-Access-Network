@@ -1,11 +1,36 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import {
+  SITE,
+  buildAboutPageJsonLd,
+  buildOrganizationJsonLd,
+  toSafeJsonLd,
+} from '@/lib/site';
 
 export const metadata: Metadata = {
   title: 'About ORAN',
   description:
     'Learn about the Open Resource Access Network — a civic-grade platform connecting people to verified government, nonprofit, and community services.',
+  alternates: { canonical: '/about' },
+  openGraph: {
+    title: 'About ORAN',
+    description:
+      'Mission, vision, governance, and trust principles for the Open Resource Access Network.',
+    url: `${SITE.baseUrl}/about`,
+    type: 'article',
+  },
 };
+
+const MISSION_VISION = [
+  {
+    title: 'Mission',
+    body: SITE.mission,
+  },
+  {
+    title: 'Vision',
+    body: SITE.vision,
+  },
+] as const;
 
 const HOW_IT_WORKS = [
   {
@@ -88,9 +113,18 @@ const DIFFERENTIATORS = [
 export default function AboutPage() {
   return (
     <div className="container mx-auto max-w-3xl px-4 py-12">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: toSafeJsonLd(buildOrganizationJsonLd()) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: toSafeJsonLd(buildAboutPageJsonLd()) }}
+      />
+
       {/* Hero */}
       <div className="mb-10 border-b border-gray-200 pb-8">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-50">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
           <span className="text-xl" aria-hidden="true">🌐</span>
         </div>
         <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">
@@ -103,10 +137,10 @@ export default function AboutPage() {
         {/* Credential strip */}
         <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
           {[
-            { dot: 'bg-green-500', text: 'WCAG 2.1 AA' },
-            { dot: 'bg-indigo-500', text: 'MIT open source' },
+            { dot: 'bg-gray-900', text: 'WCAG 2.1 AA' },
+            { dot: 'bg-gray-700', text: 'MIT open source' },
             { dot: 'bg-red-500',   text: '911 / 988 / 211 crisis gate' },
-            { dot: 'bg-amber-500', text: 'Free to use' },
+            { dot: 'bg-gray-500', text: 'Free to use' },
           ].map(({ dot, text }) => (
             <span key={text} className="inline-flex items-center gap-1.5 text-xs text-gray-500">
               <span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-hidden="true" />
@@ -131,6 +165,19 @@ export default function AboutPage() {
         </p>
       </section>
 
+      {/* Mission & vision */}
+      <section className="mb-12">
+        <h2 className="mb-5 text-lg font-semibold text-gray-900">Mission &amp; vision</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {MISSION_VISION.map(({ title, body }) => (
+            <div key={title} className="rounded-lg border border-gray-200 bg-white px-5 py-5">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-gray-500">{title}</p>
+              <p className="text-sm leading-relaxed text-gray-700">{body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* How it works */}
       <section className="mb-12">
         <h2 className="mb-5 text-lg font-semibold text-gray-900">How it works</h2>
@@ -140,7 +187,7 @@ export default function AboutPage() {
               key={step}
               className="rounded-lg border border-gray-200 bg-gray-50 px-5 py-5"
             >
-              <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white">
+              <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-gray-900 text-sm font-bold text-white">
                 {step}
               </div>
               <h3 className="mb-1 font-semibold text-gray-900">{title}</h3>
@@ -156,7 +203,7 @@ export default function AboutPage() {
         <div className="space-y-4">
           {NON_NEGOTIABLES.map(({ title, description }) => (
             <div key={title} className="flex gap-4">
-              <span className="mt-1 shrink-0 text-lg text-indigo-400" aria-hidden="true">
+              <span className="mt-1 shrink-0 text-lg text-gray-400" aria-hidden="true">
                 ✦
               </span>
               <div>
@@ -181,6 +228,25 @@ export default function AboutPage() {
           ORAN is open source. The platform code is publicly available on GitHub, enabling public
           scrutiny, community contributions, and trust through transparency.
         </p>
+        <div className="mt-5 grid gap-2 sm:grid-cols-3">
+          <Link href="/trust" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Trust Center</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <Link href="/about/press" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
+            <span className="font-medium text-gray-900">Press &amp; Media</span>
+            <span className="text-gray-400" aria-hidden="true">→</span>
+          </Link>
+          <a
+            href={SITE.githubUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <span className="font-medium text-gray-900">GitHub repository</span>
+            <span className="text-gray-400" aria-hidden="true">↗</span>
+          </a>
+        </div>
       </section>
 
       {/* Platform at a glance */}
@@ -192,7 +258,7 @@ export default function AboutPage() {
               key={label}
               className="rounded-lg border border-gray-200 bg-white px-4 py-5 text-center"
             >
-              <p className="text-xl font-bold text-indigo-600">{value}</p>
+              <p className="text-xl font-bold text-gray-900">{value}</p>
               <p className="mt-1 text-xs text-gray-500">{label}</p>
             </div>
           ))}
@@ -211,7 +277,7 @@ export default function AboutPage() {
               key={vs}
               className="rounded-lg border border-gray-200 bg-gray-50 px-5 py-5"
             >
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-indigo-500">{vs}</p>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-500">{vs}</p>
               <h3 className="mb-1 font-semibold text-gray-900">{title}</h3>
               <p className="text-sm leading-relaxed text-gray-600">{body}</p>
             </div>
@@ -229,37 +295,37 @@ export default function AboutPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Link
             href="/chat"
-            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-indigo-300 hover:bg-indigo-50"
+            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-gray-300 hover:bg-gray-50"
           >
-            <h3 className="mb-1 font-semibold text-gray-900 group-hover:text-indigo-700 flex items-center justify-between">
-              Get Help <span aria-hidden="true" className="text-gray-300 group-hover:text-indigo-400">→</span>
+            <h3 className="mb-1 flex items-center justify-between font-semibold text-gray-900 group-hover:text-gray-900">
+              Get Help <span aria-hidden="true" className="text-gray-300 group-hover:text-gray-500">→</span>
             </h3>
             <p className="text-sm text-gray-500">Search verified services near you.</p>
           </Link>
           <Link
             href="/partnerships/organizations"
-            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-indigo-300 hover:bg-indigo-50"
+            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-gray-300 hover:bg-gray-50"
           >
-            <h3 className="mb-1 font-semibold text-gray-900 group-hover:text-indigo-700 flex items-center justify-between">
-              List Your Organization <span aria-hidden="true" className="text-gray-300 group-hover:text-indigo-400">→</span>
+            <h3 className="mb-1 flex items-center justify-between font-semibold text-gray-900 group-hover:text-gray-900">
+              List Your Organization <span aria-hidden="true" className="text-gray-300 group-hover:text-gray-500">→</span>
             </h3>
             <p className="text-sm text-gray-500">Add your services to the directory for free.</p>
           </Link>
           <Link
             href="/partnerships/admins"
-            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-indigo-300 hover:bg-indigo-50"
+            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-gray-300 hover:bg-gray-50"
           >
-            <h3 className="mb-1 font-semibold text-gray-900 group-hover:text-indigo-700 flex items-center justify-between">
-              Become an Admin <span aria-hidden="true" className="text-gray-300 group-hover:text-indigo-400">→</span>
+            <h3 className="mb-1 flex items-center justify-between font-semibold text-gray-900 group-hover:text-gray-900">
+              Become an Admin <span aria-hidden="true" className="text-gray-300 group-hover:text-gray-500">→</span>
             </h3>
             <p className="text-sm text-gray-500">Volunteer to verify records and expand local coverage.</p>
           </Link>
           <Link
             href="/contact"
-            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-indigo-300 hover:bg-indigo-50"
+            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-gray-300 hover:bg-gray-50"
           >
-            <h3 className="mb-1 font-semibold text-gray-900 group-hover:text-indigo-700 flex items-center justify-between">
-              Support ORAN <span aria-hidden="true" className="text-gray-300 group-hover:text-indigo-400">→</span>
+            <h3 className="mb-1 flex items-center justify-between font-semibold text-gray-900 group-hover:text-gray-900">
+              Support ORAN <span aria-hidden="true" className="text-gray-300 group-hover:text-gray-500">→</span>
             </h3>
             <p className="text-sm text-gray-500">Fund verification infrastructure and geographic expansion.</p>
           </Link>
@@ -268,10 +334,10 @@ export default function AboutPage() {
             href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network"
             target="_blank"
             rel="noopener noreferrer"
-            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-indigo-300 hover:bg-indigo-50 sm:col-span-2"
+            className="group rounded-lg border border-gray-200 bg-white px-5 py-5 transition-colors hover:border-gray-300 hover:bg-gray-50 sm:col-span-2"
           >
-            <h3 className="mb-1 font-semibold text-gray-900 group-hover:text-indigo-700 flex items-center justify-between">
-              Contribute on GitHub <span aria-hidden="true" className="text-gray-300 group-hover:text-indigo-400">→</span>
+            <h3 className="mb-1 flex items-center justify-between font-semibold text-gray-900 group-hover:text-gray-900">
+              Contribute on GitHub <span aria-hidden="true" className="text-gray-300 group-hover:text-gray-500">→</span>
             </h3>
             <p className="text-sm text-gray-500">Open source &middot; MIT licensed &middot; PRs welcome &middot; Issues tracked publicly.</p>
           </a>
@@ -288,7 +354,7 @@ export default function AboutPage() {
           href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network"
           target="_blank"
           rel="noopener noreferrer"
-          className="shrink-0 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          className="shrink-0 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
         >
           View on GitHub →
         </a>

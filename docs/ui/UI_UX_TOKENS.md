@@ -153,13 +153,16 @@ The following categories are **unconditionally approved** without appearing in t
 | Class | Reason |
 |---|---|
 | `min-h-[44px]`, `min-w-[44px]` | WCAG 2.5.5 minimum touch target (44 × 44 px) |
-| `min-h-[28px]`…`min-h-[80px]`, `min-w-[14px]`…`min-w-[200px]` | Icon / badge sizes inside labelled containers |
+| `min-h-[26px]`, `min-h-[28px]`…`min-h-[80px]`, `min-h-[84px]`, `min-h-[700px]` | Badge/tag heights, textarea height, chat grid floor |
+| `min-w-[14px]`…`min-w-[200px]`, `min-w-[64px]` | Icon / badge / button sizes inside labelled containers |
+| `min-h-[34px]`, `min-h-[64px]` | Tag button and send-button minimum heights |
 | `h-[60vh]`, `h-[50vh]`, `min-h-[60vh]` | Content-well viewport heights |
 | `max-h-[85vh]`, `max-h-[80vh]` | Modal / panel max heights |
 | `h-[calc(100dvh-13rem)]`, `h-[calc(100vh-16rem)]`, `max-h-[calc(100vh-16rem)]` | Computed scroll container heights |
-| `max-w-[120px]`…`max-w-[220px]`, `max-w-[18rem]`, `max-w-[85%]` | Truncation constraints for names / labels |
+| `max-w-[120px]`…`max-w-[220px]`, `max-w-[18rem]`, `max-w-[46rem]`, `max-w-[85%]` | Truncation / message column constraints |
 | `max-h-[120px]`, `max-h-[160px]`, `max-h-[420px]` | Scrollable list max heights |
-| `grid-cols-[1fr,auto,auto]`, `grid-cols-[1fr_380px]` | Two-panel / sidebar layouts |
+| `grid-cols-[1fr,auto,auto]`, `grid-cols-[1fr_380px]`, `grid-cols-[260px_minmax(0,1fr)]`, `grid-cols-[280px_minmax(0,1fr)]`, `grid-cols-[300px_minmax(0,1fr)]` | Two-panel / sidebar layouts |
+| `rounded-[32px]` | Chat main panel border radius |
 | `text-[9px]`, `text-[10px]`, `text-[11px]` | Sub-`xs` font sizes for badge labels |
 | `text-[15px]` | Compact body text in service cards |
 | `text-[2rem]` | Large display heading in PageHeader |
@@ -171,5 +174,7 @@ The following categories are **unconditionally approved** without appearing in t
 | `min-h-[46px]` | Filter panel input minimum touch height |
 | `shadow-[0_12px_28px_rgba(15,23,42,0.06)]` | Service card hover shadow (light) |
 | `shadow-[0_18px_40px_rgba(15,23,42,0.08)]` | Service card active/focus shadow (medium) |
+| `shadow-[0_12px_32px_rgba(15,23,42,0.05)]`, `shadow-[0_14px_36px_rgba(15,23,42,0.05)]` | Chat window subtle surface shadows |
+| `shadow-[0_24px_70px_rgba(15,23,42,0.08)]`, `shadow-[0_18px_42px_rgba(15,23,42,0.08)]` | Chat panel deep shadow and input area shadow |
 | `bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))]` | Filter panel backdrop gradient |
 | `bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.32),_transparent_26%),linear-gradient(180deg,_#f7fafc_0%,_#f8fbfd_48%,_#f2f7fb_100%)]` | Directory / map page background gradient |

@@ -3,12 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const usePathnameMock = vi.hoisted(() => vi.fn());
 const useStateMock = vi.hoisted(() => vi.fn());
+const useMemoMock = vi.hoisted(() => vi.fn());
+const useSessionMock = vi.hoisted(() => vi.fn());
+const signOutMock = vi.hoisted(() => vi.fn());
 
 vi.mock('react', async () => {
   const actual = await vi.importActual<typeof import('react')>('react');
   return {
     ...actual,
     useState: useStateMock,
+    useMemo: useMemoMock,
   };
 });
 vi.mock('next/link', () => ({
@@ -17,9 +21,14 @@ vi.mock('next/link', () => ({
 vi.mock('next/navigation', () => ({
   usePathname: usePathnameMock,
 }));
+vi.mock('next-auth/react', () => ({
+  useSession: useSessionMock,
+  signOut: signOutMock,
+}));
 vi.mock('lucide-react', () => ({
   ChevronDown: 'svg',
   List: 'svg',
+  LogOut: 'svg',
   MapPin: 'svg',
   Menu: 'svg',
   MessageCircle: 'svg',
@@ -37,7 +46,10 @@ vi.mock('@/contexts/LocaleContext', () => ({
       'nav.map': 'Map',
       'nav.saved': 'Saved',
       'nav.profile': 'Profile',
+      'nav.sign_in': 'Sign in',
+      'nav.sign_out': 'Sign out',
       'nav.get_involved': 'Get Involved',
+      'nav.work_with_us': 'Work with us',
       'nav.submit_listing': 'Submit a Listing',
       'nav.register_organization': 'Register an Organization',
       'nav.become_community_admin': 'Become a Community Admin',
@@ -90,20 +102,24 @@ beforeEach(() => {
 
   usePathnameMock.mockReturnValue('/saved');
   useStateMock.mockReturnValue([{ mobileOpen: false, openMenu: null }, vi.fn()]);
+  useMemoMock.mockImplementation((factory: () => unknown) => factory());
+  useSessionMock.mockReturnValue({ data: null, status: 'unauthenticated' });
 });
 
 describe('AppNav', () => {
   it('renders the desktop seeker navigation with the active destination highlighted', async () => {
+    usePathnameMock.mockReturnValue('/directory');
     const { AppNav } = await loadAppNav();
 
     const element = AppNav() as React.ReactElement<any, any>;
     const links = collectElements(element, (child) => child.type === 'a');
-    const activeLink = links.find((child) => child.props.href === '/chat');
+    const activeLink = links.find((child) => child.props.href === '/directory');
     const buttons = collectElements(element, (child) => child.type === 'button');
     const toggle = buttons[2];
+    const routeLinks = links.filter((child) => ['/', '/chat', '/directory', '/map'].includes(child.props.href));
 
-    expect(links.map((child) => child.props.href)).toEqual(['/', '/chat', '/map', '/directory']);
-    expect(activeLink?.props['aria-current']).toBeUndefined();
+    expect(routeLinks.map((child) => child.props.href)).toEqual(['/', '/chat', '/chat', '/directory', '/map']);
+    expect(activeLink?.props['aria-current']).toBe('page');
     expect(toggle.props['aria-expanded']).toBe(false);
     expect(toggle.props['aria-label']).toBe('Open navigation');
   });
@@ -122,11 +138,13 @@ describe('AppNav', () => {
     const mobileMapLink = links
       .filter((child) => child.props.href === '/map')
       .find((child) => typeof child.props.onClick === 'function');
+    const signInLink = links.find((child) => child.props.href === '/auth/signin?callbackUrl=%2Fmap%2Fnearby');
 
     expect(toggle.props['aria-expanded']).toBe(true);
     expect(toggle.props['aria-label']).toBe('Close navigation');
     expect(mobileNav.props.id).toBe('mobile-nav');
     expect(mobileMapLink?.props['aria-current']).toBe('page');
+    expect(signInLink).toBeTruthy();
 
     toggle.props.onClick();
     expect(setMobileOpenMock).toHaveBeenCalledWith(expect.any(Function));

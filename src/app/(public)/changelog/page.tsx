@@ -1,10 +1,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE } from '@/lib/site';
 
 export const metadata: Metadata = {
-  title: 'Changelog — ORAN',
+  title: 'Changelog',
   description:
     'Public product changelog for the Open Resource Access Network — new features, improvements, and notable fixes.',
+  alternates: { canonical: '/changelog' },
+  openGraph: {
+    title: 'Changelog — ORAN',
+    description: 'Public product changelog for the Open Resource Access Network — new features, improvements, and notable fixes.',
+    url: `${SITE.baseUrl}/changelog`,
+    type: 'website',
+  },
 };
 
 type ChangeType = 'feat' | 'fix' | 'improve' | 'security' | 'infra';
@@ -23,11 +31,11 @@ interface Release {
 }
 
 const TYPE_LABELS: Record<ChangeType, { label: string; bg: string; text: string }> = {
-  feat:     { label: 'New',      bg: 'bg-indigo-50',  text: 'text-indigo-700' },
-  fix:      { label: 'Fix',      bg: 'bg-red-50',     text: 'text-red-700'    },
-  improve:  { label: 'Improved', bg: 'bg-emerald-50', text: 'text-emerald-700' },
-  security: { label: 'Security', bg: 'bg-amber-50',   text: 'text-amber-700'  },
-  infra:    { label: 'Infra',    bg: 'bg-gray-100',   text: 'text-gray-600'   },
+  feat:     { label: 'New',      bg: 'bg-[var(--bg-surface-alt)]', text: 'text-[var(--text-primary)]' },
+  fix:      { label: 'Fix',      bg: 'bg-[var(--bg-surface-alt)]', text: 'text-[var(--text-primary)]' },
+  improve:  { label: 'Improved', bg: 'bg-[var(--bg-surface-alt)]', text: 'text-[var(--text-primary)]' },
+  security: { label: 'Security', bg: 'bg-[var(--bg-surface-alt)]', text: 'text-[var(--text-primary)]' },
+  infra:    { label: 'Infra',    bg: 'bg-[var(--bg-surface-alt)]', text: 'text-[var(--text-secondary)]' },
 };
 
 const RELEASES: Release[] = [
@@ -106,18 +114,18 @@ export default function ChangelogPage() {
     <div className="container mx-auto max-w-3xl px-4 py-12">
 
       {/* Header */}
-      <div className="mb-10 border-b border-gray-200 pb-8">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-gray-100">
+      <div className="mb-10 border-b border-[var(--border)] pb-8">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)]">
           <span className="text-xl" aria-hidden="true">📋</span>
         </div>
-        <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">Changelog</h1>
-        <p className="max-w-xl leading-relaxed text-gray-600">
+        <h1 className="mb-2 text-3xl font-bold tracking-tight text-[var(--text-primary)]">Changelog</h1>
+        <p className="max-w-xl leading-relaxed text-[var(--text-secondary)]">
           New features, improvements, security updates, and notable fixes — documented by release. For granular detail, see the{' '}
           <a
             href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/commits/main"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium text-indigo-600 hover:underline"
+            className="font-medium text-[var(--text-primary)] hover:underline"
           >
             commit history on GitHub
           </a>
@@ -128,7 +136,7 @@ export default function ChangelogPage() {
       {/* Release list */}
       <div className="relative">
         {/* Vertical timeline line */}
-        <div className="absolute left-3.5 top-0 h-full w-px bg-gray-200" aria-hidden="true" />
+        <div className="absolute left-3.5 top-0 h-full w-px bg-[var(--border)]" aria-hidden="true" />
 
         <ol className="space-y-10" role="list">
           {RELEASES.map((release) => (
@@ -137,8 +145,8 @@ export default function ChangelogPage() {
               <div
                 className={`absolute left-0 top-1.5 h-7 w-7 rounded-full border-2 flex items-center justify-center text-xs font-bold
                   ${release.highlight
-                    ? 'border-indigo-500 bg-indigo-500 text-white'
-                    : 'border-gray-300 bg-white text-gray-500'
+                    ? 'border-[var(--text-primary)] bg-[var(--text-primary)] text-white'
+                    : 'border-[var(--border)] bg-white text-[var(--text-muted)]'
                   }`}
                 aria-hidden="true"
               >
@@ -149,15 +157,15 @@ export default function ChangelogPage() {
               <div className="mb-2 flex flex-wrap items-center gap-3">
                 <span
                   className={`inline-flex rounded-full px-3 py-0.5 text-sm font-semibold
-                    ${release.highlight ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-700'}`}
+                    ${release.highlight ? 'bg-[var(--text-primary)] text-white' : 'bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]'}`}
                 >
                   v{release.version}
                 </span>
-                <span className="text-sm text-gray-600">{release.date}</span>
+                <span className="text-sm text-[var(--text-secondary)]">{release.date}</span>
               </div>
 
               {/* Summary */}
-              <p className="mb-4 leading-relaxed text-gray-700">{release.summary}</p>
+              <p className="mb-4 leading-relaxed text-[var(--text-secondary)]">{release.summary}</p>
 
               {/* Changes */}
               <ul className="space-y-2" role="list">
@@ -170,7 +178,7 @@ export default function ChangelogPage() {
                       >
                         {meta.label}
                       </span>
-                      <span className="text-sm leading-relaxed text-gray-700">{change.text}</span>
+                      <span className="text-sm leading-relaxed text-[var(--text-secondary)]">{change.text}</span>
                     </li>
                   );
                 })}
@@ -181,17 +189,17 @@ export default function ChangelogPage() {
       </div>
 
       {/* Watch for updates */}
-      <div className="mt-12 flex items-center gap-4 rounded-lg border border-gray-200 bg-white px-5 py-4">
+      <div className="mt-12 flex items-center gap-4 rounded-lg border border-[var(--border)] bg-white px-5 py-4">
         <span className="shrink-0 text-xl" aria-hidden="true">👁</span>
         <div>
-          <p className="text-sm font-medium text-gray-900">Watch for new releases</p>
-          <p className="mt-0.5 text-xs text-gray-500">
+          <p className="text-sm font-medium text-[var(--text-primary)]">Watch for new releases</p>
+          <p className="mt-0.5 text-xs text-[var(--text-muted)]">
             Star or watch the{' '}
             <a
               href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-indigo-600 underline"
+              className="text-[var(--text-primary)] underline"
             >
               GitHub repository
             </a>{' '}
@@ -201,8 +209,8 @@ export default function ChangelogPage() {
       </div>
 
       {/* Pre-release notice */}
-      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4">
-        <p className="text-sm leading-relaxed text-amber-800">
+      <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-5 py-4">
+        <p className="text-sm leading-relaxed text-[var(--text-secondary)]">
           <span className="font-semibold">Actively maintained, pre-1.0.</span>{' '}
           ORAN is in continuous development. Breaking changes to APIs, data models, or UI may occur without a deprecation period
           until v1.0 is tagged. Track progress and report issues on{' '}
@@ -210,7 +218,7 @@ export default function ChangelogPage() {
             href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium underline underline-offset-2 hover:text-amber-900"
+            className="font-medium underline underline-offset-2 hover:text-[var(--text-primary)]"
           >
             GitHub
           </a>
@@ -219,41 +227,41 @@ export default function ChangelogPage() {
       </div>
 
       {/* Footer CTA */}
-      <div className="mt-8 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-5 py-4">
+      <div className="mt-8 flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-5 py-4">
         <div>
-          <p className="font-medium text-gray-900">See what is coming</p>
-          <p className="text-sm text-gray-500">Open issues and milestones are tracked on GitHub.</p>
+          <p className="font-medium text-[var(--text-primary)]">See what is coming</p>
+          <p className="text-sm text-[var(--text-muted)]">Open issues and milestones are tracked on GitHub.</p>
         </div>
         <a
           href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/issues"
           target="_blank"
           rel="noopener noreferrer"
-          className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+          className="shrink-0 rounded-lg bg-[var(--text-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
         >
           View issues
         </a>
       </div>
 
       {/* Related */}
-      <nav aria-label="Related pages" className="mt-8 border-t border-gray-200 pt-6">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Related</p>
+      <nav aria-label="Related pages" className="mt-8 border-t border-[var(--border)] pt-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Related</p>
         <div className="grid gap-2 sm:grid-cols-3">
-          <Link href="/about" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
-            <span className="font-medium text-gray-900">About ORAN</span>
-            <span className="text-gray-400" aria-hidden="true">→</span>
+          <Link href="/about" className="group flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]">
+            <span className="font-medium text-[var(--text-primary)]">About ORAN</span>
+            <span className="text-[var(--text-muted)]" aria-hidden="true">→</span>
           </Link>
           <a
             href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/releases"
             target="_blank"
             rel="noopener noreferrer"
-            className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50"
+            className="group flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]"
           >
-            <span className="font-medium text-gray-900">GitHub Releases</span>
-            <span className="text-gray-400" aria-hidden="true">↗</span>
+            <span className="font-medium text-[var(--text-primary)]">GitHub Releases</span>
+            <span className="text-[var(--text-muted)]" aria-hidden="true">↗</span>
           </a>
-          <Link href="/partnerships" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
-            <span className="font-medium text-gray-900">Get Involved</span>
-            <span className="text-gray-400" aria-hidden="true">→</span>
+          <Link href="/partnerships" className="group flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]">
+            <span className="font-medium text-[var(--text-primary)]">Get Involved</span>
+            <span className="text-[var(--text-muted)]" aria-hidden="true">→</span>
           </Link>
         </div>
       </nav>

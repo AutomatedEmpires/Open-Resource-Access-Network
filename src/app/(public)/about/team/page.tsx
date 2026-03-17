@@ -1,11 +1,19 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Github, ExternalLink } from 'lucide-react';
+import { SITE } from '@/lib/site';
 
 export const metadata: Metadata = {
-  title: 'Team — ORAN',
+  title: 'Team',
   description:
     'The contributors, maintainers, and community builders behind the Open Resource Access Network.',
+  alternates: { canonical: '/about/team' },
+  openGraph: {
+    title: 'Team — ORAN',
+    description: 'The contributors, maintainers, and community builders behind the Open Resource Access Network.',
+    url: `${SITE.baseUrl}/about/team`,
+    type: 'article',
+  },
 };
 
 interface Contributor {
@@ -70,7 +78,7 @@ export default function TeamPage() {
 
       {/* Header */}
       <div className="mb-10 border-b border-gray-200 pb-8">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-50">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--bg-surface-alt)]">
           <span className="text-xl" aria-hidden="true">👥</span>
         </div>
         <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">
@@ -106,7 +114,7 @@ export default function TeamPage() {
                     </a>
                   )}
                 </div>
-                <p className="mb-2 text-sm font-medium text-indigo-600">{person.role}</p>
+                <p className="mb-2 text-sm font-medium text-gray-700">{person.role}</p>
                 <div className="flex flex-wrap gap-2">
                   {person.areas.map((area) => (
                     <span
@@ -133,7 +141,7 @@ export default function TeamPage() {
         <ul className="space-y-3" role="list">
           {PRINCIPLES.map(({ marker, label }) => (
             <li key={label} className="flex gap-3">
-              <span className="mt-0.5 shrink-0 text-sm text-indigo-400" aria-hidden="true">{marker}</span>
+              <span className="mt-0.5 shrink-0 text-sm text-gray-400" aria-hidden="true">{marker}</span>
               <span className="leading-relaxed text-gray-700">{label}</span>
             </li>
           ))}
@@ -151,7 +159,7 @@ export default function TeamPage() {
           href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/graphs/contributors"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-[var(--bg-surface-alt)] hover:text-gray-900"
         >
           <Github className="h-4 w-4" aria-hidden="true" />
           View all contributors on GitHub
@@ -173,18 +181,18 @@ export default function TeamPage() {
       </section>
 
       {/* Values callout */}
-      <div className="mb-12 flex items-start gap-4 rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-5">
+      <div className="mb-12 flex items-start gap-4 rounded-xl border border-gray-200 bg-[var(--bg-surface-alt)] px-5 py-5">
         <span className="mt-0.5 shrink-0 text-2xl" aria-hidden="true">🤝</span>
         <div>
-          <p className="mb-1 font-semibold text-indigo-900">We welcome all skill levels</p>
-          <p className="text-sm leading-relaxed text-indigo-800">
+          <p className="mb-1 font-semibold text-gray-900">We welcome all skill levels</p>
+          <p className="text-sm leading-relaxed text-gray-700">
             Whether you are a seasoned engineer, a social-services professional, or someone who just wants to help — there is a role
             for you. Read the{' '}
             <a
               href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/blob/main/CONTRIBUTING.md"
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium underline decoration-indigo-300 underline-offset-2 hover:decoration-indigo-600"
+              className="font-medium underline decoration-gray-300 underline-offset-2 hover:decoration-gray-700"
             >
               CONTRIBUTING.md
             </a>{' '}
@@ -235,7 +243,7 @@ export default function TeamPage() {
         </div>
         <Link
           href="/contact"
-          className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+          className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
         >
           Contact us
         </Link>

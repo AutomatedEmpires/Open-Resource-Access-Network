@@ -13,17 +13,14 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        /** HIGH confidence — green */
         HIGH:
-          'bg-green-100 text-green-800 ring-1 ring-inset ring-green-600/20',
-        /** LIKELY confidence — yellow */
+          'border border-slate-900 bg-slate-900 text-white',
         LIKELY:
-          'bg-yellow-100 text-yellow-800 ring-1 ring-inset ring-yellow-600/20',
-        /** POSSIBLE confidence — orange */
+          'border border-slate-300 bg-slate-100 text-slate-900',
         POSSIBLE:
-          'bg-orange-100 text-orange-800 ring-1 ring-inset ring-orange-600/20',
+          'border border-slate-200 bg-white text-slate-700',
         default:
-          'bg-gray-100 text-gray-800 ring-1 ring-inset ring-gray-500/20',
+          'border border-slate-200 bg-white text-slate-700',
       },
     },
     defaultVariants: {

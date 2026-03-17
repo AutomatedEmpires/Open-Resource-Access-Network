@@ -63,6 +63,7 @@ const PUBLIC_COLUMNS: FooterColumn[] = [
     title: 'Company',
     links: [
       { label: 'About ORAN', href: '/about' },
+      { label: 'Trust Center', href: '/trust' },
       { label: 'Team',       href: '/about/team' },
       { label: 'Press',      href: '/about/press' },
       { label: 'Changelog',  href: '/changelog' },
@@ -100,6 +101,7 @@ const HOST_COLUMNS: FooterColumn[] = [
     title: 'Company',
     links: [
       { label: 'About ORAN',    href: '/about' },
+      { label: 'Trust Center',  href: '/trust' },
       { label: 'Changelog',     href: '/changelog' },
       { label: 'Accessibility', href: '/accessibility' },
       {
@@ -133,6 +135,7 @@ const COMMUNITY_ADMIN_COLUMNS: FooterColumn[] = [
     title: 'Company',
     links: [
       { label: 'About ORAN',    href: '/about' },
+      { label: 'Trust Center',  href: '/trust' },
       { label: 'Changelog',     href: '/changelog' },
       { label: 'Accessibility', href: '/accessibility' },
       {
@@ -168,6 +171,7 @@ const ORAN_ADMIN_COLUMNS: FooterColumn[] = [
     title: 'Platform',
     links: [
       { label: 'About ORAN',      href: '/about' },
+      { label: 'Trust Center',    href: '/trust' },
       { label: 'System Status',   href: '/status' },
       { label: 'Security Policy', href: '/security' },
       { label: 'Changelog',       href: '/changelog' },
@@ -200,4 +204,5 @@ export const LEGAL_LINKS: ReadonlyArray<{ label: string; href: string }> = [
   { label: 'Terms of Use',   href: '/terms' },
   { label: 'Accessibility',  href: '/accessibility' },
   { label: 'Security',       href: '/security' },
+  { label: 'Trust Center',   href: '/trust' },
 ];

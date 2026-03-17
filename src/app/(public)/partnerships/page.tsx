@@ -1,10 +1,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE } from '@/lib/site';
 
 export const metadata: Metadata = {
-  title: 'Get Involved | ORAN Partnerships',
+  title: 'Get Involved',
   description:
     'List your organization, partner institutionally, donate, or become a community administrator. Every role that keeps real help findable.',
+  alternates: { canonical: '/partnerships' },
+  openGraph: {
+    title: 'Get Involved — ORAN',
+    description: 'List your organization, partner institutionally, donate, or become a community administrator. Every role that keeps real help findable.',
+    url: `${SITE.baseUrl}/partnerships`,
+    type: 'website',
+  },
 };
 
 interface Track {
@@ -133,32 +141,32 @@ const colorMap: Record<
   { border: string; trackBg: string; trackAccent: string; activeCta: string; focusRing: string }
 > = {
   indigo: {
-    border: 'border-indigo-200',
-    trackBg: 'bg-indigo-50',
-    trackAccent: 'text-indigo-700',
-    activeCta: 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500',
-    focusRing: 'focus:ring-indigo-500',
+    border: 'border-gray-200',
+    trackBg: 'bg-gray-50',
+    trackAccent: 'text-gray-700',
+    activeCta: 'bg-gray-900 text-white hover:bg-gray-800 focus:ring-gray-500',
+    focusRing: 'focus:ring-gray-400',
   },
   blue: {
-    border: 'border-teal-200',
-    trackBg: 'bg-teal-50',
-    trackAccent: 'text-teal-700',
-    activeCta: 'bg-teal-600 text-white hover:bg-teal-700 focus:ring-teal-500',
-    focusRing: 'focus:ring-teal-500',
+    border: 'border-gray-200',
+    trackBg: 'bg-gray-50',
+    trackAccent: 'text-gray-700',
+    activeCta: 'bg-gray-900 text-white hover:bg-gray-800 focus:ring-gray-500',
+    focusRing: 'focus:ring-gray-400',
   },
   amber: {
-    border: 'border-amber-200',
-    trackBg: 'bg-amber-50',
-    trackAccent: 'text-amber-700',
-    activeCta: 'bg-amber-500 text-white hover:bg-amber-600 focus:ring-amber-400',
-    focusRing: 'focus:ring-amber-400',
+    border: 'border-gray-200',
+    trackBg: 'bg-gray-50',
+    trackAccent: 'text-gray-700',
+    activeCta: 'bg-gray-900 text-white hover:bg-gray-800 focus:ring-gray-500',
+    focusRing: 'focus:ring-gray-400',
   },
   green: {
-    border: 'border-green-200',
-    trackBg: 'bg-green-50',
-    trackAccent: 'text-green-700',
-    activeCta: 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500',
-    focusRing: 'focus:ring-green-500',
+    border: 'border-gray-200',
+    trackBg: 'bg-gray-50',
+    trackAccent: 'text-gray-700',
+    activeCta: 'bg-gray-900 text-white hover:bg-gray-800 focus:ring-gray-500',
+    focusRing: 'focus:ring-gray-400',
   },
 };
 
@@ -170,7 +178,7 @@ export default function PartnershipsPage() {
       <header className="mb-10">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex-1">
-            <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-violet-50">
+            <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200 bg-gray-50">
               <span className="text-xl" aria-hidden="true">🤝</span>
             </div>
             <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">Get Involved</h1>
@@ -208,7 +216,7 @@ export default function PartnershipsPage() {
         <div className="grid gap-3 sm:grid-cols-2">
           <Link
             href="/host"
-            className="group flex items-start gap-4 rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-5 transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            className="group flex items-start gap-4 rounded-xl border border-gray-200 bg-gray-50 px-5 py-5 transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
           >
             <span className="mt-0.5 shrink-0 text-2xl" aria-hidden="true">🏢</span>
             <div className="min-w-0 flex-1">
@@ -216,12 +224,12 @@ export default function PartnershipsPage() {
               <p className="mt-1 text-xs text-gray-500">
                 Dashboard · Profile · Services · Locations · Team · Resource Studio · Claims
               </p>
-              <p className="mt-2 text-xs font-medium text-indigo-700">Open portal →</p>
+              <p className="mt-2 text-xs font-medium text-gray-700">Open portal →</p>
             </div>
           </Link>
           <Link
             href="/dashboard"
-            className="group flex items-start gap-4 rounded-xl border border-green-200 bg-green-50 px-5 py-5 transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+            className="group flex items-start gap-4 rounded-xl border border-gray-200 bg-gray-50 px-5 py-5 transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
           >
             <span className="mt-0.5 shrink-0 text-2xl" aria-hidden="true">🛡️</span>
             <div className="min-w-0 flex-1">
@@ -229,7 +237,7 @@ export default function PartnershipsPage() {
               <p className="mt-1 text-xs text-gray-500">
                 Dashboard · Review Queue · Verify · Community Forms · Coverage
               </p>
-              <p className="mt-2 text-xs font-medium text-green-700">Open portal →</p>
+              <p className="mt-2 text-xs font-medium text-gray-700">Open portal →</p>
             </div>
           </Link>
         </div>
@@ -329,7 +337,7 @@ export default function PartnershipsPage() {
                     <ul className="mb-5 space-y-1.5">
                       {highlights.map((h) => (
                         <li key={h} className="flex gap-2 text-sm text-gray-700">
-                          <span className="mt-0.5 shrink-0 text-green-500" aria-hidden="true">✓</span>
+                          <span className="mt-0.5 shrink-0 text-gray-700" aria-hidden="true">✓</span>
                           {h}
                         </li>
                       ))}
@@ -372,7 +380,7 @@ export default function PartnershipsPage() {
           href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network"
           target="_blank"
           rel="noopener noreferrer"
-          className="shrink-0 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          className="shrink-0 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
         >
           View on GitHub →
         </a>

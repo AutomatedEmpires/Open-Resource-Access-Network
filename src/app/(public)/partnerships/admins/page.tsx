@@ -1,10 +1,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE } from '@/lib/site';
 
 export const metadata: Metadata = {
-  title: 'Become a Community Admin | ORAN Partnerships',
+  title: 'Become a Community Admin',
   description:
     'Help vet and maintain resource listings for people seeking help in your community. Community admins are the quality backbone of ORAN.',
+  alternates: { canonical: '/partnerships/admins' },
+  openGraph: {
+    title: 'Become a Community Admin — ORAN',
+    description: 'Help vet and maintain resource listings for people seeking help in your community. Community admins are the quality backbone of ORAN.',
+    url: `${SITE.baseUrl}/partnerships/admins`,
+    type: 'website',
+  },
 };
 
 const PORTAL_TOOLS = [
@@ -63,7 +71,7 @@ export default function AdminsPage() {
 
       {/* ── Hero ─────────────────────────────────────────────── */}
       <div className="mb-10">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-green-50">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl border border-gray-200 bg-gray-50">
           <span className="text-xl" aria-hidden="true">🛡️</span>
         </div>
         <h1 className="mb-3 text-3xl font-bold tracking-tight text-gray-900">Become a Community Admin</h1>
@@ -77,13 +85,13 @@ export default function AdminsPage() {
             href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/discussions"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
           >
             Apply via GitHub Discussions ↗
           </a>
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-5 py-2.5 text-sm font-medium text-green-700 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-gray-50 px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
           >
             Already an admin? Open Portal →
           </Link>
@@ -130,7 +138,7 @@ export default function AdminsPage() {
         <h2 className="mb-1 text-xl font-semibold text-gray-900">Inside the Community Admin Portal</h2>
         <p className="mb-2 text-sm text-gray-500">
           Once onboarded, you access all five tools at{' '}
-          <Link href="/dashboard" className="font-medium text-green-700 underline underline-offset-2 hover:text-green-900">
+          <Link href="/dashboard" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900">
             /dashboard
           </Link>
           .
@@ -154,15 +162,15 @@ export default function AdminsPage() {
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Your contribution matters</h2>
         <div className="grid grid-cols-3 divide-x divide-gray-200 rounded-xl border border-gray-200 bg-white">
           <div className="px-4 py-5 text-center">
-            <p className="text-2xl font-bold text-green-600">Your pace</p>
+            <p className="text-2xl font-bold text-gray-900">Your pace</p>
             <p className="mt-1 text-xs leading-snug text-gray-500">No minimum quota — work at the pace that fits your schedule</p>
           </div>
           <div className="px-4 py-5 text-center">
-            <p className="text-2xl font-bold text-green-600">1–3 days</p>
+            <p className="text-2xl font-bold text-gray-900">1–3 days</p>
             <p className="mt-1 text-xs leading-snug text-gray-500">SLA target for pending org reviews</p>
           </div>
           <div className="px-4 py-5 text-center">
-            <p className="text-2xl font-bold text-green-600">Real people</p>
+            <p className="text-2xl font-bold text-gray-900">Real people</p>
             <p className="mt-1 text-xs leading-snug text-gray-500">Who find accurate help because of your work</p>
           </div>
         </div>
@@ -197,7 +205,7 @@ export default function AdminsPage() {
           ].map(({ n, label, detail }, i, arr) => (
             <div key={n} className="flex items-start gap-4">
               <div className="flex flex-col items-center">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600 text-xs font-bold text-white">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-900 text-xs font-bold text-white">
                   {n}
                 </span>
                 {i < arr.length - 1 && <div className="mt-1 h-10 w-px bg-gray-200" />}
@@ -215,7 +223,7 @@ export default function AdminsPage() {
       <section className="mb-10">
         <h2 className="mb-4 text-xl font-semibold text-gray-900">Who is this for?</h2>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border border-green-200 bg-green-50 px-6 py-5">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-6 py-5">
             <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
               <span aria-hidden="true">🎯</span> Ideal candidates
             </p>
@@ -250,7 +258,7 @@ export default function AdminsPage() {
             <p className="text-sm text-gray-600">
               Display name and contact details are editable via the{' '}
               <strong>Profile</strong> button in the portal header or at{' '}
-              <Link href="/profile" className="font-medium text-green-700 underline underline-offset-2 hover:text-green-900">/profile</Link>.
+              <Link href="/profile" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900">/profile</Link>.
             </p>
           </div>
           <div className="rounded-xl border border-gray-100 bg-white px-5 py-4">
@@ -264,7 +272,7 @@ export default function AdminsPage() {
             <p className="mb-1 text-sm font-semibold text-gray-900">Step down from the admin role</p>
             <p className="text-sm text-gray-600">
               To resign from the community admin role, send a message via the{' '}
-              <Link href="/contact" className="font-medium text-green-700 underline underline-offset-2 hover:text-green-900">Contact page</Link>.
+              <Link href="/contact" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900">Contact page</Link>.
               Your account access will be adjusted within 1–2 business days.
             </p>
           </div>
@@ -272,9 +280,9 @@ export default function AdminsPage() {
             <p className="mb-1 text-sm font-semibold text-gray-900">Request account deletion or data export</p>
             <p className="text-sm text-gray-600">
               GDPR / CCPA deletion or export requests are handled via the{' '}
-              <Link href="/contact" className="font-medium text-green-700 underline underline-offset-2 hover:text-green-900">Contact page</Link>{' '}
+              <Link href="/contact" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900">Contact page</Link>{' '}
               or per our{' '}
-              <Link href="/privacy" className="font-medium text-green-700 underline underline-offset-2 hover:text-green-900">Privacy Policy</Link>.
+              <Link href="/privacy" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900">Privacy Policy</Link>.
               Requests are fulfilled within 30 days.
             </p>
           </div>
@@ -282,7 +290,7 @@ export default function AdminsPage() {
       </section>
 
       {/* ── Bottom CTA ───────────────────────────────────────── */}
-      <div className="mb-10 rounded-xl border border-green-200 bg-green-50 px-6 py-6 text-center">
+      <div className="mb-10 rounded-xl border border-gray-200 bg-gray-50 px-6 py-6 text-center">
         <p className="mb-1 text-base font-semibold text-gray-900">Ready to help build accurate resource coverage?</p>
         <p className="mb-4 text-sm text-gray-600">
           Applications open on GitHub Discussions. Existing admins can go straight to the portal.
@@ -292,13 +300,13 @@ export default function AdminsPage() {
             href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/discussions"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
           >
             Apply via GitHub Discussions ↗
           </a>
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-white px-5 py-2.5 text-sm font-medium text-green-700 hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
           >
             Open Admin Portal →
           </Link>

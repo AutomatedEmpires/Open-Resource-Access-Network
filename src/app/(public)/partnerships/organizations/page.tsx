@@ -1,10 +1,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE } from '@/lib/site';
 
 export const metadata: Metadata = {
-  title: 'List Your Organization | ORAN Partnerships',
+  title: 'List Your Organization',
   description:
     'Register your nonprofit, government agency, or community service organization on ORAN. Free, community-verified, discoverable by people actively searching for help.',
+  alternates: { canonical: '/partnerships/organizations' },
+  openGraph: {
+    title: 'List Your Organization — ORAN',
+    description: 'Register your nonprofit, government agency, or community service organization on ORAN. Free, community-verified, discoverable by people actively searching for help.',
+    url: `${SITE.baseUrl}/partnerships/organizations`,
+    type: 'website',
+  },
 };
 
 const HOST_PORTAL_TOOLS = [
@@ -100,7 +108,7 @@ export default function OrganizationsPage() {
 
       {/* ── Hero ─────────────────────────────────────────────── */}
       <div className="mb-10">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl border border-gray-200 bg-gray-50">
           <span className="text-xl" aria-hidden="true">🏢</span>
         </div>
         <h1 className="mb-3 text-3xl font-bold tracking-tight text-gray-900">List Your Organization</h1>
@@ -111,13 +119,13 @@ export default function OrganizationsPage() {
         <div className="mt-6 flex flex-wrap gap-3">
           <Link
             href="/claim"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
           >
             Claim your organization →
           </Link>
           <Link
             href="/host"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-5 py-2.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-gray-50 px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
           >
             Already listed? Open Host Portal →
           </Link>
@@ -153,7 +161,7 @@ export default function OrganizationsPage() {
             { emoji: '🏅', label: 'Confidence score', sub: 'Ranked by verification depth' },
             { emoji: '🔄', label: 'Always updatable', sub: 'Edit anytime via the portal' },
           ].map(({ emoji, label, sub }) => (
-            <div key={label} className="flex flex-col items-center rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-5 text-center">
+            <div key={label} className="flex flex-col items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-5 text-center">
               <span className="mb-2 text-2xl" aria-hidden="true">{emoji}</span>
               <p className="text-sm font-semibold text-gray-900">{label}</p>
               <p className="mt-1 text-xs leading-relaxed text-gray-500">{sub}</p>
@@ -225,7 +233,7 @@ export default function OrganizationsPage() {
         <h2 className="mb-1 text-xl font-semibold text-gray-900">Inside the Host Portal</h2>
         <p className="mb-2 text-sm text-gray-500">
           Once approved, your team accesses these tools at{' '}
-          <Link href="/host" className="font-medium text-indigo-600 underline underline-offset-2 hover:text-indigo-800">
+          <Link href="/host" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900">
             /host
           </Link>
           .
@@ -254,14 +262,14 @@ export default function OrganizationsPage() {
             <p className="text-sm text-gray-600">
               Your personal profile (display name, email) is accessible from the{' '}
               <strong>Profile</strong> button in the portal header, or directly at{' '}
-              <Link href="/profile" className="font-medium text-indigo-600 underline underline-offset-2 hover:text-indigo-800">/profile</Link>.
+              <Link href="/profile" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900">/profile</Link>.
             </p>
           </div>
           <div className="rounded-xl border border-gray-100 bg-white px-5 py-4">
             <p className="mb-1 text-sm font-semibold text-gray-900">Update your organization profile</p>
             <p className="text-sm text-gray-600">
               Edit logo, description, mission, and public-facing details anytime inside the portal at{' '}
-              <Link href="/org/profile" className="font-medium text-indigo-600 underline underline-offset-2 hover:text-indigo-800">/org/profile</Link>.
+              <Link href="/org/profile" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900">/org/profile</Link>.
               Changes to core fields may trigger a re-verification pass.
             </p>
           </div>
@@ -269,7 +277,7 @@ export default function OrganizationsPage() {
             <p className="mb-1 text-sm font-semibold text-gray-900">Invite and manage team members</p>
             <p className="text-sm text-gray-600">
               Add or remove staff members, assign host admin roles, and revoke invitations in the{' '}
-              <Link href="/admins" className="font-medium text-indigo-600 underline underline-offset-2 hover:text-indigo-800">Team section</Link>{' '}
+              <Link href="/admins" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900">Team section</Link>{' '}
               of the portal.
             </p>
           </div>
@@ -285,9 +293,9 @@ export default function OrganizationsPage() {
             <p className="text-sm text-gray-600">
               To delete your account, remove your organization from ORAN, or request a data export under
               GDPR / CCPA, submit a request via the{' '}
-              <Link href="/contact" className="font-medium text-indigo-600 underline underline-offset-2 hover:text-indigo-800">Contact page</Link>{' '}
+              <Link href="/contact" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900">Contact page</Link>{' '}
               or review the process in our{' '}
-              <Link href="/privacy" className="font-medium text-indigo-600 underline underline-offset-2 hover:text-indigo-800">Privacy Policy</Link>.
+              <Link href="/privacy" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900">Privacy Policy</Link>.
               Requests are processed within 30 days.
             </p>
           </div>
@@ -295,7 +303,7 @@ export default function OrganizationsPage() {
       </section>
 
       {/* ── Institutional callout ────────────────────────────── */}
-      <section className="mb-10 rounded-xl border border-teal-200 bg-teal-50 px-6 py-6">
+      <section className="mb-10 rounded-xl border border-gray-200 bg-gray-50 px-6 py-6">
         <div className="flex items-start gap-3">
           <span className="text-xl" aria-hidden="true">🔗</span>
           <div>
@@ -306,7 +314,7 @@ export default function OrganizationsPage() {
             </p>
             <Link
               href="/contact"
-              className="text-sm font-medium text-teal-700 underline underline-offset-2 hover:text-teal-900"
+              className="text-sm font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900"
             >
               Inquire about institutional partnerships →
             </Link>
@@ -328,7 +336,7 @@ export default function OrganizationsPage() {
       </section>
 
       {/* ── Bottom CTA ───────────────────────────────────────── */}
-      <div className="mb-10 rounded-xl border border-indigo-200 bg-indigo-50 px-6 py-6 text-center">
+      <div className="mb-10 rounded-xl border border-gray-200 bg-gray-50 px-6 py-6 text-center">
         <p className="mb-1 text-base font-semibold text-gray-900">Ready to get listed?</p>
         <p className="mb-4 text-sm text-gray-600">
           The claim form takes 10–20 minutes and is reviewed by a real community administrator.
@@ -336,13 +344,13 @@ export default function OrganizationsPage() {
         <div className="flex flex-wrap justify-center gap-3">
           <Link
             href="/claim"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
           >
             Claim your organization →
           </Link>
           <Link
             href="/host"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-5 py-2.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
           >
             Open Host Portal →
           </Link>

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE } from '@/lib/site';
 
 const EFFECTIVE_DATE_ISO = '2026-03-13';
 const EFFECTIVE_DATE_DISPLAY = 'March 13, 2026';
@@ -8,6 +9,13 @@ const VERSION = '0.9 — Pre-release (pending legal review)';
 export const metadata: Metadata = {
   title: 'Terms of Use',
   description: "ORAN's terms of use governing platform access and conduct.",
+  alternates: { canonical: '/terms' },
+  openGraph: {
+    title: 'Terms of Use — ORAN',
+    description: "ORAN's terms of use governing platform access and conduct.",
+    url: `${SITE.baseUrl}/terms`,
+    type: 'website',
+  },
 };
 
 const PROHIBITED = [
@@ -37,12 +45,12 @@ export default function TermsPage() {
   return (
     <div className="container mx-auto max-w-3xl px-4 py-12">
       {/* Header */}
-      <div className="mb-10 border-b border-gray-200 pb-8">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-gray-100">
+      <div className="mb-10 border-b border-[var(--border)] pb-8">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)]">
           <span className="text-xl" aria-hidden="true">📄</span>
         </div>
-        <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">Terms of Use</h1>
-        <div className="flex flex-wrap gap-3 text-sm text-gray-500">
+        <h1 className="mb-2 text-3xl font-bold tracking-tight text-[var(--text-primary)]">Terms of Use</h1>
+        <div className="flex flex-wrap gap-3 text-sm text-[var(--text-muted)]">
           <span>{VERSION}</span>
           <span aria-hidden="true">·</span>
           <time dateTime={EFFECTIVE_DATE_ISO}>Effective {EFFECTIVE_DATE_DISPLAY}</time>
@@ -50,9 +58,9 @@ export default function TermsPage() {
       </div>
 
       {/* Legal review notice */}
-      <div className="mb-10 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4">
-        <p className="text-sm font-semibold text-amber-900">Under legal review</p>
-        <p className="mt-1 text-sm text-amber-800 leading-relaxed">
+      <div className="mb-10 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-5 py-4">
+        <p className="text-sm font-semibold text-[var(--text-primary)]">Under legal review</p>
+        <p className="mt-1 text-sm leading-relaxed text-[var(--text-secondary)]">
           These terms are operative now but a formally reviewed document is in preparation.
           By using ORAN, you agree to the provisions below. The terms will be updated with formal
           legal review before ORAN accepts general-public traffic at scale.
@@ -60,9 +68,9 @@ export default function TermsPage() {
       </div>
 
       {/* TL;DR */}
-      <div className="mb-8 rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-5">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-indigo-400">Plain-language summary — not a substitute for the full terms below</p>
-        <ul className="space-y-1.5 text-sm text-indigo-800">
+      <div className="mb-8 rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] px-5 py-5">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Plain-language summary — not a substitute for the full terms below</p>
+        <ul className="space-y-1.5 text-sm text-[var(--text-secondary)]">
           <li className="flex gap-2"><span aria-hidden="true">•</span><span>ORAN is a free service-discovery tool. You use it to find real help — not a substitute for emergency services.</span></li>
           <li className="flex gap-2"><span aria-hidden="true">•</span><span>Service information may be outdated. Always confirm hours and eligibility directly with the provider.</span></li>
           <li className="flex gap-2"><span aria-hidden="true">•</span><span>In any life-threatening emergency, call <strong>911</strong>. Do not use this platform.</span></li>
@@ -72,12 +80,12 @@ export default function TermsPage() {
       </div>
 
       {/* Table of contents */}
-      <nav aria-label="Section navigation" className="mb-10 rounded-lg border border-gray-200 bg-gray-50 px-5 py-4">
-        <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">Sections</p>
+      <nav aria-label="Section navigation" className="mb-10 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-5 py-4">
+        <p className="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">Sections</p>
         <ol className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
           {TOC_ITEMS.map(([id, label]) => (
             <li key={id}>
-              <a href={`#${id}`} className="text-indigo-600 hover:underline">
+              <a href={`#${id}`} className="text-[var(--text-primary)] hover:underline">
                 {label}
               </a>
             </li>
@@ -112,13 +120,13 @@ export default function TermsPage() {
         <h2 className="mb-3 text-base font-semibold text-gray-900">
           3. Service information and accuracy
         </h2>
-        <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-4 py-3">
           <span className="mt-0.5 shrink-0 text-base" aria-hidden="true">⚠️</span>
           <div>
-            <p className="text-sm font-semibold text-amber-900">
+            <p className="text-sm font-semibold text-[var(--text-primary)]">
               Service information may be outdated.
             </p>
-            <p className="mt-1 text-sm text-amber-800">
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
               Always confirm hours, eligibility, and availability directly with the service
               provider before acting on any information found on ORAN.
             </p>
@@ -193,7 +201,7 @@ export default function TermsPage() {
             href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-indigo-600 underline hover:text-indigo-800"
+            className="text-[var(--text-primary)] underline hover:text-[var(--text-secondary)]"
           >
             GitHub
           </a>
@@ -243,7 +251,7 @@ export default function TermsPage() {
         </div>
         <Link
           href="/contact"
-          className="shrink-0 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          className="shrink-0 rounded-lg border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] focus:outline-none focus:ring-2 focus:ring-[var(--text-muted)] focus:ring-offset-2"
         >
           Contact us →
         </Link>

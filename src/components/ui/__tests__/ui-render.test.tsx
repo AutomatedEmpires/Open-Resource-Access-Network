@@ -43,7 +43,7 @@ describe('ui render components', () => {
     const badge = Badge({ band: 'HIGH' });
 
     expect(badge.props.title).toBe('High confidence');
-    expect(badge.props.className).toContain('bg-green-100');
+    expect(badge.props.className).toContain('bg-slate-900');
     expect(badge.props.children).toBe('High confidence');
   });
 

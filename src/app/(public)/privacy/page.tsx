@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE } from '@/lib/site';
 
 const LAST_UPDATED_ISO = '2026-03-13';
 const LAST_UPDATED_DISPLAY = 'March 13, 2026';
@@ -8,6 +9,13 @@ const VERSION = '0.9 — Pre-release (pending legal review)';
 export const metadata: Metadata = {
   title: 'Privacy Policy',
   description: 'How ORAN collects, uses, and protects your information.',
+  alternates: { canonical: '/privacy' },
+  openGraph: {
+    title: 'Privacy Policy — ORAN',
+    description: 'How ORAN collects, uses, and protects your information.',
+    url: `${SITE.baseUrl}/privacy`,
+    type: 'website',
+  },
 };
 
 const DATA_WE_COLLECT = [
@@ -116,12 +124,12 @@ export default function PrivacyPage() {
   return (
     <div className="container mx-auto max-w-3xl px-4 py-12">
       {/* Header */}
-      <div className="mb-10 border-b border-gray-200 pb-8">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-50">
+      <div className="mb-10 border-b border-[var(--border)] pb-8">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)]">
           <span className="text-xl" aria-hidden="true">🔒</span>
         </div>
-        <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">Privacy Policy</h1>
-        <div className="flex flex-wrap gap-3 text-sm text-gray-500">
+        <h1 className="mb-2 text-3xl font-bold tracking-tight text-[var(--text-primary)]">Privacy Policy</h1>
+        <div className="flex flex-wrap gap-3 text-sm text-[var(--text-muted)]">
           <span>{VERSION}</span>
           <span aria-hidden="true">·</span>
           <time dateTime={LAST_UPDATED_ISO}>Updated {LAST_UPDATED_DISPLAY}</time>
@@ -129,13 +137,13 @@ export default function PrivacyPage() {
       </div>
 
       {/* Legal review notice */}
-      <div className="mb-10 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4">
-        <p className="text-sm font-semibold text-amber-900">Under legal review</p>
-        <p className="mt-1 text-sm text-amber-800 leading-relaxed">
+      <div className="mb-10 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-5 py-4">
+        <p className="text-sm font-semibold text-[var(--text-primary)]">Under legal review</p>
+        <p className="mt-1 text-sm leading-relaxed text-[var(--text-secondary)]">
           This page reflects our current data practices accurately but is pending formal legal
           review. A fully reviewed document will replace this page before ORAN accepts general
           public traffic at scale. For data requests in the meantime, use our{' '}
-          <Link href="/contact" className="font-medium underline hover:text-amber-900">
+          <Link href="/contact" className="font-medium underline hover:text-[var(--text-primary)]">
             contact form
           </Link>
           .
@@ -191,7 +199,7 @@ export default function PrivacyPage() {
         <ul className="space-y-2 text-sm text-gray-700">
           {HOW_WE_USE.map((item) => (
             <li key={item} className="flex gap-2">
-              <span className="mt-0.5 shrink-0 text-indigo-400" aria-hidden="true">·</span>
+              <span className="mt-0.5 shrink-0 text-[var(--text-muted)]" aria-hidden="true">·</span>
               <span>{item}</span>
             </li>
           ))}
@@ -245,7 +253,7 @@ export default function PrivacyPage() {
                 href={link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="shrink-0 text-xs text-indigo-600 underline hover:text-indigo-800"
+                className="shrink-0 text-xs text-[var(--text-primary)] underline hover:text-[var(--text-secondary)]"
               >
                 Privacy policy ↗
               </a>
@@ -264,17 +272,17 @@ export default function PrivacyPage() {
         <div className="space-y-2">
           {YOUR_RIGHTS.map(({ right, description }) => (
             <div key={right} className="flex items-start gap-3 text-sm">
-              <span className="mt-0.5 shrink-0 rounded bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+              <span className="mt-0.5 shrink-0 rounded bg-[var(--bg-surface-alt)] px-2 py-0.5 text-xs font-medium text-[var(--text-primary)]">
                 {right}
               </span>
               <span className="leading-relaxed text-gray-700">{description}</span>
             </div>
           ))}
         </div>
-        <div className="mt-5 rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm">
-          <p className="text-indigo-800">
+        <div className="mt-5 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-4 py-3 text-sm">
+          <p className="text-[var(--text-secondary)]">
             To exercise any of these rights, use our{' '}
-            <Link href="/contact" className="font-medium underline hover:text-indigo-900">
+            <Link href="/contact" className="font-medium underline hover:text-[var(--text-primary)]">
               contact form
             </Link>{' '}
             and select &ldquo;Data Request&rdquo; as the category. We will respond within 30 days.
@@ -326,7 +334,7 @@ export default function PrivacyPage() {
         </div>
         <Link
           href="/contact"
-          className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          className="shrink-0 rounded-lg bg-[var(--text-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[var(--text-muted)] focus:ring-offset-2"
         >
           Contact us →
         </Link>

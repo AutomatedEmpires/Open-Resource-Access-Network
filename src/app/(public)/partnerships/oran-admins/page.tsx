@@ -1,10 +1,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE } from '@/lib/site';
 
 export const metadata: Metadata = {
-  title: 'Become an ORAN Admin | ORAN Partnerships',
+  title: 'Become an ORAN Admin',
   description:
     'Learn how ORAN admins oversee approvals, platform governance, and verification policy across the network.',
+  alternates: { canonical: '/partnerships/oran-admins' },
+  openGraph: {
+    title: 'Become an ORAN Admin — ORAN',
+    description: 'Learn how ORAN admins oversee approvals, platform governance, and verification policy across the network.',
+    url: `${SITE.baseUrl}/partnerships/oran-admins`,
+    type: 'website',
+  },
 };
 
 const RESPONSIBILITIES = [

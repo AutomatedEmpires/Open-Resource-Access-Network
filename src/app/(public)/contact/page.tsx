@@ -1,9 +1,17 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE } from '@/lib/site';
 
 export const metadata: Metadata = {
   title: 'Contact',
   description: 'Get in touch with the ORAN team for support, partnerships, press, or data requests.',
+  alternates: { canonical: '/contact' },
+  openGraph: {
+    title: 'Contact — ORAN',
+    description: 'Get in touch with the ORAN team for support, partnerships, press, or data requests.',
+    url: `${SITE.baseUrl}/contact`,
+    type: 'website',
+  },
 };
 
 interface Channel {
@@ -28,8 +36,8 @@ const CHANNELS: Channel[] = [
     href: 'https://github.com/AutomatedEmpires/Open-Resource-Access-Network/issues/new',
     external: true,
     response: 'Triaged weekly',
-    border: 'border-orange-200',
-    bg: 'bg-orange-50',
+    border: 'border-[var(--border)]',
+    bg: 'bg-[var(--bg-surface-alt)]',
   },
   {
     icon: '🛡️',
@@ -52,8 +60,8 @@ const CHANNELS: Channel[] = [
     href: '/privacy',
     external: false,
     response: 'Responded within 30 days',
-    border: 'border-indigo-200',
-    bg: 'bg-indigo-50',
+    border: 'border-[var(--border)]',
+    bg: 'bg-[var(--bg-surface-alt)]',
   },
   {
     icon: '🤝',
@@ -64,8 +72,8 @@ const CHANNELS: Channel[] = [
     href: '/partnerships',
     external: false,
     response: 'Responded within 5 business days',
-    border: 'border-violet-200',
-    bg: 'bg-violet-50',
+    border: 'border-[var(--border)]',
+    bg: 'bg-[var(--bg-surface-alt)]',
   },
   {
     icon: '📰',
@@ -76,8 +84,8 @@ const CHANNELS: Channel[] = [
     href: '/about/press',
     external: false,
     response: 'Typically 2–3 business days',
-    border: 'border-sky-200',
-    bg: 'bg-sky-50',
+    border: 'border-[var(--border)]',
+    bg: 'bg-[var(--bg-surface-alt)]',
   },
 ];
 
@@ -85,12 +93,12 @@ export default function ContactPage() {
   return (
     <div className="container mx-auto max-w-3xl px-4 py-12">
       {/* Header */}
-      <div className="mb-10 border-b border-gray-200 pb-8">
-        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-sky-50">
+      <div className="mb-10 border-b border-[var(--border)] pb-8">
+        <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)]">
           <span className="text-xl" aria-hidden="true">✉️</span>
         </div>
-        <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900">Contact</h1>
-        <p className="max-w-xl leading-relaxed text-gray-600">
+        <h1 className="mb-2 text-3xl font-bold tracking-tight text-[var(--text-primary)]">Contact</h1>
+        <p className="max-w-xl leading-relaxed text-[var(--text-secondary)]">
           Use the appropriate channel below for the fastest response. A unified contact form is in
           development — in the meantime, every inquiry type has a direct route.
         </p>
@@ -120,10 +128,10 @@ export default function ContactPage() {
                 <div className="flex gap-3">
                   <span className="mt-0.5 shrink-0 text-xl" aria-hidden="true">{icon}</span>
                   <div>
-                    <h3 className="font-semibold text-gray-900">{title}</h3>
-                    <p className="mt-1 text-sm leading-relaxed text-gray-600">{description}</p>
+                    <h3 className="font-semibold text-[var(--text-primary)]">{title}</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-[var(--text-secondary)]">{description}</p>
                     <p className="mt-2">
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-xs text-gray-500">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white px-2.5 py-0.5 text-xs text-[var(--text-muted)]">
                         ⏱ {response}
                       </span>
                     </p>
@@ -134,14 +142,14 @@ export default function ContactPage() {
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="shrink-0 self-start whitespace-nowrap rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                    className="shrink-0 self-start whitespace-nowrap rounded-lg border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] focus:outline-none focus:ring-2 focus:ring-[var(--text-muted)] focus:ring-offset-2"
                   >
                     {cta} ↗
                   </a>
                 ) : (
                   <Link
                     href={href}
-                    className="shrink-0 self-start whitespace-nowrap rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                    className="shrink-0 self-start whitespace-nowrap rounded-lg border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] focus:outline-none focus:ring-2 focus:ring-[var(--text-muted)] focus:ring-offset-2"
                   >
                     {cta} →
                   </Link>
@@ -153,11 +161,11 @@ export default function ContactPage() {
       </section>
 
       {/* General inquiries */}
-      <div className="rounded-lg border border-gray-200 bg-gray-50 px-5 py-5">
-        <p className="text-sm font-medium text-gray-900">General inquiries &amp; press</p>
-        <p className="mt-2 text-sm leading-relaxed text-gray-600">
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-5 py-5">
+        <p className="text-sm font-medium text-[var(--text-primary)]">General inquiries &amp; press</p>
+        <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
           For press inquiries, visit the{' '}
-          <Link href="/about/press" className="text-indigo-600 underline hover:text-indigo-800">
+          <Link href="/about/press" className="text-[var(--text-primary)] underline hover:text-[var(--text-secondary)]">
             Press &amp; Media page
           </Link>
           . For general questions not covered above, start a discussion on{' '}
@@ -165,7 +173,7 @@ export default function ContactPage() {
             href="https://github.com/AutomatedEmpires/Open-Resource-Access-Network/discussions"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-indigo-600 underline hover:text-indigo-800"
+            className="text-[var(--text-primary)] underline hover:text-[var(--text-secondary)]"
           >
             GitHub Discussions
           </a>
@@ -174,20 +182,20 @@ export default function ContactPage() {
       </div>
 
       {/* Related */}
-      <nav aria-label="Related pages" className="mt-8 border-t border-gray-200 pt-6">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Related</p>
+      <nav aria-label="Related pages" className="mt-8 border-t border-[var(--border)] pt-6">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Related</p>
         <div className="grid gap-2 sm:grid-cols-3">
-          <Link href="/security" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
-            <span className="font-medium text-gray-900">Security Policy</span>
-            <span className="text-gray-400" aria-hidden="true">→</span>
+          <Link href="/security" className="group flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]">
+            <span className="font-medium text-[var(--text-primary)]">Security Policy</span>
+            <span className="text-[var(--text-muted)]" aria-hidden="true">→</span>
           </Link>
-          <Link href="/privacy" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
-            <span className="font-medium text-gray-900">Privacy Policy</span>
-            <span className="text-gray-400" aria-hidden="true">→</span>
+          <Link href="/privacy" className="group flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]">
+            <span className="font-medium text-[var(--text-primary)]">Privacy Policy</span>
+            <span className="text-[var(--text-muted)]" aria-hidden="true">→</span>
           </Link>
-          <Link href="/partnerships" className="group flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3 text-sm transition-colors hover:border-gray-300 hover:bg-gray-50">
-            <span className="font-medium text-gray-900">Get Involved</span>
-            <span className="text-gray-400" aria-hidden="true">→</span>
+          <Link href="/partnerships" className="group flex items-center justify-between rounded-lg border border-[var(--border)] px-4 py-3 text-sm transition-colors hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface-alt)]">
+            <span className="font-medium text-[var(--text-primary)]">Get Involved</span>
+            <span className="text-[var(--text-muted)]" aria-hidden="true">→</span>
           </Link>
         </div>
       </nav>

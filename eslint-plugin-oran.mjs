@@ -81,6 +81,14 @@ const APPROVED_ARBITRARY = new Set([
   // ── Additional border radius ──────────────────────────────────────────────
   'rounded-[20px]',
 
+  // ── Chat window layout ──────────────────────────────────────────────────────
+  'min-h-[700px]',
+  'grid-cols-[260px_minmax(0,1fr)]', 'grid-cols-[280px_minmax(0,1fr)]', 'grid-cols-[300px_minmax(0,1fr)]',
+  'rounded-[32px]',
+  'max-w-[46rem]',
+  'min-h-[26px]', 'min-h-[34px]', 'min-h-[64px]', 'min-h-[84px]',
+  'min-w-[64px]',
+
   // ── Box shadows (chat & card surfaces) ────────────────────────────────────
   'shadow-[0_8px_24px_rgba(15,23,42,0.04)]',
   'shadow-[0_8px_24px_rgba(234,88,12,0.04)]',
@@ -110,6 +118,12 @@ const APPROVED_ARBITRARY = new Set([
   'shadow-[0_-6px_24px_rgba(15,23,42,0.10)]',
   'shadow-[0_-12px_40px_rgba(15,23,42,0.18)]',
   'shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]',
+
+  // ── Chat window shadows ────────────────────────────────────────────────────
+  'shadow-[0_12px_32px_rgba(15,23,42,0.05)]',
+  'shadow-[0_14px_36px_rgba(15,23,42,0.05)]',
+  'shadow-[0_24px_70px_rgba(15,23,42,0.08)]',
+  'shadow-[0_18px_42px_rgba(15,23,42,0.08)]',
 ]);
 
 /** CSS custom-property references: always approved (`z-[var(--z-nav)]` etc.). */

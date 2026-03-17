@@ -27,7 +27,7 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50">
+    <div className="flex min-h-screen flex-col bg-[var(--bg-page)]">
       <AppNav />
 
       <main
@@ -35,7 +35,7 @@ export default function Error({
         role="alert"
         className="flex flex-1 flex-col items-center justify-center px-4 py-16 text-center"
       >
-        <div className="rounded-full bg-error-muted p-4 mb-6">
+        <div className="mb-6 rounded-full bg-error-muted p-4">
           <svg
             className="h-10 w-10 text-error-base"
             fill="none"
@@ -52,16 +52,16 @@ export default function Error({
           </svg>
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
+        <h1 className="mb-2 text-2xl font-bold text-[var(--text-primary)]">
           Something went wrong
         </h1>
-        <p className="text-gray-600 max-w-md mb-6">
+        <p className="mb-6 max-w-md text-[var(--text-secondary)]">
           An unexpected error occurred while loading this page. Our team has been
           notified and is looking into it.
         </p>
 
         {error.digest && (
-          <p className="text-xs text-gray-400 mb-5 font-mono">
+          <p className="mb-5 font-mono text-xs text-[var(--text-muted)]">
             Error ID: {error.digest}
           </p>
         )}
@@ -70,13 +70,13 @@ export default function Error({
           <Button onClick={reset}>Try again</Button>
           <Link
             href="/"
-            className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+            className="rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-5 py-2.5 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
           >
             Go home
           </Link>
           <Link
             href="/chat"
-            className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+            className="rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-5 py-2.5 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
           >
             Find services
           </Link>

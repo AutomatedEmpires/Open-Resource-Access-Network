@@ -34,6 +34,17 @@ vi.mock('@/services/notifications/service', () => ({
   send: vi.fn().mockResolvedValue('notif-id'),
 }));
 
+vi.mock('@/services/workflow/engine', () => ({
+  advance: vi.fn().mockResolvedValue({
+    success: true,
+    submissionId: 'sub-001',
+    fromStatus: 'submitted',
+    toStatus: 'approved',
+    transitionId: 'tx-1',
+    gateResults: [],
+  }),
+}));
+
 import {
   detectExistingServices,
   initiateTransfer,
@@ -48,11 +59,13 @@ import {
 } from '@/services/ownershipTransfer/service';
 import { executeQuery, withTransaction } from '@/services/db/postgres';
 import { send as sendNotification } from '@/services/notifications/service';
+import { advance } from '@/services/workflow/engine';
 
 // typed mocks
 const mockExecuteQuery = executeQuery as Mock;
 const mockWithTransaction = withTransaction as Mock;
 const mockNotify = sendNotification as Mock;
+const mockAdvance = advance as Mock;
 
 // ============================================================
 // HELPERS
@@ -326,15 +339,15 @@ describe('Ownership Transfer Service', () => {
   // ----------------------------------------------------------
   describe('approveTransfer', () => {
     it('approves pending transfer and notifies requester', async () => {
-      const client = setupTransaction(new Map([
-        ['FROM ownership_transfers', { rows: [makeTransferRow()] }],
-        ['UPDATE ownership_transfers', { rows: [] }],
-        ['UPDATE submissions', { rows: [] }],
-        ['INTO submission_transitions', { rows: [] }],
-      ]));
+      // executeQuery: 1) get transfer, 2) get submission status, 3) update ownership_transfers
+      mockExecuteQuery
+        .mockResolvedValueOnce([makeTransferRow()])
+        .mockResolvedValueOnce([{ status: 'submitted' }])
+        .mockResolvedValueOnce([]);
 
       const result = await approveTransfer('transfer-001', 'admin-user', 'Looks legit');
       expect(result.success).toBe(true);
+      expect(mockAdvance).toHaveBeenCalled();
       expect(mockNotify).toHaveBeenCalledWith(
         expect.objectContaining({
           eventType: 'ownership_transfer_approved',
@@ -343,21 +356,17 @@ describe('Ownership Transfer Service', () => {
     });
 
     it('approves verified transfer', async () => {
-      setupTransaction(new Map([
-        ['FROM ownership_transfers', { rows: [makeTransferRow({ status: 'verified' })] }],
-        ['UPDATE ownership_transfers', { rows: [] }],
-        ['UPDATE submissions', { rows: [] }],
-        ['INTO submission_transitions', { rows: [] }],
-      ]));
+      mockExecuteQuery
+        .mockResolvedValueOnce([makeTransferRow({ status: 'verified' })])
+        .mockResolvedValueOnce([{ status: 'submitted' }])
+        .mockResolvedValueOnce([]);
 
       const result = await approveTransfer('transfer-001', 'admin-user');
       expect(result.success).toBe(true);
     });
 
     it('ADVERSARIAL: cannot approve completed transfer', async () => {
-      setupTransaction(new Map([
-        ['FROM ownership_transfers', { rows: [makeTransferRow({ status: 'completed' })] }],
-      ]));
+      mockExecuteQuery.mockResolvedValueOnce([makeTransferRow({ status: 'completed' })]);
 
       const result = await approveTransfer('transfer-001', 'admin-user');
       expect(result.success).toBe(false);
@@ -365,12 +374,26 @@ describe('Ownership Transfer Service', () => {
     });
 
     it('ADVERSARIAL: cannot approve rejected transfer', async () => {
-      setupTransaction(new Map([
-        ['FROM ownership_transfers', { rows: [makeTransferRow({ status: 'rejected' })] }],
-      ]));
+      mockExecuteQuery.mockResolvedValueOnce([makeTransferRow({ status: 'rejected' })]);
 
       const result = await approveTransfer('transfer-001', 'admin-user');
       expect(result.success).toBe(false);
+    });
+
+    it('ADVERSARIAL: fails when workflow gate rejects advance', async () => {
+      mockExecuteQuery
+        .mockResolvedValueOnce([makeTransferRow()])
+        .mockResolvedValueOnce([{ status: 'submitted' }]);
+
+      mockAdvance.mockResolvedValueOnce({
+        success: false,
+        error: 'Two-person approval required',
+        gateResults: [{ gate: 'two_person_approval', passed: false }],
+      });
+
+      const result = await approveTransfer('transfer-001', 'admin-user');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Two-person approval required');
     });
   });
 
@@ -441,15 +464,14 @@ describe('Ownership Transfer Service', () => {
   // ----------------------------------------------------------
   describe('rejectTransfer', () => {
     it('rejects transfer with reason and notifies requester', async () => {
-      setupTransaction(new Map([
-        ['FROM ownership_transfers', { rows: [makeTransferRow()] }],
-        ['UPDATE ownership_transfers', { rows: [] }],
-        ['UPDATE submissions', { rows: [] }],
-        ['INTO submission_transitions', { rows: [] }],
-      ]));
+      mockExecuteQuery
+        .mockResolvedValueOnce([makeTransferRow()])
+        .mockResolvedValueOnce([{ status: 'submitted' }])
+        .mockResolvedValueOnce([]);
 
       const result = await rejectTransfer('transfer-001', 'admin-user', 'Cannot verify ownership');
       expect(result.success).toBe(true);
+      expect(mockAdvance).toHaveBeenCalled();
       expect(mockNotify).toHaveBeenCalledWith(
         expect.objectContaining({
           eventType: 'ownership_transfer_rejected',
@@ -459,18 +481,14 @@ describe('Ownership Transfer Service', () => {
     });
 
     it('ADVERSARIAL: cannot reject completed transfer', async () => {
-      setupTransaction(new Map([
-        ['FROM ownership_transfers', { rows: [makeTransferRow({ status: 'completed' })] }],
-      ]));
+      mockExecuteQuery.mockResolvedValueOnce([makeTransferRow({ status: 'completed' })]);
 
       const result = await rejectTransfer('transfer-001', 'admin-user', 'Reason');
       expect(result.success).toBe(false);
     });
 
     it('ADVERSARIAL: cannot reject cancelled transfer', async () => {
-      setupTransaction(new Map([
-        ['FROM ownership_transfers', { rows: [makeTransferRow({ status: 'cancelled' })] }],
-      ]));
+      mockExecuteQuery.mockResolvedValueOnce([makeTransferRow({ status: 'cancelled' })]);
 
       const result = await rejectTransfer('transfer-001', 'admin-user', 'Reason');
       expect(result.success).toBe(false);
@@ -570,12 +588,12 @@ describe('Ownership Transfer Service', () => {
 
       // Step 3: Admin approves
       vi.clearAllMocks();
-      setupTransaction(new Map([
-        ['FROM ownership_transfers', { rows: [makeTransferRow({ id: 'transfer-lifecycle', status: 'pending', current_admin_user_id: 'admin-jane' })] }],
-        ['UPDATE ownership_transfers', { rows: [] }],
-        ['UPDATE submissions', { rows: [] }],
-        ['INTO submission_transitions', { rows: [] }],
-      ]));
+      // approveTransfer uses executeQuery (not transaction) + advance()
+      mockExecuteQuery
+        .mockResolvedValueOnce([makeTransferRow({ id: 'transfer-lifecycle', status: 'pending', submission_id: 'sub-lifecycle', current_admin_user_id: 'admin-jane' })])
+        .mockResolvedValueOnce([{ status: 'submitted' }])  // submission status lookup
+        .mockResolvedValueOnce([]);  // UPDATE ownership_transfers
+      mockAdvance.mockResolvedValue({ success: true, submission: { id: 'sub-lifecycle', status: 'approved' } });
       const approved = await approveTransfer('transfer-lifecycle', 'admin-jane', 'Verified via phone call');
       expect(approved.success).toBe(true);
 
@@ -658,9 +676,8 @@ describe('Ownership Transfer Service', () => {
     });
 
     it('ADVERSARIAL: status machine — cannot approve then approve again', async () => {
-      setupTransaction(new Map([
-        ['FROM ownership_transfers', { rows: [makeTransferRow({ status: 'approved' })] }],
-      ]));
+      // approveTransfer now uses executeQuery, not transaction
+      mockExecuteQuery.mockResolvedValueOnce([makeTransferRow({ status: 'approved' })]);
 
       const result = await approveTransfer('transfer-001', 'admin');
       expect(result.success).toBe(false);

@@ -9,6 +9,30 @@
  */
 
 import { withTransaction, executeQuery } from '@/services/db/postgres';
+import { ROLE_LEVELS } from '@/services/auth/roles';
+import type { OranRole } from '@/domain/types';
+
+// ============================================================
+// AUTHORIZATION
+// ============================================================
+
+/**
+ * Verify that the actor has at least oran_admin role before allowing
+ * a destructive merge operation. Throws on failure.
+ */
+async function assertMergeAuthorized(actorUserId: string): Promise<void> {
+  const rows = await executeQuery<{ role: string }>(
+    `SELECT role FROM user_profiles WHERE user_id = $1 LIMIT 1`,
+    [actorUserId],
+  );
+  if (rows.length === 0) {
+    throw new Error('Actor user not found');
+  }
+  const actorRole = rows[0].role as OranRole;
+  if ((ROLE_LEVELS[actorRole] ?? 0) < ROLE_LEVELS.oran_admin) {
+    throw new Error('Unauthorized: merge operations require oran_admin role');
+  }
+}
 
 // ============================================================
 // TYPES
@@ -56,6 +80,8 @@ export async function mergeOrganizations(
   }
 
   try {
+    await assertMergeAuthorized(actorUserId);
+
     const counts = await withTransaction(async (client) => {
       // Verify both organizations exist and are not archived
       const orgs = await client.query<{ id: string; status: string | null }>(
@@ -178,6 +204,8 @@ export async function mergeServices(
   }
 
   try {
+    await assertMergeAuthorized(actorUserId);
+
     const counts = await withTransaction(async (client) => {
       // Verify both services exist
       const svcs = await client.query<{ id: string; status: string | null }>(

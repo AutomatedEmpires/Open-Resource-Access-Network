@@ -21,7 +21,8 @@ import {
 beforeEach(() => {
   vi.clearAllMocks();
 
-  dbMocks.executeQuery.mockResolvedValue([]);
+  // Default: assertMergeAuthorized succeeds (oran_admin)
+  dbMocks.executeQuery.mockResolvedValue([{ role: 'oran_admin' }]);
   dbMocks.withTransaction.mockImplementation(
     async (fn: (client: { query: typeof clientQueryMock }) => unknown) => {
       return fn({ query: clientQueryMock });

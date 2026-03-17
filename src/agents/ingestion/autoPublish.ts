@@ -117,20 +117,26 @@ export function evaluatePolicy(
         reason: `trusted_partner source confidence ${overall} < minimum ${policy.trustedPartnerMinConfidence}`,
       };
     }
-  }
-
-  if (sourceSystem.trustTier === 'curated') {
+  } else if (sourceSystem.trustTier === 'curated') {
     if (overall < policy.curatedMinConfidence) {
       return { canonicalServiceId: svcId, eligible: false, reason: `curated source confidence ${overall} < minimum ${policy.curatedMinConfidence}` };
     }
-  }
-
-  if (sourceSystem.trustTier === 'verified_publisher') {
+  } else if (sourceSystem.trustTier === 'verified_publisher') {
     if (overall < policy.verifiedPublisherMinConfidence) {
       return {
         canonicalServiceId: svcId,
         eligible: false,
         reason: `verified_publisher source confidence ${overall} < minimum ${policy.verifiedPublisherMinConfidence}`,
+      };
+    }
+  } else {
+    // Unknown/unmapped tier — require the strictest threshold to prevent
+    // a newly-added tier from bypassing confidence checks entirely.
+    if (overall < policy.trustedPartnerMinConfidence) {
+      return {
+        canonicalServiceId: svcId,
+        eligible: false,
+        reason: `tier '${sourceSystem.trustTier}' confidence ${overall} < default minimum ${policy.trustedPartnerMinConfidence}`,
       };
     }
   }

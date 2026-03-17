@@ -17,8 +17,10 @@ import crypto from 'node:crypto';
 
 import { executeQuery, withTransaction } from '@/services/db/postgres';
 import { send as sendNotification } from '@/services/notifications/service';
+import { advance } from '@/services/workflow/engine';
 import type {
   OwnershipVerificationMethod,
+  SubmissionStatus,
 } from '@/domain/types';
 
 // ============================================================
@@ -335,64 +337,108 @@ export async function verifyOwnership(
 // ============================================================
 
 /**
- * Admin approves a transfer. Moves status to 'approved'.
+ * Admin approves a transfer. Routes approval through the workflow engine
+ * to enforce all gates (transition validity, two-person approval, locks).
  */
 export async function approveTransfer(
   transferId: string,
   adminUserId: string,
   adminNotes?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  return withTransaction(async (client) => {
-    const rows = await client.query<TransferRow>(
-      `SELECT * FROM ownership_transfers WHERE id = $1 FOR UPDATE`,
-      [transferId],
+  // 1. Validate transfer state
+  const rows = await executeQuery<TransferRow>(
+    `SELECT * FROM ownership_transfers WHERE id = $1`,
+    [transferId],
+  );
+  if (rows.length === 0) {
+    return { success: false, error: 'Transfer not found' };
+  }
+
+  const transfer = rows[0];
+  const validFromStatuses = ['pending', 'verified'];
+  if (!validFromStatuses.includes(transfer.status)) {
+    return { success: false, error: `Cannot approve transfer in '${transfer.status}' status` };
+  }
+
+  // 2. Route submission through workflow engine (enforces gates)
+  if (transfer.submission_id) {
+    // Get current submission status to determine the path
+    const subRows = await executeQuery<{ status: string }>(
+      `SELECT status FROM submissions WHERE id = $1`,
+      [transfer.submission_id],
     );
-    if (rows.rows.length === 0) {
-      return { success: false, error: 'Transfer not found' };
+    const currentStatus = (subRows[0]?.status ?? 'submitted') as SubmissionStatus;
+
+    // Navigate through valid transitions to reach 'approved'.
+    // The workflow engine enforces transition validity and two-person gate.
+    const stepsToApproved = getPathToApproved(currentStatus);
+
+    for (const step of stepsToApproved) {
+      // Intermediate routing steps skip gates; only the final 'approved'
+      // step goes through full gate checks (including two-person).
+      const isIntermediateStep = step !== 'approved';
+      const result = await advance({
+        submissionId: transfer.submission_id,
+        toStatus: step,
+        actorUserId: adminUserId,
+        actorRole: 'community_admin',
+        reason: isIntermediateStep
+          ? 'Ownership transfer routing'
+          : 'Ownership transfer approved',
+        skipGates: isIntermediateStep
+          ? { twoPersonApproval: true, lockCheck: true }
+          : undefined,
+      });
+
+      if (!result.success) {
+        return { success: false, error: result.error ?? 'Workflow gate check failed' };
+      }
     }
+  }
 
-    const transfer = rows.rows[0];
-    const validFromStatuses = ['pending', 'verified'];
-    if (!validFromStatuses.includes(transfer.status)) {
-      return { success: false, error: `Cannot approve transfer in '${transfer.status}' status` };
-    }
+  // 3. Update ownership_transfers record
+  await executeQuery(
+    `UPDATE ownership_transfers
+     SET status = 'approved', admin_notes = $2, approved_at = NOW(), updated_at = NOW()
+     WHERE id = $1 AND status IN ('pending', 'verified')`,
+    [transferId, adminNotes ?? null],
+  );
 
-    await client.query(
-      `UPDATE ownership_transfers
-       SET status = 'approved', admin_notes = $2, approved_at = NOW(), updated_at = NOW()
-       WHERE id = $1`,
-      [transferId, adminNotes ?? null],
-    );
-
-    // Update submission status
-    if (transfer.submission_id) {
-      await client.query(
-        `UPDATE submissions SET status = 'approved', reviewed_at = NOW(), resolved_at = NOW(), updated_at = NOW()
-         WHERE id = $1`,
-        [transfer.submission_id],
-      );
-      await client.query(
-        `INSERT INTO submission_transitions
-           (submission_id, from_status, to_status, actor_user_id, actor_role, reason, gates_checked, gates_passed, metadata)
-         VALUES ($1, 'submitted', 'approved', $2, 'community_admin', 'Ownership transfer approved', '[]'::jsonb, true, '{}'::jsonb)`,
-        [transfer.submission_id, adminUserId],
-      );
-    }
-
-    // Notify the requesting user
-    await sendNotification({
-      recipientUserId: transfer.requested_by_user_id,
-      eventType: 'ownership_transfer_approved',
-      title: 'Ownership Transfer Approved',
-      body: 'Your ownership transfer request has been approved. The service will be transferred to your organization.',
-      resourceType: 'ownership_transfer',
-      resourceId: transfer.id,
-      actionUrl: `/host/services`,
-      idempotencyKey: `transfer_approved:${transfer.id}`,
-    });
-
-    return { success: true };
+  // 4. Notify the requesting user
+  await sendNotification({
+    recipientUserId: transfer.requested_by_user_id,
+    eventType: 'ownership_transfer_approved',
+    title: 'Ownership Transfer Approved',
+    body: 'Your ownership transfer request has been approved. The service will be transferred to your organization.',
+    resourceType: 'ownership_transfer',
+    resourceId: transfer.id,
+    actionUrl: `/host/services`,
+    idempotencyKey: `transfer_approved:${transfer.id}`,
   });
+
+  return { success: true };
+}
+
+/**
+ * Compute the sequence of valid transitions from a given status to 'approved'.
+ */
+function getPathToApproved(from: SubmissionStatus): SubmissionStatus[] {
+  switch (from) {
+    case 'submitted':
+      return ['needs_review', 'under_review', 'approved'];
+    case 'needs_review':
+      return ['under_review', 'approved'];
+    case 'under_review':
+      return ['approved'];
+    case 'pending_second_approval':
+      return ['approved'];
+    case 'escalated':
+      return ['approved'];
+    case 'auto_checking':
+      return ['approved'];
+    default:
+      return ['approved']; // will fail transition validity if truly invalid
+  }
 }
 
 // ============================================================
@@ -485,64 +531,101 @@ export async function executeTransfer(
 // ============================================================
 
 /**
- * Reject a transfer with a reason.
+ * Reject a transfer with a reason. Routes through the workflow engine.
  */
 export async function rejectTransfer(
   transferId: string,
   adminUserId: string,
   reason: string,
 ): Promise<{ success: boolean; error?: string }> {
-  return withTransaction(async (client) => {
-    const rows = await client.query<TransferRow>(
-      `SELECT * FROM ownership_transfers WHERE id = $1 FOR UPDATE`,
-      [transferId],
+  // 1. Validate transfer state
+  const rows = await executeQuery<TransferRow>(
+    `SELECT * FROM ownership_transfers WHERE id = $1`,
+    [transferId],
+  );
+  if (rows.length === 0) {
+    return { success: false, error: 'Transfer not found' };
+  }
+
+  const transfer = rows[0];
+  const validFromStatuses = ['pending', 'verified', 'approved'];
+  if (!validFromStatuses.includes(transfer.status)) {
+    return { success: false, error: `Cannot reject transfer in '${transfer.status}' status` };
+  }
+
+  // 2. Route submission through workflow engine
+  if (transfer.submission_id) {
+    const subRows = await executeQuery<{ status: string }>(
+      `SELECT status FROM submissions WHERE id = $1`,
+      [transfer.submission_id],
     );
-    if (rows.rows.length === 0) {
-      return { success: false, error: 'Transfer not found' };
+    const currentStatus = (subRows[0]?.status ?? 'submitted') as SubmissionStatus;
+
+    // Navigate to 'denied' via valid transitions
+    const stepsToDenied = getPathToDenied(currentStatus);
+
+    for (const step of stepsToDenied) {
+      const isIntermediateStep = step !== 'denied';
+      const result = await advance({
+        submissionId: transfer.submission_id,
+        toStatus: step,
+        actorUserId: adminUserId,
+        actorRole: 'community_admin',
+        reason: isIntermediateStep ? 'Ownership transfer routing' : reason,
+        skipGates: isIntermediateStep
+          ? { twoPersonApproval: true, lockCheck: true }
+          : { lockCheck: true },
+      });
+
+      if (!result.success) {
+        return { success: false, error: result.error ?? 'Workflow transition failed' };
+      }
     }
+  }
 
-    const transfer = rows.rows[0];
-    const validFromStatuses = ['pending', 'verified', 'approved'];
-    if (!validFromStatuses.includes(transfer.status)) {
-      return { success: false, error: `Cannot reject transfer in '${transfer.status}' status` };
-    }
+  // 3. Update ownership_transfers record
+  await executeQuery(
+    `UPDATE ownership_transfers
+     SET status = 'rejected', rejection_reason = $2, rejected_at = NOW(), updated_at = NOW()
+     WHERE id = $1`,
+    [transferId, reason],
+  );
 
-    await client.query(
-      `UPDATE ownership_transfers
-       SET status = 'rejected', rejection_reason = $2, rejected_at = NOW(), updated_at = NOW()
-       WHERE id = $1`,
-      [transferId, reason],
-    );
-
-    // Update submission
-    if (transfer.submission_id) {
-      await client.query(
-        `UPDATE submissions SET status = 'denied', reviewed_at = NOW(), resolved_at = NOW(), updated_at = NOW()
-         WHERE id = $1`,
-        [transfer.submission_id],
-      );
-      await client.query(
-        `INSERT INTO submission_transitions
-           (submission_id, from_status, to_status, actor_user_id, actor_role, reason, gates_checked, gates_passed, metadata)
-         VALUES ($1, 'submitted', 'denied', $2, 'community_admin', $3, '[]'::jsonb, true, '{}'::jsonb)`,
-        [transfer.submission_id, adminUserId, reason],
-      );
-    }
-
-    // Notify the requesting user
-    await sendNotification({
-      recipientUserId: transfer.requested_by_user_id,
-      eventType: 'ownership_transfer_rejected',
-      title: 'Ownership Transfer Rejected',
-      body: `Your ownership transfer request was rejected. Reason: ${reason}`,
-      resourceType: 'ownership_transfer',
-      resourceId: transfer.id,
-      actionUrl: `/host/services`,
-      idempotencyKey: `transfer_rejected:${transfer.id}`,
-    });
-
-    return { success: true };
+  // 4. Notify the requesting user
+  await sendNotification({
+    recipientUserId: transfer.requested_by_user_id,
+    eventType: 'ownership_transfer_rejected',
+    title: 'Ownership Transfer Rejected',
+    body: `Your ownership transfer request was rejected. Reason: ${reason}`,
+    resourceType: 'ownership_transfer',
+    resourceId: transfer.id,
+    actionUrl: `/host/services`,
+    idempotencyKey: `transfer_rejected:${transfer.id}`,
   });
+
+  return { success: true };
+}
+
+/**
+ * Compute the sequence of valid transitions from a given status to 'denied'.
+ */
+function getPathToDenied(from: SubmissionStatus): SubmissionStatus[] {
+  switch (from) {
+    case 'submitted':
+      return ['needs_review', 'under_review', 'denied'];
+    case 'needs_review':
+      return ['under_review', 'denied'];
+    case 'under_review':
+      return ['denied'];
+    case 'pending_second_approval':
+      return ['denied'];
+    case 'escalated':
+      return ['denied'];
+    case 'auto_checking':
+      return ['denied'];
+    default:
+      return ['denied'];
+  }
 }
 
 // ============================================================

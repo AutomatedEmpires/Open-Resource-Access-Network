@@ -32,6 +32,15 @@ import type { PoolClient } from 'pg';
 // TYPES
 // ============================================================
 
+/**
+ * Granular gate skip options. Transition validity is ALWAYS enforced.
+ * Only system actors should use these — API routes must never pass them.
+ */
+export interface SkipGateOptions {
+  twoPersonApproval?: boolean;
+  lockCheck?: boolean;
+}
+
 export interface AdvanceRequest {
   submissionId: string;
   toStatus: SubmissionStatus;
@@ -39,7 +48,12 @@ export interface AdvanceRequest {
   actorRole: string;
   reason?: string;
   metadata?: Record<string, unknown>;
-  skipGates?: boolean;
+  /**
+   * @deprecated Use skipGateOptions instead. If boolean `true` is passed,
+   * it is treated as { twoPersonApproval: true, lockCheck: true }.
+   * Transition validity is ALWAYS enforced regardless of this flag.
+   */
+  skipGates?: boolean | SkipGateOptions;
 }
 
 export interface AdvanceResult {
@@ -228,14 +242,24 @@ export async function advance(req: AdvanceRequest): Promise<AdvanceResult> {
     // 2. Run gate checks
     const gateResults: GateCheckResult[] = [];
 
-    // Always check transition graph validity
+    // Normalize skipGates to granular options
+    const skipOpts: SkipGateOptions =
+      typeof req.skipGates === 'object' && req.skipGates !== null
+        ? req.skipGates
+        : req.skipGates === true
+          ? { twoPersonApproval: true, lockCheck: true }
+          : {};
+
+    // ALWAYS check transition graph validity — cannot be skipped
     gateResults.push(checkTransitionGate(fromStatus, req.toStatus));
 
-    if (!req.skipGates) {
-      // Check lock
+    // Check lock (skippable)
+    if (!skipOpts.lockCheck) {
       gateResults.push(checkLockGate(submission, req.actorUserId));
+    }
 
-      // Check two-person approval
+    // Check two-person approval (skippable)
+    if (!skipOpts.twoPersonApproval) {
       gateResults.push(
         await checkTwoPersonGate(client, submission, req.toStatus, req.actorUserId),
       );
@@ -456,7 +480,7 @@ export async function assignSubmission(
         `You have been assigned submission ${submissionId}`,
         submissionId,
         `/verify?id=${submissionId}`,
-        `assign_${submissionId}_${assigneeUserId}_${Date.now()}`,
+        `assign_${submissionId}_${assigneeUserId}`,
       ],
     );
 
@@ -744,7 +768,7 @@ async function fireStatusChangeNotification(
         `Your submission has been moved from ${fromStatus} to ${toStatus}`,
         submissionId,
         submitterActionUrl,
-        `status_${submissionId}_${toStatus}_${Date.now()}`,
+        `status_${submissionId}_${fromStatus}_${toStatus}`,
       ],
     );
   }
@@ -761,12 +785,12 @@ async function fireStatusChangeNotification(
               'submission',
               $1,
               '/verify?id=' || $1,
-              'two_person_' || $1 || '_' || up.user_id || '_' || $2
+              'two_person_' || $1 || '_' || up.user_id
        FROM user_profiles up
        WHERE up.role IN ('community_admin', 'oran_admin')
-         AND up.user_id != $3
+         AND up.user_id != $2
        ON CONFLICT (idempotency_key) DO NOTHING`,
-      [submissionId, Date.now().toString(), actorUserId],
+      [submissionId, actorUserId],
     );
   }
 

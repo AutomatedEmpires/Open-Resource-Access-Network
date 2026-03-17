@@ -215,6 +215,7 @@ export const TWO_PERSON_REQUIRED_TYPES: readonly SubmissionType[] = [
   'ingestion_control_change',
   'org_claim',
   'removal_request',
+  'ownership_transfer',
 ] as const;
 
 /**

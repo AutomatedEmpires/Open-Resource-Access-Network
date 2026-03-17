@@ -80,7 +80,7 @@
     "@vitest/coverage-v8": "^4.1.0",
     "axe-core": "^4.11.1",
     "drizzle-kit": "^0.31.9",
-    "eslint": "^9",
+    "eslint": "^10",
     "eslint-config-next": "16.1.6",
     "jest-axe": "^10.0.0",
     "jsdom": "^29.0.0",

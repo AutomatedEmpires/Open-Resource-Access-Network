@@ -1,3 +1,4 @@
+import { CONFIDENCE_THRESHOLDS } from '@/domain/confidence';
 import type { ExtractedCandidate, ReviewStatus, VerificationCheckResult } from './contracts';
 import type { DetailedPipelineExecution, PipelineCandidateArtifact } from './pipeline/types';
 import type { IngestionStores, VerifiedServiceLink } from './stores';
@@ -91,7 +92,11 @@ function determineReviewStatus(
   assignedToRole: 'community_admin' | 'oran_admin',
   existingStatus?: ReviewStatus,
 ): ReviewStatus {
+  // LB12: Demote published/verified services when re-extract score drops below publish threshold
   if (existingStatus === 'published' || existingStatus === 'verified') {
+    if (candidate.score.overall < CONFIDENCE_THRESHOLDS.YELLOW) {
+      return 'escalated';
+    }
     return existingStatus;
   }
   if (assignedToRole === 'oran_admin') {
@@ -462,9 +467,20 @@ export async function materializePipelineArtifacts(
   }
 
   const existingCandidate = await stores.candidates.getByExtractKey(candidate.extractKeySha256);
-  const candidateId = existingCandidate?.candidateId ?? candidate.candidateId;
+
+  // LB6: Cross-path dedup — if no exact extractKey match, try normalized name match
+  // to catch duplicates from different intake paths (web scrape vs HSDS API vs CSV).
+  const crossPathMatch = existingCandidate
+    ? null
+    : await stores.candidates.findByNormalizedName(
+        candidate.organizationName,
+        candidate.serviceName,
+      );
+
+  const deduplicatedCandidate = existingCandidate ?? crossPathMatch;
+  const candidateId = deduplicatedCandidate?.candidateId ?? candidate.candidateId;
   const assignedToRole = determineReviewRole(candidate);
-  const reviewStatus = determineReviewStatus(candidate, assignedToRole, existingCandidate?.review.status);
+  const reviewStatus = determineReviewStatus(candidate, assignedToRole, deduplicatedCandidate?.review.status);
 
   const candidateRecord = buildCandidateRecord(candidate, {
     candidateId,
@@ -476,7 +492,7 @@ export async function materializePipelineArtifacts(
     reviewStatus,
   });
 
-  if (existingCandidate) {
+  if (deduplicatedCandidate) {
     await stores.candidates.update(candidateId, {
       fields: candidateRecord.fields,
       review: candidateRecord.review,
@@ -557,7 +573,7 @@ export async function materializePipelineArtifacts(
   return {
     candidateId,
     evidenceId: evidence?.evidenceId,
-    deduped: Boolean(existingCandidate),
+    deduped: Boolean(deduplicatedCandidate),
     assignedToRole,
     reviewStatus,
   };

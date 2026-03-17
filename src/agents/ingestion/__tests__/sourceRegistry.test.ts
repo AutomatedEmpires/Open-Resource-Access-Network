@@ -15,18 +15,18 @@ describe('source registry', () => {
     expect(c).toBe('https://example.gov/path?keep=ok');
   });
 
-  test('bootstrap allows .gov and .edu, quarantines .mil (seed fetch allowed) and blocks unregistered domains', () => {
+  test('bootstrap quarantines .gov and .edu (LB10 hardening), quarantines .mil and blocks unregistered domains', () => {
     const registry = buildBootstrapRegistry('2026-03-02T00:00:00Z');
 
     expect(matchSourceForUrl('https://example.gov/a', registry)).toEqual({
       allowed: true,
-      trustLevel: 'allowlisted',
+      trustLevel: 'quarantine',
       sourceId: 'bootstrap-gov',
     });
 
     expect(matchSourceForUrl('https://example.edu/a', registry)).toEqual({
       allowed: true,
-      trustLevel: 'allowlisted',
+      trustLevel: 'quarantine',
       sourceId: 'bootstrap-edu',
     });
 

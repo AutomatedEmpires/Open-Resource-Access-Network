@@ -405,19 +405,24 @@ describe('workflow/engine', () => {
   });
 
   it('assignSubmission returns false when target submission is missing', async () => {
-    clientQueryMock.mockResolvedValueOnce({ rows: [] });
+    // LB8: capacity check passes, then submission UPDATE returns empty
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ pending_count: '0', max_capacity: '50' }] })
+      .mockResolvedValueOnce({ rows: [] });
 
     await expect(assignSubmission('sub-8', 'reviewer-1', 'admin-1', 'community_admin')).resolves.toBe(false);
   });
 
   it('assignSubmission writes audit + notification when assignment succeeds', async () => {
     clientQueryMock
+      // LB8: capacity check
+      .mockResolvedValueOnce({ rows: [{ pending_count: '0', max_capacity: '50' }] })
       .mockResolvedValueOnce({ rows: [{ id: 'sub-9' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     await expect(assignSubmission('sub-9', 'reviewer-2', 'admin-1', 'community_admin')).resolves.toBe(true);
-    expect(clientQueryMock).toHaveBeenCalledTimes(3);
+    expect(clientQueryMock).toHaveBeenCalledTimes(4);
   });
 
   it('applySla skips when no SLA row exists and updates when it exists', async () => {

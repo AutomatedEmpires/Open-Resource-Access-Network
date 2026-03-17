@@ -11,6 +11,7 @@
 import { withTransaction, executeQuery } from '@/services/db/postgres';
 import { ROLE_LEVELS } from '@/services/auth/roles';
 import type { OranRole } from '@/domain/types';
+import type { PoolClient } from 'pg';
 
 // ============================================================
 // AUTHORIZATION
@@ -51,6 +52,60 @@ export interface MergeResult {
     confidenceScores?: number;
   };
   error?: string;
+}
+
+// ============================================================
+// MERGE SNAPSHOT (LB11: undo capability)
+// ============================================================
+
+/**
+ * Record a pre-merge snapshot into audit_logs so the merge can be
+ * reversed by an oran_admin if needed. Captures the source entity's
+ * child-entity IDs before they are reassigned.
+ */
+async function recordMergeSnapshot(
+  client: PoolClient,
+  mergeType: 'organization' | 'service',
+  targetId: string,
+  sourceId: string,
+  actorUserId: string,
+): Promise<void> {
+  let snapshot: Record<string, unknown>;
+  if (mergeType === 'organization') {
+    const [services, members, submissions] = await Promise.all([
+      client.query<{ id: string }>(`SELECT id FROM services WHERE org_id = $1`, [sourceId]),
+      client.query<{ user_id: string }>(`SELECT user_id FROM organization_members WHERE organization_id = $1`, [sourceId]),
+      client.query<{ id: string }>(`SELECT id FROM submissions WHERE target_id = $1 AND target_type = 'organization'`, [sourceId]),
+    ]);
+    snapshot = {
+      serviceIds: services.rows.map(r => r.id),
+      memberUserIds: members.rows.map(r => r.user_id),
+      submissionIds: submissions.rows.map(r => r.id),
+    };
+  } else {
+    const [locations, phones, submissions] = await Promise.all([
+      client.query<{ id: string }>(`SELECT id FROM service_locations WHERE service_id = $1`, [sourceId]),
+      client.query<{ id: string }>(`SELECT id FROM service_phones WHERE service_id = $1`, [sourceId]),
+      client.query<{ id: string }>(`SELECT id FROM submissions WHERE service_id = $1`, [sourceId]),
+    ]);
+    snapshot = {
+      locationIds: locations.rows.map(r => r.id),
+      phoneIds: phones.rows.map(r => r.id),
+      submissionIds: submissions.rows.map(r => r.id),
+    };
+  }
+
+  await client.query(
+    `INSERT INTO audit_logs (action, resource_type, resource_id, before, actor_user_id)
+     VALUES ($1, $2, $3, $4::jsonb, $5)`,
+    [
+      `${mergeType}_merge_snapshot`,
+      mergeType,
+      sourceId,
+      JSON.stringify({ target_id: targetId, source_id: sourceId, ...snapshot }),
+      actorUserId,
+    ],
+  );
 }
 
 // ============================================================
@@ -96,6 +151,9 @@ export async function mergeOrganizations(
       if (sourceOrg?.status === 'defunct') {
         throw new Error('Source organization is already archived');
       }
+
+      // LB11: Snapshot pre-merge state for undo capability
+      await recordMergeSnapshot(client, 'organization', targetId, sourceId, actorUserId);
 
       // 1. Reassign services
       const svcResult = await client.query(
@@ -216,6 +274,9 @@ export async function mergeServices(
       if (svcs.rows.length < 2) {
         throw new Error('One or both services not found');
       }
+
+      // LB11: Snapshot pre-merge state for undo capability
+      await recordMergeSnapshot(client, 'service', targetId, sourceId, actorUserId);
 
       // 1. Reassign locations (skip if target already has same address)
       const locResult = await client.query(

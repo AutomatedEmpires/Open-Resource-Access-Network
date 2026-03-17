@@ -19,11 +19,11 @@
 import crypto from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import * as checklistModule from '../checklist';
-import * as fetcherModule from '../fetcher';
-import type { FetchResult, Fetcher, PageFetcher } from '../fetcher';
+import * as _checklistModule from '../checklist';
+import * as _fetcherModule from '../fetcher';
+import type { FetchResult, Fetcher } from '../fetcher';
 import type { LLMClient } from '../llm';
-import * as llmModule from '../llm';
+import * as _llmModule from '../llm';
 import { DEFAULT_PIPELINE_CONFIG } from '../pipeline/orchestrator';
 import {
   BuildCandidateStage,
@@ -37,7 +37,7 @@ import {
   VerifyStage,
 } from '../pipeline/stages';
 import type { PipelineContext, PipelineInput } from '../pipeline/types';
-import * as sourceRegistryModule from '../sourceRegistry';
+import * as _sourceRegistryModule from '../sourceRegistry';
 import {
   buildBootstrapRegistry,
   canonicalizeUrl,
@@ -243,7 +243,7 @@ describe('source registry adversarial', () => {
       // The suffix matching WILL match .gov, which means it IS allowlisted
       // This documents the current behavior — punycode domains ending in .gov are trusted
       expect(result.allowed).toBe(true);
-      expect(result.trustLevel).toBe('allowlisted');
+      expect(result.trustLevel).toBe('quarantine');
     });
 
     it('canonicalizes unicode domains to punycode consistently', () => {
@@ -1029,7 +1029,7 @@ describe('build candidate adversarial', () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe('full pipeline scam-site scenario', () => {
-  it('a scam-looking page on .gov domain reaches green tier', async () => {
+  it('a scam-looking page on .gov domain is capped at yellow tier (LB10 hardening)', async () => {
     // Scenario: a compromised or spoofed .gov subdomain with scam content
     const registry = buildBootstrapRegistry();
 
@@ -1040,7 +1040,7 @@ describe('full pipeline scam-site scenario', () => {
     });
     const sourceResult = await sourceStage.execute(context);
     expect(sourceResult.status).toBe('completed');
-    expect(context.sourceCheck?.trustLevel).toBe('allowlisted');
+    expect(context.sourceCheck?.trustLevel).toBe('quarantine');
 
     // Stage 2: Fetch — inject mock fetcher with scam HTML
     const scamHtml = `<html>
@@ -1132,8 +1132,8 @@ describe('full pipeline scam-site scenario', () => {
     const scoreStage = new ScoreStage();
     const scoreResult = await scoreStage.execute(context);
     expect(scoreResult.status).toBe('completed');
-    // Scam content on .gov domain achieves green tier — this is a significant gap
-    expect(context.candidateScore?.tier).toBe('green');
+    // Scam content on .gov domain achieves only yellow tier — LB10 quarantines .gov
+    expect(context.candidateScore?.tier).toBe('yellow');
 
     // Stage 9: Build Candidate
     const buildStage = new BuildCandidateStage();

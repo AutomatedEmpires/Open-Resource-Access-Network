@@ -86,10 +86,40 @@ export function computeConfidenceScore(inputs: ConfidenceInputs): number {
 }
 
 /**
+ * LB9: Compute raw (unclamped) confidence score.
+ * Preserves negative values to retain severity signal for audit/analysis.
+ */
+export function computeRawConfidenceScore(inputs: ConfidenceInputs): number {
+  let score = 0;
+
+  if (inputs.hasEvidenceSnapshot) score += 20;
+  if (inputs.sourceAllowlisted) score += 20;
+  if (inputs.requiredFieldsPresent) score += 20;
+
+  for (const check of inputs.verificationChecks) {
+    const weight = check.severity === 'critical' ? 20 : check.severity === 'warning' ? 10 : 4;
+    if (check.status === 'pass') score += weight;
+    if (check.status === 'fail') score -= weight;
+  }
+
+  if (inputs.checklist && inputs.checklist.length > 0) {
+    const required = inputs.checklist.filter((i) => i.required);
+    const satisfied = required.filter((i) => i.status === 'satisfied');
+    if (required.length > 0) {
+      const checklistRatio = satisfied.length / required.length;
+      score += Math.round(checklistRatio * 20);
+    }
+  }
+
+  return score;
+}
+
+/**
  * Compute detailed score breakdown for UI display.
  */
 export function computeScoreBreakdown(inputs: ConfidenceInputs): {
   score: number;
+  rawScore: number;
   tier: ConfidenceTier;
   breakdown: Array<{ label: string; points: number; max: number }>;
 } {
@@ -140,9 +170,11 @@ export function computeScoreBreakdown(inputs: ConfidenceInputs): {
   }
 
   const score = computeConfidenceScore(inputs);
+  const rawScore = computeRawConfidenceScore(inputs);
 
   return {
     score,
+    rawScore,
     tier: getConfidenceTier(score),
     breakdown,
   };

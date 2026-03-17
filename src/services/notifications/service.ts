@@ -9,6 +9,7 @@
 
 import { executeQuery, withTransaction } from '@/services/db/postgres';
 import { sendEmail, isEmailConfigured } from '@/services/email/azureEmail';
+import { NOTIFICATION_RATE_LIMIT_PER_HOUR } from '@/domain/constants';
 import type {
   NotificationChannel,
   NotificationEventType,
@@ -77,6 +78,17 @@ export async function send(req: SendNotificationRequest): Promise<string | null>
 
   // If preference exists and is disabled, skip
   if (prefRows.length > 0 && !prefRows[0].enabled) {
+    return null;
+  }
+
+  // LB7: Rate limit — prevent notification DDoS
+  const recentCountRows = await executeQuery<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM notification_events
+     WHERE recipient_user_id = $1 AND sent_at > NOW() - INTERVAL '1 hour'`,
+    [req.recipientUserId],
+  );
+  const recentCount = parseInt(recentCountRows[0]?.count ?? '0', 10);
+  if (recentCount >= NOTIFICATION_RATE_LIMIT_PER_HOUR) {
     return null;
   }
 

@@ -68,6 +68,11 @@ describe('mergeOrganizations', () => {
           { id: 'org-source', status: 'active' },
         ],
       })
+      // LB11 snapshot: services, members, submissions (parallel), then insert
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rowCount: 1 })
       // services reassigned
       .mockResolvedValueOnce({ rowCount: 3 })
       // members reassigned (non-duplicates)
@@ -120,6 +125,11 @@ describe('mergeServices', () => {
           { id: 'svc-source', status: 'active' },
         ],
       })
+      // LB11 snapshot: locations, phones, submissions (parallel), then insert
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rowCount: 1 })
       // locations
       .mockResolvedValueOnce({ rowCount: 2 })
       // phones

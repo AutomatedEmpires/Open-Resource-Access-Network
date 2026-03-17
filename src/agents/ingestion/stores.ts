@@ -189,6 +189,9 @@ export interface CandidateStore {
   /** Get by extract key (deduplication). */
   getByExtractKey(extractKey: string): Promise<ExtractedCandidate | null>;
 
+  /** Find by normalized org+service name (cross-path dedup). */
+  findByNormalizedName(orgName: string, serviceName: string): Promise<ExtractedCandidate | null>;
+
   /** Update a candidate. */
   update(candidateId: string, updates: Partial<ExtractedCandidate>): Promise<void>;
 

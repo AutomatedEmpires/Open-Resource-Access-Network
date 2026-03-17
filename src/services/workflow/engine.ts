@@ -445,6 +445,23 @@ export async function assignSubmission(
   actorRole: string,
 ): Promise<boolean> {
   return withTransaction(async (client) => {
+    // LB8: Enforce admin capacity limits before assigning
+    const capacityRows = await client.query<{ pending_count: string; max_capacity: string }>(
+      `SELECT
+         COALESCE(p.pending_count, 0)::text AS pending_count,
+         COALESCE(p.max_capacity, 50)::text AS max_capacity
+       FROM admin_review_profiles p
+       WHERE p.user_id = $1`,
+      [assigneeUserId],
+    );
+    if (capacityRows.rows.length > 0) {
+      const pending = parseInt(capacityRows.rows[0].pending_count, 10);
+      const maxCap = parseInt(capacityRows.rows[0].max_capacity, 10);
+      if (pending >= maxCap) {
+        throw new Error(`Assignee has reached capacity (${pending}/${maxCap})`);
+      }
+    }
+
     const result = await client.query<{ id: string }>(
       `UPDATE submissions
        SET assigned_to_user_id = $1, updated_at = NOW()

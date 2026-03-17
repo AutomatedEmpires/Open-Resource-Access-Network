@@ -303,6 +303,12 @@ export const DEFAULT_ADMIN_NOTIFICATION_EVENTS: readonly NotificationEventType[]
   'system_alert',
 ] as const;
 
+/**
+ * Maximum number of notifications a single recipient can receive per hour.
+ * Prevents notification DDoS from rapid state transitions or broadcast abuse.
+ */
+export const NOTIFICATION_RATE_LIMIT_PER_HOUR = 100;
+
 // ============================================================
 // ROLES
 // ============================================================

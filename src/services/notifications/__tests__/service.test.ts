@@ -49,6 +49,7 @@ describe('notifications service', () => {
   it('send inserts notification when preference is enabled', async () => {
     dbMocks.executeQuery
       .mockResolvedValueOnce([{ enabled: true }])
+      .mockResolvedValueOnce([{ count: '0' }]) // rate limit check
       .mockResolvedValueOnce([{ id: 'n-1' }]);
 
     const id = await send({
@@ -61,13 +62,14 @@ describe('notifications service', () => {
     });
 
     expect(id).toBe('n-1');
-    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(2);
+    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(3);
   });
 
   it('send returns null on idempotent conflict insert', async () => {
     dbMocks.executeQuery
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([]) // no preference
+      .mockResolvedValueOnce([{ count: '0' }]) // rate limit check
+      .mockResolvedValueOnce([]); // conflict insert
 
     const id = await send({
       recipientUserId: 'user-3',
@@ -82,10 +84,15 @@ describe('notifications service', () => {
 
   it('broadcast returns number of actually sent notifications', async () => {
     dbMocks.executeQuery
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: 'n-1' }])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
+      // user-a: pref check → rate limit → insert
+      .mockResolvedValueOnce([]) // no pref
+      .mockResolvedValueOnce([{ count: '0' }]) // rate limit ok
+      .mockResolvedValueOnce([{ id: 'n-1' }]) // inserted
+      // user-b: pref check → rate limit → conflict insert
+      .mockResolvedValueOnce([]) // no pref
+      .mockResolvedValueOnce([{ count: '0' }]) // rate limit ok
+      .mockResolvedValueOnce([]) // conflict / no insert
+      // user-c: pref disabled
       .mockResolvedValueOnce([{ enabled: false }]);
 
     const sent = await broadcast(
@@ -96,7 +103,7 @@ describe('notifications service', () => {
     );
 
     expect(sent).toBe(1);
-    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(5);
+    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(7);
   });
 
   it('getUnread returns unread rows with default limit', async () => {

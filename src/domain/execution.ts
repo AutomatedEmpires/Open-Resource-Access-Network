@@ -4,6 +4,7 @@ export type SeekerPlanStatus = 'active' | 'archived';
 export type SeekerPlanItemStatus = 'todo' | 'done';
 export type SeekerPlanItemUrgency = 'today' | 'this_week' | 'later' | 'backup';
 export type SeekerPlanItemSource = 'manual' | 'saved_service' | 'directory_service' | 'chat_service';
+export type SeekerPlanMilestone = 'immediate_survival' | 'stabilization' | 'documentation' | 'benefits' | 'employment_preparation' | 'long_term_stability';
 
 export interface SeekerPlanServiceSnapshot {
   serviceId: string;
@@ -21,6 +22,7 @@ export interface SeekerPlanItem {
   status: SeekerPlanItemStatus;
   urgency: SeekerPlanItemUrgency;
   source: SeekerPlanItemSource;
+  milestone?: SeekerPlanMilestone;
   note?: string;
   whyItMatters?: string;
   whatToAsk?: string;

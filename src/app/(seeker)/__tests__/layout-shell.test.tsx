@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterAll, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { writeStoredSeekerProfile } from '@/services/profile/clientContext';
 import { writeStoredProfilePreferences } from '@/services/profile/syncPreference';
@@ -50,6 +50,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   usePathnameMock.mockReturnValue('/chat');
+});
+
+afterAll(() => {
+  cleanup();
+  vi.restoreAllMocks();
 });
 
 describe('seeker layout shell', () => {

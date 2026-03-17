@@ -6,12 +6,14 @@ import {
   addManualPlanItem,
   addServicePlanItem,
   createSeekerPlan,
+  createSeekerPlanFromTemplate,
   deleteSeekerPlanItem,
   readStoredSeekerPlansState,
   SEEKER_PLANS_STORAGE_KEY,
   toggleSeekerPlanItemComplete,
   updateSeekerPlanItem,
 } from '@/services/plans/client';
+import { getSeekerPlanTemplate } from '@/services/plans/templates';
 
 describe('seeker plan local storage client', () => {
   beforeEach(() => {
@@ -90,6 +92,7 @@ describe('seeker plan local storage client', () => {
       title: 'Call pantry intake',
       note: 'Confirm same-day availability',
       urgency: 'today',
+      milestone: 'immediate_survival',
       targetDate: '2026-03-18',
       reminderAt: '2026-03-18T14:30:00.000Z',
       whyItMatters: 'Need food support before the weekend',
@@ -102,6 +105,7 @@ describe('seeker plan local storage client', () => {
     expect(item?.title).toBe('Call pantry intake');
     expect(item?.note).toBe('Confirm same-day availability');
     expect(item?.urgency).toBe('today');
+    expect(item?.milestone).toBe('immediate_survival');
     expect(item?.targetDate).toBe('2026-03-18');
     expect(item?.reminderAt).toBe('2026-03-18T14:30:00.000Z');
     expect(item?.whyItMatters).toBe('Need food support before the weekend');
@@ -109,5 +113,21 @@ describe('seeker plan local storage client', () => {
     expect(item?.whatToBring).toBe('Photo ID and proof of address');
     expect(item?.fallback).toBe('Use the backup pantry saved nearby');
     expect(item?.linkedService?.serviceId).toBe('svc-1');
+  });
+
+  it('creates a local-first plan from a curated starter template', () => {
+    const template = getSeekerPlanTemplate('stabilize-tonight');
+    expect(template).not.toBeNull();
+
+    const created = createSeekerPlanFromTemplate(template!);
+
+    expect(created.plan?.title).toBe('Stabilize tonight');
+    expect(created.plan?.items).toHaveLength(template!.items.length);
+    expect(created.plan?.items[0]?.source).toBe('manual');
+    expect(created.plan?.items[0]?.milestone).toBe('immediate_survival');
+
+    const stored = readStoredSeekerPlansState();
+    expect(stored.activePlanId).toBe(created.plan?.id ?? null);
+    expect(stored.plans[0]?.items[1]?.whatToAsk).toContain('still open');
   });
 });

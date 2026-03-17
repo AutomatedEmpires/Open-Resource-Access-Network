@@ -13,6 +13,8 @@ import { Bell, Check, CheckCheck, ExternalLink, Inbox } from 'lucide-react';
 import { FormSection } from '@/components/ui/form-section';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
+import { readStoredSeekerPlansState, SEEKER_PLANS_UPDATED_EVENT } from '@/services/plans/client';
+import { buildSeekerExecutionProgressSummary } from '@/services/plans/progress';
 
 // ============================================================
 // TYPES
@@ -53,6 +55,7 @@ function formatDate(iso: string): string {
 // ============================================================
 
 export default function NotificationsPageClient() {
+  const [plansState, setPlansState] = useState(() => readStoredSeekerPlansState());
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [total, setTotal] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -63,6 +66,20 @@ export default function NotificationsPageClient() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   const PAGE_SIZE = 20;
+  const localProgress = buildSeekerExecutionProgressSummary(
+    plansState.plans.find((plan) => plan.id === plansState.activePlanId) ?? plansState.plans[0] ?? null,
+  );
+
+  useEffect(() => {
+    const syncPlans = () => setPlansState(readStoredSeekerPlansState());
+    window.addEventListener(SEEKER_PLANS_UPDATED_EVENT, syncPlans as EventListener);
+    window.addEventListener('storage', syncPlans);
+
+    return () => {
+      window.removeEventListener(SEEKER_PLANS_UPDATED_EVENT, syncPlans as EventListener);
+      window.removeEventListener('storage', syncPlans);
+    };
+  }, []);
 
   const fetchPage = useCallback(async (p: number, f: Filter) => {
     setLoading(true);
@@ -128,6 +145,20 @@ export default function NotificationsPageClient() {
     return (
       <main className="min-h-screen bg-white">
         <div className="container mx-auto max-w-3xl px-4 py-8 md:py-10">
+        {localProgress.recentUpdates.length > 0 ? (
+          <section className="mb-6 rounded-[30px] border border-slate-200 bg-slate-50 p-6 shadow-sm md:p-8">
+            <h2 className="text-lg font-semibold text-stone-900">Local execution updates</h2>
+            <p className="mt-2 text-sm text-stone-500">These updates come from your local plan on this device, even when you are not signed in.</p>
+            <div className="mt-4 space-y-3">
+              {localProgress.recentUpdates.slice(0, 4).map((update) => (
+                <div key={update.id} className="rounded-[20px] border border-slate-200 bg-white px-4 py-3">
+                  <p className="text-sm font-medium text-stone-900">{update.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-stone-500">{update.detail}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
         <section className="rounded-[30px] border border-slate-200 bg-white p-6 text-center shadow-sm md:p-8">
         <PageHeader
           eyebrow="Account activity"
@@ -171,6 +202,23 @@ export default function NotificationsPageClient() {
           </>
         )}
       />
+
+      {localProgress.recentUpdates.length > 0 ? (
+        <FormSection
+          title="Local execution updates"
+          description="Local-first reminders, milestone completion, and finished steps from your plan stay visible here even before broader synced execution history exists."
+        >
+          <div className="space-y-3">
+            {localProgress.recentUpdates.slice(0, 5).map((update) => (
+              <div key={update.id} className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-sm font-medium text-stone-900">{update.title}</p>
+                <p className="mt-1 text-xs leading-5 text-stone-500">{update.detail}</p>
+                <p className="mt-2 text-[10px] text-stone-400">{formatDate(update.occurredAt)}</p>
+              </div>
+            ))}
+          </div>
+        </FormSection>
+      ) : null}
 
       <FormSection
         title="Inbox"

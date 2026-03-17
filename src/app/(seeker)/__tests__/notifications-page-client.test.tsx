@@ -60,6 +60,7 @@ beforeEach(() => {
   cleanup();
   vi.clearAllMocks();
   fetchMock.mockReset();
+  window.localStorage.clear();
   global.fetch = fetchMock as unknown as typeof fetch;
 });
 
@@ -187,6 +188,36 @@ describe('NotificationsPageClient', () => {
 
     await screen.findByText('No unread notifications.');
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('unread=true'));
+  });
+
+  it('shows local execution updates above the inbox when a local plan has due reminders', async () => {
+    window.localStorage.setItem('oran:seeker-plans', JSON.stringify({
+      activePlanId: 'plan-1',
+      plans: [{
+        id: 'plan-1',
+        title: 'Current plan',
+        status: 'active',
+        createdAt: '2026-03-17T08:00:00.000Z',
+        updatedAt: '2026-03-17T08:00:00.000Z',
+        items: [{
+          id: 'item-1',
+          title: 'Call intake',
+          status: 'todo',
+          urgency: 'today',
+          source: 'manual',
+          reminderAt: '2026-03-17T09:00:00.000Z',
+          createdAt: '2026-03-17T08:00:00.000Z',
+          updatedAt: '2026-03-17T08:00:00.000Z',
+        }],
+      }],
+    }));
+
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 401 });
+
+    render(<NotificationsPageClient />);
+
+    await screen.findByText('Local execution updates');
+    expect(screen.getByText('Reminder due for Call intake')).toBeInTheDocument();
   });
 
   it('paginates forward and backward', async () => {

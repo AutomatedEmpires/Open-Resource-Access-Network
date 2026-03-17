@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useState } from 'react';
 import { CheckCircle2, ListTodo, Plus } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -54,20 +54,20 @@ export function AddToPlanDialog({
   const plansState = readStoredSeekerPlansState();
   const activePlan = getActiveSeekerPlan(plansState);
 
-  const resetFormState = useCallback(() => {
+  const resetFormState = () => {
     setSelectedPlanId(activePlan?.id ?? '__new__');
     setNewPlanTitle(activePlan ? '' : 'Current plan');
     setUrgency('this_week');
     setNote('');
     setTargetDate('');
-  }, [activePlan]);
+  };
 
-  const handleOpenChange = useCallback((nextOpen: boolean) => {
+  const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {
       resetFormState();
     }
     setOpen(nextOpen);
-  }, [resetFormState]);
+  };
 
   if (!planEnabled) {
     return null;

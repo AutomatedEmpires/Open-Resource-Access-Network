@@ -1,6 +1,7 @@
 'use client';
 
 import type {
+  SeekerPlanMilestone,
   SeekerPlan,
   SeekerPlanItem,
   SeekerPlanItemStatus,
@@ -9,6 +10,7 @@ import type {
   SeekerPlanServiceSnapshot,
   SeekerPlansState,
 } from '@/domain/execution';
+import type { SeekerPlanTemplate } from '@/services/plans/templates';
 
 export const SEEKER_PLANS_STORAGE_KEY = 'oran:seeker-plans';
 export const SEEKER_PLANS_UPDATED_EVENT = 'oran:seeker-plans-updated';
@@ -36,6 +38,17 @@ function normalizeSource(value: unknown): SeekerPlanItemSource {
   return value === 'manual' || value === 'saved_service' || value === 'directory_service' || value === 'chat_service'
     ? value
     : 'manual';
+}
+
+function normalizeMilestone(value: unknown): SeekerPlanMilestone | undefined {
+  return value === 'immediate_survival'
+    || value === 'stabilization'
+    || value === 'documentation'
+    || value === 'benefits'
+    || value === 'employment_preparation'
+    || value === 'long_term_stability'
+    ? value
+    : undefined;
 }
 
 function normalizeLinkedService(value: unknown): SeekerPlanServiceSnapshot | undefined {
@@ -87,6 +100,7 @@ function normalizeItem(value: unknown): SeekerPlanItem | null {
     status: candidate.status === 'done' ? 'done' : 'todo',
     urgency: normalizeUrgency(candidate.urgency),
     source: normalizeSource(candidate.source),
+    milestone: normalizeMilestone(candidate.milestone),
     note: typeof candidate.note === 'string' ? candidate.note : undefined,
     whyItMatters: typeof candidate.whyItMatters === 'string' ? candidate.whyItMatters : undefined,
     whatToAsk: typeof candidate.whatToAsk === 'string' ? candidate.whatToAsk : undefined,
@@ -223,6 +237,48 @@ export function createSeekerPlan(title: string, objective?: string): { state: Se
   return { state: nextState, plan };
 }
 
+export function createSeekerPlanFromTemplate(
+  template: SeekerPlanTemplate,
+): { state: SeekerPlansState; plan: SeekerPlan | null } {
+  const trimmedTitle = template.title.trim();
+  if (!trimmedTitle) {
+    return { state: readStoredSeekerPlansState(), plan: null };
+  }
+
+  const current = readStoredSeekerPlansState();
+  const now = new Date().toISOString();
+  const plan: SeekerPlan = {
+    id: createExecutionId('plan'),
+    title: trimmedTitle,
+    objective: template.objective.trim() || undefined,
+    status: 'active',
+    items: template.items.map((item) => ({
+      id: createExecutionId('plan-item'),
+      title: item.title.trim(),
+      status: 'todo',
+      urgency: item.urgency ?? 'this_week',
+      source: 'manual',
+      milestone: item.milestone,
+      note: item.note?.trim() || undefined,
+      whyItMatters: item.whyItMatters?.trim() || undefined,
+      whatToAsk: item.whatToAsk?.trim() || undefined,
+      whatToBring: item.whatToBring?.trim() || undefined,
+      fallback: item.fallback?.trim() || undefined,
+      createdAt: now,
+      updatedAt: now,
+    })),
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const nextState: SeekerPlansState = {
+    plans: [plan, ...current.plans],
+    activePlanId: plan.id,
+  };
+  writeStoredSeekerPlansState(nextState);
+  return { state: nextState, plan };
+}
+
 export function setActiveSeekerPlan(planId: string): SeekerPlansState {
   const current = readStoredSeekerPlansState();
   const nextState: SeekerPlansState = {
@@ -239,6 +295,7 @@ export function addManualPlanItem(
     title: string;
     note?: string;
     urgency?: SeekerPlanItemUrgency;
+    milestone?: SeekerPlanMilestone;
     targetDate?: string;
     reminderAt?: string;
     whyItMatters?: string;
@@ -265,6 +322,7 @@ export function addManualPlanItem(
     status: 'todo',
     urgency: input.urgency ?? 'this_week',
     source: 'manual',
+    milestone: input.milestone,
     note: input.note?.trim() || undefined,
     whyItMatters: input.whyItMatters?.trim() || undefined,
     whatToAsk: input.whatToAsk?.trim() || undefined,
@@ -297,6 +355,7 @@ export function addServicePlanItem(
   input?: {
     note?: string;
     urgency?: SeekerPlanItemUrgency;
+    milestone?: SeekerPlanMilestone;
     targetDate?: string;
     reminderAt?: string;
     source?: SeekerPlanItemSource;
@@ -320,6 +379,7 @@ export function addServicePlanItem(
     status: 'todo',
     urgency: input?.urgency ?? 'this_week',
     source: input?.source ?? 'saved_service',
+    milestone: input?.milestone,
     note: input?.note?.trim() || undefined,
     targetDate: input?.targetDate?.trim() || undefined,
     reminderAt: input?.reminderAt?.trim() || undefined,
@@ -370,6 +430,7 @@ export function updateSeekerPlanItem(
           title: typeof patch.title === 'string' ? patch.title.trim() || item.title : item.title,
           note: typeof patch.note === 'string' ? patch.note.trim() || undefined : item.note,
           urgency: patch.urgency ?? item.urgency,
+          milestone: patch.milestone === undefined ? item.milestone : patch.milestone,
           whyItMatters: typeof patch.whyItMatters === 'string' ? patch.whyItMatters.trim() || undefined : item.whyItMatters,
           whatToAsk: typeof patch.whatToAsk === 'string' ? patch.whatToAsk.trim() || undefined : item.whatToAsk,
           whatToBring: typeof patch.whatToBring === 'string' ? patch.whatToBring.trim() || undefined : item.whatToBring,

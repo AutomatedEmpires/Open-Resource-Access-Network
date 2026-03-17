@@ -22,13 +22,15 @@ import {
 } from '@/components/ui/dialog';
 import { useSeekerFeatureFlags } from '@/components/seeker/SeekerFeatureFlags';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
-import type { SeekerPlan, SeekerPlanItem, SeekerPlanItemUrgency } from '@/domain/execution';
+import type { SeekerPlan, SeekerPlanItem, SeekerPlanItemUrgency, SeekerPlanMilestone } from '@/domain/execution';
 import type { EnrichedService } from '@/domain/types';
 import { buildPlanServiceSnapshotFromEnrichedService } from '@/services/plans/snapshots';
+import { SEEKER_PLAN_MILESTONE_LABELS } from '@/services/plans/progress';
 import {
   addManualPlanItem,
   addServicePlanItem,
   archiveSeekerPlan,
+  createSeekerPlanFromTemplate,
   deleteSeekerPlanItem,
   getActiveSeekerPlan,
   readStoredSeekerPlansState,
@@ -39,6 +41,7 @@ import {
   updateSeekerPlanItem,
 } from '@/services/plans/client';
 import { getLinkedServiceExecutionWarnings } from '@/services/plans/snapshotTrust';
+import { SEEKER_PLAN_TEMPLATES, type SeekerPlanTemplate } from '@/services/plans/templates';
 import { readStoredSavedServiceIds, SAVED_SERVICES_UPDATED_EVENT } from '@/services/saved/client';
 
 interface BatchServiceResponse {
@@ -57,6 +60,7 @@ interface PlanItemEditorState {
   title: string;
   note: string;
   urgency: SeekerPlanItemUrgency;
+  milestone: SeekerPlanMilestone | '';
   targetDate: string;
   reminderAtLocal: string;
   whyItMatters: string;
@@ -95,6 +99,7 @@ function buildPlanItemEditorState(item: SeekerPlanItem): PlanItemEditorState {
     title: item.title,
     note: item.note ?? '',
     urgency: item.urgency,
+    milestone: item.milestone ?? '',
     targetDate: item.targetDate ?? '',
     reminderAtLocal: toLocalDateTimeInputValue(item.reminderAt),
     whyItMatters: item.whyItMatters ?? '',
@@ -170,6 +175,7 @@ export default function PlanPageClient() {
   const [manualNote, setManualNote] = useState('');
   const [manualTargetDate, setManualTargetDate] = useState('');
   const [manualUrgency, setManualUrgency] = useState<SeekerPlanItemUrgency>('this_week');
+  const [manualMilestone, setManualMilestone] = useState<SeekerPlanMilestone | ''>('');
   const [editingItem, setEditingItem] = useState<PlanItemEditorState | null>(null);
 
   const syncPlanState = useCallback(() => {
@@ -238,6 +244,15 @@ export default function PlanPageClient() {
     setNewPlanObjective('');
   };
 
+  const handleCreateTemplatePlan = (template: SeekerPlanTemplate) => {
+    const created = createSeekerPlanFromTemplate(template);
+    if (!created.plan) {
+      return;
+    }
+
+    setPlansState(created.state);
+  };
+
   const handleCreateManualItem = () => {
     if (!activePlan) {
       return;
@@ -248,6 +263,7 @@ export default function PlanPageClient() {
       note: manualNote,
       targetDate: manualTargetDate,
       urgency: manualUrgency,
+      milestone: manualMilestone || undefined,
     });
     if (!result.item) {
       return;
@@ -258,6 +274,7 @@ export default function PlanPageClient() {
     setManualNote('');
     setManualTargetDate('');
     setManualUrgency('this_week');
+    setManualMilestone('');
   };
 
   const handleImportSavedService = (service: EnrichedService) => {
@@ -286,6 +303,7 @@ export default function PlanPageClient() {
       title: editingItem.title,
       note: editingItem.note,
       urgency: editingItem.urgency,
+      milestone: editingItem.milestone || undefined,
       targetDate: editingItem.targetDate,
       reminderAt: fromLocalDateTimeInputValue(editingItem.reminderAtLocal),
       whyItMatters: editingItem.whyItMatters,
@@ -355,6 +373,37 @@ export default function PlanPageClient() {
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 Create plan
               </Button>
+            </div>
+          </div>
+
+          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Starter paths</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">Operator-curated starting structures for common stabilization moves. They create local plan steps only and do not add provider facts.</p>
+              </div>
+              <ListTodo className="h-5 w-5 text-slate-500" aria-hidden="true" />
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {SEEKER_PLAN_TEMPLATES.map((template) => (
+                <div key={template.id} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-950">{template.title}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{template.description}</p>
+                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Emergency kit</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {template.emergencyKit.map((item) => (
+                      <span key={item} className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-600">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                  <Button type="button" variant="outline" onClick={() => handleCreateTemplatePlan(template)} className="mt-4 w-full gap-2">
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Use starter path
+                  </Button>
+                </div>
+              ))}
             </div>
           </div>
         </aside>
@@ -427,6 +476,16 @@ export default function PlanPageClient() {
                           <option key={value} value={value}>{label}</option>
                         ))}
                       </select>
+                      <select
+                        value={manualMilestone}
+                        onChange={(event) => setManualMilestone(event.target.value as SeekerPlanMilestone | '')}
+                        className="min-h-[44px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      >
+                        <option value="">No milestone yet</option>
+                        {Object.entries(SEEKER_PLAN_MILESTONE_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
                       <textarea
                         value={manualNote}
                         onChange={(event) => setManualNote(event.target.value)}
@@ -469,6 +528,11 @@ export default function PlanPageClient() {
                                 <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
                                   {item.source === 'manual' ? 'Manual' : 'Linked service'}
                                 </span>
+                                {item.milestone ? (
+                                  <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                                    {SEEKER_PLAN_MILESTONE_LABELS[item.milestone]}
+                                  </span>
+                                ) : null}
                               </div>
                               {item.note ? <p className="mt-2 text-sm leading-6 text-slate-600">{item.note}</p> : null}
                               {item.targetDate ? <p className="mt-2 text-xs text-slate-500">Target date: {item.targetDate}</p> : null}
@@ -689,6 +753,20 @@ export default function PlanPageClient() {
                     className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
                   >
                     {Object.entries(URGENCY_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Milestone</label>
+                  <select
+                    value={editingItem.milestone}
+                    onChange={(event) => setEditingItem((current) => current ? { ...current, milestone: event.target.value as SeekerPlanMilestone | '' } : current)}
+                    className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  >
+                    <option value="">No milestone yet</option>
+                    {Object.entries(SEEKER_PLAN_MILESTONE_LABELS).map(([value, label]) => (
                       <option key={value} value={value}>{label}</option>
                     ))}
                   </select>

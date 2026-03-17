@@ -13,13 +13,13 @@ const config: StorybookConfig = {
   },
   docs: { autodocs: 'tag' },
   staticDirs: ['../public'],
-  async viteFinal(config) {
-    const { mergeConfig } = await import('vite');
-    return mergeConfig(config, {
-      resolve: {
-        alias: { '@': path.resolve(__dirname, '../src') },
-      },
-    });
+  viteFinal: async (config) => {
+    config.resolve = config.resolve ?? {};
+    config.resolve.alias = {
+      ...(config.resolve.alias as Record<string, string> ?? {}),
+      '@': path.resolve(__dirname, '../src'),
+    };
+    return config;
   },
 };
 

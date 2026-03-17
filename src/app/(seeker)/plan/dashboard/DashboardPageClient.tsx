@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, BellRing, Bookmark, CalendarClock, CheckCircle2, LayoutDashboard, ListTodo } from 'lucide-react';
 
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
@@ -13,6 +13,9 @@ import { readStoredSavedServiceCount, SAVED_SERVICES_UPDATED_EVENT } from '@/ser
 import { readStoredSeekerPlansState, SEEKER_PLANS_UPDATED_EVENT } from '@/services/plans/client';
 import { buildSeekerExecutionDashboardSummary } from '@/services/plans/dashboard';
 import { buildSeekerPlanFeasibilitySignals } from '@/services/plans/feasibility';
+import { buildSeekerExecutionProgressSummary } from '@/services/plans/progress';
+import { buildSeekerExecutionRecommendations } from '@/services/plans/recommendations';
+import { buildSeekerGroundedPlanBrief } from '@/services/plans/summary';
 import { getLinkedServiceExecutionWarnings } from '@/services/plans/snapshotTrust';
 
 interface BatchServiceResponse {
@@ -103,18 +106,34 @@ export default function DashboardPageClient({
     () => buildSeekerPlanFeasibilitySignals(summary.activePlan?.items ?? [], feasibilityServices),
     [feasibilityServices, summary.activePlan],
   );
+  const progress = useMemo(
+    () => buildSeekerExecutionProgressSummary(summary.activePlan, feasibilityServices),
+    [feasibilityServices, summary.activePlan],
+  );
+  const recommendations = useMemo(
+    () => buildSeekerExecutionRecommendations({ summary, progress, feasibilitySignals, currentServices: feasibilityServices }),
+    [feasibilitySignals, feasibilityServices, progress, summary],
+  );
+  const groundedBrief = useMemo(
+    () => buildSeekerGroundedPlanBrief(summary.activePlan, feasibilityServices),
+    [feasibilityServices, summary.activePlan],
+  );
 
   useEffect(() => {
     if (!routeFeasibilityEnabled || activeLinkedServiceIds.length === 0) {
-      setFeasibilityServices([]);
-      setFeasibilityError(null);
-      setIsLoadingFeasibility(false);
+      startTransition(() => {
+        setFeasibilityServices([]);
+        setFeasibilityError(null);
+        setIsLoadingFeasibility(false);
+      });
       return;
     }
 
     let cancelled = false;
-    setIsLoadingFeasibility(true);
-    setFeasibilityError(null);
+    startTransition(() => {
+      setIsLoadingFeasibility(true);
+      setFeasibilityError(null);
+    });
 
     void fetchServicesByIds(activeLinkedServiceIds)
       .then((services) => {
@@ -226,6 +245,72 @@ export default function DashboardPageClient({
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Grounded brief</p>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">What this plan says right now</h2>
+              </div>
+              <CheckCircle2 className="h-5 w-5 text-slate-500" aria-hidden="true" />
+            </div>
+            {groundedBrief ? (
+              <div className="mt-5 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-sm font-semibold text-slate-950">{groundedBrief.headline}</p>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">{groundedBrief.summary}</p>
+                  {groundedBrief.caution ? (
+                    <p className="mt-4 rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                      {groundedBrief.caution}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Immediate checklist</p>
+                  <div className="mt-4 space-y-3">
+                    {groundedBrief.checklist.length > 0 ? groundedBrief.checklist.map((entry) => (
+                      <div key={entry} className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700">
+                        {entry}
+                      </div>
+                    )) : (
+                      <div className="rounded-[18px] border border-dashed border-slate-300 px-4 py-4 text-sm text-slate-500">
+                        No open steps are left in the active plan right now.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-5 rounded-[24px] border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500">
+                Start a plan first. The grounded brief appears only when there is local execution state to summarize honestly.
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Recommended now</p>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">Deterministic next-step guidance</h2>
+              </div>
+              <CheckCircle2 className="h-5 w-5 text-slate-500" aria-hidden="true" />
+            </div>
+            <div className="mt-5 grid gap-3 lg:grid-cols-3">
+              {recommendations.length > 0 ? recommendations.map((recommendation) => (
+                <div key={recommendation.id} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-medium text-slate-950">{recommendation.title}</p>
+                    <span className="rounded-full border border-slate-300 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">{recommendation.priority}</span>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{recommendation.detail}</p>
+                </div>
+              )) : (
+                <div className="rounded-[24px] border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500 lg:col-span-3">
+                  Add a plan with a few actionable steps first. Recommendations appear only when the local execution state supports them honestly.
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -318,6 +403,65 @@ export default function DashboardPageClient({
                   <Bookmark className="ml-2 h-4 w-4" aria-hidden="true" />
                 </Link>
               </Button>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Milestones</p>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">Where this plan is moving</h2>
+              </div>
+              <CheckCircle2 className="h-5 w-5 text-slate-500" aria-hidden="true" />
+            </div>
+            <div className="mt-5 space-y-3">
+              {progress.milestones.length > 0 ? progress.milestones.map((milestone) => (
+                <div key={milestone.milestone} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-950">{milestone.label}</p>
+                      <p className="mt-1 text-xs text-slate-500">{milestone.completedItems} of {milestone.totalItems} steps complete</p>
+                    </div>
+                    <span className="rounded-full border border-slate-300 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      {milestone.isReached ? 'Reached' : progress.activeMilestone?.milestone === milestone.milestone ? 'Current' : 'In progress'}
+                    </span>
+                  </div>
+                  {milestone.openItems[0] ? (
+                    <p className="mt-3 text-sm leading-6 text-slate-600">Next step: {milestone.openItems[0].title}</p>
+                  ) : (
+                    <p className="mt-3 text-sm leading-6 text-slate-600">All current steps in this milestone are complete.</p>
+                  )}
+                </div>
+              )) : (
+                <div className="rounded-[24px] border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500">
+                  No milestone labels yet. Use the plan item editor to mark which steps support survival, stabilization, documentation, benefits, employment preparation, or long-term stability.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Recent changes</p>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">What changed and what to recheck</h2>
+              </div>
+              <BellRing className="h-5 w-5 text-slate-500" aria-hidden="true" />
+            </div>
+            <div className="mt-5 space-y-3">
+              {progress.recentUpdates.length > 0 ? progress.recentUpdates.map((update) => (
+                <div key={update.id} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-medium text-slate-950">{update.title}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{update.detail}</p>
+                  <p className="mt-2 text-xs text-slate-500">{formatReminder(update.occurredAt)}</p>
+                </div>
+              )) : (
+                <div className="rounded-[24px] border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500">
+                  No recent execution changes yet. Completed steps, due reminders, milestone completion, and live service risk changes will surface here.
+                </div>
+              )}
             </div>
           </div>
         </div>

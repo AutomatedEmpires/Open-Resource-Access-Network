@@ -265,6 +265,15 @@ export const NOTIFICATION_EVENT_TYPES: readonly NotificationEventType[] = [
   'scope_grant_revoked',
   'two_person_approval_needed',
   'system_alert',
+  'saved_service_changed',
+  'saved_service_may_be_stale',
+  'seeker_reminder_due',
+  'seeker_plan_milestone_reached',
+  'ownership_transfer_requested',
+  'ownership_transfer_approved',
+  'ownership_transfer_completed',
+  'ownership_transfer_rejected',
+  'admin_quota_freed',
 ] as const;
 
 // ============================================================

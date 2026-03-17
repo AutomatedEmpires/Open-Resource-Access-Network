@@ -429,6 +429,15 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   scope_grant_revoked: 'Scope grant revoked',
   two_person_approval_needed: 'Two-person approval needed',
   system_alert: 'System alerts',
+  saved_service_changed: 'Saved or planned service changed',
+  saved_service_may_be_stale: 'Saved or planned service may be stale',
+  seeker_reminder_due: 'Plan reminder due',
+  seeker_plan_milestone_reached: 'Plan milestone reached',
+  ownership_transfer_requested: 'Ownership transfer requested',
+  ownership_transfer_approved: 'Ownership transfer approved',
+  ownership_transfer_completed: 'Ownership transfer completed',
+  ownership_transfer_rejected: 'Ownership transfer rejected',
+  admin_quota_freed: 'Admin quota freed',
 };
 
 interface PrefRow {

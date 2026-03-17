@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { CheckCircle2, ListTodo, Plus } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -51,20 +51,23 @@ export function AddToPlanDialog({
   const [targetDate, setTargetDate] = useState('');
   const { success } = useToast();
 
-  const plansState = useMemo(() => readStoredSeekerPlansState(), [open]);
+  const plansState = readStoredSeekerPlansState();
   const activePlan = getActiveSeekerPlan(plansState);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
+  const resetFormState = useCallback(() => {
     setSelectedPlanId(activePlan?.id ?? '__new__');
     setNewPlanTitle(activePlan ? '' : 'Current plan');
     setUrgency('this_week');
     setNote('');
     setTargetDate('');
-  }, [activePlan, open]);
+  }, [activePlan]);
+
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (nextOpen) {
+      resetFormState();
+    }
+    setOpen(nextOpen);
+  }, [resetFormState]);
 
   if (!planEnabled) {
     return null;
@@ -98,14 +101,14 @@ export function AddToPlanDialog({
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => handleOpenChange(true)}
         className={triggerClassName ?? 'inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800'}
       >
         <ListTodo className="h-3.5 w-3.5" aria-hidden="true" />
         {triggerLabel}
       </button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="max-w-lg rounded-[28px] border border-slate-200 bg-white p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-6 py-5 text-left">
             <DialogTitle className="text-xl font-semibold text-slate-900">Add to plan</DialogTitle>
@@ -189,7 +192,7 @@ export function AddToPlanDialog({
             </div>
 
             <div className="flex flex-wrap justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
               <Button type="button" onClick={handleSubmit} className="gap-2">

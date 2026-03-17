@@ -6,10 +6,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, X, AlertTriangle, ArrowLeft, ArrowRight, MapPin, SlidersHorizontal } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { DEFAULT_SEARCH_RADIUS_METERS } from '@/domain/constants';
 import { SERVICE_ATTRIBUTES_TAXONOMY } from '@/domain/taxonomy';
 import {
-  QUICK_DISCOVERY_NEEDS,
   type DiscoveryNeedId,
   getDiscoveryNeedLabel,
   getDiscoveryNeedSearchText,
@@ -39,7 +37,6 @@ import {
   buildDiscoveryHref,
   buildDiscoveryUrlParams,
   buildSearchApiParamsFromDiscovery,
-  DISCOVERY_CONFIDENCE_OPTIONS,
   DISCOVERY_SORT_OPTIONS,
   hasMeaningfulDiscoveryState,
   parseDiscoveryUrlState,
@@ -58,7 +55,6 @@ const DEFAULT_LIMIT = 12;
 type ConfidenceFilter = DiscoveryConfidenceFilter;
 type SortOption = DiscoverySortOption;
 
-const CONFIDENCE_OPTIONS = DISCOVERY_CONFIDENCE_OPTIONS;
 const SORT_OPTIONS = DISCOVERY_SORT_OPTIONS;
 
 /** Seeker-facing attribute dimensions — show common tags as quick filter chips */
@@ -627,14 +623,6 @@ export default function DirectoryPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     void runSearch(1);
-  };
-
-  const handleConfidenceChange = (value: ConfidenceFilter) => {
-    setConfidenceFilter(value);
-    if (data) {
-      // re-search with the new filter
-      void runSearch(1, value);
-    }
   };
 
   const handleSortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {

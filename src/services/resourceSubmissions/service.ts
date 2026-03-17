@@ -938,6 +938,8 @@ export async function seedResourceSubmissionDraftFromService(
       name: location.name ?? '',
       description: location.description ?? '',
       transportation: location.transportation ?? '',
+      placeLabel: location.name ?? location.city ?? '',
+      geoPrecision: location.latitude !== null && location.longitude !== null ? 'exact' : 'approximate',
       address1: location.address_1 ?? '',
       address2: location.address_2 ?? '',
       city: location.city ?? '',

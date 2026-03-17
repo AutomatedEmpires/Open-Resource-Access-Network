@@ -83,12 +83,25 @@ export const resourceVerificationTrackSchema = z.object({
 
 export type ResourceVerificationTrackDraft = z.infer<typeof resourceVerificationTrackSchema>;
 
+const EMPTY_RESOURCE_VERIFICATION_TRACK: ResourceVerificationTrackDraft = {
+  status: 'unverified',
+  lastCheckedAt: '',
+  method: '',
+  canonicalValue: '',
+  notes: '',
+};
+
 export const resourceAttributeTagSchema = z.object({
   dimension: z.enum(RESOURCE_ATTRIBUTE_DIMENSIONS),
   tag: z.string().trim().min(1).max(100),
 });
 
 export type ResourceAttributeTagDraft = z.infer<typeof resourceAttributeTagSchema>;
+
+const EMPTY_RESOURCE_DUPLICATE_CHECK: { status: ResourceDuplicateStatus; note: string } = {
+  status: 'unknown',
+  note: '',
+};
 
 const WEEK_TEMPLATE = [
   'Monday',
@@ -178,20 +191,29 @@ export const resourceSubmissionDraftSchema = z.object({
     submitterRelationship: z.string().trim().max(300).default(''),
     notes: z.string().trim().max(5000).default(''),
     verification: z.object({
-      url: resourceVerificationTrackSchema.default({}),
-      email: resourceVerificationTrackSchema.default({}),
-      phone: resourceVerificationTrackSchema.default({}),
+      url: resourceVerificationTrackSchema.default(EMPTY_RESOURCE_VERIFICATION_TRACK),
+      email: resourceVerificationTrackSchema.default(EMPTY_RESOURCE_VERIFICATION_TRACK),
+      phone: resourceVerificationTrackSchema.default(EMPTY_RESOURCE_VERIFICATION_TRACK),
       provenanceNotes: z.string().trim().max(1000).default(''),
-    }).default({}),
+    }).default({
+      url: EMPTY_RESOURCE_VERIFICATION_TRACK,
+      email: EMPTY_RESOURCE_VERIFICATION_TRACK,
+      phone: EMPTY_RESOURCE_VERIFICATION_TRACK,
+      provenanceNotes: '',
+    }),
   }),
   review: z.object({
     duplicateCheck: z.object({
       status: z.enum(RESOURCE_DUPLICATE_STATUSES).default('unknown'),
       note: z.string().trim().max(500).default(''),
-    }).default({}),
+    }).default(EMPTY_RESOURCE_DUPLICATE_CHECK),
     reverifyDays: z.string().trim().max(4).default(''),
     reverifyReason: z.string().trim().max(500).default(''),
-  }).default({}),
+  }).default({
+    duplicateCheck: EMPTY_RESOURCE_DUPLICATE_CHECK,
+    reverifyDays: '',
+    reverifyReason: '',
+  }),
 });
 
 export type ResourceSubmissionDraft = z.infer<typeof resourceSubmissionDraftSchema>;

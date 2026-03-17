@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { BookmarkPlus, Check, FolderPlus } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -83,13 +83,12 @@ export function SavedCollectionsDialog({
     setIsSyncingCollections(false);
   }, [savedSyncEnabled]);
 
-  useEffect(() => {
-    if (!open) {
-      return;
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (nextOpen) {
+      void syncCollectionsState();
     }
-
-    void syncCollectionsState();
-  }, [open, syncCollectionsState]);
+  }, [syncCollectionsState]);
 
   const ensureServiceSaved = useCallback(() => {
     if (effectiveSaved || !onEnsureSaved) {
@@ -156,14 +155,14 @@ export function SavedCollectionsDialog({
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => handleOpenChange(true)}
         className={triggerClassName ?? 'inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800'}
       >
         <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" />
         {triggerLabel ?? (effectiveSaved ? 'Collections' : 'Save + organize')}
       </button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="max-w-xl rounded-[28px] border border-slate-200 bg-white p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-6 py-5 text-left">
             <DialogTitle className="text-xl font-semibold text-slate-900">Organize saved service</DialogTitle>

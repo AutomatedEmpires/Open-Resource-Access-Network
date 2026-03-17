@@ -3,6 +3,7 @@
 import type {
   SeekerPlan,
   SeekerPlanItem,
+  SeekerPlanItemStatus,
   SeekerPlanItemSource,
   SeekerPlanItemUrgency,
   SeekerPlanServiceSnapshot,
@@ -406,12 +407,15 @@ export function toggleSeekerPlanItemComplete(planId: string, itemId: string): Se
 
         changed = true;
         const nextDone = item.status !== 'done';
-        return {
+        const nextStatus: SeekerPlanItemStatus = nextDone ? 'done' : 'todo';
+        const nextItem: SeekerPlanItem = {
           ...item,
-          status: nextDone ? 'done' : 'todo',
+          status: nextStatus,
           completedAt: nextDone ? now : undefined,
           updatedAt: now,
         };
+
+        return nextItem;
       });
 
       return changed ? { ...plan, items, updatedAt: now } : plan;

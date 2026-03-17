@@ -63,6 +63,7 @@ const DEFAULT_POLICY: AutoPublishPolicy = {
   eligibleTiers: ['verified_publisher', 'curated'],
   trustedPartnerMinConfidence: 90,
   curatedMinConfidence: 70,
+  verifiedPublisherMinConfidence: 60,
   allowRepublish: true,
 };
 

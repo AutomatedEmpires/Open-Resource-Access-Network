@@ -19,6 +19,11 @@ const EVENT_LABELS: Record<NotificationEventType, string> = {
   scope_grant_revoked: 'Scope grant revoked',
   two_person_approval_needed: 'Two-person approval',
   system_alert: 'System alert',
+  ownership_transfer_requested: 'Ownership transfer requested',
+  ownership_transfer_approved: 'Ownership transfer approved',
+  ownership_transfer_completed: 'Ownership transfer completed',
+  ownership_transfer_rejected: 'Ownership transfer rejected',
+  admin_quota_freed: 'Admin quota freed',
 };
 
 const CHANNELS: { key: NotificationChannel; label: string; Icon: typeof Bell }[] = [

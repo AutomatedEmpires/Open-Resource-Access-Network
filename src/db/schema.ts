@@ -445,6 +445,9 @@ export const adminReviewProfiles = pgTable(
     isActive: boolean('is_active').notNull().default(true),
     isAcceptingNew: boolean('is_accepting_new').notNull().default(true),
 
+    // Transfer tracking
+    transferredOutCount: integer('transferred_out_count').notNull().default(0),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -3231,3 +3234,40 @@ export const organizationMembersRelations = relations(organizationMembers, ({ on
     references: [organizations.id],
   }),
 }));
+
+// ============================================================
+// OWNERSHIP TRANSFERS (0054_ownership_transfer.sql)
+// ============================================================
+export const ownershipTransfers = pgTable(
+  'ownership_transfers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serviceId: uuid('service_id').notNull().references(() => services.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+    requestedByUserId: text('requested_by_user_id').notNull(),
+    currentAdminUserId: text('current_admin_user_id'),
+    submissionId: uuid('submission_id').references(() => submissions.id, { onDelete: 'set null' }),
+    verificationMethod: text('verification_method').notNull().default('admin_review'),
+    verificationToken: text('verification_token'),
+    verificationExpiresAt: timestamp('verification_expires_at', { withTimezone: true }),
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    status: text('status').notNull().default('pending'),
+    transferNotes: text('transfer_notes'),
+    adminNotes: text('admin_notes'),
+    rejectionReason: text('rejection_reason'),
+    serviceSnapshot: jsonb('service_snapshot').notNull().default({}),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    rejectedAt: timestamp('rejected_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_ownership_transfers_service').on(table.serviceId),
+    index('idx_ownership_transfers_org').on(table.organizationId),
+    index('idx_ownership_transfers_status').on(table.status),
+  ]
+);
+
+export type OwnershipTransferRow = typeof ownershipTransfers.$inferSelect;
+export type NewOwnershipTransferRow = typeof ownershipTransfers.$inferInsert;

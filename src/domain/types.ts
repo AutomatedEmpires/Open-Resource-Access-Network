@@ -253,7 +253,8 @@ export type SubmissionType =
   | 'removal_request'
   | 'community_report'
   | 'appeal'
-  | 'managed_form';
+  | 'managed_form'
+  | 'ownership_transfer';
 
 export type SubmissionStatus =
   | 'draft'
@@ -465,7 +466,12 @@ export type NotificationEventType =
   | 'scope_grant_decided'
   | 'scope_grant_revoked'
   | 'two_person_approval_needed'
-  | 'system_alert';
+  | 'system_alert'
+  | 'ownership_transfer_requested'
+  | 'ownership_transfer_approved'
+  | 'ownership_transfer_completed'
+  | 'ownership_transfer_rejected'
+  | 'admin_quota_freed';
 
 export interface NotificationEvent {
   id: string;
@@ -490,6 +496,47 @@ export interface NotificationPreference {
   eventType: NotificationEventType;
   channel: NotificationChannel;
   enabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================================
+// OWNERSHIP TRANSFERS (migration 0054)
+// ============================================================
+
+export type OwnershipTransferStatus =
+  | 'pending'
+  | 'verified'
+  | 'approved'
+  | 'completed'
+  | 'rejected'
+  | 'cancelled';
+
+export type OwnershipVerificationMethod =
+  | 'domain_match'
+  | 'email_match'
+  | 'manual_review'
+  | 'admin_review';
+
+export interface OwnershipTransfer {
+  id: string;
+  serviceId: string;
+  organizationId: string;
+  requestedByUserId: string;
+  currentAdminUserId?: string | null;
+  submissionId?: string | null;
+  verificationMethod: OwnershipVerificationMethod;
+  verificationToken?: string | null;
+  verificationExpiresAt?: Date | null;
+  verifiedAt?: Date | null;
+  status: OwnershipTransferStatus;
+  transferNotes?: string | null;
+  adminNotes?: string | null;
+  rejectionReason?: string | null;
+  serviceSnapshot: Record<string, unknown>;
+  approvedAt?: Date | null;
+  completedAt?: Date | null;
+  rejectedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

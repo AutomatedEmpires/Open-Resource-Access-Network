@@ -18,8 +18,8 @@ describe('run-ingestion-campaign helpers', () => {
     `;
 
     expect(extractExpandableLinks(html, 'https://www.usa.gov/benefits', 10)).toEqual([
-      'https://www.usa.gov/benefits/housing-help',
-      'https://www.usa.gov/programs/food-assistance',
+      'https://usa.gov/benefits/housing-help',
+      'https://usa.gov/programs/food-assistance',
     ]);
   });
 

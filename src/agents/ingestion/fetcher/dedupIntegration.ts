@@ -39,14 +39,18 @@ export interface DedupStores {
  *   - hasExtracted checks the candidate store by extract key
  *
  * Results are cached in-memory for the duration of the run.
+ * The in-memory cache has a configurable max size (default 500_000)
+ * to prevent unbounded memory growth during large crawls.
  */
 export class DedupChecker {
   private readonly seenFetchKeys = new Set<string>();
   private readonly seenExtractKeys = new Set<string>();
   private readonly stores: DedupStores;
+  private readonly maxSize: number;
 
-  constructor(stores: DedupStores = {}) {
+  constructor(stores: DedupStores = {}, maxSize = 500_000) {
     this.stores = stores;
+    this.maxSize = maxSize;
   }
 
   /**
@@ -70,8 +74,14 @@ export class DedupChecker {
 
   /**
    * Mark a URL as fetched in this session.
+   * Evicts oldest entries when maxSize is reached.
    */
   markFetched(fetchKey: string): void {
+    if (this.seenFetchKeys.size >= this.maxSize) {
+      // Evict oldest entry (first inserted in Set iteration order)
+      const oldest = this.seenFetchKeys.values().next().value;
+      if (oldest !== undefined) this.seenFetchKeys.delete(oldest);
+    }
     this.seenFetchKeys.add(fetchKey);
   }
 
@@ -96,8 +106,13 @@ export class DedupChecker {
 
   /**
    * Mark content as extracted.
+   * Evicts oldest entries when maxSize is reached.
    */
   markExtracted(extractKey: string): void {
+    if (this.seenExtractKeys.size >= this.maxSize) {
+      const oldest = this.seenExtractKeys.values().next().value;
+      if (oldest !== undefined) this.seenExtractKeys.delete(oldest);
+    }
     this.seenExtractKeys.add(extractKey);
   }
 
@@ -123,7 +138,16 @@ export class DedupChecker {
 /**
  * Factory function to create a DedupChecker instance.
  * Pass stores for cross-run dedup, or omit for in-memory-only mode.
+ * @param storesOrOpts — DedupStores, or an options bag { stores?, maxSize? }
+ * @param maxSize — maximum number of keys kept in-memory before eviction (default: 500_000)
  */
-export function createDedupChecker(stores?: DedupStores): DedupChecker {
-  return new DedupChecker(stores);
+export function createDedupChecker(
+  storesOrOpts?: DedupStores | { stores?: DedupStores; maxSize?: number },
+  maxSize?: number,
+): DedupChecker {
+  // Support both positional and options-bag calling conventions
+  if (storesOrOpts && 'maxSize' in storesOrOpts && !('evidence' in storesOrOpts) && !('candidates' in storesOrOpts)) {
+    return new DedupChecker(storesOrOpts.stores, storesOrOpts.maxSize);
+  }
+  return new DedupChecker(storesOrOpts as DedupStores | undefined, maxSize);
 }

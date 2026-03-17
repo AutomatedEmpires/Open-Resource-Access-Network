@@ -74,7 +74,12 @@ export type DomainMatchResult =
   | { allowed: false; trustLevel: SourceTrustLevel; sourceId?: string; reason: string };
 
 function normalizeHost(host: string): string {
-  return host.trim().toLowerCase();
+  let h = host.trim().toLowerCase();
+  // Strip www. prefix — www.example.org and example.org should be the same
+  if (h.startsWith('www.')) {
+    h = h.slice(4);
+  }
+  return h;
 }
 
 function hostMatchesRule(host: string, rule: DomainRule): boolean {
@@ -128,11 +133,19 @@ export function canonicalizeUrl(rawUrl: string): string {
   u.username = '';
   u.password = '';
 
+  // Normalize http → https to prevent duplicate crawls of the same page
+  if (u.protocol === 'http:') {
+    u.protocol = 'https:';
+  }
+
   u.hostname = normalizeHost(u.hostname);
 
   if ((u.protocol === 'https:' && u.port === '443') || (u.protocol === 'http:' && u.port === '80')) {
     u.port = '';
   }
+
+  // Lowercase the path — most web servers are case-insensitive
+  u.pathname = u.pathname.toLowerCase();
 
   stripTrackingParams(u);
 

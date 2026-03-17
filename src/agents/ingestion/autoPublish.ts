@@ -28,6 +28,8 @@ export interface AutoPublishPolicy {
   trustedPartnerMinConfidence: number;
   /** Minimum confidence (from sourceConfidenceSummary.overall) for curated sources. */
   curatedMinConfidence: number;
+  /** Minimum confidence for verified_publisher sources (default 60). */
+  verifiedPublisherMinConfidence: number;
   /** Whether to auto-re-publish already-published services on refresh. */
   allowRepublish: boolean;
 }
@@ -36,6 +38,7 @@ const DEFAULT_POLICY: AutoPublishPolicy = {
   eligibleTiers: ['verified_publisher', 'curated'],
   trustedPartnerMinConfidence: 90,
   curatedMinConfidence: 70,
+  verifiedPublisherMinConfidence: 60,
   allowRepublish: true,
 };
 
@@ -100,10 +103,13 @@ export function evaluatePolicy(
     return { canonicalServiceId: svcId, eligible: false, reason: `trust_tier '${sourceSystem.trustTier}' not in eligible tiers` };
   }
 
-  // Gate 4: Confidence thresholds for feed-managed sources
+  // Gate 4: Confidence thresholds — ALL tiers must meet a minimum
+  const summary = service.sourceConfidenceSummary as Record<string, unknown> | null;
+  const rawOverall = typeof summary?.overall === 'number' ? summary.overall : 0;
+  // Clamp to 0-100 to reject inflated values
+  const overall = Math.max(0, Math.min(100, rawOverall));
+
   if (sourceSystem.trustTier === 'trusted_partner') {
-    const summary = service.sourceConfidenceSummary as Record<string, unknown> | null;
-    const overall = typeof summary?.overall === 'number' ? summary.overall : 0;
     if (overall < policy.trustedPartnerMinConfidence) {
       return {
         canonicalServiceId: svcId,
@@ -114,10 +120,18 @@ export function evaluatePolicy(
   }
 
   if (sourceSystem.trustTier === 'curated') {
-    const summary = service.sourceConfidenceSummary as Record<string, unknown> | null;
-    const overall = typeof summary?.overall === 'number' ? summary.overall : 0;
     if (overall < policy.curatedMinConfidence) {
       return { canonicalServiceId: svcId, eligible: false, reason: `curated source confidence ${overall} < minimum ${policy.curatedMinConfidence}` };
+    }
+  }
+
+  if (sourceSystem.trustTier === 'verified_publisher') {
+    if (overall < policy.verifiedPublisherMinConfidence) {
+      return {
+        canonicalServiceId: svcId,
+        eligible: false,
+        reason: `verified_publisher source confidence ${overall} < minimum ${policy.verifiedPublisherMinConfidence}`,
+      };
     }
   }
 

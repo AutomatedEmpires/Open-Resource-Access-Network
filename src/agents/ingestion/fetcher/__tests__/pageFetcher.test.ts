@@ -107,8 +107,9 @@ describe('PageFetcher', () => {
     const httpsInit = fetchMock.mock.calls[0]?.[1] as RequestInit & { dispatcher?: unknown };
     const httpInit = fetchMock.mock.calls[1]?.[1] as RequestInit & { dispatcher?: unknown };
 
+    // Both get a dispatcher because canonicalization normalizes http → https
     expect(httpsInit.dispatcher).toBeDefined();
-    expect(httpInit.dispatcher).toBeUndefined();
+    expect(httpInit.dispatcher).toBeDefined();
   });
 
   it('returns invalid_url for malformed URLs', async () => {

@@ -24,6 +24,11 @@ const nextConfig = {
           // Next.js requires 'unsafe-inline' for styles (Tailwind CSS injects styles at build time)
           // and 'unsafe-eval' in development for HMR/Fast Refresh.
           // In production, only 'unsafe-inline' is needed for Tailwind.
+          // Next.js requires 'unsafe-inline' for scripts (inline hydration scripts).
+          // In development, 'unsafe-eval' is also needed for HMR/Fast Refresh.
+          // XSS risk is mitigated by: React default escaping, Zod input validation,
+          // safeJsonLd() sanitization on all dangerouslySetInnerHTML, and no
+          // user-controlled content injected into <script> tags.
           process.env.NODE_ENV === 'development'
             ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
             : "script-src 'self' 'unsafe-inline'",

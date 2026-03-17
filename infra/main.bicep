@@ -77,6 +77,9 @@ param sentryDsn string = ''
 @description('Custom hostname for the web app (optional)')
 param customHostname string = ''
 
+@description('UTC timestamp of the deployment, used to compute secret expiry dates')
+param deploymentTime string = utcNow()
+
 // ---------------------------------------------------------------------------
 // Variables
 // ---------------------------------------------------------------------------
@@ -255,6 +258,15 @@ resource secretAzureMapsSasToken 'Microsoft.KeyVault/vaults/secrets@2023-07-01' 
   name: 'azure-maps-sas-token'
   properties: {
     value: azureMapsSasToken
+    contentType: 'Azure Maps SAS token – rotate via scripts/azure/rotate-maps-sas.sh'
+    attributes: {
+      // 90-day expiry nudges operators to rotate; deployments auto-refresh the value.
+      exp: dateTimeToEpoch(dateTimeAdd(deploymentTime, 'P90D'))
+    }
+  }
+  tags: {
+    'rotation-period': '90d'
+    'rotation-script': 'scripts/azure/rotate-maps-sas.sh'
   }
 }
 

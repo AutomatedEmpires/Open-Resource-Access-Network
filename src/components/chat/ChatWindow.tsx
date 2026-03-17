@@ -165,6 +165,13 @@ const CHAT_DRAFT_KEY_PREFIX = 'oran:chat-draft:';
 const MAX_CHAT_RAIL_SESSIONS = 10;
 const CHAT_REMOVAL_UNDO_WINDOW_MS = 5000;
 
+/**
+ * Maximum number of messages to persist in sessionStorage per chat session.
+ * Prevents unbounded storage growth from very long conversations. Server-side
+ * quota limits already cap throughput, but this adds a client-side safety net.
+ */
+const MAX_STORED_MESSAGES = 200;
+
 function getSessionContextStorageKey(sessionId: string): string {
   return `${SESSION_CONTEXT_KEY_PREFIX}${sessionId}`;
 }
@@ -258,7 +265,10 @@ function writeStoredMessages(sessionId: string, messages: Message[]): void {
     return;
   }
 
-  sessionStorage.setItem(key, JSON.stringify(messages.map(toStoredMessage)));
+  const trimmed = messages.length > MAX_STORED_MESSAGES
+    ? messages.slice(-MAX_STORED_MESSAGES)
+    : messages;
+  sessionStorage.setItem(key, JSON.stringify(trimmed.map(toStoredMessage)));
 }
 
 function readStoredDraft(sessionId: string): string {

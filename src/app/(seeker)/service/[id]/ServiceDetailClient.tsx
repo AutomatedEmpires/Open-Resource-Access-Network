@@ -244,7 +244,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
         {/* Not found */}
         {notFound && !isLoading && (
           <div className="rounded-[24px] border border-slate-200 bg-white p-10 text-center shadow-sm">
-            <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-400" aria-hidden="true" />
+            <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-slate-400" aria-hidden="true" />
             <h1 className="mb-2 text-2xl font-bold tracking-tight text-stone-900">Service not found</h1>
             <p className="mb-4 text-sm text-stone-600">
               This service may no longer be available, or the link may be incorrect.
@@ -321,12 +321,12 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               className="mt-4"
             >
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-[20px] border border-emerald-100 bg-emerald-50 p-4 shadow-[0_10px_30px_rgba(16,185,129,0.08)]">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+                <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                     <ShieldCheck className="h-4 w-4" aria-hidden="true" />
                     Trust evidence
                   </p>
-                  <div className="mt-3 space-y-2 text-sm text-emerald-950">
+                  <div className="mt-3 space-y-2 text-sm text-slate-800">
                     <p>
                       <span className="font-medium">Record status:</span> {trustLabel}
                     </p>
@@ -338,24 +338,24 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                       <span className="font-medium">Overall match score:</span>{' '}
                       {matchScore == null ? 'Unavailable' : `${Math.round(matchScore)} / 100`}
                     </p>
-                    <p className="text-xs text-emerald-800">
+                    <p className="text-xs text-slate-600">
                       Trust cues summarize stored evidence only. Confirm current hours, intake rules, and availability with the provider.
                     </p>
                   </div>
                 </div>
 
-                <div className="rounded-[20px] border border-amber-200 bg-amber-50 p-4 shadow-[0_10px_30px_rgba(180,83,9,0.08)]">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                <div className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                     <FileText className="h-4 w-4" aria-hidden="true" />
                     Eligibility and documents
                   </p>
                   {service.eligibility && service.eligibility.length > 0 ? (
-                    <ul className="mt-3 space-y-2 text-sm text-amber-950">
+                    <ul className="mt-3 space-y-2 text-sm text-slate-800">
                       {service.eligibility.slice(0, 3).map((rule, index) => (
-                        <li key={`${rule.description}-${index}`} className="rounded-md bg-white/70 px-3 py-2">
+                        <li key={`${rule.description}-${index}`} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
                           <p>{rule.description}</p>
                           {(rule.minimumAge != null || rule.maximumAge != null) ? (
-                            <p className="mt-1 text-xs text-amber-800">
+                            <p className="mt-1 text-xs text-slate-600">
                               Age range: {rule.minimumAge ?? '?'} to {rule.maximumAge ?? '?'}
                             </p>
                           ) : null}
@@ -363,10 +363,10 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                       ))}
                     </ul>
                   ) : (
-                    <p className="mt-3 text-sm text-amber-950">No stored eligibility criteria are listed for this record.</p>
+                    <p className="mt-3 text-sm text-slate-800">No stored eligibility criteria are listed for this record.</p>
                   )}
                   {service.requiredDocuments && service.requiredDocuments.length > 0 ? (
-                    <div className="mt-3 text-sm text-amber-950">
+                    <div className="mt-3 text-sm text-slate-800">
                       <p className="font-medium">Bring if requested:</p>
                       <ul className="mt-1 list-disc space-y-1 pl-5">
                         {service.requiredDocuments.map((document, index) => (
@@ -385,14 +385,14 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               className="mt-4"
             >
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-3 rounded-[20px] border border-orange-100 bg-orange-50/40 p-4 text-sm text-stone-700 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
-                  <p className="flex items-center gap-2 font-semibold text-stone-900">
+                <div className="space-y-3 rounded-[20px] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 shadow-sm">
+                  <p className="flex items-center gap-2 font-semibold text-slate-900">
                     <MapPin className="h-4 w-4" aria-hidden="true" />
                     Visit and schedule
                   </p>
                   <p>{formattedAddress ?? 'No stored address is listed for this service.'}</p>
                   <p className="flex items-start gap-2">
-                    <Clock className="mt-0.5 h-4 w-4 flex-shrink-0 text-stone-500" aria-hidden="true" />
+                    <Clock className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-500" aria-hidden="true" />
                     <span>
                       {service.schedules && service.schedules.length > 0
                         ? service.schedules.slice(0, 2).map((schedule) => schedule.description).filter(Boolean).join(' · ')
@@ -401,19 +401,19 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                   </p>
                   {service.serviceAreas && service.serviceAreas.length > 0 ? (
                     <p>
-                      <span className="font-medium text-stone-900">Service area:</span>{' '}
+                      <span className="font-medium text-slate-900">Service area:</span>{' '}
                       {service.serviceAreas.map((area) => area.name ?? area.extentType ?? 'Custom area').join(', ')}
                     </p>
                   ) : null}
                 </div>
 
-                <div className="space-y-3 rounded-[20px] border border-orange-100 bg-orange-50/40 p-4 text-sm text-stone-700 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
-                  <p className="flex items-center gap-2 font-semibold text-stone-900">
+                <div className="space-y-3 rounded-[20px] border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
+                  <p className="flex items-center gap-2 font-semibold text-slate-900">
                     <Accessibility className="h-4 w-4" aria-hidden="true" />
                     Access details
                   </p>
                   <p className="flex items-start gap-2">
-                    <Globe2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-stone-500" aria-hidden="true" />
+                    <Globe2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-500" aria-hidden="true" />
                     <span>
                       {service.languages && service.languages.length > 0
                         ? `Languages: ${service.languages.map((language) => language.language).join(', ')}`
@@ -427,13 +427,13 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                   </p>
                   {service.attributes && service.attributes.length > 0 ? (
                     <p>
-                      <span className="font-medium text-stone-900">Service tags:</span>{' '}
+                      <span className="font-medium text-slate-900">Service tags:</span>{' '}
                       {service.attributes.slice(0, 6).map((attribute) => attribute.tag).join(', ')}
                     </p>
                   ) : null}
                   {service.program ? (
                     <p>
-                      <span className="font-medium text-stone-900">Program:</span> {service.program.name}
+                      <span className="font-medium text-slate-900">Program:</span> {service.program.name}
                     </p>
                   ) : null}
                 </div>
@@ -447,8 +447,8 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               contentClassName="space-y-4"
             >
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-3 rounded-[20px] border border-orange-100 bg-orange-50/40 p-4 text-sm text-stone-700 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
-                  <p className="flex items-center gap-2 font-semibold text-stone-900">
+                <div className="space-y-3 rounded-[20px] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 shadow-sm">
+                  <p className="flex items-center gap-2 font-semibold text-slate-900">
                     <Phone className="h-4 w-4" aria-hidden="true" />
                     Contact the provider
                   </p>
@@ -458,7 +458,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                         <a
                           key={phone.id}
                           href={`tel:${phone.number}`}
-                          className="block text-action-base hover:underline"
+                          className="block text-slate-900 hover:underline"
                         >
                           {phone.number}
                           {phone.extension ? ` ext. ${phone.extension}` : ''}
@@ -470,7 +470,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                   )}
                   {service.contacts && service.contacts.length > 0 ? (
                     <div>
-                      <p className="flex items-center gap-2 font-medium text-stone-900">
+                      <p className="flex items-center gap-2 font-medium text-slate-900">
                         <Users className="h-4 w-4" aria-hidden="true" />
                         Named contacts
                       </p>
@@ -488,7 +488,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                       href={service.service.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-action-base hover:underline"
+                      className="inline-flex items-center gap-1 text-slate-900 hover:underline"
                     >
                       Visit provider website
                       <ExternalLink className="h-4 w-4" aria-hidden="true" />
@@ -496,9 +496,9 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                   ) : null}
                 </div>
 
-                <div className="rounded-[20px] border border-orange-100 bg-orange-50/40 p-4 text-sm text-stone-700 shadow-[0_10px_30px_rgba(234,88,12,0.04)]">
-                  <p className="font-semibold text-stone-900">Continue exploring</p>
-                  <p className="mt-1 text-sm text-stone-600">
+                <div className="rounded-[20px] border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
+                  <p className="font-semibold text-slate-900">Continue exploring</p>
+                  <p className="mt-1 text-sm text-slate-600">
                     Use another seeker surface if you want nearby alternatives or conversational routing without losing the trust-first contract.
                   </p>
                   <div className="mt-4 flex flex-col gap-2 sm:flex-row">
@@ -519,9 +519,9 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               </div>
             </FormSection>
 
-            <div className="mt-4 rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-[0_10px_30px_rgba(180,83,9,0.08)]">
+            <div className="mt-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-sm">
               <p className="font-medium">Confirm details with the provider before visiting.</p>
-              <p className="mt-1 text-xs text-amber-800">
+              <p className="mt-1 text-xs text-slate-600">
                 ORAN shows stored, verified records only, but hours, eligibility, intake requirements, and availability can still change.
               </p>
             </div>
@@ -532,9 +532,9 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
 
           <aside className="space-y-4 lg:sticky lg:top-6">
             <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Record view</p>
-              <h2 className="mt-2 text-lg font-semibold text-stone-900">One record, multiple ways to continue</h2>
-              <ul className="mt-3 space-y-3 text-sm leading-6 text-stone-600">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Record view</p>
+              <h2 className="mt-2 text-lg font-semibold text-slate-900">One record, multiple ways to continue</h2>
+              <ul className="mt-3 space-y-3 text-sm leading-6 text-slate-600">
                 <li>This page shows stored provider details only, with no invented facts.</li>
                 <li>Browse scope carries into Directory, Map, and Chat when available.</li>
                 <li>Trust cues help compare records, but provider confirmation still matters.</li>
@@ -542,8 +542,8 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
             </div>
 
             <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Eligibility caution</p>
-              <p className="mt-2 text-sm leading-6 text-stone-700">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Eligibility caution</p>
+              <p className="mt-2 text-sm leading-6 text-slate-700">
                 ORAN can show who may qualify and which documents may be needed, but it never guarantees eligibility. Confirm current intake rules directly with the provider.
               </p>
             </div>

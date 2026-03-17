@@ -223,7 +223,11 @@ describe('ChatWindow interactions', () => {
 
     render(<ChatWindow sessionId="session-2" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Shelter tonight' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Housing' }));
+    fireEvent.change(screen.getByLabelText('Chat message input'), {
+      target: { value: 'Need shelter tonight' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
     await waitFor(() => {
       expect(screen.getByText('Immediate Help Available')).toBeInTheDocument();
@@ -231,12 +235,12 @@ describe('ChatWindow interactions', () => {
 
     expect(screen.queryByRole('note', { name: 'Verification tip' })).not.toBeInTheDocument();
     expect(screen.getByText('Message limit reached.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open Directory' })).toHaveAttribute('href', '/directory?q=I+need+a+shelter+or+safe+place+to+stay+tonight');
-    expect(screen.getByRole('link', { name: 'Open Map' })).toHaveAttribute('href', '/map?q=I+need+a+shelter+or+safe+place+to+stay+tonight');
+    expect(screen.getByRole('link', { name: 'Open Directory' })).toHaveAttribute('href', '/directory?q=Need+shelter+tonight');
+    expect(screen.getByRole('link', { name: 'Open Map' })).toHaveAttribute('href', '/map?q=Need+shelter+tonight');
     expect(screen.getByRole('button', { name: 'Start new chat session' })).toBeInTheDocument();
     expect(screen.getByLabelText('Chat message input')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
-    expect(screen.queryByRole('button', { name: 'Help paying rent' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Food' })).not.toBeInTheDocument();
   });
 
   it('handles Enter key submission and network failures gracefully', async () => {

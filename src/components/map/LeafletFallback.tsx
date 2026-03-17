@@ -62,11 +62,11 @@ export interface LeafletFallbackProps {
 // ─── Confidence-tier → pin colour ────────────────────────────────────────────
 
 const TIER_COLOUR: Record<string, string> = {
-  green: '#16a34a',
-  yellow: '#eab308',
-  orange: '#f97316',
-  red: '#dc2626',
-  unknown: '#9ca3af',
+  green: '#020617',
+  yellow: '#334155',
+  orange: '#64748b',
+  red: '#cbd5e1',
+  unknown: '#94a3b8',
 };
 
 function makePinIcon(tier: string): L.DivIcon {
@@ -154,7 +154,7 @@ export function LeafletFallback({
     <div className={`flex flex-col ${className}`}>
       {/* Fallback badge — lets operators know which tile provider is active */}
       <div className="mb-1 flex items-center gap-1">
-        <span className="rounded-sm bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+        <span className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
           Map preview — configure secure Azure Maps client auth for the full Azure Maps experience
         </span>
       </div>
@@ -168,7 +168,7 @@ export function LeafletFallback({
         center={[centerLat, centerLng]}
         zoom={zoom}
         scrollWheelZoom
-        className="rounded-lg border border-gray-200 overflow-hidden bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full h-full"
+        className="h-full w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400"
         style={{ minHeight: '100%' }}
       >
         <TileLayer
@@ -196,13 +196,13 @@ export function LeafletFallback({
             <Marker key={pin.id} position={[pin.lat, pin.lng]} icon={makePinIcon(tier)}>
               <Popup>
                 <div className="text-sm">
-                  <p className="font-semibold text-gray-900">{pin.name}</p>
+                  <p className="font-semibold text-slate-900">{pin.name}</p>
                   {pin.orgName && (
-                    <p className="text-gray-500 text-xs mt-0.5">{pin.orgName}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">{pin.orgName}</p>
                   )}
                   <a
                     href={serviceHref}
-                    className="mt-2 block text-xs font-semibold text-blue-700 hover:underline"
+                    className="mt-2 block text-xs font-semibold text-slate-900 hover:underline"
                   >
                     View service
                   </a>
@@ -214,10 +214,10 @@ export function LeafletFallback({
       </RLMapContainer>
       </div>
 
-      <p className="mt-1 text-xs text-gray-500">
+      <p className="mt-1 text-xs text-slate-500">
         Keyboard: Arrow keys to pan,{' '}
         <kbd className="font-mono">+</kbd> / <kbd className="font-mono">-</kbd> to zoom.{' '}
-        <a href="#map-results" className="underline text-blue-600 hover:text-blue-800">
+        <a href="#map-results" className="underline text-slate-700 hover:text-slate-900">
           Skip to results
         </a>
       </p>

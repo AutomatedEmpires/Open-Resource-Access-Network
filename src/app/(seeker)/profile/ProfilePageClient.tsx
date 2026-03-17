@@ -218,11 +218,11 @@ const ACCENT_THEME_OPTIONS: Array<{
   progressClass: string;
   textClass: string;
 }> = [
-  { id: 'ocean', label: 'Petal', previewClass: 'bg-rose-400', cardClass: 'border-rose-100 bg-gradient-to-r from-rose-50 to-orange-50', progressClass: 'bg-rose-400', textClass: 'text-rose-900' },
-  { id: 'blossom', label: 'Blossom', previewClass: 'bg-pink-500', cardClass: 'border-pink-100 bg-gradient-to-r from-pink-50 to-rose-50', progressClass: 'bg-pink-500', textClass: 'text-pink-900' },
-  { id: 'forest', label: 'Meadow', previewClass: 'bg-emerald-500', cardClass: 'border-emerald-100 bg-gradient-to-r from-emerald-50 to-lime-50', progressClass: 'bg-emerald-500', textClass: 'text-emerald-900' },
-  { id: 'sunset', label: 'Sunrise', previewClass: 'bg-orange-400', cardClass: 'border-orange-100 bg-gradient-to-r from-orange-50 to-amber-50', progressClass: 'bg-orange-400', textClass: 'text-orange-900' },
-  { id: 'midnight', label: 'Hearth', previewClass: 'bg-amber-500', cardClass: 'border-amber-100 bg-gradient-to-r from-amber-50 to-rose-50', progressClass: 'bg-amber-500', textClass: 'text-amber-900' },
+  { id: 'ocean', label: 'Paper', previewClass: 'bg-slate-900', cardClass: 'border-slate-200 bg-white', progressClass: 'bg-slate-900', textClass: 'text-slate-900' },
+  { id: 'blossom', label: 'Ledger', previewClass: 'bg-slate-700', cardClass: 'border-slate-200 bg-white', progressClass: 'bg-slate-700', textClass: 'text-slate-900' },
+  { id: 'forest', label: 'Studio', previewClass: 'bg-slate-600', cardClass: 'border-slate-200 bg-white', progressClass: 'bg-slate-600', textClass: 'text-slate-900' },
+  { id: 'sunset', label: 'Archive', previewClass: 'bg-slate-500', cardClass: 'border-slate-200 bg-white', progressClass: 'bg-slate-500', textClass: 'text-slate-900' },
+  { id: 'midnight', label: 'Ink', previewClass: 'bg-slate-800', cardClass: 'border-slate-200 bg-white', progressClass: 'bg-slate-800', textClass: 'text-slate-900' },
 ];
 
 const AUTH_PROVIDER_LABELS: Record<string, string> = {
@@ -319,13 +319,13 @@ function CollapsibleSection({ id, title, subtitle, icon, accentColor, badge, isO
 
   return (
     <FormSection
-      className="overflow-hidden border border-orange-100/80 bg-white/90 p-0 shadow-sm transition-shadow hover:shadow-md"
-      contentClassName="border-t border-orange-100 px-5 pb-5 pt-4"
+      className="overflow-hidden border border-slate-200 bg-white p-0 shadow-sm transition-shadow hover:shadow-md"
+      contentClassName="border-t border-slate-200 px-5 pb-5 pt-4"
       header={
         <button
           type="button"
           onClick={onToggle}
-          className="w-full flex items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-orange-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
+          className="w-full flex items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
           aria-expanded={isOpen}
           aria-controls={`section-${id}-body`}
         >
@@ -336,7 +336,7 @@ function CollapsibleSection({ id, title, subtitle, icon, accentColor, badge, isO
             <div className="flex items-center gap-2 flex-wrap">
               <span id={headingId} className="font-semibold text-stone-900 text-sm">{title}</span>
               {badge && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-rose-100 bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700">
+                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
                   <Sparkles className="h-3 w-3" aria-hidden="true" />
                   {badge}
                 </span>
@@ -366,11 +366,10 @@ interface PillButtonProps {
 }
 
 function PillButton({ label, icon, selected, onToggle, colorClass }: PillButtonProps) {
-  const base = 'inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400';
-  const active = colorClass
-    ? `${colorClass} border-current shadow-sm`
-    : 'border-orange-500 bg-orange-500 text-white shadow-sm';
-  const inactive = 'border-orange-100 bg-white text-stone-700 hover:border-orange-200 hover:bg-orange-50';
+  void colorClass;
+  const base = 'inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400';
+  const active = 'border-slate-900 bg-slate-900 text-white shadow-sm';
+  const inactive = 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50';
 
   return (
     <button
@@ -403,10 +402,10 @@ function RadioPillGroup({ options, selected, onChange, name }: RadioPillGroupPro
           role="radio"
           aria-checked={selected === opt.id}
           onClick={() => onChange(selected === opt.id ? '' : opt.id)}
-          className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 ${
+          className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${
             selected === opt.id
-              ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
-              : 'border-orange-100 bg-white text-stone-700 hover:border-orange-200 hover:bg-orange-50'
+              ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
           }`}
         >
           {selected === opt.id && <CheckCircle className="h-3.5 w-3.5" aria-hidden="true" />}
@@ -484,30 +483,30 @@ function NotificationPreferencesSection() {
 
   return (
     <div>
-      <p className="text-xs text-gray-500 mb-4">Choose which notifications you receive. Changes save automatically.</p>
+      <p className="mb-4 text-xs text-slate-500">Choose which notifications you receive. Changes save automatically.</p>
       {isLoading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
+        <p className="text-sm text-slate-400">Loading…</p>
       ) : (
         <div className="overflow-x-auto -mx-1 px-1">
           <div className="min-w-80 space-y-1">
-            <div className="grid grid-cols-[1fr,auto,auto] gap-x-4 text-xs text-gray-500 font-medium border-b border-gray-100 pb-2 mb-1">
+            <div className="mb-1 grid grid-cols-[1fr,auto,auto] gap-x-4 border-b border-slate-200 pb-2 text-xs font-medium text-slate-500">
               <span>Event</span>
               <span className="text-center w-14">In-App</span>
               <span className="text-center w-14">Email</span>
             </div>
             {(Object.keys(EVENT_TYPE_LABELS) as NotificationEventType[]).map(et => (
               <div key={et} className="grid grid-cols-[1fr,auto,auto] gap-x-4 items-center py-1.5">
-                <span className="text-sm text-gray-700">{EVENT_TYPE_LABELS[et]}</span>
+                <span className="text-sm text-slate-700">{EVENT_TYPE_LABELS[et]}</span>
                 <div className="flex justify-center w-14">
                   <input type="checkbox" checked={isEnabled(et, 'in_app')}
                     onChange={e => void toggle(et, 'in_app', e.target.checked)} disabled={isSaving}
-                    className="h-5 w-5 rounded border-orange-200 text-orange-500 focus:ring-orange-400"
+                    className="h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
                     aria-label={`${EVENT_TYPE_LABELS[et]} in-app notifications`} />
                 </div>
                 <div className="flex justify-center w-14">
                   <input type="checkbox" checked={isEnabled(et, 'email')}
                     onChange={e => void toggle(et, 'email', e.target.checked)} disabled={isSaving}
-                    className="h-5 w-5 rounded border-orange-200 text-orange-500 focus:ring-orange-400"
+                    className="h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
                     aria-label={`${EVENT_TYPE_LABELS[et]} email notifications`} />
                 </div>
               </div>
@@ -849,7 +848,7 @@ export default function ProfilePage() {
   const strength = calcProfileStrength(seeker, city);
   const strengthPct = Math.round((strength.score / strength.max) * 100);
   const selectedTheme = ACCENT_THEME_OPTIONS.find(theme => theme.id === seeker.accentTheme) ?? ACCENT_THEME_OPTIONS[0];
-  const strengthColor = strengthPct < 34 ? 'bg-orange-400' : strengthPct < 67 ? 'bg-yellow-400' : strengthPct < 100 ? selectedTheme.progressClass : 'bg-green-500';
+  const strengthColor = strengthPct < 34 ? 'bg-slate-300' : strengthPct < 67 ? 'bg-slate-500' : strengthPct < 100 ? selectedTheme.progressClass : 'bg-slate-900';
 
   // ── Subtitle helpers ────────────────────────────────────────
   const serviceSubtitle = seeker.serviceInterests.length > 0
@@ -954,12 +953,12 @@ export default function ProfilePage() {
             <div
               className={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
                 isServerSyncEnabled
-                  ? 'border-green-200 bg-green-50 text-green-800'
-                  : 'border-amber-200 bg-amber-50 text-amber-900'
+                  ? 'border-slate-200 bg-slate-50 text-slate-800'
+                  : 'border-slate-200 bg-white text-slate-800'
               }`}
             >
               <div className="flex items-center gap-2">
-                <CheckCircle className={`h-4 w-4 flex-none ${isServerSyncEnabled ? 'text-green-600' : 'text-amber-600'}`} aria-hidden="true" />
+                <CheckCircle className="h-4 w-4 flex-none text-slate-700" aria-hidden="true" />
                 <span>
                   {isServerSyncEnabled
                     ? account.displayName
@@ -972,9 +971,7 @@ export default function ProfilePage() {
               </div>
               <Link
                 href="/api/auth/signout"
-                className={`flex-none inline-flex min-h-[44px] items-center gap-1 whitespace-nowrap px-2 text-xs font-medium underline underline-offset-2 transition-colors hover:no-underline ${
-                  isServerSyncEnabled ? 'text-green-700 hover:text-red-700' : 'text-amber-800 hover:text-red-700'
-                }`}
+                className="flex-none inline-flex min-h-[44px] items-center gap-1 whitespace-nowrap px-2 text-xs font-medium underline underline-offset-2 text-slate-700 transition-colors hover:text-red-700 hover:no-underline"
               >
                 <LogOut className="h-3 w-3" aria-hidden="true" />
                 Sign out
@@ -984,19 +981,19 @@ export default function ProfilePage() {
 
           {/* ── Anonymous value-proposition banner (H6 + L1) ─── */}
           {!isAuthenticated && (
-            <div className="rounded-xl border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50 px-4 py-3 text-sm text-rose-900">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900">
               <div className="flex items-start gap-2 mb-2">
-                <Info className="mt-0.5 h-4 w-4 flex-none text-rose-500" aria-hidden="true" />
+                <Info className="mt-0.5 h-4 w-4 flex-none text-slate-500" aria-hidden="true" />
                 <p className="font-medium">Your profile is saved on this device only</p>
               </div>
-              <p className="mb-2 text-xs text-rose-700">
+              <p className="mb-2 text-xs text-slate-700">
                 Preferences marked <strong>&ldquo;AI uses this&rdquo;</strong> improve chat and search results right away
                 — no account needed. Signing in lets ORAN sync your profile across devices, remember your saved
                 services, and unlock future features like alerts and history.
               </p>
               <Link
                 href="/api/auth/signin"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-orange-600"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-slate-700"
               >
                 Sign in to sync across devices
               </Link>
@@ -1004,7 +1001,7 @@ export default function ProfilePage() {
           )}
 
           {/* ── Profile Strength Card ────────────────────────── */}
-          <div className={`rounded-xl border p-5 ${selectedTheme.cardClass}`}>
+          <div className={`rounded-xl border p-5 shadow-sm ${selectedTheme.cardClass}`}>
             <div className="flex items-start justify-between gap-4 mb-3">
               <div className="flex items-start gap-3">
                 <div className={`flex h-12 w-12 flex-none items-center justify-center rounded-2xl text-xl shadow-sm ${selectedTheme.previewClass} text-white`}>
@@ -1012,12 +1009,12 @@ export default function ProfilePage() {
                 </div>
                 <div>
                 <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-orange-500" aria-hidden="true" />
+                  <Sparkles className="h-4 w-4 text-slate-500" aria-hidden="true" />
                   <span className={`font-semibold text-sm ${selectedTheme.textClass}`}>AI Match Strength</span>
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                    strengthPct < 34 ? 'bg-orange-100 text-orange-700' :
-                    strengthPct < 67 ? 'bg-yellow-100 text-yellow-700' :
-                    strengthPct < 100 ? 'bg-rose-100 text-rose-700' : 'bg-green-100 text-green-700'
+                    strengthPct < 34 ? 'bg-slate-100 text-slate-700' :
+                    strengthPct < 67 ? 'bg-slate-200 text-slate-700' :
+                    strengthPct < 100 ? 'bg-slate-300 text-slate-800' : 'bg-slate-900 text-white'
                   }`}>{strength.label}</span>
                 </div>
                 <p className="mt-1 text-xs text-stone-600">
@@ -1025,14 +1022,12 @@ export default function ProfilePage() {
                     ? `Complete ${strength.max - strength.score} more section${strength.max - strength.score === 1 ? '' : 's'} to improve AI matching`
                     : 'Your profile is fully set up for AI-powered recommendations!'}
                 </p>
-                {seeker.profileHeadline && (
-                  <p className="mt-2 text-xs text-gray-600">{seeker.profileHeadline}</p>
-                )}
+                {seeker.profileHeadline && <p className="mt-2 text-xs text-slate-600">{seeker.profileHeadline}</p>}
                 </div>
               </div>
               <span className={`text-2xl font-bold ${selectedTheme.textClass}`}>{strengthPct}%</span>
             </div>
-            <div className="w-full bg-blue-100 rounded-full h-2.5" role="progressbar" aria-valuenow={strengthPct} aria-valuemin={0} aria-valuemax={100}>
+            <div className="h-2.5 w-full rounded-full bg-slate-200" role="progressbar" aria-valuenow={strengthPct} aria-valuemin={0} aria-valuemax={100}>
               <div className={`h-2.5 rounded-full transition-all duration-500 ${strengthColor}`} style={{ width: `${strengthPct}%` }} />
             </div>
           </div>
@@ -1043,12 +1038,12 @@ export default function ProfilePage() {
             title="Service interests"
             subtitle={serviceSubtitle}
             icon={<Star className="h-4 w-4" />}
-            accentColor="bg-blue-600"
+            accentColor="bg-slate-900"
             badge="AI uses this"
             isOpen={openSections.has('services')}
             onToggle={() => toggleSection('services')}
           >
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="mb-3 text-xs text-slate-500">
               Select all types of services you may need. ORAN agents will prioritize these when finding matches.
             </p>
             <div className="flex flex-wrap gap-2">
@@ -1064,7 +1059,7 @@ export default function ProfilePage() {
               ))}
             </div>
             {seeker.serviceInterests.length > 0 && (
-              <p className="mt-3 text-xs text-green-700 flex items-center gap-1">
+              <p className="mt-3 flex items-center gap-1 text-xs text-slate-700">
                 <CheckCircle className="h-3.5 w-3.5" aria-hidden="true" />
                 {seeker.serviceInterests.length} categor{seeker.serviceInterests.length === 1 ? 'y' : 'ies'} selected — saved automatically{isAuthenticated ? ' to your account' : ''}
               </p>
@@ -1077,18 +1072,18 @@ export default function ProfilePage() {
             title="About me"
             subtitle={aboutSubtitle}
             icon={<UserCheck className="h-4 w-4" />}
-            accentColor="bg-purple-600"
+            accentColor="bg-slate-800"
             badge="AI uses this"
             isOpen={openSections.has('aboutme')}
             onToggle={() => toggleSection('aboutme')}
           >
-            <p className="text-xs text-gray-500 mb-4">
+            <p className="mb-4 text-xs text-slate-500">
               This information helps agents find programs that match your specific situation. All optional.
             </p>
 
             {/* Age group */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Age group</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Age group</label>
               <RadioPillGroup
                 options={AGE_GROUP_OPTIONS}
                 selected={seeker.ageGroup}
@@ -1099,7 +1094,7 @@ export default function ProfilePage() {
 
             {/* Household */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Household type</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Household type</label>
               <RadioPillGroup
                 options={HOUSEHOLD_TYPE_OPTIONS}
                 selected={seeker.householdType}
@@ -1110,7 +1105,7 @@ export default function ProfilePage() {
 
             {/* Housing situation */}
             <div className="mb-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Current housing situation</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Current housing situation</label>
               <RadioPillGroup
                 options={HOUSING_SITUATION_OPTIONS}
                 selected={seeker.housingSituation}
@@ -1125,17 +1120,17 @@ export default function ProfilePage() {
             title="Practical fit constraints"
             subtitle={constraintsSubtitle}
             icon={<AlertCircle className="h-4 w-4" />}
-            accentColor="bg-amber-600"
+            accentColor="bg-slate-700"
             badge="AI uses this"
             isOpen={openSections.has('constraints')}
             onToggle={() => toggleSection('constraints')}
           >
-            <p className="text-xs text-gray-500 mb-4">
+            <p className="mb-4 text-xs text-slate-500">
               These are the constraints that most often change whether a service is realistic for someone, even when they technically qualify.
             </p>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Preferred delivery modes</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Preferred delivery modes</label>
               <div className="flex flex-wrap gap-2">
                 {PREFERRED_DELIVERY_OPTIONS.map(opt => (
                   <PillButton
@@ -1149,7 +1144,7 @@ export default function ProfilePage() {
             </div>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Timing urgency</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Timing urgency</label>
               <RadioPillGroup
                 options={URGENCY_WINDOW_OPTIONS}
                 selected={seeker.urgencyWindow}
@@ -1159,7 +1154,7 @@ export default function ProfilePage() {
             </div>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Documentation barriers</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Documentation barriers</label>
               <div className="flex flex-wrap gap-2">
                 {DOCUMENTATION_BARRIER_OPTIONS.map(opt => (
                   <PillButton
@@ -1191,11 +1186,11 @@ export default function ProfilePage() {
             title="Personal identity"
             subtitle={identitySubtitle}
             icon={<User className="h-4 w-4" />}
-            accentColor="bg-fuchsia-600"
+            accentColor="bg-slate-900"
             isOpen={openSections.has('identity')}
             onToggle={() => toggleSection('identity')}
           >
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="mb-3 text-xs text-slate-500">
               Make the profile feel like yours. This helps ORAN speak to you more naturally and keeps your account recognizable across dashboards.
             </p>
             <div className="space-y-4">
@@ -1205,7 +1200,7 @@ export default function ProfilePage() {
                   value={account.displayName}
                   onChange={e => setAccount(prev => ({ ...prev, displayName: e.target.value }))}
                   placeholder="What should ORAN call you?"
-                  className="w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
+                  className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
                 />
               </FormField>
 
@@ -1215,7 +1210,7 @@ export default function ProfilePage() {
                   value={seeker.pronouns}
                   onChange={e => updateSeeker('pronouns', e.target.value)}
                   placeholder="e.g., she/her, he/him, they/them"
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
                 />
               </FormField>
 
@@ -1225,12 +1220,12 @@ export default function ProfilePage() {
                   value={seeker.profileHeadline}
                   onChange={e => updateSeeker('profileHeadline', e.target.value)}
                   placeholder="A short line that describes what matters to you most"
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
                 />
               </FormField>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Profile picture style</label>
+                <label className="mb-2 block text-sm font-medium text-slate-700">Profile picture style</label>
                 <div className="flex flex-wrap gap-2">
                   {AVATAR_OPTIONS.map(opt => (
                     <button
@@ -1239,8 +1234,8 @@ export default function ProfilePage() {
                       onClick={() => updateSeeker('avatarEmoji', seeker.avatarEmoji === opt.id ? '' : opt.id)}
                       className={`rounded-full border px-3 py-2 text-sm min-h-[44px] transition-colors ${
                         seeker.avatarEmoji === opt.id
-                          ? 'border-blue-600 bg-blue-50 text-blue-700 font-medium'
-                          : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                          ? 'border-slate-900 bg-slate-100 text-slate-900 font-medium'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                       }`}
                       aria-pressed={seeker.avatarEmoji === opt.id}
                     >
@@ -1268,12 +1263,12 @@ export default function ProfilePage() {
                 : 'Optional — helps find specialized programs'
             }
             icon={<Heart className="h-4 w-4" />}
-            accentColor="bg-rose-500"
+            accentColor="bg-slate-800"
             badge="AI uses this"
             isOpen={openSections.has('identifiers')}
             onToggle={() => toggleSection('identifiers')}
           >
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="mb-3 text-xs text-slate-500">
               Select what applies to you. This helps surface specialized programs designed for your community.
               This is entirely optional. It stays on this device unless you explicitly enable cross-device sync.
             </p>
@@ -1299,12 +1294,12 @@ export default function ProfilePage() {
                 : 'Optional — avoids duplicate suggestions'
             }
             icon={<CheckCircle className="h-4 w-4" />}
-            accentColor="bg-teal-600"
+            accentColor="bg-slate-700"
             badge="AI uses this"
             isOpen={openSections.has('currentservices')}
             onToggle={() => toggleSection('currentservices')}
           >
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="mb-3 text-xs text-slate-500">
               Check programs you already participate in. ORAN will avoid suggesting duplicates and look for complementary services.
             </p>
             <div className="flex flex-wrap gap-2">
@@ -1324,12 +1319,12 @@ export default function ProfilePage() {
             title="Accessibility & accommodations"
             subtitle={seeker.accessibilityNeeds.length > 0 ? `${seeker.accessibilityNeeds.length} preference${seeker.accessibilityNeeds.length === 1 ? '' : 's'} selected` : 'Optional — helps find a better fit'}
             icon={<Heart className="h-4 w-4" />}
-            accentColor="bg-emerald-600"
+            accentColor="bg-slate-700"
             badge="AI uses this"
             isOpen={openSections.has('accessibility')}
             onToggle={() => toggleSection('accessibility')}
           >
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="mb-3 text-xs text-slate-500">
               These preferences help ORAN surface services that are more workable in real life, not just technically available.
             </p>
             <div className="flex flex-wrap gap-2">
@@ -1350,12 +1345,12 @@ export default function ProfilePage() {
             title="Approximate location"
             subtitle={locationSubtitle}
             icon={<MapPin className="h-4 w-4" />}
-            accentColor="bg-green-600"
+            accentColor="bg-slate-900"
             badge="AI uses this"
             isOpen={openSections.has('location')}
             onToggle={() => toggleSection('location')}
           >
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="mb-3 text-xs text-slate-500">
               Enter a city or region to improve search results. ORAN <strong>never</strong> requests precise GPS location.
               {isServerSyncEnabled
                 ? ' Cross-device sync is on, so this approximate location also saves to your account.'
@@ -1369,14 +1364,14 @@ export default function ProfilePage() {
                   value={city}
                   onChange={e => setCity(e.target.value)}
                   placeholder="e.g., Austin, TX"
-                  className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                  className="min-h-[44px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
                 />
               </FormField>
               <Button type="submit" size="sm">Save</Button>
             </form>
             {prefs.approximateCity && (
-              <p className="mt-2 text-xs text-gray-500">
-                Saved: <span className="font-medium text-gray-700">{prefs.approximateCity}</span> (approximate)
+              <p className="mt-2 text-xs text-slate-500">
+                Saved: <span className="font-medium text-slate-700">{prefs.approximateCity}</span> (approximate)
               </p>
             )}
           </CollapsibleSection>
@@ -1387,11 +1382,11 @@ export default function ProfilePage() {
             title="Preferred language"
             subtitle={LANGUAGE_OPTIONS.find(l => l.code === language)?.label ?? 'English'}
             icon={<Globe className="h-4 w-4" />}
-            accentColor="bg-cyan-600"
+            accentColor="bg-slate-800"
             isOpen={openSections.has('language')}
             onToggle={() => toggleSection('language')}
           >
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="mb-3 text-xs text-slate-500">
               Choose your preferred language. It stays on this device unless you turn on cross-device sync.
             </p>
             <FormField label="Language" htmlFor="pref-language" srOnlyLabel>
@@ -1399,14 +1394,14 @@ export default function ProfilePage() {
                 id="pref-language"
                 value={language}
                 onChange={e => saveLanguage(e.target.value)}
-                className="w-full sm:w-64 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 sm:w-64"
               >
                 {LANGUAGE_OPTIONS.map(opt => (
                   <option key={opt.code} value={opt.code}>{opt.label}</option>
                 ))}
               </select>
             </FormField>
-            <p className="mt-2 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded px-3 py-1.5 inline-flex items-center gap-1.5">
+            <p className="mt-2 inline-flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700">
               <Info className="h-3.5 w-3.5 flex-none" aria-hidden="true" />
               Display language only — full UI translation coming soon.
             </p>
@@ -1422,12 +1417,12 @@ export default function ProfilePage() {
                 : 'Optional — any details that may help'
             }
             icon={<Info className="h-4 w-4" />}
-            accentColor="bg-amber-500"
+            accentColor="bg-slate-700"
             badge="AI uses this"
             isOpen={openSections.has('context')}
             onToggle={() => toggleSection('context')}
           >
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="mb-3 text-xs text-slate-500">
               Anything else you&apos;d like AI assistants to know when finding services for you? E.g. &ldquo;I have a car but no childcare&rdquo;
               or &ldquo;I need evening hours only&rdquo;. Keep it general — avoid including sensitive personal details such as SSNs, dates of birth, or financial account numbers.
             </p>
@@ -1438,10 +1433,10 @@ export default function ProfilePage() {
               placeholder="e.g., I work nights and need evening or weekend appointments only…"
               rows={3}
               maxLength={500}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
               aria-label="Additional context for AI agents"
             />
-            <p className="mt-1 text-xs text-gray-400 text-right">{seeker.additionalContext.length}/500</p>
+            <p className="mt-1 text-right text-xs text-slate-400">{seeker.additionalContext.length}/500</p>
           </CollapsibleSection>
 
           {/* ── 8. Contact info ──────────────────────────────── */}
@@ -1450,20 +1445,20 @@ export default function ProfilePage() {
             title="My contact info"
             subtitle="Optional — stored locally, used only by agents when you ask"
             icon={<Phone className="h-4 w-4" />}
-            accentColor="bg-indigo-600"
+            accentColor="bg-slate-900"
             isOpen={openSections.has('contact')}
             onToggle={() => toggleSection('contact')}
           >
-            <div className="flex items-start gap-2 rounded-lg bg-indigo-50 border border-indigo-100 p-3 mb-3">
-              <Info className="h-4 w-4 text-indigo-500 mt-0.5 flex-none" aria-hidden="true" />
-              <p className="text-xs text-indigo-700">
+            <div className="mb-3 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <Info className="mt-0.5 h-4 w-4 flex-none text-slate-500" aria-hidden="true" />
+              <p className="text-xs text-slate-700">
                 {isAuthenticated ? 'Stored on this device and in your signed-in profile.' : 'Stored only on this device.'} Agents may use this only when you explicitly ask them to help contact a service on your behalf. It is <strong>never transmitted to providers</strong> without your direct action.
               </p>
             </div>
             <div className="space-y-3">
               <FormField label="Phone number" htmlFor="contact-phone">
                 <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-gray-400 flex-none" aria-hidden="true" />
+                  <Phone className="h-4 w-4 flex-none text-slate-400" aria-hidden="true" />
                   <input
                     id="contact-phone"
                     type="tel"
@@ -1471,13 +1466,13 @@ export default function ProfilePage() {
                     value={seeker.contactPhone}
                     onChange={e => updateSeeker('contactPhone', e.target.value)}
                     placeholder="(555) 123-4567"
-                    className="flex-1 rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
+                    className="min-h-[44px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
                   />
                 </div>
               </FormField>
               <FormField label="Email address" htmlFor="contact-email">
                 <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-gray-400 flex-none" aria-hidden="true" />
+                  <Mail className="h-4 w-4 flex-none text-slate-400" aria-hidden="true" />
                   <input
                     id="contact-email"
                     type="email"
@@ -1485,7 +1480,7 @@ export default function ProfilePage() {
                     value={seeker.contactEmail}
                     onChange={e => updateSeeker('contactEmail', e.target.value)}
                     placeholder="you@example.com"
-                    className="flex-1 rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
+                    className="min-h-[44px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
                   />
                 </div>
               </FormField>
@@ -1501,13 +1496,13 @@ export default function ProfilePage() {
             title="Saved resources"
             subtitle={savedCount > 0 ? `${savedCount} service${savedCount === 1 ? '' : 's'} bookmarked on this device.` : 'Nothing saved yet'}
             icon={<Bookmark className="h-4 w-4" />}
-            accentColor="bg-pink-600"
+            accentColor="bg-slate-800"
             isOpen={openSections.has('saved')}
             onToggle={() => toggleSection('saved')}
           >
             {savedCount > 0 ? (
               <div className="space-y-3">
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-slate-500">
                   You have <span className="font-medium">{savedCount} service{savedCount === 1 ? '' : 's'}</span> bookmarked on this device.
                 </p>
                 <Link href="/saved">
@@ -1519,8 +1514,8 @@ export default function ProfilePage() {
               </div>
             ) : (
               <div className="text-center py-6">
-                <Bookmark className="h-8 w-8 text-gray-200 mx-auto mb-2" aria-hidden="true" />
-                <p className="text-sm text-gray-500 mb-3">No saved services yet.</p>
+                <Bookmark className="mx-auto mb-2 h-8 w-8 text-slate-200" aria-hidden="true" />
+                <p className="mb-3 text-sm text-slate-500">No saved services yet.</p>
                 <div className="flex flex-col items-center justify-center gap-2 sm:flex-row">
                   <Link href={browseDirectoryHref}>
                     <Button variant="secondary" size="sm">Browse services</Button>
@@ -1540,15 +1535,15 @@ export default function ProfilePage() {
           <CollapsibleSection
             id="display"
             title="Display"
-            subtitle={`${isDark ? 'Dark mode' : 'Light mode'} · ${selectedTheme.label} theme`}
+            subtitle={`Shared monochrome system · ${selectedTheme.label}`}
             icon={isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-            accentColor="bg-slate-600"
+            accentColor="bg-slate-900"
             isOpen={openSections.has('display')}
             onToggle={() => toggleSection('display')}
           >
-            <p className="text-xs text-gray-500 mb-3">Choose light or dark mode and the accent personality that feels right for you. Theme names are intentionally flexible, not gender-locked.</p>
+            <p className="mb-3 text-xs text-slate-500">ORAN now uses one shared paper-like visual system across seeker pages: white surfaces, dark text, and restrained contrast. These options only keep your local preference aligned with that system.</p>
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Accent theme</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Profile style</label>
               <div className="flex flex-wrap gap-2">
                 {ACCENT_THEME_OPTIONS.map(theme => (
                   <button
@@ -1556,10 +1551,10 @@ export default function ProfilePage() {
                     type="button"
                     onClick={() => updateSeeker('accentTheme', theme.id)}
                     aria-pressed={seeker.accentTheme === theme.id}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm min-h-[44px] transition-colors ${
+                    className={`flex min-h-[44px] items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
                       seeker.accentTheme === theme.id
-                        ? 'border-orange-300 bg-orange-50 text-orange-700 font-medium'
-                        : 'border-orange-100 bg-white text-stone-700 hover:bg-orange-50'
+                        ? 'border-slate-900 bg-slate-100 text-slate-900 font-medium'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                     }`}
                   >
                     <span className={`h-3 w-3 rounded-full ${theme.previewClass}`} aria-hidden="true" />
@@ -1573,21 +1568,21 @@ export default function ProfilePage() {
                 type="button"
                 onClick={() => toggleTheme(false)}
                 aria-pressed={!isDark}
-                className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm min-h-[44px] transition-colors ${
-                  !isDark ? 'border-orange-300 bg-orange-50 text-orange-700 font-medium' : 'border-orange-100 bg-white text-stone-700 hover:bg-orange-50'
+                className={`flex min-h-[44px] items-center gap-2 rounded-lg border px-4 py-2 text-sm transition-colors ${
+                  !isDark ? 'border-slate-900 bg-slate-100 text-slate-900 font-medium' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                <Sun className="h-4 w-4" aria-hidden="true" /> Light
+                <Sun className="h-4 w-4" aria-hidden="true" /> Paper
               </button>
               <button
                 type="button"
                 onClick={() => toggleTheme(true)}
                 aria-pressed={isDark}
-                className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm min-h-[44px] transition-colors ${
-                  isDark ? 'border-orange-300 bg-orange-50 text-orange-700 font-medium' : 'border-orange-100 bg-white text-stone-700 hover:bg-orange-50'
+                className={`flex min-h-[44px] items-center gap-2 rounded-lg border px-4 py-2 text-sm transition-colors ${
+                  isDark ? 'border-slate-900 bg-slate-100 text-slate-900 font-medium' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                <Moon className="h-4 w-4" aria-hidden="true" /> Dark
+                <Moon className="h-4 w-4" aria-hidden="true" /> Evening
               </button>
             </div>
           </CollapsibleSection>
@@ -1597,7 +1592,7 @@ export default function ProfilePage() {
             title="Account & security"
             subtitle={securitySubtitle}
             icon={<Shield className="h-4 w-4" />}
-            accentColor="bg-violet-700"
+            accentColor="bg-slate-900"
             isOpen={openSections.has('security')}
             onToggle={() => toggleSection('security')}
           >
@@ -1609,7 +1604,7 @@ export default function ProfilePage() {
                       id="account-email"
                       value={account.email}
                       readOnly
-                      className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 min-h-[44px]"
+                      className="min-h-[44px] w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
                     />
                   </FormField>
                   <FormField label="Account phone" htmlFor="account-phone">
@@ -1618,13 +1613,13 @@ export default function ProfilePage() {
                       value={account.phone}
                       onChange={e => setAccount(prev => ({ ...prev, phone: e.target.value }))}
                       placeholder="Optional account phone"
-                      className="w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
+                      className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
                     />
                   </FormField>
                 </div>
 
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-                  <p className="font-medium text-gray-900">Sign-in method</p>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                  <p className="font-medium text-slate-900">Sign-in method</p>
                   <p className="mt-1">{AUTH_PROVIDER_LABELS[account.authProvider] ?? account.authProvider ?? 'Unknown provider'}</p>
                 </div>
 
@@ -1633,8 +1628,8 @@ export default function ProfilePage() {
                 </Button>
 
                 {account.authProvider === 'credentials' ? (
-                  <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 space-y-3">
-                    <p className="text-sm font-medium text-violet-900">Update password</p>
+                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-sm font-medium text-slate-900">Update password</p>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <FormField label="Current password" htmlFor="current-password">
                         <input
@@ -1643,7 +1638,7 @@ export default function ProfilePage() {
                           autoComplete="current-password"
                           value={currentPassword}
                           onChange={e => setCurrentPassword(e.target.value)}
-                          className="w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
+                          className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
                         />
                       </FormField>
                       <FormField label="New password" htmlFor="new-password">
@@ -1653,7 +1648,7 @@ export default function ProfilePage() {
                           autoComplete="new-password"
                           value={newPassword}
                           onChange={e => setNewPassword(e.target.value)}
-                          className="w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
+                          className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
                         />
                       </FormField>
                     </div>
@@ -1664,7 +1659,7 @@ export default function ProfilePage() {
                         autoComplete="new-password"
                         value={confirmPassword}
                         onChange={e => setConfirmPassword(e.target.value)}
-                        className="w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 min-h-[44px]"
+                        className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
                       />
                     </FormField>
                     <Button type="button" size="sm" onClick={() => void updatePassword()} disabled={isUpdatingPassword}>
@@ -1672,13 +1667,13 @@ export default function ProfilePage() {
                     </Button>
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-slate-500">
                     Password changes for social or Microsoft sign-in accounts are managed by your identity provider. Notification preferences are available in the separate notifications section.
                   </p>
                 )}
               </div>
             ) : (
-              <p className="text-sm text-gray-500">Sign in to manage account identity, password settings, and cross-device profile sync.</p>
+              <p className="text-sm text-slate-500">Sign in to manage account identity, password settings, and cross-device profile sync.</p>
             )}
           </CollapsibleSection>
 
@@ -1689,7 +1684,7 @@ export default function ProfilePage() {
               title="Notification preferences"
               subtitle="Manage what emails and alerts you receive"
               icon={<Bell className="h-4 w-4" />}
-              accentColor="bg-orange-500"
+              accentColor="bg-slate-800"
               isOpen={openSections.has('notifications')}
               onToggle={() => toggleSection('notifications')}
             >
@@ -1703,37 +1698,37 @@ export default function ProfilePage() {
             title="Privacy & data"
             subtitle="Control all your stored data"
             icon={<Shield className="h-4 w-4" />}
-            accentColor="bg-gray-600"
+            accentColor="bg-slate-900"
             isOpen={openSections.has('privacy')}
             onToggle={() => toggleSection('privacy')}
           >
             <div className="space-y-4">
-              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 space-y-2 text-xs text-emerald-800">
-                <p className="font-semibold text-emerald-900 mb-1 flex items-center gap-1.5">
-                  <Shield className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs text-slate-800">
+                <p className="mb-1 flex items-center gap-1.5 font-semibold text-slate-900">
+                  <Shield className="h-3.5 w-3.5 text-slate-700" aria-hidden="true" />
                   Your privacy commitments
                 </p>
-                <p className="flex items-start gap-2"><CheckCircle className="h-3.5 w-3.5 text-emerald-600 mt-0.5 flex-none" aria-hidden="true" /><span>{isAuthenticated ? (isServerSyncEnabled ? 'You explicitly enabled cross-device sync, so profile data can be reused across ORAN surfaces.' : 'Signed-in profile data still stays local until you explicitly enable cross-device sync.') : 'Signed-out profile data lives in your browser only.'}</span></p>
-                <p className="flex items-start gap-2"><CheckCircle className="h-3.5 w-3.5 text-emerald-600 mt-0.5 flex-none" aria-hidden="true" /><span>Location is city-level approximate — ORAN <strong>never</strong> requests GPS or precise location.</span></p>
-                <p className="flex items-start gap-2"><CheckCircle className="h-3.5 w-3.5 text-emerald-600 mt-0.5 flex-none" aria-hidden="true" /><span>Your data is <strong>never sold or shared</strong> with third parties.</span></p>
-                <p className="flex items-start gap-2"><CheckCircle className="h-3.5 w-3.5 text-emerald-600 mt-0.5 flex-none" aria-hidden="true" /><span>One-tap delete removes everything — no waiting period.</span></p>
+                <p className="flex items-start gap-2"><CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-none text-slate-700" aria-hidden="true" /><span>{isAuthenticated ? (isServerSyncEnabled ? 'You explicitly enabled cross-device sync, so profile data can be reused across ORAN surfaces.' : 'Signed-in profile data still stays local until you explicitly enable cross-device sync.') : 'Signed-out profile data lives in your browser only.'}</span></p>
+                <p className="flex items-start gap-2"><CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-none text-slate-700" aria-hidden="true" /><span>Location is city-level approximate — ORAN <strong>never</strong> requests GPS or precise location.</span></p>
+                <p className="flex items-start gap-2"><CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-none text-slate-700" aria-hidden="true" /><span>Your data is <strong>never sold or shared</strong> with third parties.</span></p>
+                <p className="flex items-start gap-2"><CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-none text-slate-700" aria-hidden="true" /><span>One-tap delete removes everything — no waiting period.</span></p>
               </div>
 
               {isAuthenticated ? (
-                <div className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="rounded-lg border border-slate-200 bg-white p-4">
                   <label className="flex items-start gap-3">
                     <input
                       type="checkbox"
                       checked={prefs.serverSyncEnabled === true}
                       onChange={(event) => void toggleServerSync(event.target.checked)}
-                      className="mt-0.5 rounded border-orange-200 text-orange-500 focus:ring-orange-400"
+                      className="mt-0.5 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
                       aria-label="Save my preferences to improve future results across devices"
                     />
                     <span className="space-y-1">
-                      <span className="block text-sm font-medium text-gray-900">
+                      <span className="block text-sm font-medium text-slate-900">
                         Save my preferences to improve future results across devices
                       </span>
-                      <span className="block text-xs text-gray-500">
+                      <span className="block text-xs text-slate-500">
                         {isServerSyncEnabled
                           ? 'Cross-device sync is on. New profile changes will save to your ORAN account.'
                           : 'Cross-device sync is off. Profile changes stay local until you turn this on.'}
@@ -1774,7 +1769,7 @@ export default function ProfilePage() {
                     <button
                       type="button"
                       onClick={() => setShowDeleteConfirm(false)}
-                      className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+                      className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
                     >
                       Cancel
                     </button>
@@ -1788,19 +1783,19 @@ export default function ProfilePage() {
                     <button
                       type="button"
                       onClick={() => void exportData()}
-                      className="flex items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-4 py-2.5 text-sm font-medium text-orange-700 transition-colors hover:bg-orange-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
+                      className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
                     >
                       Export my data
                     </button>
                     <Link
                       href="/api/auth/signout"
-                      className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors w-fit"
+                      className="flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700"
                     >
                       <LogOut className="h-4 w-4" aria-hidden="true" />
                       Sign out
                     </Link>
                   </div>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-slate-400">
                     Export sends a copy of your data to your account email. Sign out clears your session on this device.
                   </p>
                 </div>

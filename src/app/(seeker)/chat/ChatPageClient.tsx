@@ -1,16 +1,16 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChatWindow } from '@/components/chat/ChatWindow';
-import { DiscoverySurfaceTabs } from '@/components/seeker/DiscoverySurfaceTabs';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
-import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/button';
+import { PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonLine } from '@/components/ui/skeleton';
 import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
 import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
 import {
-  buildDiscoveryHref,
   hasMeaningfulDiscoveryState,
   parseDiscoveryUrlState,
   resolveDiscoverySearchText,
@@ -59,17 +59,6 @@ export default function ChatPage() {
     [discoveryIntent.needId, discoveryIntent.text],
   );
 
-  const directoryHref = useMemo(() => buildDiscoveryHref('/directory', discoveryIntent), [discoveryIntent]);
-  const mapHref = useMemo(() => buildDiscoveryHref('/map', discoveryIntent), [discoveryIntent]);
-  const surfaceTabs = useMemo(
-    () => [
-      { href: '/chat', label: 'Chat' },
-      { href: directoryHref, label: 'Directory' },
-      { href: mapHref, label: 'Map' },
-    ],
-    [directoryHref, mapHref],
-  );
-
   useEffect(() => {
     // sessionStorage unavailable on SSR — initialising via effect ensures SSR and first client
     // render produce identical '' output, eliminating hydration mismatch / skeleton flash.
@@ -80,18 +69,17 @@ export default function ChatPage() {
   if (!sessionId) {
     return (
       <main className="min-h-screen bg-white">
-        <div className="container mx-auto max-w-6xl px-4 py-6 md:py-8">
-          <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-8">
-            <PageHeader
-              eyebrow="Seeker chat"
-              title="Chat"
-              actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/chat" />}
-              badges={(
-                <>
+        <div className="mx-auto w-full max-w-[1740px] px-4 py-5 md:px-5 md:py-5">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm md:p-6">
+            <div className="mb-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Seeker chat</p>
+                <div className="mt-1 flex flex-wrap items-center gap-3">
+                  <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Chat</h1>
                   <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
-                </>
-              )}
-            />
+                </div>
+              </div>
+            </div>
             <div className="rounded-[24px] border border-slate-200 bg-white p-5" role="status" aria-busy="true" aria-label="Loading chat">
               <SkeletonLine className="h-5 w-40" />
               <SkeletonLine className="mt-3 h-4 w-full" />
@@ -105,22 +93,25 @@ export default function ChatPage() {
 
   return (
     <main className="min-h-screen bg-white">
-      <div className="container mx-auto max-w-6xl px-4 pt-4 pb-6 md:py-8">
-        <section className="flex flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white p-4 shadow-sm md:h-[calc(100dvh-13rem)] md:p-8">
-            <PageHeader
-              eyebrow="Seeker chat"
-              title="Chat"
-              actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/chat" />}
-              badges={(
-                <>
-                  <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
-                  <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync' : 'Local device saves'}</PageHeaderBadge>
-                </>
-              )}
-            />
-            <ErrorBoundary>
-              <div className="min-h-0 flex-1">
-                <ChatWindow
+      <div className="mx-auto w-full max-w-[1820px] px-4 pt-3 pb-5 md:px-5 md:py-5">
+        <section className="flex min-h-[800px] min-w-0 flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.07)] md:h-[calc(100dvh-6.3rem)] md:min-h-0">
+          {/* ── Slim page title bar ── */}
+          <div className="flex shrink-0 items-center gap-3 border-b border-slate-100 px-5 py-3">
+            <h1 className="text-base font-semibold tracking-tight text-slate-950">Chat</h1>
+            <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
+            <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync' : 'Local device saves'}</PageHeaderBadge>
+            <div className="ml-auto flex items-center gap-2">
+              <Link href="/saved">
+                <Button variant="outline" size="sm">Open Saved</Button>
+              </Link>
+              <Link href="/directory">
+                <Button variant="outline" size="sm">Browse Directory</Button>
+              </Link>
+            </div>
+          </div>
+          <ErrorBoundary>
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <ChatWindow
                   sessionId={sessionId}
                   initialPrompt={initialPrompt}
                   initialNeedId={discoveryIntent.needId}
@@ -129,8 +120,8 @@ export default function ChatPage() {
                   initialPage={discoveryIntent.page}
                   initialAttributeFilters={discoveryIntent.attributeFilters}
                 />
-              </div>
-            </ErrorBoundary>
+            </div>
+          </ErrorBoundary>
         </section>
       </div>
     </main>

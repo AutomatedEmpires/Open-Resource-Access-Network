@@ -22,8 +22,9 @@ import { FormSection } from '@/components/ui/form-section';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { ServiceCard } from '@/components/directory/ServiceCard';
+import { DistanceRadiusControl } from '@/components/seeker/DistanceRadiusControl';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
-import { DiscoverySurfaceTabs } from '@/components/seeker/DiscoverySurfaceTabs';
+import { QuickNeedFilterGrid } from '@/components/seeker/QuickNeedFilterGrid';
 import { SeekerAppliedFilters, type SeekerAppliedFilterItem } from '@/components/seeker/SeekerAppliedFilters';
 import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
 import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
@@ -46,6 +47,7 @@ import {
   type DiscoveryConfidenceFilter,
   type DiscoverySortOption,
 } from '@/services/search/discovery';
+import { clampDiscoveryRadiusMiles, DEFAULT_DISCOVERY_RADIUS_MILES, milesToMeters } from '@/services/search/radius';
 import { DISCOVERY_ATTRIBUTE_LABELS } from '@/services/search/discoveryPresentation';
 import type { SearchResponse } from '@/services/search/types';
 import { useToast } from '@/components/ui/toast';
@@ -117,6 +119,7 @@ export default function DirectoryPage() {
     return {};
   });
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [radiusMiles, setRadiusMiles] = useState(DEFAULT_DISCOVERY_RADIUS_MILES);
 
   // Opt-in device geolocation (in-session only; never stored; not reflected in URL)
   const [isLocating, setIsLocating] = useState(false);
@@ -223,41 +226,6 @@ export default function DirectoryPage() {
     return Math.round(value * 100) / 100;
   }, []);
 
-  const mapHref = useMemo(() => {
-    if (!resolveDiscoverySearchText(query, activeCategory)) {
-      return '/map';
-    }
-
-    const params = buildDiscoveryUrlParams({
-      text: query,
-      needId: activeCategory,
-      confidenceFilter,
-      sortBy,
-      attributeFilters: selectedAttributes,
-    });
-    const qs = params.toString();
-    return qs ? `/map?${qs}` : '/map';
-  }, [activeCategory, confidenceFilter, query, selectedAttributes, sortBy]);
-
-  const chatHref = useMemo(() => {
-    return buildDiscoveryHref('/chat', {
-      text: query,
-      needId: activeCategory,
-      confidenceFilter,
-      sortBy,
-      attributeFilters: selectedAttributes,
-    });
-  }, [activeCategory, confidenceFilter, query, selectedAttributes, sortBy]);
-
-  const surfaceTabs = useMemo(
-    () => [
-      { href: chatHref, label: 'Chat' },
-      { href: '/directory', label: 'Directory' },
-      { href: mapHref, label: 'Map' },
-    ],
-    [chatHref, mapHref],
-  );
-
   const directoryDiscoveryContext = useMemo(() => {
     return {
       text: query,
@@ -268,6 +236,10 @@ export default function DirectoryPage() {
       page,
     };
   }, [activeCategory, confidenceFilter, page, query, selectedAttributes, sortBy]);
+
+  const chatHref = useMemo(() => {
+    return buildDiscoveryHref('/chat', directoryDiscoveryContext);
+  }, [directoryDiscoveryContext]);
 
   const buildServiceDetailHref = useCallback((serviceId: string) => {
     return buildDiscoveryHref(`/service/${serviceId}`, directoryDiscoveryContext);
@@ -319,7 +291,7 @@ export default function DirectoryPage() {
               type: 'radius',
               lat: effectiveLocation.lat,
               lng: effectiveLocation.lng,
-              radiusMeters: DEFAULT_SEARCH_RADIUS_METERS,
+              radiusMeters: milesToMeters(radiusMiles),
             }
           : undefined,
       });
@@ -367,7 +339,7 @@ export default function DirectoryPage() {
         setIsLoading(false);
       }
     }
-  }, [query, confidenceFilter, sortBy, activeCategory, deviceLocation, pushUrlState, selectedAttributes]);
+  }, [query, confidenceFilter, sortBy, activeCategory, deviceLocation, pushUrlState, radiusMiles, selectedAttributes]);
 
   // Keep ref current so the IntersectionObserver callback always sees the latest state.
   loadMoreRef.current = () => {
@@ -583,7 +555,7 @@ export default function DirectoryPage() {
     if (deviceLocation) {
       items.push({
         id: 'location',
-        label: 'Near you (approx.)',
+        label: `Within ${radiusMiles} mi`,
         onClick: clearDeviceLocation,
         ariaLabel: 'Clear location filter',
       });
@@ -636,6 +608,7 @@ export default function DirectoryPage() {
     confidenceFilter,
     deviceLocation,
     hasActiveAttributes,
+    radiusMiles,
     selectedAttributes,
     sortBy,
   ]);
@@ -707,7 +680,6 @@ export default function DirectoryPage() {
             <PageHeader
               eyebrow="Verified discovery"
               title="Directory"
-              actions={<DiscoverySurfaceTabs items={surfaceTabs} currentHref="/directory" />}
               badges={(
                 <>
                   <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
@@ -738,14 +710,14 @@ export default function DirectoryPage() {
                           }}
                           type="search"
                           placeholder="Search for services (e.g., rent help, food pantry, job training)"
-                          className="min-h-[46px] w-full rounded-2xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                          className="min-h-[46px] w-full rounded-2xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
                           aria-label="Search services"
                         />
                         {query && (
                           <button
                             type="button"
                             onClick={handleClearSearch}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-slate-400 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-slate-400 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
                             aria-label="Clear search"
                           >
                             <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -787,10 +759,25 @@ export default function DirectoryPage() {
                   </div>
                 )}
 
+                {deviceLocation && (
+                  <div className="mb-4 rounded-[20px] border border-slate-200 bg-slate-50 p-4">
+                    <DistanceRadiusControl
+                      value={radiusMiles}
+                      onChange={(nextMiles) => {
+                        const nextRadius = clampDiscoveryRadiusMiles(nextMiles);
+                        setRadiusMiles(nextRadius);
+                        if (data) {
+                          void runSearch(1, confidenceFilter, sortBy, undefined, undefined, deviceLocation, undefined, false, selectedAttributes);
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+
                 {profileGuidanceActive && (
-                  <div className="mb-4 rounded-[20px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 shadow-sm">
+                  <div className="mb-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 shadow-sm">
                     <p className="font-semibold">Saved profile guidance active</p>
-                    <p className="mt-1 text-xs text-sky-800">
+                    <p className="mt-1 text-xs text-slate-700">
                       Your saved seeker profile influenced the starting browse state. You can clear the category or any filters at any time.
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -829,26 +816,12 @@ export default function DirectoryPage() {
                     </button>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Quick category filters">
-                    {QUICK_DISCOVERY_NEEDS.map((need) => {
-                      const selected = activeCategory === need.id;
-                      return (
-                        <button
-                          key={need.id}
-                          type="button"
-                          onClick={() => handleCategoryClick(need.id)}
-                          className={`inline-flex min-h-[44px] items-center justify-center rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                            selected
-                              ? 'border-slate-900 bg-slate-900 text-white'
-                              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                          }`}
-                          aria-pressed={selected}
-                        >
-                          {need.label}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <QuickNeedFilterGrid
+                    activeNeedId={activeCategory}
+                    onSelect={handleCategoryClick}
+                    ariaLabel="Quick category filters"
+                    className="mt-4"
+                  />
 
                   <p className="mt-3 text-xs text-slate-500">
                     {savedSyncEnabled ? 'Saves can sync to your account.' : 'Saves stay on this device.'}
@@ -867,26 +840,12 @@ export default function DirectoryPage() {
                           <p className="text-sm font-semibold text-slate-900">Category</p>
                           <p className="mt-1 text-xs text-slate-500">Choose the kind of support you want to browse first.</p>
                         </div>
-                        <div className="flex flex-wrap gap-2" role="group" aria-label="Directory category filters">
-                          {QUICK_DISCOVERY_NEEDS.map((need) => {
-                            const selected = activeCategory === need.id;
-                            return (
-                              <button
-                                key={need.id}
-                                type="button"
-                                onClick={() => handleCategoryClick(need.id)}
-                                className={`inline-flex min-h-[44px] items-center justify-center rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                                  selected
-                                    ? 'border-slate-900 bg-slate-900 text-white'
-                                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                                }`}
-                                aria-pressed={selected}
-                              >
-                                {need.label}
-                              </button>
-                            );
-                          })}
-                        </div>
+                        <QuickNeedFilterGrid
+                          activeNeedId={activeCategory}
+                          onSelect={handleCategoryClick}
+                          ariaLabel="Directory category filters"
+                          gridClassName="grid grid-cols-2 gap-2 md:grid-cols-4"
+                        />
                       </div>
 
                       <div className="space-y-3 border-t border-slate-200 pt-5">
@@ -932,27 +891,28 @@ export default function DirectoryPage() {
 
                       <div className="grid gap-5 border-t border-slate-200 pt-5 md:grid-cols-2">
                         <div className="space-y-3">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">Trust level</p>
-                            <p className="mt-1 text-xs text-slate-500">Filter by verification confidence while preserving retrieval-first results.</p>
-                          </div>
-                          <div className="flex flex-wrap gap-2" role="group" aria-label="Trust filter">
-                            {CONFIDENCE_OPTIONS.map((opt) => (
-                              <button
-                                key={opt.value}
-                                type="button"
-                                onClick={() => handleConfidenceChange(opt.value)}
-                                className={`inline-flex min-h-[44px] items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                                  confidenceFilter === opt.value
-                                    ? 'border-slate-900 bg-slate-900 text-white'
-                                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                                }`}
-                                aria-pressed={confidenceFilter === opt.value}
-                              >
-                                {opt.label}
-                              </button>
-                            ))}
-                          </div>
+                          {deviceLocation ? (
+                            <DistanceRadiusControl
+                              value={radiusMiles}
+                              onChange={(nextMiles) => {
+                                const nextRadius = clampDiscoveryRadiusMiles(nextMiles);
+                                setRadiusMiles(nextRadius);
+                                if (data) {
+                                  void runSearch(1, confidenceFilter, sortBy, undefined, undefined, deviceLocation, undefined, false, selectedAttributes);
+                                }
+                              }}
+                            />
+                          ) : (
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">Distance</p>
+                              <p className="mt-1 text-xs text-slate-500">Enable approximate location to filter listings within a specific distance.</p>
+                              <div className="mt-3">
+                                <Button type="button" variant="outline" size="sm" onClick={handleUseMyLocation} disabled={isLocating}>
+                                  {isLocating ? 'Locating…' : 'Use my location'}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         <div className="space-y-3">
@@ -967,7 +927,7 @@ export default function DirectoryPage() {
                             id="directory-sort-select"
                             value={sortBy}
                             onChange={handleSortChange}
-                            className="min-h-[44px] w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                            className="min-h-[44px] w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
                           >
                             {SORT_OPTIONS.map((opt) => (
                               <option key={opt.value} value={opt.value}>

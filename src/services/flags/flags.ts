@@ -108,6 +108,10 @@ const DEFAULT_FLAGS: FeatureFlag[] = [
   makeFlag(FEATURE_FLAGS.LLM_FEEDBACK_TRIAGE, false, 0, 'Enable LLM classification of submitted feedback comments.'),
   makeFlag(FEATURE_FLAGS.DOC_INTELLIGENCE_INTAKE, false, 0, 'Enable Azure Document Intelligence for PDF intake parsing.'),
   makeFlag(FEATURE_FLAGS.TELEMETRY_INTERACTIONS, false, 0, 'Enable privacy-safe UI breadcrumb telemetry.'),
+  makeFlag(FEATURE_FLAGS.SEEKER_PLANS_ENABLED, false, 0, 'Enable the local-first seeker execution plan workspace and linked plan actions.'),
+  makeFlag(FEATURE_FLAGS.SEEKER_REMINDERS_ENABLED, false, 0, 'Enable seeker reminder scheduling for plan items.'),
+  makeFlag(FEATURE_FLAGS.SEEKER_ROUTE_FEASIBILITY_ENABLED, false, 0, 'Enable route-feasibility guidance for seeker execution items.'),
+  makeFlag(FEATURE_FLAGS.SEEKER_EXECUTION_DASHBOARD_ENABLED, false, 0, 'Enable expanded dashboard summaries for seeker execution progress.'),
 ];
 
 function getDefaultFlag(flagName: string): FeatureFlag | null {

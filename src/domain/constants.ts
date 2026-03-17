@@ -561,6 +561,22 @@ export const FEATURE_FLAGS = {
    * and crisis banner displays. Requires NEXT_PUBLIC_TELEMETRY_INTERACTIONS=true.
    */
   TELEMETRY_INTERACTIONS: 'telemetry_interactions',
+  /**
+   * Enables the local-first seeker plan workspace and linked service plan actions.
+   */
+  SEEKER_PLANS_ENABLED: 'seeker_plans_enabled',
+  /**
+   * Enables seeker reminder scheduling once reminder delivery is implemented.
+   */
+  SEEKER_REMINDERS_ENABLED: 'seeker_reminders_enabled',
+  /**
+   * Enables route-feasibility sequencing for execution items.
+   */
+  SEEKER_ROUTE_FEASIBILITY_ENABLED: 'seeker_route_feasibility_enabled',
+  /**
+   * Enables expanded dashboard-level seeker execution summaries.
+   */
+  SEEKER_EXECUTION_DASHBOARD_ENABLED: 'seeker_execution_dashboard_enabled',
 } as const;
 
 // ============================================================

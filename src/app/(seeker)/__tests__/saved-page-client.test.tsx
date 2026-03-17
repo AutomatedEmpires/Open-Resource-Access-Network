@@ -4,6 +4,8 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
+const useSeekerFeatureFlagsMock = vi.hoisted(() => vi.fn(() => ({ planEnabled: false })));
+
 const fetchMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/components/ui/error-boundary', () => ({
@@ -23,6 +25,10 @@ vi.mock('@/components/ui/button', () => ({
 
 vi.mock('@/components/ui/toast', () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+}));
+
+vi.mock('@/components/seeker/SeekerFeatureFlags', () => ({
+  useSeekerFeatureFlags: () => useSeekerFeatureFlagsMock(),
 }));
 
 vi.mock('@/components/directory/ServiceCard', () => ({
@@ -78,6 +84,7 @@ beforeEach(() => {
   cleanup();
   vi.clearAllMocks();
   fetchMock.mockReset();
+  useSeekerFeatureFlagsMock.mockReturnValue({ planEnabled: false });
   localStorage.clear();
   global.fetch = fetchMock as unknown as typeof fetch;
 });
@@ -313,6 +320,49 @@ describe('SavedPageClient', () => {
       'href',
       '/map?q=food&category=food_assistance',
     );
+  });
+
+  it('shows the saved-to-plan handoff when seeker plans are enabled', async () => {
+    const SavedPage = await loadSavedPage();
+    useSeekerFeatureFlagsMock.mockReturnValue({ planEnabled: true });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(['svc-1']));
+    localStorage.setItem('oran:seeker-plans', JSON.stringify({
+      plans: [
+        {
+          id: 'plan-1',
+          title: 'Current plan',
+          status: 'active',
+          items: [
+            {
+              id: 'item-1',
+              title: 'Call provider intake',
+              status: 'todo',
+              urgency: 'today',
+              source: 'manual',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+      activePlanId: 'plan-1',
+    }));
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [service('svc-1', 'Shelter')],
+        notFound: [],
+      }),
+    });
+
+    render(<SavedPage />);
+
+    await screen.findByTestId('saved-service-card-svc-1');
+    expect(screen.getByRole('link', { name: 'Open plan workspace' })).toHaveAttribute('href', '/plan');
+    expect(screen.getByText(/Active plan:/)).toBeInTheDocument();
+    expect(screen.getByText(/Current plan/)).toBeInTheDocument();
   });
 
   it('removes local saved state even when server delete request throws', async () => {

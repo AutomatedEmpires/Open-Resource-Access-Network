@@ -43,6 +43,10 @@ vi.mock('@/components/feedback/FeedbackForm', () => ({
   ),
 }));
 
+vi.mock('@/components/seeker/AddToPlanDialog', () => ({
+  AddToPlanDialog: () => null,
+}));
+
 import { ChatServiceCard } from '@/components/chat/ChatServiceCard';
 
 const cardFixture = {

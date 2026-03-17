@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const fetchMock = vi.hoisted(() => vi.fn());
 const replaceMock = vi.hoisted(() => vi.fn());
@@ -286,7 +286,7 @@ describe('DirectoryPageClient', () => {
     expect(replaceMock).toHaveBeenCalledWith('/directory?q=food&category=food_assistance', { scroll: false });
   });
 
-  it('runs manual searches, re-queries on filters/pagination, and toggles saved state', async () => {
+  it('runs manual searches, re-queries on service-detail filters/pagination, and toggles saved state', async () => {
     setupFetchRoutes({
       searchResponses: [
         ok(makeSearchResponse({ hasMore: true, total: 3, page: 1 })),
@@ -308,16 +308,16 @@ describe('DirectoryPageClient', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: /Filters|Refine results/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'High confidence only' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Delivery Method' })).getByRole('button', { name: 'Virtual' }));
 
     await waitFor(() => {
       const searchCalls = fetchMock.mock.calls
         .map((c) => String(c?.[0]))
         .filter((u) => u.includes('/api/search?'));
       expect(searchCalls.length).toBeGreaterThanOrEqual(2);
-      const trustUrl = String(searchCalls[1]);
-      expect(trustUrl).toContain('minConfidenceScore=80');
-      expect(trustUrl).toContain('page=1');
+      const filteredUrl = String(searchCalls[1]);
+      expect(filteredUrl).toContain('attributes=');
+      expect(filteredUrl).toContain('page=1');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Next page of results' }));
@@ -412,7 +412,7 @@ describe('DirectoryPageClient', () => {
     expect(replaceMock).toHaveBeenCalledWith('/directory', { scroll: false });
   });
 
-  it('builds canonical map links from the current shareable discovery intent', async () => {
+  it('builds canonical service detail links from the current shareable discovery intent', async () => {
     setupFetchRoutes({
       searchResponses: [ok(makeSearchResponse())],
     });
@@ -423,21 +423,13 @@ describe('DirectoryPageClient', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Food' })[0]);
     await screen.findByText('Food Pantry');
 
-    expect(screen.getByRole('link', { name: 'Map' })).toHaveAttribute(
-      'href',
-      '/map?q=food&category=food_assistance',
-    );
-    expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
-      'href',
-      '/chat?q=food&category=food_assistance',
-    );
     expect(screen.getByRole('link', { name: 'details-svc-1' })).toHaveAttribute(
       'href',
       '/service/svc-1?q=food&category=food_assistance',
     );
   });
 
-  it('preserves shareable attribute filters in map and chat handoff links', async () => {
+  it('preserves shareable attribute filters in service detail handoff links', async () => {
     navigationState.searchParams = new URLSearchParams(
       'category=food&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
     );
@@ -449,13 +441,9 @@ describe('DirectoryPageClient', () => {
 
     await screen.findByText('Food Pantry');
 
-    expect(screen.getByRole('link', { name: 'Map' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'details-svc-1' })).toHaveAttribute(
       'href',
-      '/map?q=food&category=food_assistance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
-    );
-    expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
-      'href',
-      '/chat?q=food&category=food_assistance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
+      '/service/svc-1?q=food&category=food_assistance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
     );
   });
 
@@ -624,7 +612,7 @@ describe('DirectoryPageClient', () => {
     expect(replaceMock).toHaveBeenCalledWith('/directory?q=shelter', { scroll: false });
   });
 
-  it('re-runs search when clearing trust and sort chips after applied filters', async () => {
+  it('re-runs search when clearing service type and sort chips after applied filters', async () => {
     setupFetchRoutes({
       searchResponses: [
         ok(makeSearchResponse()),
@@ -644,17 +632,17 @@ describe('DirectoryPageClient', () => {
     await screen.findByText('Food Pantry');
 
     fireEvent.click(screen.getByRole('button', { name: /Filters|Refine results/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'High confidence only' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Delivery Method' })).getByRole('button', { name: 'Virtual' }));
     fireEvent.change(screen.getByLabelText('Sort results'), {
       target: { value: 'name_desc' },
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Clear trust filter' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Clear service type filters' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Clear sort option' })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Clear trust filter' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear service type filters' }));
     fireEvent.click(screen.getByRole('button', { name: 'Clear sort option' }));
 
     await waitFor(() => {
@@ -662,12 +650,12 @@ describe('DirectoryPageClient', () => {
         .map((c) => String(c?.[0]))
         .filter((u) => u.includes('/api/search?'));
       expect(searchCalls.length).toBeGreaterThanOrEqual(5);
-      const trustClearedUrl = String(searchCalls.at(-2));
+      const attributesClearedUrl = String(searchCalls.at(-2));
       const sortClearedUrl = String(searchCalls.at(-1));
-      expect(trustClearedUrl).not.toContain('minConfidenceScore=');
-      expect(trustClearedUrl).toContain('sortBy=name_desc');
+      expect(attributesClearedUrl).not.toContain('attributes=');
+      expect(attributesClearedUrl).toContain('sortBy=name_desc');
       expect(sortClearedUrl).not.toContain('sortBy=');
-      expect(sortClearedUrl).not.toContain('minConfidenceScore=');
+      expect(sortClearedUrl).not.toContain('attributes=');
     });
   });
 

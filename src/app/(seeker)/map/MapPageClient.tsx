@@ -8,7 +8,6 @@ import { Search, MapPin, AlertTriangle, X, ChevronDown, SlidersHorizontal, Loade
 import { Button } from '@/components/ui/button';
 import {
   type DiscoveryNeedId,
-  QUICK_DISCOVERY_NEEDS,
   resolveDiscoveryNeedId,
   isDiscoveryNeedSearchText,
   getDiscoveryNeedSearchText,
@@ -17,7 +16,8 @@ import { SERVICE_ATTRIBUTES_TAXONOMY } from '@/domain/taxonomy';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { ServiceCard } from '@/components/directory/ServiceCard';
-import { DiscoverySurfaceTabs } from '@/components/seeker/DiscoverySurfaceTabs';
+import { DistanceRadiusControl } from '@/components/seeker/DistanceRadiusControl';
+import { QuickNeedFilterGrid } from '@/components/seeker/QuickNeedFilterGrid';
 import { type SeekerAppliedFilterItem } from '@/components/seeker/SeekerAppliedFilters';
 import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
 import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
@@ -38,6 +38,7 @@ import {
   resolveDiscoverySearchText,
   type DiscoverySortOption,
 } from '@/services/search/discovery';
+import { clampDiscoveryRadiusMiles, DEFAULT_DISCOVERY_RADIUS_MILES, milesToMeters } from '@/services/search/radius';
 import type { SearchResponse, SearchResult } from '@/services/search/types';
 import type { EnrichedService } from '@/domain/types';
 import { FormField } from '@/components/ui/form-field';
@@ -52,7 +53,7 @@ const MapContainer = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="w-full h-[60vh] rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+      <div className="flex h-[60vh] w-full items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] text-sm text-[var(--text-muted)]">
         Loading map…
       </div>
     ),
@@ -176,11 +177,12 @@ export default function MapPage() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<SearchResponse | null>(null);
   // Default to bbox mode so panning/zooming can re-query immediately.
-  const [searchMode, setSearchMode] = useState<'text' | 'bbox'>('bbox');
+  const [searchMode, setSearchMode] = useState<'text' | 'bbox' | 'radius'>('bbox');
 
   // Opt-in device geolocation (in-session only; never stored)
   const [isLocating, setIsLocating] = useState(false);
   const [deviceCenter, setDeviceCenter] = useState<{ lat: number; lng: number } | null>(null);
+  const [radiusMiles, setRadiusMiles] = useState(DEFAULT_DISCOVERY_RADIUS_MILES);
   const [locationState, setLocationState] = useState<'idle' | 'requesting' | 'granted' | 'denied' | 'unsupported'>('idle');
 
   const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string[]>>(
@@ -243,8 +245,8 @@ export default function MapPage() {
         const lat = roundForPrivacy(pos.coords.latitude);
         const lng = roundForPrivacy(pos.coords.longitude);
         setDeviceCenter({ lat, lng });
-        setSearchMode('bbox');
-        setIsAreaDirty(true);
+        setSearchMode('radius');
+        setIsAreaDirty(false);
         setLocationState('granted');
         if (announce) {
           success('Centered near your location (not saved).');
@@ -382,18 +384,6 @@ export default function MapPage() {
   const pinnedCount = pinnedResults.length;
   const offMapCount = offMapResults.length;
 
-  const directoryHref = useMemo(() => {
-    const params = buildDiscoveryUrlParams({
-      text: query,
-      needId: activeCategory,
-      confidenceFilter,
-      sortBy,
-      attributeFilters: selectedAttributes,
-    });
-    const qs = params.toString();
-    return qs ? `/directory?${qs}` : '/directory';
-  }, [activeCategory, confidenceFilter, query, selectedAttributes, sortBy]);
-
   const mapDiscoveryContext = useMemo(() => {
     return {
       text: query,
@@ -404,18 +394,9 @@ export default function MapPage() {
     };
   }, [activeCategory, confidenceFilter, query, selectedAttributes, sortBy]);
 
-  const chatHref = useMemo(() => {
-    return buildDiscoveryHref('/chat', mapDiscoveryContext);
+  const directoryHref = useMemo(() => {
+    return buildDiscoveryHref('/directory', mapDiscoveryContext);
   }, [mapDiscoveryContext]);
-
-  const surfaceTabs = useMemo(
-    () => [
-      { href: chatHref, label: 'Chat' },
-      { href: directoryHref, label: 'Directory' },
-      { href: '/map', label: 'Map' },
-    ],
-    [chatHref, directoryHref],
-  );
 
   const buildServiceDetailHref = useCallback((serviceId: string) => {
     return buildDiscoveryHref(`/service/${serviceId}`, mapDiscoveryContext);
@@ -430,6 +411,7 @@ export default function MapPage() {
       sort?: SortOption;
       category?: DiscoveryNeedId | null;
       text?: string;
+      mode?: 'bbox' | 'radius';
     }) => {
       const trimmed = (opts?.text ?? query).trim();
       const bbox = opts?.bbox;
@@ -449,6 +431,33 @@ export default function MapPage() {
           setIsLoading(false);
           return;
         }
+        const geo = opts?.mode === 'bbox'
+          ? (bbox
+              ? {
+                  type: 'bbox' as const,
+                  minLat: bbox.minLat,
+                  minLng: bbox.minLng,
+                  maxLat: bbox.maxLat,
+                  maxLng: bbox.maxLng,
+                }
+              : undefined)
+          : (opts?.mode === 'radius' || (searchMode === 'radius' && deviceCenter)
+              ? {
+                  type: 'radius' as const,
+                  lat: deviceCenter?.lat ?? 0,
+                  lng: deviceCenter?.lng ?? 0,
+                  radiusMeters: milesToMeters(radiusMiles),
+                }
+              : (bbox
+                  ? {
+                      type: 'bbox' as const,
+                      minLat: bbox.minLat,
+                      minLng: bbox.minLng,
+                      maxLat: bbox.maxLat,
+                      maxLng: bbox.maxLng,
+                    }
+                  : undefined));
+
         const params = buildSearchApiParamsFromDiscovery({
           text: trimmed || categorySearchText,
           needId: effectiveCategory,
@@ -457,15 +466,7 @@ export default function MapPage() {
           sortBy: effectiveSort,
           page: 1,
           limit: DEFAULT_LIMIT,
-          geo: bbox
-            ? {
-                type: 'bbox',
-                minLat: bbox.minLat,
-                minLng: bbox.minLng,
-                maxLat: bbox.maxLat,
-                maxLng: bbox.maxLng,
-              }
-            : undefined,
+            geo,
         });
 
         const res = await fetch(`/api/search?${params.toString()}`, {
@@ -495,8 +496,37 @@ export default function MapPage() {
         setIsLoading(false);
       }
     },
-    [activeCategory, confidenceFilter, hasSearchContext, pushUrlState, query, selectedAttributes, sortBy],
+    [activeCategory, confidenceFilter, deviceCenter, hasSearchContext, pushUrlState, query, radiusMiles, searchMode, selectedAttributes, sortBy],
   );
+
+  const clearDeviceLocation = useCallback(() => {
+    setDeviceCenter(null);
+    setLocationState('idle');
+    setSearchMode('bbox');
+    setRadiusMiles(DEFAULT_DISCOVERY_RADIUS_MILES);
+
+    if (!hasSearchContext(query, activeCategory, selectedAttributes, Boolean(boundsRef.current))) {
+      resetResultsToEmpty();
+      return;
+    }
+
+    if (boundsRef.current) {
+      void runSearch({ bbox: boundsRef.current, mode: 'bbox' });
+      return;
+    }
+
+    void runSearch({ mode: 'bbox' });
+  }, [activeCategory, hasSearchContext, query, resetResultsToEmpty, runSearch, selectedAttributes]);
+
+  const handleRadiusChange = useCallback((nextMiles: number) => {
+    const nextRadius = clampDiscoveryRadiusMiles(nextMiles);
+    setRadiusMiles(nextRadius);
+    setSearchMode('radius');
+
+    if (deviceCenter && hasSearchContext(query, activeCategory, selectedAttributes, false)) {
+      void runSearch({ mode: 'radius' });
+    }
+  }, [activeCategory, deviceCenter, hasSearchContext, query, runSearch, selectedAttributes]);
 
   const clearCategory = useCallback(() => {
     setActiveCategory(null);
@@ -592,6 +622,10 @@ export default function MapPage() {
     setActiveCategory(null);
     setSelectedAttributes({});
     setSortBy('distance');
+    setDeviceCenter(null);
+    setLocationState('idle');
+    setRadiusMiles(DEFAULT_DISCOVERY_RADIUS_MILES);
+    setSearchMode('bbox');
     if (boundsRef.current) {
       void runSearch({
         bbox: boundsRef.current,
@@ -599,6 +633,7 @@ export default function MapPage() {
         category: null,
         attributes: {},
         sort: 'distance',
+        mode: 'bbox',
       });
       return;
     }
@@ -615,6 +650,15 @@ export default function MapPage() {
 
   const appliedFilterItems = useMemo<SeekerAppliedFilterItem[]>(() => {
     const items: SeekerAppliedFilterItem[] = [];
+
+    if (deviceCenter) {
+      items.push({
+        id: 'location',
+        label: `Within ${radiusMiles} mi`,
+        onClick: clearDeviceLocation,
+        ariaLabel: 'Clear location radius',
+      });
+    }
 
     if (activeCategory) {
       items.push({
@@ -648,7 +692,10 @@ export default function MapPage() {
     activeCategory,
     clearAttributes,
     clearCategory,
+    clearDeviceLocation,
     clearSort,
+    deviceCenter,
+    radiusMiles,
     selectedAttributes,
     sortBy,
   ]);
@@ -657,12 +704,12 @@ export default function MapPage() {
     const next = activeCategory === category ? null : category;
     setActiveCategory(next);
     setQuery('');
-    if (boundsRef.current) {
+    if (searchMode !== 'radius' && boundsRef.current) {
       void runSearch({ bbox: boundsRef.current, category: next, text: '' });
     } else {
-      void runSearch({ category: next, text: '' });
+      void runSearch({ category: next, text: '', mode: searchMode === 'radius' ? 'radius' : undefined });
     }
-  }, [activeCategory, runSearch]);
+  }, [activeCategory, runSearch, searchMode]);
 
   // ── text search submit ────────────────────────────────────
   const handleSubmit = (e: React.FormEvent) => {
@@ -670,7 +717,7 @@ export default function MapPage() {
     // Keep bbox mode so results remain tied to the visible map area.
     setSearchMode('bbox');
     setIsAreaDirty(false);
-    void runSearch({ bbox: boundsRef.current ?? undefined });
+    void runSearch({ bbox: boundsRef.current ?? undefined, mode: 'bbox' });
   };
 
   // ── toggle to "search this area" mode ─────────────────────
@@ -678,7 +725,7 @@ export default function MapPage() {
     if (!boundsRef.current) return;
     setSearchMode('bbox');
     setIsAreaDirty(false);
-    void runSearch({ bbox: boundsRef.current });
+    void runSearch({ bbox: boundsRef.current, mode: 'bbox' });
   }, [runSearch]);
 
   // ── handle map bounds change (debounced bbox re-query) ────
@@ -857,7 +904,7 @@ export default function MapPage() {
             <div className="absolute top-0 left-0 right-0 px-3 pt-3 z-30 pointer-events-none">
               <form
                 onSubmit={handleSubmit}
-                className="pointer-events-auto flex items-center gap-1.5 rounded-2xl bg-white/95 backdrop-blur-md shadow-[0_4px_20px_rgba(15,23,42,0.12)] border border-slate-200 overflow-hidden h-12 pl-3 pr-1"
+                className="pointer-events-auto flex h-12 items-center gap-1.5 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]/95 pl-3 pr-1 shadow-[0_4px_20px_rgba(15,23,42,0.12)] backdrop-blur-md"
               >
                 <Search className="h-4 w-4 text-slate-400 flex-shrink-0" aria-hidden="true" />
                 <input
@@ -887,7 +934,7 @@ export default function MapPage() {
                 <button
                   type="submit"
                   disabled={!canSearch || isLoading}
-                  className="flex items-center justify-center h-9 w-9 rounded-xl bg-sky-600 text-white flex-shrink-0 disabled:opacity-40"
+                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[var(--text-primary)] text-[var(--bg-page)] disabled:opacity-40"
                   aria-label="Search"
                 >
                   <Search className="h-4 w-4" aria-hidden="true" />
@@ -895,12 +942,12 @@ export default function MapPage() {
                 <button
                   type="button"
                   onClick={() => setMobileFiltersOpen(true)}
-                  className="relative flex items-center justify-center h-9 w-9 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 flex-shrink-0"
+                  className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]"
                   aria-label={`Filters${hasActiveRefinements ? ` (${appliedFilterItems.length} active)` : ''}`}
                 >
                   <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
                   {hasActiveRefinements && (
-                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-sky-600 text-[9px] font-bold text-white">
+                    <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--text-primary)] text-[9px] font-bold text-[var(--bg-page)]">
                       {appliedFilterItems.length}
                     </span>
                   )}
@@ -945,9 +992,9 @@ export default function MapPage() {
                 <button
                   type="button"
                   onClick={searchThisArea}
-                  className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-white shadow-[0_4px_16px_rgba(15,23,42,0.14)] border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700"
+                  className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] shadow-[0_4px_16px_rgba(15,23,42,0.14)]"
                 >
-                  <MapPin className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
+                  <MapPin className="h-3.5 w-3.5 text-[var(--text-primary)]" aria-hidden="true" />
                   Search this area
                 </button>
               </div>
@@ -1017,7 +1064,7 @@ export default function MapPage() {
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); searchThisArea(); }}
-                        className="flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2.5 py-1 text-xs font-semibold text-sky-700"
+                        className="flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-semibold text-[var(--text-primary)]"
                       >
                         <Search className="h-3 w-3" aria-hidden="true" />
                         Search area
@@ -1088,14 +1135,14 @@ export default function MapPage() {
                       ) : null}
                       {offMapResults.length > 0 ? (
                         <div className={pinnedResults.length > 0 ? 'mt-4 space-y-3' : 'space-y-3'}>
-                          <div className="rounded-[20px] border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+                          <div className="rounded-[20px] border border-[var(--border)] bg-[var(--bg-surface-alt)] px-4 py-3 text-sm text-[var(--text-primary)]">
                             <p className="font-semibold">Also applicable but not pinned</p>
-                            <p className="mt-1 text-xs text-sky-800">
+                            <p className="mt-1 text-xs text-[var(--text-secondary)]">
                               These services matched your search, but they only list online, phone, or broad service-area coverage.
                             </p>
                             <a
                               href={directoryHref}
-                              className="mt-2 inline-flex items-center rounded-full border border-sky-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-sky-800 hover:bg-sky-100"
+                              className="mt-2 inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-surface-alt)]"
                             >
                               Open the full directory list
                             </a>
@@ -1104,7 +1151,7 @@ export default function MapPage() {
                             <div key={r.service.service.id} className="flex items-stretch gap-3">
                               <ConfidenceRing enriched={r.service} />
                               <div className="flex-1 min-w-0">
-                                <div className="mb-2 inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-800">
+                                <div className="mb-2 inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)]">
                                   {getOffMapReason(r.service)}
                                 </div>
                                 <ServiceCard
@@ -1175,25 +1222,12 @@ export default function MapPage() {
                         </Button>
                       ) : null}
                     </div>
-                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Service category">
-                      {QUICK_DISCOVERY_NEEDS.map((need) => {
-                        const active = activeCategory === need.id;
-                        return (
-                          <button
-                            key={need.id}
-                            type="button"
-                            onClick={() => handleCategoryClick(need.id)}
-                            className={`rounded-xl border px-3 py-3 text-left text-sm ${active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700'}`}
-                            aria-pressed={active}
-                          >
-                            <div className="font-semibold">{need.label}</div>
-                            <div className={`mt-1 text-xs ${active ? 'text-slate-200' : 'text-slate-500'}`}>
-                              Browse {need.label.toLowerCase()} nearby.
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <QuickNeedFilterGrid
+                      activeNeedId={activeCategory}
+                      onSelect={handleCategoryClick}
+                      ariaLabel="Service category"
+                      gridClassName="grid grid-cols-2 gap-2"
+                    />
                   </div>
 
                   {/* Canonical service-detail filters */}
@@ -1217,7 +1251,7 @@ export default function MapPage() {
                         const activeTags = selectedAttributes[dim] ?? [];
                         return (
                           <div key={dim} className="flex flex-col gap-1.5" role="group" aria-label={def.name}>
-                            <span className="text-xs font-medium text-stone-500">{DIMENSION_LABELS[dim] ?? def.name}:</span>
+                            <span className="text-xs font-medium text-[var(--text-muted)]">{DIMENSION_LABELS[dim] ?? def.name}:</span>
                             <div className="flex flex-wrap gap-1.5">
                               {commonTags.map((t) => {
                                 const isActive = activeTags.includes(t.tag);
@@ -1328,9 +1362,9 @@ export default function MapPage() {
                 <div className="min-w-0 flex-1">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Verified discovery</span>
-                    <span className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Verified records only</span>
+                    <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)]">Verified records only</span>
                     {deviceCenter ? (
-                      <span className="inline-flex items-center rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">Approximate location active</span>
+                      <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)]">Approximate location active</span>
                     ) : null}
                     {hasActiveRefinements ? (
                       <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">Refinements on</span>
@@ -1340,9 +1374,6 @@ export default function MapPage() {
                     <h1 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-5xl">Map</h1>
                     <p className="pb-1 text-sm text-slate-500">Find verified help nearby with the least amount of effort.</p>
                   </div>
-                </div>
-                <div className="flex flex-shrink-0 items-center">
-                  <DiscoverySurfaceTabs items={surfaceTabs} currentHref="/map" />
                 </div>
               </div>
 
@@ -1376,27 +1407,17 @@ export default function MapPage() {
                               </span>
                             ) : null}
                           </div>
-                          <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4" role="group" aria-label="Common resource terms">
-                            {QUICK_DISCOVERY_NEEDS.map((need) => {
-                              const selected = activeCategory === need.id;
-                              return (
-                                <button
-                                  key={need.id}
-                                  type="button"
-                                  onClick={() => handleCategoryClick(need.id)}
-                                  className={`inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
-                                    selected
-                                      ? 'border-slate-900 bg-slate-900 text-white'
-                                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                                  }`}
-                                  aria-pressed={selected}
-                                >
-                                  <span aria-hidden="true" className="text-base leading-none">{need.icon}</span>
-                                  {need.label}
-                                </button>
-                              );
-                            })}
-                          </div>
+                          <QuickNeedFilterGrid
+                            activeNeedId={activeCategory}
+                            onSelect={handleCategoryClick}
+                            ariaLabel="Common resource terms"
+                            className="mt-4"
+                          />
+                          {deviceCenter ? (
+                            <div className="mt-4 rounded-[18px] border border-slate-200 bg-slate-50 p-3">
+                              <DistanceRadiusControl value={radiusMiles} onChange={handleRadiusChange} />
+                            </div>
+                          ) : null}
                         </div>
 
                         <div className="flex min-h-0 flex-1 flex-col p-3 md:p-4">
@@ -1438,8 +1459,11 @@ export default function MapPage() {
                               Search this area
                             </Button>
                             {searchMode === 'bbox' && (
-                              <span className="text-xs text-stone-500">Updates as you pan.</span>
+                              <span className="text-xs text-[var(--text-muted)]">Updates as you pan.</span>
                             )}
+                            {searchMode === 'radius' && deviceCenter ? (
+                              <span className="text-xs text-[var(--text-muted)]">Showing results within {radiusMiles} miles of your location.</span>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -1457,7 +1481,7 @@ export default function MapPage() {
                             <form onSubmit={handleSubmit} className="space-y-3">
                               <FormField id="map-search" label="Search resources" className="w-full">
                                 <div className="relative">
-                                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
+                                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" aria-hidden="true" />
                                   <input
                                     ref={searchInputRef}
                                     id="map-search"
@@ -1470,14 +1494,14 @@ export default function MapPage() {
                                     }}
                                     type="search"
                                     placeholder="Food bank, shelter, clinic…"
-                                    className="min-h-[48px] w-full rounded-2xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                                    className="min-h-[48px] w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] py-2 pl-9 pr-8 text-sm text-[var(--text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-muted)]"
                                     aria-label="Search services"
                                   />
                                   {query && (
                                     <button
                                       type="button"
                                       onClick={handleClearSearch}
-                                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-slate-400 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--text-muted)]"
                                       aria-label="Clear search"
                                     >
                                       <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1516,8 +1540,22 @@ export default function MapPage() {
                                   >
                                     {isLocating ? 'Locating…' : locationState === 'denied' ? 'Try again' : 'Allow'}
                                   </Button>
-                                ) : null}
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={clearDeviceLocation}
+                                    className="shrink-0"
+                                  >
+                                    Clear
+                                  </Button>
+                                )}
                               </div>
+                              {deviceCenter ? (
+                                <div className="mt-3">
+                                  <DistanceRadiusControl value={radiusMiles} onChange={handleRadiusChange} />
+                                </div>
+                              ) : null}
                             </div>
 
                             <div className="rounded-[18px] border border-slate-200 bg-slate-50 p-3">
@@ -1592,8 +1630,8 @@ export default function MapPage() {
                           {!isLoading && !data && !error && (
                             <div className="rounded-[20px] border border-slate-200 bg-white p-6 text-center shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
                               <MapPin className="mx-auto mb-2 h-8 w-8 text-slate-300" aria-hidden="true" />
-                              <p className="text-sm font-semibold text-stone-800">Ready to search</p>
-                              <p className="mt-1 text-xs text-stone-500">
+                              <p className="text-sm font-semibold text-[var(--text-primary)]">Ready to search</p>
+                              <p className="mt-1 text-xs text-[var(--text-muted)]">
                                 Search, tap a common category, or pan the map and use <strong>Search this area</strong>.
                               </p>
                             </div>
@@ -1601,15 +1639,15 @@ export default function MapPage() {
 
                           {!isLoading && data && (
                             <>
-                              <p className="mb-3 text-xs text-stone-500" role="status" aria-live="polite">
+                              <p className="mb-3 text-xs text-[var(--text-muted)]" role="status" aria-live="polite">
                                 {data.results.length === 0 ? 'No matches' : `${data.results.length} of ${data.total} shown`}
                                 {pinnedCount > 0 && data.results.length > 0 && <span className="ml-1">· {pinnedCount} pinned</span>}
                                 {offMapCount > 0 && data.results.length > 0 && <span className="ml-1">· {offMapCount} off-map</span>}
                               </p>
                               {data.results.length === 0 ? (
                                 <div className="rounded-[20px] border border-slate-200 bg-white p-6 text-center shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                                  <p className="text-sm font-semibold text-stone-800">No matches in this area</p>
-                                  <p className="mt-1 text-xs text-stone-500">
+                                  <p className="text-sm font-semibold text-[var(--text-primary)]">No matches in this area</p>
+                                  <p className="mt-1 text-xs text-[var(--text-muted)]">
                                     Try different keywords, a broader category, or pan to a new area.
                                   </p>
                                 </div>
@@ -1638,14 +1676,14 @@ export default function MapPage() {
                                   ))}
                                   {offMapResults.length > 0 ? (
                                     <div className={pinnedResults.length > 0 ? 'mt-4 space-y-3' : 'space-y-3'}>
-                                      <div className="rounded-[20px] border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+                                      <div className="rounded-[20px] border border-[var(--border)] bg-[var(--bg-surface-alt)] px-4 py-3 text-sm text-[var(--text-primary)]">
                                         <p className="font-semibold">Also applicable but not pinned</p>
-                                        <p className="mt-1 text-xs text-sky-800">
+                                        <p className="mt-1 text-xs text-[var(--text-secondary)]">
                                           These services matched your search, but they only list online, phone, or broad service-area coverage.
                                         </p>
                                         <a
                                           href={directoryHref}
-                                          className="mt-2 inline-flex items-center rounded-full border border-sky-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-sky-800 hover:bg-sky-100"
+                                          className="mt-2 inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-surface-alt)]"
                                         >
                                           Open the full directory list
                                         </a>
@@ -1654,7 +1692,7 @@ export default function MapPage() {
                                         <div key={r.service.service.id} className="flex items-stretch gap-3">
                                           <ConfidenceRing enriched={r.service} />
                                           <div className="flex-1">
-                                            <div className="mb-2 inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-800">
+                                            <div className="mb-2 inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)]">
                                               {getOffMapReason(r.service)}
                                             </div>
                                             <ServiceCard
@@ -1703,28 +1741,37 @@ export default function MapPage() {
                             ) : null}
                           </div>
 
-                          <div className="grid gap-2 md:grid-cols-2" role="group" aria-label="Service category">
-                            {QUICK_DISCOVERY_NEEDS.map((need) => {
-                              const selected = activeCategory === need.id;
-                              return (
-                                <button
-                                  key={need.id}
-                                  type="button"
-                                  onClick={() => handleCategoryClick(need.id)}
-                                  className={`flex items-start justify-between rounded-xl border px-4 py-3 text-left ${selected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
-                                  aria-pressed={selected}
-                                >
-                                  <div>
-                                    <div className="font-semibold">{need.label}</div>
-                                    <div className={`mt-1 text-xs ${selected ? 'text-slate-200' : 'text-slate-500'}`}>
-                                      Browse {need.label.toLowerCase()} nearby.
-                                    </div>
-                                  </div>
-                                  {selected ? <span className="text-xs font-semibold">Active</span> : null}
-                                </button>
-                              );
-                            })}
+                          <QuickNeedFilterGrid
+                            activeNeedId={activeCategory}
+                            onSelect={handleCategoryClick}
+                            ariaLabel="Service category"
+                            gridClassName="grid grid-cols-2 gap-2 md:grid-cols-4"
+                          />
+                        </div>
+
+                        <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
+                          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">Distance</p>
+                              <p className="mt-1 text-xs text-slate-500">Use your approximate location and set a radius for nearby map results.</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Button type="button" variant="outline" size="sm" onClick={handleUseMyLocation} disabled={isLocating}>
+                                {isLocating ? 'Locating…' : deviceCenter ? 'Refresh location' : 'Use my location'}
+                              </Button>
+                              {deviceCenter ? (
+                                <Button type="button" variant="outline" size="sm" onClick={clearDeviceLocation}>
+                                  Clear location
+                                </Button>
+                              ) : null}
+                            </div>
                           </div>
+
+                          {deviceCenter ? (
+                            <DistanceRadiusControl value={radiusMiles} onChange={handleRadiusChange} />
+                          ) : (
+                            <p className="text-sm text-slate-500">Enable approximate location to filter the map within a fixed distance from you.</p>
+                          )}
                         </div>
 
                         <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
@@ -1828,11 +1875,11 @@ function ConfidenceRing({ enriched }: { enriched: EnrichedService }) {
   const dash = (value / 100) * circumference;
 
   const strokeClass =
-    score == null ? 'stroke-gray-300' :
-      value >= 80 ? 'stroke-green-600' :
-      value >= 60 ? 'stroke-yellow-500' :
-      value >= 40 ? 'stroke-orange-500' :
-      'stroke-red-600';
+    score == null ? 'stroke-[var(--border)]' :
+      value >= 80 ? 'stroke-[var(--text-primary)]' :
+      value >= 60 ? 'stroke-[var(--text-secondary)]' :
+      value >= 40 ? 'stroke-[var(--text-muted)]' :
+      'stroke-error-base';
 
   return (
     <div
@@ -1845,7 +1892,7 @@ function ConfidenceRing({ enriched }: { enriched: EnrichedService }) {
           cx="20"
           cy="20"
           r={radius}
-          className="stroke-gray-200"
+          className="stroke-[var(--border-subtle)]"
           strokeWidth="4"
           fill="none"
         />
@@ -1865,7 +1912,7 @@ function ConfidenceRing({ enriched }: { enriched: EnrichedService }) {
           y="21"
           textAnchor="middle"
           dominantBaseline="middle"
-          className="fill-gray-700 text-[10px] font-semibold"
+          className="fill-[var(--text-secondary)] text-[10px] font-semibold"
         >
           {score == null ? '—' : `${Math.round(value)}%`}
         </text>

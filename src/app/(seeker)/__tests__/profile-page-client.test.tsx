@@ -391,11 +391,15 @@ describe('ProfilePageClient', () => {
     render(<ProfilePage />);
     await screen.findByText('Profile');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Dark' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Evening' }));
     expect(document.documentElement.classList.contains('dark')).toBe(true);
     expect(localStorage.getItem('oran-theme')).toBe('dark');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Light' }));
+    const lightModeButton = screen
+      .getAllByRole('button', { name: 'Paper' })
+      .find((button: HTMLElement) => button.getAttribute('aria-pressed') === 'false');
+    expect(lightModeButton).toBeTruthy();
+    fireEvent.click(lightModeButton!);
     expect(document.documentElement.classList.contains('dark')).toBe(false);
     expect(localStorage.getItem('oran-theme')).toBe('light');
 

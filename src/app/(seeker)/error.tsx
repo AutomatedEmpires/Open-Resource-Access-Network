@@ -59,7 +59,7 @@ export default function SeekerError({
         <Button onClick={reset}>Try again</Button>
         <Link
           href={chatHref}
-          className="rounded-full bg-orange-100 px-5 py-2.5 text-sm font-medium text-stone-700 transition-colors hover:bg-orange-200"
+          className="rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-stone-700 transition-colors hover:bg-slate-50"
         >
           Search services
         </Link>

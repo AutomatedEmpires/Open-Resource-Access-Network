@@ -19,10 +19,13 @@ import { Badge } from '@/components/ui/badge';
 import { FeedbackForm } from '@/components/feedback/FeedbackForm';
 import { ReportProblemDialog } from '@/components/feedback/ReportProblemDialog';
 import { OrgProfileCard } from '@/components/host/OrgProfileCard';
+import { AddToPlanDialog } from '@/components/seeker/AddToPlanDialog';
+import { SavedCollectionsDialog } from '@/components/seeker/SavedCollectionsDialog';
 import type { EnrichedService } from '@/domain/types';
 import type { ConfidenceBand } from '@/domain/types';
 import { CONFIDENCE_BANDS, ORAN_CONFIDENCE_WEIGHTS } from '@/domain/constants';
 import type { DiscoveryLinkState } from '@/services/search/discovery';
+import { buildPlanServiceSnapshotFromEnrichedService } from '@/services/plans/snapshots';
 import { summarizeServiceAlignment } from '@/services/search/discoveryPresentation';
 import { getSavedTogglePresentation } from '@/services/saved/presentation';
 
@@ -496,6 +499,23 @@ export function ServiceCard({
       {!showFeedback && (
         <div className="mt-3 flex items-center justify-between gap-1 border-t border-slate-100 pt-1.5 -mx-1">
           <div className="flex items-center">
+            {onToggleSave && (
+              <SavedCollectionsDialog
+                serviceId={service.id}
+                serviceName={service.name}
+                isSaved={Boolean(isSaved)}
+                onEnsureSaved={() => {
+                  if (!isSaved) {
+                    onToggleSave(service.id);
+                  }
+                }}
+                savedSyncEnabled={Boolean(savedSyncEnabled)}
+              />
+            )}
+            <AddToPlanDialog
+              service={buildPlanServiceSnapshotFromEnrichedService(enriched, href)}
+              source="directory_service"
+            />
             <button
               type="button"
               onClick={() => setShowFeedback(true)}

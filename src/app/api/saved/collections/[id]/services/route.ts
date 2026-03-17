@@ -6,12 +6,13 @@ import { getAuthContext } from '@/services/auth/session';
 import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
+import { getIp } from '@/services/security/ip';
 
 const SAVED_COLLECTIONS_RATE_LIMIT_MAX = 50;
 const CollectionIdSchema = z.string().uuid('Collection id must be a valid UUID');
 const CollectionServiceSchema = z.object({
   serviceId: z.string().uuid('serviceId must be a valid UUID'),
-});
+}).strict();
 
 function checkSavedCollectionsRateLimit(ip: string) {
   return checkRateLimitShared(`saved-collections:ip:${ip}`, {
@@ -25,7 +26,7 @@ async function requireCollectionOwner(req: NextRequest, id: string) {
     return NextResponse.json({ error: 'Saved collections unavailable.' }, { status: 503 });
   }
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = getIp(req);
   const rateLimit = await checkSavedCollectionsRateLimit(ip);
   if (rateLimit.exceeded) {
     return NextResponse.json(

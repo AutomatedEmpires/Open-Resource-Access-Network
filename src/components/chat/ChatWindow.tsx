@@ -8,10 +8,10 @@
 
 'use client';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, AlertTriangle, Phone, Trash2, Clock, Plus, SlidersHorizontal, Bookmark, BookmarkCheck } from 'lucide-react';
+import { Send, AlertTriangle, Phone, Trash2, Clock, Plus, SlidersHorizontal, Bookmark, BookmarkCheck, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ELIGIBILITY_DISCLAIMER, MAX_CHAT_QUOTA } from '@/domain/constants';
-import { QUICK_DISCOVERY_NEEDS, type DiscoveryNeedId } from '@/domain/discoveryNeeds';
+import type { DiscoveryNeedId } from '@/domain/discoveryNeeds';
 import { SERVICE_ATTRIBUTES_TAXONOMY } from '@/domain/taxonomy';
 import type {
   ChatClarification,
@@ -22,6 +22,8 @@ import type {
 } from '@/services/chat/types';
 import { ChatServiceCard } from '@/components/chat/ChatServiceCard';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
+import { DistanceRadiusControl } from '@/components/seeker/DistanceRadiusControl';
+import { QuickNeedFilterGrid } from '@/components/seeker/QuickNeedFilterGrid';
 import { useToast } from '@/components/ui/toast';
 import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
 import {
@@ -32,7 +34,6 @@ import {
 } from '@/services/saved/client';
 import { getSavedTogglePresentation } from '@/services/saved/presentation';
 import { trackInteraction } from '@/services/telemetry/sentry';
-import { DISCOVERY_CONFIDENCE_OPTIONS } from '@/services/search/discovery';
 import type {
   DiscoveryConfidenceFilter,
   DiscoveryLinkState,
@@ -41,6 +42,7 @@ import type {
 import { buildDiscoveryHref } from '@/services/search/discovery';
 import type { SearchFilters } from '@/services/search/types';
 import { DISCOVERY_ATTRIBUTE_LABELS } from '@/services/search/discoveryPresentation';
+import { clampDiscoveryRadiusMiles, DEFAULT_DISCOVERY_RADIUS_MILES } from '@/services/search/radius';
 import {
   Dialog,
   DialogContent,
@@ -51,12 +53,6 @@ import {
 
 /** Trust filter options — 'all' shows everything */
 type TrustFilter = 'all' | 'HIGH' | 'LIKELY';
-
-const TRUST_OPTIONS: { value: TrustFilter; label: string }[] = [
-  { value: 'all', label: 'All results' },
-  { value: 'LIKELY', label: 'Likely or higher' },
-  { value: 'HIGH', label: 'High confidence only' },
-];
 
 function formatFilterLabel(value: string): string {
   return value
@@ -76,20 +72,6 @@ const DIMENSION_LABELS: Record<string, string> = {
   situation: 'Specific life situations',
 };
 
-// ============================================================
-// SUGGESTION CHIPS — pre-fill and auto-submit on tap
-// ============================================================
-
-const SUGGESTION_CHIPS = [
-  { label: 'Help paying rent',          prompt: 'I need help paying rent or utilities' },
-  { label: 'Food pantry near me',       prompt: 'Where can I find a food pantry near me?' },
-  { label: 'Mental health support',     prompt: 'I need mental health support or counseling' },
-  { label: 'Job training programs',     prompt: 'Are there job training or employment programs available?' },
-  { label: 'Free or low-cost care',     prompt: 'I need free or low-cost healthcare options' },
-  { label: 'Shelter tonight',           prompt: 'I need a shelter or safe place to stay tonight' },
-] as const;
-
-// ============================================================
 // ============================================================
 // CRISIS BANNER
 // ============================================================
@@ -180,6 +162,8 @@ const QUOTA_RESET_KEY = 'oran:quota-reset-at';
 const SESSION_CONTEXT_KEY_PREFIX = 'oran:chat-session-context:';
 const CHAT_TRANSCRIPT_KEY_PREFIX = 'oran:chat-transcript:';
 const CHAT_DRAFT_KEY_PREFIX = 'oran:chat-draft:';
+const MAX_CHAT_RAIL_SESSIONS = 10;
+const CHAT_REMOVAL_UNDO_WINDOW_MS = 5000;
 
 function getSessionContextStorageKey(sessionId: string): string {
   return `${SESSION_CONTEXT_KEY_PREFIX}${sessionId}`;
@@ -307,6 +291,12 @@ function normalizeSessionContext(sessionContext: ChatSessionContext | undefined)
   const normalized: ChatSessionContext = {
     ...sessionContext,
     activeCity: sessionContext.activeCity?.trim() || undefined,
+    activeGeo: sessionContext.activeGeo
+      ? {
+          ...sessionContext.activeGeo,
+          radiusMiles: clampDiscoveryRadiusMiles(sessionContext.activeGeo.radiusMiles ?? DEFAULT_DISCOVERY_RADIUS_MILES),
+        }
+      : undefined,
     preferredDeliveryModes: sessionContext.preferredDeliveryModes?.filter(Boolean),
     taxonomyTermIds: sessionContext.taxonomyTermIds?.filter(Boolean),
     attributeFilters: sessionContext.attributeFilters,
@@ -316,6 +306,7 @@ function normalizeSessionContext(sessionContext: ChatSessionContext | undefined)
   const hasMeaningfulContext = Boolean(
     normalized.activeNeedId
     || normalized.activeCity
+    || normalized.activeGeo
     || normalized.urgency
     || normalized.preferredDeliveryModes?.length
     || (normalized.trustFilter && normalized.trustFilter !== 'all')
@@ -426,9 +417,9 @@ function QuotaCooldown({ resetAt, onExpired }: { resetAt: Date; onExpired: () =>
       role="status"
       aria-live="polite"
       aria-label="Time until chat quota resets"
-      className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+      className="mt-3 flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800"
     >
-      <Clock className="h-4 w-4 flex-shrink-0 text-amber-500" aria-hidden="true" />
+      <Clock className="h-4 w-4 flex-shrink-0 text-slate-500" aria-hidden="true" />
       <span>Daily limit reached — resets in</span>
       <span className="font-mono font-semibold tabular-nums">{display}</span>
     </div>
@@ -520,14 +511,6 @@ function SearchInterpretationPanel({
   );
 }
 
-function SectionBadge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700">
-      {children}
-    </span>
-  );
-}
-
 const CHAT_HISTORY_INDEX_KEY = 'oran:chat-session-index';
 
 interface ChatSessionSummary {
@@ -538,6 +521,25 @@ interface ChatSessionSummary {
   messageCount: number;
   saved: boolean;
   seeded: boolean;
+}
+
+interface ChatSessionSnapshot {
+  summary: ChatSessionSummary;
+  messages: Message[];
+  draft: string;
+  sessionContext?: ChatSessionContext;
+}
+
+function deleteStoredChatSession(sessionId: string): ChatSessionSummary[] {
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem(getChatTranscriptStorageKey(sessionId));
+    sessionStorage.removeItem(getChatDraftStorageKey(sessionId));
+    sessionStorage.removeItem(getSessionContextStorageKey(sessionId));
+  }
+
+  return writeStoredChatSessions(
+    readStoredChatSessions().filter((session) => session.sessionId !== sessionId),
+  );
 }
 
 function truncateCopy(value: string, maxLength: number): string {
@@ -591,6 +593,57 @@ function upsertStoredChatSession(summary: ChatSessionSummary): ChatSessionSummar
   return writeStoredChatSessions(next);
 }
 
+function readStoredChatSessionSnapshot(sessionId: string): ChatSessionSnapshot | undefined {
+  const summary = readStoredChatSessions().find((session) => session.sessionId === sessionId);
+  if (!summary) {
+    return undefined;
+  }
+
+  return {
+    summary,
+    messages: readStoredMessages(sessionId),
+    draft: readStoredDraft(sessionId),
+    sessionContext: readStoredSessionContext(sessionId),
+  };
+}
+
+function selectChatSessionForTrim(
+  sessions: ChatSessionSummary[],
+  preserveSessionId?: string,
+): ChatSessionSummary | undefined {
+  const oldestFirst = [...sessions].sort(
+    (left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime(),
+  );
+  const nonActive = oldestFirst.filter((session) => session.sessionId !== preserveSessionId);
+  const unsavedNonActive = nonActive.filter((session) => !session.saved);
+  const unsavedAny = oldestFirst.filter((session) => !session.saved);
+
+  return unsavedNonActive[0] ?? nonActive[0] ?? unsavedAny[0] ?? oldestFirst[0];
+}
+
+function trimStoredChatSessionsToLimit(
+  sessions: ChatSessionSummary[],
+  options?: { preserveSessionId?: string },
+): { sessions: ChatSessionSummary[]; removed?: ChatSessionSnapshot } {
+  const persisted = writeStoredChatSessions(sessions);
+  if (persisted.length <= MAX_CHAT_RAIL_SESSIONS) {
+    return { sessions: persisted };
+  }
+
+  const sessionToTrim = selectChatSessionForTrim(persisted, options?.preserveSessionId);
+  if (!sessionToTrim) {
+    return { sessions: persisted.slice(0, MAX_CHAT_RAIL_SESSIONS) };
+  }
+
+  const removed = readStoredChatSessionSnapshot(sessionToTrim.sessionId);
+  const remaining = deleteStoredChatSession(sessionToTrim.sessionId);
+
+  return {
+    sessions: remaining,
+    removed,
+  };
+}
+
 function buildChatSessionSummary(options: {
   sessionId: string;
   messages: Message[];
@@ -625,12 +678,14 @@ function ChatRailSection({
   sessions,
   activeSessionId,
   onSelect,
+  onDelete,
 }: {
   title: string;
   emptyCopy: string;
   sessions: ChatSessionSummary[];
   activeSessionId: string;
   onSelect: (sessionId: string) => void;
+  onDelete: (sessionId: string) => void;
 }) {
   return (
     <div>
@@ -641,27 +696,50 @@ function ChatRailSection({
         ) : sessions.map((session) => {
           const isActive = session.sessionId === activeSessionId;
           return (
-            <button
+            <div
               key={session.sessionId}
-              type="button"
-              onClick={() => onSelect(session.sessionId)}
-              className={`w-full rounded-2xl border px-3 py-3 text-left transition ${isActive ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'}`}
+              className={`flex items-start gap-2 rounded-2xl border px-3 py-3 transition ${isActive ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'}`}
             >
-              <div className="flex items-start justify-between gap-2">
-                <span className="line-clamp-2 text-sm font-medium">{session.title}</span>
-                {session.saved ? (
-                  <BookmarkCheck className={`mt-0.5 h-4 w-4 flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`} aria-hidden="true" />
-                ) : (
-                  <span className={`text-[10px] ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>
-                    {session.messageCount > 0 ? `${session.messageCount} msgs` : 'Draft'}
-                  </span>
-                )}
-              </div>
-              <p className={`mt-1 line-clamp-2 text-xs ${isActive ? 'text-slate-200' : 'text-slate-500'}`}>{session.preview}</p>
-            </button>
+              <button
+                type="button"
+                onClick={() => onSelect(session.sessionId)}
+                className="min-w-0 flex-1 text-left"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="line-clamp-2 text-sm font-medium">{session.title}</span>
+                  <div className="flex items-center gap-2">
+                    {session.saved ? (
+                      <BookmarkCheck className={`mt-0.5 h-4 w-4 flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-500'}`} aria-hidden="true" />
+                    ) : (
+                      <span className={`text-[10px] ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>
+                        {session.messageCount > 0 ? `${session.messageCount} msgs` : 'Draft'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className={`mt-1 line-clamp-2 text-xs ${isActive ? 'text-slate-200' : 'text-slate-500'}`}>{session.preview}</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete(session.sessionId)}
+                className={`rounded-full p-1 ${isActive ? 'text-slate-300 hover:bg-white/10 hover:text-white' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'}`}
+                aria-label={`Delete ${session.title}`}
+                title="Delete chat"
+              >
+                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function ChatHistoryNote() {
+  return (
+    <div className="border-t border-slate-200 px-4 py-3 text-xs leading-5 text-slate-500">
+      Chats stay on this device and the rail keeps the newest 10. Save chat keeps a conversation in higher priority, Delete removes it locally, and saved resources remain the durable thing to come back to.
     </div>
   );
 }
@@ -715,11 +793,20 @@ export function ChatWindow({
   const [serverSyncEnabled] = useState(() => isServerSyncEnabledOnDevice());
   const [ignoreProfileShaping, setIgnoreProfileShaping] = useState(false);
   const [chatSessions, setChatSessions] = useState<ChatSessionSummary[]>(() => readStoredChatSessions());
+  const [pendingRemovedChat, setPendingRemovedChat] = useState<ChatSessionSnapshot | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const { success } = useToast();
+  const [radiusMiles, setRadiusMiles] = useState(DEFAULT_DISCOVERY_RADIUS_MILES);
+  const [isLocating, setIsLocating] = useState(false);
+  const [, setMessageScrollEnabled] = useState(false);
+  const [showMessageTopFade, setShowMessageTopFade] = useState(false);
+  const [showMessageBottomFade, setShowMessageBottomFade] = useState(false);
+  const [locationPromptDismissed, setLocationPromptDismissed] = useState(false);
+  const { success, error: toastError, info } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messageLogRef = useRef<HTMLDivElement>(null);
   const quotaStateVersionRef = useRef(0);
+  const pendingRemovalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Filters: trust tier + canonical attribute filters
   const [trustFilter, setTrustFilter] = useState<TrustFilter>(initialTrustFilter ?? 'all');
@@ -737,6 +824,92 @@ export function ChatWindow({
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
+
+  const dismissPendingRemovedChat = useCallback(() => {
+    if (pendingRemovalTimerRef.current) {
+      clearTimeout(pendingRemovalTimerRef.current);
+      pendingRemovalTimerRef.current = null;
+    }
+    setPendingRemovedChat(null);
+  }, []);
+
+  const queuePendingRemovedChat = useCallback((snapshot?: ChatSessionSnapshot) => {
+    if (!snapshot) {
+      return;
+    }
+
+    if (pendingRemovalTimerRef.current) {
+      clearTimeout(pendingRemovalTimerRef.current);
+    }
+
+    setPendingRemovedChat(snapshot);
+    pendingRemovalTimerRef.current = setTimeout(() => {
+      pendingRemovalTimerRef.current = null;
+      setPendingRemovedChat(null);
+    }, CHAT_REMOVAL_UNDO_WINDOW_MS);
+  }, []);
+
+  const commitChatSessions = useCallback((nextSessions: ChatSessionSummary[], preserveSessionId?: string) => {
+    const result = trimStoredChatSessionsToLimit(nextSessions, { preserveSessionId: preserveSessionId ?? sessionId });
+    setChatSessions(result.sessions);
+    if (result.removed) {
+      queuePendingRemovedChat(result.removed);
+    }
+  }, [queuePendingRemovedChat, sessionId]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingRemovalTimerRef.current) {
+        clearTimeout(pendingRemovalTimerRef.current);
+      }
+    };
+  }, []);
+
+  const updateMessageScrollState = useCallback(() => {
+    const node = messageLogRef.current;
+    if (!node) {
+      setMessageScrollEnabled(false);
+      setShowMessageTopFade(false);
+      setShowMessageBottomFade(false);
+      return;
+    }
+
+    const contentOverflowing = node.scrollHeight > node.clientHeight + 8;
+    const shouldScroll = messages.length > 2 || isLoading || contentOverflowing;
+    setMessageScrollEnabled(shouldScroll);
+
+    if (!shouldScroll) {
+      setShowMessageTopFade(false);
+      setShowMessageBottomFade(false);
+      return;
+    }
+
+    setShowMessageTopFade(node.scrollTop > 8);
+    setShowMessageBottomFade(node.scrollTop + node.clientHeight < node.scrollHeight - 8);
+  }, [isLoading, messages.length]);
+
+  useEffect(() => {
+    updateMessageScrollState();
+  }, [messages, isLoading, updateMessageScrollState]);
+
+  useEffect(() => {
+    const node = messageLogRef.current;
+    if (!node) {
+      return;
+    }
+
+    const handleScroll = () => updateMessageScrollState();
+    node.addEventListener('scroll', handleScroll);
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => updateMessageScrollState())
+      : null;
+    resizeObserver?.observe(node);
+
+    return () => {
+      node.removeEventListener('scroll', handleScroll);
+      resizeObserver?.disconnect();
+    };
+  }, [updateMessageScrollState]);
 
   const applyQuotaState = useCallback((remaining: number, resetAt?: string | null, version?: number) => {
     if (version !== undefined && version !== quotaStateVersionRef.current) {
@@ -792,20 +965,20 @@ export function ChatWindow({
           initialNeedId,
           initialTrustFilter,
           initialAttributeFilters,
-          ignoreProfileShaping,
+          ignoreProfileShaping: false,
         })
       : undefined;
 
     if (!existingSession) {
-      setChatSessions(upsertStoredChatSession(buildChatSessionSummary({
+      commitChatSessions(upsertStoredChatSession(buildChatSessionSummary({
         sessionId,
         messages: storedMessages,
         draft: storedDraft,
         initialPrompt,
         seeded,
-      })));
+      })), sessionId);
     } else {
-      setChatSessions(storedSessions);
+      commitChatSessions(storedSessions, sessionId);
     }
 
     setMessages(storedMessages);
@@ -819,7 +992,9 @@ export function ChatWindow({
     setTrustFilter((nextContext?.trustFilter ?? initialTrustFilter ?? 'all') as TrustFilter);
     setSeededAttributeFilters(nextContext?.attributeFilters ?? (seeded ? initialAttributeFilters : undefined));
     setIgnoreProfileShaping(nextContext?.profileShapingEnabled === false);
+    setRadiusMiles(clampDiscoveryRadiusMiles(nextContext?.activeGeo?.radiusMiles ?? DEFAULT_DISCOVERY_RADIUS_MILES));
   }, [
+    commitChatSessions,
     initialHasSeededContext,
     initialAttributeFilters,
     initialNeedId,
@@ -852,8 +1027,8 @@ export function ChatWindow({
       existing,
       seeded: existing?.seeded ?? showSeededContext,
     });
-    setChatSessions(upsertStoredChatSession(summary));
-  }, [initialPrompt, input, messages, sessionId, showSeededContext]);
+    commitChatSessions(upsertStoredChatSession(summary), sessionId);
+  }, [commitChatSessions, initialPrompt, input, messages, sessionId, showSeededContext]);
 
   // Fetch the server-authoritative quota state on mount.
   // This ensures the countdown and remaining count are accurate even after
@@ -894,24 +1069,8 @@ export function ChatWindow({
     });
   }, [serverSyncEnabled, success, userId]);
 
-  const seededAttributeLabels = useMemo(() => {
-    return Object.values(seededAttributeFilters ?? {})
-      .flat()
-      .map((value) => formatFilterLabel(value))
-      .slice(0, 4);
-  }, [seededAttributeFilters]);
-
-  const isSeededPromptActive = Boolean(initialPrompt?.trim()) && input.trim() === (initialPrompt?.trim() ?? '');
-  const hasSeededBrowseContext = showSeededContext && (
-    isSeededPromptActive
-    || trustFilter !== 'all'
-    || Object.keys(seededAttributeFilters ?? {}).length > 0
-  );
-  const seededContextDescription = isSeededPromptActive
-    ? 'Chat picked up your current search draft and filters. Edit the message below or send it as-is.'
-    : 'Chat picked up your current browse filters. Type a message below and it will stay scoped to them.';
-  const trustFilterLabel = DISCOVERY_CONFIDENCE_OPTIONS.find((option) => option.value === trustFilter)?.label;
   const activeNeedId = sessionContext?.activeNeedId;
+  const activeGeo = sessionContext?.activeGeo;
   const currentChatSummary = useMemo(
     () => chatSessions.find((session) => session.sessionId === sessionId),
     [chatSessions, sessionId],
@@ -929,16 +1088,155 @@ export function ChatWindow({
     [seededAttributeFilters],
   );
 
-  const clearSeededBrowseContext = useCallback(() => {
-    setShowSeededContext(false);
-    setTrustFilter('all');
-    setSeededAttributeFilters(undefined);
-    setInput((current) => (current.trim() === (initialPrompt?.trim() ?? '') ? '' : current));
-  }, [initialPrompt]);
-
   const updateSessionContext = useCallback((updater: (current: ChatSessionContext | undefined) => ChatSessionContext | undefined) => {
     setSessionContext((current) => normalizeSessionContext(updater(current)));
   }, []);
+
+  const handleRadiusChange = useCallback((nextMiles: number) => {
+    const clamped = clampDiscoveryRadiusMiles(nextMiles);
+    setRadiusMiles(clamped);
+    updateSessionContext((current) => current?.activeGeo ? {
+      ...(current ?? {}),
+      activeGeo: {
+        ...current.activeGeo,
+        radiusMiles: clamped,
+      },
+      profileShapingEnabled: !ignoreProfileShaping,
+    } : current);
+  }, [ignoreProfileShaping, updateSessionContext]);
+
+  const clearLocation = useCallback(() => {
+    updateSessionContext((current) => ({
+      ...(current ?? {}),
+      activeGeo: undefined,
+      profileShapingEnabled: !ignoreProfileShaping,
+    }));
+  }, [ignoreProfileShaping, updateSessionContext]);
+
+  const requestDeviceLocation = useCallback(() => {
+    if (isLocating) return;
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+      toastError('Device location is not available in this browser.');
+      return;
+    }
+
+    setIsLocating(true);
+    info('Requesting approximate device location…');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Math.round(pos.coords.latitude * 100) / 100;
+        const lng = Math.round(pos.coords.longitude * 100) / 100;
+        updateSessionContext((current) => ({
+          ...(current ?? {}),
+          activeGeo: {
+            lat,
+            lng,
+            radiusMiles,
+          },
+          profileShapingEnabled: !ignoreProfileShaping,
+        }));
+        setShowSeededContext(false);
+        setIsLocating(false);
+        success('Using your approximate location for nearby chat results.');
+      },
+      (error) => {
+        setIsLocating(false);
+        toastError(
+          error.code === error.PERMISSION_DENIED
+            ? 'Location permission denied.'
+            : error.code === error.TIMEOUT
+              ? 'Location request timed out.'
+              : 'Location unavailable.',
+        );
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 10_000,
+        maximumAge: 60_000,
+      },
+    );
+  }, [ignoreProfileShaping, info, isLocating, radiusMiles, success, toastError, updateSessionContext]);
+
+  useEffect(() => {
+    if (sessionContext?.activeGeo || locationPromptDismissed || typeof navigator === 'undefined' || !('permissions' in navigator)) {
+      return;
+    }
+
+    const permissions = navigator.permissions as Permissions;
+    void permissions.query({ name: 'geolocation' as PermissionName }).then((result) => {
+      if (result.state === 'granted') {
+        requestDeviceLocation();
+      }
+    }).catch(() => {
+      // Non-fatal: some browsers do not expose the permissions query consistently.
+    });
+  }, [locationPromptDismissed, requestDeviceLocation, sessionContext?.activeGeo]);
+
+  const deleteChatSession = useCallback((nextSessionId: string) => {
+    const remainingSessions = deleteStoredChatSession(nextSessionId);
+    setChatSessions(remainingSessions);
+    if (pendingRemovedChat?.summary.sessionId === nextSessionId) {
+      dismissPendingRemovedChat();
+    }
+
+    if (nextSessionId !== sessionId) {
+      return;
+    }
+
+    const nextActiveSession = remainingSessions[0]?.sessionId ?? crypto.randomUUID();
+
+    if (remainingSessions.length === 0) {
+      commitChatSessions(upsertStoredChatSession({
+        sessionId: nextActiveSession,
+        title: 'New chat',
+        preview: 'Verified service search',
+        updatedAt: new Date().toISOString(),
+        messageCount: 0,
+        saved: false,
+        seeded: false,
+      }), nextActiveSession);
+    }
+
+    if (onSessionChange) {
+      onSessionChange(nextActiveSession);
+      return;
+    }
+
+    sessionStorage.setItem('oran_chat_session_id', nextActiveSession);
+    window.location.assign('/chat');
+  }, [commitChatSessions, dismissPendingRemovedChat, onSessionChange, pendingRemovedChat, sessionId]);
+
+  const restorePendingRemovedChat = useCallback((options?: { select?: boolean; save?: boolean }) => {
+    if (!pendingRemovedChat) {
+      return;
+    }
+
+    const restoredSummary: ChatSessionSummary = {
+      ...pendingRemovedChat.summary,
+      saved: options?.save ? true : pendingRemovedChat.summary.saved,
+      updatedAt: new Date().toISOString(),
+    };
+
+    writeStoredMessages(restoredSummary.sessionId, pendingRemovedChat.messages);
+    writeStoredDraft(restoredSummary.sessionId, pendingRemovedChat.draft);
+    writeStoredSessionContext(restoredSummary.sessionId, pendingRemovedChat.sessionContext);
+    dismissPendingRemovedChat();
+    commitChatSessions(upsertStoredChatSession(restoredSummary), restoredSummary.sessionId);
+
+    if (!options?.select) {
+      success(options?.save ? 'Chat restored and saved.' : 'Chat restored.');
+      return;
+    }
+
+    success(options?.save ? 'Chat restored, saved, and reopened.' : 'Chat restored and reopened.');
+    if (onSessionChange) {
+      onSessionChange(restoredSummary.sessionId);
+      return;
+    }
+
+    sessionStorage.setItem('oran_chat_session_id', restoredSummary.sessionId);
+    window.location.assign('/chat');
+  }, [commitChatSessions, dismissPendingRemovedChat, onSessionChange, pendingRemovedChat, success]);
 
   const _clearSessionContextField = useCallback((field: 'activeNeedId' | 'activeCity' | 'urgency' | 'trustFilter' | 'attributeFilters' | 'preferredDeliveryModes') => {
     updateSessionContext((current) => {
@@ -1022,7 +1320,7 @@ export function ChatWindow({
 
   const _startNewSession = useCallback(() => {
     const nextSessionId = crypto.randomUUID();
-    setChatSessions(upsertStoredChatSession({
+    commitChatSessions(upsertStoredChatSession({
       sessionId: nextSessionId,
       title: 'New chat',
       preview: 'Verified service search',
@@ -1030,14 +1328,14 @@ export function ChatWindow({
       messageCount: 0,
       saved: false,
       seeded: false,
-    }));
+    }), nextSessionId);
     if (onSessionChange) {
       onSessionChange(nextSessionId);
       return;
     }
     sessionStorage.setItem('oran_chat_session_id', nextSessionId);
     window.location.assign('/chat');
-  }, [onSessionChange]);
+  }, [commitChatSessions, onSessionChange]);
 
   const selectSession = useCallback((nextSessionId: string) => {
     if (nextSessionId === sessionId) {
@@ -1066,8 +1364,8 @@ export function ChatWindow({
       saved: !existing.saved,
       updatedAt: new Date().toISOString(),
     };
-    setChatSessions(upsertStoredChatSession(next));
-  }, [currentChatSummary, initialPrompt, input, messages, sessionId, showSeededContext]);
+    commitChatSessions(upsertStoredChatSession(next), sessionId);
+  }, [commitChatSessions, currentChatSummary, initialPrompt, input, messages, sessionId, showSeededContext]);
 
   const handleCategoryClick = useCallback((needId: DiscoveryNeedId) => {
     updateSessionContext((current) => ({
@@ -1166,6 +1464,12 @@ export function ChatWindow({
         profileMode: ignoreProfileShaping ? 'ignore' : 'use',
         sessionContext: normalizeSessionContext({
           ...(sessionContext ?? {}),
+          activeGeo: sessionContext?.activeGeo
+            ? {
+                ...sessionContext.activeGeo,
+                radiusMiles,
+              }
+            : undefined,
           trustFilter,
           attributeFilters: seededAttributeFilters,
           preferredDeliveryModes: seededAttributeFilters?.delivery ?? sessionContext?.preferredDeliveryModes,
@@ -1207,6 +1511,9 @@ export function ChatWindow({
       }
       if (data.sessionContext?.attributeFilters) {
         setSeededAttributeFilters(data.sessionContext.attributeFilters);
+      }
+      if (data.sessionContext?.activeGeo?.radiusMiles) {
+        setRadiusMiles(clampDiscoveryRadiusMiles(data.sessionContext.activeGeo.radiusMiles));
       }
       if (typeof data.sessionContext?.profileShapingEnabled === 'boolean') {
         setIgnoreProfileShaping(!data.sessionContext.profileShapingEnabled);
@@ -1260,6 +1567,7 @@ export function ChatWindow({
     input,
     isLoading,
     quotaRemaining,
+    radiusMiles,
     seededAttributeFilters,
     sessionId,
     showSeededContext,
@@ -1313,7 +1621,7 @@ export function ChatWindow({
   }, [applyQuotaState]);
 
   return (
-    <div className="grid h-[calc(100dvh-13rem)] min-h-[300px] gap-4 md:h-full md:min-h-0 md:max-h-none lg:grid-cols-[280px,minmax(0,1fr)]">
+    <div className="grid min-h-[700px] gap-3 md:h-full md:min-h-0 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)] 2xl:grid-cols-[300px_minmax(0,1fr)]">
       <div className="space-y-3 lg:hidden">
         <button
           type="button"
@@ -1330,6 +1638,7 @@ export function ChatWindow({
             sessions={savedChatSessions}
             activeSessionId={sessionId}
             onSelect={selectSession}
+            onDelete={deleteChatSession}
           />
           <div className="mt-4">
             <ChatRailSection
@@ -1338,12 +1647,16 @@ export function ChatWindow({
               sessions={recentChatSessions}
               activeSessionId={sessionId}
               onSelect={selectSession}
+              onDelete={deleteChatSession}
             />
+          </div>
+          <div className="mt-4 rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">
+            Chats stay on this device. The rail keeps the newest 10 conversations and trims older ones automatically.
           </div>
         </div>
       </div>
 
-      <aside className="hidden min-h-0 flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white lg:flex">
+      <aside className="hidden min-h-0 flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_14px_36px_rgba(15,23,42,0.05)] lg:flex">
         <div className="border-b border-slate-200 px-4 py-4">
           <button
             type="button"
@@ -1361,6 +1674,7 @@ export function ChatWindow({
             sessions={savedChatSessions}
             activeSessionId={sessionId}
             onSelect={selectSession}
+            onDelete={deleteChatSession}
           />
 
           <div className="mt-6">
@@ -1370,169 +1684,218 @@ export function ChatWindow({
               sessions={recentChatSessions}
               activeSessionId={sessionId}
               onSelect={selectSession}
+              onDelete={deleteChatSession}
             />
           </div>
         </div>
+        <ChatHistoryNote />
       </aside>
 
-      <div className="flex min-h-[300px] flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-      {/* Header — quota indicator + actions */}
-      <div className="border-b border-slate-200 bg-white px-4 py-4 md:px-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Verified records only</p>
-            <p className="mt-2 max-w-2xl text-sm text-slate-600">ORAN Chat only helps with verified service discovery. It uses stored ORAN records, will not invent facts, and refuses unrelated or inappropriate requests.</p>
-          </div>
-          <div className="flex items-center gap-2">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
+
+      {/* ── Compact toolbar ── */}
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-5 py-3 md:px-6">
+        <span className="hidden text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 lg:block">Verified records only</span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setFiltersOpen(true)}
+            className="inline-flex min-h-[34px] items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900"
+            aria-label="Open chat filters"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+            Refine
+          </button>
+          <button
+            type="button"
+            onClick={toggleCurrentConversationSaved}
+            className="inline-flex min-h-[34px] items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900"
+            aria-label={currentChatSummary?.saved ? 'Unsave current chat' : 'Save current chat'}
+            title={currentChatSummary?.saved ? 'Unsave current chat' : 'Save current chat'}
+          >
+            {currentChatSummary?.saved ? <BookmarkCheck className="h-3.5 w-3.5" aria-hidden="true" /> : <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />}
+            {currentChatSummary?.saved ? 'Saved' : 'Save chat'}
+          </button>
+          {messages.length > 0 && (
             <button
               type="button"
-              onClick={toggleCurrentConversationSaved}
-              className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900"
-              aria-label={currentChatSummary?.saved ? 'Unsave current chat' : 'Save current chat'}
-              title={currentChatSummary?.saved ? 'Unsave current chat' : 'Save current chat'}
+              onClick={clearConversation}
+              className="inline-flex min-h-[34px] items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700"
+              title="Clear conversation"
+              aria-label="Clear conversation"
             >
-              {currentChatSummary?.saved ? <BookmarkCheck className="h-3.5 w-3.5" aria-hidden="true" /> : <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />}
-              {currentChatSummary?.saved ? 'Saved' : 'Save chat'}
+              <Trash2 className="h-3 w-3" aria-hidden="true" />
+              Clear
             </button>
-            {messages.length > 0 && (
-              <button
-                type="button"
-                onClick={clearConversation}
-                className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700"
-                title="Clear conversation"
-                aria-label="Clear conversation"
-              >
-                <Trash2 className="h-3 w-3" aria-hidden="true" />
-                Clear
-              </button>
-            )}
-            <p className={`rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums ${
-              quotaRemaining <= 10
-                ? 'border-amber-200 bg-amber-50 text-amber-700'
-                : 'border-slate-200 bg-white text-slate-600'
-            }`}>
-              {quotaRemaining} left today
-            </p>
-          </div>
-        </div>
-        {quotaRemaining < MAX_CHAT_QUOTA && (
-          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
-            <div
-              className={`h-full rounded-full transition-all duration-300 ${
-                quotaRemaining > Math.floor(MAX_CHAT_QUOTA / 2)
-                  ? 'bg-slate-900'
-                  : quotaRemaining > 10
-                  ? 'bg-amber-400'
-                  : 'bg-red-500'
-              }`}
-              style={{ width: `${(quotaRemaining / MAX_CHAT_QUOTA) * 100}%` }}
-            />
-          </div>
-        )}
-
-        {!ignoreProfileShaping && (
-          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-            <span className="font-semibold">Saved profile guidance active.</span>
-            <span className="ml-1 text-slate-600">It can guide ranking and follow-up context, but it does not create or hide records on its own.</span>
-            <button
-              type="button"
-              onClick={() => setIgnoreProfileShaping(true)}
-              className="ml-3 inline-flex items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-900 hover:bg-slate-100"
-            >
-              Turn off for this session
-            </button>
-          </div>
-        )}
-
-        <div className="mt-4 space-y-3 rounded-[24px] border border-slate-200 bg-slate-50 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Quick chat categories">
-              {QUICK_DISCOVERY_NEEDS.map((need) => {
-                const selected = activeNeedId === need.id;
-                return (
-                  <button
-                    key={need.id}
-                    type="button"
-                    onClick={() => handleCategoryClick(need.id)}
-                    className={`inline-flex min-h-[40px] items-center rounded-full border px-3 py-1.5 text-xs font-medium transition ${selected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'}`}
-                    aria-pressed={selected}
-                  >
-                    {need.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setFiltersOpen(true)}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-100"
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-              Filters
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Trust</span>
-            <div role="group" aria-label="Trust filter" className="flex flex-wrap gap-1.5">
-              {TRUST_OPTIONS.map((opt) => {
-                const selected = trustFilter === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setTrustFilter(opt.value)}
-                    className={`inline-flex min-h-[40px] flex-shrink-0 items-center justify-center rounded-full px-3 py-1.5 text-xs font-medium transition ${selected ? 'border border-slate-900 bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'}`}
-                    aria-pressed={selected}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {userId && (
-              <button
-                type="button"
-                onClick={() => setIgnoreProfileShaping((current) => !current)}
-                className={`inline-flex min-h-[40px] items-center rounded-full border px-3 py-1.5 text-xs font-medium ${ignoreProfileShaping ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-slate-300 bg-white text-slate-800'}`}
-                aria-pressed={ignoreProfileShaping}
-              >
-                {ignoreProfileShaping ? 'Saved profile off for this session' : 'Use saved profile signals'}
-              </button>
-            )}
-          </div>
-
-          {(activeNeedId || activeAttributeCount > 0 || trustFilter !== 'all') && (
-            <div className="flex flex-wrap gap-2">
-              {activeNeedId && (
-                <SectionBadge>
-                  Category: {QUICK_DISCOVERY_NEEDS.find((need) => need.id === activeNeedId)?.label ?? formatFilterLabel(activeNeedId)}
-                </SectionBadge>
-              )}
-              {trustFilter !== 'all' && trustFilterLabel && (
-                <SectionBadge>
-                  Trust: {trustFilterLabel}
-                </SectionBadge>
-              )}
-              {Object.entries(seededAttributeFilters ?? {}).flatMap(([taxonomy, tags]) => tags.map((tag) => ({ taxonomy, tag }))).slice(0, 6).map(({ taxonomy, tag }) => (
-                <SectionBadge key={`${taxonomy}-${tag}`}>
-                  {DISCOVERY_ATTRIBUTE_LABELS[tag] ?? formatFilterLabel(tag)}
-                </SectionBadge>
-              ))}
-            </div>
           )}
+          <p className={`rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums ${
+            quotaRemaining <= 10
+              ? 'border-slate-300 bg-slate-100 text-slate-900'
+              : 'border-slate-200 bg-white text-slate-600'
+          }`}>
+            {quotaRemaining} left today
+          </p>
         </div>
       </div>
 
-      {/* Messages */}
+      {/* ── Quota progress bar ── */}
+      {quotaRemaining < MAX_CHAT_QUOTA && (
+        <div className="h-px w-full shrink-0 overflow-hidden bg-slate-100" aria-hidden="true">
+          <div
+            className={`h-full transition-all duration-300 ${
+              quotaRemaining > Math.floor(MAX_CHAT_QUOTA / 2)
+                ? 'bg-slate-300'
+                : quotaRemaining > 10
+                ? 'bg-amber-400'
+                : 'bg-rose-400'
+            }`}
+            style={{ width: `${(quotaRemaining / MAX_CHAT_QUOTA) * 100}%` }}
+          />
+        </div>
+      )}
+
+      {/* ── Active context strip — only when context is set ── */}
+      {sessionContext && (
+        <div className="shrink-0 border-b border-slate-100 bg-slate-50/80 px-5 py-2 md:px-6">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">Active chat context</span>
+            {sessionContext.activeNeedId && (
+              <button
+                type="button"
+                onClick={() => _clearSessionContextField('activeNeedId')}
+                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+              >
+                Need: {formatFilterLabel(sessionContext.activeNeedId)} ×
+              </button>
+            )}
+            {sessionContext.activeGeo && (
+              <button
+                type="button"
+                onClick={clearLocation}
+                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+              >
+                <MapPin className="mr-1 h-3 w-3" aria-hidden="true" />
+                {sessionContext.activeGeo.radiusMiles} mi ×
+              </button>
+            )}
+            {sessionContext.activeCity && (
+              <button
+                type="button"
+                onClick={() => _clearSessionContextField('activeCity')}
+                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+              >
+                City: {sessionContext.activeCity} ×
+              </button>
+            )}
+            {sessionContext.urgency && (
+              <button
+                type="button"
+                onClick={() => _clearSessionContextField('urgency')}
+                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+              >
+                Urgency: {formatFilterLabel(sessionContext.urgency)} ×
+              </button>
+            )}
+            {sessionContext.trustFilter && sessionContext.trustFilter !== 'all' && (
+              <button
+                type="button"
+                onClick={() => _clearSessionContextField('trustFilter')}
+                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+              >
+                Trust: {formatFilterLabel(sessionContext.trustFilter)} ×
+              </button>
+            )}
+            {sessionContext.preferredDeliveryModes?.map((mode) => (
+              <button
+                key={`strip-delivery-${mode}`}
+                type="button"
+                onClick={() => {
+                  setSeededAttributeFilters((current) => {
+                    const nextModes = current?.delivery?.filter((value) => value !== mode) ?? [];
+                    const nextFilters = { ...(current ?? {}) };
+                    if (nextModes.length > 0) { nextFilters.delivery = nextModes; } else { delete nextFilters.delivery; }
+                    return Object.keys(nextFilters).length > 0 ? nextFilters : undefined;
+                  });
+                  updateSessionContext((current) => ({
+                    ...(current ?? {}),
+                    preferredDeliveryModes: current?.preferredDeliveryModes?.filter((value) => value !== mode),
+                    profileShapingEnabled: !ignoreProfileShaping,
+                  }));
+                }}
+                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+              >
+                Delivery: {formatFilterLabel(mode)} ×
+              </button>
+            ))}
+            {Object.entries(sessionContext.attributeFilters ?? {})
+              .flatMap(([taxonomy, tags]) => taxonomy === 'delivery' ? [] : tags.map((tag) => ({ taxonomy, tag })))
+              .map(({ taxonomy, tag }) => (
+                <button
+                  key={`strip-${taxonomy}-${tag}`}
+                  type="button"
+                  onClick={() => _removeSessionAttributeTag(taxonomy, tag)}
+                  className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                >
+                  {formatFilterLabel(tag)} ×
+                </button>
+              ))}
+            <div className="ml-auto flex shrink-0 items-center gap-1.5">
+              {userId ? (
+                <button
+                  type="button"
+                  onClick={() => setIgnoreProfileShaping((current) => !current)}
+                  className={`inline-flex min-h-[26px] items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${ignoreProfileShaping ? 'border-slate-300 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-700'}`}
+                  aria-pressed={ignoreProfileShaping}
+                >
+                  {ignoreProfileShaping ? 'Profile off' : 'Profile on'}
+                </button>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setTrustFilter('all');
+                  setSeededAttributeFilters(undefined);
+                  setSessionContext(undefined);
+                  setShowSeededContext(false);
+                }}
+              >
+                Clear all
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pending removed chat ── */}
+      {pendingRemovedChat && (
+        <div className="shrink-0 border-b border-amber-100 bg-amber-50 px-5 py-2.5 md:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-800">
+              <span className="font-semibold">{pendingRemovedChat.summary.title}</span>{' '}
+              was auto-removed. <span className="text-slate-500">Restore within 5 s.</span>
+            </p>
+            <div className="flex shrink-0 gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => restorePendingRemovedChat()}>Undo</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => restorePendingRemovedChat({ select: true })}>Reopen</Button>
+              <Button type="button" size="sm" onClick={() => restorePendingRemovedChat({ save: true, select: true })}>Save &amp; reopen</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Message log ── */}
       <div
-        className="flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,_#ffffff_0%,_#fafafa_100%)] p-4 md:p-5"
+        ref={messageLogRef}
+        className="relative min-h-0 flex-1 overflow-y-auto px-5 py-5 md:px-6 [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-track]:bg-transparent"
         role="log"
         aria-live="polite"
         aria-label="Chat messages"
       >
+        {showMessageTopFade ? (
+          <div className="pointer-events-none sticky top-0 z-10 -mb-6 h-6 bg-gradient-to-b from-white to-transparent" aria-hidden="true" />
+        ) : null}
         {/* Crisis banner shown if any message triggered crisis */}
         {hasCrisis && <CrisisBanner />}
 
@@ -1546,165 +1909,53 @@ export function ChatWindow({
           </div>
         )}
 
-        {sessionContext && (
-          <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 text-left">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  Active chat context
-                </p>
-                <p className="mt-1 text-sm text-slate-700">
-                  Follow-up questions can reuse this scope until you clear it.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="default"
-                onClick={() => {
-                  setTrustFilter('all');
-                  setSeededAttributeFilters(undefined);
-                  setSessionContext(undefined);
-                }}
-              >
-                Clear all
-              </Button>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {sessionContext.activeNeedId && (
-                <button
-                  type="button"
-                  onClick={() => _clearSessionContextField('activeNeedId')}
-                  className="inline-flex min-h-[44px] items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-800"
-                >
-                  Need: {formatFilterLabel(sessionContext.activeNeedId)} x
-                </button>
-              )}
-              {sessionContext.activeCity && (
-                <button
-                  type="button"
-                  onClick={() => _clearSessionContextField('activeCity')}
-                  className="inline-flex min-h-[44px] items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-800"
-                >
-                  City: {sessionContext.activeCity} x
-                </button>
-              )}
-              {sessionContext.urgency && (
-                <button
-                  type="button"
-                  onClick={() => _clearSessionContextField('urgency')}
-                  className="inline-flex min-h-[44px] items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-800"
-                >
-                  Urgency: {formatFilterLabel(sessionContext.urgency)} x
-                </button>
-              )}
-              {sessionContext.trustFilter && sessionContext.trustFilter !== 'all' && (
-                <button
-                  type="button"
-                  onClick={() => _clearSessionContextField('trustFilter')}
-                  className="inline-flex min-h-[44px] items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-800"
-                >
-                  Trust: {formatFilterLabel(sessionContext.trustFilter)} x
-                </button>
-              )}
-              {sessionContext.preferredDeliveryModes?.map((mode) => (
-                <button
-                  key={`delivery-${mode}`}
-                  type="button"
-                  onClick={() => {
-                    setSeededAttributeFilters((current) => {
-                      const nextModes = current?.delivery?.filter((value) => value !== mode) ?? [];
-                      const nextFilters = { ...(current ?? {}) };
-                      if (nextModes.length > 0) {
-                        nextFilters.delivery = nextModes;
-                      } else {
-                        delete nextFilters.delivery;
-                      }
-                      return Object.keys(nextFilters).length > 0 ? nextFilters : undefined;
-                    });
-                    updateSessionContext((current) => ({
-                      ...(current ?? {}),
-                      preferredDeliveryModes: current?.preferredDeliveryModes?.filter((value) => value !== mode),
-                      profileShapingEnabled: !ignoreProfileShaping,
-                    }));
-                  }}
-                  className="inline-flex min-h-[44px] items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-800"
-                >
-                  Delivery: {formatFilterLabel(mode)} x
-                </button>
-              ))}
-              {Object.entries(sessionContext.attributeFilters ?? {})
-                .flatMap(([taxonomy, tags]) => taxonomy === 'delivery'
-                  ? []
-                  : tags.map((tag) => ({ taxonomy, tag })))
-                .map(({ taxonomy, tag }) => (
-                  <button
-                    key={`${taxonomy}-${tag}`}
-                    type="button"
-                    onClick={() => _removeSessionAttributeTag(taxonomy, tag)}
-                    className="inline-flex min-h-[44px] items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-800"
-                  >
-                    {formatFilterLabel(tag)} x
-                  </button>
-                ))}
-            </div>
-          </div>
-        )}
-
         {messages.length === 0 && (
-          <div className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white px-5 py-8 shadow-sm md:px-8 md:py-10">
-            <div className="relative flex flex-col items-center gap-5">
-            {hasSeededBrowseContext && (
-              <div className="w-full max-w-2xl rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 text-left">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  Using current browse context
-                </p>
-                <p className="mt-1 text-sm text-slate-700">
-                  {seededContextDescription}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {isSeededPromptActive && (
-                    <SectionBadge>
-                      Need: {input.trim()}
-                    </SectionBadge>
-                  )}
-                  {trustFilter !== 'all' && trustFilterLabel && (
-                    <SectionBadge>
-                      Trust: {trustFilterLabel}
-                    </SectionBadge>
-                  )}
-                  {seededAttributeLabels.map((label) => (
-                    <SectionBadge key={label}>
-                      {label}
-                    </SectionBadge>
-                  ))}
-                </div>
-                <div className="mt-3 flex justify-end">
-                  <Button type="button" variant="outline" size="sm" onClick={clearSeededBrowseContext}>
-                    Clear context
-                  </Button>
-                </div>
+          <div className="flex flex-col gap-6 py-2">
+            {/* ── Welcome heading ── */}
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div className="max-w-[46rem]">
+                <p className="text-2xl font-semibold tracking-tight text-slate-900 md:text-[2rem]">What verified help do you need?</p>
+                <p className="mt-1.5 text-[15px] leading-7 text-slate-500">Start with a common need or type your question below. Refine narrows scope without losing this conversation.</p>
               </div>
-            )}
-            <div className="max-w-xl text-center">
-              <p className="text-2xl font-semibold tracking-tight text-slate-900">What verified help do you need?</p>
-              <p className="mt-2 text-sm text-slate-500">Ask ORAN Chat for services, provider details, eligibility hints, or next steps from the ORAN catalog.</p>
-            </div>
-            <div className="grid w-full max-w-2xl gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {SUGGESTION_CHIPS.map((chip) => (
-                <button
-                  key={chip.label}
-                  type="button"
-                  onClick={() => handleChipClick(chip.prompt)}
-                  disabled={isLoading || quotaRemaining === 0}
-                  className="min-h-[54px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-medium text-slate-800 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {chip.label}
-                </button>
-              ))}
+              {activeGeo ? (
+                <span className="inline-flex min-h-[32px] items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                  <MapPin className="mr-1.5 h-3 w-3" aria-hidden="true" />
+                  Nearby: {activeGeo.radiusMiles} mi
+                </span>
+              ) : null}
             </div>
 
-          </div>
+            {/* ── Quick-need grid ── */}
+            <QuickNeedFilterGrid
+              activeNeedId={activeNeedId}
+              onSelect={handleCategoryClick}
+              ariaLabel="Quick chat categories"
+              className="w-full"
+              gridClassName="grid grid-cols-2 gap-2 lg:grid-cols-4"
+            />
+
+            {/* ── Info row: location prompt + search flow ── */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              {!sessionContext?.activeGeo && !locationPromptDismissed && (
+                <div className="flex items-start gap-3 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3.5">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900">Use location for nearby results</p>
+                    <p className="mt-0.5 text-xs leading-5 text-slate-500">Uses browser location only with consent. Already granted? Chat picks it up automatically.</p>
+                    <div className="mt-2.5 flex gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={requestDeviceLocation} disabled={isLocating}>
+                        {isLocating ? 'Locating…' : 'Enable location'}
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setLocationPromptDismissed(true)}>Not now</Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className={`rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3.5 ${!sessionContext?.activeGeo && !locationPromptDismissed ? '' : 'sm:col-span-2'}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">How search works</p>
+                <p className="mt-1.5 text-sm text-slate-700">Use <strong className="font-medium text-slate-900">Refine</strong> to add location, trust level, and service-detail filters. Save strong options directly from result cards.</p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1841,20 +2092,24 @@ export function ChatWindow({
             <div className="rounded-[22px] rounded-tl-md border border-slate-200 bg-white px-4 py-3 shadow-sm">
               <div className="flex gap-1 items-center h-5" role="status">
                 <span className="sr-only">Searching for services…</span>
-                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]" aria-hidden="true" />
-                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]" aria-hidden="true" />
-                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" aria-hidden="true" />
+                <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.3s]" aria-hidden="true" />
+                <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.15s]" aria-hidden="true" />
+                <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400" aria-hidden="true" />
               </div>
             </div>
           </div>
         )}
+
+        {showMessageBottomFade ? (
+          <div className="pointer-events-none sticky bottom-0 z-10 -mt-8 h-8 bg-gradient-to-t from-white to-transparent" aria-hidden="true" />
+        ) : null}
 
         <div ref={messagesEndRef} />
       </div>
 
       {/* Eligibility disclaimer — always shown */}
       <div
-        className="border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900"
+        className="border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-700"
         role="note"
         aria-label="Eligibility disclaimer"
       >
@@ -1862,22 +2117,22 @@ export function ChatWindow({
       </div>
 
       {/* Input */}
-      <div className="border-t border-slate-200 bg-white p-3 md:p-4">
+      <div className="shrink-0 border-t border-slate-200 bg-white px-5 py-4 md:px-6 md:py-4">
         {quotaRemaining <= 5 && quotaRemaining > 0 && (
-          <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 shadow-sm">
+          <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-800 shadow-sm">
             <p className="font-medium">Low message budget</p>
             <p className="mt-1">You can keep this search scope and continue in Directory or Map if needed.</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <a href={_directoryHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900 shadow-sm">
+              <a href={_directoryHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-900 shadow-sm">
                 Open Directory
               </a>
-              <a href={_mapHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900 shadow-sm">
+              <a href={_mapHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-900 shadow-sm">
                 Open Map
               </a>
             </div>
           </div>
         )}
-        <div className="rounded-[24px] border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.06)]">
+        <div className="mt-4 rounded-[30px] border border-slate-200 bg-white p-3 shadow-[0_18px_42px_rgba(15,23,42,0.08)]">
           <div className="flex gap-2">
             <textarea
               ref={inputRef}
@@ -1885,7 +2140,7 @@ export function ChatWindow({
               onChange={(e) => { setInput(e.target.value); autoResize(e.target); }}
               onKeyDown={handleKeyDown}
               placeholder="Describe what you need help with..."
-              className="min-h-[48px] flex-1 resize-none rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              className="min-h-[84px] flex-1 resize-none rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5 text-[15px] leading-7 text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-300"
               rows={1}
               aria-label="Chat message input"
               disabled={isLoading || quotaRemaining === 0}
@@ -1895,30 +2150,33 @@ export function ChatWindow({
               disabled={isLoading || !input.trim() || quotaRemaining === 0}
               size="icon"
               aria-label="Send message"
-              className="min-h-[48px] min-w-[48px] rounded-2xl bg-slate-900 shadow-sm hover:bg-slate-800"
+              className="min-h-[64px] min-w-[64px] self-end rounded-[22px] bg-slate-900 shadow-sm hover:bg-slate-800"
             >
               <Send className="h-4 w-4" aria-hidden="true" />
             </Button>
+          </div>
+          <div className="px-2 pt-3 text-[11px] text-slate-500">
+            Ask for nearby services, provider details, eligibility hints, or next steps from stored records.
           </div>
         </div>
         {quotaRemaining === 0 && quotaResetAt && (
           <QuotaCooldown resetAt={quotaResetAt} onExpired={handleQuotaExpired} />
         )}
         {quotaRemaining === 0 && !quotaResetAt && (
-          <div className="mt-3 rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-xs text-red-700 shadow-sm" role="alert">
+          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-800 shadow-sm" role="alert">
             <p className="font-medium">Message limit reached.</p>
             <p className="mt-1">Continue with the same scope in Directory or Map, or start a fresh chat session.</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <a href={_directoryHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 shadow-sm">
+              <a href={_directoryHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-900 shadow-sm">
                 Open Directory
               </a>
-              <a href={_mapHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 shadow-sm">
+              <a href={_mapHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-900 shadow-sm">
                 Open Map
               </a>
               <button
                 type="button"
                 onClick={_startNewSession}
-                className="inline-flex min-h-[44px] items-center rounded-full border border-red-200 bg-white px-2.5 py-1 font-medium text-red-700 shadow-sm"
+                className="inline-flex min-h-[44px] items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-900 shadow-sm"
               >
                 Start new chat session
               </button>
@@ -1950,53 +2208,41 @@ export function ChatWindow({
                 ) : null}
               </div>
 
-              <div className="flex flex-wrap gap-2" role="group" aria-label="Chat category">
-                {QUICK_DISCOVERY_NEEDS.map((need) => {
-                  const selected = activeNeedId === need.id;
-                  return (
-                    <button
-                      key={need.id}
-                      type="button"
-                      onClick={() => handleCategoryClick(need.id)}
-                      className={`inline-flex min-h-[40px] items-center rounded-full border px-3 py-1.5 text-xs font-medium ${selected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
-                      aria-pressed={selected}
-                    >
-                      {need.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <QuickNeedFilterGrid
+                activeNeedId={activeNeedId}
+                onSelect={handleCategoryClick}
+                ariaLabel="Chat category"
+                gridClassName="grid grid-cols-2 gap-2 md:grid-cols-4"
+              />
             </div>
 
             <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
-              <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">Trust</p>
-                  <p className="mt-1 text-xs text-slate-500">Keep all results visible or narrow to stronger verification signals.</p>
+                  <p className="text-sm font-semibold text-slate-900">Distance</p>
+                  <p className="mt-1 text-xs text-slate-500">Focus chat results near your approximate device location.</p>
                 </div>
-                {trustFilter !== 'all' ? (
-                  <Button type="button" variant="outline" size="sm" onClick={() => setTrustFilter('all')}>
-                    Clear trust
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={requestDeviceLocation} disabled={isLocating}>
+                    <MapPin className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                    {isLocating ? 'Locating…' : activeGeo ? 'Refresh location' : 'Use my location'}
                   </Button>
-                ) : null}
+                  {activeGeo ? (
+                    <Button type="button" variant="outline" size="sm" onClick={clearLocation}>
+                      Clear location
+                    </Button>
+                  ) : null}
+                </div>
               </div>
 
-              <div className="flex flex-wrap gap-2" role="group" aria-label="Trust filter options">
-                {TRUST_OPTIONS.map((opt) => {
-                  const selected = trustFilter === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setTrustFilter(opt.value)}
-                      className={`inline-flex min-h-[40px] items-center rounded-full border px-3 py-1.5 text-xs font-medium ${selected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
-                      aria-pressed={selected}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
+              {activeGeo ? (
+                <DistanceRadiusControl
+                  value={radiusMiles}
+                  onChange={handleRadiusChange}
+                />
+              ) : (
+                <p className="text-sm text-slate-500">Enable approximate location to filter chat results within a specific distance.</p>
+              )}
             </div>
 
             <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
@@ -2049,7 +2295,7 @@ export function ChatWindow({
             <Button type="button" variant="outline" onClick={() => {
               clearCategory();
               clearAttributes();
-              setTrustFilter('all');
+              clearLocation();
             }}>
               Clear all
             </Button>

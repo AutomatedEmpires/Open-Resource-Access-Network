@@ -16,6 +16,14 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+vi.mock('@/components/seeker/AddToPlanDialog', () => ({
+  AddToPlanDialog: () => null,
+}));
+
+vi.mock('@/components/seeker/SavedCollectionsDialog', () => ({
+  SavedCollectionsDialog: () => null,
+}));
+
 describe('a11y: ServiceCard', () => {
   function makeEnrichedService(overrides: Partial<EnrichedService> = {}): EnrichedService {
     const now = new Date();

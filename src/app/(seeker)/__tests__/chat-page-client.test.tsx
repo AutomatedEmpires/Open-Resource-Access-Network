@@ -59,8 +59,7 @@ describe('ChatPageClient', () => {
       initialAttributeFilters: undefined,
     });
     expect(screen.getByTestId('chat-window')).toHaveTextContent('session:existing-session-id');
-    expect(screen.getByRole('link', { name: 'Directory' })).toHaveAttribute('href', '/directory');
-    expect(screen.getByRole('link', { name: 'Map' })).toHaveAttribute('href', '/map');
+    expect(screen.getByRole('heading', { name: 'Chat' })).toBeInTheDocument();
 
     randomSpy.mockRestore();
   });
@@ -73,14 +72,6 @@ describe('ChatPageClient', () => {
 
     render(<ChatPage />);
 
-    expect(screen.getByRole('link', { name: 'Directory' })).toHaveAttribute(
-      'href',
-      '/directory?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=a1000000-0000-4000-8000-000000000001&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D&page=3',
-    );
-    expect(screen.getByRole('link', { name: 'Map' })).toHaveAttribute(
-      'href',
-      '/map?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=a1000000-0000-4000-8000-000000000001&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D&page=3',
-    );
     expect(chatWindowMock).toHaveBeenCalledWith({
       sessionId: 'existing-session-id',
       initialPrompt: 'food',
@@ -137,13 +128,5 @@ describe('ChatPageClient', () => {
         initialAttributeFilters: undefined,
       });
     });
-    expect(screen.getByRole('link', { name: 'Directory' })).toHaveAttribute(
-      'href',
-      '/directory?q=housing&category=housing',
-    );
-    expect(screen.getByRole('link', { name: 'Map' })).toHaveAttribute(
-      'href',
-      '/map?q=housing&category=housing',
-    );
   });
 });

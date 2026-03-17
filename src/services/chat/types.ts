@@ -61,6 +61,13 @@ export const ChatRequestSchema = z.object({
     .object({
       activeNeedId: z.enum(DISCOVERY_NEED_IDS).optional(),
       activeCity: z.string().trim().min(1).max(120).optional(),
+      activeGeo: z
+        .object({
+          lat: z.number().min(-90).max(90),
+          lng: z.number().min(-180).max(180),
+          radiusMiles: z.number().int().min(1).max(50),
+        })
+        .optional(),
       urgency: z.enum(['urgent', 'standard']).optional(),
       preferredDeliveryModes: z.array(z.string().min(1).max(40)).max(10).optional(),
       trustFilter: z.enum(['all', 'LIKELY', 'HIGH']).optional(),

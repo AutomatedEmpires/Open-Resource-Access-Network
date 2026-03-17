@@ -105,9 +105,9 @@ export default function InvitationsPageClient() {
   }, [loadInvites]);
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-orange-50 via-rose-50 to-emerald-50">
+    <main className="min-h-screen bg-white">
       <div className="container mx-auto max-w-4xl px-4 py-6 md:py-8">
-      <section className="rounded-[30px] border border-orange-100/80 bg-white/90 p-5 shadow-[0_24px_80px_rgba(234,88,12,0.10)] backdrop-blur md:p-8">
+      <section className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm md:p-8">
       <div className="mb-4">
         <Link href="/profile" className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-700">
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -149,13 +149,13 @@ export default function InvitationsPageClient() {
           description="Accept only organizations you recognize. Decisions change your access to host workflows, not the public seeker surface."
         >
           {isLoading ? (
-            <div className="flex items-center gap-2 rounded-[20px] border border-orange-100 bg-orange-50/40 p-6 text-sm text-stone-500" role="status" aria-busy="true">
+            <div className="flex items-center gap-2 rounded-[20px] border border-slate-200 bg-slate-50 p-6 text-sm text-slate-500" role="status" aria-busy="true">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               Loading invitations…
             </div>
           ) : invites.length === 0 ? (
-            <div className="rounded-[24px] border border-orange-100 bg-gradient-to-br from-orange-50 to-rose-50 p-8 text-center shadow-sm">
-              <CheckCircle2 className="h-10 w-10 text-green-500 mx-auto mb-3" aria-hidden="true" />
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-8 text-center shadow-sm">
+              <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-slate-700" aria-hidden="true" />
               <p className="font-medium text-stone-900">No pending invitations</p>
               <p className="mt-1 text-sm text-stone-500">
                 When an organization invites you to collaborate, it will appear here.
@@ -169,14 +169,14 @@ export default function InvitationsPageClient() {
                 const isActing = actionState?.membershipId === invite.id;
 
                 return (
-                  <article key={invite.id} className="rounded-[24px] border border-orange-100 bg-white p-5 shadow-sm">
+                  <article key={invite.id} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 text-stone-900">
-                          <Building2 className="h-5 w-5 text-action-base" aria-hidden="true" />
+                          <Building2 className="h-5 w-5 text-slate-700" aria-hidden="true" />
                           <h2 className="text-lg font-semibold truncate">{invite.organization_name}</h2>
                         </div>
-                        <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-orange-100 bg-orange-50 px-3 py-1 text-xs font-medium text-stone-700">
+                        <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
                           <RoleIcon className="h-3.5 w-3.5" aria-hidden="true" />
                           {roleCopy.label}
                         </div>

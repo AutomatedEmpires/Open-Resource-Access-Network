@@ -311,13 +311,9 @@ describe('MapPageClient', () => {
       '/map?q=housing&sort=distance&category=housing',
       { scroll: false },
     );
-    expect(screen.getByRole('link', { name: 'Directory' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Open the full directory list' })).toHaveAttribute(
       'href',
       '/directory?q=housing&sort=distance&category=housing',
-    );
-    expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
-      'href',
-      '/chat?q=housing&sort=distance&category=housing',
     );
   });
 
@@ -338,13 +334,9 @@ describe('MapPageClient', () => {
       '/map?q=food&sort=distance&category=food_assistance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
       { scroll: false },
     );
-    expect(screen.getByRole('link', { name: 'Directory' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Open the full directory list' })).toHaveAttribute(
       'href',
       '/directory?q=food&sort=distance&category=food_assistance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
-    );
-    expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute(
-      'href',
-      '/chat?q=food&sort=distance&category=food_assistance&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D',
     );
     expect(screen.getByRole('link', { name: 'details-svc-1' })).toHaveAttribute(
       'href',
@@ -580,7 +572,7 @@ describe('MapPageClient', () => {
     expect(toastSuccessMock).toHaveBeenCalledWith('Removed from this device and your synced account');
   });
 
-  it('centers map from opted-in geolocation and shows mobile search-area CTA', async () => {
+  it('centers map from opted-in geolocation and shows the location radius state', async () => {
     setMatchMedia(true);
 
     const geolocation = {
@@ -600,7 +592,7 @@ describe('MapPageClient', () => {
 
     await waitFor(() => {
       expect(toastSuccessMock).toHaveBeenCalledWith('Centered near your location (not saved).');
-      expect(screen.getAllByRole('button', { name: 'Search this area' }).length).toBeGreaterThan(0);
+      expect(screen.getByRole('button', { name: 'Clear location radius' })).toBeInTheDocument();
     });
 
     const map = screen.getByTestId('map-container');
@@ -659,7 +651,7 @@ describe('MapPageClient', () => {
     fireEvent.click(getRefineMapButton());
 
     expect(await screen.findByText('Service details')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Food' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Food' }).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'By Phone' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Nearby first/i })).toBeInTheDocument();
   });
@@ -668,7 +660,7 @@ describe('MapPageClient', () => {
     renderWithToast(<MapPage />);
     fireEvent.click(getRefineMapButton());
 
-    const categoryButton = screen.getByRole('button', { name: 'Food' });
+    const categoryButton = screen.getAllByRole('button', { name: 'Food' })[0];
     fireEvent.click(categoryButton);
     expect(categoryButton).toHaveAttribute('aria-pressed', 'true');
 
@@ -688,7 +680,7 @@ describe('MapPageClient', () => {
     fireEvent.change(getMapSearchBox(), {
       target: { value: 'rare typed query' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Food' })[0]);
 
     await waitFor(() => {
       const latest = String(getSearchCalls().at(-1)?.[0]);

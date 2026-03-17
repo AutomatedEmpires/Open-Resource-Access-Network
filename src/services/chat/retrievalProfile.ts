@@ -2,6 +2,7 @@ import type { Intent, ChatContext } from './types';
 import type { SearchFilters, SearchQuery, SearchPreferenceSignals } from '@/services/search/types';
 import { buildSeekerDiscoveryProfile } from '@/services/profile/discoveryProfile';
 import { buildSearchQueryFromDiscovery } from '@/services/search/discovery';
+import { milesToMeters } from '@/services/search/radius';
 
 interface BuildChatSearchQueryOptions {
   taxonomyTermIds?: string[];
@@ -46,6 +47,14 @@ export function buildChatSearchQuery(
     attributeFilters: options.attributeFilters,
     minConfidenceScore: options.minConfidenceScore,
     limit: options.limit,
+    geo: context.sessionContext?.activeGeo
+      ? {
+          type: 'radius',
+          lat: context.sessionContext.activeGeo.lat,
+          lng: context.sessionContext.activeGeo.lng,
+          radiusMeters: milesToMeters(context.sessionContext.activeGeo.radiusMiles),
+        }
+      : undefined,
   });
 
   return {

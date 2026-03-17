@@ -52,6 +52,7 @@ vi.mock('lucide-react', () => ({
   SlidersHorizontal: 'svg',
   Bookmark: 'svg',
   BookmarkCheck: 'svg',
+  MapPin: 'svg',
 }));
 
 vi.mock('@/services/telemetry/sentry', () => ({
@@ -184,14 +185,19 @@ describe('ChatWindow', () => {
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
     expect(screen.getByText('What verified help do you need?')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Food pantry near me' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Food' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'Need food support' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
     await screen.findByText('Here are options');
     expect(trackInteractionMock).toHaveBeenCalledWith('chat_message_sent', expect.any(Object));
 
     const chatCall = getChatCalls()[0];
     const body = JSON.parse(String((chatCall?.[1] as { body: string }).body));
-    expect(body.message).toContain('food pantry');
+    expect(body.message).toBe('Need food support');
+    expect(body.sessionContext.activeNeedId).toBe('food_assistance');
     expect(body.profileMode).toBe('use');
   });
 
@@ -208,12 +214,8 @@ describe('ChatWindow', () => {
       />,
     );
 
-    expect(screen.getAllByText('Using current browse context').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Active chat context').length).toBeGreaterThan(0);
     expect(screen.getByLabelText('Chat message input')).toHaveValue('food');
-    expect(screen.getAllByText('Trust: High confidence only').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Virtual').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Walk In').length).toBeGreaterThan(0);
-
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
     await screen.findByText('Here are options');
@@ -305,11 +307,11 @@ describe('ChatWindow', () => {
     render(
       <ChatWindow
         sessionId="11111111-1111-4111-8111-111111111111"
+        initialTrustFilter="HIGH"
         initialAttributeFilters={{ delivery: ['virtual'] }}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'High confidence only' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
       target: { value: 'food' },
     });
@@ -335,10 +337,10 @@ describe('ChatWindow', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Clear context' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
 
-    expect(screen.getByLabelText('Chat message input')).toHaveValue('');
-    expect(screen.getByRole('button', { name: 'All results' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Chat message input')).toHaveValue('food');
+    expect(screen.queryByText('Virtual')).not.toBeInTheDocument();
   });
 
   it('shows chat fallback when the chat response is non-ok', async () => {
@@ -596,8 +598,8 @@ describe('ChatWindow', () => {
 
     await screen.findByText('Refine this search');
     expect(screen.getByText('Active chat context')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Need: Housing x' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'City: Denver x' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Need: Housing ×' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'City: Denver ×' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Help paying rent' }));
 

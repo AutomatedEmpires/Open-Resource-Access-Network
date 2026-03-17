@@ -42,7 +42,7 @@ vi.mock('@/components/footer', () => ({
   AppFooter: () => <div data-testid="app-footer" />,
 }));
 
-import SeekerLayout from '@/app/(seeker)/layout';
+import SeekerLayoutShell from '@/app/(seeker)/SeekerLayoutShell';
 
 beforeEach(() => {
   cleanup();
@@ -54,7 +54,7 @@ beforeEach(() => {
 
 describe('seeker layout shell', () => {
   it('toggles command palette with Ctrl/Cmd+K and closes through palette callback', () => {
-    render(<SeekerLayout>Child</SeekerLayout>);
+    render(<SeekerLayoutShell planEnabled>Child</SeekerLayoutShell>);
 
     expect(screen.getAllByRole('button', { name: 'Open quick actions' })).toHaveLength(2);
     expect(screen.getByTestId('palette-state')).toHaveTextContent('closed');
@@ -78,7 +78,7 @@ describe('seeker layout shell', () => {
       JSON.stringify(Array.from({ length: 120 }, (_, i) => `svc-${i}`)),
     );
 
-    const { unmount } = render(<SeekerLayout>Child</SeekerLayout>);
+    const { unmount } = render(<SeekerLayoutShell planEnabled>Child</SeekerLayoutShell>);
     await waitFor(() => {
       expect(screen.getAllByText('99+').length).toBeGreaterThan(0);
     });
@@ -87,7 +87,7 @@ describe('seeker layout shell', () => {
     unmount();
 
     localStorage.setItem('oran:saved-service-ids', '{bad-json');
-    render(<SeekerLayout>Child</SeekerLayout>);
+    render(<SeekerLayoutShell planEnabled>Child</SeekerLayoutShell>);
     await waitFor(() => {
       expect(screen.queryByText('99+')).toBeNull();
     });
@@ -104,7 +104,7 @@ describe('seeker layout shell', () => {
       }),
     );
 
-    render(<SeekerLayout>Child</SeekerLayout>);
+    render(<SeekerLayoutShell planEnabled>Child</SeekerLayoutShell>);
 
     await waitFor(() => {
       expect(screen.getByText('Near Phoenix (approx.)')).toBeInTheDocument();
@@ -119,7 +119,7 @@ describe('seeker layout shell', () => {
   it('updates saved badges and context strip immediately when same-tab saved state changes', async () => {
     usePathnameMock.mockReturnValue('/directory');
 
-    render(<SeekerLayout>Child</SeekerLayout>);
+    render(<SeekerLayoutShell planEnabled>Child</SeekerLayoutShell>);
 
     await waitFor(() => {
       expect(screen.queryByText('1 saved')).toBeNull();
@@ -135,7 +135,7 @@ describe('seeker layout shell', () => {
   it('updates profile context chips immediately when same-tab preferences change', async () => {
     usePathnameMock.mockReturnValue('/profile');
 
-    render(<SeekerLayout>Child</SeekerLayout>);
+    render(<SeekerLayoutShell planEnabled>Child</SeekerLayoutShell>);
 
     writeStoredProfilePreferences({ approximateCity: 'Tacoma', serverSyncEnabled: true });
     writeStoredSeekerProfile({
@@ -150,5 +150,11 @@ describe('seeker layout shell', () => {
     expect(screen.getByText(/Private by default/)).toBeInTheDocument();
     expect(screen.getByText('Personalized profile')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Manage preferences' })).toBeInTheDocument();
+  });
+
+  it('hides the plan navigation item when the feature flag is off', () => {
+    render(<SeekerLayoutShell planEnabled={false}>Child</SeekerLayoutShell>);
+
+    expect(screen.queryByRole('link', { name: 'Plan' })).toBeNull();
   });
 });

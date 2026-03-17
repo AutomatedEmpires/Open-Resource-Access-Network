@@ -736,11 +736,11 @@ describe('MapContainer', () => {
     const html = markerInstances
       .map((m) => (m.options as { htmlContent?: string }).htmlContent ?? '')
       .join('\n');
-    expect(html).toContain('bg-green-600');
-    expect(html).toContain('bg-yellow-500');
-    expect(html).toContain('bg-orange-500');
-    expect(html).toContain('bg-red-600');
-    expect(html).toContain('bg-gray-400');
+    expect(html).toContain('bg-slate-950');
+    expect(html).toContain('bg-slate-700');
+    expect(html).toContain('bg-slate-500');
+    expect(html).toContain('bg-slate-300');
+    expect(html).toContain('bg-slate-400');
 
     const clickHandlers = map.events.add.mock.calls
       .filter((c) => c[0] === 'click')

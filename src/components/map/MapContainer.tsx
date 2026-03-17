@@ -77,7 +77,7 @@ function popupContent(pin: Pin, discoveryContext?: DiscoveryLinkState): string {
       </div>
     </div>
     <div style="margin-top:8px">
-      <a href="${escapeAttribute(detailHref)}" style="font-size:12px;color:#1d4ed8;text-decoration:none;font-weight:600">View service</a>
+      <a href="${escapeAttribute(detailHref)}" style="font-size:12px;color:#111827;text-decoration:none;font-weight:600">View service</a>
     </div>
   </div>`;
 }
@@ -107,11 +107,11 @@ function safeHttpUrl(value: string | null): string | null {
 
 function markerHtml(tier: 'green' | 'yellow' | 'orange' | 'red' | 'unknown'): string {
   const className =
-    tier === 'green' ? 'bg-green-600' :
-      tier === 'yellow' ? 'bg-yellow-500' :
-      tier === 'orange' ? 'bg-orange-500' :
-      tier === 'red' ? 'bg-red-600' :
-      'bg-gray-400';
+    tier === 'green' ? 'bg-slate-950' :
+      tier === 'yellow' ? 'bg-slate-700' :
+      tier === 'orange' ? 'bg-slate-500' :
+      tier === 'red' ? 'bg-slate-300' :
+      'bg-slate-400';
 
   // A simple, touch-friendly pin dot. Tailwind classes apply because the marker is injected into the same document.
   return `<div class="${className} w-4 h-4 rounded-full border-2 border-white shadow"></div>`;
@@ -402,13 +402,13 @@ export function MapContainer({
   if (isLoading && !mapError) {
     return (
       <div
-        className={`flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50 ${className}`}
+        className={`flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 ${className}`}
         role="status"
         aria-label="Loading map"
       >
         <div className="flex flex-col items-center gap-2 py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-gray-400" aria-hidden="true" />
-          <p className="text-sm text-gray-500">Loading map…</p>
+          <Loader2 className="h-6 w-6 animate-spin text-slate-400" aria-hidden="true" />
+          <p className="text-sm text-slate-500">Loading map…</p>
         </div>
       </div>
     );
@@ -433,13 +433,13 @@ export function MapContainer({
   if (mapError) {
     return (
       <div
-        className={`flex items-center justify-center rounded-lg border border-gray-200 bg-white p-6 text-center ${className}`}
+        className={`flex items-center justify-center rounded-lg border border-slate-200 bg-white p-6 text-center ${className}`}
         role="alert"
       >
         <div className="max-w-md">
-          <AlertTriangle className="h-6 w-6 mx-auto text-amber-500" aria-hidden="true" />
-          <p className="mt-2 text-sm font-medium text-gray-900">Map unavailable</p>
-          <p className="mt-1 text-xs text-gray-500">{mapError}</p>
+          <AlertTriangle className="mx-auto h-6 w-6 text-slate-500" aria-hidden="true" />
+          <p className="mt-2 text-sm font-medium text-slate-900">Map unavailable</p>
+          <p className="mt-1 text-xs text-slate-500">{mapError}</p>
         </div>
       </div>
     );
@@ -452,13 +452,13 @@ export function MapContainer({
         ref={containerRef}
         tabIndex={0}
         onKeyDown={handleKeyDown}
-        className={`rounded-lg border border-gray-200 overflow-hidden bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${className}`}
+        className={`overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 ${className}`}
         role="application"
         aria-label="Interactive service map. Arrow keys to pan, + and - to zoom, R to reset."
       />
-      <p className="mt-1 text-xs text-gray-500">
+      <p className="mt-1 text-xs text-slate-500">
         Keyboard: Arrow keys to pan, <kbd className="font-mono">+</kbd> / <kbd className="font-mono">-</kbd> to zoom, <kbd className="font-mono">R</kbd> to reset.{' '}
-        <a href="#map-results" className="underline text-blue-600 hover:text-blue-800">
+        <a href="#map-results" className="underline text-slate-700 hover:text-slate-900">
           Skip to results
         </a>
       </p>

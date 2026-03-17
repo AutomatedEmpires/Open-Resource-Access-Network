@@ -17,6 +17,7 @@ import { Bookmark, Search, Trash2, MessageCircle, MapPin, AlertTriangle } from '
 
 import { Button } from '@/components/ui/button';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
+import { useSeekerFeatureFlags } from '@/components/seeker/SeekerFeatureFlags';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { ServiceCard } from '@/components/directory/ServiceCard';
@@ -26,6 +27,11 @@ import { getDiscoveryNeedLabel, getPrimaryDiscoveryNeedId, type DiscoveryNeedId 
 import { useToast } from '@/components/ui/toast';
 import { buildDiscoveryHref } from '@/services/search/discovery';
 import { buildServiceFallbackDiscoveryState } from '@/services/search/discoveryFromService';
+import {
+  getActiveSeekerPlan,
+  readStoredSeekerPlansState,
+  SEEKER_PLANS_UPDATED_EVENT,
+} from '@/services/plans/client';
 import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
 import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
 import {
@@ -129,8 +135,10 @@ async function fetchServicesByIds(ids: string[]): Promise<{ services: EnrichedSe
 // ============================================================
 
 export default function SavedPage() {
+  const { planEnabled } = useSeekerFeatureFlags();
   const [savedIds, setSavedIds] = useState<string[]>(readStoredSavedServiceIds);
   const [savedCollectionsState, setSavedCollectionsState] = useState(() => readStoredSavedCollectionsState());
+  const [plansState, setPlansState] = useState(() => readStoredSeekerPlansState());
   const [discoveryPreference] = useState(() => readStoredDiscoveryPreference());
   const [serverSyncEnabled] = useState(() => isServerSyncEnabledOnDevice());
   const [services, setServices] = useState<EnrichedService[]>([]);
@@ -149,6 +157,7 @@ export default function SavedPage() {
   const chatHref = useMemo(() => buildDiscoveryHref('/chat', discoveryPreference), [discoveryPreference]);
   const directoryHref = useMemo(() => buildDiscoveryHref('/directory', discoveryPreference), [discoveryPreference]);
   const mapHref = useMemo(() => buildDiscoveryHref('/map', discoveryPreference), [discoveryPreference]);
+  const planHref = '/plan';
   const buildSavedServiceHref = useCallback((service: EnrichedService) => {
     return buildDiscoveryHref(`/service/${service.service.id}`, {
       ...discoveryPreference,
@@ -273,6 +282,25 @@ export default function SavedPage() {
     };
   }, [serverSyncEnabled]);
 
+  useEffect(() => {
+    if (!planEnabled) {
+      return;
+    }
+
+    const syncPlans = () => {
+      setPlansState(readStoredSeekerPlansState());
+    };
+
+    syncPlans();
+    window.addEventListener(SEEKER_PLANS_UPDATED_EVENT, syncPlans as EventListener);
+    window.addEventListener('storage', syncPlans);
+
+    return () => {
+      window.removeEventListener(SEEKER_PLANS_UPDATED_EVENT, syncPlans as EventListener);
+      window.removeEventListener('storage', syncPlans);
+    };
+  }, [planEnabled]);
+
   const removeService = useCallback((serviceId: string) => {
     const toggleCopy = getSavedTogglePresentation(true, serverSyncEnabled);
     setSavedIds((prev) => {
@@ -313,6 +341,8 @@ export default function SavedPage() {
     () => services.filter((service) => (savedCollectionsState.serviceAssignments[service.service.id] ?? []).length === 0).length,
     [savedCollectionsState.serviceAssignments, services],
   );
+  const organizedCount = useMemo(() => Math.max(services.length - unfiledCount, 0), [services.length, unfiledCount]);
+  const recentCount = useMemo(() => services.filter((service) => isRecentlyAdded(service)).length, [services]);
   const savedGroups = useMemo<SavedServiceGroup[]>(() => {
     const grouped = new Map<string, SavedServiceGroup>();
 
@@ -351,6 +381,17 @@ export default function SavedPage() {
     }
     return counts;
   }, [savedCollectionsState.serviceAssignments, services]);
+  const topCollections = useMemo(
+    () => [...savedCollectionsState.collections]
+      .sort((left, right) => (collectionCounts.get(right.id) ?? 0) - (collectionCounts.get(left.id) ?? 0) || left.name.localeCompare(right.name))
+      .slice(0, 4),
+    [collectionCounts, savedCollectionsState.collections],
+  );
+  const activePlan = useMemo(() => getActiveSeekerPlan(plansState), [plansState]);
+  const activePlanOpenCount = useMemo(
+    () => activePlan?.items.filter((item) => item.status !== 'done').length ?? 0,
+    [activePlan],
+  );
 
   const handleCreateCollection = useCallback(() => {
     void (async () => {
@@ -504,6 +545,31 @@ export default function SavedPage() {
               }
             />
 
+            {!isLoading && savedIds.length > 0 && (
+              <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Saved total</p>
+                  <p className="mt-3 text-3xl font-semibold text-slate-950">{services.length}</p>
+                  <p className="mt-1 text-sm text-slate-600">Verified services kept close across chat, directory, and map.</p>
+                </div>
+                <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Organized</p>
+                  <p className="mt-3 text-3xl font-semibold text-slate-950">{organizedCount}</p>
+                  <p className="mt-1 text-sm text-slate-600">Saved services already assigned to at least one collection.</p>
+                </div>
+                <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Needs sorting</p>
+                  <p className="mt-3 text-3xl font-semibold text-slate-950">{unfiledCount}</p>
+                  <p className="mt-1 text-sm text-slate-600">Unfiled services still in your saved list but not grouped yet.</p>
+                </div>
+                <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Fresh this week</p>
+                  <p className="mt-3 text-3xl font-semibold text-slate-950">{recentCount}</p>
+                  <p className="mt-1 text-sm text-slate-600">Recently updated or added options worth a second look.</p>
+                </div>
+              </div>
+            )}
+
             <div className="mb-5 rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 shadow-sm md:p-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="max-w-2xl">
@@ -533,8 +599,31 @@ export default function SavedPage() {
                       Map results
                     </Button>
                   </Link>
+                  {planEnabled && (
+                    <Link href={planHref}>
+                      <Button variant="outline" size="sm" className="w-full gap-1.5 sm:w-auto lg:w-full">
+                        <Bookmark className="h-4 w-4" aria-hidden="true" />
+                        {activePlan ? 'Open plan workspace' : 'Start a plan'}
+                      </Button>
+                    </Link>
+                  )}
                 </div>
               </div>
+
+              {planEnabled && (
+                <div className="mt-4 rounded-[20px] border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Execution handoff</p>
+                  {activePlan ? (
+                    <p className="mt-2 text-sm text-slate-700">
+                      Active plan: <span className="font-semibold text-slate-950">{activePlan.title}</span> with {activePlanOpenCount} open item{activePlanOpenCount === 1 ? '' : 's'}.
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-sm text-slate-700">
+                      Saved services can move into a local-first plan when you are ready to sequence next steps.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <DiscoveryContextPanel
                 discoveryContext={discoveryPreference}
@@ -550,9 +639,9 @@ export default function SavedPage() {
           <div className="mb-5 rounded-[22px] border border-slate-200 bg-white/80 p-4 shadow-sm">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Collections</p>
-                <h2 className="mt-1 text-sm font-semibold text-stone-900">Organize saved services your way</h2>
-                <p className="mt-1 text-sm text-stone-600">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Collections</p>
+                <h2 className="mt-1 text-sm font-semibold text-[var(--text-primary)]">Organize saved services your way</h2>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
                   {serverSyncEnabled
                     ? collectionsStatus === 'synced'
                       ? 'Collections are syncing to your signed-in account.'
@@ -566,7 +655,7 @@ export default function SavedPage() {
                   value={newCollectionName}
                   onChange={(event) => setNewCollectionName(event.target.value)}
                   placeholder="Create a collection"
-                  className="h-10 flex-1 rounded-full border border-slate-200 bg-white px-4 text-sm text-stone-900 shadow-sm outline-none transition focus:border-stone-400"
+                  className="h-10 flex-1 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-4 text-sm text-[var(--text-primary)] shadow-sm outline-none transition focus:border-[var(--text-muted)]"
                 />
                 <Button type="button" size="sm" onClick={handleCreateCollection} disabled={!newCollectionName.trim()}>
                   Add collection
@@ -580,8 +669,8 @@ export default function SavedPage() {
                 onClick={() => setCollectionFilter('all')}
                 className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                   collectionFilter === 'all'
-                    ? 'border-stone-900 bg-stone-900 text-white'
-                    : 'border-slate-200 bg-white text-stone-700 hover:border-stone-300'
+                    ? 'border-[var(--text-primary)] bg-[var(--text-primary)] text-[var(--bg-page)]'
+                    : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
                 }`}
               >
                 All saved · {services.length}
@@ -591,8 +680,8 @@ export default function SavedPage() {
                 onClick={() => setCollectionFilter('unfiled')}
                 className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                   collectionFilter === 'unfiled'
-                    ? 'border-stone-900 bg-stone-900 text-white'
-                    : 'border-slate-200 bg-white text-stone-700 hover:border-stone-300'
+                    ? 'border-[var(--text-primary)] bg-[var(--text-primary)] text-[var(--bg-page)]'
+                    : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
                 }`}
               >
                 Unfiled · {unfiledCount}
@@ -604,8 +693,8 @@ export default function SavedPage() {
                   onClick={() => setCollectionFilter(collection.id)}
                   className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                     collectionFilter === collection.id
-                      ? 'border-stone-900 bg-stone-900 text-white'
-                      : 'border-slate-200 bg-white text-stone-700 hover:border-stone-300'
+                      ? 'border-[var(--text-primary)] bg-[var(--text-primary)] text-[var(--bg-page)]'
+                      : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
                   }`}
                 >
                   {collection.name} · {collectionCounts.get(collection.id) ?? 0}
@@ -623,7 +712,7 @@ export default function SavedPage() {
                           type="text"
                           value={editingCollectionName}
                           onChange={(event) => setEditingCollectionName(event.target.value)}
-                          className="h-9 flex-1 rounded-full border border-slate-200 bg-white px-4 text-sm text-stone-900 outline-none transition focus:border-stone-400"
+                          className="h-9 flex-1 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-4 text-sm text-[var(--text-primary)] outline-none transition focus:border-[var(--text-muted)]"
                         />
                         <div className="flex gap-2">
                           <Button type="button" size="sm" onClick={() => handleRenameCollection(collection.id)} disabled={!editingCollectionName.trim()}>
@@ -640,8 +729,8 @@ export default function SavedPage() {
                     ) : (
                       <>
                         <div>
-                          <p className="text-sm font-semibold text-stone-900">{collection.name}</p>
-                          <p className="text-xs text-stone-500">{collectionCounts.get(collection.id) ?? 0} saved service{(collectionCounts.get(collection.id) ?? 0) === 1 ? '' : 's'}</p>
+                          <p className="text-sm font-semibold text-[var(--text-primary)]">{collection.name}</p>
+                          <p className="text-xs text-[var(--text-muted)]">{collectionCounts.get(collection.id) ?? 0} saved service{(collectionCounts.get(collection.id) ?? 0) === 1 ? '' : 's'}</p>
                         </div>
                         <div className="flex gap-2">
                           <Button type="button" variant="outline" size="sm" onClick={() => {
@@ -689,10 +778,10 @@ export default function SavedPage() {
 
         {/* Empty state */}
         {!isLoading && isEmpty && (
-          <div className="rounded-[24px] border border-orange-100 bg-gradient-to-br from-white via-orange-50/70 to-rose-50/60 p-10 text-center shadow-[0_18px_50px_rgba(234,88,12,0.06)]">
-            <Bookmark className="mx-auto mb-4 h-12 w-12 text-orange-200" aria-hidden="true" />
-            <p className="mb-1 text-base font-semibold text-stone-800">No saved services yet</p>
-            <p className="mx-auto mb-6 max-w-xs text-sm text-stone-500">
+          <div className="rounded-[24px] border border-[var(--border)] bg-[var(--bg-surface-alt)] p-10 text-center shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+            <Bookmark className="mx-auto mb-4 h-12 w-12 text-[var(--text-muted)]" aria-hidden="true" />
+            <p className="mb-1 text-base font-semibold text-[var(--text-primary)]">No saved services yet</p>
+            <p className="mx-auto mb-6 max-w-xs text-sm text-[var(--text-muted)]">
               {serverSyncEnabled
                 ? 'Bookmark services to access them quickly. Saves on this device can sync to your account when you sign in.'
                 : 'Bookmark services to access them quickly. Saves stay on this device.'}
@@ -723,7 +812,7 @@ export default function SavedPage() {
         {/* Results */}
         {!isLoading && services.length > 0 && (
           <div className="space-y-4">
-            <p className="rounded-[20px] border border-orange-100 bg-white/80 px-4 py-3 text-sm font-medium text-stone-700 shadow-[0_10px_30px_rgba(234,88,12,0.04)]" role="status" aria-live="polite">
+            <p className="rounded-[20px] border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-sm font-medium text-[var(--text-secondary)] shadow-[0_10px_30px_rgba(15,23,42,0.04)]" role="status" aria-live="polite">
               {savedGroups.reduce((count, group) => count + group.services.length, 0)} saved service{savedGroups.reduce((count, group) => count + group.services.length, 0) !== 1 ? 's' : ''}
             </p>
             {savedGroups.length > 1 && (
@@ -731,7 +820,7 @@ export default function SavedPage() {
                 {savedGroups.map((group) => (
                   <span
                     key={group.id}
-                    className="inline-flex items-center rounded-full border border-orange-100 bg-orange-50 px-3 py-1 text-xs font-medium text-stone-700"
+                    className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)]"
                   >
                     {group.label} · {group.services.length}
                   </span>
@@ -739,7 +828,7 @@ export default function SavedPage() {
               </div>
             )}
             {notFoundCount > 0 && (
-              <div className="flex items-start gap-2 rounded-[20px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-[0_10px_30px_rgba(120,53,15,0.08)]">
+              <div className="flex items-start gap-2 rounded-[20px] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-800 shadow-sm">
                 <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
                 <p>{notFoundCount} saved service{notFoundCount > 1 ? 's' : ''} could not be loaded (may no longer be available).</p>
               </div>
@@ -749,23 +838,23 @@ export default function SavedPage() {
                 <section key={group.id} className="space-y-3" aria-label={group.label}>
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <h2 className="text-sm font-semibold text-stone-900">{group.label}</h2>
-                      <p className="text-xs text-stone-500">{group.services.length} saved</p>
+                      <h2 className="text-sm font-semibold text-[var(--text-primary)]">{group.label}</h2>
+                      <p className="text-xs text-[var(--text-muted)]">{group.services.length} saved</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     {group.services.map((s) => (
                       <div key={s.service.id} className="space-y-2">
                         {isRecentlyAdded(s) && (
-                          <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                          <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-primary)]">
                             New this week
                           </span>
                         )}
                         <div className="rounded-[20px] border border-slate-200 bg-white/70 p-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Collections</p>
-                              <p className="mt-1 text-xs text-stone-600">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Collections</p>
+                              <p className="mt-1 text-xs text-[var(--text-secondary)]">
                                 {(savedCollectionsState.serviceAssignments[s.service.id] ?? []).length > 0
                                   ? (savedCollectionsState.serviceAssignments[s.service.id] ?? [])
                                       .map((collectionId) => collectionsById[collectionId]?.name)
@@ -795,8 +884,8 @@ export default function SavedPage() {
                                       onClick={() => handleToggleCollection(s.service.id, collection.id)}
                                       className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                                         assigned
-                                          ? 'border-stone-900 bg-stone-900 text-white'
-                                          : 'border-slate-200 bg-white text-stone-700 hover:border-stone-300'
+                                          ? 'border-[var(--text-primary)] bg-[var(--text-primary)] text-[var(--bg-page)]'
+                                          : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
                                       }`}
                                     >
                                       {assigned ? 'Remove' : 'Add'} {collection.name}
@@ -804,7 +893,7 @@ export default function SavedPage() {
                                   );
                                 })
                               ) : (
-                                <span className="text-xs text-stone-500">Create a collection above to organize this saved service.</span>
+                                <span className="text-xs text-[var(--text-muted)]">Create a collection above to organize this saved service.</span>
                               )}
                             </div>
                           )}
@@ -815,7 +904,7 @@ export default function SavedPage() {
                               return (
                                 <span
                                   key={collectionId}
-                                  className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-stone-700"
+                                  className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)]"
                                 >
                                   {collection.name}
                                 </span>
@@ -841,11 +930,11 @@ export default function SavedPage() {
 
         {/* Saved IDs with no matching services (could not fetch details) */}
         {!isLoading && !isEmpty && services.length === 0 && !error && (
-          <div className="rounded-[24px] border border-orange-100 bg-gradient-to-br from-white to-orange-50/60 p-8 text-center shadow-[0_18px_50px_rgba(234,88,12,0.06)]">
-            <p className="mb-1 font-medium text-stone-700">
+          <div className="rounded-[24px] border border-[var(--border)] bg-[var(--bg-surface-alt)] p-8 text-center shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+            <p className="mb-1 font-medium text-[var(--text-secondary)]">
               {savedIds.length} service{savedIds.length > 1 ? 's' : ''} saved
             </p>
-            <p className="text-sm text-stone-500">
+            <p className="text-sm text-[var(--text-muted)]">
               Details could not be loaded. The services may no longer be available, or the database is not connected.
             </p>
           </div>
@@ -856,18 +945,39 @@ export default function SavedPage() {
 
           <aside className="space-y-4 lg:sticky lg:top-6">
             <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-700">Saved flow</p>
-              <h2 className="mt-2 text-lg font-semibold text-stone-900">Keep promising options close</h2>
-              <ul className="mt-3 space-y-3 text-sm leading-6 text-stone-600">
-                <li>Saved items stay grounded in verified service records only.</li>
-                <li>You can jump back into Chat, Directory, or Map from the same seeker context.</li>
-                <li>Clear-all confirmation stays device-safe and explicit.</li>
-              </ul>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-muted)]">Workspace signal</p>
+              <h2 className="mt-2 text-lg font-semibold text-[var(--text-primary)]">Use saved as your working set</h2>
+              <div className="mt-4 space-y-3 text-sm leading-6 text-[var(--text-secondary)]">
+                <p>Organize directly from chat, directory, or map the moment something looks promising.</p>
+                <p>Keep unfiled items low so your saved list stays decisive instead of turning into a backlog.</p>
+                <p>Every item here remains grounded in stored service records only.</p>
+              </div>
             </div>
 
             <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">Sync behavior</p>
-              <p className="mt-2 text-sm leading-6 text-stone-700">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-muted)]">Top collections</p>
+              {topCollections.length > 0 ? (
+                <div className="mt-3 space-y-3">
+                  {topCollections.map((collection) => (
+                    <div key={collection.id} className="rounded-[18px] border border-slate-200 bg-white px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-slate-900">{collection.name}</p>
+                        <span className="text-xs font-medium text-slate-500">{collectionCounts.get(collection.id) ?? 0}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">Services currently organized in this collection.</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                  Create collections to group saved services by need, urgency, household member, or next step.
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-muted)]">Sync behavior</p>
+              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
                 Saves remain local unless cross-device sync is enabled on this device and you are signed in. That keeps the default behavior private and predictable.
               </p>
             </div>

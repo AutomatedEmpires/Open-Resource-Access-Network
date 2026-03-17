@@ -165,7 +165,7 @@ function ReportPageInner() {
         )}
       />
 
-      <div className="mb-5 rounded-[20px] border border-rose-200 bg-gradient-to-br from-rose-50 to-orange-50 px-4 py-3 text-sm text-rose-900">
+      <div className="mb-5 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900">
         Missing a resource entirely?
         {' '}
         <Link href="/submit-resource?compose=listing" className="font-semibold underline hover:no-underline">
@@ -187,7 +187,7 @@ function ReportPageInner() {
       {!serviceId && (
         <div
           role="note"
-          className="mb-5 rounded-[20px] border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 px-4 py-3 text-sm text-amber-800"
+          className="mb-5 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800"
         >
           <AlertTriangle className="inline h-4 w-4 mr-1.5 align-text-bottom" aria-hidden="true" />
           To report a specific listing, open the service page and click
@@ -199,13 +199,13 @@ function ReportPageInner() {
       )}
 
       {result?.success ? (
-        <div className="rounded-[24px] border border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 p-8 text-center">
-          <CheckCircle2 className="h-10 w-10 text-green-500 mx-auto mb-3" aria-hidden="true" />
+        <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-8 text-center">
+          <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-slate-700" aria-hidden="true" />
           <p className="font-medium text-stone-700">Thank you for your report</p>
           <p className="mt-1 text-sm text-stone-500">Our team will review it and take appropriate action.</p>
           <Link
             href={directoryHref}
-            className="inline-block mt-4 text-sm text-action-base hover:underline"
+            className="mt-4 inline-block text-sm text-slate-700 hover:underline"
           >
             Return to directory
           </Link>
@@ -222,7 +222,7 @@ function ReportPageInner() {
                 type="text"
                 value={serviceId}
                 disabled
-                className="w-full rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-stone-500"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-stone-500"
               />
             </FormField>
 
@@ -232,7 +232,7 @@ function ReportPageInner() {
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 required
-                className="min-h-[44px] w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
+                className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
               >
                 <option value="">Select a reason…</option>
                 {REPORT_REASONS.map(({ value, label }) => (
@@ -254,7 +254,7 @@ function ReportPageInner() {
                 onChange={(e) => setDetails(e.target.value)}
                 rows={4}
                 required
-                className="w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
                 placeholder="What is wrong with this listing?"
                 maxLength={2000}
               />
@@ -271,7 +271,7 @@ function ReportPageInner() {
                 type="email"
                 value={contactEmail}
                 onChange={(e) => setContactEmail(e.target.value)}
-                className="min-h-[44px] w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-action"
+                className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
                 placeholder="your@email.com"
               />
             </FormField>
@@ -322,7 +322,7 @@ function ReportPageInner() {
               return (
                 <div
                   key={r.id}
-                  className="rounded-[20px] border border-orange-100 bg-white p-4 shadow-sm"
+                  className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-sm"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
@@ -343,7 +343,7 @@ function ReportPageInner() {
                     <StatusBadge status={r.status} />
                   </div>
                   {r.reviewer_notes && (
-                    <div className="mt-2 rounded-xl bg-orange-50 p-2 text-sm text-stone-600">
+                    <div className="mt-2 rounded-xl bg-slate-50 p-2 text-sm text-stone-600">
                       <span className="font-medium text-stone-500">Reviewer: </span>
                       {r.reviewer_notes}
                     </div>

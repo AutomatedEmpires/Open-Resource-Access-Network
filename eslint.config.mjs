@@ -1,3 +1,4 @@
+import { fixupConfigRules } from "@eslint/compat";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import oranPlugin from "./eslint-plugin-oran.mjs";
@@ -24,8 +25,10 @@ const eslintConfig = [
       "scripts/**",
     ],
   },
-  ...nextVitals,
-  ...nextTs,
+  // eslint-config-next bundles eslint-plugin-react which uses legacy context
+  // methods removed in ESLint 10. fixupConfigRules re-adds them.
+  ...fixupConfigRules(nextVitals),
+  ...fixupConfigRules(nextTs),
 
   // Allow _-prefixed args/vars to signal intentionally unused parameters
   // (e.g. required positional params in route handlers, destructured rest).

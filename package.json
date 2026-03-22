@@ -90,7 +90,7 @@
     "storybook": "^8.6.18",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vite": "^6.4.1",
+    "vite": "^8.0.1",
     "vitest": "^4.0.18",
     "vitest-axe": "^0.1.0"
   },

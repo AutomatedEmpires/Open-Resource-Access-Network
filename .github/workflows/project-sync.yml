@@ -57,7 +57,7 @@ jobs:
           fi
 
       - name: Sync fields
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ env.PROJECT_TOKEN }}
           script: |

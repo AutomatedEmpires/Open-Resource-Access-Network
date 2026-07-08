@@ -123,7 +123,8 @@ the affected + full unit suites are green (see §7).
 - `.env.example` fully rewritten around the portfolio stack (Supabase, Resend,
   Sentry, PostHog, OpenAI, tokenless OSM) with legacy Azure vars clearly marked.
 - `package.json` — removed `@azure/communication-email`, `applicationinsights`,
-  `azure-maps-control`.
+  `azure-maps-control`, and the unused `@azure/openai`. **No `@azure/*` runtime
+  dependency remains.**
 
 ---
 
@@ -171,8 +172,10 @@ the affected + full unit suites are green (see §7).
 
 ### 4.4 Remaining Azure AI adapters *(optional, fail-open today)*
 - **Ingestion LLM provider** — `src/agents/ingestion/llm/providers/azureOpenai.ts`
-  (+ `@azure/openai` dep, deprecated). Add an `openai.ts` provider to the
-  self-registration factory and default to it; then drop `@azure/openai`.
+  already uses the standard `openai` SDK's `AzureOpenAI` class (the deprecated
+  `@azure/openai` package was unused and has been removed). Remaining work: add an
+  `openai.ts` provider to the self-registration factory and default to standard
+  OpenAI, mirroring the seeker-chat summariser.
 - **Translator** — `src/services/i18n/translator.ts` (Azure AI Translator). Swap
   to a provider-neutral shape (self-hosted LibreTranslate or drop). Currently
   fails open to pass-through when unset.

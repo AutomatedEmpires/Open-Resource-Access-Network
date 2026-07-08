@@ -18,7 +18,7 @@ vi.mock('@/services/security/rateLimit', () => ({
 vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
 }));
-vi.mock('@/services/telemetry/appInsights', () => ({
+vi.mock('@/services/telemetry/events', () => ({
   trackEvent: trackEventMock,
 }));
 vi.mock('@/services/auth/session', () => authMocks);

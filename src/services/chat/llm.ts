@@ -2,7 +2,8 @@
  * Chat LLM Summarizer
  *
  * Provides the `summarizeWithLLM` dependency for the chat orchestrator.
- * Uses Azure OpenAI gpt-4o-mini to narrate already-retrieved service records.
+ * Uses OpenAI gpt-4o-mini (portfolio default) to narrate already-retrieved
+ * service records. Azure OpenAI remains supported as an optional fallback.
  *
  * CRITICAL CONSTRAINTS (non-negotiable per SSOT):
  * - The LLM receives ONLY already-retrieved records — it NEVER retrieves or ranks.
@@ -12,31 +13,42 @@
  * - Any LLM error is surfaced to the caller, which must fall back to the assembled message.
  */
 
-import { AzureOpenAI } from 'openai';
+import { AzureOpenAI, OpenAI } from 'openai';
 import type { EnrichedService } from '@/domain/types';
 import type { Intent } from './types';
 import { ELIGIBILITY_DISCLAIMER, MAX_SERVICES_PER_RESPONSE } from '@/domain/constants';
-import { trackAiEvent } from '@/services/telemetry/appInsights';
+import { trackAiEvent } from '@/services/telemetry/events';
 
 // ---------------------------------------------------------------------------
 // Client (lazy singleton — created once per process)
 // ---------------------------------------------------------------------------
 
-let _client: AzureOpenAI | null = null;
+let _client: OpenAI | AzureOpenAI | null = null;
 
-function getClient(): AzureOpenAI {
+/**
+ * Resolve the summariser client. Prefers standard OpenAI (the portfolio
+ * default); falls back to Azure OpenAI only when that is the configured
+ * provider, so any existing Azure deployment keeps working during migration.
+ */
+function getClient(): OpenAI | AzureOpenAI {
   if (_client) return _client;
 
-  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const apiKey = process.env.AZURE_OPENAI_KEY;
-  const apiVersion = process.env.AZURE_OPENAI_API_VERSION ?? '2024-07-01-preview';
-
-  if (!endpoint || !apiKey) {
-    throw new Error('Azure OpenAI is not configured (AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_KEY missing)');
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey) {
+    _client = new OpenAI({ apiKey: openaiKey, baseURL: process.env.OPENAI_BASE_URL });
+    return _client;
   }
 
-  _client = new AzureOpenAI({ endpoint, apiKey, apiVersion });
-  return _client;
+  // Back-compat: use Azure OpenAI if that is what is configured.
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const azureKey = process.env.AZURE_OPENAI_KEY;
+  if (endpoint && azureKey) {
+    const apiVersion = process.env.AZURE_OPENAI_API_VERSION ?? '2024-07-01-preview';
+    _client = new AzureOpenAI({ endpoint, apiKey: azureKey, apiVersion });
+    return _client;
+  }
+
+  throw new Error('LLM summariser is not configured (set OPENAI_API_KEY, or AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_KEY)');
 }
 
 // ---------------------------------------------------------------------------
@@ -112,7 +124,8 @@ export async function summarizeWithLLM(
   intent: Intent
 ): Promise<string> {
   const client = getClient();
-  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT ?? 'gpt-4o-mini';
+  // "deployment" = the model id (OpenAI) or Azure deployment name (fallback).
+  const deployment = process.env.OPENAI_CHAT_MODEL ?? process.env.AZURE_OPENAI_DEPLOYMENT ?? 'gpt-4o-mini';
   const messages = buildMessages(services, intent);
   const t0 = Date.now();
 

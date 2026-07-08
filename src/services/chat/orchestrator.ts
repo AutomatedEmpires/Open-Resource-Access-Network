@@ -85,11 +85,37 @@ const INFORMATIONAL_CRISIS_PATTERNS: RegExp[] = [
   /\b(signs of suicide|suicide warning signs)\b/i,
 ];
 
+/**
+ * First-person self-crisis markers. When ANY of these is present the message is
+ * ALWAYS treated as self-scope crisis — even when it is phrased as a question or
+ * wrapped in third-party / informational language such as
+ * "what should I do if I want to die" or "how do I help myself, I can't go on".
+ *
+ * Safety-critical: this classifier can only ever PROMOTE a keyworded message to
+ * crisis, never demote a genuine first-person disclosure. First person wins.
+ */
+const FIRST_PERSON_CRISIS_PATTERNS: RegExp[] = [
+  // Self-directed harm ("kill myself", "hurt myself", "help myself, I can't go on").
+  /\bmyself\b/i,
+  // "(if) I want / am going / need to die / end it / end my life / give up / disappear".
+  /\bi(?:'m| am| just| really| honestly| think i| feel like i)?\s+(?:want|wanna|need|going|gonna|plan(?:ning)?)\s+to\s+(?:die|end (?:it|my life|it all)|disappear|give up)\b/i,
+  // "I can't go on / keep going / take it anymore".
+  /\bi\s+(?:can'?t|cannot|couldn'?t)\s+(?:go on|keep going|take (?:it|this)(?: anymore)?|do this(?: anymore)?)\b/i,
+  // "I don't want to be here / live".
+  /\bi\s+(?:don'?t|do not|dont)\s+want\s+to\s+(?:be here|live|be alive|wake up)\b/i,
+];
+
 function classifyCrisisScope(message: string): CrisisScope {
   const normalized = message.toLowerCase();
   const hasKeyword = CRISIS_KEYWORDS.some((keyword) => normalized.includes(keyword.toLowerCase()));
   if (!hasKeyword) {
     return null;
+  }
+
+  // Safety override: a first-person disclosure always hard-gates to crisis,
+  // before any third-party / informational downgrade can apply.
+  if (FIRST_PERSON_CRISIS_PATTERNS.some((pattern) => pattern.test(message))) {
+    return 'self';
   }
 
   if (INFORMATIONAL_CRISIS_PATTERNS.some((pattern) => pattern.test(message))) {

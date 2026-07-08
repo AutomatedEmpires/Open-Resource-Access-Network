@@ -14,7 +14,7 @@
  */
 
 import { executeQuery, withTransaction } from '@/services/db/postgres';
-import { sendEmail, isEmailConfigured } from '@/services/email/azureEmail';
+import { sendEmail, isEmailConfigured } from '@/services/email/resend';
 import {
   SUBMISSION_TRANSITIONS,
   TWO_PERSON_REQUIRED_TYPES,

@@ -33,7 +33,7 @@
 // Expand this list conservatively. Every addition increases API call rate.
 // ---------------------------------------------------------------------------
 
-import { trackAiEvent } from '@/services/telemetry/appInsights';
+import { trackAiEvent } from '@/services/telemetry/events';
 
 export const CRISIS_DISTRESS_SIGNALS: readonly string[] = [
   // Hopelessness / no future

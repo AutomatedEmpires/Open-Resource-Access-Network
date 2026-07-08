@@ -486,7 +486,7 @@ export async function buildAgentControlPlaneSnapshot(
       blockers: accessBlockers,
       accelerators: accessAccelerators,
       evidencePaths: [
-        'src/services/geocoding/azureMaps.ts',
+        'src/services/geocoding/nominatim.ts',
         'src/services/i18n/translator.ts',
         'src/services/tts/azureSpeech.ts',
         'docs/DECISIONS/ADR-0006-opt-in-device-geolocation.md',
@@ -516,7 +516,7 @@ export async function buildAgentControlPlaneSnapshot(
         '.github/workflows/deploy-azure-appservice.yml',
         '.github/workflows/deploy-azure-functions.yml',
         'src/services/runtime/envContract.ts',
-        'src/services/telemetry/appInsights.ts',
+        'src/services/telemetry/events.ts',
       ],
     },
   ];

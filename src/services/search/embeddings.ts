@@ -24,7 +24,7 @@
  * @module src/services/search/embeddings
  */
 
-import { trackAiEvent } from '@/services/telemetry/appInsights';
+import { trackAiEvent } from '@/services/telemetry/events';
 
 export const EMBEDDING_DIMENSIONS = 1024;
 

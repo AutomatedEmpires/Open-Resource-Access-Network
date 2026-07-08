@@ -8,7 +8,7 @@
  */
 
 import { executeQuery, withTransaction } from '@/services/db/postgres';
-import { sendEmail, isEmailConfigured } from '@/services/email/azureEmail';
+import { sendEmail, isEmailConfigured } from '@/services/email/resend';
 import { NOTIFICATION_RATE_LIMIT_PER_HOUR } from '@/domain/constants';
 import type {
   NotificationChannel,

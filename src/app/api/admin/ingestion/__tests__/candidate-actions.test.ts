@@ -60,7 +60,7 @@ vi.mock('@/services/db/drizzle', () => ({
   getDrizzle: getDrizzleMock,
 }));
 vi.mock('@/agents/ingestion/persistence/storeFactory', () => storeFactoryMocks);
-vi.mock('@/services/geocoding/azureMaps', () => geocodingMocks);
+vi.mock('@/services/geocoding/nominatim', () => geocodingMocks);
 vi.mock('@/agents/ingestion/livePublish', () => livePublishMocks);
 
 function createRequest(options: {

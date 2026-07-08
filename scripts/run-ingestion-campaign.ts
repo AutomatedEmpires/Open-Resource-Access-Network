@@ -14,7 +14,7 @@ import {
   type SourceTrustLevel,
 } from '../src/agents/ingestion/sourceRegistry';
 import { closeDb, getDb, getPool } from '../src/db';
-import { geocode, isConfigured as isGeocodingConfigured } from '../src/services/geocoding/azureMaps';
+import { geocode, isConfigured as isGeocodingConfigured } from '../src/services/geocoding/nominatim';
 
 type CampaignOptions = {
   urls: string[];

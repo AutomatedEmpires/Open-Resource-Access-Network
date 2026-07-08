@@ -1,36 +1,28 @@
 /**
  * Next.js Instrumentation Hook
  *
- * Initializes Azure Application Insights (OpenTelemetry-based) on server startup.
- * This file is automatically loaded by Next.js when the server starts.
+ * Initializes server-side error/trace telemetry on startup. ORAN's observability
+ * is aligned with the Automated Empires portfolio stack: Sentry for errors and
+ * traces (PostHog handles product analytics on the client).
+ *
+ * Sentry is an OPTIONAL, code-ready integration. This hook never imports an
+ * uninstalled package, so it is safe in every runtime (including Edge) and never
+ * breaks the build. When `@sentry/nextjs` is installed and NEXT_PUBLIC_SENTRY_DSN
+ * is set, the Sentry setup wizard's generated `sentry.server.config` initialises
+ * the SDK here; until then this hook simply reports telemetry status.
  *
  * Docs: https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation
  */
 
 export async function register(): Promise<void> {
   // Only run on the server (Node.js runtime), not in Edge or browser.
-  if (process.env.NEXT_RUNTIME === 'nodejs') {
-    const connectionString = process.env.APPLICATIONINSIGHTS_CONNECTION_STRING;
-    if (!connectionString) {
-      console.log('[instrumentation] APPLICATIONINSIGHTS_CONNECTION_STRING not set — skipping Azure Monitor.');
-      return;
-    }
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
-    try {
-      const { useAzureMonitor: initAzureMonitor } = await import('applicationinsights');
-      initAzureMonitor({
-        azureMonitorExporterOptions: { connectionString },
-        // Respect privacy: do not collect detailed dependency data that could contain PII.
-        instrumentationOptions: {
-          http: { enabled: true },
-          azureSdk: { enabled: false },
-          postgreSql: { enabled: true },
-        },
-      });
-      console.log('[instrumentation] Azure Monitor initialized.');
-    } catch (err) {
-      // Gracefully degrade — telemetry is optional.
-      console.warn('[instrumentation] Failed to initialize Azure Monitor:', err);
-    }
+  const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
+  if (!dsn) {
+    console.log('[instrumentation] NEXT_PUBLIC_SENTRY_DSN not set — telemetry disabled.');
+    return;
   }
+
+  console.log('[instrumentation] Sentry DSN present — install @sentry/nextjs to activate server telemetry.');
 }

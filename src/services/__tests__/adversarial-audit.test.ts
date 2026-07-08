@@ -24,7 +24,7 @@ const emailMocks = vi.hoisted(() => ({
 const clientQueryMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/db/postgres', () => dbMocks);
-vi.mock('@/services/email/azureEmail', () => emailMocks);
+vi.mock('@/services/email/resend', () => emailMocks);
 vi.mock('@/agents/ingestion/promoteToLive', () => ({
   promoteToLive: vi.fn().mockResolvedValue({
     organizationId: 'o',

@@ -30,7 +30,6 @@
     "build:functions": "node scripts/build-functions.mjs"
   },
   "dependencies": {
-    "@azure/communication-email": "^1.1.0",
     "@azure/openai": "^2.0.0",
     "@neondatabase/serverless": "^1.0.2",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -38,8 +37,6 @@
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-toast": "^1.2.15",
-    "applicationinsights": "^3.14.0",
-    "azure-maps-control": "^3.7.2",
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",

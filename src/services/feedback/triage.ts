@@ -17,7 +17,7 @@
  */
 
 import { z } from 'zod';
-import { trackAiEvent } from '@/services/telemetry/appInsights';
+import { trackAiEvent } from '@/services/telemetry/events';
 
 // ============================================================
 // TYPES

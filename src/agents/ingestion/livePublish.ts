@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 
-import type { GeocodingResult } from '@/services/geocoding/azureMaps';
+import type { GeocodingResult } from '@/services/geocoding/nominatim';
 import { withTransaction } from '@/services/db/postgres';
 import {
   appendLifecycleEvent,

@@ -5,7 +5,6 @@ const interMock = vi.hoisted(() => vi.fn(() => ({ variable: '--font-sans' })));
 const patrickHandMock = vi.hoisted(() => vi.fn(() => ({ variable: '--font-hand' })));
 const caveatMock = vi.hoisted(() => vi.fn(() => ({ variable: '--font-display' })));
 const fetchMock = vi.hoisted(() => vi.fn());
-const useAzureMonitorMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/font/google', () => ({
   Inter: interMock,
@@ -43,9 +42,6 @@ vi.mock('@/components/ui/button', () => ({
 vi.mock('next-auth/react', () => ({
   SessionProvider: ({ children }: { children: React.ReactNode }) =>
     React.createElement(React.Fragment, null, children),
-}));
-vi.mock('applicationinsights', () => ({
-  useAzureMonitor: useAzureMonitorMock,
 }));
 vi.mock('next/headers', () => ({
   cookies: vi.fn().mockResolvedValue({ get: vi.fn().mockReturnValue(undefined) }),
@@ -87,8 +83,8 @@ beforeEach(() => {
       results: [{ service: { id: 'svc-1' } }],
     }),
   });
-  useAzureMonitorMock.mockReturnValue(undefined);
-  delete process.env.APPLICATIONINSIGHTS_CONNECTION_STRING;
+  delete process.env.NEXT_PUBLIC_SENTRY_DSN;
+  delete process.env.SENTRY_TRACES_SAMPLE_RATE;
   delete process.env.NEXT_RUNTIME;
 });
 
@@ -167,13 +163,14 @@ describe('platform shell', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const { register } = await loadInstrumentation();
 
-    await register();
+    await expect(register()).resolves.toBeUndefined();
 
-    expect(useAzureMonitorMock).not.toHaveBeenCalled();
+    // No runtime => returns before touching the DSN or logging anything.
+    expect(logSpy).not.toHaveBeenCalled();
     logSpy.mockRestore();
   });
 
-  it('logs and skips instrumentation when no connection string is configured', async () => {
+  it('logs and skips instrumentation when no Sentry DSN is configured', async () => {
     process.env.NEXT_RUNTIME = 'nodejs';
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const { register } = await loadInstrumentation();
@@ -181,22 +178,21 @@ describe('platform shell', () => {
     await register();
 
     expect(logSpy).toHaveBeenCalledWith(
-      '[instrumentation] APPLICATIONINSIGHTS_CONNECTION_STRING not set — skipping Azure Monitor.',
+      '[instrumentation] NEXT_PUBLIC_SENTRY_DSN not set — telemetry disabled.',
     );
-    expect(useAzureMonitorMock).not.toHaveBeenCalled();
     logSpy.mockRestore();
   });
 
-  it('initializes Azure Monitor when instrumentation is configured', async () => {
+  it('acknowledges a configured DSN without importing @sentry/nextjs at build time', async () => {
     process.env.NEXT_RUNTIME = 'nodejs';
-    process.env.APPLICATIONINSIGHTS_CONNECTION_STRING = 'InstrumentationKey=test';
+    process.env.NEXT_PUBLIC_SENTRY_DSN = 'https://public@example.ingest.sentry.io/1';
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const { register } = await loadInstrumentation();
 
-    await register();
-
-    expect(useAzureMonitorMock).toHaveBeenCalledOnce();
-    expect(logSpy).toHaveBeenCalledWith('[instrumentation] Azure Monitor initialized.');
+    await expect(register()).resolves.toBeUndefined();
+    expect(logSpy).toHaveBeenCalledWith(
+      '[instrumentation] Sentry DSN present — install @sentry/nextjs to activate server telemetry.',
+    );
     logSpy.mockRestore();
   });
 });

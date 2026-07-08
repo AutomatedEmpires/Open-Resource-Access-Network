@@ -74,7 +74,7 @@ export async function POST(
     );
 
     const { geocode, isConfigured: isGeocodingConfigured } = await import(
-      '@/services/geocoding/azureMaps'
+      '@/services/geocoding/nominatim'
     );
 
     const published = await publishCandidateToLiveService({

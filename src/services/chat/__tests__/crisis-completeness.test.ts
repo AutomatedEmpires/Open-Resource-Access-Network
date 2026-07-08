@@ -131,4 +131,38 @@ describe('crisis scope classification (via detectCrisis)', () => {
       });
     }
   });
+
+  /**
+   * Regression guard for the first-person override: broad third-party /
+   * informational patterns ("what should I do if …", "how do I help …") must
+   * NOT demote a genuine first-person disclosure. These MUST hard-gate.
+   */
+  describe('first-person crisis is never downgraded by question / help phrasing', () => {
+    const disguisedSelfCrisis = [
+      'what should I do if I want to die',
+      "how do I help myself, I can't go on",
+      'what should I do, I want to kill myself',
+      "I don't want to be here anymore, what should I do",
+      'how do I make myself stop, I want to end my life',
+    ];
+
+    for (const msg of disguisedSelfCrisis) {
+      it(`"${msg}" → detectCrisis returns true`, () => {
+        expect(detectCrisis(msg)).toBe(true);
+      });
+    }
+
+    // The override must NOT flip genuine third-party disclosures.
+    const stillThirdParty = [
+      'What should I do if my friend is suicidal?',
+      'How do I help someone who is suicidal?',
+      'My mom is suicidal and I do not know what to do',
+    ];
+
+    for (const msg of stillThirdParty) {
+      it(`"${msg}" → detectCrisis returns false`, () => {
+        expect(detectCrisis(msg)).toBe(false);
+      });
+    }
+  });
 });

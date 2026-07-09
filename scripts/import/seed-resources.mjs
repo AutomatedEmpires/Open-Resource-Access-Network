@@ -31,7 +31,8 @@
  *   node seed-resources.mjs --project <ref> --file resources.ndjson [--batch 500] [--dry-run]
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, createReadStream, appendFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -45,6 +46,9 @@ const getArg = (name, def) => {
 const PROJECT = getArg('project', process.env.SUPABASE_PROJECT_ID);
 const FILE = getArg('file');
 const BATCH = parseInt(getArg('batch', '500'), 10);
+const CONC = Math.max(1, parseInt(getArg('concurrency', '1'), 10));
+const CONTINUE = args.includes('--continue-on-error');
+const DEADLETTER = getArg('deadletter', FILE ? `${FILE}.deadletter` : '/tmp/loader.deadletter');
 const DRY = args.includes('--dry-run');
 if (!FILE) { console.error('Missing --file <ndjson>'); process.exit(2); }
 
@@ -80,16 +84,19 @@ const CATEGORY_LABELS = {
   seniors: 'Older Adults', disability: 'Disability Services', immigration: 'Immigration',
   crisis: 'Crisis & Safety', domestic_violence: 'Domestic Violence', clothing: 'Clothing & Goods',
   benefits: 'Benefits Navigation', hotline: 'Hotlines', snap_retailer: 'SNAP/EBT Retailer',
+  pharmacy: 'Pharmacy', human_services: 'Human Services',
 };
 function catId(slug) { return uuidv5(`tax:${slug}`); }
 
 // ── build batched SQL ────────────────────────────────────────
 function buildBatchSql(records) {
   const orgs = [], locs = [], svcs = [], sals = [], addrs = [], phones = [], links = [], confs = [];
-  const seenOrg = new Set(), seenLoc = new Set(), seenSvc = new Set();
+  const seenOrg = new Set(), seenLoc = new Set(), seenSvc = new Set(), seenKey = new Set();
 
   for (const r of records) {
     const key = `${r.source}:${r.sourceId}`;
+    if (seenKey.has(key)) continue;
+    seenKey.add(key);
     const orgKey = `${r.source}:${r.org.key ?? r.sourceId}`;
     const orgId = uuidv5(`org:${orgKey}`);
     const locId = uuidv5(`loc:${key}`);
@@ -150,31 +157,80 @@ function taxonomySeedSql() {
 async function applySql(sql) {
   if (DRY) return { ok: true, dry: true };
   const token = (process.env.SUPABASE_ACCESS_TOKEN || readFileSync(path.join(homedir(), '.supabase/access-token'), 'utf8')).trim();
-  const res = await fetch(`https://api.supabase.com/v1/projects/${PROJECT}/database/query`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: sql }),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 800)}`);
-  return { ok: true };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 180000); // 3-min hard cap so a stuck connection can't hang the load
+  try {
+    const res = await fetch(`https://api.supabase.com/v1/projects/${PROJECT}/database/query`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: sql }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 800)}`);
+    return { ok: true };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-// ── main ─────────────────────────────────────────────────────
-const lines = readFileSync(FILE, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
-const records = [];
-for (const l of lines) { try { records.push(JSON.parse(l)); } catch { /* skip bad line */ } }
-console.log(`Loaded ${records.length} records from ${FILE} (project ${PROJECT}, batch ${BATCH}${DRY ? ', DRY-RUN' : ''})`);
+// retry transient failures (rate limit, 5xx, network); surface real SQL errors
+async function applyWithRetry(sql) {
+  let lastErr;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try { return await applySql(sql); }
+    catch (e) {
+      lastErr = e;
+      const msg = String(e?.message || e);
+      const transient = /HTTP (429|5\d\d)/.test(msg) || /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network|aborted|AbortError|timeout/i.test(msg);
+      if (!transient) throw e;
+      await new Promise((r) => setTimeout(r, Math.min(30000, 1000 * 2 ** attempt)));
+    }
+  }
+  throw lastErr;
+}
 
-await applySql(taxonomySeedSql());
+// ── main (streaming; bounded concurrency; scales to millions) ─
+console.log(`Streaming ${FILE} → project ${PROJECT} (batch ${BATCH}, concurrency ${CONC}${CONTINUE ? ', continue-on-error' : ''}${DRY ? ', DRY-RUN' : ''})`);
+await applyWithRetry(taxonomySeedSql());
 console.log('Seeded taxonomy terms.');
 
-let done = 0;
-for (let i = 0; i < records.length; i += BATCH) {
-  const batch = records.slice(i, i + BATCH);
+let done = 0, failed = 0, batchNo = 0;
+const inflight = new Set();
+const t0 = Date.now();
+
+async function flush(batch) {
   const sql = buildBatchSql(batch);
-  if (!sql.trim()) { done += batch.length; continue; }
-  await applySql(sql);
-  done += batch.length;
-  console.log(`  ${done}/${records.length}`);
+  if (!sql.trim()) { done += batch.length; return; }
+  try {
+    await applyWithRetry(sql);
+    done += batch.length;
+  } catch (e) {
+    if (!CONTINUE) throw e;
+    failed += batch.length;
+    appendFileSync(DEADLETTER, batch.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    console.error(`  BATCH FAILED (dead-lettered ${batch.length}): ${String(e?.message).slice(0, 200)}`);
+  }
+  if (++batchNo % 10 === 0) {
+    const rate = Math.round((done + failed) / ((Date.now() - t0) / 1000));
+    console.log(`  ${done} done${failed ? `, ${failed} failed` : ''} (~${rate}/s)`);
+  }
 }
-console.log(`Done. Applied ${done} resources.`);
+
+function schedule(batch) {
+  const p = flush(batch).finally(() => inflight.delete(p));
+  inflight.add(p);
+  return inflight.size >= CONC ? Promise.race(inflight) : Promise.resolve();
+}
+
+const rl = createInterface({ input: createReadStream(FILE, { encoding: 'utf8' }), crlfDelay: Infinity });
+let batch = [];
+for await (const line of rl) {
+  const t = line.trim();
+  if (!t) continue;
+  let rec; try { rec = JSON.parse(t); } catch { continue; }
+  batch.push(rec);
+  if (batch.length >= BATCH) { const b = batch; batch = []; await schedule(b); }
+}
+if (batch.length) await schedule(batch);
+await Promise.all(inflight);
+console.log(`Done. Applied ${done} resources${failed ? `, ${failed} failed (see ${DEADLETTER})` : ''}.`);

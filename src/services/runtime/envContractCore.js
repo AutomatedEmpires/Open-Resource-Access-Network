@@ -1,14 +1,12 @@
 const RULES_BY_TARGET = {
   webapp: [
     { name: 'DATABASE_URL', level: 'critical', productionOnly: true },
-    { name: 'NEXTAUTH_SECRET', level: 'critical', productionOnly: true },
-    { name: 'NEXTAUTH_URL', level: 'critical', productionOnly: true },
     { name: 'INTERNAL_API_KEY', level: 'critical', productionOnly: true },
     { name: 'NDP_211_SUBSCRIPTION_KEY', level: 'critical', whenTruthy: 'NDP_211_POLLING_ENABLED' },
     { name: 'NDP_211_DATA_OWNERS', level: 'critical', whenTruthy: 'NDP_211_POLLING_ENABLED' },
-    { name: 'AZURE_AD_CLIENT_SECRET', level: 'critical', whenPresent: 'AZURE_AD_CLIENT_ID' },
-    { name: 'AZURE_AD_TENANT_ID', level: 'warning', whenPresent: 'AZURE_AD_CLIENT_ID' },
-    { name: 'GOOGLE_CLIENT_SECRET', level: 'critical', whenPresent: 'GOOGLE_CLIENT_ID' },
+    // Authentication (Clerk) — identity provider; roles remain DB-driven.
+    { name: 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', level: 'critical', productionOnly: true },
+    { name: 'CLERK_SECRET_KEY', level: 'critical', productionOnly: true },
     { name: 'REDIS_URL', level: 'warning', productionOnly: true },
     // Legacy Azure AI Translator (optional; slated for a provider-neutral swap — see docs/CONVERGENCE.md).
     { name: 'AZURE_TRANSLATOR_KEY', level: 'warning', productionOnly: true },

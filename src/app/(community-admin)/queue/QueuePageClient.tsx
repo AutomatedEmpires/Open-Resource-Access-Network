@@ -13,7 +13,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/services/auth/useOranSession';
 import {
   ClipboardList, RefreshCw, ChevronLeft, ChevronRight,
   UserCheck, Clock, Filter, AlertTriangle, ArrowUp, Unlock,

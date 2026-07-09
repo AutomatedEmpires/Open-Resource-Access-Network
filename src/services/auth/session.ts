@@ -1,12 +1,19 @@
 /**
  * Session Helper
  *
- * Extracts authenticated user context from NextAuth.js sessions.
- * Looks up org memberships from organization_members table (if available).
- * Falls back gracefully when table doesn't exist or user isn't a member of any org.
+ * Extracts authenticated user context from the Clerk session and resolves the
+ * ORAN role / account status / org memberships from Postgres.
+ *
+ * Identity comes from Clerk; **authorization is DB-driven** — `user_profiles.role`
+ * is the source of truth, and `organization_members` drives host-org access. The
+ * `getAuthContext()` seam is the single server-side auth accessor used by every
+ * API route, so the Clerk cutover is contained to this module.
+ *
+ * On first authed request a `user_profiles` row is created on demand (default
+ * role `seeker`), so sign-ups work without a Clerk webhook.
  */
 
-import { getServerSession } from 'next-auth';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import type { AccountStatus, OranRole } from '@/domain/types';
 
@@ -15,7 +22,7 @@ import type { AccountStatus, OranRole } from '@/domain/types';
 // ============================================================
 
 export interface AuthContext {
-  /** User ID from NextAuth (e.g., Entra Object ID or email-based ID) */
+  /** User ID from Clerk (the Clerk user id, e.g. "user_..."). */
   userId: string;
   /** User's primary role (highest privilege level) */
   role: OranRole;
@@ -33,7 +40,8 @@ interface OrgMemberRow {
   status: string;
 }
 
-interface UserSecurityRow {
+interface UserProfileRow {
+  role: OranRole | null;
   account_status: AccountStatus | null;
 }
 
@@ -48,7 +56,7 @@ function determineHighestRole(
   orgRoles: Map<string, 'host_member' | 'host_admin'>,
   sessionRole?: string,
 ): OranRole {
-  // If session has oran_admin or community_admin, trust it
+  // If profile role is oran_admin or community_admin, trust it
   if (sessionRole === 'oran_admin' || sessionRole === 'community_admin') {
     return sessionRole as OranRole;
   }
@@ -61,8 +69,8 @@ function determineHighestRole(
   // Check if user is host_member in any org
   if (orgRoles.size > 0) return 'host_member';
 
-  // Default to seeker
-  return sessionRole as OranRole ?? 'seeker';
+  // Default to the profile role or seeker
+  return (sessionRole as OranRole) ?? 'seeker';
 }
 
 /**
@@ -84,21 +92,51 @@ async function orgMembersTableExists(): Promise<boolean> {
   }
 }
 
-async function getAccountStatus(userId: string): Promise<AccountStatus> {
+/**
+ * Read (and, on first sight, create) the user's profile row.
+ * Returns the DB role + account status. On DB error, fails closed (frozen).
+ */
+async function getOrCreateProfile(userId: string): Promise<{ role: OranRole | null; accountStatus: AccountStatus }> {
   if (!isDatabaseConfigured()) {
-    return 'active';
+    return { role: null, accountStatus: 'active' };
   }
 
   try {
-    const rows = await executeQuery<UserSecurityRow>(
-      `SELECT account_status FROM user_profiles WHERE user_id = $1`,
+    const rows = await executeQuery<UserProfileRow>(
+      `SELECT role, account_status FROM user_profiles WHERE user_id = $1`,
       [userId],
     );
-    return rows[0]?.account_status ?? 'active';
+
+    if (rows[0]) {
+      return {
+        role: rows[0].role ?? null,
+        accountStatus: rows[0].account_status ?? 'active',
+      };
+    }
+
+    // First authed request for this Clerk user — create a seeker profile on demand.
+    const clerkUser = await currentUser().catch(() => null);
+    const email = clerkUser?.primaryEmailAddress?.emailAddress ?? clerkUser?.emailAddresses?.[0]?.emailAddress ?? null;
+    const displayName =
+      [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(' ').trim() ||
+      clerkUser?.username ||
+      null;
+
+    await executeQuery(
+      `INSERT INTO user_profiles (user_id, display_name, email, auth_provider, role)
+       VALUES ($1, $2, $3, 'clerk', 'seeker')
+       ON CONFLICT (user_id) DO UPDATE
+         SET display_name = COALESCE(EXCLUDED.display_name, user_profiles.display_name),
+             email = COALESCE(EXCLUDED.email, user_profiles.email),
+             auth_provider = 'clerk'`,
+      [userId, displayName, email?.toLowerCase() ?? null],
+    );
+
+    return { role: 'seeker', accountStatus: 'active' };
   } catch {
     // B2 fix: deny access on DB error instead of assuming active —
     // prevents frozen users from authenticating during DB outages.
-    return 'frozen';
+    return { role: null, accountStatus: 'frozen' };
   }
 }
 
@@ -108,7 +146,7 @@ async function getAccountStatus(userId: string): Promise<AccountStatus> {
 
 /**
  * Get authentication context for the current request.
- * Returns null if user is not authenticated.
+ * Returns null if the user is not authenticated (or is not active).
  *
  * @example
  * const authCtx = await getAuthContext();
@@ -118,104 +156,65 @@ async function getAccountStatus(userId: string): Promise<AccountStatus> {
  */
 export async function getAuthContext(): Promise<AuthContext | null> {
   try {
-    // Get NextAuth session
-    const session = await getServerSession();
-
-    if (!session?.user) {
-      return null;
-    }
-
-    // Extract user ID (prefer sub/id, fallback to email)
-    const userId = (session.user as { id?: string; sub?: string }).id
-      ?? (session.user as { id?: string; sub?: string }).sub
-      ?? session.user.email
-      ?? null;
-
+    const { userId } = await auth();
     if (!userId) {
       return null;
     }
 
-    const accountStatus = await getAccountStatus(userId);
-    if (accountStatus !== 'active') {
+    const profile = await getOrCreateProfile(userId);
+    if (profile.accountStatus !== 'active') {
       return null;
     }
 
-    // Extract role from session metadata if available
-    const sessionRole = (session.user as { role?: string }).role;
+    const profileRole = profile.role ?? undefined;
 
-    // If oran_admin, skip org membership lookup (full access)
-    if (sessionRole === 'oran_admin') {
-      return {
-        userId,
-        role: 'oran_admin',
-        accountStatus,
-        orgIds: [],
-        orgRoles: new Map(),
-      };
+    // Platform admins skip the org-membership lookup (full access).
+    if (profileRole === 'oran_admin') {
+      return { userId, role: 'oran_admin', accountStatus: profile.accountStatus, orgIds: [], orgRoles: new Map() };
+    }
+    if (profileRole === 'community_admin') {
+      return { userId, role: 'community_admin', accountStatus: profile.accountStatus, orgIds: [], orgRoles: new Map() };
     }
 
-    // If community_admin, skip org membership lookup
-    if (sessionRole === 'community_admin') {
-      return {
-        userId,
-        role: 'community_admin',
-        accountStatus,
-        orgIds: [],
-        orgRoles: new Map(),
-      };
-    }
-
-    // Look up org memberships from database
+    // Look up org memberships from the database.
     const orgIds: string[] = [];
     const orgRoles = new Map<string, 'host_member' | 'host_admin'>();
 
-    if (isDatabaseConfigured()) {
-      const tableExists = await orgMembersTableExists();
+    if (isDatabaseConfigured() && (await orgMembersTableExists())) {
+      const rows = await executeQuery<OrgMemberRow>(
+        `SELECT organization_id, role, status
+         FROM organization_members
+         WHERE user_id = $1 AND status = 'active'`,
+        [userId],
+      );
 
-      if (tableExists) {
-        const rows = await executeQuery<OrgMemberRow>(
-          `SELECT organization_id, role, status
-           FROM organization_members
-           WHERE user_id = $1 AND status = 'active'`,
-          [userId],
-        );
-
-        for (const row of rows) {
-          if (row.role === 'host_admin' || row.role === 'host_member') {
-            orgIds.push(row.organization_id);
-            orgRoles.set(row.organization_id, row.role);
-          }
+      for (const row of rows) {
+        if (row.role === 'host_admin' || row.role === 'host_member') {
+          orgIds.push(row.organization_id);
+          orgRoles.set(row.organization_id, row.role);
         }
       }
     }
 
-    const role = determineHighestRole(orgRoles, sessionRole);
+    const role = determineHighestRole(orgRoles, profileRole);
 
-    return {
-      userId,
-      role,
-      accountStatus,
-      orgIds,
-      orgRoles,
-    };
+    return { userId, role, accountStatus: profile.accountStatus, orgIds, orgRoles };
   } catch {
-    // Auth failure should not crash the app — return null (unauthenticated)
+    // Auth failure should not crash the app — return null (unauthenticated).
     return null;
   }
 }
 
 /**
- * Check if auth is currently configured (Entra ID client ID present).
- * Useful for conditional behavior in dev vs. prod.
+ * Whether Clerk auth is configured (publishable key present).
  */
 export function isAuthConfigured(): boolean {
-  return Boolean(process.env.AZURE_AD_CLIENT_ID);
+  return Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 }
 
 /**
  * Whether auth enforcement should be active for the current environment.
- * Returns true if Entra ID is configured **or** if running in production (fail-closed).
- * Dev-mode bypass only applies when `AZURE_AD_CLIENT_ID` is absent AND `NODE_ENV !== 'production'`.
+ * Fail-closed in production; in dev, enforced only when Clerk is configured.
  */
 export function shouldEnforceAuth(): boolean {
   if (process.env.NODE_ENV === 'production') return true;

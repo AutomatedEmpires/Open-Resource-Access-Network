@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { SessionProvider } from 'next-auth/react';
+import { ClerkProvider } from '@clerk/nextjs';
 import { ToastProvider } from '@/components/ui/toast';
 import { CrisisProvider } from '@/components/crisis/CrisisContext';
 import { LocaleProvider } from '@/contexts/LocaleContext';
@@ -25,12 +25,12 @@ interface ProvidersProps {
 
 export function Providers({ locale, dir, messages, children }: ProvidersProps) {
   return (
-    <LocaleProvider locale={locale} dir={dir} messages={messages}>
-      <SessionProvider>
+    <ClerkProvider>
+      <LocaleProvider locale={locale} dir={dir} messages={messages}>
         <ToastProvider>
           <CrisisProvider>{children}</CrisisProvider>
         </ToastProvider>
-      </SessionProvider>
-    </LocaleProvider>
+      </LocaleProvider>
+    </ClerkProvider>
   );
 }

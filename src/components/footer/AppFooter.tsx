@@ -14,7 +14,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/services/auth/useOranSession';
 import { ExternalLink, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { OranRole } from '@/domain/types';

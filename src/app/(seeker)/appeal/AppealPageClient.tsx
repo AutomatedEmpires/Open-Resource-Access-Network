@@ -12,7 +12,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Scale, Send, Loader2, CheckCircle2, ArrowLeft, Clock, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/services/auth/useOranSession';
 
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';

@@ -21,8 +21,8 @@ describe('buildAgentControlPlaneSnapshot', () => {
       env: {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-        NEXTAUTH_SECRET: 'secret',
-        NEXTAUTH_URL: 'https://oran.test',
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_123',
+        CLERK_SECRET_KEY: 'sk_test_123',
         INTERNAL_API_KEY: 'internal-key',
         APPLICATIONINSIGHTS_CONNECTION_STRING: 'InstrumentationKey=test',
         AZURE_AD_CLIENT_ID: 'entra-id',

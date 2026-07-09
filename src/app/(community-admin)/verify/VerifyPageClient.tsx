@@ -13,7 +13,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/services/auth/useOranSession';
 import {
   ArrowLeft, ShieldCheck, ShieldX, AlertTriangle, ExternalLink,
   MapPin, Phone, Mail, Globe, Building2, FileText, Clock,

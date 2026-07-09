@@ -10,7 +10,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/services/auth/useOranSession';
 import {
   LayoutDashboard, ClipboardList, ShieldCheck, FileText, Globe2, ArrowRight,
 } from 'lucide-react';

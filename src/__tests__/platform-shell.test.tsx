@@ -39,8 +39,8 @@ vi.mock('@/components/ui/button', () => ({
   Button: ({ children, ...props }: { children: React.ReactNode }) =>
     React.createElement('button', props, children),
 }));
-vi.mock('next-auth/react', () => ({
-  SessionProvider: ({ children }: { children: React.ReactNode }) =>
+vi.mock('@clerk/nextjs', () => ({
+  ClerkProvider: ({ children }: { children: React.ReactNode }) =>
     React.createElement(React.Fragment, null, children),
 }));
 vi.mock('next/headers', () => ({

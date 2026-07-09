@@ -14,7 +14,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => navigationState.searchParams,
 }));
 
-vi.mock('next-auth/react', () => ({
+vi.mock('@/services/auth/useOranSession', () => ({
   useSession: () => ({
     data: {
       user: {

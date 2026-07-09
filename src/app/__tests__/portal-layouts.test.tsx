@@ -16,7 +16,7 @@ vi.mock('next/navigation', () => ({
   usePathname: usePathnameMock,
   useRouter: useRouterMock,
 }));
-vi.mock('next-auth/react', () => ({
+vi.mock('@/services/auth/useOranSession', () => ({
   useSession: useSessionMock,
 }));
 vi.mock('@/services/auth/roles', () => ({

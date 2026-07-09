@@ -8,8 +8,8 @@ describe('validateRuntimeEnv', () => {
       {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-        NEXTAUTH_SECRET: 'secret',
-        NEXTAUTH_URL: 'https://oran.test',
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_123',
+        CLERK_SECRET_KEY: 'sk_test_123',
         INTERNAL_API_KEY: 'internal-key',
         REDIS_URL: 'redis://localhost:6379',
         AZURE_TRANSLATOR_KEY: 'trans-key',
@@ -26,23 +26,22 @@ describe('validateRuntimeEnv', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('flags conditional auth settings when a provider is partially configured', () => {
+  it('flags missing Clerk auth keys as critical in production', () => {
     const result = validateRuntimeEnv(
       'webapp',
       {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-        NEXTAUTH_SECRET: 'secret',
-        NEXTAUTH_URL: 'https://oran.test',
         INTERNAL_API_KEY: 'internal-key',
-        AZURE_AD_CLIENT_ID: 'entra-client-id',
       },
     );
 
     expect(result.ok).toBe(false);
-    expect(result.missingCritical).toEqual(['AZURE_AD_CLIENT_SECRET']);
+    expect(result.missingCritical).toEqual([
+      'CLERK_SECRET_KEY',
+      'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY',
+    ]);
     expect(result.warnings).toEqual([
-      'AZURE_AD_TENANT_ID',
       'AZURE_TRANSLATOR_ENDPOINT',
       'AZURE_TRANSLATOR_KEY',
       'AZURE_TRANSLATOR_REGION',
@@ -67,8 +66,8 @@ describe('validateRuntimeEnv', () => {
     const result = validateRuntimeEnv('webapp', {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-      NEXTAUTH_SECRET: 'secret',
-      NEXTAUTH_URL: 'https://oran.test',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_123',
+      CLERK_SECRET_KEY: 'sk_test_123',
       INTERNAL_API_KEY: 'internal-key',
       NDP_211_POLLING_ENABLED: 'true',
     });
@@ -84,8 +83,8 @@ describe('validateRuntimeEnv', () => {
     const result = validateRuntimeEnv('webapp', {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-      NEXTAUTH_SECRET: 'secret',
-      NEXTAUTH_URL: 'https://oran.test',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_123',
+      CLERK_SECRET_KEY: 'sk_test_123',
       INTERNAL_API_KEY: 'internal-key',
       NDP_211_POLLING_ENABLED: 'false',
     });

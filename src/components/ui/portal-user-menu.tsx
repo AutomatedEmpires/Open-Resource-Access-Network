@@ -18,7 +18,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useSession, signOut } from 'next-auth/react';
+import { useSession, signOut } from '@/services/auth/useOranSession';
 import { LogOut, User, HelpCircle } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────

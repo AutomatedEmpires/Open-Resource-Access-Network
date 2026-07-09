@@ -23,7 +23,7 @@ PinnedAtlas) has converged on one stack. ORAN is being aligned to it:
 | Runtime / framework | Next.js 16 + React 19 + TS | same | ✅ already aligned |
 | Package manager | npm | pnpm | ⏳ deferred (low risk) |
 | Database | Postgres via `pg` / Neon driver | **Supabase** (Postgres + PostGIS) | ✅ schema live (`tpatxospkuqvajusuryw`); DATABASE_URL gated |
-| Auth | NextAuth v4 + Entra ID (Azure AD) | **Clerk** | ⏳ gated (needs Clerk app) |
+| Auth | NextAuth v4 + Entra ID (Azure AD) | **Clerk** | ✅ code-complete; needs Clerk app to activate |
 | Hosting | Azure App Service | **Vercel** | ⏳ gated (needs Vercel project) |
 | Workers | Azure Functions (9) | **Vercel cron + route handlers** | ⏳ planned (see §4) |
 | Secrets | Azure Key Vault | **Doppler** | ⏳ doc/ops |
@@ -130,16 +130,29 @@ the affected + full unit suites are green (see §7).
 
 ## 4. Remaining slices (with plans)
 
-### 4.1 Auth: NextAuth + Entra ID → Clerk  *(gated: needs a Clerk application)*
-- Surface: ~35 files. Core: `src/lib/auth.ts`, `src/services/auth/session.ts`,
-  `src/app/api/auth/[...nextauth]/route.ts`, `src/proxy.ts` (middleware),
-  `src/app/providers.tsx`, plus every layout shell and page client calling
-  `useSession`/`getServerSession`, and `src/db/schema.ts` auth tables.
-- Plan: introduce Clerk provider + middleware, replace `getServerSession` with
-  Clerk's server helpers behind a thin `getCurrentUser()` seam, map Clerk user →
-  `app_user`, add `/api/webhooks/clerk`. Keep the role model (seeker/host/
-  community-admin/oran-admin) unchanged. Founder gate identical to the rest of
-  the portfolio: create the Clerk app + keys + (optionally) `CLERK_WEBHOOK_SECRET`.
+### 4.1 Auth: NextAuth + Entra ID → Clerk  ✅ *(code-complete; needs a Clerk application to activate)*
+- **Done (code):** identity migrated to Clerk while **authorization stays
+  DB-driven** (`user_profiles.role` + `organization_members`), so the entire
+  server side moved through one seam:
+  - `src/services/auth/session.ts` — `getAuthContext()` now reads the Clerk
+    `auth()` user id, resolves role/account-status/org-memberships from Postgres,
+    and creates a `seeker` profile on first sign-in (no webhook needed). All ~100
+    API routes use this seam unchanged; `guards.ts` was already Clerk-agnostic.
+  - `src/app/providers.tsx` → `ClerkProvider`; `src/proxy.ts` → `clerkMiddleware`
+    (keeps CSRF; gates protected routes on sign-in — role enforcement stays in the
+    DB-driven server layer since Edge can't read `user_profiles`).
+  - Client seam: `src/services/auth/useOranSession.ts` — a NextAuth-shaped
+    `useSession()`/`signIn`/`signOut` backed by Clerk + `/api/me`, so the ~13
+    client components migrated by import only.
+  - Clerk `<SignIn/>`/`<SignUp/>` at `/sign-in` and `/sign-up`; the branded
+    `/auth/signin` chooser now routes into Clerk. Removed `next-auth`, the
+    `[...nextauth]` route, `api/auth/register`, and the NextAuth config.
+- **Remaining (founder gate — dashboard-only, no API):** create the Clerk
+  application, set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` + `CLERK_SECRET_KEY`,
+  configure OAuth providers in the Clerk dashboard, then run the live sign-in /
+  role-resolution flow (which cannot be exercised here without the instance).
+  Optional: a `/api/webhooks/clerk` consumer if you prefer webhook-time profile
+  creation over the on-demand path.
 
 ### 4.2 Database: Neon/`pg` → Supabase  ✅ *(schema live; DATABASE_URL secret is the only founder gate)*
 - **Done:** Supabase project **`oran`** created (`tpatxospkuqvajusuryw`, us-east-1,

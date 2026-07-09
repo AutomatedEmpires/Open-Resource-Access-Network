@@ -10,7 +10,7 @@
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { signOut, useSession } from 'next-auth/react';
+import { signOut, useSession } from '@/services/auth/useOranSession';
 import { ChevronDown, List, LogOut, MapPin, Menu, MessageCircle, User, X } from 'lucide-react';
 import type { OranRole } from '@/domain/types';
 import { LanguageSwitcher } from './LanguageSwitcher';

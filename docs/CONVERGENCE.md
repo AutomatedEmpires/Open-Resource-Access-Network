@@ -1,7 +1,10 @@
 # ORAN Portfolio Convergence & Azure Exit
 
-Status: **In progress — application-layer Azure adapters migrated; infrastructure
-and identity cutovers remain (founder/provisioning-gated).**
+Status: **Azure exit essentially complete in code. App-layer adapters migrated;
+Bicep infra + Azure deploy workflows + Azure Functions runtime removed; Supabase
+schema live; Clerk auth code-complete; repo is Vercel-native (`vercel.json` +
+cron). Remaining is provisioning/activation: Vercel deploy (auth), Clerk app,
+`DATABASE_URL`, and the crawl-pipeline queue substitute — see §4 + §8 runbook.**
 
 Last updated: 2026-07-08 · Branch: `feat/portfolio-convergence-azure-exit`
 
@@ -24,8 +27,8 @@ PinnedAtlas) has converged on one stack. ORAN is being aligned to it:
 | Package manager | npm | pnpm | ⏳ deferred (low risk) |
 | Database | Postgres via `pg` / Neon driver | **Supabase** (Postgres + PostGIS) | ✅ schema live (`tpatxospkuqvajusuryw`); DATABASE_URL gated |
 | Auth | NextAuth v4 + Entra ID (Azure AD) | **Clerk** | ✅ code-complete; needs Clerk app to activate |
-| Hosting | Azure App Service | **Vercel** | ⏳ gated (needs Vercel project) |
-| Workers | Azure Functions (9) | **Vercel cron + route handlers** | ⏳ planned (see §4) |
+| Hosting | Azure App Service | **Vercel** | ⏳ Vercel-native (`vercel.json`); Bicep + Azure deploy workflows removed; deploy needs Vercel auth |
+| Workers | Azure Functions (9) | **Vercel cron + route handlers** | ✅ timer jobs → `/api/cron/*` + `vercel.json` crons; ⏳ queue crawl-pipeline substitute |
 | Secrets | Azure Key Vault | **Doppler** | ⏳ doc/ops |
 | Email | Azure Communication Services | **Resend** | ✅ migrated |
 | Error monitoring | Azure Application Insights | **Sentry** | ✅ migrated |
@@ -174,28 +177,34 @@ the affected + full unit suites are green (see §7).
   privileges from `anon`/`authenticated`, or enable deny-all RLS (the app's owner
   role bypasses it). Not auto-applied — surfaced from the Supabase security advisor.
 
-### 4.3 Hosting + workers: App Service + Azure Functions → Vercel
-- Remove `deploy-azure-appservice.yml`, `deploy-azure-functions.yml`,
-  `deploy-infra.yml`; delete `infra/*.bicep` + `main.json`; add `vercel.json`.
-- Map the **9 Azure Functions** to Vercel primitives (all logic is portable — no
-  `@azure/functions` imports; only `function.json` bindings + `host.json`):
+### 4.3 Hosting + workers: App Service + Azure Functions → Vercel  ✅ *(Vercel-native; deploy is founder-gated)*
+- **Done:** removed `infra/*.bicep` + `main.json` + `monitoring.bicep`, the
+  `deploy-azure-appservice.yml` / `deploy-azure-functions.yml` / `deploy-infra.yml`
+  workflows, the entire `functions/` Azure Functions runtime (host.json + all
+  wrappers), and the `build:functions` script. Added `vercel.json` (framework +
+  cron). The 5 timer functions became **Vercel cron routes** (`/api/cron/*`,
+  `CRON_SECRET`-gated via `src/lib/cron.ts`) that invoke the existing internal job
+  endpoints:
 
-  | Function | Trigger today | Vercel target |
-  | --- | --- | --- |
-  | `scheduledCrawl` | timer | cron → `/api/cron/crawl` |
-  | `pollSourceFeeds` | timer | cron → `/api/cron/poll-source-feeds` |
-  | `checkSlaBreaches` | timer | cron → `/api/cron/sla` |
-  | `scanConfidenceRegressions` | timer | cron → `/api/cron/confidence-regressions` |
-  | `alertCoverageGaps` | timer | cron → `/api/cron/coverage-gaps` |
-  | `fetchPage` | http/queue | route handler / queue worker |
-  | `extractService` | queue | route handler / queue worker |
-  | `verifyCandidate` | queue | route handler / queue worker |
-  | `routeToAdmin` | queue | route handler / queue worker |
-  | `manualSubmit` | http | route handler |
+  | Former Azure timer function | Vercel cron route | Schedule | Internal endpoint |
+  | --- | --- | --- | --- |
+  | `checkSlaBreaches` | `/api/cron/sla-check` | `0 * * * *` | `/api/internal/sla-check` |
+  | `pollSourceFeeds` | `/api/cron/feed-poll` | `0 * * * *` | `/api/internal/ingestion/feed-poll` |
+  | `alertCoverageGaps` | `/api/cron/coverage-gaps` | `0 8 * * *` | `/api/internal/coverage-gaps` |
+  | `scanConfidenceRegressions` | `/api/cron/confidence-regression-scan` | `0 */6 * * *` | `/api/internal/confidence-regression-scan` |
 
-  Queue-triggered functions need a queue substitute (Upstash QStash or a DB-backed
-  work table drained by cron) since Azure Service Bus is being retired. Protect
-  cron routes with `CRON_SECRET` (portfolio convention).
+  (Hourly crons require Vercel Pro; adjust for Hobby.) Verified: `next build` compiles the cron routes.
+- **Remaining — crawl-pipeline queue substitute (ingestion follow-up, NOT launch-critical):**
+  `scheduledCrawl` + the queue chain `fetchPage → extractService → verifyCandidate
+  → routeToAdmin` + `manualSubmit` moved data through Azure Storage Queues. Their
+  logic lives in `src/agents/ingestion/*` (the deleted functions were thin
+  wrappers). Rebuild the invocation on a queue substitute — Upstash QStash, or a
+  DB-backed work table drained by a `/api/cron/ingestion-drain` cron — and expose
+  `manualSubmit` as an internal route. The **seeker product does not depend on
+  this** (it reads *published* records), so it can follow the launch.
+- **Deploy (founder gate):** the repo is Vercel-native; going live needs Vercel
+  auth (no CLI token or dashboard access is available from the automation
+  environment). See §8.
 
 ### 4.4 Remaining Azure AI adapters *(optional, fail-open today)*
 - **Ingestion LLM provider** — `src/agents/ingestion/llm/providers/azureOpenai.ts`
@@ -261,5 +270,49 @@ cases and confirm genuine third-party messages still classify correctly.
   map, llm, envContract, control-plane, workflow, adversarial-audit, crisis).
 - Full unit suite baseline before changes: 3840 pass / 3 pre-existing
   **wall-clock-dependent** failures unrelated to this work
-  (`plans/feasibility`, `forms/instances/[id]` — an SLA deadline of 2026-06-01 is
-  now in the past). This pass does not touch those and does not add regressions.
+  (`lib/format` date-only in PDT, `plans/feasibility` "closes soon",
+  `forms/instances/[id]` — an SLA deadline of 2026-06-01 is now in the past).
+  This pass does not touch those and does not add regressions.
+- After the Supabase + Clerk + Vercel-native passes: `tsc` pass, `eslint` 0 errors,
+  `next build` pass (Clerk + cron routes compiled), unit suite green apart from the
+  same 3 pre-existing wall-clock failures. **No `@azure/*` runtime dependency, no
+  Bicep, no Azure deploy workflows, no Azure Functions runtime remain.**
+
+---
+
+## 8. Launch runbook (founder-gated activation)
+
+The software is Azure-free and Vercel-native. Going live is provisioning, in this
+order. Items marked "automation-blocked" could not be done from the repo-resident
+automation environment (no Vercel auth token; Clerk has no creation API).
+
+1. **Supabase `DATABASE_URL`** (automation-blocked — DB password is dashboard-only):
+   Supabase → project `oran` (`tpatxospkuqvajusuryw`) → Settings → Database →
+   Connection string → Transaction pooler. Copy it (with the password) — this is
+   `DATABASE_URL`. Schema + extensions + seeds are already applied; RLS/Data-API is
+   already locked down (anon/authenticated revoked, deny-all RLS; the app's
+   `postgres` owner connection bypasses it).
+2. **Clerk application** (automation-blocked — dashboard-only, no API): create the
+   ORAN Clerk app, enable the OAuth providers you want, and copy
+   `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` + `CLERK_SECRET_KEY`.
+3. **Vercel project** (automation-blocked — needs Vercel auth): import
+   `AutomatedEmpires/Open-Resource-Access-Network` into the AutomatedEmpires Vercel
+   team (git integration). Framework auto-detects Next.js; `vercel.json` supplies
+   the cron schedules.
+4. **Vercel env vars** (Production): `DATABASE_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`,
+   `CLERK_SECRET_KEY`, `INTERNAL_API_KEY` (generate: `openssl rand -base64 32`),
+   `CRON_SECRET` (generate). Optional: `NEXT_PUBLIC_SENTRY_DSN` (+ install
+   `@sentry/nextjs`), `NEXT_PUBLIC_POSTHOG_KEY`, `RESEND_API_KEY` + `RESEND_FROM`,
+   `OPENAI_API_KEY`. Legacy/optional: `AZURE_TRANSLATOR_*`, `AZURE_SPEECH_*`.
+5. **Deploy** and verify: `/api/health` (200 when `DATABASE_URL` is set), the public
+   seeker surfaces (`/`, `/directory`, `/map`, `/chat`), and a signed-in role flow
+   once Clerk is live. `run validate:runtime` checks the env contract.
+6. **Data**: the seeker product needs published resources to be useful. Load real
+   verified records via the ingestion pipeline (needs the crawl-queue substitute in
+   §4.3 and any source keys, e.g. the 211 subscription key) or a curated import. The
+   product is intentionally honest about empty state until then.
+
+Public-product note: the seeker browse/search/map surfaces are public and work with
+only `DATABASE_URL` + data. Clerk gates the host/community-admin/oran-admin portals
+and saved-items — those stay dormant (fail-closed) until step 2, matching the
+portfolio pattern (e.g. PinnedAtlas "free product live; accounts founder-gated").

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "crons": [
+    { "path": "/api/cron/sla-check", "schedule": "0 * * * *" },
+    { "path": "/api/cron/feed-poll", "schedule": "0 * * * *" },
+    { "path": "/api/cron/coverage-gaps", "schedule": "0 8 * * *" },
+    { "path": "/api/cron/confidence-regression-scan", "schedule": "0 */6 * * *" }
+  ]
+}

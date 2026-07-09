@@ -1,4 +1,5 @@
 import { Pool, PoolClient } from 'pg';
+import { poolSsl } from '@/db/ssl';
 
 function getDatabaseUrl(): string | null {
   const url = process.env.DATABASE_URL;
@@ -40,6 +41,7 @@ export function getPgPool(): Pool {
     if (!globalThis.__oranPgPool) {
       globalThis.__oranPgPool = new Pool({
         connectionString: databaseUrl,
+        ssl: poolSsl(databaseUrl),
         ...POOL_OPTIONS,
       });
     }
@@ -50,6 +52,7 @@ export function getPgPool(): Pool {
   if (!modulePool) {
     modulePool = new Pool({
       connectionString: databaseUrl,
+      ssl: poolSsl(databaseUrl),
       ...POOL_OPTIONS,
     });
   }

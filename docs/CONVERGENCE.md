@@ -22,7 +22,7 @@ PinnedAtlas) has converged on one stack. ORAN is being aligned to it:
 | --- | --- | --- | --- |
 | Runtime / framework | Next.js 16 + React 19 + TS | same | ✅ already aligned |
 | Package manager | npm | pnpm | ⏳ deferred (low risk) |
-| Database | Postgres via `pg` / Neon driver | **Supabase** (Postgres + PostGIS) | ⏳ connection-string cutover |
+| Database | Postgres via `pg` / Neon driver | **Supabase** (Postgres + PostGIS) | ✅ schema live (`tpatxospkuqvajusuryw`); DATABASE_URL gated |
 | Auth | NextAuth v4 + Entra ID (Azure AD) | **Clerk** | ⏳ gated (needs Clerk app) |
 | Hosting | Azure App Service | **Vercel** | ⏳ gated (needs Vercel project) |
 | Workers | Azure Functions (9) | **Vercel cron + route handlers** | ⏳ planned (see §4) |
@@ -141,11 +141,25 @@ the affected + full unit suites are green (see §7).
   community-admin/oran-admin) unchanged. Founder gate identical to the rest of
   the portfolio: create the Clerk app + keys + (optionally) `CLERK_WEBHOOK_SECRET`.
 
-### 4.2 Database: Neon/`pg` → Supabase  *(gated: needs a Supabase project)*
-- Drizzle + `pg` already speak plain Postgres, so this is primarily a connection
-  string + driver cutover plus moving migrations under Supabase. PostGIS +
-  pgvector are supported by Supabase. Remove `@neondatabase/serverless` once the
-  pooled `pg` path is confirmed. Wire `db-migrate.yml` to Supabase (as E&E does).
+### 4.2 Database: Neon/`pg` → Supabase  ✅ *(schema live; DATABASE_URL secret is the only founder gate)*
+- **Done:** Supabase project **`oran`** created (`tpatxospkuqvajusuryw`, us-east-1,
+  Postgres 17). All 53 migrations applied (100 tables; `postgis` + `vector` +
+  `uuid-ossp`); seeds present (feature_flags, platform_scopes/roles,
+  role_scope_assignments). Verified live via the Management API: PostGIS and
+  pgvector operators work, and the deterministic three-score columns exist. The
+  app DB layer now auto-configures TLS (`src/db/ssl.ts`), and the unused
+  `@neondatabase/serverless` dependency was removed.
+- **Remaining:** set `DATABASE_URL` to the pooler connection string — founder gate,
+  since the DB password is only shown at creation / password-reset in the
+  dashboard; wire `db-migrate.yml` to Supabase CI (`SUPABASE_ACCESS_TOKEN` +
+  `SUPABASE_PROJECT_ID` secrets, as Explore&Earn does); decide the RLS posture.
+- **RLS posture:** the schema was applied with RLS disabled on all tables. ORAN
+  connects via **direct `pg`** (not the Supabase client / anon key), so RLS is not
+  in the app's data path — but the project's auto-generated PostgREST Data API
+  would otherwise expose these tables to the `anon`/`authenticated` roles.
+  Recommended (matches BidSpace's D025): disable the Data API, or `REVOKE` table
+  privileges from `anon`/`authenticated`, or enable deny-all RLS (the app's owner
+  role bypasses it). Not auto-applied — surfaced from the Supabase security advisor.
 
 ### 4.3 Hosting + workers: App Service + Azure Functions → Vercel
 - Remove `deploy-azure-appservice.yml`, `deploy-azure-functions.yml`,

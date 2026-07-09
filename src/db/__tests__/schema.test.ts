@@ -210,6 +210,8 @@ describe('db schema and helpers', () => {
 
     expect(poolCtorMock).toHaveBeenCalledWith({
       connectionString: 'postgres://oran:test@localhost:5432/oran',
+      // localhost with no sslmode => TLS off (see src/db/ssl.ts).
+      ssl: false,
       max: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,

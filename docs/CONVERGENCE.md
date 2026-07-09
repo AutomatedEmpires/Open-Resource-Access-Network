@@ -307,12 +307,78 @@ automation environment (no Vercel auth token; Clerk has no creation API).
 5. **Deploy** and verify: `/api/health` (200 when `DATABASE_URL` is set), the public
    seeker surfaces (`/`, `/directory`, `/map`, `/chat`), and a signed-in role flow
    once Clerk is live. `run validate:runtime` checks the env contract.
-6. **Data**: the seeker product needs published resources to be useful. Load real
-   verified records via the ingestion pipeline (needs the crawl-queue substitute in
-   §4.3 and any source keys, e.g. the 211 subscription key) or a curated import. The
-   product is intentionally honest about empty state until then.
+6. **Data**: ✅ **DONE — 290,056 real, authoritative, published resources are already
+   loaded** (see §9). No empty state. This was seeded by bulk-importing federal open
+   datasets (not model-generated), honoring ORAN's #1 rule (no fabricated data). More
+   sources can be added anytime via the `scripts/import/` ETLs; the crawl-queue
+   substitute (§4.3) remains optional for continuous ingestion.
 
 Public-product note: the seeker browse/search/map surfaces are public and work with
 only `DATABASE_URL` + data. Clerk gates the host/community-admin/oran-admin portals
 and saved-items — those stay dormant (fail-closed) until step 2, matching the
 portfolio pattern (e.g. PinnedAtlas "free product live; accounts founder-gated").
+
+---
+
+## 9. Data seeding — real authoritative resources (no fabrication)
+
+**Status: 290,056 real, verified, published resources loaded** into Supabase `oran`
+(`tpatxospkuqvajusuryw`) as of 2026-07-08. This honors ORAN's founding rule — **no
+LLM-invented eligibility, hours, benefits, phone numbers, or resource existence.**
+Every record comes from a federal open dataset with provenance; models were used only
+to map/categorize source fields, never to invent facts.
+
+### 9.1 Sources loaded
+
+| Source | Publisher | Services | Category | Trust band | Provenance (`organizations.uri`) |
+| --- | --- | --- | --- | --- | --- |
+| USDA SNAP/EBT retailers | USDA FNS | 254,048 | `snap_retailer` | POSSIBLE (58) | `usda-snap:<Record_ID>` |
+| HRSA health-center sites | HRSA (HHS) | 18,874 | `health` | LIKELY | `hrsa:<BPHC #>` |
+| Head Start / Early Head Start | ACF (HHS) | 13,638 | `childcare` | LIKELY | `headstart:<grant:site>` |
+| HUD Public Housing Authorities | HUD | 3,483 | `housing` | LIKELY | `hud-pha:<OBJECTID>` |
+| National crisis/benefits hotlines | operator-verified | 13 | `hotline` | LIKELY | `hotline:<slug>` |
+| **Total** | | **290,056** | | | 290,043 geolocated · 48,140 phones |
+
+All are `status='active'` (published), pass `buildPublishedServicePredicate`, and
+surface through the trust-first PostGIS `ORDER BY` in `search/engine.ts` (verified: a
+3 km radius query at downtown LA returns distance-sorted SNAP retailers with real
+business names). The 13 hotlines are intentionally location-less (nationwide) — they
+surface in the directory/crisis paths, not the map.
+
+Trust bands at rest max out at LIKELY (~72.5) because `eligibility_match` and
+`constraint_fit` are neutral (50) until a seeker's profile is known; the HIGH band is
+reserved for per-search eligibility matches (by design — see §2). SNAP retailers sit
+at POSSIBLE (verification 68: existence well-verified, but "accepts EBT" is
+lower-stakes than a crisis service), correctly ranking below the government service
+sources.
+
+### 9.2 How it was built (`scripts/import/`)
+
+- **`seed-resources.mjs`** — the loader. Reads normalized NDJSON, mints deterministic
+  UUIDv5 ids (idempotent upserts), and applies batched `INSERT … ON CONFLICT` via the
+  Supabase **Management API query endpoint** (token at `~/.supabase/access-token`, so
+  no DB password needed). Writes organizations/locations/services/service_at_location/
+  addresses/phones/service_taxonomy/confidence_scores with provenance
+  (`organizations.uri`, `created_by_user_id = import:<source>`). Hardened with: SQL
+  single-quote escaping, phone-type coercion to the DB CHECK set
+  (`voice/fax/tty/hotline/sms`), and **per-batch record dedup by source key** (Head
+  Start had duplicate `grant:site` keys → `ON CONFLICT cannot affect row a second
+  time`; dedup dropped 3,261 dupes, 16,899→13,638).
+- **`sources/*.mjs`** — one ETL per dataset, each transforming the real source
+  (CSV/GeoJSON/JSON) into the loader's NDJSON: `hrsa.mjs`, `headstart.mjs`,
+  `hud-pha.mjs`, `usda-snap.mjs`, `hotlines.mjs`. Run: `node sources/<x>.mjs > /tmp/x.ndjson`
+  then `node seed-resources.mjs --project tpatxospkuqvajusuryw --file /tmp/x.ndjson`.
+- Committed on `feat/portfolio-convergence-azure-exit` (`ee0b65e`).
+
+### 9.3 Candidate sources not yet loaded
+
+- **HUD Housing Counseling Agencies** (~2k): `hud-hca.mjs` written, but the
+  `data.hud.gov/Housing_Counselor/search` API now returns HTTP 500 for every state —
+  needs the current endpoint (likely a HUD ArcGIS layer, like PHA).
+- **Higher-value gaps a person in crisis needs that we don't yet cover** — free food
+  (food banks/pantries, distinct from SNAP retailers), homeless shelters, SAMHSA
+  behavioral-health treatment facilities (~15k, addresses → free Census batch
+  geocoder), civil legal aid, LIHEAP/Community Action energy help. Discovery of
+  working authoritative bulk sources for these is in progress (URL-verified before
+  build). Reference (needs key/geocoding, deferred): SAMHSA locator, VA facilities API,
+  211/AIRS; IRS BMF is low-quality (mailing addresses) and intentionally skipped.

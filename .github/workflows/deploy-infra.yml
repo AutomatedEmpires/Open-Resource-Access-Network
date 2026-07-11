@@ -32,7 +32,7 @@ jobs:
     environment: ${{ inputs.environment }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Login to Azure (OIDC)
         uses: azure/login@v2

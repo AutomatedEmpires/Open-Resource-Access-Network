@@ -8,15 +8,15 @@ describe('validateRuntimeEnv', () => {
       {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+        NEXT_PUBLIC_SITE_URL: 'https://openresourceaccessnetwork.com',
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_123',
         CLERK_SECRET_KEY: 'sk_test_123',
         INTERNAL_API_KEY: 'internal-key',
+        CRON_SECRET: 'cron-key',
         REDIS_URL: 'redis://localhost:6379',
-        AZURE_TRANSLATOR_KEY: 'trans-key',
-        AZURE_TRANSLATOR_ENDPOINT: 'https://api.example.com',
-        AZURE_TRANSLATOR_REGION: 'eastus',
         NEXT_PUBLIC_SENTRY_DSN: 'https://public@example.ingest.sentry.io/1',
         RESEND_API_KEY: 're_test',
+        RESEND_FROM: 'ORAN <notifications@example.com>',
         OPENAI_API_KEY: 'sk-test',
       },
     );
@@ -32,7 +32,9 @@ describe('validateRuntimeEnv', () => {
       {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+        NEXT_PUBLIC_SITE_URL: 'https://openresourceaccessnetwork.com',
         INTERNAL_API_KEY: 'internal-key',
+        CRON_SECRET: 'cron-key',
       },
     );
 
@@ -42,9 +44,6 @@ describe('validateRuntimeEnv', () => {
       'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY',
     ]);
     expect(result.warnings).toEqual([
-      'AZURE_TRANSLATOR_ENDPOINT',
-      'AZURE_TRANSLATOR_KEY',
-      'AZURE_TRANSLATOR_REGION',
       'NEXT_PUBLIC_SENTRY_DSN',
       'OPENAI_API_KEY',
       'REDIS_URL',
@@ -66,9 +65,11 @@ describe('validateRuntimeEnv', () => {
     const result = validateRuntimeEnv('webapp', {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      NEXT_PUBLIC_SITE_URL: 'https://openresourceaccessnetwork.com',
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_123',
       CLERK_SECRET_KEY: 'sk_test_123',
       INTERNAL_API_KEY: 'internal-key',
+      CRON_SECRET: 'cron-key',
       NDP_211_POLLING_ENABLED: 'true',
     });
 
@@ -83,9 +84,11 @@ describe('validateRuntimeEnv', () => {
     const result = validateRuntimeEnv('webapp', {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      NEXT_PUBLIC_SITE_URL: 'https://openresourceaccessnetwork.com',
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_123',
       CLERK_SECRET_KEY: 'sk_test_123',
       INTERNAL_API_KEY: 'internal-key',
+      CRON_SECRET: 'cron-key',
       NDP_211_POLLING_ENABLED: 'false',
     });
 
@@ -93,20 +96,33 @@ describe('validateRuntimeEnv', () => {
     expect(result.missingCritical).toEqual([]);
   });
 
-  it('validates Azure Functions contracts from names-only sources', () => {
-    const result = validateRuntimeEnv(
-      'functions',
-      [
-        'AzureWebJobsStorage',
-        'FUNCTIONS_WORKER_RUNTIME',
-        'ORAN_APP_URL',
-        'INTERNAL_API_KEY',
-      ],
-      { nodeEnv: 'production' },
-    );
+  it('requires the Vercel cron secret in production', () => {
+    const result = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      NEXT_PUBLIC_SITE_URL: 'https://openresourceaccessnetwork.com',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_123',
+      CLERK_SECRET_KEY: 'sk_test_123',
+      INTERNAL_API_KEY: 'internal-key',
+    });
 
-    expect(result.ok).toBe(true);
-    expect(result.missingCritical).toEqual([]);
-    expect(result.warnings).toEqual([]);
+    expect(result.ok).toBe(false);
+    expect(result.missingCritical).toEqual(['CRON_SECRET']);
+  });
+
+  it('requires an explicit sender whenever Resend is enabled', () => {
+    const result = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      NEXT_PUBLIC_SITE_URL: 'https://openresourceaccessnetwork.com',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_123',
+      CLERK_SECRET_KEY: 'sk_test_123',
+      INTERNAL_API_KEY: 'internal-key',
+      CRON_SECRET: 'cron-key',
+      RESEND_API_KEY: 're_test',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.missingCritical).toEqual(['RESEND_FROM']);
   });
 });

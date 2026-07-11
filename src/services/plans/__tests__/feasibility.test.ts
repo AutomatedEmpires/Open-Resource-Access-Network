@@ -81,7 +81,7 @@ describe('seeker plan feasibility signals', () => {
     const signals = buildSeekerPlanFeasibilitySignals(
       items,
       [buildService({})],
-      new Date('2026-03-17T11:30:00.000Z'),
+      new Date(2026, 2, 17, 11, 30),
     );
 
     expect(signals.some((signal) => signal.title.includes('closes soon'))).toBe(true);

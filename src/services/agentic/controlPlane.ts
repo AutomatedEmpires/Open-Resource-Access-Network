@@ -192,15 +192,15 @@ export async function buildAgentControlPlaneSnapshot(
       powers: ['AI telemetry', 'release verification', 'operator diagnostics'],
     },
     {
-      id: 'azure_maps',
-      label: 'Azure Maps',
+      id: 'openstreetmap',
+      label: 'OpenStreetMap / Nominatim',
       category: 'mapping',
-      state: integrationState(['AZURE_MAPS_KEY', 'AZURE_MAPS_SAS_TOKEN'], env),
-      requiredEnv: ['AZURE_MAPS_KEY', 'AZURE_MAPS_SAS_TOKEN'],
-      missingEnv: ['AZURE_MAPS_KEY', 'AZURE_MAPS_SAS_TOKEN'].filter((key) => !hasEnv(env, key)),
+      state: 'configured',
+      requiredEnv: [],
+      missingEnv: [],
       powers: [
         'server geocoding',
-        'interactive map SAS-token brokering',
+        'tokenless interactive maps',
         'geospatial search',
         'resource discovery',
       ],
@@ -353,8 +353,8 @@ export async function buildAgentControlPlaneSnapshot(
   if (!getFlagReady(flagMap, FEATURE_FLAGS.MAP_ENABLED)) {
     accessBlockers.push('Map access is not fully enabled.');
   }
-  if (integrationById.get('azure_maps')?.state !== 'configured') {
-    accessBlockers.push('Azure Maps is not fully configured for geospatial discovery.');
+  if (integrationById.get('openstreetmap')?.state !== 'configured') {
+    accessBlockers.push('OpenStreetMap is not available for geospatial discovery.');
   }
   if (integrationById.get('translator')?.state !== 'configured' || !getFlagReady(flagMap, FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS)) {
     accessAccelerators.push('Complete Translator wiring and 100% rollout for multilingual descriptions.');
@@ -362,7 +362,8 @@ export async function buildAgentControlPlaneSnapshot(
   if (integrationById.get('speech')?.state !== 'configured' || !getFlagReady(flagMap, FEATURE_FLAGS.TTS_SUMMARIES)) {
     accessAccelerators.push('Enable Azure Speech summaries for voice-first accessibility.');
   }
-  const accessBaseReady = getFlagReady(flagMap, FEATURE_FLAGS.MAP_ENABLED) && integrationById.get('azure_maps')?.state === 'configured';
+  const accessBaseReady = getFlagReady(flagMap, FEATURE_FLAGS.MAP_ENABLED)
+    && integrationById.get('openstreetmap')?.state === 'configured';
 
   const releaseBlockers: string[] = [];
   const releaseAccelerators: string[] = [];

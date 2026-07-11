@@ -82,6 +82,23 @@ export const proxy = clerkMiddleware(async (auth, request) => {
   }
 
   return NextResponse.next();
+}, {
+  // Let Clerk derive its Frontend API host and inject a compatible policy.
+  // Additional directives preserve ORAN's map/media and optional telemetry needs.
+  contentSecurityPolicy: {
+    directives: {
+      'base-uri': ["'self'"],
+      'connect-src': [
+        'https://*.sentry.io',
+        'https://*.posthog.com',
+        'https://*.i.posthog.com',
+      ],
+      'font-src': ["'self'", 'data:'],
+      'frame-ancestors': ["'none'"],
+      'img-src': ['data:', 'blob:', 'https:'],
+      'object-src': ["'none'"],
+    },
+  },
 });
 
 export const config = {

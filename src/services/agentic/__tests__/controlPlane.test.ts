@@ -21,17 +21,17 @@ describe('buildAgentControlPlaneSnapshot', () => {
       env: {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+        NEXT_PUBLIC_SITE_URL: 'https://openresourceaccessnetwork.com',
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_123',
         CLERK_SECRET_KEY: 'sk_test_123',
         INTERNAL_API_KEY: 'internal-key',
+        CRON_SECRET: 'cron-key',
         APPLICATIONINSIGHTS_CONNECTION_STRING: 'InstrumentationKey=test',
         AZURE_AD_CLIENT_ID: 'entra-id',
         AZURE_AD_CLIENT_SECRET: 'entra-secret',
         AZURE_AD_TENANT_ID: 'tenant-id',
         AZURE_CONTENT_SAFETY_ENDPOINT: 'https://safety.example.cognitiveservices.azure.com',
         AZURE_CONTENT_SAFETY_KEY: 'safety-key',
-        AZURE_MAPS_KEY: 'maps-key',
-        AZURE_MAPS_SAS_TOKEN: 'maps-sas-token',
         AZURE_OPENAI_ENDPOINT: 'https://openai.example.openai.azure.com',
         AZURE_OPENAI_KEY: 'openai-key',
       },
@@ -54,6 +54,7 @@ describe('buildAgentControlPlaneSnapshot', () => {
     expect(snapshot.summary.readinessScore).toBeGreaterThan(60);
     expect(snapshot.summary.posture).toBe('worldclass_foundation');
     expect(snapshot.integrations.find((item) => item.id === 'app_insights')?.state).toBe('configured');
+    expect(snapshot.integrations.find((item) => item.id === 'openstreetmap')?.state).toBe('configured');
     expect(snapshot.operators.find((item) => item.id === 'trust_guardian')?.state).toBe('ready');
     expect(snapshot.featureFlags.implementation).toBe('database');
     expect(snapshot.trustModel.openGaps).not.toContain('feature flags are still backed by an in-memory store');

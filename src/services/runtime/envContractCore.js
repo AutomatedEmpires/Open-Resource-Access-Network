@@ -2,28 +2,19 @@ const RULES_BY_TARGET = {
   webapp: [
     { name: 'DATABASE_URL', level: 'critical', productionOnly: true },
     { name: 'INTERNAL_API_KEY', level: 'critical', productionOnly: true },
+    { name: 'CRON_SECRET', level: 'critical', productionOnly: true },
+    { name: 'NEXT_PUBLIC_SITE_URL', level: 'critical', productionOnly: true },
     { name: 'NDP_211_SUBSCRIPTION_KEY', level: 'critical', whenTruthy: 'NDP_211_POLLING_ENABLED' },
     { name: 'NDP_211_DATA_OWNERS', level: 'critical', whenTruthy: 'NDP_211_POLLING_ENABLED' },
     // Authentication (Clerk) — identity provider; roles remain DB-driven.
     { name: 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', level: 'critical', productionOnly: true },
     { name: 'CLERK_SECRET_KEY', level: 'critical', productionOnly: true },
     { name: 'REDIS_URL', level: 'warning', productionOnly: true },
-    // Legacy Azure AI Translator (optional; slated for a provider-neutral swap — see docs/CONVERGENCE.md).
-    { name: 'AZURE_TRANSLATOR_KEY', level: 'warning', productionOnly: true },
-    { name: 'AZURE_TRANSLATOR_ENDPOINT', level: 'warning', productionOnly: true },
-    { name: 'AZURE_TRANSLATOR_REGION', level: 'warning', productionOnly: true },
     // Portfolio-standard optional integrations (all fail-open; recommended in production).
     { name: 'NEXT_PUBLIC_SENTRY_DSN', level: 'warning', productionOnly: true },
     { name: 'RESEND_API_KEY', level: 'warning', productionOnly: true },
+    { name: 'RESEND_FROM', level: 'critical', whenPresent: 'RESEND_API_KEY' },
     { name: 'OPENAI_API_KEY', level: 'warning', productionOnly: true },
-  ],
-  functions: [
-    { name: 'AzureWebJobsStorage', level: 'critical', productionOnly: true },
-    { name: 'FUNCTIONS_WORKER_RUNTIME', level: 'critical', productionOnly: true },
-    { name: 'ORAN_APP_URL', level: 'critical', productionOnly: true },
-    { name: 'INTERNAL_API_KEY', level: 'critical', productionOnly: true },
-    { name: 'FOUNDRY_KEY', level: 'warning', whenPresent: 'FOUNDRY_ENDPOINT' },
-    { name: 'FOUNDRY_ENDPOINT', level: 'warning', whenPresent: 'FOUNDRY_KEY' },
   ],
 };
 

@@ -1,6 +1,6 @@
 import { validateRuntimeEnv as validateRuntimeEnvCore } from './envContractCore.js';
 
-export type RuntimeEnvTarget = 'webapp' | 'functions';
+export type RuntimeEnvTarget = 'webapp';
 
 export interface RuntimeEnvValidationOptions {
   nodeEnv?: string;

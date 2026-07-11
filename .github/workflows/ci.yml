@@ -33,7 +33,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Validate committed production webapp env contract
         run: |
@@ -42,9 +42,7 @@ jobs:
             --names-file .github/runtime/webapp-production-settings.txt \
             --node-env production \
             --format github \
-            --require-warning REDIS_URL \
-            --require-warning AZURE_MAPS_KEY \
-            --require-warning AZURE_MAPS_SAS_TOKEN
+            --require-warning REDIS_URL
 
   lint:
     name: Lint
@@ -58,7 +56,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -79,7 +77,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -100,7 +98,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -129,7 +127,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -139,27 +137,6 @@ jobs:
         run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: '1'
-
-  functions-build:
-    name: Build Functions
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Azure Functions package
-        run: npm run build:functions
 
   audit:
     name: Security Audit
@@ -173,7 +150,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -194,7 +171,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies

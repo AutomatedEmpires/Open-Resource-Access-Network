@@ -103,13 +103,13 @@ ORAN is deployed to **Azure App Service (Linux)** with Node.js 20 LTS.
 
 ORAN runs on PostgreSQL with the PostGIS extension.
 
-Production target (Azure-first):
+Production target:
 
-- **Azure Database for PostgreSQL Flexible Server** with PostGIS enabled.
+- **Supabase Postgres 17** with PostGIS and vector enabled, accessed through the
+  server-only `DATABASE_URL` contract.
 
-Optional alternative:
-
-- Neon can be used for non-Azure environments, as long as the `DATABASE_URL` contract is maintained.
+The application uses direct `pg`; it does not expose a Supabase service-role key
+to the browser.
 
 ### Configuration
 
@@ -117,10 +117,14 @@ Optional alternative:
 
 ### ORM: Drizzle ORM
 
-Status: Raw SQL migrations are the source of truth today.
+Status: the legacy raw SQL chain is preserved, but its live baseline is not yet
+verified.
 
 - Implemented: migrations in db/migrations/** (plain SQL files).
-- Implemented: `.github/workflows/db-migrate.yml` applies the SQL migration chain via `psql` and records applied files in `schema_migrations`.
+- Safety control: `.github/workflows/db-migrate.yml` cannot retrieve provider
+  credentials or execute SQL and fails closed on manual dispatch.
+- Required remediation: follow
+  `docs/ops/core/DATABASE_MIGRATION_BASELINE.md` before restoring remote execution.
 - Drizzle remains part of the repository for schema typing and related tooling, not as the production migration orchestrator.
 
 ### PostGIS

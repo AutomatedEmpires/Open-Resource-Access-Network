@@ -63,7 +63,7 @@ function printUsageAndExit() {
   console.error(
     [
       'Usage:',
-      '  node scripts/validate-runtime-env.mjs --target <webapp|functions> [--names-file path] [--node-env production] [--format plain|github] [--require-warning NAME]',
+      '  node scripts/validate-runtime-env.mjs --target webapp [--names-file path] [--node-env production] [--format plain|github] [--require-warning NAME]',
     ].join('\n'),
   );
   process.exit(1);

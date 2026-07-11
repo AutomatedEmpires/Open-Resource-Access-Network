@@ -1,12 +1,17 @@
 # ORAN Portfolio Convergence & Azure Exit
 
-Status: **Azure exit essentially complete in code. App-layer adapters migrated;
+Status: **Azure exit substantially complete in code. App-layer adapters migrated;
 Bicep infra + Azure deploy workflows + Azure Functions runtime removed; Supabase
-schema live; Clerk auth code-complete; repo is Vercel-native (`vercel.json` +
-cron). Remaining is provisioning/activation: Vercel deploy (auth), Clerk app,
-`DATABASE_URL`, and the crawl-pipeline queue substitute — see §4 + §8 runbook.**
+schema live but its baseline is not reconciled; Clerk auth code-complete; repo is
+Vercel-native (`vercel.json` + cron). Remote database execution is fail-closed.
+Remaining work includes a reviewed exact-SHA Preview, runtime configuration,
+database baseline proof, and the crawl-pipeline queue substitute — see §4 + §8.**
 
 Last updated: 2026-07-08 · Branch: `feat/portfolio-convergence-azure-exit`
+
+> Pass 4 control update: historical “founder gate” labels below do not authorize
+> stopping safe automation. Current hard controls are the database baseline gate
+> and names-only runtime contract in `docs/ops/core/`.
 
 This document is the single source of truth for aligning ORAN with the Automated
 Empires portfolio stack and removing its dependence on Azure / Microsoft-cloud
@@ -157,25 +162,22 @@ the affected + full unit suites are green (see §7).
   Optional: a `/api/webhooks/clerk` consumer if you prefer webhook-time profile
   creation over the on-demand path.
 
-### 4.2 Database: Neon/`pg` → Supabase  ✅ *(schema live; DATABASE_URL secret is the only founder gate)*
+### 4.2 Database: Neon/`pg` → Supabase  ⚠️ *(schema live; baseline not reconciled)*
 - **Done:** Supabase project **`oran`** created (`tpatxospkuqvajusuryw`, us-east-1,
-  Postgres 17). All 53 migrations applied (100 tables; `postgis` + `vector` +
-  `uuid-ossp`); seeds present (feature_flags, platform_scopes/roles,
-  role_scope_assignments). Verified live via the Management API: PostGIS and
-  pgvector operators work, and the deterministic three-score columns exist. The
-  app DB layer now auto-configures TLS (`src/db/ssl.ts`), and the unused
-  `@neondatabase/serverless` dependency was removed.
-- **Remaining:** set `DATABASE_URL` to the pooler connection string — founder gate,
-  since the DB password is only shown at creation / password-reset in the
-  dashboard; wire `db-migrate.yml` to Supabase CI (`SUPABASE_ACCESS_TOKEN` +
-  `SUPABASE_PROJECT_ID` secrets, as Explore&Earn does); decide the RLS posture.
-- **RLS posture:** the schema was applied with RLS disabled on all tables. ORAN
-  connects via **direct `pg`** (not the Supabase client / anon key), so RLS is not
-  in the app's data path — but the project's auto-generated PostgREST Data API
-  would otherwise expose these tables to the `anon`/`authenticated` roles.
-  Recommended (matches BidSpace's D025): disable the Data API, or `REVOKE` table
-  privileges from `anon`/`authenticated`, or enable deny-all RLS (the app's owner
-  role bypasses it). Not auto-applied — surfaced from the Supabase security advisor.
+  Postgres 17). The required `postgis`, `vector`, and `uuid-ossp` extensions and a
+  populated 97-table public schema are present. The app DB layer auto-configures
+  TLS (`src/db/ssl.ts`), and the unused `@neondatabase/serverless` dependency was
+  removed.
+- **Not proven:** the repository contains 53 legacy migration files while the
+  managed ledger records only the later security-lockdown operation and no custom
+  filename ledger exists. Structural similarity is not migration provenance.
+- **Execution control:** `db-migrate.yml` is now a read-only safety gate and every
+  manual dispatch fails. It cannot create a ledger or execute SQL. Follow
+  `docs/ops/core/DATABASE_MIGRATION_BASELINE.md` before restoring migration access.
+- **RLS posture:** 96 application tables have RLS enabled with no policies, which
+  is deny-all for ordinary Data API roles. ORAN connects through server-only direct
+  `pg`, so document that service-only boundary before changing policies. The
+  PostGIS metadata table and functions require a separate reviewed hardening pass.
 
 ### 4.3 Hosting + workers: App Service + Azure Functions → Vercel  ✅ *(Vercel-native; deploy is founder-gated)*
 - **Done:** removed `infra/*.bicep` + `main.json` + `monitoring.bicep`, the
@@ -280,50 +282,41 @@ cases and confirm genuine third-party messages still classify correctly.
 
 ---
 
-## 8. Launch runbook (founder-gated activation)
+## 8. Launch runbook
 
-The software is Azure-free and Vercel-native. Going live is provisioning, in this
-order. Items marked "automation-blocked" could not be done from the repo-resident
-automation environment (no Vercel auth token; Clerk has no creation API).
+1. **Converge source:** publish the exact reviewed branch head through an open PR
+   to `main`; require remote CI before merge.
+2. **Prove the database baseline:** capture backup/restore evidence, replay the
+   legacy chain into a disposable Postgres 17 database, compare normalized schemas,
+   and establish one checksum-backed baseline. Remote migrations remain blocked
+   until `docs/ops/core/DATABASE_MIGRATION_BASELINE.md` is complete.
+3. **Build a safe Preview lane:** use a disposable database or reviewed read-only
+   role. Do not point unreviewed Preview writes at the populated database.
+4. **Install the runtime contract:** populate ORAN-owned `stg` values from
+   `docs/ops/core/RUNTIME_ENV_CONTRACT.md`. Never copy another venture's values.
+5. **Deploy the reviewed exact SHA:** run the Preview workflow from the PR source
+   branch. It must validate the exact open non-draft PR head before the
+   credential-bearing `Preview` environment job can start.
+6. **Verify:** check `/api/health`, public seeker surfaces, authenticated role
+   boundaries, map behavior, database read-only/write boundaries, mail-disabled
+   behavior, Sentry/logging, and cron `401`/`503`/authorized paths.
+7. **Merge and produce a provider-hostname candidate:** do not attach the custom
+   domain yet. Record deployment ID, SHA, runtime source, checks, and error baseline.
+8. **Prove rollback:** retain two READY Vercel artifacts and demonstrate alias
+   rollback before DNS. The existing Azure address is not a functional fallback.
 
-1. **Supabase `DATABASE_URL`** (automation-blocked — DB password is dashboard-only):
-   Supabase → project `oran` (`tpatxospkuqvajusuryw`) → Settings → Database →
-   Connection string → Transaction pooler. Copy it (with the password) — this is
-   `DATABASE_URL`. Schema + extensions + seeds are already applied; RLS/Data-API is
-   already locked down (anon/authenticated revoked, deny-all RLS; the app's
-   `postgres` owner connection bypasses it).
-2. **Clerk application** (automation-blocked — dashboard-only, no API): create the
-   ORAN Clerk app, enable the OAuth providers you want, and copy
-   `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` + `CLERK_SECRET_KEY`.
-3. **Vercel project** (automation-blocked — needs Vercel auth): import
-   `AutomatedEmpires/Open-Resource-Access-Network` into the AutomatedEmpires Vercel
-   team (git integration). Framework auto-detects Next.js; `vercel.json` supplies
-   the cron schedules.
-4. **Vercel env vars** (Production): `DATABASE_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`,
-   `CLERK_SECRET_KEY`, `INTERNAL_API_KEY` (generate: `openssl rand -base64 32`),
-   `CRON_SECRET` (generate). Optional: `NEXT_PUBLIC_SENTRY_DSN` (+ install
-   `@sentry/nextjs`), `NEXT_PUBLIC_POSTHOG_KEY`, `RESEND_API_KEY` + `RESEND_FROM`,
-   `OPENAI_API_KEY`. Legacy/optional: `AZURE_TRANSLATOR_*`, `AZURE_SPEECH_*`.
-5. **Deploy** and verify: `/api/health` (200 when `DATABASE_URL` is set), the public
-   seeker surfaces (`/`, `/directory`, `/map`, `/chat`), and a signed-in role flow
-   once Clerk is live. `run validate:runtime` checks the env contract.
-6. **Data**: ✅ **DONE — 290,056 real, authoritative, published resources are already
-   loaded** (see §9). No empty state. This was seeded by bulk-importing federal open
-   datasets (not model-generated), honoring ORAN's #1 rule (no fabricated data). More
-   sources can be added anytime via the `scripts/import/` ETLs; the crawl-queue
-   substitute (§4.3) remains optional for continuous ingestion.
-
-Public-product note: the seeker browse/search/map surfaces are public and work with
-only `DATABASE_URL` + data. Clerk gates the host/community-admin/oran-admin portals
-and saved-items — those stay dormant (fail-closed) until step 2, matching the
-portfolio pattern (e.g. PinnedAtlas "free product live; accounts founder-gated").
+The public seeker surfaces can operate from verified database reads. Clerk gates
+the host, community-admin, ORAN-admin, saved-item, and profile flows; those remain
+fail-closed until a venture-specific Clerk instance is configured and tested.
 
 ---
 
 ## 9. Data seeding — real authoritative resources (no fabrication)
 
-**Status: 290,056 real, verified, published resources loaded** into Supabase `oran`
-(`tpatxospkuqvajusuryw`) as of 2026-07-08. This honors ORAN's founding rule — **no
+**Initial seed record: 290,056 real, verified, published resources were loaded**
+into Supabase `oran` (`tpatxospkuqvajusuryw`) on 2026-07-08. Later ETL commits
+expanded the dataset; query live cardinality before reporting a current total.
+This honors ORAN's founding rule — **no
 LLM-invented eligibility, hours, benefits, phone numbers, or resource existence.**
 Every record comes from a federal open dataset with provenance; models were used only
 to map/categorize source fields, never to invent facts.

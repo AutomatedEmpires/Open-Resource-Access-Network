@@ -1,0 +1,203 @@
+name: Vercel Preview (Reviewed Exact SHA)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: 'Exact 40-character head SHA of the selected open, non-draft PR'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: vercel-preview-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate reviewed source without provider credentials
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      target_sha: ${{ steps.identity.outputs.target_sha }}
+      pr_number: ${{ steps.pull-request.outputs.pr_number }}
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+    steps:
+      - name: Bind requested SHA to the selected branch head
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'target_sha must be a full lowercase 40-character commit SHA' >&2
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" != 'branch' ]; then
+            echo 'Run this workflow from the reviewed PR source branch.' >&2
+            exit 1
+          fi
+          if [ "$GITHUB_REF_NAME" = 'main' ]; then
+            echo 'Preview deployment must target an open PR branch, not main.' >&2
+            exit 1
+          fi
+          if [ "$TARGET_SHA" != "$GITHUB_SHA" ]; then
+            echo 'target_sha must exactly equal the selected branch head for this workflow run.' >&2
+            exit 1
+          fi
+
+          echo "target_sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Prove SHA is the head of an open, non-draft same-repository PR
+        id: pull-request
+        uses: actions/github-script@v8
+        env:
+          SOURCE_BRANCH: ${{ github.ref_name }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const expectedRepository = `${owner}/${repo}`;
+            const { data: pulls } = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              base: 'main',
+              head: `${owner}:${process.env.SOURCE_BRANCH}`,
+              per_page: 100,
+            });
+
+            const pull = pulls.find((candidate) =>
+              candidate.head.sha === process.env.TARGET_SHA &&
+              candidate.head.repo?.full_name === expectedRepository
+            );
+
+            if (!pull) {
+              throw new Error('The requested SHA is not the head of an open same-repository PR targeting main.');
+            }
+            if (pull.draft) {
+              throw new Error(`PR #${pull.number} is still a draft. Mark it ready only after source review.`);
+            }
+
+            core.setOutput('pr_number', String(pull.number));
+
+      - name: Checkout exact reviewed commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 1
+
+      - name: Prove checkout identity
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run source validation without provider credentials
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run test
+          npm audit --omit=dev --audit-level=high
+
+  deploy-preview:
+    name: Build and deploy reviewed Preview
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: Preview
+    permissions:
+      contents: read
+    env:
+      TARGET_SHA: ${{ needs.validate.outputs.target_sha }}
+      VERCEL_ORG_ID: team_0IgwjPKkR3NmPUC5ugTK3cfi
+      VERCEL_PROJECT_ID: prj_pQlCLP4RXGr2eJTo7fzZyMPX9QLy
+    steps:
+      - name: Checkout exact validated commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.target_sha }}
+          fetch-depth: 1
+
+      - name: Prove checkout identity
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies before exposing deployment credentials
+        run: npm ci
+
+      - name: Validate Preview-scoped credential is present
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.ORAN_VERCEL_PREVIEW_TOKEN }}
+        run: test -n "$VERCEL_TOKEN"
+
+      - name: Pull Preview configuration
+        env:
+          VERCEL_TOKEN: ${{ secrets.ORAN_VERCEL_PREVIEW_TOKEN }}
+        run: npx --yes vercel@55.0.0 pull --yes --environment=preview --token="$VERCEL_TOKEN"
+
+      - name: Prove Vercel project binding
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const project = JSON.parse(readFileSync('.vercel/project.json', 'utf8'));
+          if (project.orgId !== process.env.VERCEL_ORG_ID) {
+            throw new Error('Vercel org binding does not match the reviewed ORAN team.');
+          }
+          if (project.projectId !== process.env.VERCEL_PROJECT_ID) {
+            throw new Error('Vercel project binding does not match the reviewed ORAN project.');
+          }
+          NODE
+
+      - name: Build Preview artifact
+        env:
+          VERCEL_TOKEN: ${{ secrets.ORAN_VERCEL_PREVIEW_TOKEN }}
+        run: npx --yes vercel@55.0.0 build --token="$VERCEL_TOKEN"
+
+      - name: Deploy prebuilt Preview artifact
+        id: deploy
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.ORAN_VERCEL_PREVIEW_TOKEN }}
+        run: |
+          set -euo pipefail
+          url="$(npx --yes vercel@55.0.0 deploy --prebuilt --yes --token="$VERCEL_TOKEN")"
+          if [[ ! "$url" =~ ^https:// ]]; then
+            echo 'Vercel did not return a valid HTTPS Preview URL.' >&2
+            exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Record immutable Preview evidence
+        shell: bash
+        run: |
+          {
+            echo '## Vercel Preview'
+            echo "- Pull request: #${{ needs.validate.outputs.pr_number }}"
+            echo "- Commit: \`$TARGET_SHA\`"
+            echo "- URL: ${{ steps.deploy.outputs.url }}"
+            echo '- Target: preview'
+            echo '- Production promotion: not performed'
+          } >> "$GITHUB_STEP_SUMMARY"

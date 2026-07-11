@@ -2,6 +2,9 @@
   "name": "oran-app",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -19,7 +22,6 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "validate:runtime": "node scripts/validate-runtime-env.mjs --target webapp",
-    "validate:runtime:functions": "node scripts/validate-runtime-env.mjs --target functions",
     "ingest:campaign": "npx tsx scripts/run-ingestion-campaign.ts",
     "bootstrap:source-feed": "node scripts/bootstrap-source-feed.mjs",
     "provision:owner-access": "node scripts/provision-owner-access.mjs",
@@ -39,11 +41,11 @@
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "^0.45.2",
     "ioredis": "^5.10.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.577.0",
-    "next": "16.1.6",
+    "next": "16.2.10",
     "openai": "^6.29.0",
     "pg": "^8.20.0",
     "react-leaflet": "^5.0.0",
@@ -76,7 +78,7 @@
     "axe-core": "^4.11.1",
     "drizzle-kit": "^0.31.9",
     "eslint": "^10",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.2.10",
     "jest-axe": "^10.0.0",
     "jsdom": "^29.0.0",
     "react": "^19.2.4",
@@ -89,6 +91,8 @@
     "vitest-axe": "^0.1.0"
   },
   "overrides": {
-    "undici": "^7.24.0"
+    "postcss": "^8.5.10",
+    "undici": "^7.28.0",
+    "ws": "^8.21.0"
   }
 }

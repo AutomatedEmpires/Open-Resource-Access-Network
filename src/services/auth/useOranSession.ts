@@ -13,7 +13,15 @@
  */
 
 import { useAuth, useClerk, useUser } from '@clerk/nextjs';
-import { useEffect, useState } from 'react';
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { AccountStatus, OranRole } from '@/domain/types';
 
 export type SessionStatus = 'loading' | 'authenticated' | 'unauthenticated';
@@ -45,12 +53,43 @@ interface MeResponse {
   user?: { id: string; role: OranRole; accountStatus: AccountStatus; orgIds: string[] };
 }
 
+interface SignOutOptions {
+  callbackUrl?: string;
+}
+
+interface OranAuthContextValue {
+  session: UseSessionResult;
+  signOut: (options?: SignOutOptions) => Promise<void>;
+}
+
+interface OranAuthSessionProviderProps {
+  clerkConfigured: boolean;
+  children: ReactNode;
+}
+
+const unauthenticatedSession: UseSessionResult = {
+  data: null,
+  status: 'unauthenticated',
+};
+
+async function fallbackSignOut(options?: SignOutOptions): Promise<void> {
+  signOut(options);
+}
+
+const unauthenticatedContext: OranAuthContextValue = {
+  session: unauthenticatedSession,
+  signOut: fallbackSignOut,
+};
+
+const OranAuthContext = createContext<OranAuthContextValue>(unauthenticatedContext);
+
 /**
- * Returns `{ data, status }` mirroring next-auth's `useSession()`.
+ * Clerk-backed bridge used only inside a configured `<ClerkProvider>`.
  */
-export function useSession(): UseSessionResult {
+function ClerkAuthSessionProvider({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
+  const clerk = useClerk();
   // `forUser` records which Clerk user the fetched profile belongs to, so a
   // single fetch runs per user and the effect never calls setState synchronously.
   const [state, setState] = useState<{ profile: MeResponse['user'] | null; forUser: string | null }>({
@@ -102,7 +141,43 @@ export function useSession(): UseSessionResult {
         }
       : null;
 
-  return { data, status } as UseSessionResult;
+  const session = { data, status } as UseSessionResult;
+  const clerkSignOut = useCallback(
+    (options?: SignOutOptions) => clerk.signOut({ redirectUrl: options?.callbackUrl ?? '/' }),
+    [clerk],
+  );
+
+  return createElement(
+    OranAuthContext.Provider,
+    { value: { session, signOut: clerkSignOut } },
+    children,
+  );
+}
+
+/**
+ * Supplies an unauthenticated local/CI session when Clerk is absent, or bridges
+ * the real Clerk session when provider credentials are configured.
+ */
+export function OranAuthSessionProvider({
+  clerkConfigured,
+  children,
+}: OranAuthSessionProviderProps) {
+  if (!clerkConfigured) {
+    return createElement(
+      OranAuthContext.Provider,
+      { value: unauthenticatedContext },
+      children,
+    );
+  }
+
+  return createElement(ClerkAuthSessionProvider, null, children);
+}
+
+/**
+ * Returns `{ data, status }` mirroring next-auth's `useSession()`.
+ */
+export function useSession(): UseSessionResult {
+  return useContext(OranAuthContext).session;
 }
 
 /**
@@ -118,7 +193,7 @@ export function signIn(_provider?: string, options?: { callbackUrl?: string }): 
  * Uses the global Clerk instance (available once ClerkProvider has mounted);
  * falls back to a hard redirect if Clerk has not loaded yet.
  */
-export function signOut(options?: { callbackUrl?: string }): void {
+export function signOut(options?: SignOutOptions): void {
   const redirectUrl = options?.callbackUrl ?? '/';
   const w = window as unknown as { Clerk?: { signOut: (o?: { redirectUrl?: string }) => Promise<void> } };
   if (w.Clerk?.signOut) {
@@ -132,6 +207,5 @@ export function signOut(options?: { callbackUrl?: string }): void {
  * Hook variant of {@link signOut} for components that prefer the Clerk hook.
  */
 export function useSignOut(): (options?: { callbackUrl?: string }) => Promise<void> {
-  const clerk = useClerk();
-  return (options) => clerk.signOut({ redirectUrl: options?.callbackUrl ?? '/' });
+  return useContext(OranAuthContext).signOut;
 }

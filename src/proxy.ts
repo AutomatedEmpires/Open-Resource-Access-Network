@@ -8,8 +8,8 @@
  *   layer (`getAuthContext()` / guards in every API route), not here — the Edge
  *   middleware cannot read `user_profiles.role`. This keeps data access secure
  *   regardless of the middleware.
- * - When Clerk is not configured (no publishable key), protected routes fail
- *   closed in production and are permitted in local dev.
+ * - When Clerk is not fully configured, protected routes fail closed in
+ *   production and are permitted in local dev.
  */
 
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
@@ -56,50 +56,65 @@ function isSameOriginWriteAllowed(request: NextRequest): boolean {
   return process.env.NODE_ENV !== 'production';
 }
 
-const CLERK_CONFIGURED = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+const CLERK_CONFIGURED = Boolean(
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY,
+);
 
-export const proxy = clerkMiddleware(async (auth, request) => {
-  // CSRF: block cross-site state-changing API writes.
+const configuredProxy = CLERK_CONFIGURED
+  ? clerkMiddleware(async (auth, request) => {
+    // CSRF: block cross-site state-changing API writes.
+    if (isProtectedApiWrite(request) && !isSameOriginWriteAllowed(request)) {
+      return new NextResponse('Cross-site state-changing requests are forbidden', { status: 403 });
+    }
+
+    if (!isProtectedRoute(request)) {
+      return NextResponse.next();
+    }
+
+    const { userId, redirectToSignIn } = await auth();
+    if (!userId) {
+      return redirectToSignIn({ returnBackUrl: request.url });
+    }
+
+    return NextResponse.next();
+  }, {
+    // Let Clerk derive its Frontend API host and inject a compatible policy.
+    // Additional directives preserve ORAN's map/media and optional telemetry needs.
+    contentSecurityPolicy: {
+      directives: {
+        'base-uri': ["'self'"],
+        'connect-src': [
+          'https://*.sentry.io',
+          'https://*.posthog.com',
+          'https://*.i.posthog.com',
+        ],
+        'font-src': ["'self'", 'data:'],
+        'frame-ancestors': ["'none'"],
+        'img-src': ['data:', 'blob:', 'https:'],
+        'object-src': ["'none'"],
+      },
+    },
+  })
+  : null;
+
+/**
+ * Keep local and CI public-page checks usable without injecting provider
+ * credentials. Production still fails closed for every protected route, and
+ * the production runtime contract separately requires both Clerk keys.
+ */
+function unconfiguredProxy(request: NextRequest): NextResponse {
   if (isProtectedApiWrite(request) && !isSameOriginWriteAllowed(request)) {
     return new NextResponse('Cross-site state-changing requests are forbidden', { status: 403 });
   }
 
-  if (!isProtectedRoute(request)) {
-    return NextResponse.next();
-  }
-
-  // Clerk not configured: fail closed in production, allow in local dev.
-  if (!CLERK_CONFIGURED) {
-    if (process.env.NODE_ENV === 'production') {
-      return new NextResponse('Authentication is not configured', { status: 503 });
-    }
-    return NextResponse.next();
-  }
-
-  const { userId, redirectToSignIn } = await auth();
-  if (!userId) {
-    return redirectToSignIn({ returnBackUrl: request.url });
+  if (isProtectedRoute(request) && process.env.NODE_ENV === 'production') {
+    return new NextResponse('Authentication is not configured', { status: 503 });
   }
 
   return NextResponse.next();
-}, {
-  // Let Clerk derive its Frontend API host and inject a compatible policy.
-  // Additional directives preserve ORAN's map/media and optional telemetry needs.
-  contentSecurityPolicy: {
-    directives: {
-      'base-uri': ["'self'"],
-      'connect-src': [
-        'https://*.sentry.io',
-        'https://*.posthog.com',
-        'https://*.i.posthog.com',
-      ],
-      'font-src': ["'self'", 'data:'],
-      'frame-ancestors': ["'none'"],
-      'img-src': ['data:', 'blob:', 'https:'],
-      'object-src': ["'none'"],
-    },
-  },
-});
+}
+
+export const proxy = configuredProxy ?? unconfiguredProxy;
 
 export const config = {
   matcher: [

@@ -133,7 +133,7 @@ Assigned agents may make reversible, non-billing provider configuration changes 
 
 ### Email and outreach
 
-- Internal delivery tests may use approved ORAN test recipients and non-user data. Assigned reversible transactional-email configuration may proceed with test/non-user recipients; DNS activation, a public/marketing campaign, or a real-user launch remains a hard stop where applicable.
+- Internal delivery tests may use controlled, consenting, team-owned ORAN test recipients and non-user data. Assigned reversible transactional-email configuration may proceed with test/non-user recipients; DNS activation, a public/marketing campaign, or a real-user launch remains a hard stop where applicable.
 - External provider outreach requires an assigned outreach lane, approved sender, accurate identity, and one-to-one scope; never imply an existing partnership.
 - Keep sender/domain work venture-scoped and protect resource/recipient contact data. Stop before a DNS change, public launch, or broadcast campaign; reversible configuration and internal/non-user delivery proof may proceed in an assigned lane.
 

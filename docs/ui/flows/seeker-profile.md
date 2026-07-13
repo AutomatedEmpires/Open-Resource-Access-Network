@@ -88,14 +88,11 @@ Section toggle buttons: `px-5 py-4` — sufficient touch target.
 
 ```mermaid
 flowchart LR
-    A[Security section\nauthProvider = credentials] --> B[Change password form]
-    B --> C{Validation}
-    C -->|OK| D[POST /api/user/security/password]
-    D -->|200| E[Success toast\nForm cleared]
-    D -->|4xx| F[Error toast\nkeep form]
-    C -->|Mismatch| G[Error toast\nstay in form]
-
-    A2[authProvider ≠ credentials] --> H[Read-only notice\n'Password managed by provider']
+    A[Security section] --> B[Show ORAN profile details]
+    A --> C[Show Clerk sign-in method]
+    C --> D[Use account menu]
+    D --> E[Open Clerk account security]
+    E --> F[Manage password, MFA, passkeys, or connected sign-in]
 ```
 
 ---

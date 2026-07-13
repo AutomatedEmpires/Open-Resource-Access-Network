@@ -283,12 +283,24 @@ function setMatchMedia(matches: boolean) {
 }
 
 describe('MapPageClient', () => {
-  it('renders initial state and waits for a manual search', () => {
+  it('renders initial state without requesting location and waits for a manual search', () => {
     renderWithToast(<MapPage />);
 
     expect(screen.getByRole('heading', { name: 'Map' })).toBeInTheDocument();
     expect(getSearchSubmitButton()).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Search this area' })).toBeDisabled();
     expect(screen.getByTestId('map-container')).toBeInTheDocument();
+    expect(global.navigator.geolocation.getCurrentPosition).not.toHaveBeenCalled();
+  });
+
+  it('does not treat nationwide map bounds as seeker intent', async () => {
+    mockApi([{ ok: true, body: makeSearchResponse() }]);
+
+    renderWithToast(<MapPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'emit-bounds' }));
+
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(getSearchCalls()).toHaveLength(0);
   });
 
   it('seeds a blank map entry from the stored seeker discovery preference', async () => {
@@ -591,6 +603,7 @@ describe('MapPageClient', () => {
     await clickUseMyLocationControl();
 
     await waitFor(() => {
+      expect(geolocation.getCurrentPosition).toHaveBeenCalledTimes(1);
       expect(toastSuccessMock).toHaveBeenCalledWith('Centered near your location (not saved).');
       expect(screen.getByRole('button', { name: 'Clear location radius' })).toBeInTheDocument();
     });

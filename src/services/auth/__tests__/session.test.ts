@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const getServerSessionMock = vi.hoisted(() => vi.fn());
+const clerkAuthMock = vi.hoisted(() => vi.fn());
 const dbMocks = vi.hoisted(() => ({
   executeQuery: vi.fn(),
   isDatabaseConfigured: vi.fn(),
 }));
 const mutableEnv = process.env as Record<string, string | undefined>;
 
-vi.mock('next-auth', () => ({
-  getServerSession: getServerSessionMock,
+vi.mock('@clerk/nextjs/server', () => ({
+  auth: clerkAuthMock,
 }));
 vi.mock('@/services/db/postgres', () => dbMocks);
 
@@ -19,69 +19,36 @@ async function loadSessionModule() {
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
 
-  getServerSessionMock.mockResolvedValue(null);
+  mutableEnv.NODE_ENV = 'test';
+  mutableEnv.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = 'pk_test_oran';
+  mutableEnv.CLERK_SECRET_KEY = 'sk_test_oran';
+  clerkAuthMock.mockResolvedValue({ userId: null });
   dbMocks.isDatabaseConfigured.mockReturnValue(false);
   dbMocks.executeQuery.mockResolvedValue([]);
-  delete mutableEnv.AZURE_AD_CLIENT_ID;
-  vi.unstubAllEnvs();
 });
 
-describe('auth session helpers', () => {
-  it('returns null when there is no active session', async () => {
+describe('Clerk auth session helpers', () => {
+  it('returns null when there is no active Clerk identity', async () => {
     const { getAuthContext } = await loadSessionModule();
 
     await expect(getAuthContext()).resolves.toBeNull();
+    expect(clerkAuthMock).toHaveBeenCalledOnce();
   });
 
-  it('returns null when the session has no usable user id', async () => {
-    getServerSessionMock.mockResolvedValue({
-      user: {},
-    });
-    const { getAuthContext } = await loadSessionModule();
-
-    await expect(getAuthContext()).resolves.toBeNull();
-  });
-
-  it('returns oran_admin without querying org memberships', async () => {
-    getServerSessionMock.mockResolvedValue({
-      user: { id: 'user-1', role: 'oran_admin' },
-    });
+  it('uses a new Clerk subject as the canonical ORAN id for a new seeker', async () => {
+    clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_new' });
+    dbMocks.isDatabaseConfigured.mockReturnValue(true);
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ exists: true }])
+      .mockResolvedValueOnce([]);
     const { getAuthContext } = await loadSessionModule();
 
     await expect(getAuthContext()).resolves.toEqual({
-      userId: 'user-1',
-      role: 'oran_admin',
-      accountStatus: 'active',
-      orgIds: [],
-      orgRoles: new Map(),
-    });
-    expect(dbMocks.executeQuery).not.toHaveBeenCalled();
-  });
-
-  it('returns community_admin without querying org memberships', async () => {
-    getServerSessionMock.mockResolvedValue({
-      user: { sub: 'user-2', role: 'community_admin' },
-    });
-    const { getAuthContext } = await loadSessionModule();
-
-    await expect(getAuthContext()).resolves.toEqual({
-      userId: 'user-2',
-      role: 'community_admin',
-      accountStatus: 'active',
-      orgIds: [],
-      orgRoles: new Map(),
-    });
-  });
-
-  it('falls back to seeker when the database is unavailable', async () => {
-    getServerSessionMock.mockResolvedValue({
-      user: { email: 'user@example.org' },
-    });
-    const { getAuthContext } = await loadSessionModule();
-
-    await expect(getAuthContext()).resolves.toEqual({
-      userId: 'user@example.org',
+      clerkUserId: 'user_clerk_new',
+      userId: 'user_clerk_new',
       role: 'seeker',
       accountStatus: 'active',
       orgIds: [],
@@ -89,13 +56,58 @@ describe('auth session helpers', () => {
     });
   });
 
-  it('returns host_admin and org memberships when active rows exist', async () => {
-    getServerSessionMock.mockResolvedValue({
-      user: { id: 'user-1', role: 'seeker' },
-    });
+  it('keeps the ORAN database id distinct for a migrated Clerk identity', async () => {
+    clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_migrated' });
     dbMocks.isDatabaseConfigured.mockReturnValue(true);
     dbMocks.executeQuery
-      .mockResolvedValueOnce([{ account_status: 'active' }])
+      .mockResolvedValueOnce([{
+        user_id: 'legacy-oran-user',
+        role: 'oran_admin',
+        account_status: 'active',
+      }]);
+    const { getAuthContext } = await loadSessionModule();
+
+    await expect(getAuthContext()).resolves.toEqual({
+      clerkUserId: 'user_clerk_migrated',
+      userId: 'legacy-oran-user',
+      role: 'oran_admin',
+      accountStatus: 'active',
+      orgIds: [],
+      orgRoles: new Map(),
+    });
+    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes community admin authority from the ORAN profile, not Clerk claims', async () => {
+    clerkAuthMock.mockResolvedValue({
+      userId: 'user_clerk_admin',
+      sessionClaims: { role: 'oran_admin' },
+    });
+    dbMocks.isDatabaseConfigured.mockReturnValue(true);
+    dbMocks.executeQuery.mockResolvedValueOnce([{
+      user_id: 'oran-admin-record',
+      role: 'community_admin',
+      account_status: 'active',
+    }]);
+    const { getAuthContext } = await loadSessionModule();
+
+    await expect(getAuthContext()).resolves.toMatchObject({
+      clerkUserId: 'user_clerk_admin',
+      userId: 'oran-admin-record',
+      role: 'community_admin',
+      accountStatus: 'active',
+    });
+  });
+
+  it('resolves active organization membership and highest host role', async () => {
+    clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_host' });
+    dbMocks.isDatabaseConfigured.mockReturnValue(true);
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([{
+        user_id: 'oran-host-record',
+        role: 'host_member',
+        account_status: 'active',
+      }])
       .mockResolvedValueOnce([{ exists: true }])
       .mockResolvedValueOnce([
         { organization_id: 'org-1', role: 'host_member', status: 'active' },
@@ -104,10 +116,9 @@ describe('auth session helpers', () => {
       ]);
     const { getAuthContext } = await loadSessionModule();
 
-    const result = await getAuthContext();
-
-    expect(result).toEqual({
-      userId: 'user-1',
+    await expect(getAuthContext()).resolves.toEqual({
+      clerkUserId: 'user_clerk_host',
+      userId: 'oran-host-record',
       role: 'host_admin',
       accountStatus: 'active',
       orgIds: ['org-1', 'org-2'],
@@ -118,63 +129,95 @@ describe('auth session helpers', () => {
     });
   });
 
-  it('falls back gracefully when the org-members table lookup fails', async () => {
-    getServerSessionMock.mockResolvedValue({
-      user: { id: 'user-1', role: 'host_member' },
-    });
+  it('fails closed when the security record cannot be read', async () => {
+    clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_db_error' });
     dbMocks.isDatabaseConfigured.mockReturnValue(true);
-    dbMocks.executeQuery
-      .mockResolvedValueOnce([{ account_status: 'active' }])
-      .mockRejectedValueOnce(new Error('no table'));
-    const { getAuthContext } = await loadSessionModule();
-
-    await expect(getAuthContext()).resolves.toEqual({
-      userId: 'user-1',
-      role: 'host_member',
-      accountStatus: 'active',
-      orgIds: [],
-      orgRoles: new Map(),
-    });
-  });
-
-  it('returns null when session retrieval throws unexpectedly', async () => {
-    getServerSessionMock.mockRejectedValueOnce(new Error('auth failed'));
+    dbMocks.executeQuery.mockRejectedValueOnce(new Error('connection refused'));
     const { getAuthContext } = await loadSessionModule();
 
     await expect(getAuthContext()).resolves.toBeNull();
   });
 
-  it('reports auth configuration based on env vars', async () => {
-    mutableEnv.AZURE_AD_CLIENT_ID = 'client-id';
-    const { isAuthConfigured } = await loadSessionModule();
+  it('fails closed when organization authorization cannot be read', async () => {
+    clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_host' });
+    dbMocks.isDatabaseConfigured.mockReturnValue(true);
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([{
+        user_id: 'oran-host-record',
+        role: 'host_member',
+        account_status: 'active',
+      }])
+      .mockRejectedValueOnce(new Error('authorization query unavailable'));
+    const { getAuthContext } = await loadSessionModule();
 
-    expect(isAuthConfigured()).toBe(true);
+    await expect(getAuthContext()).resolves.toBeNull();
   });
 
-  it('enforces auth in production even without Entra config', async () => {
-    vi.stubEnv('NODE_ENV', 'production');
+  it('denies a frozen ORAN account even with an active Clerk session', async () => {
+    clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_frozen' });
+    dbMocks.isDatabaseConfigured.mockReturnValue(true);
+    dbMocks.executeQuery.mockResolvedValueOnce([{
+      user_id: 'oran-frozen-record',
+      role: 'oran_admin',
+      account_status: 'frozen',
+    }]);
+    const { getAuthContext } = await loadSessionModule();
+
+    await expect(getAuthContext()).resolves.toBeNull();
+  });
+
+  it('allows a local seeker fallback without a database', async () => {
+    clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_local' });
+    dbMocks.isDatabaseConfigured.mockReturnValue(false);
+    const { getAuthContext } = await loadSessionModule();
+
+    await expect(getAuthContext()).resolves.toMatchObject({
+      clerkUserId: 'user_clerk_local',
+      userId: 'user_clerk_local',
+      role: 'seeker',
+      accountStatus: 'active',
+    });
+  });
+
+  it('fails closed in production when the authorization database is missing', async () => {
+    mutableEnv.NODE_ENV = 'production';
+    clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_prod' });
+    dbMocks.isDatabaseConfigured.mockReturnValue(false);
+    const { getAuthContext } = await loadSessionModule();
+
+    await expect(getAuthContext()).resolves.toBeNull();
+  });
+
+  it('returns null when Clerk session resolution throws', async () => {
+    clerkAuthMock.mockRejectedValueOnce(new Error('Clerk unavailable'));
+    const { getAuthContext } = await loadSessionModule();
+
+    await expect(getAuthContext()).resolves.toBeNull();
+  });
+
+  it('requires both Clerk runtime keys for auth configuration', async () => {
+    const { isAuthConfigured } = await loadSessionModule();
+    expect(isAuthConfigured()).toBe(true);
+
+    delete mutableEnv.CLERK_SECRET_KEY;
+    expect(isAuthConfigured()).toBe(false);
+  });
+
+  it('enforces auth in production even when Clerk is misconfigured', async () => {
+    mutableEnv.NODE_ENV = 'production';
+    delete mutableEnv.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+    delete mutableEnv.CLERK_SECRET_KEY;
     const { shouldEnforceAuth } = await loadSessionModule();
 
     expect(shouldEnforceAuth()).toBe(true);
   });
 
-  it('does not enforce auth in non-production when unconfigured', async () => {
-    vi.stubEnv('NODE_ENV', 'development');
+  it('does not enforce auth in non-production when Clerk is unconfigured', async () => {
+    mutableEnv.NODE_ENV = 'development';
+    delete mutableEnv.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+    delete mutableEnv.CLERK_SECRET_KEY;
     const { shouldEnforceAuth } = await loadSessionModule();
 
     expect(shouldEnforceAuth()).toBe(false);
-  });
-
-  // B2: DB error must deny access (return null) instead of assuming active
-  it('returns null when getAccountStatus throws (B2 — frozen on DB error)', async () => {
-    getServerSessionMock.mockResolvedValue({
-      user: { id: 'frozen-user', role: 'seeker' },
-    });
-    dbMocks.isDatabaseConfigured.mockReturnValue(true);
-    // getAccountStatus query throws → should return 'frozen' → getAuthContext returns null
-    dbMocks.executeQuery.mockRejectedValueOnce(new Error('connection refused'));
-    const { getAuthContext } = await loadSessionModule();
-
-    await expect(getAuthContext()).resolves.toBeNull();
   });
 });

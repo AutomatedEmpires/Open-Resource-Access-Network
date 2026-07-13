@@ -2,13 +2,13 @@
  * Notification Service
  *
  * Manages in-app notification delivery, read tracking, and user preferences.
- * Email notifications are dispatched via Azure Communication Services when configured.
+ * Email notifications are dispatched via Resend when configured.
  *
  * This service is the single interface for all notification operations.
  */
 
 import { executeQuery, withTransaction } from '@/services/db/postgres';
-import { sendEmail, isEmailConfigured } from '@/services/email/azureEmail';
+import { sendEmail, isEmailConfigured } from '@/services/email/resendEmail';
 import { NOTIFICATION_RATE_LIMIT_PER_HOUR } from '@/domain/constants';
 import type {
   NotificationChannel,
@@ -114,7 +114,7 @@ export async function send(req: SendNotificationRequest): Promise<string | null>
 
   const notificationId = result[0]?.id ?? null;
 
-  // Dispatch email via Azure Communication Services when channel is 'email'
+  // Dispatch email via Resend when channel is 'email'
   if (notificationId && channel === 'email' && req.recipientEmail && isEmailConfigured()) {
     const emailResult = await sendEmail({
       to: req.recipientEmail,

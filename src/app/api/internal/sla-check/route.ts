@@ -1,11 +1,10 @@
 /**
- * POST /api/internal/sla-check
+ * GET|POST /api/internal/sla-check
  *
- * Internal endpoint called by Azure Functions Timer Trigger to check SLA breaches.
- * Protected by a shared secret (INTERNAL_API_KEY) — not accessible to end users.
+ * Internal endpoint called by Vercel Cron to check SLA breaches. POST remains
+ * available to authenticated rollback workers and operational tooling.
  */
 
-import { timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { checkSlaBreaches } from '@/services/workflow/engine';
 import {
@@ -14,27 +13,13 @@ import {
 } from '@/services/escalation/engine';
 import { isDatabaseConfigured } from '@/services/db/postgres';
 import { captureException } from '@/services/telemetry/sentry';
+import { rejectUnauthorizedInternalRequest } from '@/services/auth/internalRequest';
 
-export async function POST(req: NextRequest) {
-  // Validate internal API key
-  const apiKey = process.env.INTERNAL_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: 'Internal API not configured' },
-      { status: 503 },
-    );
-  }
+export const dynamic = 'force-dynamic';
 
-  const authHeader = req.headers.get('authorization') ?? '';
-  const expected = `Bearer ${apiKey}`;
-  const authBuf = Buffer.from(authHeader);
-  const expectedBuf = Buffer.from(expected);
-  if (authBuf.length !== expectedBuf.length || !timingSafeEqual(authBuf, expectedBuf)) {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 },
-    );
-  }
+async function runSlaCheck(req: NextRequest) {
+  const authFailure = rejectUnauthorizedInternalRequest(req);
+  if (authFailure) return authFailure;
 
   if (!isDatabaseConfigured()) {
     return NextResponse.json(
@@ -67,4 +52,12 @@ export async function POST(req: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+export async function GET(req: NextRequest) {
+  return runSlaCheck(req);
+}
+
+export async function POST(req: NextRequest) {
+  return runSlaCheck(req);
 }

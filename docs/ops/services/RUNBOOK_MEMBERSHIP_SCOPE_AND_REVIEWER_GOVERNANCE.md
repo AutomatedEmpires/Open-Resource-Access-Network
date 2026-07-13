@@ -73,7 +73,7 @@ Primary implementation:
 Implemented today:
 
 - ORAN-admin can freeze or restore a user account with a required operator note
-- frozen users are denied authenticated request context through the shared session helper and NextAuth session shaping
+- frozen users are denied authenticated request context through the Clerk-to-ORAN session helper
 - host-team invite/reactivation flow rejects frozen users
 - org-claim approval rejects frozen claimants before promotion to `host_admin`
 - account freeze is non-destructive and preserves audit history plus security metadata
@@ -81,7 +81,6 @@ Implemented today:
 Primary implementation:
 
 - `db/migrations/0053_account_status_and_security_controls.sql`
-- `src/lib/auth.ts`
 - `src/services/auth/session.ts`
 - `src/app/api/admin/security/accounts/route.ts`
 - `src/app/api/host/admins/route.ts`

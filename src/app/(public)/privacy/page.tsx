@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { SITE } from '@/lib/site';
 
-const LAST_UPDATED_ISO = '2026-03-13';
-const LAST_UPDATED_DISPLAY = 'March 13, 2026';
-const VERSION = '0.9 — Pre-release (pending legal review)';
+const LAST_UPDATED_ISO = '2026-07-13';
+const LAST_UPDATED_DISPLAY = 'July 13, 2026';
+const VERSION = '1.0 — Pre-release (pending legal review)';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
@@ -28,7 +28,7 @@ const DATA_WE_COLLECT = [
   {
     category: 'Session identifiers',
     detail:
-      'Pseudonymous identity token managed by Microsoft Entra ID and NextAuth.js. Not linked to your real name within ORAN.',
+      'A Clerk-managed account identifier and secure session metadata. ORAN stores only the profile details you choose to provide.',
     purpose: 'Authentication',
   },
   {
@@ -53,9 +53,9 @@ const DATA_WE_COLLECT = [
 
 const THIRD_PARTIES: { name: string; purpose: string; link: string }[] = [
   {
-    name: 'Microsoft Entra ID',
+    name: 'Clerk',
     purpose: 'Identity management and authentication',
-    link: 'https://privacy.microsoft.com/en-US/privacystatement',
+    link: 'https://clerk.com/legal/privacy',
   },
   {
     name: 'Sentry',
@@ -63,14 +63,19 @@ const THIRD_PARTIES: { name: string; purpose: string; link: string }[] = [
     link: 'https://sentry.io/privacy/',
   },
   {
-    name: 'Azure (Microsoft)',
-    purpose: 'Cloud hosting, database, and application infrastructure',
-    link: 'https://privacy.microsoft.com/en-US/privacystatement',
+    name: 'Supabase',
+    purpose: 'Database and application data infrastructure',
+    link: 'https://supabase.com/privacy',
   },
   {
-    name: 'Azure Maps (Microsoft)',
-    purpose: 'Map tiles, geocoding, and location search',
-    link: 'https://privacy.microsoft.com/en-US/privacystatement',
+    name: 'Vercel',
+    purpose: 'Application hosting and delivery',
+    link: 'https://vercel.com/legal/privacy-policy',
+  },
+  {
+    name: 'OpenStreetMap',
+    purpose: 'Map tiles and geographic context',
+    link: 'https://osmfoundation.org/wiki/Privacy_Policy',
   },
 ];
 
@@ -294,8 +299,8 @@ export default function PrivacyPage() {
       <section className="mb-10">
         <h2 className="mb-3 text-lg font-semibold text-gray-900">Cookies</h2>
         <p className="text-sm leading-relaxed text-gray-700">
-          ORAN uses a single session cookie managed by NextAuth.js, required for authentication.
-          This cookie is strictly necessary and does not track you across other sites or sessions.
+          ORAN and Clerk use strictly necessary cookies to establish and protect authenticated
+          sessions. These cookies are not used for advertising or cross-site behavioral tracking.
           We do not use advertising cookies or persistent third-party tracking cookies. If analytics
           cookies are introduced in the future, this policy will be updated and explicit consent
           will be sought before they are placed.

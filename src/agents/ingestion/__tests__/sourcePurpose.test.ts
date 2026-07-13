@@ -21,9 +21,18 @@ describe('source purpose', () => {
     },
   );
 
-  it('keeps legacy sources compatible as service catalogs', () => {
-    expect(evaluateStandaloneResourceUse({})).toEqual(
-      expect.objectContaining({ allowed: true, purpose: 'service_catalog' }),
+  it.each([undefined, null, {}, { resourcePurpose: 'not-a-purpose' }])(
+    'fails closed when source purpose is missing or invalid',
+    (source) => {
+      expect(evaluateStandaloneResourceUse(source)).toEqual(
+        expect.objectContaining({ allowed: false, purpose: 'unclassified' }),
+      );
+    },
+  );
+
+  it('never treats an unclassified SNAP retailer source as a service catalog', () => {
+    expect(evaluateStandaloneResourceUse({ resourcePurpose: undefined })).toEqual(
+      expect.objectContaining({ allowed: false, purpose: 'unclassified' }),
     );
   });
 });

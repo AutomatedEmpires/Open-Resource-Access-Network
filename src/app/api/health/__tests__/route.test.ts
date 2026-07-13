@@ -67,7 +67,7 @@ describe('GET /api/health', () => {
   });
 
   it('returns 503 when runtime configuration is invalid', async () => {
-    vi.stubEnv('AZURE_AD_CLIENT_ID', 'entra-client-id');
+    vi.stubEnv('NDP_211_POLLING_ENABLED', 'true');
     const { GET } = await import('../route');
     const res = await GET(createRequest());
     expect(res.status).toBe(503);
@@ -75,7 +75,7 @@ describe('GET /api/health', () => {
     const body = await res.json();
     expect(body.status).toBe('unhealthy');
     expect(body.configuration).toBe('invalid');
-    expect(body.missing).toEqual(['AZURE_AD_CLIENT_SECRET']);
+    expect(body.missing).toEqual(['NDP_211_DATA_OWNERS', 'NDP_211_SUBSCRIPTION_KEY']);
   });
 
   it('does not expose configuration details in production', async () => {

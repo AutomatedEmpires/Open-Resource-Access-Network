@@ -38,6 +38,28 @@ export const PageSurfaces: Story = {
   ),
 };
 
+export const BrandAndMetal: Story = {
+  render: () => (
+    <div className="space-y-5 p-6">
+      <h2 className="font-semibold text-gray-700">ORAN Brand + Metal</h2>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Swatch label="Sky" cssVar="--brand-sky" />
+        <Swatch label="Azure" cssVar="--brand-azure" />
+        <Swatch label="Cobalt" cssVar="--brand-cobalt" />
+        <Swatch label="Navy" cssVar="--brand-navy" />
+        <Swatch label="Bright metal" cssVar="--metal-bright" />
+        <Swatch label="Silver" cssVar="--metal-silver" />
+        <Swatch label="Steel" cssVar="--metal-steel" />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="h-20 rounded-xl bg-gradient-brand" aria-label="Brand gradient" />
+        <div className="h-20 rounded-xl bg-gradient-brand-deep" aria-label="Deep brand gradient" />
+        <div className="h-20 rounded-xl bg-gradient-chrome" aria-label="Chrome gradient" />
+      </div>
+    </div>
+  ),
+};
+
 export const Text: Story = {
   render: () => (
     <div className="space-y-3 p-6">

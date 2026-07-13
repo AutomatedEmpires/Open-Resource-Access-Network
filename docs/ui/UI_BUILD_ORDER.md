@@ -57,7 +57,7 @@ Acceptance criteria:
 Completed: 2026-03-02
 
 1. `/saved` ✅ — localStorage-only bookmarks with remove/clear-all, privacy note.
-2. `/profile` ✅ — Approximate city input (device-only), privacy checklist, data deletion with confirm step, Entra ID sign-in placeholder.
+2. `/profile` ✅ — Approximate city input, privacy controls, Clerk account context, and confirmed ORAN data deletion.
 
 Acceptance criteria:
 

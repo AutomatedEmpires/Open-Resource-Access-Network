@@ -344,4 +344,29 @@ describe('api/search route', () => {
       }),
     );
   });
+
+  it('enables the standalone-resource gate for seeker feeds', async () => {
+    const { GET } = await loadRoute();
+
+    const response = await GET(createRequest({ search: '?standaloneOnly=true&limit=8' }));
+
+    expect(response.status).toBe(200);
+    expect(searchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          publishedOnly: true,
+          standaloneOnly: true,
+        }),
+        pagination: { page: 1, limit: 8 },
+      }),
+    );
+  });
+
+  it('rejects unknown standalone-resource gate values', async () => {
+    const { GET } = await loadRoute();
+
+    const response = await GET(createRequest({ search: '?standaloneOnly=maybe' }));
+
+    expect(response.status).toBe(400);
+  });
 });

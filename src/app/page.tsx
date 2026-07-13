@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { MessageCircle, List, MapPin, Shield, Building2, Users, ArrowRight, Search, CheckCircle2, Zap, Globe, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppNav } from '@/components/nav/AppNav';
-import { ScopedMobileNav } from '@/components/nav/ScopedMobileNav';
+import { ScopedMobileNav, SEEKER_MOBILE_NAV_ITEMS } from '@/components/nav/ScopedMobileNav';
 import { AppFooter } from '@/components/footer';
 import { ChatFirstIntakeHero } from '@/components/home/ChatFirstIntakeHero';
 import { SITE, buildOrganizationJsonLd, getSameAsLinks, toSafeJsonLd } from '@/lib/site';
@@ -60,13 +60,6 @@ const CATEGORIES = [
   { label: 'Child & Family',         href: '/directory?q=children+family' },
   { label: 'Disability Services',    href: '/directory?q=disability+services' },
   { label: 'Veteran Services',       href: '/directory?q=veteran+services' },
-] as const;
-
-const PUBLIC_MOBILE_NAV = [
-  { href: '/', label: 'Start', icon: 'home' },
-  { href: '/chat', label: 'Chat', icon: 'chat' },
-  { href: '/directory', label: 'Directory', icon: 'directory' },
-  { href: '/map', label: 'Map', icon: 'map' },
 ] as const;
 
 // ── Per-audience feature data ────────────────────────────────
@@ -416,7 +409,7 @@ export default function Home() {
       </main>
 
       <AppFooter />
-      <ScopedMobileNav scopeLabel="Seeker" pathname="/" items={PUBLIC_MOBILE_NAV} />
+      <ScopedMobileNav scopeLabel="Seeker" pathname="/" items={SEEKER_MOBILE_NAV_ITEMS} />
     </div>
   );
 }

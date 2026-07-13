@@ -66,6 +66,12 @@ function makeLoc(overrides: Record<string, unknown> = {}) {
 
 function makeStores(overrides: Partial<IngestionStores> = {}): IngestionStores {
   return {
+    sourceSystems: {
+      getById: vi.fn().mockResolvedValue({
+        id: 'src-1',
+        resourcePurpose: 'service_catalog',
+      }),
+    },
     canonicalServices: {
       getById: vi.fn(),
       listByPublication: vi.fn().mockResolvedValue([]),
@@ -196,6 +202,29 @@ describe('runHsdsExport', () => {
 
     expect(result.exported).toHaveLength(2);
     expect(stores.canonicalServices.listByPublication).toHaveBeenCalledWith('published', undefined);
+  });
+
+  it('does not export a published SNAP retailer supporting-reference service', async () => {
+    const svc = makeSvc();
+    (stores.canonicalServices.getById as ReturnType<typeof vi.fn>)
+      .mockResolvedValue(svc);
+    (stores.sourceSystems.getById as ReturnType<typeof vi.fn>)
+      .mockResolvedValue({
+        id: 'src-1',
+        name: 'SNAP retailer store locations',
+        resourcePurpose: 'supporting_reference',
+      });
+
+    const result = await runHsdsExport({ stores, serviceIds: ['svc-1'] });
+
+    expect(result.exported).toEqual([]);
+    expect(result.skipped).toEqual([
+      expect.objectContaining({
+        entityId: 'svc-1',
+        reason: expect.stringContaining("resource purpose 'supporting_reference' blocked"),
+      }),
+    ]);
+    expect(stores.hsdsExportSnapshots.create).not.toHaveBeenCalled();
   });
 
   it('skips non-found service IDs', async () => {

@@ -13,6 +13,7 @@ import { captureException } from '@/services/telemetry/sentry';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { getIp } from '@/services/security/ip';
 import { RATE_LIMIT_WINDOW_MS, SEARCH_RATE_LIMIT_MAX_REQUESTS } from '@/domain/constants';
+import { buildPublishedServicePredicate } from '@/services/search/publication';
 
 const ParamsSchema = z.object({
   q: z.string().max(200).optional(),
@@ -83,6 +84,10 @@ export async function GET(req: NextRequest) {
 
   const { q, taxonomy, parentId, onlyUsed, limit } = parsed.data;
   const onlyUsedBool = onlyUsed !== 'false';
+  const publishableServiceCount = `COUNT(DISTINCT CASE
+    WHEN ${buildPublishedServicePredicate('s', 'o')} THEN s.id
+    ELSE NULL
+  END)`;
 
   const sql = `
     SELECT
@@ -91,20 +96,21 @@ export async function GET(req: NextRequest) {
       t.description,
       t.parent_id,
       t.taxonomy,
-      COUNT(DISTINCT st.service_id) AS service_count
+      ${publishableServiceCount} AS service_count
     FROM taxonomy_terms t
     LEFT JOIN service_taxonomy st
       ON st.taxonomy_term_id = t.id
     LEFT JOIN services s
       ON s.id = st.service_id
-      AND s.status = 'active'
+    LEFT JOIN organizations o
+      ON o.id = s.organization_id
     WHERE 1=1
       AND ($1::text IS NULL OR t.term ILIKE '%' || $1 || '%')
       AND ($2::text IS NULL OR t.taxonomy = $2)
       AND ($3::uuid IS NULL OR t.parent_id = $3)
     GROUP BY t.id
-    ${onlyUsedBool ? 'HAVING COUNT(DISTINCT st.service_id) > 0' : ''}
-    ORDER BY COUNT(DISTINCT st.service_id) DESC, t.term ASC
+    ${onlyUsedBool ? `HAVING ${publishableServiceCount} > 0` : ''}
+    ORDER BY ${publishableServiceCount} DESC, t.term ASC
     LIMIT $4;
   `;
 

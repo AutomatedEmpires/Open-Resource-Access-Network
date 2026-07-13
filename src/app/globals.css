@@ -12,8 +12,22 @@
 }
 
 :root {
-  --background: #FFFFFF;
-  --foreground: #09090B;
+  --background: #F2F6FA;
+  --foreground: #061B35;
+
+  /* ORAN brand — high-contrast cobalt/sky with cool metal surfaces. */
+  --brand-sky:       #19B5FE;
+  --brand-azure:     #087EF5;
+  --brand-cobalt:    #064BC7;
+  --brand-navy:      #061B35;
+  --metal-bright:    #F8FBFF;
+  --metal-silver:    #C4CFDC;
+  --metal-steel:     #8191A5;
+  --surface-page:    #EEF4FA;
+  --gradient-brand:  linear-gradient(135deg, #19B5FE 0%, #087EF5 48%, #064BC7 100%);
+  --gradient-brand-deep: linear-gradient(145deg, #064BC7 0%, #073E9E 52%, #061B35 100%);
+  --gradient-chrome: linear-gradient(135deg, #FFFFFF 0%, #C4CFDC 35%, #F8FBFF 57%, #8191A5 100%);
+  --gradient-surface: linear-gradient(145deg, #F8FBFF 0%, #EEF4FA 55%, #D9E2EC 100%);
 
   /* Z-Index scale — named layers to prevent ad-hoc stacking conflicts */
   --z-skip-link: 100;
@@ -24,19 +38,18 @@
   --z-sticky: 30;
   --z-elevated: 20;
 
-  /* ── White / Neutral semantic color tokens ── light mode ───────────────
-   * Palette: Near-Black #09090B · Zinc-600 #52525B · Zinc-400 #A1A1AA
-   *          Off-White #FAFAFA · White #FFFFFF
+  /* ── Cool metal semantic color tokens ── light mode ────────────────────
+   * Strong blue carries action and identity; silver stays structural.
    * ----------------------------------------------------------------------- */
-  --bg-page:        #FFFFFF;   /* white — main page background              */
+  --bg-page:        #EEF4FA;   /* cool silver-blue page background          */
   --bg-surface:     #FFFFFF;   /* white — cards, panels, inputs             */
-  --bg-surface-alt: #FFFFFF;   /* white — keep page flow visually unified   */
-  --border:         #E4E4E7;   /* light neutral gray — dividers/borders     */
-  --border-subtle:  #F1F1F5;   /* very subtle separator                     */
+  --bg-surface-alt: #F8FBFF;   /* bright metal highlight                    */
+  --border:         #C4CFDC;   /* silver divider/border                     */
+  --border-subtle:  #DCE5EE;   /* subtle cool separator                     */
 
-  --text-primary:   #09090B;   /* near-black — headings, body               */
-  --text-secondary: #52525B;   /* zinc-600 — supporting text                */
-  --text-muted:     #A1A1AA;   /* zinc-400 — placeholders, captions         */
+  --text-primary:   #061B35;   /* navy — headings, body                     */
+  --text-secondary: #3D526B;   /* steel navy — supporting text              */
+  --text-muted:     #687B91;   /* cool steel — placeholders, captions       */
 
   /* Motion tokens — zero-out under prefers-reduced-motion */
   --transition-fast:     150ms ease;
@@ -67,7 +80,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-ring: #52525B;
+  --color-ring: #087EF5;
 
   /* ── Semantic status colour tokens ───────────────────────────────────────
    * White / Neutral design system.
@@ -86,41 +99,56 @@
   --color-error-strong:  #b91c1c;
   --color-error-deep:    #991b1b;
 
-  /* Action / brand — Neutral Zinc scale (Near-Black → Off-White) */
-  --color-info-subtle:   #FFFFFF;   /* white — bg tints            */
-  --color-info-muted:    #FFFFFF;   /* white — keep surfaces flat  */
-  --color-action-soft:   #E4E4E7;   /* light gray border           */
-  --color-action-pale:   #D4D4D8;   /* zinc-300                    */
-  --color-action:        #A1A1AA;   /* zinc-400 mid                */
-  --color-action-base:   #52525B;   /* zinc-600 — primary action   */
-  --color-action-strong: #3F3F46;   /* zinc-700 — hover            */
-  --color-action-deep:   #27272A;   /* zinc-800                    */
-  --color-action-max:    #09090B;   /* near-black — deepest        */
-  --color-action-mid:    #A1A1AA;   /* alias for mid accent        */
+  /* Action / brand — saturated sky to navy. */
+  --color-info-subtle:   #F0F8FF;
+  --color-info-muted:    #DCEEFF;
+  --color-action-soft:   #B7DBFF;
+  --color-action-pale:   #70BEFF;
+  --color-action:        #19B5FE;
+  --color-action-base:   #064BC7;
+  --color-action-strong: #043EAA;
+  --color-action-deep:   #073687;
+  --color-action-max:    #061B35;
+  --color-action-mid:    #0B94F6;
 
-  /* -- font-display is injected by Caveat (layout.tsx) */
-  --font-sans:    var(--font-sans,    system-ui, Arial, Helvetica, sans-serif);
-  --font-display: var(--font-display, system-ui, Arial, Helvetica, sans-serif);
+  --font-sans:    var(--font-manrope, system-ui, Arial, Helvetica, sans-serif);
+  --font-display: var(--font-space-grotesk, var(--font-manrope, system-ui, Arial, Helvetica, sans-serif));
   --font-mono:    Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans, system-ui, Arial, Helvetica, sans-serif);
-  /* Slightly increased base letter-spacing suits handwriting fonts */
-  letter-spacing: 0.01em;
+  font-family: var(--font-manrope, system-ui, Arial, Helvetica, sans-serif);
+  letter-spacing: normal;
 }
 
 /* Display/heading font utility */
 .font-display {
-  font-family: var(--font-display, system-ui, Arial, Helvetica, sans-serif);
+  font-family: var(--font-space-grotesk, var(--font-manrope, system-ui, Arial, Helvetica, sans-serif));
 }
 
 /* Ensure focus rings are always visible — WCAG 2.4.7 */
 :focus-visible {
-  outline: 2px solid #52525B;
+  outline: 3px solid #087EF5;
   outline-offset: 2px;
+}
+
+/* Brand utilities used where Tailwind cannot express token-backed gradients. */
+.bg-gradient-brand {
+  background-image: var(--gradient-brand);
+}
+
+.bg-gradient-brand-deep {
+  background-image: var(--gradient-brand-deep);
+}
+
+.bg-gradient-chrome {
+  background-image: var(--gradient-chrome);
+}
+
+.bg-gradient-surface {
+  background-image: var(--gradient-surface);
 }
 
 /* Card entrance animation (respects reduced-motion via --transition-standard) */

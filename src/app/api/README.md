@@ -26,7 +26,7 @@ These are separate contracts. Do not collapse them into one generic public data 
 
 | Route | Method | Auth | Zod | Rate Limit | Notes |
 |-------|--------|------|-----|------------|-------|
-| `/api/auth/[...nextauth]` | GET/POST | NextAuth handler | N/A | Yes (30/min) | OAuth flow; rate-limited per IP |
+| `/api/auth/context` | GET | Clerk session required for user context | N/A | No | Returns ORAN-owned role and account state; never returns provider secrets |
 | `/api/chat` | POST | Optional | Yes | Yes (20/min) | Crisis-first gate; rate limit inside orchestrator |
 | `/api/search` | GET | No | Yes | Yes (60/min) | Public search |
 | `/api/feedback` | POST | No | Yes | Yes (10/min) | Public feedback submission |
@@ -37,10 +37,11 @@ These are separate contracts. Do not collapse them into one generic public data 
 | `/api/hsds/organizations` | GET | No | Query parsing only | No | HSDS-compatible published organizations list |
 | `/api/hsds/organizations/[id]` | GET | No | UUID validation | No | HSDS-compatible published organization detail |
 | `/api/maps/token` | GET | No | N/A | Yes (60/5min) | Azure Maps key broker |
-| `/api/internal/sla-check` | POST | Internal (Bearer `INTERNAL_API_KEY`) | N/A | No | SLA breach scanner (timer-triggered) |
-| `/api/internal/confidence-regression-scan` | POST | Internal (Bearer `INTERNAL_API_KEY`) | N/A | No | Creates deduped confidence regression submissions |
-| `/api/internal/coverage-gaps` | POST | Internal (Bearer `INTERNAL_API_KEY`) | Yes | No | Coverage gap detection + ORAN admin alerting (timer-triggered) |
-| `/api/internal/ingestion/feed-poll` | POST | Internal (Bearer `INTERNAL_API_KEY`) | Yes | No | Scheduled source-feed poller for active HSDS / 211 feeds |
+| `/api/internal/sla-check` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | N/A | No | Daily Vercel Cron SLA breach scanner |
+| `/api/internal/confidence-regression-scan` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | N/A | No | Daily Vercel Cron confidence-regression scanner |
+| `/api/internal/coverage-gaps` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | Yes | No | Daily Vercel Cron coverage-gap detection + admin alerting |
+| `/api/internal/ingestion/feed-poll` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | Yes | No | Daily Vercel Cron source-feed poller for active HSDS / 211 feeds |
+| `/api/internal/resource-freshness-scan` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | Yes | No | Daily Vercel Cron expiry, reverification, and community-review sweep |
 | `/api/profile` | GET/PUT | Auth required | Yes | Yes | Seeker profile CRUD |
 | `/api/saved` | GET/POST/DELETE | Auth required | Yes | Yes | Saved services CRUD |
 | `/api/admin/audit` | GET | `oran_admin` | Yes | Yes (60/min) | Audit log read |
@@ -79,9 +80,9 @@ These are separate contracts. Do not collapse them into one generic public data 
 
 ## Auth Enforcement
 
-- **Middleware** (`src/middleware.ts`): page-level route protection with JWT role enforcement.
-- **API routes**: server-side session validation via `getAuthContext()` + guards from `src/services/auth/guards.ts`.
-- **Production fail-closed**: host API routes use `shouldEnforceAuth()` which returns `true` in production even if Entra ID is not configured.
+- **Proxy** (`src/proxy.ts`): Clerk identity gating and same-origin write protection.
+- **API routes**: Clerk-to-ORAN authorization resolution via `getAuthContext()` plus guards from `src/services/auth/guards.ts`.
+- **Production fail-closed**: protected API routes use `shouldEnforceAuth()`, which returns `true` in production even if Clerk is misconfigured.
 
 ## Update-on-touch
 

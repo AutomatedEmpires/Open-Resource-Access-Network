@@ -8,6 +8,17 @@ import {
 } from '../sourceRegistry';
 
 describe('source registry', () => {
+  test('requires an explicit resource purpose for every registry entry', () => {
+    expect(SourceRegistryEntrySchema.safeParse({
+      id: 'unclassified-source',
+      displayName: 'Unclassified source',
+      trustLevel: 'allowlisted',
+      domainRules: [{ type: 'exact_host', value: 'example.org' }],
+      createdAt: '2026-03-02T00:00:00.000Z',
+      updatedAt: '2026-03-02T00:00:00.000Z',
+    }).success).toBe(false);
+  });
+
   test('canonicalizeUrl strips fragments and normalizes host', () => {
     const c = canonicalizeUrl('HTTPS://Example.GOV/path/#frag');
     expect(c).toBe('https://example.gov/path');

@@ -203,16 +203,14 @@ export async function publishCandidateToLiveService(
   }
 
   const canonicalUrl = candidate.investigation?.canonicalUrl;
-  if (canonicalUrl) {
-    const source = await options.stores.sourceRegistry.findForUrl(canonicalUrl);
-    if (source) {
-      const purposeDecision = evaluateStandaloneResourceUse(source);
-      if (!purposeDecision.allowed) {
-        throw new Error(
-          `Candidate ${options.candidateId} cannot be published: ${purposeDecision.reason}`,
-        );
-      }
-    }
+  const source = canonicalUrl
+    ? await options.stores.sourceRegistry.findForUrl(canonicalUrl)
+    : null;
+  const purposeDecision = evaluateStandaloneResourceUse(source);
+  if (!purposeDecision.allowed) {
+    throw new Error(
+      `Candidate ${options.candidateId} cannot be published: ${purposeDecision.reason}`,
+    );
   }
 
   const readiness = await options.stores.publishReadiness.getReadiness(options.candidateId);

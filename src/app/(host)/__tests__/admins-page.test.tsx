@@ -203,7 +203,7 @@ describe('host admins page', () => {
     render(<AdminsPage />);
 
     await screen.findByText('Authentication required');
-    expect(screen.getByText(/Team management requires Microsoft Entra ID integration/i)).toBeInTheDocument();
+    expect(screen.getByText(/Team management requires a Clerk account linked to ORAN/i)).toBeInTheDocument();
 
     // Switch to UUID mode (default is email)
     fireEvent.click(screen.getByRole('button', { name: 'User ID' }));

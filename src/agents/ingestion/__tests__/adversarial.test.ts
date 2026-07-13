@@ -1444,9 +1444,27 @@ describe('auto-publish policy adversarial scenarios', () => {
     return {
       id: 'ss-001',
       trustTier: 'trusted_partner',
+      // These policy tests exercise lifecycle, trust, and confidence gates.
+      // Give their source an explicit standalone-resource purpose so the
+      // fail-closed purpose gate does not mask the boundary under test.
+      resourcePurpose: 'service_catalog',
       ...overrides,
     };
   }
+
+  it.each([
+    ['missing', undefined],
+    ['unclassified', 'unclassified'],
+  ])('rejects a %s resource purpose before other publication gates', (_label, resourcePurpose) => {
+    const decision = evaluatePolicy(
+      makeService() as never,
+      makeSourceSystem({ resourcePurpose }) as never,
+      AUTO_PUBLISH_POLICY,
+    );
+
+    expect(decision.eligible).toBe(false);
+    expect(decision.reason).toContain("resource_purpose 'unclassified' blocked");
+  });
 
   it('rejects inactive lifecycle', () => {
     const decision = evaluatePolicy(

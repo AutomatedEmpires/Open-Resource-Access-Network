@@ -10,7 +10,7 @@
 
 ## Purpose And Scope
 
-Handles outages and degradations in external/platform dependencies required by ORAN (Azure OpenAI for ingestion, Entra auth, Azure Storage Queues, Azure Maps, Translator, email services).
+Handles outages and degradations in external/platform dependencies required by ORAN (Clerk, Supabase, Vercel, Sentry, map tiles, and optional AI or communications providers).
 
 ## Safety Constraints (Must Always Hold)
 
@@ -20,18 +20,18 @@ Handles outages and degradations in external/platform dependencies required by O
 
 ## Dependency Classes
 
-1. Identity: Microsoft Entra / NextAuth.
-2. Ingestion AI: Azure OpenAI (extraction only).
-3. Queueing: Azure Storage Queues.
-4. Geocoding: Azure Maps.
-5. Translation: Azure AI Translator.
-6. Notifications: Azure Communication Services email.
+1. Identity: Clerk.
+2. Data: Supabase PostgreSQL and pooler.
+3. Hosting: Vercel application/functions.
+4. Observability: Sentry.
+5. Mapping: OpenStreetMap tile service and provider-neutral geocoding.
+6. Optional capabilities: direct OpenAI/provider-neutral AI, cache, jobs, and communications providers.
 
 ## Diagnosis
 
 1. Confirm affected dependency and blast radius.
-2. Check Azure service health and regional status.
-3. Correlate errors in Application Insights.
+2. Check the affected provider's status and the dedicated ORAN project.
+3. Correlate privacy-filtered errors in Sentry.
 4. Determine degraded-mode path:
    - Continue with reduced capability
    - Pause affected pipeline segment

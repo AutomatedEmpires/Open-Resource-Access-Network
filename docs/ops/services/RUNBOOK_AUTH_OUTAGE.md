@@ -1,123 +1,98 @@
-# Runbook: Authentication And Authorization Outage
+# Runbook: authentication and authorization outage
 
-## Metadata
+## Ownership
 
-- Owner role: Identity And Access Lead
+- Owner: Identity and Access Lead
 - Reviewers: Platform On-Call Lead, Security Lead
-- Last reviewed (UTC): 2026-03-06
-- Next review due (UTC): 2026-06-06
-- Severity scope: SEV-1 to SEV-3
+- Severity: SEV-1 through SEV-3
+- Stack: dedicated ORAN Clerk application, Vercel project, and Supabase database
 
-## Purpose And Scope
+## Safety constraints
 
-This runbook handles outages or degradations affecting Microsoft Entra ID auth, NextAuth session handling, route-level enforcement, and role-based access controls.
+- Protected routes and APIs must fail closed.
+- Do not introduce a development bypass, provider fallback, or temporary role claim.
+- Clerk owns identity; ORAN's database owns roles, account status, and memberships.
+- Do not link an account by email or copy an identity from another business.
+- Never place secret values, session tokens, or personal data in incident notes.
 
-## Safety Constraints (Must Always Hold)
+## Expected behavior
 
-- Protected routes must fail closed in production when auth is unavailable.
-- Admin and internal endpoints must not be exposed through auth bypass.
-- No emergency change may weaken role enforcement semantics.
-- No sensitive identity data should be logged in incident channels.
-
-## Code-Verified Behavior
-
-- Route enforcement is implemented in `src/proxy.ts`.
-- If `AZURE_AD_CLIENT_ID` is missing in production, protected routes return 503.
-- Session context extraction uses `getAuthContext()` in `src/services/auth/session.ts`.
-- API routes enforce auth and roles via `getAuthContext()` and `requireMinRole()`.
-- Auth endpoint (`/api/auth/[...nextauth]`) is rate-limited and returns `Retry-After` on 429.
+- `src/proxy.ts` uses Clerk middleware for identity and same-origin write protection.
+- `src/services/auth/session.ts` maps `Clerk user ID -> ORAN user profile` and
+  resolves database-owned authorization.
+- Production requires `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and
+  `CLERK_SECRET_KEY`; missing keys make readiness fail.
+- A database error while reading account status or role denies access.
+- New identities receive only the `seeker` role until ORAN governance grants
+  something higher.
 
 ## Triggers
 
-- Sudden spike in 401/403/503 on protected routes.
-- Sign-in redirect loops or callback failures.
-- Token parsing/session extraction failures.
-- Role mismatches causing widespread forbidden responses.
+- Sign-in/sign-up cannot load or loops.
+- Protected surfaces return an unusual spike of 401, 403, or 503 responses.
+- `/api/auth/context` cannot resolve authenticated users.
+- A valid identity receives the wrong ORAN role or organization scope.
+- Clerk custom domain or JWKS checks fail.
 
 ## Diagnosis
 
-1. Confirm blast radius:
-   - UI route protection failures (`src/proxy.ts` patterns).
-   - API auth failures (`src/app/api/**/route.ts`).
-2. Check app configuration:
-   - `AZURE_AD_CLIENT_ID`
-   - `AZURE_AD_CLIENT_SECRET`
-   - `AZURE_AD_TENANT_ID`
-   - `NEXTAUTH_SECRET`
-   - `NEXTAUTH_URL`
-   - If optional providers are enabled, also verify:
-     - `APPLE_CLIENT_ID`
-     - `APPLE_CLIENT_SECRET`
-     - `ORAN_ENABLE_APPLE_AUTH`
-     - `GOOGLE_CLIENT_ID`
-     - `GOOGLE_CLIENT_SECRET`
-     - `ORAN_ENABLE_GOOGLE_AUTH`
-     - `ORAN_ENABLE_CREDENTIALS_AUTH`
-3. Verify deploy/environment changes around incident time.
-4. Validate session handling in logs for `getServerSession()` or JWT parsing failures.
+1. Confirm the impact separately for public pages, sign-in, seeker routes, host
+   routes, community routes, and ORAN-admin routes.
+2. Check the latest Vercel deployment and ORAN-only environment-variable change
+   history. Confirm both Clerk keys exist without copying their values.
+3. Verify `https://clerk.openresourceaccessnetwork.com/.well-known/jwks.json`
+   returns a successful JSON response.
+4. Check the dedicated Clerk instance status and recent authentication events.
+5. Check Supabase connectivity, then inspect the affected user's explicit
+   `clerk_user_id`, `account_status`, `role`, and active organization memberships.
+6. Verify the public domain, Clerk issuer, and configured redirect URLs belong to
+   ORAN and not a sibling portfolio application.
+7. Review Sentry using request/release identifiers only; do not search by raw PII.
 
-## Mitigation Paths
+## Mitigation
 
-### A. Entra Configuration Drift
+### Clerk configuration or domain failure
 
-1. Verify app settings and Key Vault references in App Service.
-2. Correct invalid/missing auth settings.
-3. Restart web app after config correction.
+1. Restore the last known-good ORAN Vercel environment configuration.
+2. Repair ORAN Clerk DNS/redirect settings if verification failed.
+3. Redeploy the last known-good candidate and re-test sign-in before promoting.
 
-### B. Session/JWT Failure
+### Authorization-store failure
 
-1. Confirm `NEXTAUTH_SECRET` exists and is valid.
-2. Verify callback URL (`NEXTAUTH_URL`) matches deployed hostname.
-3. Re-test sign-in flow and protected route access.
+1. Restore Supabase connectivity or roll back the responsible migration/release.
+2. Keep administrative access denied while role/account state cannot be read.
+3. Do not move roles into Clerk claims as an outage workaround.
 
-### D. Optional Provider Regression
+### Incorrect identity mapping
 
-1. Confirm the enabled provider has a complete env set, not only the gate flag.
-2. For credentials auth, determine whether the failure is specific to email, username, or phone identifier lookup.
-3. Remember that phone login is password-based identifier auth, not SMS/OTP.
-4. If the affected account is primarily Entra-backed, verify whether a `password_hash` exists on the same `user_profiles` row before assuming the account cannot use credentials sign-in.
-5. Re-test Microsoft Entra login separately to confirm the outage is isolated to an optional provider.
+1. Freeze the affected privileged account if unauthorized access is possible.
+2. Compare the explicitly recorded Clerk ID with the intended ORAN user profile.
+3. Correct mappings through a reviewed database change with an audit record.
+4. Never infer the replacement mapping from email alone.
 
-### C. Role Mapping Issues
+## Validation matrix
 
-1. Validate role claims and mapping in `src/lib/auth.ts` (`ENTRA_ROLE_MAP`).
-2. Confirm role expectations for affected routes.
-3. Apply minimal correction and revalidate API + UI access matrix.
-
-## Rollback Criteria
-
-- Auth outage persists after configuration correction and restart.
-- Protected routes cannot enforce safe access boundaries.
-- Widespread admin access regressions continue for 15+ minutes.
-
-Use `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md` for rollback execution.
-
-## Validation
-
-1. Sign-in flow succeeds.
-2. Protected route matrix works (seeker, host, community admin, oran admin).
-3. Admin APIs return expected 401/403 behavior for unauthorized/forbidden users.
-4. 5xx and 503 auth-related errors return to baseline.
-
-### Route-Role Quick Verification Matrix
-
-| Route family | Expected minimum role |
+| Route family | Minimum role |
 | --- | --- |
 | `/saved`, `/profile` | `seeker` |
-| `/claim`, `/org`, `/locations`, `/services`, `/admins` | `host_member` |
+| Host portal routes | `host_member` |
 | `/queue`, `/verify`, `/coverage` | `community_admin` |
-| `/approvals`, `/rules`, `/audit`, `/zone-management`, `/ingestion` | `oran_admin` |
+| ORAN operations/admin routes | `oran_admin` |
 
-Confirm both behaviors:
+For every family, verify an authorized user succeeds, an unauthenticated user is
+redirected or receives 401, and an underprivileged user receives 403. Confirm
+account freezes and organization-scope restrictions also take effect.
 
-- Authenticated and authorized user succeeds.
-- Unauthorized/underprivileged user receives redirect or 403 as expected.
+## Rollback criteria
+
+Roll back when protected routes cannot enforce the correct boundary, sign-in is
+still broadly unavailable after restoring configuration, or a release created
+incorrect identity mappings. Follow `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md`.
 
 ## References
 
 - `src/proxy.ts`
-- `src/lib/auth.ts`
 - `src/services/auth/session.ts`
 - `src/services/auth/guards.ts`
-- `src/app/api/auth/[...nextauth]/route.ts`
+- `src/app/api/auth/context/route.ts`
 - `docs/SECURITY_PRIVACY.md`

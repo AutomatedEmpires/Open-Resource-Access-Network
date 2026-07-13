@@ -490,13 +490,14 @@ async function ensureManualSubmissionSourceSystem(
 
   const systemRows = await client.query<{ id: string }>(
     `INSERT INTO source_systems
-       (name, family, homepage_url, trust_tier, domain_rules, crawl_policy, jurisdiction_scope, contact_info, notes)
-     VALUES ($1, $2, $3, $4, '[]'::jsonb, $5::jsonb, '{}'::jsonb, '{}'::jsonb, $6)
+       (name, family, homepage_url, trust_tier, resource_purpose, domain_rules, crawl_policy, jurisdiction_scope, contact_info, notes)
+     VALUES ($1, $2, $3, $4, 'service_catalog', '[]'::jsonb, $5::jsonb, '{}'::jsonb, '{}'::jsonb, $6)
      ON CONFLICT (name)
      DO UPDATE SET
        family = EXCLUDED.family,
        homepage_url = EXCLUDED.homepage_url,
        trust_tier = EXCLUDED.trust_tier,
+       resource_purpose = EXCLUDED.resource_purpose,
        crawl_policy = EXCLUDED.crawl_policy,
        updated_at = NOW()
      RETURNING id`,

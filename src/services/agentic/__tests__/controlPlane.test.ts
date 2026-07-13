@@ -21,16 +21,17 @@ describe('buildAgentControlPlaneSnapshot', () => {
       env: {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-        NEXTAUTH_SECRET: 'secret',
-        NEXTAUTH_URL: 'https://oran.test',
-        INTERNAL_API_KEY: 'internal-key',
+        CRON_SECRET: 'vercel-cron-secret',
         NEXT_PUBLIC_SENTRY_DSN: 'https://public@example.ingest.sentry.io/1',
         NEXT_PUBLIC_SUPABASE_URL: 'https://project.supabase.co',
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
         CLERK_SECRET_KEY: 'sk_test_example',
+        RESEND_API_KEY: 're_test',
+        RESEND_FROM: 'ORAN <notifications@openresourceaccessnetwork.com>',
         VERCEL: '1',
-        OPENAI_API_KEY: 'openai-key',
+        LLM_ENDPOINT: 'https://llm.example.test',
+        LLM_API_KEY: 'llm-key',
       },
       databaseConfigured: true,
       authConfigured: true,
@@ -51,6 +52,7 @@ describe('buildAgentControlPlaneSnapshot', () => {
     expect(snapshot.summary.readinessScore).toBeGreaterThan(60);
     expect(snapshot.summary.posture).toBe('worldclass_foundation');
     expect(snapshot.integrations.find((item) => item.id === 'sentry')?.state).toBe('configured');
+    expect(snapshot.integrations.find((item) => item.id === 'resend')?.state).toBe('configured');
     expect(snapshot.operators.find((item) => item.id === 'trust_guardian')?.state).toBe('ready');
     expect(snapshot.featureFlags.implementation).toBe('database');
     expect(snapshot.trustModel.openGaps).not.toContain('feature flags are still backed by an in-memory store');

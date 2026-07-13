@@ -8,6 +8,7 @@ ORAN is moving off Microsoft/Azure services. The active target is:
 - **Supabase** for PostgreSQL/PostGIS/pgvector, backups, and later Storage/Realtime capabilities where they serve a verified product need
 - **Clerk** for user identity, sessions, organizations, and account lifecycle
 - **Sentry** for privacy-filtered errors, traces, and release diagnostics
+- **Resend** for ORAN transactional email delivery
 - **Direct OpenAI or provider-neutral AI adapters** for optional language tasks; deterministic crisis routing and verified retrieval remain available without an LLM
 
 This platform serves the product vision: a nationwide, chat-first navigator that helps a person find and act on verified government and community services. It is not a directory of retailers that accept one benefit.
@@ -18,11 +19,12 @@ This platform serves the product vision: a nationwide, chat-first navigator that
 | --- | --- | --- | --- |
 | Web hosting | Vercel | Existing `oran` project linked; Node 24 contract; preview build passes; Azure deploys rollback-only | Configure runtime env, pass readiness and smoke tests, then promote |
 | Database | Supabase Postgres | Existing `oran` project in `us-east-1`; PostGIS/pgvector active; Vercel-sized pools; source-purpose migration applied | Configure a pooled runtime connection, verify query plans and readiness from Vercel |
-| Identity | Clerk | Target selected; NextAuth remains the temporary runtime | Move middleware, sign-in UI, account linking, role provisioning, and tests together |
+| Identity | Clerk | Dedicated production instance, custom issuer, Supabase bridge, middleware, UI, and explicit identity mapping are active | Verify sign-in/sign-up/RBAC on the production candidate; retain no legacy provider secrets |
 | Observability | Sentry | Next.js client/server/edge instrumentation is active when DSN is set | Configure project, DSN, source-map token, and alert ownership |
 | Maps | Open/provider-neutral | Leaflet/OpenStreetMap fallback already exists; Azure Maps remains optional legacy code | Select production tiles/geocoding with privacy and usage review |
-| Jobs/queues | Vercel/Supabase | Azure Functions retained for rollback | Classify jobs by duration, idempotency, retry, and schedule before moving |
-| Email/SMS | To be selected | Azure Communication Services remains legacy | Choose provider and complete consent, suppression, and incident review |
+| Jobs/queues | Vercel Cron/Supabase | Five ORAN health jobs are registered as authenticated, staggered, once-daily Vercel Cron GETs; Azure Functions remain rollback-only | Configure `CRON_SECRET`, verify each production invocation and alert path, then close the Azure rollback window |
+| Transactional email | Resend | Provider adapter and ORAN-only environment contract active | Verify the sender domain and delivery on the production candidate |
+| SMS | To be selected | No active runtime adapter | Complete consent, suppression, and incident review before adoption |
 
 ## Cutover sequence
 
@@ -30,8 +32,8 @@ This platform serves the product vision: a nationwide, chat-first navigator that
 2. **Establish previews.** Import the GitHub repository into Vercel. Configure Preview variables and verify `/`, `/api/health`, chat intake, security headers, and error reporting on the generated Vercel URL.
 3. **Move PostgreSQL.** Restore into a Supabase staging project using the direct connection. Apply `db/migrations` with the `Database Migration (Supabase)` workflow. Use the Supavisor transaction-pooler URL as Vercel `DATABASE_URL`.
 4. **Close the Data API by default.** Existing tables were designed for server-side SQL. Do not expose them through Supabase's Data API until every exposed table has reviewed RLS policies. Never place a secret/service-role key in `NEXT_PUBLIC_*` variables.
-5. **Cut identity as one vertical change.** Add Clerk middleware/provider/UI, provision or link `user_profiles.user_id` to Clerk `sub`, read ORAN roles from the database, and configure Supabase's native Clerk third-party auth. Do not use the deprecated Clerk JWT-template integration.
-6. **Move remaining services.** Replace Azure Maps, Communication Services, Functions/Storage Queues, Translator/Speech, Key Vault, and any Azure AI endpoints through explicit adapters and provider-specific tests.
+5. **Verify the completed identity cutover.** Clerk middleware/provider/UI, explicit `user_profiles.clerk_user_id` mapping, database-owned roles, and Supabase native third-party auth move together. Do not use the deprecated Clerk JWT-template integration and never link accounts by email inference.
+6. **Move remaining services.** Resend replaces Azure Communication Services. Replace the remaining Azure Functions/Storage Queues, Translator/Speech, Key Vault, and any Azure AI endpoints through explicit adapters and provider-specific tests.
 7. **Promote production.** Validate data parity, auth/RBAC, crisis flows, published-resource provenance, Sentry, rollback, and backups. Only then attach `openresourceaccessnetwork.com` to Vercel and remove the stale Azure DNS target.
 8. **Retire Azure.** After the rollback window and backup verification, revoke Azure deployment credentials and delete resources through an approved decommission change.
 
@@ -50,8 +52,11 @@ Vercel runtime:
 
 - `DATABASE_URL`: Supabase transaction-pooler URL, TLS required
 - `DATABASE_POOL_MAX=2`: conservative per-instance connection cap
+- `CRON_SECRET`: dedicated random value of at least 32 characters; Vercel sends
+  it as the Bearer credential for registered cron GET requests
 - `NEXT_PUBLIC_SENTRY_DSN`, plus `SENTRY_ORG`, `SENTRY_PROJECT`, and secret `SENTRY_AUTH_TOKEN`
-- Clerk keys after the identity cutover
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`
+- `RESEND_API_KEY` and `RESEND_FROM` as a complete server-only pair when transactional email is enabled
 - `NEXT_PUBLIC_SUPABASE_URL` and a publishable key only when an RLS-reviewed Data API client is introduced
 
 GitHub Environment:

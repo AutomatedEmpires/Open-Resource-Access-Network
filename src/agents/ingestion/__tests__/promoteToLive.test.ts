@@ -100,6 +100,12 @@ function buildCanonicalLocation(overrides: Record<string, unknown> = {}) {
 
 function createMockStores() {
   return {
+    sourceSystems: {
+      getById: vi.fn().mockResolvedValue({
+        id: 'src-sys-1',
+        resourcePurpose: 'service_catalog',
+      }),
+    },
     canonicalOrganizations: {
       getById: vi.fn(),
       update: vi.fn(),
@@ -126,6 +132,41 @@ describe('promoteToLive', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+  });
+
+  it('blocks a SNAP retailer supporting-reference source before opening a transaction', async () => {
+    const stores = createMockStores();
+    stores.canonicalServices.getById.mockResolvedValue(buildCanonicalService());
+    stores.sourceSystems.getById.mockResolvedValue({
+      id: 'snap-retailers',
+      name: 'USDA SNAP retailer locations',
+      resourcePurpose: 'supporting_reference',
+    });
+
+    const { promoteToLive } = await loadModule();
+    await expect(promoteToLive({
+      stores: stores as never,
+      canonicalServiceId: 'canon-svc-1',
+      actorId: 'system',
+    })).rejects.toThrow('supporting_reference sources may enrich services');
+
+    expect(withTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks canonical promotion when its winning source is missing', async () => {
+    const stores = createMockStores();
+    stores.canonicalServices.getById.mockResolvedValue(
+      buildCanonicalService({ winningSourceSystemId: null }),
+    );
+
+    const { promoteToLive } = await loadModule();
+    await expect(promoteToLive({
+      stores: stores as never,
+      canonicalServiceId: 'canon-svc-1',
+      actorId: 'system',
+    })).rejects.toThrow('source resource purpose is missing or invalid');
+
+    expect(withTransactionMock).not.toHaveBeenCalled();
   });
 
   it('inserts new live records from canonical entities (first promote)', async () => {

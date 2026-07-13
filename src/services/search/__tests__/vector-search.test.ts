@@ -21,6 +21,8 @@ describe('search vector utilities', () => {
     );
 
     expect(built.sql).toContain('s.id = ANY($2::uuid[])');
+    expect(built.sql).toContain('JOIN organizations o');
+    expect(built.sql).toContain('source_systems publication_system');
     expect(built.sql).toContain('ORDER BY s.embedding <=> $1::vector');
     expect(built.params).toEqual([
       '[0.5,0.6]',
@@ -30,11 +32,13 @@ describe('search vector utilities', () => {
   });
 
   it('builds a top-k vector query for supplemental retrieval', () => {
-    const built = buildVectorTopKQuery([0.7, 0.8], 8, 'inactive');
+    const built = buildVectorTopKQuery([0.7, 0.8], 8, 'active');
 
     expect(built.sql).toContain('WHERE s.embedding IS NOT NULL');
     expect(built.sql).toContain('AND s.status = $2');
-    expect(built.params).toEqual(['[0.7,0.8]', 'inactive', 8]);
+    expect(built.sql).toContain('JOIN organizations o');
+    expect(built.sql).toContain('source_systems publication_system');
+    expect(built.params).toEqual(['[0.7,0.8]', 'active', 8]);
   });
 
   it('keeps original ordering when no vector scores are present', () => {

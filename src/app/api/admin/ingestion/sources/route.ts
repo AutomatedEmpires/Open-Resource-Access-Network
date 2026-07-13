@@ -25,7 +25,7 @@ const CreateSourceSchema = z.object({
   id: z.string().min(1).optional(),
   displayName: z.string().min(1).max(200),
   trustLevel: z.enum(['allowlisted', 'quarantine', 'blocked']),
-  resourcePurpose: SourceResourcePurposeSchema.default('service_catalog'),
+  resourcePurpose: SourceResourcePurposeSchema,
   domainRules: z.array(
     z.object({
       type: z.enum(['exact_host', 'suffix']),

@@ -408,6 +408,11 @@ describe('resource submission service', () => {
 
     await submitResourceSubmission('instance-1', 'actor-1', 'host_member');
     expect(clientQuery).toHaveBeenCalled();
+    const sourceSystemSql = String(
+      clientQuery.mock.calls.find(([sql]) => sql.includes('INSERT INTO source_systems'))?.[0],
+    );
+    expect(sourceSystemSql).toContain('resource_purpose');
+    expect(sourceSystemSql).toContain("'service_catalog'");
   });
 
   it('projects claim submissions into organization membership updates', async () => {
@@ -653,7 +658,14 @@ describe('resource submission service', () => {
   });
 
   it('gets, lists, and resolves accessible resource submissions', async () => {
-    const auth = { userId: 'u', role: 'oran_admin', accountStatus: 'active', orgIds: [], orgRoles: new Map() } as AuthContext;
+    const auth = {
+      clerkUserId: 'u',
+      userId: 'u',
+      role: 'oran_admin',
+      accountStatus: 'active',
+      orgIds: [],
+      orgRoles: new Map(),
+    } as AuthContext;
     vaultMocks.getAccessibleFormInstance
       .mockResolvedValueOnce(mockInstance({ template_slug: 'resource-listing-host' }))
       .mockResolvedValueOnce(mockInstance({ template_slug: 'resource-listing-host' }));

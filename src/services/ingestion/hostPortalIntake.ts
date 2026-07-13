@@ -82,13 +82,14 @@ export interface QueueServiceVerificationSubmissionInput {
 async function ensureHostPortalSourceSystem(client: PoolClient): Promise<string> {
   const rows = await client.query<{ id: string }>(
     `INSERT INTO source_systems
-       (name, family, homepage_url, trust_tier, domain_rules, crawl_policy, jurisdiction_scope, contact_info, notes)
-     VALUES ($1, $2, $3, 'allowlisted', '[]'::jsonb, $4::jsonb, '{}'::jsonb, '{}'::jsonb, $5)
+       (name, family, homepage_url, trust_tier, resource_purpose, domain_rules, crawl_policy, jurisdiction_scope, contact_info, notes)
+     VALUES ($1, $2, $3, 'allowlisted', 'service_catalog', '[]'::jsonb, $4::jsonb, '{}'::jsonb, '{}'::jsonb, $5)
      ON CONFLICT (name)
      DO UPDATE SET
        family = EXCLUDED.family,
        homepage_url = EXCLUDED.homepage_url,
        trust_tier = EXCLUDED.trust_tier,
+       resource_purpose = EXCLUDED.resource_purpose,
        domain_rules = EXCLUDED.domain_rules,
        crawl_policy = EXCLUDED.crawl_policy,
        updated_at = NOW()

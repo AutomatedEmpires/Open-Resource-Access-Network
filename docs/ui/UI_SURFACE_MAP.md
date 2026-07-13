@@ -129,7 +129,7 @@ ProfilePage
 ├── ApproximateLocation section (city input, device-only)
 ├── SavedServicesSummary section (count + link to /saved)
 ├── PrivacyChecklist section (4 privacy guarantees)
-├── AccountSection (Entra ID sign-in placeholder)
+├── AccountSection (Clerk identity and ORAN profile controls)
 ├── DeleteAllData section (confirm/cancel flow)
 └── EscapeHatch (→ /chat)
 ```
@@ -311,7 +311,7 @@ Component hierarchy:
 ```
 AdminsPage
 ├── TeamHeader (title + description)
-├── AuthGatedNotice (Entra ID dependency warning)
+├── AuthGatedNotice (Clerk identity and ORAN membership requirement)
 ├── InviteForm
 │   ├── EmailInput
 │   ├── RoleSelect (Host Admin / Host Member)

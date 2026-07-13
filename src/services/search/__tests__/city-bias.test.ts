@@ -148,6 +148,11 @@ describe('ServiceSearchEngine.lookupCityCoords', () => {
     expect(mockExecuteQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = mockExecuteQuery.mock.calls[0];
     expect(sql).toContain('LOWER(a.city) = LOWER($1)');
+    expect(sql).toContain('JOIN service_at_location sal');
+    expect(sql).toContain('JOIN services s');
+    expect(sql).toContain('JOIN organizations o');
+    expect(sql).toContain("l.status = 'active'");
+    expect(sql).toContain('source_systems publication_system');
     expect(params).toEqual(['Portland']);
   });
 

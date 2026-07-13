@@ -26,22 +26,20 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       ...process.env,
-      ORAN_TEST_AUTH_ENABLED: process.env.ORAN_TEST_AUTH_ENABLED ?? '1',
-      // Required so next-auth/jwt (Edge middleware) can decode the session token.
-      NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET ?? 'e2e-nextauth-secret',
-      NEXTAUTH_URL: process.env.NEXTAUTH_URL ?? `http://127.0.0.1:${port}`,
-      // Set dummy Entra vars so RBAC middleware enforces protected routes during e2e.
-      // (We still authenticate using the dev-only Credentials provider.)
-      AZURE_AD_CLIENT_ID: process.env.AZURE_AD_CLIENT_ID ?? 'e2e-client-id',
-      AZURE_AD_CLIENT_SECRET: process.env.AZURE_AD_CLIENT_SECRET ?? 'e2e-client-secret',
-      AZURE_AD_TENANT_ID: process.env.AZURE_AD_TENANT_ID ?? 'e2e-tenant-id',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '',
+      CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY ?? '',
       PORT: String(port),
     },
   },
   projects: [
     {
+      name: 'clerk setup',
+      testMatch: /global\.setup\.ts/,
+    },
+    {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      dependencies: ['clerk setup'],
     },
   ],
 });

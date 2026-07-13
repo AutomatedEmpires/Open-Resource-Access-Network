@@ -402,14 +402,15 @@ describe('orchestrateChat', () => {
     expect(response.followUpSuggestions?.length).toBeGreaterThan(0);
   });
 
-  it('returns a quota-exceeded response before retrieval when the session is exhausted', async () => {
+  it('does not let the legacy session counter override identity-aware daily controls', async () => {
     const sessionId = '00000000-0000-0000-0000-000000000097';
     for (let index = 0; index < MAX_CHAT_QUOTA; index++) {
       await incrementQuota(sessionId);
     }
 
     const retrieveServices = vi.fn();
-    const isFlagEnabled = vi.fn();
+    retrieveServices.mockResolvedValue({ services: [], retrievalStatus: 'no_match' });
+    const isFlagEnabled = vi.fn().mockResolvedValue(false);
 
     const response = await orchestrateChat(
       'I need food',
@@ -423,12 +424,10 @@ describe('orchestrateChat', () => {
       },
     );
 
-    expect(response.message).toContain('message limit');
+    expect(response.message).not.toContain('message limit');
     expect(response.quotaRemaining).toBe(0);
-    expect(retrieveServices).not.toHaveBeenCalled();
-    // Crisis safety flag (Stage 1b) runs before quota — that's correct.
-    // The key contract: LLM summarization must NOT trigger on quota exceeded.
-    expect(isFlagEnabled).not.toHaveBeenCalledWith(FEATURE_FLAGS.LLM_SUMMARIZE);
+    expect(retrieveServices).toHaveBeenCalledOnce();
+    expect(isFlagEnabled).toHaveBeenCalledWith(FEATURE_FLAGS.LLM_SUMMARIZE);
   });
 
   it('returns a deterministic out-of-scope response before retrieval', async () => {

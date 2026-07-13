@@ -343,7 +343,7 @@ export default function AdminsPage() {
             <div className="text-sm text-[var(--text-secondary)]">
               <p className="font-medium">Authentication required</p>
               <p className="mt-1">
-                Team management requires Microsoft Entra ID integration. Sign in and ensure
+                Team management requires a Clerk account linked to ORAN. Sign in and ensure
                 you are a member of at least one organization to manage your team.
               </p>
             </div>

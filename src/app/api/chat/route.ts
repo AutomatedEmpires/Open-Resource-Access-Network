@@ -3,21 +3,33 @@
  *
  * Chat API handler implementing the retrieval-first pipeline.
  * Crisis detection takes priority over all other processing.
- * No LLM is used in retrieval. LLM summarization only if feature flag enabled.
+ * Launch mode is deterministic: no OpenAI generation or enrichment is invoked.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { MAX_SERVICES_PER_RESPONSE, FEATURE_FLAGS, CHAT_DEVICE_COOKIE, CONFIDENCE_BANDS } from '@/domain/constants';
+import {
+  MAX_SERVICES_PER_RESPONSE,
+  FEATURE_FLAGS,
+  CHAT_DEVICE_COOKIE,
+  CONFIDENCE_BANDS,
+  CRISIS_KEYWORDS,
+} from '@/domain/constants';
 import { getAuthContext } from '@/services/auth/session';
-import { checkQuotaByIdentity, incrementQuotaByIdentity } from '@/services/chat/quota';
-import { orchestrateChat, ChatRateLimitExceededError } from '@/services/chat/orchestrator';
+import {
+  finalizeChatRequest,
+  reserveChatRequest,
+} from '@/services/chat/quota';
+import type { ChatUsageReservation } from '@/services/chat/quota';
+import {
+  orchestrateChat,
+  ChatRateLimitExceededError,
+  detectCrisis,
+} from '@/services/chat/orchestrator';
 import { buildChatSearchQuery } from '@/services/chat/retrievalProfile';
 import { ChatRequestSchema } from '@/services/chat/types';
-import type { ChatContext, ChatRetrievalResult, Intent } from '@/services/chat/types';
+import type { ChatContext, ChatResponse, ChatRetrievalResult, Intent } from '@/services/chat/types';
 import { executeCount, executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { flagService } from '@/services/flags/flags';
-import { summarizeWithLLM } from '@/services/chat/llm';
-import { enrichIntent } from '@/services/chat/intentEnrich';
 import { SUPPORTED_LOCALES } from '@/services/i18n/i18n';
 import type { LocaleCode } from '@/services/i18n/i18n';
 import { translateBatch, isConfigured as isTranslatorConfigured } from '@/services/i18n/translator';
@@ -30,6 +42,35 @@ import { getIp } from '@/services/security/ip';
 
 const RequestSchema = ChatRequestSchema;
 const engine = new ServiceSearchEngine({ executeQuery, executeCount });
+
+function attachDeviceCookie(
+  response: NextResponse,
+  deviceId: string,
+  needsDeviceCookie: boolean,
+): NextResponse {
+  if (needsDeviceCookie) {
+    response.cookies.set(CHAT_DEVICE_COOKIE, deviceId, {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 365 * 24 * 60 * 60,
+      secure: process.env.NODE_ENV === 'production',
+    });
+  }
+  return response;
+}
+
+function consumesDailyQuota(response: ChatResponse): boolean {
+  return !response.isCrisis
+    && response.clarification?.reason !== 'crisis_scope'
+    && response.retrievalStatus !== 'temporarily_unavailable';
+}
+
+function bypassesUsageControls(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return detectCrisis(message)
+    || CRISIS_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
 
 function stripProfileShaping(context: ChatContext): ChatContext {
   return {
@@ -103,31 +144,75 @@ export async function POST(req: NextRequest) {
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if (deviceId && !UUID_RE.test(deviceId)) deviceId = undefined;
   const needsDeviceCookie = !deviceId;
-  if (needsDeviceCookie) deviceId = crypto.randomUUID();
-
-  // ---- 24-hour quota check (cross-session, cross-device) ----
-  const windowQuota = await checkQuotaByIdentity(deviceId, effectiveUserId);
-  if (windowQuota.exceeded) {
-    return NextResponse.json(
-      {
-        error: 'Daily message limit reached.',
-        quotaRemaining: 0,
-        quotaResetAt: windowQuota.resetAt?.toISOString() ?? null,
-      },
-      {
-        status: 429,
-        headers: {
-          'Cache-Control': 'private, no-store',
-          ...(windowQuota.resetAt
-            ? { 'Retry-After': String(Math.ceil((windowQuota.resetAt.getTime() - Date.now()) / 1000)) }
-            : {}),
-        },
-      },
-    );
-  }
+  if (!deviceId) deviceId = crypto.randomUUID();
 
   const ip = getIp(req);
   const rateLimitKey = effectiveUserId ? `chat:user:${effectiveUserId}` : `chat:ip:${ip}`;
+  const bypassUsageControls = bypassesUsageControls(message);
+  let usageReservation: ChatUsageReservation | undefined;
+
+  // Explicit self-crisis messages must always reach deterministic 911/988/211
+  // routing, including when normal usage limits are exhausted.
+  if (!bypassUsageControls) {
+    usageReservation = await reserveChatRequest({
+      requestId: crypto.randomUUID(),
+      deviceId,
+      userId: effectiveUserId,
+      rateLimitKey,
+    });
+
+    if (usageReservation.decision !== 'allowed') {
+      if (usageReservation.decision === 'unavailable') {
+        return attachDeviceCookie(
+          NextResponse.json(
+            { error: 'Chat is temporarily unavailable. Please try again shortly.' },
+            {
+              status: 503,
+              headers: {
+                'Cache-Control': 'private, no-store',
+                'Retry-After': String(usageReservation.retryAfterSeconds),
+              },
+            },
+          ),
+          deviceId,
+          needsDeviceCookie,
+        );
+      }
+
+      const quotaResetAt = usageReservation.quota.resetAt?.toISOString() ?? null;
+      const commonOptions = {
+        status: 429,
+        headers: {
+          'Cache-Control': 'private, no-store',
+          'Retry-After': String(usageReservation.retryAfterSeconds),
+        },
+      };
+
+      if (usageReservation.decision === 'quota_exceeded') {
+        return attachDeviceCookie(
+          NextResponse.json(
+            {
+              error: 'Daily message limit reached.',
+              quotaRemaining: 0,
+              quotaResetAt,
+            },
+            commonOptions,
+          ),
+          deviceId,
+          needsDeviceCookie,
+        );
+      }
+
+      const error = usageReservation.decision === 'in_flight'
+        ? 'Please wait for your current chat request to finish.'
+        : 'Rate limit exceeded. Please wait before sending more messages.';
+      return attachDeviceCookie(
+        NextResponse.json({ error }, commonOptions),
+        deviceId,
+        needsDeviceCookie,
+      );
+    }
+  }
 
   async function retrieveServices(intent: Intent, context: ChatContext): Promise<ChatRetrievalResult> {
     if (!isDatabaseConfigured()) {
@@ -223,8 +308,6 @@ export async function POST(req: NextRequest) {
           : merged;
       },
       isFlagEnabled: (flagName) => flagService.isEnabled(flagName),
-      summarizeWithLLM,
-      enrichIntent,
     });
 
     const multilingualEnabled = await flagService.isEnabled(FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS);
@@ -250,9 +333,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Increment the 24-hr window quota after a successful response
-    await incrementQuotaByIdentity(deviceId, effectiveUserId);
-    const updatedWindowQuota = await checkQuotaByIdentity(deviceId, effectiveUserId);
+    // Only successful, non-crisis responses commit the pre-search reservation.
+    // Distress-safe clarification and temporary search failure release it.
+    const updatedWindowQuota = usageReservation
+      ? await finalizeChatRequest(usageReservation, consumesDailyQuota(response))
+      : { remaining: response.quotaRemaining, resetAt: undefined };
 
     const finalResponse = {
       ...response,
@@ -264,29 +349,34 @@ export async function POST(req: NextRequest) {
       headers: { 'Cache-Control': 'private, no-store' },
     });
 
-    // Set (or refresh) the HttpOnly device-identity cookie
-    if (needsDeviceCookie) {
-      res.cookies.set(CHAT_DEVICE_COOKIE, deviceId!, {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 365 * 24 * 60 * 60, // 1 year
-        secure: process.env.NODE_ENV === 'production',
-      });
+    return attachDeviceCookie(res, deviceId, needsDeviceCookie);
+  } catch (error) {
+    if (usageReservation?.decision === 'allowed') {
+      try {
+        await finalizeChatRequest(usageReservation, false);
+      } catch (releaseError) {
+        await captureException(releaseError, {
+          feature: 'api_chat_usage_release',
+          sessionId,
+          userId: effectiveUserId,
+        });
+      }
     }
 
-    return res;
-  } catch (error) {
     if (error instanceof ChatRateLimitExceededError) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded. Please wait before sending more messages.' },
-        {
-          status: 429,
-          headers: {
-            'Retry-After': String(error.retryAfterSeconds),
-            'Cache-Control': 'private, no-store',
+      return attachDeviceCookie(
+        NextResponse.json(
+          { error: 'Rate limit exceeded. Please wait before sending more messages.' },
+          {
+            status: 429,
+            headers: {
+              'Retry-After': String(error.retryAfterSeconds),
+              'Cache-Control': 'private, no-store',
+            },
           },
-        },
+        ),
+        deviceId,
+        needsDeviceCookie,
       );
     }
 
@@ -296,7 +386,14 @@ export async function POST(req: NextRequest) {
       userId: effectiveUserId,
     });
 
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return attachDeviceCookie(
+      NextResponse.json(
+        { error: 'Internal server error' },
+        { status: 500, headers: { 'Cache-Control': 'private, no-store' } },
+      ),
+      deviceId,
+      needsDeviceCookie,
+    );
   }
 }
 

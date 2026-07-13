@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import SignInPageClient from './SignInPageClient';
+import SignInPageClient from '../SignInPageClient';
 
 export const metadata: Metadata = {
   title: 'Sign in',
@@ -9,5 +9,3 @@ export const metadata: Metadata = {
 export default function SignInPage() {
   return <SignInPageClient />;
 }
-
-

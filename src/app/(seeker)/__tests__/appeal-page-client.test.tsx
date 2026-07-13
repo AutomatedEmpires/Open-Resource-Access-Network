@@ -58,7 +58,7 @@ vi.mock('@/components/ui/PageHeader', () => ({
   PageHeaderBadge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }));
 
-vi.mock('next-auth/react', () => ({
+vi.mock('@/services/auth/client', () => ({
   useSession: () => sessionState,
   SessionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));

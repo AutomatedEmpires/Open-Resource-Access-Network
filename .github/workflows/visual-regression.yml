@@ -29,12 +29,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # Minimal env vars so the Next.js app starts without crashing
-      NEXTAUTH_SECRET: visual-regression-secret
-      NEXTAUTH_URL: http://127.0.0.1:3000
-      AZURE_AD_CLIENT_ID: vr-client-id
-      AZURE_AD_CLIENT_SECRET: vr-client-secret
-      AZURE_AD_TENANT_ID: vr-tenant-id
       # Skip DB-backed features in UI smoke
       DATABASE_URL: ""
       PW_REUSE_SERVER: "0"

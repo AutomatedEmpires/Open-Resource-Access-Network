@@ -33,6 +33,7 @@ vi.mock('@/components/ui/error-boundary', () => ({
 }));
 
 import ChatPage from '@/app/(seeker)/chat/ChatPageClient';
+import { ONBOARDING_CHAT_HANDOFF_KEY } from '@/services/profile/onboardingHandoff';
 
 describe('ChatPageClient', () => {
   beforeEach(() => {
@@ -128,5 +129,30 @@ describe('ChatPageClient', () => {
         initialAttributeFilters: undefined,
       });
     });
+  });
+
+  it('consumes the one-time onboarding handoff without putting personal context in the URL', async () => {
+    navigationState.searchParams = new URLSearchParams('from=onboarding');
+    sessionStorage.setItem('oran_chat_session_id', 'existing-session-id');
+    sessionStorage.setItem(ONBOARDING_CHAT_HANDOFF_KEY, JSON.stringify({
+      prompt: 'I need housing help near Tacoma. My household has 3 people.',
+      needId: 'housing',
+    }));
+
+    render(<ChatPage />);
+
+    await waitFor(() => {
+      expect(chatWindowMock).toHaveBeenLastCalledWith({
+        sessionId: 'existing-session-id',
+        initialPrompt: 'I need housing help near Tacoma. My household has 3 people.',
+        initialNeedId: 'housing',
+        initialTrustFilter: undefined,
+        initialSortBy: undefined,
+        initialPage: 1,
+        initialAttributeFilters: undefined,
+      });
+    });
+    expect(navigationState.searchParams.toString()).toBe('from=onboarding');
+    expect(sessionStorage.getItem(ONBOARDING_CHAT_HANDOFF_KEY)).toBeNull();
   });
 });

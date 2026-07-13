@@ -24,7 +24,7 @@ const emailMocks = vi.hoisted(() => ({
 const clientQueryMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/db/postgres', () => dbMocks);
-vi.mock('@/services/email/azureEmail', () => emailMocks);
+vi.mock('@/services/email/resendEmail', () => emailMocks);
 vi.mock('@/agents/ingestion/promoteToLive', () => ({
   promoteToLive: vi.fn().mockResolvedValue({
     organizationId: 'o',
@@ -116,6 +116,7 @@ function makeSrcSys(overrides: Partial<SourceSystemRow> = {}): SourceSystemRow {
     trustTier: 'curated',
     baseUrl: null,
     apiType: null,
+    resourcePurpose: 'service_catalog',
     contactEmail: null,
     description: null,
     isActive: true,

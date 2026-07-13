@@ -1,34 +1,17 @@
-/**
- * Custom Sign-in Page
- *
- * Three-path sign-in: Seeker, Organization, and Administration.
- * Three auth methods: Microsoft, Google, or email/password.
- * Each path routes to the correct portal after auth.
- * The middleware enforces RBAC — this page only sets intent/callbackUrl.
- */
-
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { getProviders, signIn } from 'next-auth/react';
+import React, { Suspense, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Search, Building2, ShieldCheck, ArrowLeft, Mail } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { FormField } from '@/components/ui/form-field';
-import { FormSection } from '@/components/ui/form-section';
+import { useSearchParams } from 'next/navigation';
+import { SignIn } from '@clerk/nextjs';
+import { ArrowLeft, Building2, Search, ShieldCheck } from 'lucide-react';
 
-// ============================================================
-// PATH DEFINITIONS
-// ============================================================
-
-type UserPath = 'seeker' | 'organization' | 'admin';
+export type UserPath = 'seeker' | 'organization' | 'admin';
 
 interface PathOption {
   id: UserPath;
   label: string;
   icon: React.ElementType;
-  description: string;
   callbackUrl: string;
   guestAllowed: boolean;
   detail: string;
@@ -36,282 +19,126 @@ interface PathOption {
   accessNotes: string[];
 }
 
-const PATHS: PathOption[] = [
+export const PATHS: PathOption[] = [
   {
     id: 'seeker',
-    label: 'Find Services',
+    label: 'Find support',
     icon: Search,
-    description: 'Looking for help or resources?',
     callbackUrl: '/chat',
     guestAllowed: true,
-    detail: 'Search verified community resources, save favorites, and get personalized results.',
+    detail: 'Find verified community and government resources, then save what helps.',
     accessTitle: 'Open to everyone',
     accessNotes: [
-      'Anyone can browse verified services as a seeker.',
-      'Create an account only if you want saved items and synced preferences.',
+      'Browse and chat without creating an account.',
+      'Sign in to save resources and carry your preferences across devices.',
     ],
   },
   {
     id: 'organization',
     label: 'Organization',
     icon: Building2,
-    description: 'Manage your organization?',
     callbackUrl: '/claim',
     guestAllowed: false,
-    detail: 'Register your organization or manage your service listings on ORAN.',
-    accessTitle: 'For provider staff and organization owners',
+    detail: 'Claim and maintain services your organization provides.',
+    accessTitle: 'For service-provider teams',
     accessNotes: [
-      'Use this path if you represent a service provider and need to claim or update listings.',
-      'Organization editing access is granted after an ORAN admin reviews and approves the claim.',
+      'Create your personal account first.',
+      'Organization access begins after the claim is reviewed and approved.',
     ],
   },
   {
     id: 'admin',
     label: 'Administration',
     icon: ShieldCheck,
-    description: 'Platform staff?',
-    callbackUrl: '/approvals',
+    callbackUrl: '/dashboard',
     guestAllowed: false,
-    detail: 'Community moderation, data verification, and platform management.',
-    accessTitle: 'For designated review and platform teams only',
+    detail: 'Verify resources, monitor coverage, and operate the network.',
+    accessTitle: 'For approved ORAN teams',
     accessNotes: [
-      'Admin access is reserved for community verifiers, ORAN operations staff, and platform governors.',
-      'These roles are provisioned manually and are not created by self-service registration.',
+      'Community and platform roles are assigned by ORAN.',
+      'Signing up never grants administrative access automatically.',
     ],
   },
 ];
 
-/** Detect which path to pre-select from a callbackUrl */
-function detectPath(callbackUrl: string | null): UserPath {
+export function detectPath(callbackUrl: string | null): UserPath {
   if (!callbackUrl) return 'seeker';
-  if (/^\/(claim|org|services|locations|admins)/.test(callbackUrl)) return 'organization';
-  if (/^\/(operations|approvals|rules|audit|zone-management|ingestion|triage|queue|verify|coverage|appeals|reports|admin-security|scopes|templates)/.test(callbackUrl))
+  if (/^\/(claim|host|host-forms|resource-studio|org|services|locations|admins)/.test(callbackUrl)) {
+    return 'organization';
+  }
+  if (/^\/(operations|approvals|rules|audit|zone-management|ingestion|triage|queue|verify|coverage|dashboard|appeals|reports|admin-security|scopes|templates)/.test(callbackUrl)) {
     return 'admin';
+  }
   return 'seeker';
 }
 
-// ============================================================
-// ERROR MAP
-// ============================================================
+export function safeRedirect(value: string | null, fallback: string): string {
+  if (
+    !value
+    || !value.startsWith('/')
+    || value.startsWith('//')
+    || value.includes('\\')
+    || /[\u0000-\u001f\u007f]/.test(value)
+  ) {
+    return fallback;
+  }
 
-const ERROR_MESSAGES: Record<string, string> = {
-  OAuthSignin: 'Could not start the sign-in process. Please try again.',
-  OAuthCallback: 'There was an error during sign-in. Please try again.',
-  OAuthAccountNotLinked: 'This email is already linked to another account.',
-  Callback: 'Sign-in failed. Please try again.',
-  AccessDenied: 'Access denied. You may not have permission to sign in.',
-};
-
-interface RegistrationPayloadInput {
-  username: string;
-  email: string;
-  password: string;
-  displayName: string;
-  phone: string;
-  website: string;
+  try {
+    const base = new URL('https://oran.local');
+    const destination = new URL(value, base);
+    if (destination.origin !== base.origin) return fallback;
+    return `${destination.pathname}${destination.search}${destination.hash}`;
+  } catch {
+    return fallback;
+  }
 }
-
-function buildRegistrationPayload(input: RegistrationPayloadInput) {
-  return {
-    username: input.username,
-    email: input.email,
-    password: input.password,
-    displayName: input.displayName,
-    phone: input.phone || undefined,
-    website: input.website,
-  };
-}
-
-// ============================================================
-// PROVIDER LOGOS
-// ============================================================
-
-function MicrosoftLogo() {
-  return (
-    <svg viewBox="0 0 21 21" className="h-5 w-5" aria-hidden="true">
-      <rect x="1" y="1" width="9" height="9" fill="#f25022" />
-      <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
-      <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
-      <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
-    </svg>
-  );
-}
-
-function GoogleLogo() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-    </svg>
-  );
-}
-
-function AppleLogo() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M16.37 12.77c.02 2.31 2.03 3.08 2.05 3.09-.02.06-.32 1.09-1.04 2.15-.62.92-1.26 1.84-2.28 1.86-1 .02-1.32-.59-2.47-.59-1.16 0-1.51.57-2.44.61-1 .04-1.76-1-2.38-1.91-1.28-1.85-2.26-5.22-.95-7.49.65-1.13 1.81-1.84 3.06-1.86.95-.02 1.84.64 2.47.64.62 0 1.78-.79 2.99-.68.51.02 1.95.21 2.88 1.58-.08.05-1.72 1-1.69 2.6ZM14.85 6.43c.52-.63.88-1.5.78-2.38-.75.03-1.66.5-2.2 1.12-.48.56-.91 1.45-.79 2.3.83.06 1.68-.42 2.21-1.04Z"
-      />
-    </svg>
-  );
-}
-
-// ============================================================
-// MAIN CONTENT
-// ============================================================
 
 function SignInContent() {
   const searchParams = useSearchParams();
-  const originalCallback = searchParams.get('callbackUrl');
-  const error = searchParams.get('error');
-  const detectedPath = detectPath(originalCallback);
+  const requestedRedirect = searchParams.get('redirect_url') ?? searchParams.get('callbackUrl');
+  const detectedPath = detectPath(requestedRedirect);
   const [selected, setSelected] = useState<UserPath>(detectedPath);
-  const [showEmailForm, setShowEmailForm] = useState(false);
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [identifier, setIdentifier] = useState('');
-  const [email, setEmail] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [website, setWebsite] = useState('');
-  const [formError, setFormError] = useState<string | null>(null);
-  const [formSuccess, setFormSuccess] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [providerIds, setProviderIds] = useState<Set<string>>(new Set(['azure-ad']));
+  const activePath = PATHS.find((path) => path.id === selected) ?? PATHS[0];
 
-  const activePath = PATHS.find((p) => p.id === selected)!;
-
-  // If the user stays on the auto-detected path, preserve the original deep-link.
-  // Otherwise use the selected path's default callback.
-  const effectiveCallback =
-    selected === detectedPath && originalCallback
-      ? originalCallback
-      : activePath.callbackUrl;
-
-  const errorMessage = error
-    ? ERROR_MESSAGES[error] ?? 'An unexpected error occurred. Please try again.'
-    : null;
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void getProviders()
-      .then((providers) => {
-        if (cancelled || !providers) {
-          return;
-        }
-        setProviderIds(new Set(Object.keys(providers)));
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setProviderIds(new Set(['azure-ad']));
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const hasAzureAd = providerIds.has('azure-ad');
-  const hasApple = providerIds.has('apple');
-  const hasGoogle = providerIds.has('google');
-  const hasCredentials = providerIds.has('credentials');
-
-  async function handleEmailSignIn(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    setIsSubmitting(true);
-
-    try {
-      const result = await signIn('credentials', {
-        identifier,
-        password,
-        callbackUrl: effectiveCallback,
-        redirect: false,
-      });
-
-      if (result?.error) {
-        setFormError('Invalid email, username, phone number, or password. Please try again.');
-      } else if (result?.url) {
-        window.location.href = result.url;
-      }
-    } catch {
-      setFormError('Sign-in failed. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+  const effectiveRedirect = useMemo(() => {
+    if (selected === detectedPath) {
+      return safeRedirect(requestedRedirect, activePath.callbackUrl);
     }
-  }
+    return activePath.callbackUrl;
+  }, [activePath.callbackUrl, detectedPath, requestedRedirect, selected]);
 
-  async function handleRegister(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    setFormSuccess(null);
-    setIsSubmitting(true);
-
-    if (password !== confirmPassword) {
-      setFormError('Passwords do not match.');
-      setIsSubmitting(false);
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          buildRegistrationPayload({ username, email, password, displayName, phone, website }),
-        ),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setFormError(data.error ?? 'Registration failed. Please try again.');
-        return;
-      }
-
-      setFormSuccess('Account created! You can now sign in.');
-      setIsRegistering(false);
-    } catch {
-      setFormError('Registration failed. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
+  const signUpRedirect = selected === 'seeker' ? '/onboarding' : effectiveRedirect;
 
   return (
-    <main className="container mx-auto max-w-lg px-4 py-12">
-      <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-sm">
-        {/* Header */}
-        <div className="px-5 sm:px-8 pt-6 sm:pt-8 pb-2 text-center">
-          <h1 className="text-xl font-bold text-[var(--text-primary)]">Welcome to ORAN</h1>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            How would you like to use ORAN?
+    <main className="min-h-screen bg-gradient-to-br from-slate-300 via-blue-800 to-blue-950 px-4 py-8 sm:py-12">
+      <div className="mx-auto grid w-full max-w-5xl overflow-hidden rounded-3xl border border-white/30 bg-white/90 shadow-2xl backdrop-blur-xl lg:grid-cols-2">
+        <section className="bg-gradient-to-br from-blue-950 via-blue-800 to-cyan-600 p-6 text-white sm:p-9" aria-labelledby="signin-heading">
+          <p className="text-xs font-extrabold uppercase tracking-widest text-cyan-100">
+            Open Resource Access Network
           </p>
-        </div>
-
-        {/* Path selector */}
-        <div role="radiogroup" aria-label="Account type" className="px-4 sm:px-6 pt-4 pb-2">
-          <div className="grid grid-cols-3 gap-2">
+          <h1 id="signin-heading" className="mt-4 font-display text-3xl font-black tracking-tight sm:text-4xl">
+            Welcome to ORAN
+          </h1>
+          <p className="mt-3 text-base font-semibold text-blue-50">
+            Building Bridges | Strengthening Communities
+          </p>
+          <p className="mt-7 text-sm font-bold uppercase tracking-widest text-cyan-100">
+            How will you use ORAN?
+          </p>
+          <div role="radiogroup" aria-label="Account path" className="mt-3 grid gap-2">
             {PATHS.map(({ id, label, icon: Icon }) => {
-              const isActive = selected === id;
+              const active = selected === id;
               return (
                 <button
                   key={id}
                   type="button"
                   role="radio"
-                  aria-checked={isActive}
+                  aria-checked={active}
                   onClick={() => setSelected(id)}
-                  className={`flex flex-col items-center gap-1.5 rounded-lg border-2 px-3 py-3 text-xs font-medium transition-all min-h-[44px] cursor-pointer ${
-                    isActive
-                      ? 'border-[var(--text-primary)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
-                      : 'border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)] hover:border-[var(--text-muted)] hover:bg-[var(--bg-surface)]'
+                  className={`flex min-h-12 items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-bold transition ${
+                    active
+                      ? 'border-white bg-white text-blue-950 shadow-lg'
+                      : 'border-white/30 bg-blue-950/25 text-white hover:border-white/70 hover:bg-blue-900/50'
                   }`}
                 >
                   <Icon className="h-5 w-5" aria-hidden="true" />
@@ -320,358 +147,54 @@ function SignInContent() {
               );
             })}
           </div>
-        </div>
 
-        {/* Dynamic content area */}
-        <div className="px-5 sm:px-8 pb-6 sm:pb-8 pt-4">
-          <p className="mb-5 text-center text-sm text-[var(--text-secondary)]" data-testid="path-detail">
-            {activePath.detail}
-          </p>
-
-          <div className="mb-5 rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] px-4 py-3 text-left">
-            <p className="text-sm font-semibold text-[var(--text-primary)]">{activePath.accessTitle}</p>
-            <ul className="mt-2 space-y-1 text-sm text-[var(--text-secondary)]">
-              {activePath.accessNotes.map((note) => (
-                <li key={note}>{note}</li>
-              ))}
+          <div className="mt-6 rounded-2xl border border-white/25 bg-blue-950/25 p-4">
+            <p className="font-bold">{activePath.accessTitle}</p>
+            <p className="mt-1 text-sm text-blue-50">{activePath.detail}</p>
+            <ul className="mt-3 space-y-1 text-sm text-blue-50">
+              {activePath.accessNotes.map((note) => <li key={note}>• {note}</li>)}
             </ul>
           </div>
 
-          {/* Error messages */}
-          {errorMessage && (
-            <div
-              role="alert"
-              className="mb-4 rounded-lg border border-error-soft bg-error-subtle p-3 text-sm text-error-deep"
-            >
-              {errorMessage}
-            </div>
-          )}
-          {formError && (
-            <div
-              role="alert"
-              className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
-            >
-              {formError}
-            </div>
-          )}
-          {formSuccess && (
-            <div
-              role="status"
-              className="mb-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] p-3 text-sm text-[var(--text-primary)]"
-            >
-              {formSuccess}
-            </div>
-          )}
-
-          {/* OAuth sign-in buttons */}
-          {!showEmailForm && (
-            <div className="space-y-3">
-              {hasAzureAd && (
-                <Button
-                  className="w-full min-h-[44px] text-sm font-medium gap-2"
-                  onClick={() => signIn('azure-ad', { callbackUrl: effectiveCallback })}
-                >
-                  <MicrosoftLogo />
-                  Sign in with Microsoft
-                </Button>
-              )}
-
-              {hasGoogle && (
-                <Button
-                  variant="outline"
-                  className="w-full min-h-[44px] text-sm font-medium gap-2"
-                  onClick={() => signIn('google', { callbackUrl: effectiveCallback })}
-                >
-                  <GoogleLogo />
-                  Sign in with Google
-                </Button>
-              )}
-
-              {hasApple && (
-                <Button
-                  variant="outline"
-                  className="w-full min-h-[44px] text-sm font-medium gap-2"
-                  onClick={() => signIn('apple', { callbackUrl: effectiveCallback })}
-                >
-                  <AppleLogo />
-                  Sign in with Apple
-                </Button>
-              )}
-
-              {hasCredentials && (hasAzureAd || hasGoogle || hasApple) && (
-                <div className="relative my-4">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-[var(--border)]" />
-                  </div>
-                  <div className="relative flex justify-center text-xs">
-                    <span className="bg-[var(--bg-surface)] px-3 text-[var(--text-muted)]">or</span>
-                  </div>
-                </div>
-              )}
-
-              {hasCredentials && (
-                <Button
-                  variant="outline"
-                  className="w-full min-h-[44px] text-sm font-medium gap-2"
-                  onClick={() => setShowEmailForm(true)}
-                >
-                  <Mail className="h-5 w-5" aria-hidden="true" />
-                  Sign in with Email, Username, or Phone
-                </Button>
-              )}
-
-              {/* Sign-up discoverability */}
-              {hasCredentials && (
-                <div className="mt-2 border-t border-[var(--border-subtle)] pt-3 text-center">
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    New to ORAN?{' '}
-                    <button
-                      type="button"
-                      onClick={() => { setShowEmailForm(true); setIsRegistering(true); }}
-                      className="font-semibold text-[var(--text-primary)] underline underline-offset-2 transition-colors hover:text-[var(--text-secondary)]"
-                    >
-                      Create a free account
-                    </button>
-                  </p>
-                </div>
-              )}
-
-              {!hasAzureAd && !hasGoogle && !hasCredentials && (
-                <p className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface-alt)] px-3 py-3 text-sm text-[var(--text-primary)]">
-                  Sign-in is temporarily unavailable. Contact an ORAN administrator if this persists.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Email/Password form */}
-          {showEmailForm && (
-            <form
-              onSubmit={isRegistering ? handleRegister : handleEmailSignIn}
-              className="space-y-3"
-            >
-              <FormSection
-                title={isRegistering ? 'Create your account' : 'Sign in with your account'}
-                description={isRegistering ? 'Enter the account details ORAN will use for this sign-in path.' : 'Use your email address, username, or phone number with your password to continue.'}
-              >
-                {isRegistering && (
-                  <div
-                    aria-hidden="true"
-                    style={{ position: 'absolute', left: '-10000px', top: 'auto', width: '1px', height: '1px', overflow: 'hidden' }}
-                  >
-                    <label htmlFor="website">Website</label>
-                    <input
-                      id="website"
-                      type="text"
-                      tabIndex={-1}
-                      autoComplete="off"
-                      value={website}
-                      onChange={(e) => setWebsite(e.target.value)}
-                    />
-                  </div>
-                )}
-
-                {isRegistering && (
-                  <FormField id="displayName" label="Display Name" required>
-                    <input
-                      id="displayName"
-                      type="text"
-                      required
-                      maxLength={100}
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
-                      placeholder="Your name"
-                    />
-                  </FormField>
-                )}
-
-                {isRegistering ? (
-                  <>
-                    <FormField id="username" label="Username" required>
-                      <input
-                        id="username"
-                        type="text"
-                        required
-                        minLength={3}
-                        maxLength={32}
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
-                        placeholder="yourname"
-                      />
-                    </FormField>
-
-                    <FormField id="email" label="Email" required>
-                      <input
-                        id="email"
-                        type="email"
-                        required
-                        maxLength={255}
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
-                        placeholder="you@example.com"
-                      />
-                    </FormField>
-                  </>
-                ) : (
-                  <FormField id="identifier" label="Email, Username, or Phone" required>
-                    <input
-                      id="identifier"
-                      type="text"
-                      required
-                      maxLength={255}
-                      value={identifier}
-                      onChange={(e) => setIdentifier(e.target.value)}
-                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
-                      placeholder="you@example.com, yourname, or +15551234567"
-                    />
-                  </FormField>
-                )}
-
-                <FormField id="password" label="Password" required>
-                  <input
-                    id="password"
-                    type="password"
-                    required
-                    minLength={8}
-                    maxLength={128}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
-                    placeholder={isRegistering ? 'Create a password (8+ characters)' : 'Your password'}
-                  />
-                </FormField>
-
-                {isRegistering && (
-                  <FormField
-                    id="confirmPassword"
-                    label="Confirm password"
-                    required
-                    error={confirmPassword.length > 0 && password !== confirmPassword ? 'Passwords must match to create your account.' : undefined}
-                  >
-                    <input
-                      id="confirmPassword"
-                      type="password"
-                      required
-                      minLength={8}
-                      maxLength={128}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      aria-invalid={confirmPassword.length > 0 && password !== confirmPassword}
-                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
-                      placeholder="Re-enter your password"
-                    />
-                  </FormField>
-                )}
-
-                {isRegistering && (
-                  <FormField id="phone" label="Phone" hint="Optional">
-                    <input
-                      id="phone"
-                      type="tel"
-                      maxLength={20}
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]"
-                      placeholder="(555) 123-4567"
-                    />
-                  </FormField>
-                )}
-              </FormSection>
-
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full min-h-[44px] text-sm font-medium"
-              >
-                {isSubmitting
-                  ? 'Please wait...'
-                  : isRegistering
-                    ? 'Create Account'
-                    : 'Sign In'}
-              </Button>
-
-              <div className="flex items-center justify-between text-xs pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsRegistering(!isRegistering);
-                    setFormError(null);
-                    setFormSuccess(null);
-                    setConfirmPassword('');
-                    setIdentifier('');
-                  }}
-                  className="text-[var(--text-primary)] transition-colors hover:text-[var(--text-secondary)]"
-                >
-                  {isRegistering ? 'Already have an account? Sign in' : 'Need an account? Register'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEmailForm(false);
-                    setFormError(null);
-                    setFormSuccess(null);
-                  }}
-                  className="text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-                >
-                  Back to options
-                </button>
-              </div>
-            </form>
-          )}
-
-          {!showEmailForm && (
-            <p className="mt-3 text-center text-xs text-[var(--text-secondary)]">
-              Secure sign-in. Your credentials are encrypted and never shared.
-            </p>
-          )}
-
-          {/* Guest path (seekers only) */}
           {activePath.guestAllowed && (
-            <div className="mt-5 border-t border-[var(--border-subtle)] pt-4 text-center">
-              <Link
-                href={effectiveCallback}
-                className="inline-flex items-center gap-1 text-sm text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                Continue without signing in
-              </Link>
-            </div>
+            <Link
+              href={effectiveRedirect}
+              className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/35 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Continue without signing in
+            </Link>
           )}
-        </div>
-      </div>
+        </section>
 
-      {/* Privacy note */}
-      <p className="mx-auto mt-4 max-w-sm text-center text-xs text-[var(--text-secondary)]">
-        By signing in, you agree to ORAN collecting your name, email, and
-        location data to deliver and improve our services.
-        See our <Link href="/privacy" className="underline hover:text-[var(--text-primary)]">Privacy Policy</Link> for
-        details.
-      </p>
+        <section className="flex items-center justify-center bg-gradient-to-br from-white via-slate-100 to-slate-300 p-4 sm:p-8">
+          <SignIn
+            path="/auth/signin"
+            routing="path"
+            signUpUrl="/auth/signup"
+            fallbackRedirectUrl={effectiveRedirect}
+            signUpFallbackRedirectUrl={signUpRedirect}
+            appearance={{
+              elements: {
+                rootBox: 'w-full',
+                cardBox: 'w-full shadow-none',
+                card: 'w-full border-0 bg-transparent shadow-none',
+                headerTitle: 'text-blue-950 font-black',
+                headerSubtitle: 'text-slate-600',
+                formButtonPrimary: 'bg-blue-700 hover:bg-blue-800 font-bold shadow-lg',
+                footerActionLink: 'text-blue-700 font-bold',
+              },
+            }}
+          />
+        </section>
+      </div>
     </main>
   );
 }
 
-// ============================================================
-// EXPORTS
-// ============================================================
-
-export { buildRegistrationPayload, detectPath, PATHS, ERROR_MESSAGES };
-export type { UserPath };
-
-export default function SignInPage() {
+export default function SignInPageClient() {
   return (
-    <Suspense
-      fallback={
-        <main className="container mx-auto max-w-lg px-4 py-12">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-8 text-center shadow-sm">
-            <p className="text-[var(--text-secondary)]">Loading…</p>
-          </div>
-        </main>
-      }
-    >
+    <Suspense fallback={<main className="min-h-screen bg-gradient-to-br from-slate-300 via-blue-800 to-blue-950" aria-busy="true" />}>
       <SignInContent />
     </Suspense>
   );

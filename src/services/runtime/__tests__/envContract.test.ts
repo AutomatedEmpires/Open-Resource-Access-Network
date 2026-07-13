@@ -8,14 +8,14 @@ describe('validateRuntimeEnv', () => {
       {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-        NEXTAUTH_SECRET: 'secret',
-        NEXTAUTH_URL: 'https://oran.test',
-        INTERNAL_API_KEY: 'internal-key',
+        CRON_SECRET: 'vercel-cron-secret',
         NEXT_PUBLIC_SENTRY_DSN: 'https://public@example.ingest.sentry.io/1',
         NEXT_PUBLIC_SUPABASE_URL: 'https://project.supabase.co',
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
         CLERK_SECRET_KEY: 'sk_test_example',
+        RESEND_API_KEY: 're_test',
+        RESEND_FROM: 'ORAN <notifications@openresourceaccessnetwork.com>',
         REDIS_URL: 'redis://localhost:6379',
       },
     );
@@ -25,30 +25,65 @@ describe('validateRuntimeEnv', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('flags conditional auth settings when a provider is partially configured', () => {
+  it('requires both Clerk identity keys in production', () => {
     const result = validateRuntimeEnv(
       'webapp',
       {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-        NEXTAUTH_SECRET: 'secret',
-        NEXTAUTH_URL: 'https://oran.test',
-        INTERNAL_API_KEY: 'internal-key',
-        AZURE_AD_CLIENT_ID: 'entra-client-id',
+        CRON_SECRET: 'vercel-cron-secret',
       },
     );
 
     expect(result.ok).toBe(false);
-    expect(result.missingCritical).toEqual(['AZURE_AD_CLIENT_SECRET']);
-    expect(result.warnings).toEqual([
-      'AZURE_AD_TENANT_ID',
+    expect(result.missingCritical).toEqual([
       'CLERK_SECRET_KEY',
       'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY',
+    ]);
+    expect(result.warnings).toEqual([
       'NEXT_PUBLIC_SENTRY_DSN',
       'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
       'NEXT_PUBLIC_SUPABASE_URL',
       'REDIS_URL',
     ]);
+  });
+
+  it('requires the Vercel Cron credential in production', () => {
+    const result = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.missingCritical).toEqual(['CRON_SECRET']);
+  });
+
+  it('requires Resend credentials as a complete pair when email is enabled', () => {
+    const missingSender = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      CRON_SECRET: 'vercel-cron-secret',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
+      RESEND_API_KEY: 're_test',
+    });
+
+    expect(missingSender.ok).toBe(false);
+    expect(missingSender.missingCritical).toContain('RESEND_FROM');
+
+    const missingKey = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      CRON_SECRET: 'vercel-cron-secret',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
+      RESEND_FROM: 'ORAN <notifications@openresourceaccessnetwork.com>',
+    });
+
+    expect(missingKey.ok).toBe(false);
+    expect(missingKey.missingCritical).toContain('RESEND_API_KEY');
   });
 
   it('skips production-only requirements outside production', () => {
@@ -65,9 +100,9 @@ describe('validateRuntimeEnv', () => {
     const result = validateRuntimeEnv('webapp', {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-      NEXTAUTH_SECRET: 'secret',
-      NEXTAUTH_URL: 'https://oran.test',
-      INTERNAL_API_KEY: 'internal-key',
+      CRON_SECRET: 'vercel-cron-secret',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
       NDP_211_POLLING_ENABLED: 'true',
     });
 
@@ -82,9 +117,9 @@ describe('validateRuntimeEnv', () => {
     const result = validateRuntimeEnv('webapp', {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-      NEXTAUTH_SECRET: 'secret',
-      NEXTAUTH_URL: 'https://oran.test',
-      INTERNAL_API_KEY: 'internal-key',
+      CRON_SECRET: 'vercel-cron-secret',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
       NDP_211_POLLING_ENABLED: 'false',
     });
 

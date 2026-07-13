@@ -34,12 +34,13 @@ import { formatDateSafe } from '@/lib/format';
 // ============================================================
 
 type ResourcePurpose = 'service_catalog' | 'program_navigation' | 'supporting_reference' | 'excluded';
+type ResourcePurposeDraft = ResourcePurpose | '';
 
 interface Source {
   id: string;
   displayName: string;
   trustLevel: 'allowlisted' | 'quarantine' | 'blocked';
-  resourcePurpose: ResourcePurpose;
+  resourcePurpose?: ResourcePurpose | null;
   domainRules: { type: string; value: string }[];
   createdAt: string;
   updatedAt: string;
@@ -86,7 +87,7 @@ interface PollableSourceSystem {
   name: string;
   family: string;
   trustTier: 'verified_publisher' | 'trusted_partner' | 'curated' | 'community' | 'quarantine' | 'blocked';
-  resourcePurpose: ResourcePurpose;
+  resourcePurpose?: ResourcePurpose | null;
   homepageUrl?: string | null;
   termsUrl?: string | null;
   licenseNotes?: string | null;
@@ -131,7 +132,7 @@ interface Candidate {
 interface SourceDraft {
   displayName: string;
   trustLevel: Source['trustLevel'];
-  resourcePurpose: ResourcePurpose;
+  resourcePurpose: ResourcePurposeDraft;
   domainValue: string;
   domainType: 'exact_host' | 'suffix';
   seedUrl: string;
@@ -141,7 +142,7 @@ interface PollableSourceDraft {
   name: string;
   family: PollableSourceSystem['family'];
   trustTier: PollableSourceSystem['trustTier'];
-  resourcePurpose: ResourcePurpose;
+  resourcePurpose: ResourcePurposeDraft;
   homepageUrl: string;
   termsUrl: string;
   licenseNotes: string;
@@ -241,7 +242,7 @@ interface IngestionOverview {
 const EMPTY_SOURCE_DRAFT: SourceDraft = {
   displayName: '',
   trustLevel: 'quarantine',
-  resourcePurpose: 'service_catalog',
+  resourcePurpose: '',
   domainValue: '',
   domainType: 'exact_host',
   seedUrl: '',
@@ -251,7 +252,7 @@ const EMPTY_POLLABLE_SOURCE_DRAFT: PollableSourceDraft = {
   name: '',
   family: 'partner_api',
   trustTier: 'trusted_partner',
-  resourcePurpose: 'service_catalog',
+  resourcePurpose: '',
   homepageUrl: '',
   termsUrl: '',
   licenseNotes: '',
@@ -416,7 +417,7 @@ function SourcesTab() {
   const [overview, setOverview] = useState<IngestionOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [systemActiveDrafts, setSystemActiveDrafts] = useState<Record<string, boolean>>({});
-  const [systemPurposeDrafts, setSystemPurposeDrafts] = useState<Record<string, ResourcePurpose>>({});
+  const [systemPurposeDrafts, setSystemPurposeDrafts] = useState<Record<string, ResourcePurposeDraft>>({});
   const [feedRolloutDrafts, setFeedRolloutDrafts] = useState<Record<string, FeedRolloutDraft>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -455,7 +456,7 @@ function SourcesTab() {
       setSystemPurposeDrafts(
         Object.fromEntries(nextSystems.map((system: PollableSourceSystem) => [
           system.id,
-          system.resourcePurpose ?? 'service_catalog',
+          system.resourcePurpose ?? '',
         ])),
       );
       setFeedRolloutDrafts(
@@ -495,8 +496,8 @@ function SourcesTab() {
     const domainValue = draft.domainValue.trim();
     const seedUrl = draft.seedUrl.trim();
 
-    if (!displayName || !domainValue) {
-      setError('Display name and at least one domain rule are required.');
+    if (!displayName || !domainValue || !draft.resourcePurpose) {
+      setError('Display name, resource purpose, and at least one domain rule are required.');
       return;
     }
 
@@ -548,8 +549,8 @@ function SourcesTab() {
       stateProvince: stateProvince || undefined,
     };
 
-    if (!name || !feedName || !baseUrl || !Number.isFinite(refreshIntervalHours)) {
-      setError('Source system name, feed name, base URL, and refresh interval are required.');
+    if (!name || !feedName || !baseUrl || !pollableDraft.resourcePurpose || !Number.isFinite(refreshIntervalHours)) {
+      setError('Source system name, resource purpose, feed name, base URL, and refresh interval are required.');
       return;
     }
 
@@ -604,6 +605,11 @@ function SourcesTab() {
   }, [fetchSources, pollableDraft, showError, success]);
 
   const handleSaveSourceSystem = useCallback(async (systemId: string) => {
+    const resourcePurpose = systemPurposeDrafts[systemId];
+    if (!resourcePurpose) {
+      setError('Classify the source purpose before saving.');
+      return;
+    }
     setSavingSystemId(systemId);
     setError(null);
     try {
@@ -612,7 +618,7 @@ function SourcesTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           isActive: systemActiveDrafts[systemId] ?? true,
-          resourcePurpose: systemPurposeDrafts[systemId] ?? 'service_catalog',
+          resourcePurpose,
         }),
       });
       const body = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -926,6 +932,7 @@ function SourcesTab() {
               }))}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
             >
+              <option value="" disabled>Choose a publication role</option>
               <option value="service_catalog">Direct service catalog</option>
               <option value="program_navigation">Official program navigation</option>
               <option value="supporting_reference">Supporting reference only</option>
@@ -1237,7 +1244,7 @@ function SourcesTab() {
                     <td className="px-4 py-3">
                       <div className="space-y-2">
                         <StatusBadge
-                          status={system.resourcePurpose ?? 'service_catalog'}
+                          status={system.resourcePurpose ?? 'unclassified'}
                           styles={RESOURCE_PURPOSE_STYLES}
                         />
                         <label className="block text-xs text-gray-600" htmlFor={`source-purpose-${system.id}`}>
@@ -1245,13 +1252,14 @@ function SourcesTab() {
                         </label>
                         <select
                           id={`source-purpose-${system.id}`}
-                          value={systemPurposeDrafts[system.id] ?? system.resourcePurpose ?? 'service_catalog'}
+                          value={systemPurposeDrafts[system.id] ?? system.resourcePurpose ?? ''}
                           onChange={(event) => setSystemPurposeDrafts((current) => ({
                             ...current,
                             [system.id]: event.target.value as ResourcePurpose,
                           }))}
                           className="w-full min-w-44 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs"
                         >
+                          <option value="" disabled>Classify before publication</option>
                           <option value="service_catalog">Direct services</option>
                           <option value="program_navigation">Program navigation</option>
                           <option value="supporting_reference">Supporting only</option>
@@ -1491,6 +1499,7 @@ function SourcesTab() {
               }))}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
             >
+              <option value="" disabled>Choose a publication role</option>
               <option value="service_catalog">Direct service catalog</option>
               <option value="program_navigation">Official program navigation</option>
               <option value="supporting_reference">Supporting reference only</option>
@@ -1567,7 +1576,7 @@ function SourcesTab() {
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge
-                      status={src.resourcePurpose ?? 'service_catalog'}
+                      status={src.resourcePurpose ?? 'unclassified'}
                       styles={RESOURCE_PURPOSE_STYLES}
                     />
                   </td>

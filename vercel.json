@@ -1,4 +1,26 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/internal/ingestion/feed-poll",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/internal/sla-check",
+      "schedule": "15 7 * * *"
+    },
+    {
+      "path": "/api/internal/coverage-gaps",
+      "schedule": "30 8 * * *"
+    },
+    {
+      "path": "/api/internal/confidence-regression-scan",
+      "schedule": "45 9 * * *"
+    },
+    {
+      "path": "/api/internal/resource-freshness-scan",
+      "schedule": "0 11 * * *"
+    }
+  ]
 }

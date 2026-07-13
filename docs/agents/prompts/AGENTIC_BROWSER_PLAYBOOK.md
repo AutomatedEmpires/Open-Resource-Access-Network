@@ -1,5 +1,8 @@
 # Agentic Browser Playbook (ORAN)
 
+> **Historical test-auth instructions:** any NextAuth/Entra test-provider details
+> below are superseded by `e2e/helpers/auth.ts` and Clerk testing tokens.
+
 This repo is safety-critical. Browser-driven verification is meant to **prove the UX and safety invariants** after changes, not replace unit tests.
 
 ## What this enables

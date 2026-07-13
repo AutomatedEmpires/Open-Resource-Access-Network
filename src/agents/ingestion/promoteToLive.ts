@@ -27,6 +27,7 @@ import {
 } from '@/services/publication/liveEntityMerge';
 
 import type { IngestionStores } from './stores';
+import { evaluateStandaloneResourceUse } from './sourcePurpose';
 import type {
   CanonicalOrganizationRow,
   CanonicalServiceRow,
@@ -114,6 +115,19 @@ export async function promoteToLive(
   if (canonicalService.lifecycleStatus !== 'active') {
     throw new Error(
       `Canonical service ${canonicalServiceId} lifecycle is '${canonicalService.lifecycleStatus}', expected 'active'`,
+    );
+  }
+
+  // Promotion is a public-write boundary. Re-check source purpose here even
+  // when an upstream policy engine already evaluated it, so direct callers
+  // cannot bypass the standalone-resource rule.
+  const sourceSystem = canonicalService.winningSourceSystemId
+    ? await stores.sourceSystems.getById(canonicalService.winningSourceSystemId)
+    : null;
+  const purposeDecision = evaluateStandaloneResourceUse(sourceSystem);
+  if (!purposeDecision.allowed) {
+    throw new Error(
+      `Canonical service ${canonicalServiceId} cannot be published: ${purposeDecision.reason}`,
     );
   }
 

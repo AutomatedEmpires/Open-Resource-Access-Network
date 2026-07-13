@@ -98,7 +98,6 @@ function compositeAiState(env: Record<string, string | undefined>): {
   missingEnv: string[];
 } {
   const keyGroups = [
-    ['OPENAI_API_KEY'],
     ['LLM_ENDPOINT', 'LLM_API_KEY'],
   ] as const;
 
@@ -197,6 +196,15 @@ export async function buildAgentControlPlaneSnapshot(
       powers: ['privacy-filtered errors', 'release verification', 'operator diagnostics'],
     },
     {
+      id: 'resend',
+      label: 'Resend',
+      category: 'communications',
+      state: integrationState(['RESEND_API_KEY', 'RESEND_FROM'], env),
+      requiredEnv: ['RESEND_API_KEY', 'RESEND_FROM'],
+      missingEnv: ['RESEND_API_KEY', 'RESEND_FROM'].filter((key) => !hasEnv(env, key)),
+      powers: ['transactional notifications', 'workflow status updates', 'escalation delivery'],
+    },
+    {
       id: 'vercel',
       label: 'Vercel',
       category: 'hosting',
@@ -216,7 +224,7 @@ export async function buildAgentControlPlaneSnapshot(
     },
     {
       id: 'ai_core',
-      label: 'Direct or provider-neutral AI runtime',
+      label: 'Configured ingestion AI runtime',
       category: 'ai',
       state: aiCore.state,
       requiredEnv: aiCore.requiredEnv,
@@ -278,8 +286,11 @@ export async function buildAgentControlPlaneSnapshot(
   if (!authEnforced) {
     governanceBlockers.push('Admin/host governance depends on enforced auth and role checks.');
   }
-  if (!hasEnv(env, 'TRANSACTIONAL_EMAIL_API_KEY')) {
-    governanceAccelerators.push('Select and configure transactional email for escalation delivery beyond in-app notices.');
+  const resendState = integrationById.get('resend')?.state;
+  if (resendState === 'partial') {
+    governanceBlockers.push('Resend transactional email configuration is incomplete.');
+  } else if (resendState !== 'configured') {
+    governanceAccelerators.push('Configure Resend for escalation delivery beyond in-app notices.');
   }
   if (integrationById.get('sentry')?.state !== 'configured') {
     governanceAccelerators.push('Instrument governance failures in Sentry for operator visibility.');

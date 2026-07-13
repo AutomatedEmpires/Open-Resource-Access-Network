@@ -169,7 +169,7 @@ describe('admin ingestion source routes', () => {
     expect(body.error).toBe('Invalid input.');
   });
 
-  it('creates a source with generated id and default crawl settings', async () => {
+  it('creates a classified source with generated id and default crawl settings', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
     const randomUuidSpy = vi
       .spyOn(globalThis.crypto, 'randomUUID')
@@ -181,6 +181,7 @@ describe('admin ingestion source routes', () => {
         jsonBody: {
           displayName: 'Community Feed',
           trustLevel: 'allowlisted',
+          resourcePurpose: 'service_catalog',
           domainRules: [{ type: 'suffix', value: 'example.org' }],
         },
         ip: '203.0.113.50',
@@ -209,6 +210,24 @@ describe('admin ingestion source routes', () => {
     });
 
     randomUuidSpy.mockRestore();
+  });
+
+  it('rejects source creation without an explicit resource purpose', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    const { POST } = await loadSourcesRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          displayName: 'Unclassified Community Feed',
+          trustLevel: 'allowlisted',
+          domainRules: [{ type: 'suffix', value: 'example.org' }],
+        },
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(sourceRegistryStore.upsert).not.toHaveBeenCalled();
   });
 
   it('returns source detail for an existing source id', async () => {

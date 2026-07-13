@@ -42,7 +42,7 @@ Update-on-touch rule:
 
 ## Key integration contracts
 
-- Auth target: Clerk. NextAuth/Entra is a temporary compatibility bridge until middleware, UI, role provisioning, and account linking move together.
+- Auth: Clerk owns identity and sessions; ORAN's database owns roles, account status, and memberships. Legacy providers are retired.
 - Platform target: Vercel + Supabase + Clerk + Sentry. Azure artifacts are rollback-only.
 - DB: Supabase PostgreSQL + PostGIS + pgvector via `pg` and Drizzle ORM.
 - Telemetry: Sentry is the production backend and must not receive PII.

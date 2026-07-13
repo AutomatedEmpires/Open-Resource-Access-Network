@@ -67,6 +67,7 @@ function makeClientForNewRegressions() {
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  vi.stubEnv('CRON_SECRET', 'cron-secret');
   vi.stubEnv('INTERNAL_API_KEY', 'secret-key');
 
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
@@ -90,16 +91,25 @@ beforeEach(() => {
   );
 });
 
-describe('POST /api/internal/confidence-regression-scan', () => {
+describe('GET|POST /api/internal/confidence-regression-scan', () => {
   // ----------------------------------------------------------
   // Auth / guard checks
   // ----------------------------------------------------------
 
-  it('returns 503 when INTERNAL_API_KEY is not configured', async () => {
+  it('returns 503 when no internal credential is configured', async () => {
+    vi.stubEnv('CRON_SECRET', '');
     vi.stubEnv('INTERNAL_API_KEY', '');
     const { POST } = await import('../route');
     const res = await POST(createRequest({ apiKey: 'secret-key' }));
     expect(res.status).toBe(503);
+  });
+
+  it('accepts a Vercel Cron GET request with the default limit', async () => {
+    const { GET } = await import('../route');
+    const res = await GET(createRequest({ apiKey: 'cron-secret' }));
+
+    expect(res.status).toBe(200);
+    expect(detectorMocks.detectRegressions).toHaveBeenCalledWith(expect.any(Object), 100);
   });
 
   it('returns 401 for a missing authorization header', async () => {

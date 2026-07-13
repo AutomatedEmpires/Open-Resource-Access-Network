@@ -13,7 +13,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/services/auth/client';
 import {
   LayoutDashboard, Clock, UserCheck, AlertTriangle,
   CheckCircle2, TrendingUp, ArrowRight, ClipboardList,

@@ -84,6 +84,8 @@ describe('sourceRegistryStore', () => {
     const { db } = createMockDb([
       [
         makeRow(),
+        makeRow({ id: 'unclassified', resourcePurpose: null }),
+        makeRow({ id: 'invalid-purpose', resourcePurpose: 'retailer_directory' }),
         makeRow({ id: 'host-portal', name: 'ORAN Host Portal', domainRules: [], family: 'host_portal' }),
       ],
     ]);

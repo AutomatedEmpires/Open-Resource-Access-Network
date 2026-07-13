@@ -48,7 +48,7 @@ import AppealPage, { metadata as appealMetadata } from '@/app/(seeker)/appeal/pa
 import NotificationsPage, { metadata as notificationsMetadata } from '@/app/(seeker)/notifications/page';
 import ReportPage, { metadata as reportMetadata } from '@/app/(seeker)/report/page';
 import AuthErrorPage, { metadata as authErrorMetadata } from '@/app/auth/error/page';
-import SignInPage, { metadata as signInMetadata } from '@/app/auth/signin/page';
+import SignInPage, { metadata as signInMetadata } from '@/app/auth/signin/[[...signin]]/page';
 
 beforeEach(() => {
   vi.clearAllMocks();

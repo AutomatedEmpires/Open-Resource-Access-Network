@@ -4,7 +4,7 @@ import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ScopedMobileNav } from '@/components/nav/ScopedMobileNav';
+import { ScopedMobileNav, SEEKER_MOBILE_NAV_ITEMS } from '@/components/nav/ScopedMobileNav';
 
 vi.mock('next/link', () => ({ default: 'a' }));
 
@@ -70,5 +70,14 @@ describe('ScopedMobileNav', () => {
     );
 
     expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('exports the seeker tabs in the product-defined order', () => {
+    expect(SEEKER_MOBILE_NAV_ITEMS.map(({ label, href }) => ({ label, href }))).toEqual([
+      { label: 'Chat', href: '/chat' },
+      { label: 'Map', href: '/map' },
+      { label: 'Scroll', href: '/scroll' },
+      { label: 'Profile', href: '/profile' },
+    ]);
   });
 });

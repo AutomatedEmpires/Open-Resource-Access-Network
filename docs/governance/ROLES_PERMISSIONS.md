@@ -95,13 +95,13 @@ Can request, approve, deny, or revoke scope grants. Scope grant decisions enforc
 2. Host applies to claim organization → pending review → oran_admin approves → `host_admin` for that org
 3. host_admin invites team members → `host_member` for that org
 4. oran_admin designates community verifier → `community_admin` for a coverage zone
-5. oran_admin is manually provisioned in system bootstrap, for example with `scripts/provision-owner-access.mjs` for privileged operator bootstrap; that bootstrap can also add password-based credentials access onto an existing Entra-backed operator profile without replacing the Entra identity
+5. `oran_admin` is manually provisioned with `scripts/provision-owner-access.mjs` using an explicit Clerk user ID. The bootstrap never links by email or handles a password.
 
 ---
 
 ## Enforcement Points
 
-- **Middleware** (`src/middleware.ts`): Route-level role enforcement via Microsoft Entra ID / NextAuth.js JWT. Uses `getToken()` + `isRoleAtLeast()` for role comparison. Returns 403 for insufficient roles, 302 redirect for unauthenticated, 503 in production if auth is misconfigured.
+- **Proxy** (`src/proxy.ts`): Clerk identity gating plus same-origin protection for authenticated writes. Production fails closed when Clerk is not configured.
 - **Auth guards** (`src/services/auth/guards.ts`): Pure functions for role comparison (`isRoleAtLeast`, `requireMinRole`, `requireOrgAccess`, `requireOrgRole`).
-- **API handlers** (`src/app/api/*/route.ts`): Server-side session validation via `getAuthContext()` + resource-level permission checks. Returns 401/403 as appropriate. Production fail-closed via `shouldEnforceAuth()`.
+- **API handlers** (`src/app/api/*/route.ts`): Clerk-to-ORAN authorization resolution via `getAuthContext()` plus resource-level permission checks. Returns 401/403 as appropriate. Production fails closed via `shouldEnforceAuth()`.
 - **Drizzle RLS policies** (future): Row-level security in PostgreSQL for defense in depth.

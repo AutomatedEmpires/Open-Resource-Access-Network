@@ -1,7 +1,5 @@
-import bcrypt from 'bcryptjs';
 import { Pool } from 'pg';
 
-const BCRYPT_ROUNDS = 12;
 const BOOTSTRAP_ACTOR = 'bootstrap:provision-owner-access';
 const ORAN_ADMIN_CAPACITY = { maxPending: 50, maxInReview: 20 };
 
@@ -53,12 +51,10 @@ function parseArgs(argv) {
     primaryDisplayName: '',
     primaryUsername: '',
     primaryPhone: '',
-    primaryPassword: '',
     backupEmail: '',
     backupUserId: '',
     backupDisplayName: '',
     backupUsername: '',
-    backupPassword: '',
     orgName: '',
     orgUrl: '',
     orgEmail: '',
@@ -91,20 +87,20 @@ function usage(exitCode = 1) {
   const lines = [
     'Usage:',
     '  node scripts/provision-owner-access.mjs \\',
-    '    --primary-email <email> [--primary-user-id <entra-object-id>] [--primary-password <password>] [--primary-phone <phone>] \\',
-    '    [--backup-email <email> --backup-user-id <entra-object-id> --backup-password <password>] \\',
+    '    --primary-email <email> --primary-user-id <clerk-user-id> [--primary-phone <phone>] \\',
+    '    [--backup-email <email> --backup-user-id <clerk-user-id>] \\',
     '    --org-name <name> [--org-url <domain-or-url>] [--org-email <email>] [--org-phone <phone>]',
     '',
     'Behavior:',
     '  - Upgrades matching user_profiles rows to oran_admin and active account status.',
-    '  - Can pre-provision Entra-backed users by explicit user/object ID before first sign-in.',
-    '  - Creates credentials-backed accounts when a matching email does not yet exist and a password is supplied.',
+    '  - Requires an explicit Clerk user ID; accounts are never linked by email inference.',
+    '  - Creates Clerk-backed user profiles when the explicit identity does not yet exist.',
     '  - Creates or updates an organization and grants host_admin membership to provisioned users.',
     '  - Provisions admin_review_profiles with oran_admin capacity defaults.',
     '',
     'Important:',
     '  - DATABASE_URL is required.',
-    '  - Phone is stored as a credentials sign-in identifier only. ORAN does not implement SMS/OTP 2SV in-app.',
+    '  - Passwords and multi-factor authentication remain entirely within Clerk.',
   ];
   const output = lines.join('\n');
   if (exitCode === 0) {
@@ -207,42 +203,35 @@ async function ensureUser(client, account, profileColumns) {
   const normalizedPhone = normalizePhone(account.phone);
   const explicitUserId = String(account.userId ?? '').trim();
 
-  const existing = explicitUserId
-    ? await client.query(
-        `SELECT user_id, auth_provider, email
-         FROM user_profiles
-         WHERE user_id = $1 OR LOWER(COALESCE(email, '')) = $2
-         ORDER BY CASE WHEN user_id = $1 THEN 0 ELSE 1 END, updated_at DESC
-         LIMIT 1`,
-        [explicitUserId, email],
-      )
-    : await client.query(
-        `SELECT user_id, auth_provider, email
-         FROM user_profiles
-         WHERE LOWER(COALESCE(email, '')) = $1
-         ORDER BY updated_at DESC
-         LIMIT 1`,
-        [email],
-      );
+  if (!explicitUserId) {
+    return { status: 'skipped', email, reason: 'missing explicit Clerk user ID' };
+  }
+
+  const existing = await client.query(
+    `SELECT user_id, auth_provider, email
+     FROM user_profiles
+     WHERE clerk_user_id = $1 OR user_id = $1
+     ORDER BY CASE WHEN clerk_user_id = $1 THEN 0 ELSE 1 END, updated_at DESC
+     LIMIT 1`,
+    [explicitUserId],
+  );
 
   if (existing.rows[0]?.user_id) {
     const userId = existing.rows[0].user_id;
     await ensureUniquePhone(client, normalizedPhone, userId);
-    const passwordHash = account.password ? await bcrypt.hash(account.password, BCRYPT_ROUNDS) : null;
     const assignments = [
       `display_name = COALESCE($2, display_name)`,
       `username = COALESCE(username, $3)`,
       `email = $4`,
       `phone = COALESCE($5, phone)`,
+      `clerk_user_id = $7`,
+      `auth_provider = 'clerk'`,
+      `auth_migrated_at = COALESCE(auth_migrated_at, NOW())`,
       `role = 'oran_admin'`,
       `updated_at = NOW()`,
       `updated_by_user_id = $6`,
     ];
-    const params = [userId, displayName, username, email, normalizedPhone, BOOTSTRAP_ACTOR];
-    if (passwordHash) {
-      assignments.splice(4, 0, `password_hash = $7`);
-      params.push(passwordHash);
-    }
+    const params = [userId, displayName, username, email, normalizedPhone, BOOTSTRAP_ACTOR, explicitUserId];
     if (hasColumn(profileColumns, 'account_status')) {
       assignments.splice(5, 0, `account_status = 'active'`);
     }
@@ -265,51 +254,11 @@ async function ensureUser(client, account, profileColumns) {
     return { status: 'updated', email, userId };
   }
 
-  if (explicitUserId) {
-    await ensureUniquePhone(client, normalizedPhone, explicitUserId);
-    const columns = ['user_id', 'display_name', 'username', 'email', 'phone', 'auth_provider', 'role'];
-    const values = ['$1', '$2', '$3', '$4', '$5', `'azure-ad'`, `'oran_admin'`];
-    const params = [explicitUserId, displayName, username, email, normalizedPhone];
-    let nextIndex = params.length + 1;
-
-    if (hasColumn(profileColumns, 'account_status')) {
-      columns.push('account_status');
-      values.push(`'active'`);
-    }
-    if (hasColumn(profileColumns, 'created_by_user_id')) {
-      columns.push('created_by_user_id');
-      values.push(`$${nextIndex}`);
-      params.push(BOOTSTRAP_ACTOR);
-      nextIndex += 1;
-    }
-    if (hasColumn(profileColumns, 'updated_by_user_id')) {
-      columns.push('updated_by_user_id');
-      values.push(`$${nextIndex}`);
-      params.push(BOOTSTRAP_ACTOR);
-    }
-
-    await client.query(
-      `INSERT INTO user_profiles (${columns.join(', ')})
-       VALUES (${values.join(', ')})`,
-      params,
-    );
-    return { status: 'created', email, userId: explicitUserId, authProvider: 'azure-ad' };
-  }
-
-  if (!account.password) {
-    return {
-      status: 'skipped',
-      email,
-      reason: 'no existing account found and no credentials password supplied',
-    };
-  }
-
   await ensureUniquePhone(client, normalizedPhone, null);
-  const userId = crypto.randomUUID();
-  const passwordHash = await bcrypt.hash(account.password, BCRYPT_ROUNDS);
-  const columns = ['user_id', 'display_name', 'username', 'email', 'password_hash', 'phone', 'auth_provider', 'role'];
-  const values = ['$1', '$2', '$3', '$4', '$5', '$6', `'credentials'`, `'oran_admin'`];
-  const params = [userId, displayName, username, email, passwordHash, normalizedPhone];
+  const userId = explicitUserId;
+  const columns = ['user_id', 'display_name', 'username', 'email', 'phone', 'clerk_user_id', 'auth_provider', 'auth_migrated_at', 'role'];
+  const values = ['$1', '$2', '$3', '$4', '$5', '$1', `'clerk'`, 'NOW()', `'oran_admin'`];
+  const params = [userId, displayName, username, email, normalizedPhone];
   let nextIndex = params.length + 1;
 
   if (hasColumn(profileColumns, 'account_status')) {
@@ -333,7 +282,7 @@ async function ensureUser(client, account, profileColumns) {
      VALUES (${values.join(', ')})`,
     params,
   );
-  return { status: 'created', email, userId };
+  return { status: 'created', email, userId, authProvider: 'clerk' };
 }
 
 async function ensureHostAdminMembership(client, organizationId, userId) {
@@ -366,7 +315,12 @@ if (options.help) {
   usage(0);
 }
 
-if (!process.env.DATABASE_URL || !normalizeEmail(options.primaryEmail) || !String(options.orgName ?? '').trim()) {
+if (
+  !process.env.DATABASE_URL
+  || !normalizeEmail(options.primaryEmail)
+  || !String(options.primaryUserId ?? '').trim()
+  || !String(options.orgName ?? '').trim()
+) {
   usage(1);
 }
 
@@ -378,6 +332,9 @@ try {
     await client.query('BEGIN');
 
     const profileColumns = await getUserProfileColumns(client);
+    if (!hasColumn(profileColumns, 'clerk_user_id') || !hasColumn(profileColumns, 'auth_migrated_at')) {
+      throw new Error('Clerk identity bridge migration 0061 must be applied before owner provisioning');
+    }
     const organizationId = await ensureOrganization(client, options);
     if (!organizationId) {
       throw new Error('Failed to create or locate organization');
@@ -391,7 +348,6 @@ try {
         displayName: options.primaryDisplayName,
         username: options.primaryUsername,
         phone: options.primaryPhone,
-        password: options.primaryPassword,
       },
       {
         key: 'backup',
@@ -400,7 +356,6 @@ try {
         displayName: options.backupDisplayName,
         username: options.backupUsername,
         phone: '',
-        password: options.backupPassword,
       },
     ].filter((entry) => normalizeEmail(entry.email));
 
@@ -422,7 +377,7 @@ try {
       primaryEmail: normalizeEmail(options.primaryEmail),
       backupEmail: normalizeEmail(options.backupEmail) || null,
       phoneStoredForPrimary: normalizePhone(options.primaryPhone),
-      note: 'Phone is stored for credentials identifier login only. ORAN does not currently implement SMS/OTP 2SV in-app.',
+      note: 'Identity, passwords, and multi-factor authentication are managed by Clerk.',
       summary,
     }, null, 2));
   } catch (error) {

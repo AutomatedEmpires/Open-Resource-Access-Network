@@ -183,7 +183,7 @@ Intent also extracts:
 
 ### Stage 5: Profile Hydration
 
-For authenticated users (Entra ID / NextAuth.js session present):
+For authenticated users (Clerk session with an ORAN authorization context):
 
 - Load saved approximate city from `user_profiles`
 - Load saved seeker context from `seeker_profiles`

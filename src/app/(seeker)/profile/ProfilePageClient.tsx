@@ -226,9 +226,10 @@ const ACCENT_THEME_OPTIONS: Array<{
 ];
 
 const AUTH_PROVIDER_LABELS: Record<string, string> = {
-  'azure-ad': 'Microsoft Entra ID',
-  google: 'Google',
-  credentials: 'Email + password',
+  clerk: 'Clerk',
+  'azure-ad': 'Legacy account',
+  credentials: 'Legacy account',
+  google: 'Clerk',
 };
 
 const LANGUAGE_OPTIONS = [
@@ -544,10 +545,6 @@ export default function ProfilePage() {
   const [language, setLanguage] = useState(() => readStoredProfilePreferences().language ?? 'en');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasLoadedServerProfile, setHasLoadedServerProfile] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [savedCount, setSavedCount] = useState(() => readStoredSavedServiceCount());
   const [isDark, setIsDark] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -781,48 +778,6 @@ export default function ProfilePage() {
 
     toast('info', 'Cross-device sync is now off. Existing account data remains until you delete it.');
   }, [account.displayName, account.phone, city, isAuthenticated, language, prefs, seeker, toast]);
-
-  const updatePassword = useCallback(async () => {
-    if (!isAuthenticated) {
-      toast('error', 'You need to sign in first.');
-      return;
-    }
-    if (account.authProvider !== 'credentials') {
-      toast('info', 'Password changes are only available for email + password accounts.');
-      return;
-    }
-    if (!currentPassword || !newPassword) {
-      toast('error', 'Enter your current and new password.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      toast('error', 'New password confirmation does not match.');
-      return;
-    }
-
-    setIsUpdatingPassword(true);
-    try {
-      const res = await fetch('/api/user/security/password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-      const json = (await res.json()) as { error?: string; message?: string };
-      if (!res.ok) {
-        toast('error', json.error ?? 'Failed to update password.');
-        return;
-      }
-
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      toast('success', json.message ?? 'Password updated successfully.');
-    } catch {
-      toast('error', 'Failed to update password.');
-    } finally {
-      setIsUpdatingPassword(false);
-    }
-  }, [account.authProvider, confirmPassword, currentPassword, isAuthenticated, newPassword, toast]);
 
   // ── Delete all data ─────────────────────────────────────────
   const deleteAllData = useCallback(async () => {
@@ -1636,53 +1591,12 @@ export default function ProfilePage() {
                   Save account details
                 </Button>
 
-                {account.authProvider === 'credentials' ? (
-                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-sm font-medium text-slate-900">Update password</p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <FormField label="Current password" htmlFor="current-password">
-                        <input
-                          id="current-password"
-                          type="password"
-                          autoComplete="current-password"
-                          value={currentPassword}
-                          onChange={e => setCurrentPassword(e.target.value)}
-                          className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-                        />
-                      </FormField>
-                      <FormField label="New password" htmlFor="new-password">
-                        <input
-                          id="new-password"
-                          type="password"
-                          autoComplete="new-password"
-                          value={newPassword}
-                          onChange={e => setNewPassword(e.target.value)}
-                          className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-                        />
-                      </FormField>
-                    </div>
-                    <FormField label="Confirm new password" htmlFor="confirm-password">
-                      <input
-                        id="confirm-password"
-                        type="password"
-                        autoComplete="new-password"
-                        value={confirmPassword}
-                        onChange={e => setConfirmPassword(e.target.value)}
-                        className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-                      />
-                    </FormField>
-                    <Button type="button" size="sm" onClick={() => void updatePassword()} disabled={isUpdatingPassword}>
-                      {isUpdatingPassword ? 'Updating password...' : 'Update password'}
-                    </Button>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500">
-                    Password changes for social or Microsoft sign-in accounts are managed by your identity provider. Notification preferences are available in the separate notifications section.
-                  </p>
-                )}
+                <p className="text-xs text-slate-500">
+                  Passwords, multi-factor authentication, and connected sign-in methods are managed securely by Clerk. Use the account menu to open your sign-in settings.
+                </p>
               </div>
             ) : (
-              <p className="text-sm text-slate-500">Sign in to manage account identity, password settings, and cross-device profile sync.</p>
+              <p className="text-sm text-slate-500">Sign in to manage account identity, security settings, and cross-device profile sync.</p>
             )}
           </CollapsibleSection>
 

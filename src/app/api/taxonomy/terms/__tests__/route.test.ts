@@ -96,6 +96,10 @@ describe('api/taxonomy/terms route', () => {
     expect(dbMocks.executeQuery).toHaveBeenCalledOnce();
     const [sql, params] = dbMocks.executeQuery.mock.calls[0];
     expect(String(sql)).toContain('FROM taxonomy_terms');
+    expect(String(sql)).toContain('COUNT(DISTINCT CASE');
+    expect(String(sql)).toContain('JOIN organizations o');
+    expect(String(sql)).toContain('source_systems publication_system');
+    expect(String(sql)).toContain("resource_purpose NOT IN ('service_catalog', 'program_navigation')");
     expect(params).toEqual(['food', null, null, 10]);
   });
 

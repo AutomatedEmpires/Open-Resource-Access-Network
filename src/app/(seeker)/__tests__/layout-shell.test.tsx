@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { beforeEach, afterAll, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { writeStoredSeekerProfile } from '@/services/profile/clientContext';
 import { writeStoredProfilePreferences } from '@/services/profile/syncPreference';
 import { writeStoredSavedServiceIds } from '@/services/saved/client';
@@ -76,26 +76,16 @@ describe('seeker layout shell', () => {
     expect(screen.getByTestId('palette-state')).toHaveTextContent('closed');
   });
 
-  it('loads saved count badge from localStorage, caps at 99+, and ignores invalid JSON', async () => {
-    usePathnameMock.mockReturnValue('/saved');
-    localStorage.setItem(
-      'oran:saved-service-ids',
-      JSON.stringify(Array.from({ length: 120 }, (_, i) => `svc-${i}`)),
-    );
+  it('pins the invariant seeker navigation in Chat, Map, Scroll, Profile order', () => {
+    render(<SeekerLayoutShell planEnabled dashboardEnabled>Child</SeekerLayoutShell>);
 
-    const { unmount } = render(<SeekerLayoutShell planEnabled>Child</SeekerLayoutShell>);
-    await waitFor(() => {
-      expect(screen.getAllByText('99+').length).toBeGreaterThan(0);
-    });
+    const nav = screen.getByRole('navigation', { name: 'Seeker mobile navigation' });
+    const labels = within(nav).getAllByRole('link').map((link: HTMLElement) => link.textContent?.trim());
 
-    expect(screen.getAllByText('99+').length).toBeGreaterThan(0);
-    unmount();
-
-    localStorage.setItem('oran:saved-service-ids', '{bad-json');
-    render(<SeekerLayoutShell planEnabled>Child</SeekerLayoutShell>);
-    await waitFor(() => {
-      expect(screen.queryByText('99+')).toBeNull();
-    });
+    expect(labels).toEqual(['Chat', 'Map', 'Scroll', 'Profile']);
+    expect(within(nav).queryByRole('link', { name: 'Saved' })).toBeNull();
+    expect(within(nav).queryByRole('link', { name: 'Plan' })).toBeNull();
+    expect(within(nav).queryByRole('link', { name: 'Dashboard' })).toBeNull();
   });
 
   it('renders seeker context strip details from localStorage', async () => {
@@ -157,19 +147,4 @@ describe('seeker layout shell', () => {
     expect(screen.getByRole('link', { name: 'Manage preferences' })).toBeInTheDocument();
   });
 
-  it('hides the plan navigation item when the feature flag is off', () => {
-    render(<SeekerLayoutShell planEnabled={false}>Child</SeekerLayoutShell>);
-
-    expect(screen.queryByRole('link', { name: 'Plan' })).toBeNull();
-  });
-
-  it('shows the dashboard navigation item only when the dashboard flag is on', () => {
-    const { rerender } = render(<SeekerLayoutShell planEnabled reminderEnabled dashboardEnabled={false}>Child</SeekerLayoutShell>);
-
-    expect(screen.queryByRole('link', { name: 'Dashboard' })).toBeNull();
-
-    rerender(<SeekerLayoutShell planEnabled reminderEnabled dashboardEnabled>Child</SeekerLayoutShell>);
-
-    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
-  });
 });

@@ -1,5 +1,9 @@
 # Footer Pages — Master Plan
 
+> **Historical implementation plan.** NextAuth/Entra and Azure references below
+> describe the original build; the live pages now use Clerk, Supabase, Vercel,
+> Sentry, and OpenStreetMap as documented in `docs/platform/INTEGRATIONS.md`.
+
 **Created**: 2026-03-06
 **Status**: Stubs deployed · Pages pending
 **Route group**: `src/app/(public)/` — all pages use `AppNav` + `AppFooter`

@@ -18,6 +18,7 @@ const TEMPLATE_ID = '11111111-1111-4111-8111-111111111111';
 
 function makeAuthCtx(role: OranRole = 'oran_admin', userId = 'user-admin-1') {
   return {
+    clerkUserId: userId,
     userId,
     role,
     accountStatus: 'active' as const,

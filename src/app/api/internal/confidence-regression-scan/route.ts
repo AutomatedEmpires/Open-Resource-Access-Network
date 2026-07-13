@@ -1,7 +1,8 @@
 /**
- * POST /api/internal/confidence-regression-scan
+ * GET|POST /api/internal/confidence-regression-scan
  *
- * Internal endpoint called by an Azure Functions timer trigger every 6 hours.
+ * Internal endpoint called by Vercel Cron. POST remains available to
+ * authenticated rollback workers and operational tooling.
  * Detects trust-signal regressions across four signals:
  *   1. service_updated_after_verification — service data changed after score computed
  *   2. feedback_severity — repeated negative seeker feedback or community reports
@@ -23,13 +24,14 @@
  *   - Insert writes use UNNEST batch inserts — O(1) queries regardless of
  *     candidate count.
  *
- * Protected by `INTERNAL_API_KEY` (shared secret). Not accessible to end users.
+ * Protected by the shared internal request authorization boundary.
  */
 
-import { randomUUID, timingSafeEqual } from 'crypto';
+import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import type { PoolClient } from 'pg';
 import { isDatabaseConfigured, getPgPool, withTransaction } from '@/services/db/postgres';
+import { rejectUnauthorizedInternalRequest } from '@/services/auth/internalRequest';
 import { captureException } from '@/services/telemetry/sentry';
 import { detectRegressions } from '@/services/regression/detector';
 import type { RegressionCandidate } from '@/services/regression/detector';
@@ -42,29 +44,11 @@ type ScanResult = {
 
 const DEFAULT_LIMIT = 100;
 
-export async function POST(req: NextRequest) {
-  const apiKey = process.env.INTERNAL_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: 'Internal API not configured' }, { status: 503 });
-  }
+export const dynamic = 'force-dynamic';
 
-  const authHeader = req.headers.get('authorization') ?? '';
-  const expected = `Bearer ${apiKey}`;
-  const authBuf = Buffer.from(authHeader);
-  const expectedBuf = Buffer.from(expected);
-  if (authBuf.length !== expectedBuf.length || !timingSafeEqual(authBuf, expectedBuf)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
+async function runRegressionScan(body: unknown) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
-  }
-
-  let body: unknown = null;
-  try {
-    body = await req.json();
-  } catch {
-    // body is optional; ignore parse errors
   }
 
   const limit = (() => {
@@ -105,6 +89,27 @@ export async function POST(req: NextRequest) {
     await captureException(error, { feature: 'confidence_regression_scan' });
     return NextResponse.json({ error: 'Regression scan failed' }, { status: 500 });
   }
+}
+
+export async function GET(req: NextRequest) {
+  const authFailure = rejectUnauthorizedInternalRequest(req);
+  if (authFailure) return authFailure;
+
+  return runRegressionScan(null);
+}
+
+export async function POST(req: NextRequest) {
+  const authFailure = rejectUnauthorizedInternalRequest(req);
+  if (authFailure) return authFailure;
+
+  let body: unknown = null;
+  try {
+    body = await req.json();
+  } catch {
+    // The manual limit is optional; invalid or empty bodies use the safe default.
+  }
+
+  return runRegressionScan(body);
 }
 
 // ============================================================

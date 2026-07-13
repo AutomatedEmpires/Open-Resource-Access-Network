@@ -27,7 +27,7 @@ This document provides an auditable snapshot of operational readiness for produc
 | Rate-limit incident response | `docs/ops/services/RUNBOOK_RATE_LIMIT_INCIDENT.md` | Implemented |
 | Data quality incident response | `docs/ops/services/RUNBOOK_DATA_QUALITY_INCIDENT.md` | Implemented |
 | CI/CD pipeline failure response | `docs/ops/services/RUNBOOK_CI_CD_PIPELINE_FAILURE.md` | Implemented |
-| Internal API key rotation | `docs/ops/security/RUNBOOK_INTERNAL_API_KEY_ROTATION.md` | Implemented |
+| Cron/internal worker secret rotation | `docs/ops/security/RUNBOOK_INTERNAL_API_KEY_ROTATION.md` | Implemented |
 | Key Vault access failure response | `docs/ops/security/RUNBOOK_KEY_VAULT_ACCESS_FAILURE.md` | Implemented |
 | Observability outage response | `docs/ops/monitoring/RUNBOOK_OBSERVABILITY_OUTAGE.md` | Implemented |
 | Incident postmortem process | `docs/ops/core/RUNBOOK_INCIDENT_POSTMORTEM.md` | Implemented |

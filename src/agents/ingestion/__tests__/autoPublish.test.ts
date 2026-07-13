@@ -50,6 +50,7 @@ function makeSrcSys(overrides: Partial<SourceSystemRow> = {}): SourceSystemRow {
     name: 'HSDS Publisher',
     family: 'hsds',
     trustTier: 'verified_publisher',
+    resourcePurpose: 'service_catalog',
     crawlFrequencyHours: 24,
     baseUrl: 'https://example.com',
     isActive: true,
@@ -85,6 +86,19 @@ describe('evaluatePolicy', () => {
     expect(decision.eligible).toBe(false);
     expect(decision.reason).toContain("resource_purpose 'supporting_reference' blocked");
   });
+
+  it.each([undefined, 'invalid-purpose'])(
+    'rejects missing or invalid source purpose (%s)',
+    (resourcePurpose) => {
+      const decision = evaluatePolicy(
+        makeSvc(),
+        makeSrcSys({ resourcePurpose } as Partial<SourceSystemRow>),
+        DEFAULT_POLICY,
+      );
+      expect(decision.eligible).toBe(false);
+      expect(decision.reason).toContain("resource_purpose 'unclassified' blocked");
+    },
+  );
 
   it('allows official program navigation through the normal trust gates', () => {
     const decision = evaluatePolicy(

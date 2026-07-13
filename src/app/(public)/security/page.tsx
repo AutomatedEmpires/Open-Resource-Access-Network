@@ -15,14 +15,14 @@ export const metadata: Metadata = {
 };
 
 const IN_SCOPE = [
-  'ORAN web application (oranhf57ir-prod-web.azurewebsites.net)',
+  'ORAN web application (openresourceaccessnetwork.com)',
   'All public API endpoints (/api/**)',
   'Authentication and session management',
   'Data submission and search pipeline',
 ];
 
 const OUT_OF_SCOPE = [
-  'Third-party services (Azure Maps, Microsoft Entra ID, Azure infrastructure)',
+  'Third-party services (Clerk, Supabase, Vercel, Sentry, OpenStreetMap)',
   'Denial-of-service attacks',
   'Social engineering or phishing attempts against ORAN staff',
   'Physical security',
@@ -32,7 +32,7 @@ const SECURITY_PRACTICES = [
   {
     area: 'Authentication',
     detail:
-      'Microsoft Entra ID via NextAuth.js. All protected routes gated server-side. Sessions fail closed if auth is misconfigured.',
+      'Clerk manages identity and sessions. ORAN-owned roles are resolved from the database, protected routes are gated server-side, and production fails closed when auth is unavailable.',
   },
   {
     area: 'Authorization',
@@ -50,7 +50,7 @@ const SECURITY_PRACTICES = [
   },
   {
     area: 'Encryption at rest',
-    detail: 'Database encrypted at rest via Azure Database for PostgreSQL Flexible Server.',
+    detail: 'Application data is encrypted at rest in the dedicated ORAN Supabase project.',
   },
   {
     area: 'PII in telemetry',
@@ -64,7 +64,7 @@ const SECURITY_PRACTICES = [
   {
     area: 'Rate limiting',
     detail:
-      'In-memory sliding-window rate limiting on all API routes. 429 responses include Retry-After headers.',
+      'Shared rate limiting protects high-value API routes, with local resilience fallback. 429 responses include Retry-After headers.',
   },
   {
     area: 'Dependency management',

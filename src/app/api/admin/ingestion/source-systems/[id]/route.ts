@@ -165,7 +165,7 @@ export async function PUT(
 					action: 'update',
 					entityId: id,
 					entityLabel: existing.name,
-					summary: `Trust ${existing.trustTier ?? 'unknown'} -> ${parsed.data.trustTier ?? existing.trustTier ?? 'unknown'}; purpose ${existing.resourcePurpose ?? 'service_catalog'} -> ${parsed.data.resourcePurpose ?? existing.resourcePurpose ?? 'service_catalog'}`,
+					summary: `Trust ${existing.trustTier ?? 'unknown'} -> ${parsed.data.trustTier ?? existing.trustTier ?? 'unknown'}; purpose ${existing.resourcePurpose ?? 'unclassified'} -> ${parsed.data.resourcePurpose ?? existing.resourcePurpose ?? 'unclassified'}`,
 					beforeState: existing as Record<string, unknown>,
 					patch: parsed.data,
 				},

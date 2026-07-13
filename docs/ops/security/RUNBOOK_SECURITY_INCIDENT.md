@@ -51,12 +51,14 @@ Do not include raw secrets or sensitive personal data in incident documents.
 
 ### A. Secret/Key Exposure
 
-1. Rotate exposed secrets immediately (Key Vault/App Service references):
-   - `NEXTAUTH_SECRET`
-   - `AZURE_AD_CLIENT_SECRET`
-   - `INTERNAL_API_KEY`
+1. Rotate exposed secrets immediately in the dedicated ORAN provider and Vercel/Doppler configuration:
+   - `CLERK_SECRET_KEY`
+   - `SENTRY_AUTH_TOKEN`
+   - Supabase database credentials
+   - `CRON_SECRET`
+   - `INTERNAL_API_KEY` when the rollback credential is enabled
    - Any exposed integration credentials
-2. Restart affected apps/functions after rotation.
+2. Redeploy affected Vercel functions and restart any ORAN-only workers after rotation.
 3. Validate service health and auth flows post-rotation.
 
 ### B. Unauthorized Access Patterns

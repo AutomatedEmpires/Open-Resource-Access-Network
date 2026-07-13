@@ -2,7 +2,7 @@
 
 Status: protected-preview product direction and implementation note.
 
-Brand line: **Building Bridges, Strengthening Communities**.
+Brand line: **Building Bridges | Strengthening Communities**.
 
 ## Internal diagnosis
 

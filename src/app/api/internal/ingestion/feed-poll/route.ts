@@ -1,34 +1,26 @@
 /**
- * POST /api/internal/ingestion/feed-poll
+ * GET|POST /api/internal/ingestion/feed-poll
  *
- * Internal endpoint called by a timer-triggered Azure Function to poll active
- * source feeds on a schedule. Protected by INTERNAL_API_KEY bearer auth.
+ * Internal endpoint called by Vercel Cron to poll active source feeds. POST
+ * remains available to authenticated rollback workers and operational tooling.
  */
 
-import { timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { isDatabaseConfigured } from '@/services/db/postgres';
+import { rejectUnauthorizedInternalRequest } from '@/services/auth/internalRequest';
 import { captureException } from '@/services/telemetry/sentry';
 import { validateRuntimeEnv } from '@/services/runtime/envContract';
+
+export const dynamic = 'force-dynamic';
 
 function isEnabled(value: string | undefined): boolean {
   return ['1', 'true', 'yes', 'on'].includes(String(value ?? '').trim().toLowerCase());
 }
 
-export async function POST(req: NextRequest) {
-  const apiKey = process.env.INTERNAL_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: 'Internal API not configured' }, { status: 503 });
-  }
-
-  const authHeader = req.headers.get('authorization') ?? '';
-  const expected = `Bearer ${apiKey}`;
-  const authBuf = Buffer.from(authHeader);
-  const expectedBuf = Buffer.from(expected);
-  if (authBuf.length !== expectedBuf.length || !timingSafeEqual(authBuf, expectedBuf)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+async function pollSourceFeeds(req: NextRequest) {
+  const authFailure = rejectUnauthorizedInternalRequest(req);
+  if (authFailure) return authFailure;
 
   if (!isEnabled(process.env.SOURCE_FEED_POLLING_ENABLED)) {
     return NextResponse.json({
@@ -102,4 +94,12 @@ export async function POST(req: NextRequest) {
     await captureException(error, { feature: 'internal_feed_poll' });
     return NextResponse.json({ error: 'Feed polling failed' }, { status: 500 });
   }
+}
+
+export async function GET(req: NextRequest) {
+  return pollSourceFeeds(req);
+}
+
+export async function POST(req: NextRequest) {
+  return pollSourceFeeds(req);
 }

@@ -6,6 +6,21 @@ This doc defines the concrete parameters we apply sitewide to achieve a coherent
 
 Principle: **standardize the defaults** so individual pages don’t invent their own spacing, typography, or states.
 
+## 0) Brand foundation
+
+ORAN uses saturated sky, azure, cobalt, and navy for identity and action. Cool
+silver/chrome surfaces provide structure. Decorative pastel palettes are not
+part of the product language.
+
+- Primary gradient: `--gradient-brand`
+- Deep hero gradient: `--gradient-brand-deep`
+- Metal edge/highlight: `--gradient-chrome`
+- Page surface: `--surface-page`
+- UI body: Manrope (`--font-manrope`)
+- Display/headings: Space Grotesk (`--font-space-grotesk`)
+
+The canonical brand line is `Building Bridges | Strengthening Communities`.
+
 ---
 
 ## 1) Breakpoints (Tailwind defaults)
@@ -35,7 +50,7 @@ Use these as defaults (deviation requires a reason):
 
 Page title (H1):
 
-- `text-2xl font-bold` (mobile) and MAY increase to `sm:text-3xl` for dashboard titles
+- `font-display text-2xl font-bold` (mobile) and MAY increase for seeker hero surfaces
 
 Section title (H2):
 
@@ -65,8 +80,10 @@ Standard spacing:
 
 Card baseline:
 
-- `bg-white border border-gray-200 rounded-lg`
-- Shadows MUST be subtle: `shadow-sm` and `hover:shadow-md` only where interactive.
+- Content remains on high-contrast white or bright-metal surfaces.
+- Use silver borders (`--border`) for structure and `--gradient-chrome` as a one-pixel edge on highlighted panels.
+- Strong gradients belong on primary hero/action regions, not behind dense service details.
+- Shadows SHOULD use the standard `shadow-sm` through `shadow-2xl` scale; interactive cards may deepen on hover.
 
 ---
 

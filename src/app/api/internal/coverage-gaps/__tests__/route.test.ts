@@ -43,6 +43,7 @@ function createRequest(options: {
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  vi.stubEnv('CRON_SECRET', 'test-cron-secret');
   vi.stubEnv('INTERNAL_API_KEY', 'test-secret');
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
   gapsMocks.getCoverageGapSummaries.mockResolvedValue([]);
@@ -50,12 +51,21 @@ beforeEach(() => {
   captureExceptionMock.mockResolvedValue(undefined);
 });
 
-describe('POST /api/internal/coverage-gaps', () => {
-  it('returns 503 when INTERNAL_API_KEY is not configured', async () => {
+describe('GET|POST /api/internal/coverage-gaps', () => {
+  it('returns 503 when no internal credential is configured', async () => {
+    vi.stubEnv('CRON_SECRET', '');
     vi.stubEnv('INTERNAL_API_KEY', '');
     const { POST } = await import('../route');
     const res = await POST(createRequest({ apiKey: 'test-secret' }));
     expect(res.status).toBe(503);
+  });
+
+  it('accepts a Vercel Cron GET request with the default threshold', async () => {
+    const { GET } = await import('../route');
+    const res = await GET(createRequest({ apiKey: 'test-cron-secret' }));
+
+    expect(res.status).toBe(200);
+    expect(gapsMocks.getCoverageGapSummaries).toHaveBeenCalledWith(24);
   });
 
   it('returns 401 when authorization header is missing', async () => {

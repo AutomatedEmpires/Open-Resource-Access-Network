@@ -12,6 +12,24 @@ export const ACCESSIBILITY_NEED_VALUES = ['wheelchair_access', 'hearing_support'
 export const DELIVERY_MODE_VALUES = ['in_person', 'virtual', 'phone', 'hybrid'] as const;
 export const URGENCY_WINDOW_VALUES = ['same_day', 'next_day', 'flexible'] as const;
 export const DOCUMENTATION_BARRIER_VALUES = ['no_id', 'no_documents', 'no_ssn'] as const;
+export const EMPLOYMENT_STATUS_VALUES = [
+  'employed_full_time',
+  'employed_part_time',
+  'self_employed',
+  'unemployed_looking',
+  'not_currently_working',
+  'student',
+  'retired',
+  'prefer_not_to_say',
+] as const;
+export const INCOME_RANGE_VALUES = [
+  'no_income',
+  'under_1500_monthly',
+  '1500_2999_monthly',
+  '3000_4999_monthly',
+  '5000_plus_monthly',
+  'prefer_not_to_say',
+] as const;
 
 export type ServiceInterestId = (typeof SERVICE_INTEREST_VALUES)[number];
 export type AgeGroupId = (typeof AGE_GROUP_VALUES)[number];
@@ -23,6 +41,8 @@ export type AccessibilityNeedId = (typeof ACCESSIBILITY_NEED_VALUES)[number];
 export type DeliveryModeId = (typeof DELIVERY_MODE_VALUES)[number];
 export type UrgencyWindowId = (typeof URGENCY_WINDOW_VALUES)[number];
 export type DocumentationBarrierId = (typeof DOCUMENTATION_BARRIER_VALUES)[number];
+export type EmploymentStatusId = (typeof EMPLOYMENT_STATUS_VALUES)[number];
+export type IncomeRangeId = (typeof INCOME_RANGE_VALUES)[number];
 
 export const SeekerProfileSchema = z.object({
   serviceInterests: z.array(z.enum(SERVICE_INTEREST_VALUES)).max(32).default([]),
@@ -37,6 +57,13 @@ export const SeekerProfileSchema = z.object({
   urgencyWindow: z.enum(URGENCY_WINDOW_VALUES).or(z.literal('')).default(''),
   documentationBarriers: z.array(z.enum(DOCUMENTATION_BARRIER_VALUES)).max(3).default([]),
   digitalAccessBarrier: z.boolean().default(false),
+  employmentStatus: z.enum(EMPLOYMENT_STATUS_VALUES).or(z.literal('')).default(''),
+  incomeRange: z.enum(INCOME_RANGE_VALUES).or(z.literal('')).default(''),
+  householdSize: z.number().int().min(1).max(20).nullable().default(null),
+  veteranServicePreference: z.boolean().default(false),
+  onboardingProfileConsent: z.boolean().default(false),
+  onboardingConsentVersion: z.string().max(40).default(''),
+  onboardingCompletedAt: z.string().datetime().or(z.literal('')).default(''),
   pronouns: z.string().max(50).default(''),
   profileHeadline: z.string().max(120).default(''),
   avatarEmoji: z.string().max(8).default(''),
@@ -44,6 +71,41 @@ export const SeekerProfileSchema = z.object({
   contactPhone: z.string().max(50).default(''),
   contactEmail: z.string().max(254).default(''),
   additionalContext: z.string().max(500).default(''),
+});
+
+const PersistedSeekerProfileSchema = SeekerProfileSchema.superRefine((profile, context) => {
+  const hasOnboardingOnlyContext = Boolean(
+    profile.employmentStatus
+    || profile.incomeRange
+    || profile.householdSize !== null
+    || profile.veteranServicePreference
+    || profile.onboardingConsentVersion
+    || profile.onboardingCompletedAt,
+  );
+
+  if (hasOnboardingOnlyContext && !profile.onboardingProfileConsent) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['onboardingProfileConsent'],
+      message: 'Explicit profile-storage consent is required for onboarding context.',
+    });
+  }
+
+  if (profile.onboardingProfileConsent && !profile.onboardingConsentVersion) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['onboardingConsentVersion'],
+      message: 'A consent version is required when onboarding context is saved.',
+    });
+  }
+
+  if (profile.onboardingProfileConsent && !profile.onboardingCompletedAt) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['onboardingCompletedAt'],
+      message: 'A completion timestamp is required when onboarding context is saved.',
+    });
+  }
 });
 
 export type SeekerProfile = z.infer<typeof SeekerProfileSchema>;
@@ -61,6 +123,13 @@ export const EMPTY_SEEKER_PROFILE: SeekerProfile = {
   urgencyWindow: '',
   documentationBarriers: [],
   digitalAccessBarrier: false,
+  employmentStatus: '',
+  incomeRange: '',
+  householdSize: null,
+  veteranServicePreference: false,
+  onboardingProfileConsent: false,
+  onboardingConsentVersion: '',
+  onboardingCompletedAt: '',
   pronouns: '',
   profileHeadline: '',
   avatarEmoji: '',
@@ -75,7 +144,7 @@ export const UpdateProfileSchema = z.object({
   preferredLocale: z.string().max(10).optional(),
   displayName: z.string().min(1).max(100).optional(),
   phone: z.string().max(20).optional(),
-  seekerProfile: SeekerProfileSchema.optional(),
+  seekerProfile: PersistedSeekerProfileSchema.optional(),
 });
 
 export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>;
@@ -100,6 +169,11 @@ export function hasMeaningfulSeekerProfile(profile: Partial<SeekerProfile> | nul
     normalized.urgencyWindow ||
     normalized.documentationBarriers.length > 0 ||
     normalized.digitalAccessBarrier ||
+    normalized.employmentStatus ||
+    normalized.incomeRange ||
+    normalized.householdSize !== null ||
+    normalized.veteranServicePreference ||
+    normalized.onboardingProfileConsent ||
     normalized.pronouns.trim() ||
     normalized.profileHeadline.trim() ||
     normalized.avatarEmoji.trim() ||

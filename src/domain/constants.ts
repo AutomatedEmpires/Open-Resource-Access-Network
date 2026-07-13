@@ -416,8 +416,17 @@ export const PERMISSIONS = {
 // CHAT & QUOTA
 // ============================================================
 
-/** Maximum messages per chat session */
-export const MAX_CHAT_QUOTA = 20;
+/** Successful non-crisis messages available to an anonymous device in a rolling 24-hour window. */
+export const ANONYMOUS_CHAT_QUOTA = 10;
+
+/** Successful non-crisis messages available to an authenticated account in a rolling 24-hour window. */
+export const AUTHENTICATED_CHAT_QUOTA = 20;
+
+/**
+ * Legacy session-level ceiling retained for orchestrator compatibility.
+ * Identity-aware daily enforcement uses the anonymous/authenticated limits above.
+ */
+export const MAX_CHAT_QUOTA = AUTHENTICATED_CHAT_QUOTA;
 
 /** 24-hour quota window in milliseconds — enforces cooldown between quota exhaustion and renewal */
 export const CHAT_QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -435,7 +444,13 @@ export const MAX_SESSION_QUOTA_ENTRIES = 2000;
 export const RATE_LIMIT_WINDOW_MS = 60_000;
 
 /** Maximum chat API requests per RATE_LIMIT_WINDOW_MS */
-export const RATE_LIMIT_MAX_REQUESTS = 20;
+export const RATE_LIMIT_MAX_REQUESTS = 6;
+
+/** Maximum time an abandoned chat request may hold an in-flight reservation. */
+export const CHAT_INFLIGHT_LEASE_MS = 5 * 60 * 1000;
+
+/** Retry delay when configured persistent chat usage controls are unavailable. */
+export const CHAT_USAGE_UNAVAILABLE_RETRY_SECONDS = 30;
 
 /** Maximum search API requests per RATE_LIMIT_WINDOW_MS */
 export const SEARCH_RATE_LIMIT_MAX_REQUESTS = 60;

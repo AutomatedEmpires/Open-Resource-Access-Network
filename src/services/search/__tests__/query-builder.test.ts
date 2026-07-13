@@ -167,6 +167,26 @@ describe('buildFiltersWhereClause', () => {
     const clause = buildFiltersWhereClause({ status: 'active' });
     expect(clause.sql).not.toContain('service_attributes');
   });
+
+  it('excludes supporting-reference-only resources on standalone seeker surfaces', () => {
+    const clause = buildFiltersWhereClause({
+      status: 'active',
+      publishedOnly: true,
+      standaloneOnly: true,
+    });
+
+    expect(clause.sql).toContain('canonical_services publication_source');
+    expect(clause.sql).toContain('publication_system.resource_purpose NOT IN');
+    expect(clause.sql).toContain('USDA FNS SNAP Retailer Locator');
+    expect(clause.params).toEqual(['active']);
+  });
+
+  it('does not add the standalone source-purpose gate to ordinary search', () => {
+    const clause = buildFiltersWhereClause({ status: 'active' });
+
+    expect(clause.sql).not.toContain('resource_purpose');
+    expect(clause.sql).not.toContain('SNAP Retailer Locator');
+  });
 });
 
 // ============================================================
@@ -243,6 +263,74 @@ describe('buildSearchQuery', () => {
       geo: { type: 'bbox', minLat: 40.0, minLng: -75.0, maxLat: 41.0, maxLng: -73.0 },
     });
     expect(built.sql).toContain('ST_MakeEnvelope');
+  });
+
+  it('keeps bbox-only count params shared and appends center params only to data SQL', () => {
+    const built = buildSearchQuery({
+      ...baseQuery,
+      geo: { type: 'bbox', minLat: 40, minLng: -76, maxLat: 42, maxLng: -72 },
+    });
+
+    expect(built.countParams).toEqual([
+      'active',
+      -76, 40, -72, 42,
+    ]);
+    expect(built.params).toEqual([
+      'active',
+      -76, 40, -72, 42,
+      41, -74,
+      20, 0,
+    ]);
+    expect(built.sql).toMatch(/ST_MakePoint\(\$7, \$6\)/);
+    expect(built.sql).toContain('LIMIT $8 OFFSET $9');
+
+    const placeholders = [...built.sql.matchAll(/\$(\d+)/g)]
+      .map((match) => Number(match[1]));
+    expect([...new Set(placeholders)].sort((a, b) => a - b)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9,
+    ]);
+
+    const countPlaceholders = [...built.countSql.matchAll(/\$(\d+)/g)]
+      .map((match) => Number(match[1]));
+    expect([...new Set(countPlaceholders)].sort((a, b) => a - b)).toEqual([
+      1, 2, 3, 4, 5,
+    ]);
+  });
+
+  it('keeps bbox and text count params contiguous before data-only center params', () => {
+    const built = buildSearchQuery({
+      ...baseQuery,
+      text: 'shelter',
+      geo: { type: 'bbox', minLat: 40, minLng: -76, maxLat: 42, maxLng: -72 },
+    });
+
+    expect(built.countParams).toEqual([
+      'active',
+      -76, 40, -72, 42,
+      'shelter',
+    ]);
+    expect(built.params).toEqual([
+      'active',
+      -76, 40, -72, 42,
+      'shelter',
+      41, -74,
+      20, 0,
+    ]);
+    expect(built.countSql).toContain("plainto_tsquery('english', $6)");
+    expect(built.sql).toMatch(/ST_MakePoint\(\$8, \$7\)/);
+    expect(built.sql).toContain('LIMIT $9 OFFSET $10');
+
+    const placeholders = [...built.sql.matchAll(/\$(\d+)/g)]
+      .map((match) => Number(match[1]));
+    expect([...new Set(placeholders)].sort((a, b) => a - b)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    ]);
+
+    const countPlaceholders = [...built.countSql.matchAll(/\$(\d+)/g)]
+      .map((match) => Number(match[1]));
+    expect([...new Set(countPlaceholders)].sort((a, b) => a - b)).toEqual([
+      1, 2, 3, 4, 5, 6,
+    ]);
   });
 
   it('includes LIMIT and OFFSET for pagination', () => {

@@ -13,6 +13,8 @@
  * @module src/services/search/vectorSearch
  */
 
+import { buildPublishedServicePredicate } from './publication';
+
 // ---------------------------------------------------------------------------
 // Vector similarity query
 // ---------------------------------------------------------------------------
@@ -57,8 +59,10 @@ export function buildVectorSimilarityQuery(
         s.id,
         (1 - (s.embedding <=> $1::vector))::float AS similarity
       FROM services s
+      JOIN organizations o ON o.id = s.organization_id
       WHERE s.id = ANY($2::uuid[])
         AND s.embedding IS NOT NULL
+        AND ${buildPublishedServicePredicate('s', 'o')}
       ORDER BY s.embedding <=> $1::vector
       LIMIT $3
     `,
@@ -90,8 +94,10 @@ export function buildVectorTopKQuery(
         s.id,
         (1 - (s.embedding <=> $1::vector))::float AS similarity
       FROM services s
+      JOIN organizations o ON o.id = s.organization_id
       WHERE s.embedding IS NOT NULL
         AND s.status = $2
+        AND ${buildPublishedServicePredicate('s', 'o')}
       ORDER BY s.embedding <=> $1::vector
       LIMIT $3
     `,

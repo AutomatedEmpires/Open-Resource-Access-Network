@@ -186,7 +186,7 @@ curl -X POST "https://<func-app>.azurewebsites.net/api/ingestion/submit?code=<fu
 
 ```bash
 curl -X POST "https://<web-app>.azurewebsites.net/api/internal/sla-check" \
-  -H "Authorization: Bearer <INTERNAL_API_KEY>" \
+  -H "x-oran-internal-key: <INTERNAL_API_KEY>" \
   -H "Content-Type: application/json"
 ```
 
@@ -194,7 +194,7 @@ curl -X POST "https://<web-app>.azurewebsites.net/api/internal/sla-check" \
 
 ```bash
 curl -X POST "https://<web-app>.azurewebsites.net/api/internal/coverage-gaps" \
-  -H "Authorization: Bearer <INTERNAL_API_KEY>" \
+  -H "x-oran-internal-key: <INTERNAL_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"thresholdHours": 24}'
 ```
@@ -203,7 +203,7 @@ curl -X POST "https://<web-app>.azurewebsites.net/api/internal/coverage-gaps" \
 
 ```bash
 curl -X POST "https://<web-app>.azurewebsites.net/api/internal/confidence-regression-scan" \
-   -H "Authorization: Bearer <INTERNAL_API_KEY>" \
+   -H "x-oran-internal-key: <INTERNAL_API_KEY>" \
    -H "Content-Type: application/json" \
    -d '{"limit": 100}'
 ```

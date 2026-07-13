@@ -25,6 +25,7 @@
  */
 
 import { trackAiEvent } from '@/services/telemetry/events';
+import { buildPublishedServicePredicate } from './publication';
 
 export const EMBEDDING_DIMENSIONS = 1024;
 
@@ -210,12 +211,12 @@ export async function getServicesNeedingEmbedding(
   executeQuery: (sql: string, params: unknown[]) => Promise<{ id: string; name: string; description: string | null }[]>
 ): Promise<{ id: string; name: string; description: string | null }[]> {
   return executeQuery(
-    `SELECT id, name, description
-     FROM services
-     WHERE embedding IS NULL
-       AND status = 'active'
-       AND integrity_hold_at IS NULL
-     ORDER BY updated_at DESC
+    `SELECT s.id, s.name, s.description
+     FROM services s
+     JOIN organizations o ON o.id = s.organization_id
+     WHERE s.embedding IS NULL
+       AND ${buildPublishedServicePredicate('s', 'o')}
+     ORDER BY s.updated_at DESC
      LIMIT $1`,
     [limit]
   );

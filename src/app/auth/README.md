@@ -1,5 +1,6 @@
 # Auth Routes
 
-Auth-related routes and integration glue for NextAuth/Entra ID.
+Auth-related routes and integration glue for Clerk.
 
-Server-side enforcement is implemented via middleware/proxy and route guards.
+Clerk owns identity and sessions. ORAN-owned roles, account status, and
+organization membership are resolved server-side by the proxy and route guards.

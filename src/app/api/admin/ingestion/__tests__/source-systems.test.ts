@@ -164,6 +164,7 @@ describe('admin ingestion source system routes', () => {
           name: '211 National',
           family: 'partner_api',
           trustTier: 'trusted_partner',
+          resourcePurpose: 'service_catalog',
           homepageUrl: 'https://apiportal.211.org/',
           termsUrl: 'https://apiportal.211.org/terms',
           licenseNotes: 'Licensed for ORAN ingestion and governed publication review.',
@@ -241,6 +242,7 @@ describe('admin ingestion source system routes', () => {
           name: 'Manual Source',
           family: 'manual',
           trustTier: 'curated',
+          resourcePurpose: 'service_catalog',
         },
       }),
     );
@@ -248,5 +250,23 @@ describe('admin ingestion source system routes', () => {
     expect(sourceSystemsStore.create).toHaveBeenCalledOnce();
     expect(sourceFeedsStore.create).not.toHaveBeenCalled();
     expect(response.status).toBe(201);
+  });
+
+  it('rejects creation without an explicit resource purpose', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          name: 'Unclassified Source',
+          family: 'manual',
+          trustTier: 'curated',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(sourceSystemsStore.create).not.toHaveBeenCalled();
   });
 });

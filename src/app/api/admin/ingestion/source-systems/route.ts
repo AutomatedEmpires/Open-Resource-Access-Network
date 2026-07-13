@@ -74,7 +74,7 @@ const CreateSourceSystemSchema = z.object({
     'quarantine',
     'blocked',
   ]),
-  resourcePurpose: SourceResourcePurposeSchema.default('service_catalog'),
+  resourcePurpose: SourceResourcePurposeSchema,
   homepageUrl: z.string().url().optional(),
   licenseNotes: z.string().max(4000).optional(),
   termsUrl: z.string().url().optional(),

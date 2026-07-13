@@ -28,7 +28,7 @@ function createStores() {
       listConfirmed: vi.fn(),
     },
     sourceRegistry: {
-      findForUrl: vi.fn(),
+      findForUrl: vi.fn().mockResolvedValue({ resourcePurpose: 'service_catalog' }),
     },
   };
 }
@@ -36,6 +36,11 @@ function createStores() {
 function buildCandidate() {
   return {
     candidateId: 'cand-1',
+    investigation: {
+      canonicalUrl: 'https://example.gov/pantry',
+      discoveredLinks: [],
+      importantArtifacts: [],
+    },
     fields: {
       organizationName: 'Example Community Action',
       serviceName: 'Pantry Program',
@@ -84,6 +89,21 @@ describe('publishCandidateToLiveService', () => {
     expect(stores.sourceRegistry.findForUrl).toHaveBeenCalledWith(
       'https://snap-retailers.example.gov/list',
     );
+    expect(withTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks an unregistered candidate source before opening a publication transaction', async () => {
+    const stores = createStores();
+    stores.candidates.getById.mockResolvedValue(buildCandidate());
+    stores.sourceRegistry.findForUrl.mockResolvedValue(null);
+
+    const { publishCandidateToLiveService } = await loadModule();
+    await expect(publishCandidateToLiveService({
+      stores: stores as never,
+      candidateId: 'cand-1',
+      publishedByUserId: 'oran-1',
+    })).rejects.toThrow('source resource purpose is missing or invalid');
+
     expect(withTransactionMock).not.toHaveBeenCalled();
   });
 

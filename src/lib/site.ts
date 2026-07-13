@@ -20,7 +20,7 @@ export const SITE = {
   acronym: 'ORAN',
   legalName: 'Open Resource Access Network',
   title: 'ORAN — Open Resource Access Network',
-  tagline: 'Building Bridges, Strengthening Communities',
+  tagline: 'Building Bridges | Strengthening Communities',
   baseUrl: normalizeBaseUrl(process.env.NEXT_PUBLIC_SITE_URL),
   description:
     'Describe what is happening and find a clear next step from stored government, nonprofit, and community service records.',
@@ -51,6 +51,7 @@ export const PUBLIC_SITEMAP_ENTRIES: ReadonlyArray<{
   { path: '/chat', changeFrequency: 'monthly', priority: 0.9 },
   { path: '/directory', changeFrequency: 'daily', priority: 0.9 },
   { path: '/map', changeFrequency: 'daily', priority: 0.8 },
+  { path: '/scroll', changeFrequency: 'daily', priority: 0.9 },
   { path: '/status', changeFrequency: 'daily', priority: 0.7 },
   { path: '/changelog', changeFrequency: 'weekly', priority: 0.7 },
   { path: '/security', changeFrequency: 'monthly', priority: 0.7 },

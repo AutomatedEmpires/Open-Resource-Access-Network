@@ -44,8 +44,8 @@ This directory is the operational control plane for production support, incident
 | [RUNBOOK_ADMIN_ROUTING.md](services/RUNBOOK_ADMIN_ROUTING.md) | Admin assignment failures, SLA breaches, capacity and coverage gaps |
 | [RUNBOOK_LLM_OUTAGE.md](services/RUNBOOK_LLM_OUTAGE.md) | Azure OpenAI degradation affecting ingestion extraction |
 | [RUNBOOK_DATABASE_INCIDENT.md](services/RUNBOOK_DATABASE_INCIDENT.md) | DB connectivity, saturation, lock contention, migration incidents |
-| [RUNBOOK_AUTH_OUTAGE.md](services/RUNBOOK_AUTH_OUTAGE.md) | Entra/NextAuth failures, role enforcement degradation, auth recovery |
-| [RUNBOOK_ACCOUNT_AND_FORM_RESILIENCE.md](services/RUNBOOK_ACCOUNT_AND_FORM_RESILIENCE.md) | Code-backed registration and managed-form hardening controls, diagnostics, and validation |
+| [RUNBOOK_AUTH_OUTAGE.md](services/RUNBOOK_AUTH_OUTAGE.md) | Clerk identity, ORAN authorization, and account-mapping recovery |
+| [RUNBOOK_ACCOUNT_AND_FORM_RESILIENCE.md](services/RUNBOOK_ACCOUNT_AND_FORM_RESILIENCE.md) | Onboarding, account-profile, and managed-form resilience |
 | [RUNBOOK_MEMBERSHIP_SCOPE_AND_REVIEWER_GOVERNANCE.md](services/RUNBOOK_MEMBERSHIP_SCOPE_AND_REVIEWER_GOVERNANCE.md) | Host membership lifecycle, scope-grant operations, reviewer dormancy handling, and explicit governance gaps |
 | [RUNBOOK_QUEUE_BACKLOG.md](services/RUNBOOK_QUEUE_BACKLOG.md) | Queue growth, poison queue handling, throughput restoration |
 | [RUNBOOK_WEB_APP_DEGRADATION.md](services/RUNBOOK_WEB_APP_DEGRADATION.md) | Web/API latency or error degradation response |
@@ -54,7 +54,7 @@ This directory is the operational control plane for production support, incident
 | [RUNBOOK_DATA_QUALITY_INCIDENT.md](services/RUNBOOK_DATA_QUALITY_INCIDENT.md) | Ingestion and verification data quality incident response |
 | [RUNBOOK_CI_CD_PIPELINE_FAILURE.md](services/RUNBOOK_CI_CD_PIPELINE_FAILURE.md) | Pipeline and deployment workflow failure response |
 | [RUNBOOK_SECURITY_INCIDENT.md](security/RUNBOOK_SECURITY_INCIDENT.md) | Security/privacy incident containment and recovery |
-| [RUNBOOK_INTERNAL_API_KEY_ROTATION.md](security/RUNBOOK_INTERNAL_API_KEY_ROTATION.md) | Secure rotation procedure for internal API shared secret |
+| [RUNBOOK_INTERNAL_API_KEY_ROTATION.md](security/RUNBOOK_INTERNAL_API_KEY_ROTATION.md) | Secure rotation procedure for Vercel Cron and rollback worker secrets |
 | [RUNBOOK_KEY_VAULT_ACCESS_FAILURE.md](security/RUNBOOK_KEY_VAULT_ACCESS_FAILURE.md) | Key Vault/managed identity secret-resolution failure response |
 | [RUNBOOK_DEPENDENCY_OUTAGE.md](services/RUNBOOK_DEPENDENCY_OUTAGE.md) | Outages in external dependencies and degraded-mode routing |
 | [RUNBOOK_DR_BACKUP_RESTORE.md](dr/RUNBOOK_DR_BACKUP_RESTORE.md) | Disaster recovery readiness and restore validation workflow |
@@ -91,7 +91,7 @@ This directory is the operational control plane for production support, incident
 | Web/API degradation | `docs/ops/services/RUNBOOK_WEB_APP_DEGRADATION.md` | `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md` |
 | Function host/runtime failure | `docs/ops/services/RUNBOOK_FUNCTION_APP_FAILURE.md` | `docs/ops/services/RUNBOOK_QUEUE_BACKLOG.md` |
 | Key Vault secret resolution failure | `docs/ops/security/RUNBOOK_KEY_VAULT_ACCESS_FAILURE.md` | `docs/ops/services/RUNBOOK_AUTH_OUTAGE.md` |
-| Internal API key compromise | `docs/ops/security/RUNBOOK_INTERNAL_API_KEY_ROTATION.md` | `docs/ops/security/RUNBOOK_SECURITY_INCIDENT.md` |
+| Cron or internal worker secret compromise | `docs/ops/security/RUNBOOK_INTERNAL_API_KEY_ROTATION.md` | `docs/ops/security/RUNBOOK_SECURITY_INCIDENT.md` |
 | Observability blind spot | `docs/ops/monitoring/RUNBOOK_OBSERVABILITY_OUTAGE.md` | `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md` |
 
 ## First-Response Flow
@@ -141,10 +141,11 @@ See `.env.example` for full definitions.
 
 | Variable | Service | Source |
 | --- | --- | --- |
-| `DATABASE_URL` | Web App + Functions | Key Vault reference |
-| `INTERNAL_API_KEY` | Functions -> Web App | Key Vault reference |
-| `ORAN_APP_URL` | Functions | App setting |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Both | App setting |
-| `AZURE_AD_CLIENT_ID` | Web App | App setting |
-| `AZURE_AD_CLIENT_SECRET` | Web App | Key Vault reference |
-| `NEXTAUTH_SECRET` | Web App | Key Vault reference |
+| `DATABASE_URL` | Vercel application | Dedicated ORAN Vercel/Doppler secret |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Browser + Vercel application | Dedicated ORAN Clerk application |
+| `CLERK_SECRET_KEY` | Vercel application | Dedicated ORAN Clerk application; secret |
+| `CRON_SECRET` | Vercel Cron -> Vercel application | Dedicated ORAN Vercel/Doppler secret |
+| `RESEND_API_KEY` | Vercel application -> Resend | Dedicated ORAN Resend/Doppler secret |
+| `RESEND_FROM` | Vercel application -> Resend | Verified ORAN sender identity |
+| `INTERNAL_API_KEY` | Optional rollback workers -> Vercel application | Separate dedicated ORAN Doppler secret |
+| `NEXT_PUBLIC_SENTRY_DSN` | Browser + Vercel application | Dedicated ORAN Sentry project |

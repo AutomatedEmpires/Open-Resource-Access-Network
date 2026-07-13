@@ -1,5 +1,9 @@
 # Signup And Managed-Form Adversarial Scenarios VI
 
+> Credentials-signup scenarios are retained as historical design pressure. ORAN
+> now delegates identity credentials and signup abuse controls to Clerk; it does
+> not expose an application password-registration endpoint.
+
 This matrix extends the resilience backlog with 200 additional scenarios focused on public registration abuse and managed-form draft or submit abuse. The scenarios are additive design pressure, not claims that every case is fully automated today.
 
 ## Signup Scenarios 501-600

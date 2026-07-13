@@ -1,16 +1,14 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const interMock = vi.hoisted(() => vi.fn(() => ({ variable: '--font-sans' })));
-const patrickHandMock = vi.hoisted(() => vi.fn(() => ({ variable: '--font-hand' })));
-const caveatMock = vi.hoisted(() => vi.fn(() => ({ variable: '--font-display' })));
+const manropeMock = vi.hoisted(() => vi.fn(() => ({ variable: '--font-manrope' })));
+const spaceGroteskMock = vi.hoisted(() => vi.fn(() => ({ variable: '--font-space-grotesk' })));
 const fetchMock = vi.hoisted(() => vi.fn());
 const sentryInitMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/font/google', () => ({
-  Inter: interMock,
-  Patrick_Hand: patrickHandMock,
-  Caveat: caveatMock,
+  Manrope: manropeMock,
+  Space_Grotesk: spaceGroteskMock,
 }));
 vi.mock('next/link', () => ({
   default: ({
@@ -40,8 +38,12 @@ vi.mock('@/components/ui/button', () => ({
   Button: ({ children, ...props }: { children: React.ReactNode }) =>
     React.createElement('button', props, children),
 }));
-vi.mock('next-auth/react', () => ({
-  SessionProvider: ({ children }: { children: React.ReactNode }) =>
+vi.mock('@/services/auth/client', () => ({
+  OranAuthProvider: ({ children }: { children: React.ReactNode }) =>
+    React.createElement(React.Fragment, null, children),
+}));
+vi.mock('@clerk/nextjs', () => ({
+  ClerkProvider: ({ children }: { children: React.ReactNode }) =>
     React.createElement(React.Fragment, null, children),
 }));
 vi.mock('@sentry/nextjs', () => ({
@@ -90,6 +92,7 @@ beforeEach(() => {
     }),
   });
   delete process.env.NEXT_PUBLIC_SENTRY_DSN;
+  delete process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   delete process.env.NEXT_RUNTIME;
 });
 
@@ -140,7 +143,7 @@ describe('platform shell', () => {
 
     const result = await sitemap();
 
-    expect(result).toHaveLength(20);
+    expect(result).toHaveLength(21);
     expect(result.at(-1)?.url).toBe('https://openresourceaccessnetwork.com/service/svc-1');
     expect(result.some((entry) => entry.url === 'https://openresourceaccessnetwork.com/trust')).toBe(true);
   });
@@ -151,7 +154,7 @@ describe('platform shell', () => {
 
     const result = await sitemap();
 
-    expect(result).toHaveLength(19);
+    expect(result).toHaveLength(20);
   });
 
   it('exports a web manifest for ORAN discovery surfaces', async () => {

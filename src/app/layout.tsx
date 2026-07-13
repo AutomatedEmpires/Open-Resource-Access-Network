@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Patrick_Hand, Caveat } from "next/font/google";
+import { Manrope, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { CrisisFloatingButton } from "@/components/crisis/CrisisFloatingButton";
@@ -11,19 +11,18 @@ import { SITE, getSiteVerification } from '@/lib/site';
 // FONTS
 // ============================================================
 
-// Patrick Hand — primary UI / body font (clean, legible handwriting style)
-const patrickHand = Patrick_Hand({
-  weight: "400",
+// Manrope keeps dense service information highly legible on small screens.
+const manrope = Manrope({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-sans",
+  variable: "--font-manrope",
 });
 
-// Caveat — display / heading accent font (bold, expressive handwriting)
-const caveat = Caveat({
+// Space Grotesk gives headings a professional, civic-tech character.
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-display",
+  variable: "--font-space-grotesk",
 });
 
 // ============================================================
@@ -92,7 +91,7 @@ export default async function RootLayout({
   const messages = getMessages(locale);
 
   return (
-    <html lang={locale} dir={dir} className={`${patrickHand.variable} ${caveat.variable}`} suppressHydrationWarning>
+    <html lang={locale} dir={dir} className={`${manrope.variable} ${spaceGrotesk.variable}`} suppressHydrationWarning>
       <body className="antialiased font-sans">
 
         {/* Skip to main content — WCAG 2.4.1: must be first focusable element */}

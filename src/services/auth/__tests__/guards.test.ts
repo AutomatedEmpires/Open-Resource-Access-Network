@@ -20,6 +20,7 @@ import type { OranRole } from '@/domain/types';
 import type { AuthContext } from '../session';
 
 const hostAdminCtx: AuthContext = {
+  clerkUserId: 'user-1',
   userId: 'user-1',
   role: 'host_admin',
   accountStatus: 'active',
@@ -28,6 +29,7 @@ const hostAdminCtx: AuthContext = {
 };
 
 const oranAdminCtx: AuthContext = {
+  clerkUserId: 'user-2',
   userId: 'user-2',
   role: 'oran_admin',
   accountStatus: 'active',

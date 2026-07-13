@@ -124,7 +124,7 @@ ORDER BY c.created_at ASC;
 ```bash
 # Check recent SLA breach output
 curl -X POST "https://<web-app>.azurewebsites.net/api/internal/sla-check" \
-  -H "Authorization: Bearer <INTERNAL_API_KEY>"
+  -H "x-oran-internal-key: <INTERNAL_API_KEY>"
 ```
 
 ```kql
@@ -160,7 +160,7 @@ Check the coverage gap report:
 
 ```bash
 curl -X POST "https://<web-app>.azurewebsites.net/api/internal/coverage-gaps" \
-  -H "Authorization: Bearer <INTERNAL_API_KEY>" \
+  -H "x-oran-internal-key: <INTERNAL_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"thresholdHours": 24}'
 ```

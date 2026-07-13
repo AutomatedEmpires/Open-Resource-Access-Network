@@ -16,7 +16,7 @@ vi.mock('next/navigation', () => ({
   usePathname: usePathnameMock,
   useRouter: useRouterMock,
 }));
-vi.mock('next-auth/react', () => ({
+vi.mock('@/services/auth/client', () => ({
   useSession: useSessionMock,
 }));
 vi.mock('@/services/auth/roles', () => ({
@@ -197,12 +197,16 @@ describe('portal layouts', () => {
     const { container } = render(<SeekerLayoutShell planEnabled={false}>Child</SeekerLayoutShell>) as { container: HTMLElement };
     const main = container.querySelectorAll('#main-content');
     const chatLink = container.querySelector('a[href="/chat"]');
-    const savedLink = container.querySelector('a[href="/saved"]');
+    const mapLink = container.querySelector('a[href="/map"]');
+    const scrollLink = container.querySelector('a[href="/scroll"]');
+    const profileLink = container.querySelector('a[href="/profile"]');
 
     expect(main).toHaveLength(1);
     expect(screen.getByTestId('app-nav')).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Seeker mobile navigation' })).toBeInTheDocument();
     expect(chatLink).toBeTruthy();
-    expect(savedLink).toBeTruthy();
+    expect(mapLink).toBeTruthy();
+    expect(scrollLink).toBeTruthy();
+    expect(profileLink).toBeTruthy();
   });
 });

@@ -32,11 +32,9 @@ const nextConfig = {
             : "script-src 'self' 'unsafe-inline'",
           // Tailwind CSS requires 'unsafe-inline' for its generated styles.
           "style-src 'self' 'unsafe-inline'",
-          // Allow map tiles (Azure Maps), data URIs for inline images, and HTTPS images.
+          // Allow OpenStreetMap tiles, data URIs for inline images, and HTTPS images.
           "img-src 'self' data: https: blob:",
-          // Temporary Azure domains remain until the map/auth cutovers complete. The target
-          // stack is Vercel + Clerk + Supabase + Sentry.
-          "connect-src 'self' https://atlas.microsoft.com https://login.microsoftonline.com https://*.clerk.accounts.dev https://*.clerk.com https://*.supabase.co https://*.sentry.io",
+          "connect-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.openresourceaccessnetwork.com https://accounts.openresourceaccessnetwork.com https://*.supabase.co https://*.sentry.io",
           "font-src 'self'",
           "object-src 'none'",
           "frame-ancestors 'none'",

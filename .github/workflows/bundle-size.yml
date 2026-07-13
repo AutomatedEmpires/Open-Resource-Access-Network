@@ -24,13 +24,6 @@ jobs:
     name: Bundle Size Check
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      # Minimal env vars for a successful Next.js build
-      NEXTAUTH_SECRET: bundle-check-secret
-      NEXTAUTH_URL: http://localhost:3000
-      AZURE_AD_CLIENT_ID: bundle-client-id
-      AZURE_AD_CLIENT_SECRET: bundle-client-secret
-      AZURE_AD_TENANT_ID: bundle-tenant-id
 
     steps:
       - uses: actions/checkout@v6

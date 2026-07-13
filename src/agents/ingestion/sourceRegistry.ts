@@ -53,7 +53,7 @@ export const SourceRegistryEntrySchema = z
     id: z.string().min(1),
     displayName: z.string().min(1),
     trustLevel: SourceTrustLevelSchema,
-    resourcePurpose: SourceResourcePurposeSchema.default('service_catalog'),
+    resourcePurpose: SourceResourcePurposeSchema,
     domainRules: z.array(DomainRuleSchema).min(1),
     discovery: z.array(DiscoveryRuleSchema).default([{ type: 'seeded_only' }]),
     crawl: CrawlPolicySchema.default(() => ({

@@ -3,6 +3,14 @@
 > Historical filename retained for links. ORAN no longer uses Key Vault as its
 > production secret source.
 
+## Metadata
+
+- Owner role: Security Lead
+- Reviewers: Platform On-Call Lead
+- Last reviewed (UTC): 2026-07-13
+- Next review due (UTC): 2026-10-13
+- Severity scope: SEV-1 to SEV-3
+
 ## Scope
 
 Use this runbook when the Vercel application or an ORAN-only worker cannot read

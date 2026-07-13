@@ -4,6 +4,8 @@
 
 - Owner: Identity and Access Lead
 - Reviewers: Platform On-Call Lead, Security Lead
+- Last reviewed (UTC): 2026-07-13
+- Next review due (UTC): 2026-10-13
 - Severity: SEV-1 through SEV-3
 - Stack: dedicated ORAN Clerk application, Vercel project, and Supabase database
 

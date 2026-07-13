@@ -1,5 +1,13 @@
 # Runbook: account, onboarding, and form resilience
 
+## Metadata
+
+- Owner role: Identity and Access Lead
+- Reviewers: Platform On-Call Lead, Data Platform Lead
+- Last reviewed (UTC): 2026-07-13
+- Next review due (UTC): 2026-10-13
+- Severity scope: SEV-2 to SEV-3
+
 ## Scope
 
 This runbook covers Clerk account entry, ORAN profile/onboarding persistence, and

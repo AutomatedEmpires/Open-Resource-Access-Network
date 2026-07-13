@@ -18,6 +18,7 @@ import {
 
 import type { ExtractedCandidate } from './contracts';
 import type { IngestionStores } from './stores';
+import { evaluateStandaloneResourceUse } from './sourcePurpose';
 import type { ResourceTag } from './tags';
 
 type AcceptedSuggestionMap = Map<string, string>;
@@ -199,6 +200,19 @@ export async function publishCandidateToLiveService(
   const candidate = await options.stores.candidates.getById(options.candidateId);
   if (!candidate) {
     throw new Error(`Candidate ${options.candidateId} not found`);
+  }
+
+  const canonicalUrl = candidate.investigation?.canonicalUrl;
+  if (canonicalUrl) {
+    const source = await options.stores.sourceRegistry.findForUrl(canonicalUrl);
+    if (source) {
+      const purposeDecision = evaluateStandaloneResourceUse(source);
+      if (!purposeDecision.allowed) {
+        throw new Error(
+          `Candidate ${options.candidateId} cannot be published: ${purposeDecision.reason}`,
+        );
+      }
+    }
   }
 
   const readiness = await options.stores.publishReadiness.getReadiness(options.candidateId);

@@ -68,13 +68,13 @@ export function GuidedIntake({
         </summary>
         <div className="grid gap-4 border-t border-slate-200 px-4 py-4 sm:grid-cols-2">
           <label htmlFor={`${id}-location`} className="text-xs font-medium text-slate-700">
-            City or ZIP
+            City, state, or ZIP
             <input
               id={`${id}-location`}
               value={draft.location ?? ''}
               onChange={(event) => updateDraft('location', event.target.value)}
               maxLength={80}
-              placeholder="Coeur d’Alene or 83814"
+              placeholder="Example: Detroit, MI or 48201"
               className="mt-1.5 min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
             />
           </label>

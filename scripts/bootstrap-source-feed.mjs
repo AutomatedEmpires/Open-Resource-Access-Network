@@ -5,6 +5,7 @@ function parseArgs(argv) {
     name: '',
     family: 'partner_api',
     trustTier: 'trusted_partner',
+    resourcePurpose: 'service_catalog',
     homepageUrl: '',
     termsUrl: '',
     licenseNotes: '',
@@ -82,9 +83,9 @@ const jurisdictionScope = {
 try {
   const systemResult = await pool.query(
     `INSERT INTO source_systems
-      (name, family, homepage_url, license_notes, terms_url, trust_tier, hsds_profile_uri, domain_rules, crawl_policy, jurisdiction_scope, contact_info, is_active, notes)
+      (name, family, homepage_url, license_notes, terms_url, trust_tier, resource_purpose, hsds_profile_uri, domain_rules, crawl_policy, jurisdiction_scope, contact_info, is_active, notes)
      VALUES
-      ($1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), $6, NULLIF($7, ''), '[]'::jsonb, '{}'::jsonb, $8::jsonb, '{}'::jsonb, $9, NULLIF($10, ''))
+      ($1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), $6, $7, NULLIF($8, ''), '[]'::jsonb, '{}'::jsonb, $9::jsonb, '{}'::jsonb, $10, NULLIF($11, ''))
      ON CONFLICT (name)
      DO UPDATE SET
       family = EXCLUDED.family,
@@ -92,6 +93,7 @@ try {
       license_notes = EXCLUDED.license_notes,
       terms_url = EXCLUDED.terms_url,
       trust_tier = EXCLUDED.trust_tier,
+      resource_purpose = EXCLUDED.resource_purpose,
       hsds_profile_uri = EXCLUDED.hsds_profile_uri,
       jurisdiction_scope = EXCLUDED.jurisdiction_scope,
       is_active = EXCLUDED.is_active,
@@ -105,6 +107,7 @@ try {
       options.licenseNotes,
       options.termsUrl,
       options.trustTier,
+      options.resourcePurpose,
       options.hsdsProfileUri,
       JSON.stringify(jurisdictionScope),
       toBool(options.isActive),

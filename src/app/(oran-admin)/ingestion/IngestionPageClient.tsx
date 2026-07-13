@@ -33,10 +33,13 @@ import { formatDateSafe } from '@/lib/format';
 // Types
 // ============================================================
 
+type ResourcePurpose = 'service_catalog' | 'program_navigation' | 'supporting_reference' | 'excluded';
+
 interface Source {
   id: string;
   displayName: string;
   trustLevel: 'allowlisted' | 'quarantine' | 'blocked';
+  resourcePurpose: ResourcePurpose;
   domainRules: { type: string; value: string }[];
   createdAt: string;
   updatedAt: string;
@@ -83,6 +86,7 @@ interface PollableSourceSystem {
   name: string;
   family: string;
   trustTier: 'verified_publisher' | 'trusted_partner' | 'curated' | 'community' | 'quarantine' | 'blocked';
+  resourcePurpose: ResourcePurpose;
   homepageUrl?: string | null;
   termsUrl?: string | null;
   licenseNotes?: string | null;
@@ -127,6 +131,7 @@ interface Candidate {
 interface SourceDraft {
   displayName: string;
   trustLevel: Source['trustLevel'];
+  resourcePurpose: ResourcePurpose;
   domainValue: string;
   domainType: 'exact_host' | 'suffix';
   seedUrl: string;
@@ -136,6 +141,7 @@ interface PollableSourceDraft {
   name: string;
   family: PollableSourceSystem['family'];
   trustTier: PollableSourceSystem['trustTier'];
+  resourcePurpose: ResourcePurpose;
   homepageUrl: string;
   termsUrl: string;
   licenseNotes: string;
@@ -235,6 +241,7 @@ interface IngestionOverview {
 const EMPTY_SOURCE_DRAFT: SourceDraft = {
   displayName: '',
   trustLevel: 'quarantine',
+  resourcePurpose: 'service_catalog',
   domainValue: '',
   domainType: 'exact_host',
   seedUrl: '',
@@ -244,6 +251,7 @@ const EMPTY_POLLABLE_SOURCE_DRAFT: PollableSourceDraft = {
   name: '',
   family: 'partner_api',
   trustTier: 'trusted_partner',
+  resourcePurpose: 'service_catalog',
   homepageUrl: '',
   termsUrl: '',
   licenseNotes: '',
@@ -295,6 +303,13 @@ const SOURCE_SYSTEM_TRUST_STYLES: Record<string, string> = {
 const ACTIVE_STATE_STYLES: Record<string, string> = {
   active: 'bg-green-50 text-green-700 border-green-200',
   inactive: 'bg-gray-50 text-gray-600 border-gray-200',
+};
+
+const RESOURCE_PURPOSE_STYLES: Record<string, string> = {
+  service_catalog: 'bg-green-50 text-green-700 border-green-200',
+  program_navigation: 'bg-sky-50 text-sky-700 border-sky-200',
+  supporting_reference: 'bg-amber-50 text-amber-700 border-amber-200',
+  excluded: 'bg-gray-50 text-gray-600 border-gray-200',
 };
 
 const JOB_STATUS_STYLES: Record<string, string> = {
@@ -401,6 +416,7 @@ function SourcesTab() {
   const [overview, setOverview] = useState<IngestionOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [systemActiveDrafts, setSystemActiveDrafts] = useState<Record<string, boolean>>({});
+  const [systemPurposeDrafts, setSystemPurposeDrafts] = useState<Record<string, ResourcePurpose>>({});
   const [feedRolloutDrafts, setFeedRolloutDrafts] = useState<Record<string, FeedRolloutDraft>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -435,6 +451,12 @@ function SourcesTab() {
       setPollableSourceSystems(nextSystems);
       setSystemActiveDrafts(
         Object.fromEntries(nextSystems.map((system: PollableSourceSystem) => [system.id, system.isActive])),
+      );
+      setSystemPurposeDrafts(
+        Object.fromEntries(nextSystems.map((system: PollableSourceSystem) => [
+          system.id,
+          system.resourcePurpose ?? 'service_catalog',
+        ])),
       );
       setFeedRolloutDrafts(
         Object.fromEntries(
@@ -487,6 +509,7 @@ function SourcesTab() {
         body: JSON.stringify({
           displayName,
           trustLevel: draft.trustLevel,
+          resourcePurpose: draft.resourcePurpose,
           domainRules: [{ type: draft.domainType, value: domainValue }],
           discovery: seedUrl
             ? [{ type: 'seeded_only', seedUrls: [seedUrl] }]
@@ -540,6 +563,7 @@ function SourcesTab() {
           name,
           family: pollableDraft.family,
           trustTier: pollableDraft.trustTier,
+          resourcePurpose: pollableDraft.resourcePurpose,
           homepageUrl: pollableDraft.homepageUrl.trim() || undefined,
           termsUrl: pollableDraft.termsUrl.trim() || undefined,
           licenseNotes: pollableDraft.licenseNotes.trim() || undefined,
@@ -586,7 +610,10 @@ function SourcesTab() {
       const response = await fetch(`/api/admin/ingestion/source-systems/${systemId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: systemActiveDrafts[systemId] ?? true }),
+        body: JSON.stringify({
+          isActive: systemActiveDrafts[systemId] ?? true,
+          resourcePurpose: systemPurposeDrafts[systemId] ?? 'service_catalog',
+        }),
       });
       const body = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) {
@@ -601,7 +628,7 @@ function SourcesTab() {
     } finally {
       setSavingSystemId(null);
     }
-  }, [fetchSources, showError, success, systemActiveDrafts]);
+  }, [fetchSources, showError, success, systemActiveDrafts, systemPurposeDrafts]);
 
   const handleSaveFeedRollout = useCallback(async (feedId: string) => {
     const draft = feedRolloutDrafts[feedId];
@@ -885,6 +912,26 @@ function SourcesTab() {
               <option value="blocked">Blocked</option>
             </select>
           </FormField>
+          <FormField
+            label="Resource purpose"
+            id="pollable-source-resource-purpose"
+            required
+            hint="Supporting references can enrich results but never publish as standalone services."
+          >
+            <select
+              value={pollableDraft.resourcePurpose}
+              onChange={(event) => setPollableDraft((current) => ({
+                ...current,
+                resourcePurpose: event.target.value as ResourcePurpose,
+              }))}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+            >
+              <option value="service_catalog">Direct service catalog</option>
+              <option value="program_navigation">Official program navigation</option>
+              <option value="supporting_reference">Supporting reference only</option>
+              <option value="excluded">Excluded from seeker results</option>
+            </select>
+          </FormField>
           <FormField label="Homepage URL" id="pollable-source-homepage-url">
             <input
               type="url"
@@ -1099,6 +1146,7 @@ function SourcesTab() {
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Family</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Trust</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Purpose</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Feeds</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Updated</th>
                 </tr>
@@ -1185,6 +1233,32 @@ function SourcesTab() {
                     <td className="px-4 py-3 text-gray-600">{system.family.replace(/_/g, ' ')}</td>
                     <td className="px-4 py-3">
                       <StatusBadge status={system.trustTier} styles={SOURCE_SYSTEM_TRUST_STYLES} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="space-y-2">
+                        <StatusBadge
+                          status={system.resourcePurpose ?? 'service_catalog'}
+                          styles={RESOURCE_PURPOSE_STYLES}
+                        />
+                        <label className="block text-xs text-gray-600" htmlFor={`source-purpose-${system.id}`}>
+                          Publication role
+                        </label>
+                        <select
+                          id={`source-purpose-${system.id}`}
+                          value={systemPurposeDrafts[system.id] ?? system.resourcePurpose ?? 'service_catalog'}
+                          onChange={(event) => setSystemPurposeDrafts((current) => ({
+                            ...current,
+                            [system.id]: event.target.value as ResourcePurpose,
+                          }))}
+                          className="w-full min-w-44 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs"
+                        >
+                          <option value="service_catalog">Direct services</option>
+                          <option value="program_navigation">Program navigation</option>
+                          <option value="supporting_reference">Supporting only</option>
+                          <option value="excluded">Excluded</option>
+                        </select>
+                        <p className="max-w-48 text-[11px] text-gray-500">Purpose changes require second approval.</p>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600">
                       <div className="space-y-2">
@@ -1403,6 +1477,26 @@ function SourcesTab() {
               <option value="blocked">Blocked</option>
             </select>
           </FormField>
+          <FormField
+            label="Resource purpose"
+            id="ingestion-source-resource-purpose"
+            required
+            hint="Retailer and acceptance datasets belong under supporting reference."
+          >
+            <select
+              value={draft.resourcePurpose}
+              onChange={(event) => setDraft((current) => ({
+                ...current,
+                resourcePurpose: event.target.value as ResourcePurpose,
+              }))}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+            >
+              <option value="service_catalog">Direct service catalog</option>
+              <option value="program_navigation">Official program navigation</option>
+              <option value="supporting_reference">Supporting reference only</option>
+              <option value="excluded">Excluded from seeker results</option>
+            </select>
+          </FormField>
           <FormField label="Domain rule type" id="ingestion-source-domain-type" required>
             <select
               value={draft.domainType}
@@ -1459,6 +1553,7 @@ function SourcesTab() {
               <tr>
                 <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Name</th>
                 <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Trust</th>
+                <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Purpose</th>
                 <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Domains</th>
                 <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Updated</th>
               </tr>
@@ -1469,6 +1564,12 @@ function SourcesTab() {
                   <td className="px-4 py-3 font-medium text-gray-900">{src.displayName}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={src.trustLevel} styles={TRUST_STYLES} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge
+                      status={src.resourcePurpose ?? 'service_catalog'}
+                      styles={RESOURCE_PURPOSE_STYLES}
+                    />
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     {src.domainRules.map((r) => r.value).join(', ')}

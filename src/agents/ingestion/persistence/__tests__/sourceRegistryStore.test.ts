@@ -51,6 +51,7 @@ function makeRow(overrides: Record<string, unknown> = {}) {
     licenseNotes: null,
     termsUrl: null,
     trustTier: 'allowlisted',
+    resourcePurpose: 'service_catalog',
     hsdsProfileUri: null,
     domainRules: [{ type: 'exact_host', value: 'example.gov' }],
     crawlPolicy: {
@@ -95,6 +96,7 @@ describe('sourceRegistryStore', () => {
         id: 'src-1',
         displayName: 'County Feed',
         trustLevel: 'allowlisted',
+        resourcePurpose: 'service_catalog',
         domainRules: [{ type: 'exact_host', value: 'example.gov' }],
         discovery: [{ type: 'seeded_only' }],
         crawl: expect.objectContaining({
@@ -146,6 +148,7 @@ describe('sourceRegistryStore', () => {
       id: 'src-1',
       displayName: 'Updated Feed',
       trustLevel: 'blocked',
+      resourcePurpose: 'supporting_reference',
       domainRules: [{ type: 'suffix', value: 'updated.gov' }],
       discovery: [{ type: 'sitemap', sitemapUrl: 'https://updated.gov/sitemap.xml' }],
       crawl: {
@@ -166,6 +169,7 @@ describe('sourceRegistryStore', () => {
       id: 'src-2',
       displayName: 'Inserted Feed',
       trustLevel: 'allowlisted',
+      resourcePurpose: 'program_navigation',
       domainRules: [{ type: 'exact_host', value: 'inserted.gov' }],
       discovery: [{ type: 'seeded_only', seedUrls: ['https://inserted.gov'] }],
       crawl: {
@@ -190,6 +194,7 @@ describe('sourceRegistryStore', () => {
         family: 'sitemap',
         homepageUrl: 'https://updated.gov/sitemap.xml',
         trustTier: 'blocked',
+        resourcePurpose: 'supporting_reference',
         domainRules: [{ type: 'suffix', value: 'updated.gov' }],
         crawlPolicy: expect.objectContaining({
           discovery: [{ type: 'sitemap', sitemapUrl: 'https://updated.gov/sitemap.xml' }],
@@ -210,6 +215,7 @@ describe('sourceRegistryStore', () => {
         family: 'seeded_only',
         homepageUrl: 'https://inserted.gov',
         trustTier: 'allowlisted',
+        resourcePurpose: 'program_navigation',
         domainRules: [{ type: 'exact_host', value: 'inserted.gov' }],
         jurisdictionScope: [],
         isActive: true,

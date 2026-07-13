@@ -27,6 +27,9 @@ function createStores() {
     tagConfirmations: {
       listConfirmed: vi.fn(),
     },
+    sourceRegistry: {
+      findForUrl: vi.fn(),
+    },
   };
 }
 
@@ -55,6 +58,33 @@ describe('publishCandidateToLiveService', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+  });
+
+  it('blocks a supporting-reference candidate before opening a publication transaction', async () => {
+    const stores = createStores();
+    stores.candidates.getById.mockResolvedValue({
+      ...buildCandidate(),
+      investigation: {
+        canonicalUrl: 'https://snap-retailers.example.gov/list',
+        discoveredLinks: [],
+        importantArtifacts: [],
+      },
+    });
+    stores.sourceRegistry.findForUrl.mockResolvedValue({
+      resourcePurpose: 'supporting_reference',
+    });
+
+    const { publishCandidateToLiveService } = await loadModule();
+    await expect(publishCandidateToLiveService({
+      stores: stores as never,
+      candidateId: 'cand-1',
+      publishedByUserId: 'oran-1',
+    })).rejects.toThrow('supporting_reference sources may enrich services');
+
+    expect(stores.sourceRegistry.findForUrl).toHaveBeenCalledWith(
+      'https://snap-retailers.example.gov/list',
+    );
+    expect(withTransactionMock).not.toHaveBeenCalled();
   });
 
   it('materializes a published candidate into the live seeker tables and HSDS snapshot', async () => {

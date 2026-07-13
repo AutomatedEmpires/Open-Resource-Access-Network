@@ -594,7 +594,7 @@ This layer normalizes every intake path before publication. No HSDS feed, partne
 
 ### `source_systems`
 
-Unified registry of upstream publishers and source families. Stores trust tier, crawl policy, domain rules, jurisdiction scope, and legacy linkage back to `ingestion_sources` during migration.
+Unified registry of upstream publishers and source families. Stores trust tier, resource purpose, crawl policy, domain rules, jurisdiction scope, and legacy linkage back to `ingestion_sources` during migration. Trust controls ingestion authority; `resource_purpose` controls whether records are direct service catalogs, official program navigation, supporting reference data, or excluded from seeker-facing publication. Migration `0055_source_resource_purpose.sql` adds this fail-closed publication boundary while preserving supporting data for enrichment.
 
 ### `source_feeds`
 

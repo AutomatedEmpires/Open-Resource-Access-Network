@@ -53,6 +53,7 @@ function rowToEntry(row: typeof sourceSystems.$inferSelect): SourceRegistryEntry
     id: row.id,
     displayName: row.name,
     trustLevel: row.trustTier,
+    resourcePurpose: row.resourcePurpose,
     domainRules: Array.isArray(row.domainRules) ? row.domainRules : [],
     discovery,
     crawl: {
@@ -85,6 +86,7 @@ function entryToRow(entry: SourceRegistryEntry) {
     family: entry.discovery[0]?.type ?? 'seeded_only',
     homepageUrl,
     trustTier: entry.trustLevel,
+    resourcePurpose: entry.resourcePurpose,
     domainRules: entry.domainRules,
     crawlPolicy: {
       ...entry.crawl,

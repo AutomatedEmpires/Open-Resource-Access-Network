@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { SourceResourcePurposeSchema } from '@/agents/ingestion/sourcePurpose';
 import { isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
@@ -24,6 +25,7 @@ const CreateSourceSchema = z.object({
   id: z.string().min(1).optional(),
   displayName: z.string().min(1).max(200),
   trustLevel: z.enum(['allowlisted', 'quarantine', 'blocked']),
+  resourcePurpose: SourceResourcePurposeSchema.default('service_catalog'),
   domainRules: z.array(
     z.object({
       type: z.enum(['exact_host', 'suffix']),
@@ -132,6 +134,7 @@ export async function POST(req: NextRequest) {
       id,
       displayName: parsed.data.displayName,
       trustLevel: parsed.data.trustLevel,
+      resourcePurpose: parsed.data.resourcePurpose,
       domainRules: parsed.data.domainRules,
       discovery: parsed.data.discovery ?? [{ type: 'seeded_only' as const }],
       crawl: {

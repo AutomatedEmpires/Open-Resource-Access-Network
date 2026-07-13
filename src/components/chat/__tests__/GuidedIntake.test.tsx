@@ -19,8 +19,8 @@ describe('GuidedIntake', () => {
     fireEvent.change(screen.getByLabelText('What do you need help with right now?'), {
       target: { value: 'I need help with a utility bill' },
     });
-    fireEvent.change(screen.getByLabelText('City or ZIP'), {
-      target: { value: '83814' },
+    fireEvent.change(screen.getByLabelText('City, state, or ZIP'), {
+      target: { value: '48201' },
     });
     fireEvent.change(screen.getByLabelText('How soon?'), {
       target: { value: 'today' },
@@ -32,7 +32,7 @@ describe('GuidedIntake', () => {
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(
-        'I need help with a utility bill. Near 83814. I need help today. I need help I can reach by phone.',
+        'I need help with a utility bill. Near 48201. I need help today. I need help I can reach by phone.',
       );
     });
   });

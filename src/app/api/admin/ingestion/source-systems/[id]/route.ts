@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { SourceResourcePurposeSchema } from '@/agents/ingestion/sourcePurpose';
+
 import { isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
@@ -62,6 +64,7 @@ const UpdateSourceSystemSchema = z.object({
 		'quarantine',
 		'blocked',
 	]).optional(),
+	resourcePurpose: SourceResourcePurposeSchema.optional(),
 	homepageUrl: z.string().url().nullable().optional(),
 	licenseNotes: z.string().max(4000).nullable().optional(),
 	termsUrl: z.string().url().nullable().optional(),
@@ -155,14 +158,14 @@ export async function PUT(
 				submittedByUserId: session?.userId ?? 'unknown',
 				actorRole: session?.role ?? 'oran_admin',
 				targetId: id,
-				title: `Source system trust change queued: ${existing.name}`,
-				summary: `Trust tier change for source system ${existing.name} requires second approval before source authority changes.`,
+				title: `Source system authority change queued: ${existing.name}`,
+				summary: `Trust or resource-purpose changes for source system ${existing.name} require second approval before publication authority changes.`,
 				payload: {
 					entityType: 'source_system',
 					action: 'update',
 					entityId: id,
 					entityLabel: existing.name,
-					summary: `Trust tier ${existing.trustTier ?? 'unknown'} -> ${parsed.data.trustTier ?? existing.trustTier ?? 'unknown'}`,
+					summary: `Trust ${existing.trustTier ?? 'unknown'} -> ${parsed.data.trustTier ?? existing.trustTier ?? 'unknown'}; purpose ${existing.resourcePurpose ?? 'service_catalog'} -> ${parsed.data.resourcePurpose ?? existing.resourcePurpose ?? 'service_catalog'}`,
 					beforeState: existing as Record<string, unknown>,
 					patch: parsed.data,
 				},

@@ -74,7 +74,18 @@ Trust and fit are separate. Missing inputs do not become negative eligibility fa
 
 ## Geography and expansion
 
-The protected MVP is written for Coeur d’Alene/Kootenai County, North Idaho, and Spokane/Eastern Washington. Intake accepts city or ZIP as an approximate location and the typed coverage model supports city, county, state, postal-code, nationwide, and custom areas. No geography is hard-coded into canonical matching.
+ORAN launches with nationwide United States coverage as a product requirement, not a later expansion phase. Intake accepts city, state, or ZIP as an approximate location, and the typed coverage model supports city, county, state, postal-code, nationwide, virtual, and custom areas. Local fixtures and canary records may be used to validate quality, but they do not define the platform boundary and no region is hard-coded into canonical matching.
+
+## Source intent and recommendation boundaries
+
+Source trust and source purpose are separate controls. A reputable source is not automatically a seeker-facing service catalog.
+
+- `service_catalog` contains direct providers or services and may produce standalone recommendations after normal verification.
+- `program_navigation` contains official benefit, application, or referral entry points and may produce standalone navigation results after normal verification.
+- `supporting_reference` contains retailer acceptance, coverage, eligibility-reference, or enrichment data. It may improve a direct recommendation but cannot become a standalone service result.
+- `excluded` is retained only when needed for audit or governance and cannot become a seeker-facing result.
+
+For example, “stores that accept SNAP” is supporting context. ORAN should guide a seeker toward SNAP eligibility, application, case support, benefit troubleshooting, and nearby food assistance; it should not mistake a retailer list for the platform’s core service inventory.
 
 ## Safety and privacy
 

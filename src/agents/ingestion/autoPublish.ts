@@ -16,6 +16,7 @@
  */
 
 import { promoteToLive } from './promoteToLive';
+import { evaluateStandaloneResourceUse } from './sourcePurpose';
 import type { IngestionStores } from './stores';
 import type { CanonicalServiceRow, SourceSystemRow } from '@/db/schema';
 
@@ -84,6 +85,18 @@ export function evaluatePolicy(
   policy: AutoPublishPolicy
 ): AutoPublishDecision {
   const svcId = service.id;
+
+  // Gate 0: Source purpose must be capable of producing a standalone resource.
+  // Retailer acceptance, coverage maps, and other enrichment data stay useful
+  // without being promoted as if they were services.
+  const purposeDecision = evaluateStandaloneResourceUse(sourceSystem);
+  if (!purposeDecision.allowed) {
+    return {
+      canonicalServiceId: svcId,
+      eligible: false,
+      reason: `resource_purpose '${purposeDecision.purpose}' blocked: ${purposeDecision.reason}`,
+    };
+  }
 
   // Gate 1: Lifecycle must be active
   if (service.lifecycleStatus !== 'active') {

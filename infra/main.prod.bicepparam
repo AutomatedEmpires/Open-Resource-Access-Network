@@ -12,6 +12,7 @@ param environment = 'prod'
 param location = 'westus2'
 param appServiceSku = 'B1'
 param pgAdminUser = 'oranadmin'
+param customHostname = 'openresourceaccessnetwork.com'
 
 // Secrets — pass at deploy time or from Key Vault / pipeline variables:
 //   --parameters pgAdminPassword=<value> nextAuthSecret=<value> internalApiKey=<value> azureMapsSasToken=<value>

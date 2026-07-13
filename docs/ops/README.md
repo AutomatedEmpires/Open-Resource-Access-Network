@@ -107,6 +107,7 @@ This directory is the operational control plane for production support, incident
 | Resource | URL |
 | --- | --- |
 | Web App | `https://<prefix>-prod-web.azurewebsites.net` |
+| Production custom domain | `https://openresourceaccessnetwork.com` |
 | Function App | `https://<prefix>-prod-func.azurewebsites.net` |
 | Application Insights | Azure Portal -> Application Insights -> `<prefix>-prod-insights` |
 | Key Vault | Azure Portal -> Key Vaults -> `<prefix>-prod-kv` |

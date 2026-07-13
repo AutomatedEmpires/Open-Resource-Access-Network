@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { SourceResourcePurposeSchema } from '@/agents/ingestion/sourcePurpose';
 import { isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
@@ -27,6 +28,7 @@ import {
 const UpdateSourceSchema = z.object({
   displayName: z.string().min(1).max(200).optional(),
   trustLevel: z.enum(['allowlisted', 'quarantine', 'blocked']).optional(),
+  resourcePurpose: SourceResourcePurposeSchema.optional(),
   domainRules: z.array(
     z.object({
       type: z.enum(['exact_host', 'suffix']),
@@ -165,14 +167,14 @@ export async function PUT(
         submittedByUserId: session.userId,
         actorRole: session.role ?? 'oran_admin',
         targetId: id,
-        title: `Source trust change queued: ${existing.displayName}`,
-        summary: `Trust level change for source ${existing.displayName} requires second approval before publication authority changes.`,
+        title: `Source authority change queued: ${existing.displayName}`,
+        summary: `Trust or resource-purpose changes for source ${existing.displayName} require second approval before publication authority changes.`,
         payload: {
           entityType: 'source',
           action: 'update',
           entityId: id,
           entityLabel: existing.displayName,
-          summary: `Trust level ${existing.trustLevel ?? 'unknown'} -> ${parsed.data.trustLevel ?? existing.trustLevel ?? 'unknown'}`,
+          summary: `Trust ${existing.trustLevel ?? 'unknown'} -> ${parsed.data.trustLevel ?? existing.trustLevel ?? 'unknown'}; purpose ${existing.resourcePurpose ?? 'service_catalog'} -> ${parsed.data.resourcePurpose ?? existing.resourcePurpose ?? 'service_catalog'}`,
           beforeState: existing as Record<string, unknown>,
           nextState: merged,
         },

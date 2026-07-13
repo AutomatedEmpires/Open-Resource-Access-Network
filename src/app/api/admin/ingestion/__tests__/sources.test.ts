@@ -193,6 +193,7 @@ describe('admin ingestion source routes', () => {
         id: 'generated-source-id',
         displayName: 'Community Feed',
         trustLevel: 'allowlisted',
+        resourcePurpose: 'service_catalog',
         discovery: [{ type: 'seeded_only' }],
         coverage: [],
         crawl: expect.objectContaining({

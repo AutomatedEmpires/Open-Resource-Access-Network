@@ -76,6 +76,25 @@ describe('evaluatePolicy', () => {
     expect(decision.reason).toContain('auto-publish');
   });
 
+  it('rejects supporting reference data even from a verified publisher', () => {
+    const decision = evaluatePolicy(
+      makeSvc(),
+      makeSrcSys({ resourcePurpose: 'supporting_reference' }),
+      DEFAULT_POLICY,
+    );
+    expect(decision.eligible).toBe(false);
+    expect(decision.reason).toContain("resource_purpose 'supporting_reference' blocked");
+  });
+
+  it('allows official program navigation through the normal trust gates', () => {
+    const decision = evaluatePolicy(
+      makeSvc(),
+      makeSrcSys({ resourcePurpose: 'program_navigation' }),
+      DEFAULT_POLICY,
+    );
+    expect(decision.eligible).toBe(true);
+  });
+
   it('rejects non-active lifecycle', () => {
     const svc = makeSvc({ lifecycleStatus: 'draft' } as Partial<CanonicalServiceRow>);
     const decision = evaluatePolicy(svc, makeSrcSys(), DEFAULT_POLICY);

@@ -53,9 +53,12 @@ jobs:
               pgAdminPassword="${{ secrets.PG_ADMIN_PASSWORD }}" \
               nextAuthSecret="${{ secrets.NEXTAUTH_SECRET }}" \
               internalApiKey="${{ secrets.INTERNAL_API_KEY }}" \
+              azureMapsSasToken="${{ secrets.AZURE_MAPS_SAS_TOKEN }}" \
               entraClientId="${{ vars.AZURE_AD_CLIENT_ID || '' }}" \
               entraClientSecret="${{ secrets.AZURE_AD_CLIENT_SECRET }}" \
-              entraTenantId="${{ vars.AZURE_AD_TENANT_ID || '' }}"
+              entraTenantId="${{ vars.AZURE_AD_TENANT_ID || '' }}" \
+              sentryDsn="${{ vars.NEXT_PUBLIC_SENTRY_DSN || '' }}" \
+              customHostname="${{ vars.ORAN_CUSTOM_HOSTNAME || '' }}"
 
       - name: Deploy infrastructure
         if: ${{ !inputs.whatIf }}
@@ -69,10 +72,61 @@ jobs:
               pgAdminPassword="${{ secrets.PG_ADMIN_PASSWORD }}" \
               nextAuthSecret="${{ secrets.NEXTAUTH_SECRET }}" \
               internalApiKey="${{ secrets.INTERNAL_API_KEY }}" \
+              azureMapsSasToken="${{ secrets.AZURE_MAPS_SAS_TOKEN }}" \
               entraClientId="${{ vars.AZURE_AD_CLIENT_ID || '' }}" \
               entraClientSecret="${{ secrets.AZURE_AD_CLIENT_SECRET }}" \
               entraTenantId="${{ vars.AZURE_AD_TENANT_ID || '' }}" \
+              sentryDsn="${{ vars.NEXT_PUBLIC_SENTRY_DSN || '' }}" \
+              customHostname="${{ vars.ORAN_CUSTOM_HOSTNAME || '' }}" \
             --query "properties.outputs" -o json
+
+      - name: Bind custom hostname and managed TLS
+        if: ${{ !inputs.whatIf && vars.ORAN_CUSTOM_HOSTNAME != '' }}
+        env:
+          CUSTOM_HOSTNAME: ${{ vars.ORAN_CUSTOM_HOSTNAME }}
+          CONFIGURED_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          ORAN_PREFIX: ${{ vars.ORAN_PREFIX || 'oran' }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          webapp_name="$CONFIGURED_WEBAPP_NAME"
+          if [ -z "$webapp_name" ]; then
+            webapp_name="${ORAN_PREFIX}-${TARGET_ENVIRONMENT}-web"
+          fi
+
+          existing_hostname=$(az webapp config hostname list \
+            --resource-group "$RESOURCE_GROUP" \
+            --webapp-name "$webapp_name" \
+            --query "[?name=='$CUSTOM_HOSTNAME'].name | [0]" -o tsv)
+          if [ -z "$existing_hostname" ]; then
+            az webapp config hostname add \
+              --resource-group "$RESOURCE_GROUP" \
+              --webapp-name "$webapp_name" \
+              --hostname "$CUSTOM_HOSTNAME" \
+              --output none
+          fi
+
+          thumbprint=$(az webapp config ssl list \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "[?contains(hostNames, '$CUSTOM_HOSTNAME')].thumbprint | [0]" -o tsv)
+          if [ -z "$thumbprint" ]; then
+            thumbprint=$(az webapp config ssl create \
+              --resource-group "$RESOURCE_GROUP" \
+              --name "$webapp_name" \
+              --hostname "$CUSTOM_HOSTNAME" \
+              --query thumbprint -o tsv)
+          fi
+          if [ -z "$thumbprint" ]; then
+            echo "::error::Azure did not return a managed-certificate thumbprint."
+            exit 1
+          fi
+
+          az webapp config ssl bind \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$webapp_name" \
+            --certificate-thumbprint "$thumbprint" \
+            --ssl-type SNI \
+            --output none
 
       - name: Show deployment outputs
         if: ${{ !inputs.whatIf }}

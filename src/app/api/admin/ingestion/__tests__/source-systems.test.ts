@@ -193,6 +193,7 @@ describe('admin ingestion source system routes', () => {
         name: '211 National',
         family: 'partner_api',
         trustTier: 'trusted_partner',
+        resourcePurpose: 'service_catalog',
         termsUrl: 'https://apiportal.211.org/terms',
         hsdsProfileUri: 'https://api.211.org/hsds-profile',
         isActive: false,

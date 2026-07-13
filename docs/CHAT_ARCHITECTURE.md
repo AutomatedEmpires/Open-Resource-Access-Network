@@ -289,6 +289,10 @@ Build `ChatResponse` from retrieved records:
 
 - Format each `Service` record into a `ServiceCard`
 - Include: name, organization, address, phone, hours, confidence band
+- Include the clearest next step supported by the stored record plus a safe provider-confirmation question
+- Include stored distance, coverage, eligibility criteria, and required documents when available
+- Include exact verification status/check dates only when the record supplies them; missing freshness remains visibly unknown
+- Include an expandable stored-source and verification panel plus stale/disputed/unverified/retired warning states
 - Optionally include: contextual `links[]` selected deterministically from stored URLs
 - Always append `ELIGIBILITY_DISCLAIMER`
 - Never generate or infer data not in the record

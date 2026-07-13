@@ -21,6 +21,7 @@ import type {
   ServiceCard,
 } from '@/services/chat/types';
 import { ChatServiceCard } from '@/components/chat/ChatServiceCard';
+import { GuidedIntake } from '@/components/chat/GuidedIntake';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
 import { DistanceRadiusControl } from '@/components/seeker/DistanceRadiusControl';
 import { QuickNeedFilterGrid } from '@/components/seeker/QuickNeedFilterGrid';
@@ -2068,8 +2069,8 @@ export function ChatWindow({
             {/* ── Welcome heading ── */}
             <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div className="max-w-[46rem]">
-                <p className="text-2xl font-semibold tracking-tight text-slate-900 md:text-[2rem]">What verified help do you need?</p>
-                <p className="mt-1.5 text-[15px] leading-7 text-slate-500">Start with a common need or type your question below. Refine narrows scope without losing this conversation.</p>
+                <p className="text-2xl font-semibold tracking-tight text-slate-900 md:text-[2rem]">Tell ORAN what is wrong.</p>
+                <p className="mt-1.5 text-[15px] leading-7 text-slate-500">Describe the situation in your own words. Add only the details that can change which provider serves you.</p>
               </div>
               {activeGeo ? (
                 <span className="inline-flex min-h-[32px] items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
@@ -2079,7 +2080,16 @@ export function ChatWindow({
               ) : null}
             </div>
 
+            <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <GuidedIntake
+                submitLabel="Search stored provider records"
+                onSubmit={(prompt) => sendMessage(prompt)}
+              />
+            </div>
+
             {/* ── Quick-need grid ── */}
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Or start with a common need</p>
             <QuickNeedFilterGrid
               activeNeedId={activeNeedId}
               onSelect={handleCategoryClick}
@@ -2087,6 +2097,7 @@ export function ChatWindow({
               className="w-full"
               gridClassName="grid grid-cols-2 gap-2 lg:grid-cols-4"
             />
+            </div>
 
             {/* ── Info row: location prompt + search flow ── */}
             <div className="grid gap-3 sm:grid-cols-2">

@@ -75,6 +75,7 @@ vi.mock('lucide-react', () => ({
   MapPin: 'svg',
   BellRing: 'svg',
   ListTodo: 'svg',
+  ArrowRight: 'svg',
 }));
 
 vi.mock('@/components/seeker/SeekerFeatureFlags', () => ({
@@ -235,7 +236,7 @@ describe('ChatWindow', () => {
 
     expect(screen.getByRole('note', { name: 'Eligibility disclaimer' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
-    expect(screen.getByText('What verified help do you need?')).toBeInTheDocument();
+    expect(screen.getByText('Tell ORAN what is wrong.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {

@@ -67,6 +67,15 @@ const cardFixture = {
   ],
   eligibilityHint: 'You may qualify based on your county and household size.',
   matchReasons: ['Offers phone support', 'Does not require ID'],
+  distanceMeters: 3218.688,
+  serviceAreaSummary: 'Spokane County',
+  requiredDocuments: ['Photo ID', 'Proof of address'],
+  nextStep: 'Call to complete a short intake.',
+  whatToAsk: 'Ask whether same-day grocery pickup is available.',
+  verificationStatus: 'provider_verified' as const,
+  verificationLastCheckedAt: '2026-06-15T12:00:00.000Z',
+  sourceLabel: 'Helping Hands provider page',
+  sourceUrl: 'https://example.org/services/food-pantry',
 };
 
 beforeEach(() => {
@@ -96,15 +105,35 @@ describe('ChatServiceCard interactions', () => {
     expect(screen.getByText('Why this may fit')).toBeInTheDocument();
     expect(screen.getByText('Offers phone support')).toBeInTheDocument();
     expect(screen.getByText('Does not require ID')).toBeInTheDocument();
+    expect(screen.getByText(/2.0 mi away · Serves Spokane County/)).toBeInTheDocument();
+    expect(screen.getByText('Call to complete a short intake.')).toBeInTheDocument();
+    expect(screen.getByText(/Ask whether same-day grocery pickup is available/)).toBeInTheDocument();
+    expect(screen.getByText(/Photo ID, Proof of address/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Source & verification details'));
+    expect(screen.getByText('Provider Verified')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Helping Hands provider page' })).toHaveAttribute(
+      'href',
+      'https://example.org/services/food-pantry',
+    );
 
     const externalLinks = screen.getAllByRole('link').filter((link: HTMLElement) =>
       link.getAttribute('href')?.startsWith('https://'),
     );
-    expect(externalLinks).toHaveLength(2);
+    expect(externalLinks).toHaveLength(3);
+    expect(screen.getByRole('link', { name: 'Website' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Apply' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Contact' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'More' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save this service' }));
     expect(onToggleSave).toHaveBeenCalledWith('svc-1');
+  });
+
+  it('warns clearly when source freshness is unknown', () => {
+    render(<ChatServiceCard card={{ ...cardFixture, verificationStatus: undefined, verificationLastCheckedAt: undefined }} />);
+
+    expect(screen.getByText(/source-check date is not available/i)).toBeInTheDocument();
   });
 
   it('preserves canonical discovery context in detail and report links when provided', () => {

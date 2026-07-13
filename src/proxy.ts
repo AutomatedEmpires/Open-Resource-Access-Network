@@ -57,7 +57,21 @@ function isSameOriginWriteAllowed(request: NextRequest): boolean {
 
   const origin = request.headers.get('origin')?.trim();
   if (origin) {
-    return origin === request.nextUrl.origin;
+    if (origin === request.nextUrl.origin) {
+      return true;
+    }
+
+    // Next can normalize nextUrl.origin to the configured canonical host in
+    // development and behind proxies. Compare against the actual HTTP Host as
+    // well so a browser request to 127.0.0.1 (or a forwarded deployment host)
+    // is not mistaken for a cross-site write. Browsers do not allow scripts to
+    // forge either Origin or Host.
+    try {
+      const requestHost = request.headers.get('host')?.trim().toLowerCase();
+      return Boolean(requestHost && new URL(origin).host.toLowerCase() === requestHost);
+    } catch {
+      return false;
+    }
   }
 
   const fetchSite = request.headers.get('sec-fetch-site')?.trim().toLowerCase();

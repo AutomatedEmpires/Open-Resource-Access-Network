@@ -4,12 +4,13 @@ import { MessageCircle, List, MapPin, Shield, Building2, Users, ArrowRight, Sear
 import { Button } from '@/components/ui/button';
 import { AppNav } from '@/components/nav/AppNav';
 import { AppFooter } from '@/components/footer';
+import { ChatFirstIntakeHero } from '@/components/home/ChatFirstIntakeHero';
 import { SITE, buildOrganizationJsonLd, getSameAsLinks, toSafeJsonLd } from '@/lib/site';
 
 export const metadata: Metadata = {
   title: SITE.title,
   description:
-    'Find verified government, nonprofit, and community services near you. Real, confirmed records — structured, searchable, and maintained by real people.',
+    'Tell ORAN what is happening and find a clear next step from stored government, nonprofit, and community provider records.',
   alternates: { canonical: '/' },
   openGraph: {
     title: SITE.title,
@@ -34,7 +35,7 @@ const websiteSchema = {
     '@type': 'SearchAction',
     target: {
       '@type': 'EntryPoint',
-      urlTemplate: `${SITE.baseUrl}/directory?q={search_term_string}`,
+      urlTemplate: `${SITE.baseUrl}/chat?q={search_term_string}`,
     },
     'query-input': 'required name=search_term_string',
   },
@@ -46,7 +47,7 @@ const CATEGORIES = [
   { label: 'Housing & Shelter',      href: '/directory?q=housing+shelter' },
   { label: 'Mental Health',          href: '/directory?q=mental+health' },
   { label: 'Healthcare',             href: '/directory?q=healthcare+medical' },
-  { label: 'Crisis Support',         href: '/directory?q=crisis+support' },
+  { label: 'Urgent support',         href: '/chat?q=I+need+urgent+support' },
   { label: 'Employment',             href: '/directory?q=employment+jobs' },
   { label: 'Legal Aid',              href: '/directory?q=legal+aid' },
   { label: 'Financial Assistance',   href: '/directory?q=financial+assistance' },
@@ -72,7 +73,7 @@ const SEEKER_FEATURES: Array<{ icon: React.ElementType; title: string; body: str
   {
     icon: Shield,
     title: 'Verified records only',
-    body: 'Every phone number, address, and service detail comes from a confirmed, structured source record — reviewed and dated.',
+    body: 'Every displayed fact comes from a stored provider record, with trust and freshness cues that say what is known or unknown.',
   },
   {
     icon: CheckCircle2,
@@ -168,73 +169,8 @@ export default function Home() {
 
       <main id="main-content" tabIndex={-1} className="flex-1">
 
-        {/* ══ HERO ══════════════════════════════════════════════ */}
-        <section className="border-b border-[var(--border)] bg-white px-4 py-14 sm:py-24 md:py-32 text-center">
-          <div className="mx-auto max-w-3xl">
-            {/* Identity badge */}
-            <div className="mb-5 sm:mb-8 inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-white px-4 py-1.5 text-xs font-medium text-[var(--text-secondary)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]" aria-hidden="true" />
-              Community-verified &middot; Always free
-            </div>
-
-            <h1 className="mb-4 font-display text-3xl font-bold tracking-tight text-[var(--text-primary)] sm:text-5xl lg:text-6xl leading-tight">
-              Find verified services<br className="hidden sm:block" /> for real needs
-            </h1>
-
-            <p className="mb-7 sm:mb-10 text-base sm:text-lg leading-relaxed text-[var(--text-secondary)] max-w-xl mx-auto">
-              ORAN connects people to confirmed government, nonprofit, and community programs.
-              Every record is structured, sourced, and reviewed — so the results you see are real.
-            </p>
-
-            {/* Search form */}
-            <form
-              action="/directory"
-              method="get"
-              role="search"
-              aria-label="Search community services"
-              className="mb-6 flex max-w-2xl mx-auto items-stretch overflow-hidden rounded-xl shadow-sm ring-1 ring-[var(--border)]"
-            >
-              <div className="relative flex-1">
-                <Search
-                  className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]"
-                  aria-hidden="true"
-                />
-                <input
-                  type="search"
-                  name="q"
-                  placeholder="Food assistance, housing, mental health…"
-                  aria-label="Search for a service or need"
-                  className="h-full w-full border-0 bg-white py-4 pl-11 pr-4 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-0"
-                />
-              </div>
-              <button
-                type="submit"
-                className="flex-shrink-0 border-l border-[var(--border)] bg-white px-5 sm:px-8 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-surface-alt)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--text-muted)]"
-              >
-                Search
-              </button>
-            </form>
-
-            {/* Quick-access pills */}
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <span className="text-xs text-[var(--text-muted)]">or explore</span>
-              <Link
-                href="/directory"
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white px-4 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
-              >
-                <List className="h-3.5 w-3.5" aria-hidden="true" />
-                Directory
-              </Link>
-              <Link
-                href="/map"
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white px-4 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
-              >
-                <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                Map view
-              </Link>
-            </div>
-          </div>
-        </section>
+        {/* ══ CHAT-FIRST INTAKE ═════════════════════════════════ */}
+        <ChatFirstIntakeHero />
 
         {/* ══ BROWSE BY NEED ══════════════════════════════════════ */}
         <section className="border-b border-[var(--border)] bg-white px-4 py-6 sm:py-8">
@@ -268,7 +204,7 @@ export default function Home() {
               </h2>
               <p className="leading-relaxed text-[var(--text-secondary)]">
                 When accuracy matters — and with services it always does — ORAN retrieves real,
-                verified records and presents them clearly. No guesswork, no stale data.
+                stored provider records and presents them clearly. No invented facts; missing or stale details stay visible.
               </p>
             </div>
 

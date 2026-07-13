@@ -16,8 +16,9 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = new URL('..', import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SRC_APP = join(ROOT, 'src', 'app');
 
 // ── File walker ──────────────────────────────────────────────────────────────

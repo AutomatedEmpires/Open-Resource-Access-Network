@@ -320,7 +320,7 @@ describe('DirectoryPageClient', () => {
       expect(filteredUrl).toContain('page=1');
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next page of results' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Next page of results' }));
 
     await waitFor(() => {
       const searchCalls = fetchMock.mock.calls

@@ -7,10 +7,10 @@ test.describe('Seeker flows (public)', () => {
 
     // Persistent floating crisis help button — present on every page
     await expect(
-      page.getByRole('button', { name: /open crisis resources/i }),
+      page.getByRole('button', { name: /open crisis resources and emergency hotlines/i }),
     ).toBeVisible();
 
-    await page.getByRole('link', { name: 'Find services' }).click();
+    await page.getByRole('link', { name: 'Find services with chat' }).click();
     await expect(page).toHaveURL(/\/chat$/);
     await expect(page.getByRole('textbox', { name: 'Chat message input' })).toBeVisible();
   });
@@ -53,9 +53,9 @@ test.describe('Seeker flows (public)', () => {
   test('map page loads (and search box is present)', async ({ page }) => {
     await page.goto('/map');
 
-    await expect(page.getByRole('heading', { name: 'Service Map' })).toBeVisible();
-    await expect(page.getByRole('searchbox', { name: 'Search services to plot' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Map', exact: true })).toBeVisible();
+    await expect(page.getByRole('searchbox', { name: 'Search services' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Search map', exact: true })).toBeVisible();
   });
 
   test('service detail page renders for a retrieved record when DB is configured', async ({ page }) => {

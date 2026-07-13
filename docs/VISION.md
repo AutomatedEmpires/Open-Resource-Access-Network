@@ -16,7 +16,7 @@ Connect people in need to real, verified services — never invented ones.
 
 ## Product Surfaces
 
-- **Chatbot** (primary): Conversational navigation using profile + geo + constraints
+- **Chat-first intake** (primary): plain-language need intake, focused follow-up, and conversational navigation using only the profile, approximate geography, and constraints that can change the match
 - **Map UI**: Live filtering on pan/zoom, clustering, listing cards
 - **Directory UI**: Fast searchable list with filters
 

@@ -24,6 +24,7 @@ function makeRequestWithOptions(
   options: {
     method?: string;
     origin?: string;
+    host?: string;
     fetchSite?: string;
     authorization?: string;
   } = {},
@@ -33,6 +34,9 @@ function makeRequestWithOptions(
 
   if (options.origin) {
     headers.set('origin', options.origin);
+  }
+  if (options.host) {
+    headers.set('host', options.host);
   }
   if (options.fetchSite) {
     headers.set('sec-fetch-site', options.fetchSite);
@@ -191,6 +195,22 @@ describe('middleware', () => {
       makeRequestWithOptions('/api/profile', {
         method: 'PUT',
         origin: 'https://oran.test',
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('allows writes when Next normalizes nextUrl but Origin matches the request Host', async () => {
+    mutableEnv.NODE_ENV = 'production';
+    const { proxy: middleware } = await loadMiddlewareModule();
+
+    const response = await middleware(
+      makeRequestWithOptions('/api/chat', {
+        method: 'POST',
+        origin: 'http://127.0.0.1:3100',
+        host: '127.0.0.1:3100',
       }),
     );
 

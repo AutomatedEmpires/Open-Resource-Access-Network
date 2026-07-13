@@ -906,6 +906,12 @@ extracted_candidates ──< candidate_readiness
 
 ## Data Integrity Rules
 
+### Chat-first navigator presentation contract
+
+`src/domain/resourceNavigator.ts` defines the typed intake and recommendation foundation for `UserNeed`, `NeedCategory`, `IntakeQuestion`, `IntakeAnswer`, `ResourceProvider`, `ServiceOffering`, `EligibilityRule`, `CoverageArea`, `ContactMethod`, `IntakeStep`, `SourceRecordSummary`, `IssueReport`, `VolunteerReviewTask`, `ProviderClaim`, `MatchScore`, `UrgencyLevel`, and the expanded resource verification states.
+
+This is a presentation/workflow contract, not a second persistence model. Canonical HSDS tables, submission workflows, confidence scores, ingestion source records, and provenance remain authoritative. A future schema migration is required before any new navigator-only field is persisted. Exact verification states and checked dates must never be inferred from confidence bands or generic update timestamps.
+
 1. **No hallucinated data**: All records must have a traceable source (import file, host submission, or manual admin entry).
 2. **Phone numbers**: Stored exactly as submitted. Display logic adds formatting. Never generated.
 3. **URLs**: Stored as-is. Validated at import but not rewritten.

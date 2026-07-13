@@ -43,8 +43,8 @@ jobs:
   sync:
     name: Sync ORAN Roadmap fields
     # Dependabot-triggered workflows cannot access repository secrets. Keep the
-    # roadmap check neutral for bot PRs while preserving fail-closed validation
-    # for every actor that is expected to have PROJECT_TOKEN access.
+    # roadmap check neutral for bot PRs; other events warn and skip below when
+    # PROJECT_TOKEN is not configured rather than blocking application CI.
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -53,14 +53,18 @@ jobs:
 
     steps:
       - name: Check PROJECT_TOKEN present
+        id: project-token
         shell: bash
         run: |
           if [ -z "$PROJECT_TOKEN" ]; then
-            echo "PROJECT_TOKEN secret is missing. Add it as a repo Actions secret to enable Project sync." >&2
-            exit 1
+            echo "::warning::PROJECT_TOKEN is missing; skipping ORAN Roadmap sync. Add the repo Actions secret to restore synchronization."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Sync fields
+        if: steps.project-token.outputs.available == 'true'
         uses: actions/github-script@v8
         with:
           github-token: ${{ env.PROJECT_TOKEN }}

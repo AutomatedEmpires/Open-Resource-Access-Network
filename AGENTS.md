@@ -75,7 +75,7 @@ Stop before any of the following:
 - transferring repository, provider, domain, or account ownership;
 - making a public launch announcement or publicly representing ORAN as launched/official;
 - purchasing ads, starting campaigns, or sending broadcast outreach;
-- filing legal documents on the founder's behalf;
+- filing legal or regulatory documents for the founder, the venture, or any other entity;
 - completing an action that requires MFA when the founder is unavailable.
 
 A hard stop blocks only the external/gated action. Prepare the code, source evidence, preview, migration plan, rollback steps, launch checklist, or outreach assets so the approval is narrow and well informed.

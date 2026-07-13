@@ -75,7 +75,7 @@ Stop before any of the following:
 - transferring repository, provider, domain, or account ownership;
 - making a public launch announcement or publicly representing ORAN as launched/official;
 - purchasing ads, starting campaigns, or sending broadcast outreach;
-- filing legal documents or accepting legal terms on the founder's behalf;
+- filing legal documents on the founder's behalf;
 - completing an action that requires MFA when the founder is unavailable.
 
 A hard stop blocks only the external/gated action. Prepare the code, source evidence, preview, migration plan, rollback steps, launch checklist, or outreach assets so the approval is narrow and well informed.
@@ -108,7 +108,7 @@ Known provider surfaces include Vercel, Supabase/Postgres/PostGIS, Doppler/secre
 
 Agents may use established local, test, isolated, and protected-preview resources when the task requires them. Repository configuration, adapters, validation, and fail-closed preview setup are normal work. Never reveal secret values or reuse another venture's provider account, sender, project, database, or data.
 
-Production provider changes are controlled operations. Do not change live domains/DNS, billing, RBAC, recovery, production environments, live senders, production identity, or provider ownership without the applicable hard-stop approval. Do not bulk ingest or publish to live stores from a coding task. Preparing an exact provider-change runbook is allowed.
+Assigned agents may make reversible, non-billing provider configuration changes in established dev, preview, or production lanes when scope, least privilege, rollback, and verification are explicit. Stop only when the action crosses a listed hard stop: paid plan, live money, domain/DNS, destructive deletion, destructive production migration, credential rotation/revocation, ownership transfer, public launch/campaign, legal filing, or unavailable MFA. Bulk ingestion or publication to live stores still requires an explicitly assigned source/data lane and verification contract; preparing exact runbooks is always allowed.
 
 **PostHog is absent/deferred.** Do not add PostHog, pixels, session replay, fingerprinting, or behavioral tracking unless a civic analytics policy first defines purpose, consent, taxonomy, PII handling, retention, access, and budget.
 
@@ -133,14 +133,14 @@ Production provider changes are controlled operations. Do not change live domain
 
 ### Email and outreach
 
-- Internal delivery tests may use approved ORAN test recipients and non-user data.
+- Internal delivery tests may use approved ORAN test recipients and non-user data. Assigned reversible transactional-email configuration may proceed with test/non-user recipients; DNS activation, a public/marketing campaign, or a real-user launch remains a hard stop where applicable.
 - External provider outreach requires an assigned outreach lane, approved sender, accurate identity, and one-to-one scope; never imply an existing partnership.
-- Do not activate/reuse a sender/domain or send broadcasts without approval. Protect resource and recipient contact data.
+- Keep sender/domain work venture-scoped and protect resource/recipient contact data. Stop before a DNS change, public launch, or broadcast campaign; reversible configuration and internal/non-user delivery proof may proceed in an assigned lane.
 
 ### Auth
 
 - NextAuth/Microsoft Entra is the current primary administrative boundary; optional providers must fail closed in production.
-- Do not weaken administrative gates, provision production owners/users, or create parallel production auth from a product branch.
+- Assigned reversible identity configuration and synthetic/test-user provisioning may proceed with least privilege, rollback, and authorization tests. Do not weaken administrative gates, rotate credentials, transfer ownership, or provision real users without an explicitly assigned identity lane.
 
 ### Money
 
@@ -207,7 +207,7 @@ Still protect authoritative-source integrity, privacy, crisis handling, secrets,
 Refreshed 2026-07-13 UTC:
 
 - Draft PR #72, `docs: add agent operating standards`, is this contract branch.
-- Draft PR #58 covers Vercel/Supabase convergence and is the active provider/runtime lane; coordinate before touching its files or assumptions.
+- Draft PR #58 covers Vercel/Supabase convergence and is the active provider/runtime lane. At refresh it is `DIRTY` and failing runbook-freshness, visual-regression, and Codecov patch checks; coordinate before touching its files or relying on its runtime assumptions.
 - Dependabot PRs #66 and #68–#71 remain open. Treat their current check state as dynamic and refresh before dependency work.
 - The former security/CI reduction PR #67 is merged and no longer an active lane.
 

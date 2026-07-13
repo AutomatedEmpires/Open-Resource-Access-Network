@@ -1,5 +1,7 @@
 # ORAN Vision
 
+**Building Bridges, Strengthening Communities**
+
 ORAN is a civic-grade, safety-critical, chatbot-first, GIS-enabled platform that helps people find government, state, county, nonprofit, and community services quickly and safely.
 
 ## Core Mission

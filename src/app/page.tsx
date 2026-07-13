@@ -3,9 +3,11 @@ import Link from 'next/link';
 import { MessageCircle, List, MapPin, Shield, Building2, Users, ArrowRight, Search, CheckCircle2, Zap, Globe, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppNav } from '@/components/nav/AppNav';
+import { ScopedMobileNav } from '@/components/nav/ScopedMobileNav';
 import { AppFooter } from '@/components/footer';
 import { ChatFirstIntakeHero } from '@/components/home/ChatFirstIntakeHero';
 import { SITE, buildOrganizationJsonLd, getSameAsLinks, toSafeJsonLd } from '@/lib/site';
+import { ORAN_USER_TYPES } from '@/domain/resourceNavigator';
 
 export const metadata: Metadata = {
   title: SITE.title,
@@ -43,18 +45,28 @@ const websiteSchema = {
 
 // ── Browse-by-need category chips ───────────────────────────
 const CATEGORIES = [
-  { label: 'Food & Nutrition',       href: '/directory?q=food+nutrition' },
-  { label: 'Housing & Shelter',      href: '/directory?q=housing+shelter' },
+  { label: 'SNAP & Food Benefits',   href: '/directory?q=SNAP+food+benefits' },
+  { label: 'Food Banks & Meals',     href: '/directory?q=food+banks+meal+centers' },
+  { label: 'Clothing',               href: '/directory?q=clothing+bank' },
+  { label: 'Rent & Housing',         href: '/directory?q=rent+housing+shelter' },
+  { label: 'Electricity & Utilities', href: '/directory?q=electricity+utility+assistance' },
+  { label: 'Medicaid & Health',      href: '/directory?q=Medicaid+healthcare' },
   { label: 'Mental Health',          href: '/directory?q=mental+health' },
-  { label: 'Healthcare',             href: '/directory?q=healthcare+medical' },
+  { label: 'Medical & Dental',       href: '/directory?q=sliding+scale+medical+dental' },
   { label: 'Urgent support',         href: '/chat?q=I+need+urgent+support' },
   { label: 'Employment',             href: '/directory?q=employment+jobs' },
   { label: 'Legal Aid',              href: '/directory?q=legal+aid' },
-  { label: 'Financial Assistance',   href: '/directory?q=financial+assistance' },
+  { label: 'Immigration',            href: '/directory?q=immigration+services' },
   { label: 'Child & Family',         href: '/directory?q=children+family' },
   { label: 'Disability Services',    href: '/directory?q=disability+services' },
   { label: 'Veteran Services',       href: '/directory?q=veteran+services' },
-  { label: 'Substance Use',          href: '/directory?q=substance+use+recovery' },
+] as const;
+
+const PUBLIC_MOBILE_NAV = [
+  { href: '/', label: 'Start', icon: 'home' },
+  { href: '/chat', label: 'Chat', icon: 'chat' },
+  { href: '/directory', label: 'Directory', icon: 'directory' },
+  { href: '/map', label: 'Map', icon: 'map' },
 ] as const;
 
 // ── Per-audience feature data ────────────────────────────────
@@ -154,7 +166,7 @@ const WHY_ORAN = [
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--bg-page)]">
+    <div className="flex min-h-screen flex-col bg-[var(--bg-page)] pb-14 md:pb-0">
       {/* JSON-LD */}
       <script
         type="application/ld+json"
@@ -187,6 +199,21 @@ export default function Home() {
                 >
                   {label}
                 </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="border-b border-[var(--border)] bg-slate-50 px-4 py-5" aria-labelledby="audience-scopes-heading">
+          <div className="mx-auto flex max-w-5xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <h2 id="audience-scopes-heading" className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              One network, clear scopes
+            </h2>
+            <div className="flex flex-wrap justify-center gap-2">
+              {ORAN_USER_TYPES.map((audience) => (
+                <span key={audience.id} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
+                  {audience.label}
+                </span>
               ))}
             </div>
           </div>
@@ -389,6 +416,7 @@ export default function Home() {
       </main>
 
       <AppFooter />
+      <ScopedMobileNav scopeLabel="Seeker" pathname="/" items={PUBLIC_MOBILE_NAV} />
     </div>
   );
 }

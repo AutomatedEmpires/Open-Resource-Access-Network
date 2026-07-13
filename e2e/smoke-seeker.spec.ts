@@ -2,6 +2,25 @@ import { test, expect } from '@playwright/test';
 import { isDbConfigured } from './helpers/db';
 
 test.describe('Seeker flows (public)', () => {
+  test('mobile landing navigation is seeker-scoped and clears crisis help', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+
+    const nav = page.getByRole('navigation', { name: 'Seeker mobile navigation' });
+    const crisis = page.getByRole('button', { name: /open crisis resources and emergency hotlines/i });
+
+    await expect(nav).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'Start', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(nav.getByRole('link')).toHaveCount(4);
+    await expect(crisis).toBeVisible();
+
+    const navBox = await nav.boundingBox();
+    const crisisBox = await crisis.boundingBox();
+    expect(navBox).not.toBeNull();
+    expect(crisisBox).not.toBeNull();
+    expect(crisisBox!.y + crisisBox!.height).toBeLessThanOrEqual(navBox!.y);
+  });
+
   test('landing page shows crisis FAB and can reach chat', async ({ page }) => {
     await page.goto('/');
 

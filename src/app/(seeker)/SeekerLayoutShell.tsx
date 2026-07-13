@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { MessageCircle, Bookmark, User, ListTodo, LayoutDashboard } from 'lucide-react';
 
 import AppNav from '@/components/nav/AppNav';
+import { ScopedMobileNav } from '@/components/nav/ScopedMobileNav';
 import { CommandPalette } from '@/components/command/CommandPalette';
 import { AppFooter } from '@/components/footer';
 import { SeekerFeatureFlagsProvider } from '@/components/seeker/SeekerFeatureFlags';
@@ -84,8 +84,6 @@ export function SeekerLayoutShell({
     };
   }, []);
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
-
   return (
     <SeekerFeatureFlagsProvider value={{ planEnabled, reminderEnabled, dashboardEnabled }}>
       <div className="flex min-h-screen flex-col bg-white text-[var(--text-primary)]">
@@ -130,43 +128,16 @@ export function SeekerLayoutShell({
         <AppFooter />
       </div>
 
-      <nav
-        className="fixed bottom-0 inset-x-0 z-[var(--z-nav)] border-t border-slate-200/80 bg-white/95 backdrop-blur md:hidden"
-        aria-label="Mobile navigation"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-      >
-        <div className="flex items-center h-14 w-full">
-          {navItems.map(({ href, label, icon: Icon }) => {
-            const active = isActive(href);
-            const isSavedItem = href === '/saved';
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-[10px] sm:text-xs font-medium transition-colors overflow-hidden ${
-                  active ? 'text-action-base' : 'text-slate-400 hover:text-slate-700'
-                }`}
-                aria-current={active ? 'page' : undefined}
-              >
-                <span className={`relative flex items-center justify-center rounded-full transition-colors ${
-                  active ? 'bg-info-subtle px-3 py-1' : 'px-3 py-1'
-                }`}>
-                  <Icon className="h-5 w-5" aria-hidden="true" />
-                  {isSavedItem && savedCount > 0 && (
-                    <span
-                      className="absolute -top-1.5 -right-2 inline-flex items-center justify-center rounded-full bg-slate-900 text-white text-[9px] font-bold min-w-[14px] h-3.5 px-0.5 leading-none"
-                      aria-hidden="true"
-                    >
-                      {savedCount > 99 ? '99+' : savedCount}
-                    </span>
-                  )}
-                </span>
-                {label}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      <ScopedMobileNav
+        scopeLabel="Seeker"
+        pathname={pathname}
+        items={navItems.map((item) => ({
+          ...item,
+          badge: item.href === '/saved' && savedCount > 0
+            ? (savedCount > 99 ? '99+' : savedCount)
+            : undefined,
+        }))}
+      />
       </div>
     </SeekerFeatureFlagsProvider>
   );

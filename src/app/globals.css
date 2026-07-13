@@ -44,6 +44,16 @@
   --transition-slow:     400ms ease;
 }
 
+.crisis-fab-position {
+  bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 768px) {
+  .crisis-fab-position {
+    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --transition-fast:     0ms;

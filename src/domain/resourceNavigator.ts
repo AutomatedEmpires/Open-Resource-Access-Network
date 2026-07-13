@@ -26,6 +26,45 @@ export const NEED_CATEGORIES = [
 
 export type NeedCategory = (typeof NEED_CATEGORIES)[number];
 
+/**
+ * Product audiences mapped onto today's protected workspace lanes. Government,
+ * business, and partner users share organization/partnership workflows until
+ * governance approves distinct RBAC roles.
+ */
+export const ORAN_USER_TYPES = [
+  { id: 'government', label: 'Government', workspace: 'organization' },
+  { id: 'seeker', label: 'Seekers', workspace: 'seeker' },
+  { id: 'admin', label: 'Admin', workspace: 'oran_admin' },
+  { id: 'business', label: 'Business', workspace: 'organization' },
+  { id: 'community_volunteer', label: 'Community volunteers', workspace: 'community_admin' },
+  { id: 'partner', label: 'Partners', workspace: 'partnership' },
+] as const;
+
+export type OranUserType = (typeof ORAN_USER_TYPES)[number]['id'];
+
+export const RESOURCE_SERVICE_GROUPS = [
+  {
+    id: 'government_resources',
+    label: 'Government resources',
+    examples: ['SNAP', 'Medicaid', 'Veteran services', 'Disability', 'Immigration'],
+  },
+  {
+    id: 'community_resources',
+    label: 'Community resources',
+    examples: ['Food banks', 'Meal centers', 'Clothing banks'],
+  },
+  {
+    id: 'household_stability',
+    label: 'Household stability',
+    examples: ['Rent', 'Housing', 'Electricity', 'Utility assistance'],
+  },
+  {
+    id: 'health_and_wellbeing',
+    label: 'Health and wellbeing',
+    examples: ['Mental health', 'Sliding-scale medical', 'Sliding-scale dental'],
+  },
+] as const;
+
 export const URGENCY_LEVELS = ['immediate', 'today', 'within_days', 'planning'] as const;
 export type UrgencyLevel = (typeof URGENCY_LEVELS)[number];
 

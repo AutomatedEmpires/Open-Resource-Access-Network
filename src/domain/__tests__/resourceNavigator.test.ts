@@ -4,6 +4,8 @@ import {
   buildGuidedIntakePrompt,
   formatVerificationStatus,
   needsVerificationWarning,
+  ORAN_USER_TYPES,
+  RESOURCE_SERVICE_GROUPS,
 } from '@/domain/resourceNavigator';
 
 describe('resource navigator contracts', () => {
@@ -30,5 +32,24 @@ describe('resource navigator contracts', () => {
     expect(needsVerificationWarning('source_verified')).toBe(false);
     expect(needsVerificationWarning('stale')).toBe(true);
     expect(needsVerificationWarning(undefined)).toBe(true);
+  });
+
+  it('keeps founder audiences and service groups explicit without inventing new RBAC roles', () => {
+    expect(ORAN_USER_TYPES.map((audience) => audience.id)).toEqual([
+      'government',
+      'seeker',
+      'admin',
+      'business',
+      'community_volunteer',
+      'partner',
+    ]);
+    expect(ORAN_USER_TYPES.find((audience) => audience.id === 'government')?.workspace).toBe('organization');
+    expect(RESOURCE_SERVICE_GROUPS.flatMap((group) => group.examples)).toEqual(expect.arrayContaining([
+      'SNAP',
+      'Medicaid',
+      'Food banks',
+      'Electricity',
+      'Sliding-scale dental',
+    ]));
   });
 });

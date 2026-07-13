@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { List, MapPin, ShieldCheck } from 'lucide-react';
 
 import { GuidedIntake } from '@/components/chat/GuidedIntake';
+import { SITE } from '@/lib/site';
 
 export function ChatFirstIntakeHero() {
   const router = useRouter();
@@ -13,7 +14,10 @@ export function ChatFirstIntakeHero() {
     <section className="border-b border-slate-200 bg-white px-4 py-12 sm:py-20">
       <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-2 lg:items-center">
         <div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700">
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+            {SITE.tagline}
+          </p>
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700">
             <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
             Stored provider records · No advice or invented facts
           </div>

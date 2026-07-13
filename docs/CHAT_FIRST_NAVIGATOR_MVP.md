@@ -2,6 +2,8 @@
 
 Status: protected-preview product direction and implementation note.
 
+Brand line: **Building Bridges, Strengthening Communities**.
+
 ## Internal diagnosis
 
 ### What exists
@@ -40,6 +42,20 @@ Status: protected-preview product direction and implementation note.
 - Provider claim/update request: `/claim`
 - Volunteer verification: `/queue` and `/verify`
 - ORAN-admin report triage and sourcing: `/reports`, `/triage`, and `/ingestion`
+
+## Audiences and mobile scope
+
+The product language recognizes Government, Seekers, Admin, Business, Community Volunteers, and Partners. The protected authorization model remains intentionally narrower:
+
+- Seekers use the seeker workspace.
+- Government and Business publishers use the organization workspace.
+- Community Volunteers use the community-review workspace.
+- Admin refers to the ORAN-admin workspace.
+- Partners use organization or partnership workflows until a distinct partner permission model is approved.
+
+This mapping does not create new RBAC roles by implication. Mobile surfaces expose a fixed, safe-area-aware bottom navigation scoped to the current seeker, organization, community-volunteer, or ORAN-admin workspace; secondary actions remain available through each workspace menu.
+
+The initial resource language explicitly covers government benefits (including SNAP, Medicaid, veteran, disability, and immigration services), community essentials (food banks, meal centers, and clothing banks), household stability (rent, housing, electricity, and utilities), and health/wellbeing (mental health and sliding-scale medical or dental care).
 
 ## Matching representation
 

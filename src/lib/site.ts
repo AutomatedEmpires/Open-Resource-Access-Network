@@ -20,9 +20,10 @@ export const SITE = {
   acronym: 'ORAN',
   legalName: 'Open Resource Access Network',
   title: 'ORAN — Open Resource Access Network',
+  tagline: 'Building Bridges, Strengthening Communities',
   baseUrl: normalizeBaseUrl(process.env.NEXT_PUBLIC_SITE_URL),
   description:
-    'Find verified government, nonprofit, and community services near you. No hallucinated results — real, confirmed information only.',
+    'Describe what is happening and find a clear next step from stored government, nonprofit, and community service records.',
   mission:
     'Make verified social-service discovery reliable, safe, and accessible by connecting people to confirmed government, nonprofit, and community resources.',
   vision:
@@ -98,7 +99,7 @@ export function buildOrganizationJsonLd() {
     foundingDate: SITE.founded,
     description: SITE.description,
     mission: SITE.mission,
-    slogan: 'Verified civic resource discovery',
+    slogan: SITE.tagline,
     sameAs: sameAs.length > 0 ? sameAs : undefined,
   };
 }

@@ -26,7 +26,7 @@ Refresh `main`, the current PR set, security findings, schema/ledger evidence, a
 - Agent work: `agent/<scope>-<short-description>`.
 - Other work: `feat/<lane>/<slug>`, `fix/<lane>/<slug>`, `docs/<lane>/<slug>`, `security/<lane>/<slug>`, or `chore/<lane>/<slug>`, all kebab-case.
 - Before editing, run `git status -sb`, record branch/HEAD, inspect open PRs/issues and agent-status docs, and identify the owned files. One owner per task/branch/artifact; do not compete with an active ingestion, schema, recovery, or security lane.
-- Open a small PR against `main`. The builder is not the sole approver. Do not merge, force-push, rewrite history, delete branches, or overwrite another agent's work.
+- Open a small PR against `main`. Implementing agents/builders do not merge their own PRs, force-push, rewrite history, delete unmerged branches, or overwrite another agent's work. A designated maintainer or approved automation may merge after independent review and green required checks, then delete the merged branch.
 
 ## 5. Required checks before PR
 
@@ -55,7 +55,7 @@ Ingestion, source bootstrap, owner provisioning, migrations, canary/report, depl
 - Do not imply partnerships, endorsements, official status, eligibility, availability, coverage guarantees, or emergency response capability without current verified evidence.
 - Do not introduce payments, advertising, fundraising, or monetization flows. Do not send real email or change production auth.
 - Do not add PostHog, tracking, session replay, fingerprints, or new PII fields without an approved civic analytics/privacy policy.
-- Do not merge PRs, delete branches, expose secrets/private data, or redesign the product outside an approved lane.
+- Do not self-merge or bypass independent review, delete unmerged branches, expose secrets/private data, or redesign the product outside an approved lane.
 
 ## 7. Provider no-touch zones
 
@@ -92,12 +92,13 @@ Use approximate location and progressive disclosure. Avoid dark patterns, promot
 
 ## 10. Current known PRs and blockers
 
-Snapshot 2026-07-12 local time (refreshed 2026-07-13 UTC after PR #67 merged):
+Status last refreshed 2026-07-13 02:30 UTC (2026-07-12 America/Los_Angeles):
 
-- PR #58, draft convergence to Vercel/Supabase: open with failing runbook-freshness, visual-regression, and patch-coverage gates; keep draft.
-- PRs #64–#66, dependency updates: open and behind `main`, with prior test/security failures.
-- PRs #68–#70, newly opened dependency updates: open/blocked while their fresh checks run.
-- PR #67, security/CI blocker reduction: merged to `main` as `8da2101`; it is no longer an open blocker or active lane.
+- PR #58, draft convergence to Vercel/Supabase: open and dirty; keep it draft and coordinate before touching its convergence/provider lane.
+- PR #66, test dependency update: open and clean at refresh.
+- PRs #68, #69, and #71, dependency updates: open and clean at refresh.
+- PR #70, Vite/Storybook dependency update: open and blocked at refresh.
+- PR #67, security/CI blocker reduction: merged to `main` as `8da2101`; it is no longer an open blocker or active lane. PRs #64 and #65 are also no longer open.
 
 Refresh all PR states before acting. Portfolio blockers include critical/high dependency and CodeQL findings, failing ancillary gates, schema/migration-ledger authority mismatch, no safe Preview/recovery baseline, and unresolved Azure/Mailgun ownership/retention. These are no-go conditions, not invitations to perform provider or schema work from an unrelated branch.
 

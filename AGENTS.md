@@ -189,7 +189,7 @@ Work is done when:
 - new public facts trace to authoritative evidence and carry correct provenance/verification state;
 - privacy minimization, crisis routing, nonpartisanship, and fail-closed boundaries remain intact;
 - focused tests and all relevant required checks pass;
-- no secrets, private data, unverified partnership/availability claims, tracking, real send, or live-money behavior was introduced;
+- no secrets, private data, unverified partnership/availability claims, tracking, unassigned/broadcast/customer send, or live-money behavior was introduced; an explicitly assigned one-to-one provider outreach uses the approved ORAN sender and records contact-source provenance, purpose, opt-out/suppression handling, and outcome;
 - migrations and source transformations are reproducible and have rollback or forward-fix notes;
 - operator docs explain verification, correction, and ownership where behavior changed;
 - the PR is scoped, independently reviewable, and coordinated with overlapping lanes.

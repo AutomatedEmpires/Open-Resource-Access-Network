@@ -42,6 +42,10 @@ concurrency:
 jobs:
   sync:
     name: Sync ORAN Roadmap fields
+    # Dependabot-triggered workflows cannot access repository secrets. Keep the
+    # roadmap check neutral for bot PRs while preserving fail-closed validation
+    # for every actor that is expected to have PROJECT_TOKEN access.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

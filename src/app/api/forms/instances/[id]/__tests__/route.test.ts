@@ -350,27 +350,28 @@ describe('PUT /api/forms/instances/[id]', () => {
   // ── update_metadata tests ─────────────────────────────────
 
   it('updates priority and sla via update_metadata', async () => {
+    const futureDeadline = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     authMocks.getAuthContext.mockResolvedValueOnce({
       userId: 'reviewer-1',
       role: 'community_admin',
       orgIds: [],
       orgRoles: new Map(),
     });
-    const refreshed = makeInstance({ priority: 3, sla_deadline: '2026-06-01T00:00:00.000Z' });
+    const refreshed = makeInstance({ priority: 3, sla_deadline: futureDeadline });
     vaultMocks.getAccessibleFormInstance
       .mockResolvedValueOnce(makeInstance({ status: 'under_review' }))
       .mockResolvedValueOnce(refreshed);
 
     const { PUT } = await loadRoute();
     const response = await PUT(
-      createRequest({ jsonBody: { action: 'update_metadata', priority: 3, slaDeadline: '2026-06-01T00:00:00.000Z' } }),
+      createRequest({ jsonBody: { action: 'update_metadata', priority: 3, slaDeadline: futureDeadline } }),
       createParams(),
     );
 
     expect(response.status).toBe(200);
     expect(vaultMocks.updateFormSubmissionOperationalMetadata).toHaveBeenCalledWith(
       SUBMISSION_ID,
-      expect.objectContaining({ priority: 3, slaDeadline: '2026-06-01T00:00:00.000Z', slaBreached: false }),
+      expect.objectContaining({ priority: 3, slaDeadline: futureDeadline, slaBreached: false }),
     );
     await expect(response.json()).resolves.toEqual({ instance: refreshed });
   });

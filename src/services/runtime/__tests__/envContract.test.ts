@@ -11,13 +11,12 @@ describe('validateRuntimeEnv', () => {
         NEXTAUTH_SECRET: 'secret',
         NEXTAUTH_URL: 'https://oran.test',
         INTERNAL_API_KEY: 'internal-key',
-        APPLICATIONINSIGHTS_CONNECTION_STRING: 'InstrumentationKey=test',
+        NEXT_PUBLIC_SENTRY_DSN: 'https://public@example.ingest.sentry.io/1',
+        NEXT_PUBLIC_SUPABASE_URL: 'https://project.supabase.co',
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+        CLERK_SECRET_KEY: 'sk_test_example',
         REDIS_URL: 'redis://localhost:6379',
-        AZURE_MAPS_KEY: 'maps-key',
-        AZURE_MAPS_SAS_TOKEN: 'sas-token',
-        AZURE_TRANSLATOR_KEY: 'trans-key',
-        AZURE_TRANSLATOR_ENDPOINT: 'https://api.example.com',
-        AZURE_TRANSLATOR_REGION: 'eastus',
       },
     );
 
@@ -42,13 +41,12 @@ describe('validateRuntimeEnv', () => {
     expect(result.ok).toBe(false);
     expect(result.missingCritical).toEqual(['AZURE_AD_CLIENT_SECRET']);
     expect(result.warnings).toEqual([
-      'APPLICATIONINSIGHTS_CONNECTION_STRING',
       'AZURE_AD_TENANT_ID',
-      'AZURE_MAPS_KEY',
-      'AZURE_MAPS_SAS_TOKEN',
-      'AZURE_TRANSLATOR_ENDPOINT',
-      'AZURE_TRANSLATOR_KEY',
-      'AZURE_TRANSLATOR_REGION',
+      'CLERK_SECRET_KEY',
+      'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY',
+      'NEXT_PUBLIC_SENTRY_DSN',
+      'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+      'NEXT_PUBLIC_SUPABASE_URL',
       'REDIS_URL',
     ]);
   });
@@ -94,7 +92,7 @@ describe('validateRuntimeEnv', () => {
     expect(result.missingCritical).toEqual([]);
   });
 
-  it('validates Azure Functions contracts from names-only sources', () => {
+  it('validates legacy Functions contracts from names-only sources', () => {
     const result = validateRuntimeEnv(
       'functions',
       [
@@ -102,12 +100,13 @@ describe('validateRuntimeEnv', () => {
         'FUNCTIONS_WORKER_RUNTIME',
         'ORAN_APP_URL',
         'INTERNAL_API_KEY',
+        'NEXT_PUBLIC_SENTRY_DSN',
       ],
       { nodeEnv: 'production' },
     );
 
     expect(result.ok).toBe(true);
     expect(result.missingCritical).toEqual([]);
-    expect(result.warnings).toEqual(['APPLICATIONINSIGHTS_CONNECTION_STRING']);
+    expect(result.warnings).toEqual([]);
   });
 });

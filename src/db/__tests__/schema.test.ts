@@ -213,6 +213,7 @@ describe('db schema and helpers', () => {
       max: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
+      allowExitOnIdle: true,
     });
     expect(drizzleMock).toHaveBeenCalledOnce();
     expect(first).toBe(second);

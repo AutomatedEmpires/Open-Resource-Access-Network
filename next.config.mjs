@@ -1,11 +1,9 @@
+import { withSentryConfig } from '@sentry/nextjs';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
   poweredByHeader: false,
-  // applicationinsights uses dynamic require() internally (diagnostic-channel-publishers).
-  // Turbopack cannot statically resolve dynamic requires, so these packages must be treated
-  // as external Node.js modules rather than bundled by Turbopack.
-  serverExternalPackages: ['applicationinsights', 'diagnostic-channel-publishers'],
   async headers() {
     const securityHeaders = [
       { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
@@ -36,8 +34,9 @@ const nextConfig = {
           "style-src 'self' 'unsafe-inline'",
           // Allow map tiles (Azure Maps), data URIs for inline images, and HTTPS images.
           "img-src 'self' data: https: blob:",
-          // Allow connections to self, Azure Maps, Azure AD, Application Insights, Sentry.
-          "connect-src 'self' https://atlas.microsoft.com https://login.microsoftonline.com https://*.applicationinsights.azure.com https://*.sentry.io",
+          // Temporary Azure domains remain until the map/auth cutovers complete. The target
+          // stack is Vercel + Clerk + Supabase + Sentry.
+          "connect-src 'self' https://atlas.microsoft.com https://login.microsoftonline.com https://*.clerk.accounts.dev https://*.clerk.com https://*.supabase.co https://*.sentry.io",
           "font-src 'self'",
           "object-src 'none'",
           "frame-ancestors 'none'",
@@ -57,4 +56,13 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  telemetry: false,
+  sourcemaps: {
+    disable: !process.env.SENTRY_AUTH_TOKEN,
+  },
+});

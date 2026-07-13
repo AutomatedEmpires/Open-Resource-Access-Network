@@ -1,6 +1,6 @@
-# Deploy ORAN to Azure (App Service)
+# Legacy rollback: deploy ORAN to Azure App Service
 
-This is the recommended deployment path for ORAN.
+This path is retained only for rollback during the Vercel/Supabase migration. It is not the active production target. Set `AZURE_ROLLBACK_DEPLOY_ENABLED=true` only for an approved rollback. See [STACK_MIGRATION.md](STACK_MIGRATION.md).
 
 ## Overview
 
@@ -29,7 +29,7 @@ Example (your chosen defaults):
   --location westus2 \
   --environments dev,staging,prod \
   --azure-maps-sas-token '<scoped-sas-token>' \
-  --prod-hostname openresourceaccessnetwork.com
+  --prod-hostname app.example.com
 ```
 
 ## 1) Create Azure resources
@@ -107,7 +107,6 @@ The workflow now performs two pre/postflight checks automatically:
 
 - validates the Azure App Service app-settings contract before rollout
 - verifies `/api/health` plus core security headers after rollout
-- verifies the configured custom-domain `/api/health` endpoint instead of treating the default `azurewebsites.net` host as sufficient
 
 You must create an Azure AD app registration / service principal, then add a **federated credential** for GitHub Actions.
 
@@ -123,37 +122,21 @@ If you want a scripted setup, use:
   --github-environment production
 ```
 
-GitHub environment variables required:
+GitHub environment variables required for an approved rollback:
 
 - `AZURE_CLIENT_ID`
 - `AZURE_TENANT_ID`
 - `AZURE_SUBSCRIPTION_ID`
 - `AZURE_RESOURCE_GROUP`
 - `AZURE_WEBAPP_NAME`
-- `ORAN_CUSTOM_HOSTNAME=openresourceaccessnetwork.com`
 
 GitHub variable gate (recommended):
 
-- `AZURE_DEPLOY_ENABLED=true`
+- `AZURE_ROLLBACK_DEPLOY_ENABLED=true`
 
 Until this variable is set, the deploy workflow will skip automatically.
 
 GitHub environment secrets required by infrastructure deployment include `PG_ADMIN_PASSWORD`, `NEXTAUTH_SECRET`, `INTERNAL_API_KEY`, `AZURE_MAPS_SAS_TOKEN`, and any configured identity-provider secret.
-
-## Custom-domain recovery and verification
-
-An Azure-branded `404 Site Not Found` on the custom hostname means DNS reached Azure but Azure did not route that hostname to the intended Web App. DNS alone is not a deployment.
-
-For production:
-
-1. Confirm the apex `A` record targets the Web App inbound IP and the `asuid` TXT record matches the Web App custom-domain verification ID.
-2. Set the production GitHub Environment variables above, including `ORAN_CUSTOM_HOSTNAME` and `AZURE_DEPLOY_ENABLED=true`.
-3. Run **Deploy Infrastructure (Bicep)** in `whatIf=true` mode and review the plan.
-4. Run it again with `whatIf=false`. The workflow provisions infrastructure, binds the hostname, creates or reuses an App Service managed certificate, and applies SNI TLS.
-5. Run the database migration workflow, then **Deploy (Azure App Service)**. The app workflow must receive HTTP 200 from both the default Azure hostname and `https://openresourceaccessnetwork.com/api/health`.
-6. Verify the root page, auth callbacks, security headers, and a synthetic chat request before declaring recovery.
-
-Do not work around a hostname-binding failure by changing DNS to an arbitrary Azure IP. Confirm the actual Web App name, resource group, inbound IP, and hostname verification ID first.
 
 Note: the included deploy workflow targets the `production` GitHub Environment by default.
 

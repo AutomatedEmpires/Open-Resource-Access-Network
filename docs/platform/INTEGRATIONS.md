@@ -1,5 +1,7 @@
 # ORAN Integrations
 
+> Migration note: this catalog describes the legacy/current implementation during cutover. The target stack and decision gates are authoritative in [STACK_MIGRATION.md](STACK_MIGRATION.md).
+
 ---
 
 ## Implementation Status (Truth Contract)

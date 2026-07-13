@@ -26,9 +26,10 @@ export function getDb(): NodePgDatabase<typeof schema> {
 
   _pool = new Pool({
     connectionString,
-    max: 10,
+    max: process.env.NODE_ENV === 'production' ? 2 : 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
+    allowExitOnIdle: true,
   });
 
   _db = drizzlePg(_pool, { schema });

@@ -2,7 +2,7 @@ name: Deploy (Azure App Service)
 
 on:
   workflow_dispatch:
-  # Keep deploy manual-only to avoid noisy runs on every push.
+  # Legacy rollback only. The active platform is Vercel + Supabase.
 
 permissions:
   contents: read
@@ -14,13 +14,12 @@ concurrency:
 
 jobs:
   deploy:
-    if: ${{ vars.AZURE_DEPLOY_ENABLED == 'true' }}
+    if: ${{ vars.AZURE_ROLLBACK_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
     env:
       NEXT_TELEMETRY_DISABLED: '1'
-      ORAN_CUSTOM_HOSTNAME: ${{ vars.ORAN_CUSTOM_HOSTNAME }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -28,7 +27,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -165,16 +164,4 @@ jobs:
             exit 1
           }
 
-          if [ -n "$ORAN_CUSTOM_HOSTNAME" ]; then
-            custom_health_url="https://${ORAN_CUSTOM_HOSTNAME}/api/health"
-            custom_status=$(curl -sS -o "$body_file" -w "%{http_code}" --max-time 45 "$custom_health_url" || true)
-            echo "Custom-domain readiness: HTTP $custom_status"
-            if [ "$custom_status" != "200" ]; then
-              if [ -s "$body_file" ]; then
-                cat "$body_file"
-              fi
-              echo "::error::Custom-domain readiness verification failed."
-              exit 1
-            fi
-          fi
           echo "Deployment verified successfully"

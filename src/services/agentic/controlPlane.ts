@@ -19,7 +19,7 @@ export interface ControlPlaneFlagSummary {
 export interface ControlPlaneIntegrationStatus {
   id: string;
   label: string;
-  category: 'identity' | 'ai' | 'observability' | 'communications' | 'data' | 'mapping';
+  category: 'identity' | 'ai' | 'observability' | 'communications' | 'data' | 'mapping' | 'hosting';
   state: IntegrationState;
   requiredEnv: string[];
   missingEnv: string[];
@@ -98,9 +98,8 @@ function compositeAiState(env: Record<string, string | undefined>): {
   missingEnv: string[];
 } {
   const keyGroups = [
-    ['AZURE_OPENAI_ENDPOINT', 'AZURE_OPENAI_KEY'],
+    ['OPENAI_API_KEY'],
     ['LLM_ENDPOINT', 'LLM_API_KEY'],
-    ['FOUNDRY_ENDPOINT', 'FOUNDRY_KEY'],
   ] as const;
 
   for (const group of keyGroups) {
@@ -169,45 +168,55 @@ export async function buildAgentControlPlaneSnapshot(
   const aiCore = compositeAiState(env);
   const integrations: ControlPlaneIntegrationStatus[] = [
     {
-      id: 'entra_id',
-      label: 'Microsoft Entra ID',
+      id: 'clerk',
+      label: 'Clerk',
       category: 'identity',
-      state: integrationState(
-        ['AZURE_AD_CLIENT_ID', 'AZURE_AD_CLIENT_SECRET', 'AZURE_AD_TENANT_ID'],
-        env,
-      ),
-      requiredEnv: ['AZURE_AD_CLIENT_ID', 'AZURE_AD_CLIENT_SECRET', 'AZURE_AD_TENANT_ID'],
-      missingEnv: ['AZURE_AD_CLIENT_ID', 'AZURE_AD_CLIENT_SECRET', 'AZURE_AD_TENANT_ID'].filter(
+      state: integrationState(['NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', 'CLERK_SECRET_KEY'], env),
+      requiredEnv: ['NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', 'CLERK_SECRET_KEY'],
+      missingEnv: ['NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', 'CLERK_SECRET_KEY'].filter(
         (key) => !hasEnv(env, key),
       ),
       powers: ['role-based auth', 'admin route protection', 'host/community/ORAN personas'],
     },
     {
-      id: 'app_insights',
-      label: 'Azure Application Insights',
-      category: 'observability',
-      state: integrationState(['APPLICATIONINSIGHTS_CONNECTION_STRING'], env),
-      requiredEnv: ['APPLICATIONINSIGHTS_CONNECTION_STRING'],
-      missingEnv: ['APPLICATIONINSIGHTS_CONNECTION_STRING'].filter((key) => !hasEnv(env, key)),
-      powers: ['AI telemetry', 'release verification', 'operator diagnostics'],
+      id: 'supabase_postgres',
+      label: 'Supabase Postgres',
+      category: 'data',
+      state: integrationState(['DATABASE_URL'], env),
+      requiredEnv: ['DATABASE_URL'],
+      missingEnv: ['DATABASE_URL'].filter((key) => !hasEnv(env, key)),
+      powers: ['verified resource graph', 'PostGIS coverage', 'pgvector retrieval', 'workflow state'],
     },
     {
-      id: 'azure_maps',
-      label: 'Azure Maps',
+      id: 'sentry',
+      label: 'Sentry',
+      category: 'observability',
+      state: integrationState(['NEXT_PUBLIC_SENTRY_DSN'], env),
+      requiredEnv: ['NEXT_PUBLIC_SENTRY_DSN'],
+      missingEnv: ['NEXT_PUBLIC_SENTRY_DSN'].filter((key) => !hasEnv(env, key)),
+      powers: ['privacy-filtered errors', 'release verification', 'operator diagnostics'],
+    },
+    {
+      id: 'vercel',
+      label: 'Vercel',
+      category: 'hosting',
+      state: integrationState(['VERCEL'], env),
+      requiredEnv: ['VERCEL'],
+      missingEnv: ['VERCEL'].filter((key) => !hasEnv(env, key)),
+      powers: ['preview deployments', 'production releases', 'Next.js server functions'],
+    },
+    {
+      id: 'open_map',
+      label: 'Open map fallback',
       category: 'mapping',
-      state: integrationState(['AZURE_MAPS_KEY', 'AZURE_MAPS_SAS_TOKEN'], env),
-      requiredEnv: ['AZURE_MAPS_KEY', 'AZURE_MAPS_SAS_TOKEN'],
-      missingEnv: ['AZURE_MAPS_KEY', 'AZURE_MAPS_SAS_TOKEN'].filter((key) => !hasEnv(env, key)),
-      powers: [
-        'server geocoding',
-        'interactive map SAS-token brokering',
-        'geospatial search',
-        'resource discovery',
-      ],
+      state: 'configured',
+      requiredEnv: [],
+      missingEnv: [],
+      powers: ['interactive resource map', 'geospatial search', 'resource discovery'],
     },
     {
       id: 'ai_core',
-      label: 'Azure OpenAI / Foundry LLM Runtime',
+      label: 'Direct or provider-neutral AI runtime',
       category: 'ai',
       state: aiCore.state,
       requiredEnv: aiCore.requiredEnv,
@@ -215,70 +224,8 @@ export async function buildAgentControlPlaneSnapshot(
       powers: ['chat summarization', 'ingestion extraction', 'admin review assist'],
     },
     {
-      id: 'content_safety',
-      label: 'Azure AI Content Safety',
-      category: 'ai',
-      state: integrationState(['AZURE_CONTENT_SAFETY_ENDPOINT', 'AZURE_CONTENT_SAFETY_KEY'], env),
-      requiredEnv: ['AZURE_CONTENT_SAFETY_ENDPOINT', 'AZURE_CONTENT_SAFETY_KEY'],
-      missingEnv: ['AZURE_CONTENT_SAFETY_ENDPOINT', 'AZURE_CONTENT_SAFETY_KEY'].filter(
-        (key) => !hasEnv(env, key),
-      ),
-      powers: ['second-layer crisis detection', 'semantic safety screening'],
-    },
-    {
-      id: 'document_intelligence',
-      label: 'Azure Document Intelligence',
-      category: 'ai',
-      state: integrationState(
-        ['AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT', 'AZURE_DOCUMENT_INTELLIGENCE_KEY'],
-        env,
-      ),
-      requiredEnv: ['AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT', 'AZURE_DOCUMENT_INTELLIGENCE_KEY'],
-      missingEnv: ['AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT', 'AZURE_DOCUMENT_INTELLIGENCE_KEY'].filter(
-        (key) => !hasEnv(env, key),
-      ),
-      powers: ['PDF intake extraction', 'structured evidence capture'],
-    },
-    {
-      id: 'translator',
-      label: 'Azure AI Translator',
-      category: 'ai',
-      state: integrationState(
-        ['AZURE_TRANSLATOR_KEY', 'AZURE_TRANSLATOR_ENDPOINT', 'AZURE_TRANSLATOR_REGION'],
-        env,
-      ),
-      requiredEnv: ['AZURE_TRANSLATOR_KEY', 'AZURE_TRANSLATOR_ENDPOINT', 'AZURE_TRANSLATOR_REGION'],
-      missingEnv: ['AZURE_TRANSLATOR_KEY', 'AZURE_TRANSLATOR_ENDPOINT', 'AZURE_TRANSLATOR_REGION'].filter(
-        (key) => !hasEnv(env, key),
-      ),
-      powers: ['multilingual service descriptions', 'language access'],
-    },
-    {
-      id: 'speech',
-      label: 'Azure Speech',
-      category: 'ai',
-      state: integrationState(['AZURE_SPEECH_KEY', 'AZURE_SPEECH_REGION'], env),
-      requiredEnv: ['AZURE_SPEECH_KEY', 'AZURE_SPEECH_REGION'],
-      missingEnv: ['AZURE_SPEECH_KEY', 'AZURE_SPEECH_REGION'].filter((key) => !hasEnv(env, key)),
-      powers: ['spoken service summaries', 'voice accessibility'],
-    },
-    {
-      id: 'communication_email',
-      label: 'Azure Communication Services',
-      category: 'communications',
-      state: integrationState(
-        ['AZURE_COMMUNICATION_CONNECTION_STRING', 'AZURE_COMMUNICATION_SENDER_ADDRESS'],
-        env,
-      ),
-      requiredEnv: ['AZURE_COMMUNICATION_CONNECTION_STRING', 'AZURE_COMMUNICATION_SENDER_ADDRESS'],
-      missingEnv: ['AZURE_COMMUNICATION_CONNECTION_STRING', 'AZURE_COMMUNICATION_SENDER_ADDRESS'].filter(
-        (key) => !hasEnv(env, key),
-      ),
-      powers: ['notification delivery', 'operator escalations', 'transactional messaging'],
-    },
-    {
       id: 'redis',
-      label: 'Azure Cache for Redis',
+      label: 'Shared Redis',
       category: 'data',
       state: integrationState(['REDIS_URL'], env),
       requiredEnv: ['REDIS_URL'],
@@ -297,14 +244,11 @@ export async function buildAgentControlPlaneSnapshot(
   if (!authEnforced) {
     trustSafetyBlockers.push('Fail-closed auth enforcement is not active for this runtime.');
   }
-  if (integrationById.get('content_safety')?.state !== 'configured') {
-    trustSafetyAccelerators.push('Wire Azure AI Content Safety for semantic crisis detection.');
-  }
   if (!getFlagReady(flagMap, FEATURE_FLAGS.CONTENT_SAFETY_CRISIS)) {
     trustSafetyAccelerators.push('Promote content_safety_crisis to 100% rollout.');
   }
-  if (integrationById.get('app_insights')?.state !== 'configured') {
-    trustSafetyAccelerators.push('Complete Application Insights wiring for safety telemetry.');
+  if (integrationById.get('sentry')?.state !== 'configured') {
+    trustSafetyAccelerators.push('Complete privacy-filtered Sentry wiring for safety telemetry.');
   }
   const trustSafetyBaseReady = runtimeValidation.ok && authEnforced;
 
@@ -318,19 +262,13 @@ export async function buildAgentControlPlaneSnapshot(
   } else if (aiCore.state === 'partial') {
     resourceAlignmentBlockers.push('LLM runtime credentials are partially configured.');
   }
-  if (!hasEnv(env, 'INTERNAL_API_KEY')) {
-    resourceAlignmentBlockers.push('INTERNAL_API_KEY is missing for Functions to App trust.')
-  }
-  if (integrationById.get('document_intelligence')?.state !== 'configured') {
-    resourceAlignmentAccelerators.push('Complete Azure Document Intelligence for PDF/form evidence intake.');
-  }
   if (!getFlagReady(flagMap, FEATURE_FLAGS.DOC_INTELLIGENCE_INTAKE)) {
-    resourceAlignmentAccelerators.push('Enable doc_intelligence_intake after document workflows are validated.');
+    resourceAlignmentAccelerators.push('Select and validate a provider-neutral PDF/form evidence intake path.');
   }
   if (!getFlagReady(flagMap, FEATURE_FLAGS.VECTOR_SEARCH)) {
     resourceAlignmentAccelerators.push('Promote vector_search to move retrieval toward multilingual semantic matching.');
   }
-  const resourceAlignmentBaseReady = databaseConfigured && aiCore.state === 'configured' && hasEnv(env, 'INTERNAL_API_KEY');
+  const resourceAlignmentBaseReady = databaseConfigured && aiCore.state === 'configured';
 
   const governanceBlockers: string[] = [];
   const governanceAccelerators: string[] = [];
@@ -340,11 +278,11 @@ export async function buildAgentControlPlaneSnapshot(
   if (!authEnforced) {
     governanceBlockers.push('Admin/host governance depends on enforced auth and role checks.');
   }
-  if (integrationById.get('communication_email')?.state !== 'configured') {
-    governanceAccelerators.push('Complete Azure Communication Services for escalation delivery beyond in-app notices.');
+  if (!hasEnv(env, 'TRANSACTIONAL_EMAIL_API_KEY')) {
+    governanceAccelerators.push('Select and configure transactional email for escalation delivery beyond in-app notices.');
   }
-  if (integrationById.get('app_insights')?.state !== 'configured') {
-    governanceAccelerators.push('Instrument governance actions in Application Insights for audit-grade visibility.');
+  if (integrationById.get('sentry')?.state !== 'configured') {
+    governanceAccelerators.push('Instrument governance failures in Sentry for operator visibility.');
   }
   const governanceBaseReady = databaseConfigured && authEnforced;
 
@@ -353,24 +291,25 @@ export async function buildAgentControlPlaneSnapshot(
   if (!getFlagReady(flagMap, FEATURE_FLAGS.MAP_ENABLED)) {
     accessBlockers.push('Map access is not fully enabled.');
   }
-  if (integrationById.get('azure_maps')?.state !== 'configured') {
-    accessBlockers.push('Azure Maps is not fully configured for geospatial discovery.');
+  if (!getFlagReady(flagMap, FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS)) {
+    accessAccelerators.push('Complete provider-neutral translation wiring and 100% rollout for multilingual descriptions.');
   }
-  if (integrationById.get('translator')?.state !== 'configured' || !getFlagReady(flagMap, FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS)) {
-    accessAccelerators.push('Complete Translator wiring and 100% rollout for multilingual descriptions.');
+  if (!getFlagReady(flagMap, FEATURE_FLAGS.TTS_SUMMARIES)) {
+    accessAccelerators.push('Enable provider-neutral speech summaries for voice-first accessibility.');
   }
-  if (integrationById.get('speech')?.state !== 'configured' || !getFlagReady(flagMap, FEATURE_FLAGS.TTS_SUMMARIES)) {
-    accessAccelerators.push('Enable Azure Speech summaries for voice-first accessibility.');
-  }
-  const accessBaseReady = getFlagReady(flagMap, FEATURE_FLAGS.MAP_ENABLED) && integrationById.get('azure_maps')?.state === 'configured';
+  const accessBaseReady = getFlagReady(flagMap, FEATURE_FLAGS.MAP_ENABLED)
+    && integrationById.get('open_map')?.state === 'configured';
 
   const releaseBlockers: string[] = [];
   const releaseAccelerators: string[] = [];
   if (!runtimeValidation.ok) {
     releaseBlockers.push(`Runtime contract is incomplete: ${runtimeValidation.missingCritical.join(', ')}`);
   }
-  if (integrationById.get('app_insights')?.state !== 'configured') {
-    releaseBlockers.push('Application Insights is required for enterprise release telemetry.');
+  if (integrationById.get('sentry')?.state !== 'configured') {
+    releaseBlockers.push('Sentry is required for production release telemetry.');
+  }
+  if (integrationById.get('vercel')?.state !== 'configured') {
+    releaseBlockers.push('The runtime is not executing in a Vercel deployment.');
   }
   if (integrationById.get('redis')?.state !== 'configured') {
     releaseAccelerators.push('Redis remains the missing piece for multi-instance rate limiting and shared cache coherence.');
@@ -381,7 +320,9 @@ export async function buildAgentControlPlaneSnapshot(
   if (!getFlagReady(flagMap, FEATURE_FLAGS.TELEMETRY_INTERACTIONS)) {
     releaseAccelerators.push('Enable privacy-safe telemetry_interactions once governance approves the rollout.');
   }
-  const releaseBaseReady = runtimeValidation.ok && integrationById.get('app_insights')?.state === 'configured';
+  const releaseBaseReady = runtimeValidation.ok
+    && integrationById.get('sentry')?.state === 'configured'
+    && integrationById.get('vercel')?.state === 'configured';
 
   const operators: ControlPlaneOperatorStatus[] = [
     {
@@ -427,7 +368,7 @@ export async function buildAgentControlPlaneSnapshot(
       guardrails: [
         'seekers only read stored records',
         'human review before publish',
-        'internal Functions bridge protected by shared secret',
+        'background work remains idempotent and review-gated',
       ],
       blockers: resourceAlignmentBlockers,
       accelerators: resourceAlignmentAccelerators,
@@ -486,7 +427,7 @@ export async function buildAgentControlPlaneSnapshot(
       blockers: accessBlockers,
       accelerators: accessAccelerators,
       evidencePaths: [
-        'src/services/geocoding/azureMaps.ts',
+        'src/components/map/LeafletFallback.tsx',
         'src/services/i18n/translator.ts',
         'src/services/tts/azureSpeech.ts',
         'docs/DECISIONS/ADR-0006-opt-in-device-geolocation.md',
@@ -501,9 +442,9 @@ export async function buildAgentControlPlaneSnapshot(
       trustModel: 'Every release should prove runtime readiness, security headers, and deployment health before operators trust it.',
       capabilities: [
         'runtime env contract validation',
-        'App Service and Functions preflight checks',
+        'Vercel preview and production checks',
         'health endpoint verification',
-        'typed Application Insights events',
+        'privacy-filtered Sentry events',
       ],
       guardrails: [
         'deploys validate app settings before publish',
@@ -513,10 +454,10 @@ export async function buildAgentControlPlaneSnapshot(
       blockers: releaseBlockers,
       accelerators: releaseAccelerators,
       evidencePaths: [
-        '.github/workflows/deploy-azure-appservice.yml',
-        '.github/workflows/deploy-azure-functions.yml',
+        'docs/platform/STACK_MIGRATION.md',
+        '.github/workflows/db-migrate.yml',
         'src/services/runtime/envContract.ts',
-        'src/services/telemetry/appInsights.ts',
+        'src/services/telemetry/events.ts',
       ],
     },
   ];
@@ -537,6 +478,7 @@ export async function buildAgentControlPlaneSnapshot(
       ...(flagImplementation === 'database'
         ? []
         : ['Replace the in-memory feature flag store with a DB-backed or remotely audited flag backend.']),
+      'Complete the Clerk middleware, UI, account-linking, and role-provisioning cutover as one fail-closed change.',
       'Extend the control plane into a dedicated ORAN-admin dashboard once operator ownership is finalized.',
     ]),
   ).slice(0, 6);
@@ -548,14 +490,14 @@ export async function buildAgentControlPlaneSnapshot(
     'role-aware admin/community/host separation',
   ];
 
-  if (authConfigured) {
-    strengths.push('external identity provider is configured for enterprise role enforcement');
+  if (authConfigured && integrationById.get('clerk')?.state === 'configured') {
+    strengths.push('Clerk identity is configured for role enforcement');
   } else {
-    summaryBlockers.push('Microsoft Entra ID is not fully configured for enterprise identity flows.');
+    summaryBlockers.push('The Clerk identity cutover is not complete for production role enforcement.');
   }
 
   if (configuredIntegrations >= 4) {
-    strengths.push('broad Azure-native integration surface already present in code');
+    strengths.push('Vercel, Supabase, Clerk, and Sentry target integrations are represented in the control plane');
   }
 
   const readinessScore = clampScore(

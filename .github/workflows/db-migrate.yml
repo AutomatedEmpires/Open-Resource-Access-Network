@@ -1,4 +1,4 @@
-name: Database Migration
+name: Database Migration (Supabase)
 
 on:
   workflow_dispatch:
@@ -9,11 +9,10 @@ on:
         type: choice
         options:
           - staging
-          - prod
+          - production
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: db-migrate-${{ inputs.environment }}
@@ -21,6 +20,7 @@ concurrency:
 
 jobs:
   migrate:
+    if: ${{ vars.SUPABASE_MIGRATIONS_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: ${{ inputs.environment }}
@@ -31,28 +31,22 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Login to Azure (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Retrieve DATABASE_URL from Key Vault
-        id: db-url
+      - name: Load Supabase migration connection
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          DB_URL=$(az keyvault secret show \
-            --vault-name "${{ vars.AZURE_KEYVAULT_NAME }}" \
-            --name "database-url" \
-            --query value -o tsv)
-          echo "::add-mask::$DB_URL"
-          echo "DATABASE_URL=$DB_URL" >> "$GITHUB_ENV"
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL is not configured in the selected GitHub Environment."
+            exit 1
+          fi
+          echo "::add-mask::$SUPABASE_DB_URL"
+          echo "DATABASE_URL=$SUPABASE_DB_URL" >> "$GITHUB_ENV"
 
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
@@ -61,12 +55,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-          CREATE TABLE IF NOT EXISTS schema_migrations (
-            filename text PRIMARY KEY,
-            applied_at timestamptz NOT NULL DEFAULT now()
-          );
-          SQL
+          migration_table=$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 \
+            -c "SELECT to_regclass('public.schema_migrations');")
+          if [ "$migration_table" != "schema_migrations" ]; then
+            echo "::error::Repository migration history is not baselined in this Supabase project."
+            echo "::error::Do not replay every historical migration over an imported schema. Reconcile the baseline first."
+            exit 1
+          fi
 
           while IFS= read -r file; do
             filename="$(basename "$file")"

@@ -6,10 +6,14 @@
  * Format an ISO date string as "Jan 5, 2025" (date only, US locale).
  */
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(iso);
+  const date = new Date(isDateOnly ? `${iso}T00:00:00.000Z` : iso);
+
+  return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    ...(isDateOnly ? { timeZone: 'UTC' } : {}),
   });
 }
 

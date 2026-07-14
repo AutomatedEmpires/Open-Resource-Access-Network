@@ -22,6 +22,7 @@ import {
   UserCheck, Star, Trash2, LogOut, AlertCircle,
 } from 'lucide-react';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
+import { SignOutAction } from '@/components/auth/SignOutAction';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
@@ -933,13 +934,12 @@ export default function ProfilePage() {
                       : 'You are signed in. Profile changes stay on this device until you turn on cross-device sync.'}
                 </span>
               </div>
-              <Link
-                href="/api/auth/signout"
+              <SignOutAction
                 className="flex-none inline-flex min-h-[44px] items-center gap-1 whitespace-nowrap px-2 text-xs font-medium underline underline-offset-2 text-slate-700 transition-colors hover:text-red-700 hover:no-underline"
               >
                 <LogOut className="h-3 w-3" aria-hidden="true" />
                 Sign out
-              </Link>
+              </SignOutAction>
             </div>
           )}
 
@@ -956,7 +956,7 @@ export default function ProfilePage() {
                 services, and unlock future features like alerts and history.
               </p>
               <Link
-                href="/api/auth/signin"
+                href="/auth/signin?callbackUrl=%2Fprofile"
                 className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-slate-700"
               >
                 Sign in to sync across devices
@@ -1710,13 +1710,12 @@ export default function ProfilePage() {
                     >
                       Export my data
                     </button>
-                    <Link
-                      href="/api/auth/signout"
+                    <SignOutAction
                       className="flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700"
                     >
                       <LogOut className="h-4 w-4" aria-hidden="true" />
                       Sign out
-                    </Link>
+                    </SignOutAction>
                   </div>
                   <p className="text-xs text-slate-400">
                     Export sends a copy of your data to your account email. Sign out clears your session on this device.

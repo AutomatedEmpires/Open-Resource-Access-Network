@@ -159,6 +159,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (parsed.data.initialFeed?.feedHandler === 'azure_function') {
+      return NextResponse.json(
+        {
+          error: 'Legacy Azure Function feeds cannot be created.',
+          code: 'legacy_feed_handler_read_only',
+        },
+        { status: 400 },
+      );
+    }
+
     const { createIngestionStores } = await import('@/agents/ingestion/persistence/storeFactory');
     const { getDrizzle } = await import('@/services/db/drizzle');
 

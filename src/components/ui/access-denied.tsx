@@ -12,6 +12,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { SignOutAction } from '@/components/auth/SignOutAction';
 
 export interface AccessDeniedProps {
   /** Display name of the portal the user attempted to access */
@@ -67,12 +68,11 @@ export function AccessDenied({ portalName, requiredRole }: AccessDeniedProps) {
             Go to Home
           </Link>
 
-          <Link
-            href="/api/auth/signout"
+          <SignOutAction
             className="inline-flex items-center justify-center rounded-full border border-orange-100 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-orange-50 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2"
           >
             Sign Out
-          </Link>
+          </SignOutAction>
         </div>
       </div>
     </div>

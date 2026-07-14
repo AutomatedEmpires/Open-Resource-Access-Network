@@ -746,9 +746,13 @@ describe('api/chat route', () => {
     expect(response.status).toBe(200);
     expect(chatQuotaMocks.reserveChatRequest).not.toHaveBeenCalled();
     expect(chatQuotaMocks.finalizeChatRequest).not.toHaveBeenCalled();
+    expect(chatQuotaMocks.checkQuotaByIdentity).toHaveBeenCalledWith(
+      expect.any(String),
+      undefined,
+    );
     expect(await response.json()).toMatchObject({
       isCrisis: true,
-      quotaRemaining: 20,
+      quotaRemaining: 3,
     });
   });
 

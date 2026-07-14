@@ -43,6 +43,33 @@ const CLERK_AUTHORIZED_PARTIES = [
   'https://www.openresourceaccessnetwork.com',
 ] as const;
 
+function runEarlyRouteBoundary(request: NextRequest): NextResponse | null {
+  const { pathname } = request.nextUrl;
+
+  // Encoded Windows path separators can reach filesystem route resolution on
+  // Windows and turn an invalid URL into an internal module lookup. Reject the
+  // path while it is still encoded; query values are intentionally excluded.
+  if (/%5c/i.test(pathname)) {
+    return new NextResponse('Invalid request path', {
+      status: 400,
+      headers: {
+        'cache-control': 'no-store',
+        'content-type': 'text/plain; charset=utf-8',
+      },
+    });
+  }
+
+  // Preserve old Clerk entry-point links and their return intent. Supporting
+  // nested paths also keeps path-routed Clerk flow URLs intact.
+  if (pathname === '/sign-in' || pathname.startsWith('/sign-in/')) {
+    const destination = new URL(request.url);
+    destination.pathname = `/auth/signin${pathname.slice('/sign-in'.length)}`;
+    return NextResponse.redirect(destination, 308);
+  }
+
+  return null;
+}
+
 function isProtectedApiWrite(request: NextRequest): boolean {
   const method = request.method?.toUpperCase() ?? 'GET';
   if (!STATE_CHANGING_METHODS.has(method)) {
@@ -139,6 +166,11 @@ const clerkProxy = clerkMiddleware(async (clerkAuth, request) => {
 });
 
 export async function proxy(request: NextRequest, event: NextFetchEvent): Promise<Response> {
+  const earlyResponse = runEarlyRouteBoundary(request);
+  if (earlyResponse) {
+    return earlyResponse;
+  }
+
   if (!CLERK_CONFIGURED) {
     return runRequestBoundary(request, null);
   }
@@ -155,6 +187,9 @@ export async function proxy(request: NextRequest, event: NextFetchEvent): Promis
 
 export const config = {
   matcher: [
+    // Always intercept encoded backslashes, including asset-shaped paths that
+    // the general extension exclusion below intentionally skips.
+    '/((?:.*%5[cC].*))',
     /*
      * Match all request paths except:
      * - _next/static (static files)

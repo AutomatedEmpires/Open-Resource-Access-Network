@@ -177,7 +177,7 @@ export default function NotificationsPageClient() {
           Notifications are only available for authenticated users.
         </p>
         <Button asChild>
-          <Link href="/api/auth/signin?callbackUrl=/notifications">Sign in with Microsoft</Link>
+          <Link href="/auth/signin?callbackUrl=%2Fnotifications">Sign in to ORAN</Link>
         </Button>
         </section>
         </div>

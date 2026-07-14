@@ -1,4 +1,5 @@
 import type { NextFetchEvent, NextRequest } from 'next/server';
+import { unstable_doesMiddlewareMatch } from 'next/dist/experimental/testing/server/middleware-testing-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type ClerkBoundaryHandler = (
@@ -106,6 +107,58 @@ afterEach(() => {
 });
 
 describe('Clerk request boundary', () => {
+  it('permanently redirects the legacy sign-in entry point without losing return intent', async () => {
+    configureClerk();
+    const response = await runRequest(makeRequest(
+      '/sign-in?redirect_url=%2Fsaved%3Fview%3Dcompact&utm_source=legacy',
+    ));
+
+    expect(clerkMocks.userId).not.toHaveBeenCalled();
+    expect(response.status).toBe(308);
+    expect(response.headers.get('location')).toBe(
+      'https://oran.test/auth/signin?redirect_url=%2Fsaved%3Fview%3Dcompact&utm_source=legacy',
+    );
+  });
+
+  it('preserves nested path-routed sign-in flow URLs', async () => {
+    const response = await runRequest(makeRequest('/sign-in/factor-one?redirect_url=%2Fprofile'));
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get('location')).toBe(
+      'https://oran.test/auth/signin/factor-one?redirect_url=%2Fprofile',
+    );
+  });
+
+  it.each(['/resource%5Cadmin', '/resource%5cadmin', '/asset%5Centry.js'])(
+    'rejects an encoded backslash in request path %s before identity resolution',
+    async (pathname) => {
+      configureClerk();
+      const response = await runRequest(makeRequest(pathname));
+
+      expect(clerkMocks.userId).not.toHaveBeenCalled();
+      expect(response.status).toBe(400);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      await expect(response.text()).resolves.toBe('Invalid request path');
+    },
+  );
+
+  it('matches asset-shaped encoded-backslash paths at the deployed proxy boundary', async () => {
+    const { config } = await loadMiddlewareModule();
+
+    expect(unstable_doesMiddlewareMatch({
+      config,
+      nextConfig: {},
+      url: '/asset%5Centry.js',
+    })).toBe(true);
+  });
+
+  it('does not reject an encoded backslash that exists only in a query value', async () => {
+    const response = await runRequest(makeRequest('/directory?return=%5C'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
   it('passes through public routes when Clerk is not configured', async () => {
     const response = await runRequest(makeRequest('/public-page'));
 

@@ -16,6 +16,7 @@ import {
 } from '@/domain/constants';
 import { getAuthContext } from '@/services/auth/session';
 import {
+  checkQuotaByIdentity,
   finalizeChatRequest,
   reserveChatRequest,
 } from '@/services/chat/quota';
@@ -337,7 +338,7 @@ export async function POST(req: NextRequest) {
     // Distress-safe clarification and temporary search failure release it.
     const updatedWindowQuota = usageReservation
       ? await finalizeChatRequest(usageReservation, consumesDailyQuota(response))
-      : { remaining: response.quotaRemaining, resetAt: undefined };
+      : await checkQuotaByIdentity(deviceId, effectiveUserId);
 
     const finalResponse = {
       ...response,

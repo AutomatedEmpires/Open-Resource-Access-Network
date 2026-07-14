@@ -252,6 +252,35 @@ describe('admin ingestion source system routes', () => {
     expect(response.status).toBe(201);
   });
 
+  it('rejects a new source system whose initial feed uses the legacy Azure Function handler', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    const { POST } = await loadRoute();
+
+    const response = await POST(
+      createRequest({
+        jsonBody: {
+          name: 'Legacy Azure Import',
+          family: 'partner_api',
+          trustTier: 'trusted_partner',
+          resourcePurpose: 'service_catalog',
+          initialFeed: {
+            feedName: 'Legacy Azure Poller',
+            feedType: 'api',
+            feedHandler: 'azure_function',
+          },
+        },
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Legacy Azure Function feeds cannot be created.',
+      code: 'legacy_feed_handler_read_only',
+    });
+    expect(sourceSystemsStore.create).not.toHaveBeenCalled();
+    expect(sourceFeedsStore.create).not.toHaveBeenCalled();
+  });
+
   it('rejects creation without an explicit resource purpose', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
     const { POST } = await loadRoute();

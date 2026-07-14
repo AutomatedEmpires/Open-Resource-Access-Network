@@ -61,6 +61,10 @@ describe('ProfilePageClient', () => {
       expect(screen.getByLabelText('City or region')).toHaveValue('Austin, TX');
       expect(screen.getByLabelText('Language')).toHaveValue('vi');
       expect(screen.getByText('2 services bookmarked on this device.')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Sign in to sync across devices' })).toHaveAttribute(
+        'href',
+        '/auth/signin?callbackUrl=%2Fprofile',
+      );
     });
   });
 
@@ -134,10 +138,10 @@ describe('ProfilePageClient', () => {
     await screen.findByText('You are signed in. Your preferences are syncing across devices.');
     expect(screen.getByLabelText('City or region')).toHaveValue('Madrid');
     expect(screen.getByLabelText('Language')).toHaveValue('es');
-    // Sign out appears in both the auth banner and the privacy section — verify at least one
-    const signOutLinks = screen.getAllByRole('link', { name: /sign out/i });
-    expect(signOutLinks.length).toBeGreaterThanOrEqual(1);
-    expect(signOutLinks[0]).toHaveAttribute('href', '/api/auth/signout');
+    // Sign out appears in both the auth banner and the privacy section and uses
+    // the Clerk-backed action instead of the retired NextAuth endpoint.
+    const signOutButtons = screen.getAllByRole('button', { name: /sign out/i });
+    expect(signOutButtons.length).toBeGreaterThanOrEqual(1);
   });
 
   it('saves city and language locally without server sync when not opted in', async () => {

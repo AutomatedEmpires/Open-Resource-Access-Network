@@ -967,6 +967,17 @@ export function ChatWindow({
   }, []);
 
   useEffect(() => {
+    // The empty state contains the welcome and guided intake. Scrolling its
+    // end marker into view on mount skips that content (and can move the whole
+    // page on mobile). Reset an existing message log as well, so clearing a
+    // conversation cannot leave the fresh intake stranded below the fold.
+    if (messages.length === 0) {
+      if (messageLogRef.current) {
+        messageLogRef.current.scrollTop = 0;
+      }
+      return;
+    }
+
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
@@ -1556,10 +1567,20 @@ export function ChatWindow({
       if (!response.ok) {
         let errorMsg = 'Something went wrong. Please try again.';
         try {
-          const errBody = await response.json() as { error?: string };
+          const errBody = await response.json() as {
+            error?: string;
+            quotaRemaining?: number;
+            quotaResetAt?: string | null;
+          };
           if (typeof errBody.error === 'string' && errBody.error) errorMsg = errBody.error;
+          if (typeof errBody.quotaRemaining === 'number') {
+            quotaStateVersionRef.current += 1;
+            applyQuotaState(errBody.quotaRemaining, errBody.quotaResetAt);
+          }
         } catch { /* fall through to generic message */ }
-        throw new Error(errorMsg);
+        const responseError = new Error(errorMsg);
+        responseError.name = 'ChatResponseError';
+        throw responseError;
       }
 
       const data: ChatResponse = await response.json();
@@ -1610,12 +1631,14 @@ export function ChatWindow({
           followUpSuggestions: data.followUpSuggestions,
         },
       ]);
-    } catch {
+    } catch (error) {
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: 'Something went wrong. Please try again.',
+          content: error instanceof Error && error.name === 'ChatResponseError'
+            ? error.message
+            : 'Something went wrong. Please try again.',
           timestamp: new Date(),
         },
       ]);
@@ -2343,11 +2366,11 @@ export function ChatWindow({
               className="min-h-[84px] flex-1 resize-none rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5 text-[15px] leading-7 text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-300"
               rows={1}
               aria-label="Chat message input"
-              disabled={isLoading || quotaRemaining === 0}
+              disabled={isLoading}
             />
             <Button
               onClick={() => void sendMessage()}
-              disabled={isLoading || !input.trim() || quotaRemaining === 0}
+              disabled={isLoading || !input.trim()}
               size="icon"
               aria-label="Send message"
               className="min-h-[64px] min-w-[64px] self-end rounded-[22px] bg-slate-900 shadow-sm hover:bg-slate-800"
@@ -2356,7 +2379,9 @@ export function ChatWindow({
             </Button>
           </div>
           <div className="px-2 pt-3 text-[11px] text-slate-500">
-            Ask for nearby services, provider details, eligibility hints, or next steps from stored records.
+            {quotaRemaining === 0
+              ? 'Daily discovery limit reached. Immediate safety and crisis messages still work.'
+              : 'Ask for nearby services, provider details, eligibility hints, or next steps from stored records.'}
           </div>
         </div>
         {quotaRemaining === 0 && quotaResetAt && (
@@ -2364,8 +2389,8 @@ export function ChatWindow({
         )}
         {quotaRemaining === 0 && !quotaResetAt && (
           <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-800 shadow-sm" role="alert">
-            <p className="font-medium">Message limit reached.</p>
-            <p className="mt-1">Continue with the same scope in Directory or Map, or start a fresh chat session.</p>
+            <p className="font-medium">Daily discovery limit reached.</p>
+            <p className="mt-1">Immediate safety and crisis messages still work. For other needs, continue with the same scope in Directory or Map.</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <a href={_directoryHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-900 shadow-sm">
                 Open Directory

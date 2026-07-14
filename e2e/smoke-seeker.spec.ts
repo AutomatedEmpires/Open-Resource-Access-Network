@@ -10,8 +10,9 @@ test.describe('Seeker flows (public)', () => {
     const crisis = page.getByRole('button', { name: /open crisis resources and emergency hotlines/i });
 
     await expect(nav).toBeVisible();
-    await expect(nav.getByRole('link', { name: 'Start', exact: true })).toHaveAttribute('aria-current', 'page');
-    await expect(nav.getByRole('link')).toHaveCount(4);
+    await expect(nav.getByRole('link')).toHaveText(['Chat', 'Map', 'Scroll', 'Profile']);
+    await expect(nav.getByRole('link', { name: 'Chat', exact: true })).toHaveAttribute('href', '/chat');
+    await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);
     await expect(crisis).toBeVisible();
 
     const navBox = await nav.boundingBox();
@@ -65,7 +66,7 @@ test.describe('Seeker flows (public)', () => {
     }
 
     // When DB is configured, we should land in a results state.
-    await expect(page.getByRole('heading', { name: 'Service Directory' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Directory', exact: true })).toBeVisible();
     await expect(page.getByRole('status')).toContainText(/Showing|0 of/i);
   });
 

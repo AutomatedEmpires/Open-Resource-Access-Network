@@ -408,7 +408,11 @@ describe('ChatWindow', () => {
       if (url === '/api/chat') {
         return {
           ok: false,
-          json: async () => ({ error: 'upstream down' }),
+          json: async () => ({
+            error: 'Daily message limit reached.',
+            quotaRemaining: 0,
+            quotaResetAt: '2099-01-01T00:00:00.000Z',
+          }),
         } as Response;
       }
       return {
@@ -424,7 +428,9 @@ describe('ChatWindow', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
-    await screen.findByText('Something went wrong. Please try again.');
+    await screen.findByText('Daily message limit reached.');
+    expect(screen.getByText(/Daily discovery limit reached/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Chat message input')).toBeEnabled();
   });
 
   it('handles crisis responses, quota exhaustion, and saved toggles', async () => {
@@ -486,7 +492,7 @@ describe('ChatWindow', () => {
     await screen.findByText('Immediate Help Available');
     expect(
       screen.getAllByRole('alert').some((el: HTMLElement) =>
-        String(el.textContent).includes('Message limit reached.'),
+        String(el.textContent).includes('Daily discovery limit reached.'),
       ),
     ).toBe(true);
 

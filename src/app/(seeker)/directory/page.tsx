@@ -11,17 +11,17 @@ import { SkeletonCard } from '@/components/ui/skeleton';
 export const metadata: Metadata = {
   title: 'Service Directory',
   description:
-    'Browse and search verified government, nonprofit, and community service listings. Filter by category, confidence, and location.',
+    'Browse publication-gated government, nonprofit, and community service listings. Filter by category, record confidence, and location.',
   alternates: { canonical: '/directory' },
   openGraph: {
     title: 'Service Directory | ORAN',
-    description: 'Browse and search verified service listings in your area.',
+    description: 'Browse and search publication-gated service listings in your area.',
     type: 'website',
   },
   twitter: {
     card: 'summary',
     title: 'Service Directory | ORAN',
-    description: 'Browse and search verified service listings in your area.',
+    description: 'Browse and search publication-gated service listings in your area.',
   },
 };
 

@@ -9,7 +9,7 @@ import ChatPageContent from './ChatPageClient';
 export const metadata: Metadata = {
   title: 'Chat',
   description:
-    'Chat with ORAN to search verified government, nonprofit, and community service records. Results come from stored, confirmed listings only.',
+    'Tell ORAN what you need and search publication-gated government, nonprofit, and community service records. Results come from stored listings only.',
   robots: { index: false, follow: false },
 };
 

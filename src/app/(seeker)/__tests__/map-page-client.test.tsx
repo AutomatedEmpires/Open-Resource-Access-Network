@@ -749,9 +749,9 @@ describe('MapPageClient', () => {
     fireEvent.click(getSearchSubmitButton());
 
     await screen.findByText('High Confidence');
-    expect(screen.getByLabelText('Verification 90 percent')).toBeInTheDocument();
-    expect(screen.getByLabelText('Verification 65 percent')).toBeInTheDocument();
-    expect(screen.getByLabelText('Verification 20 percent')).toBeInTheDocument();
-    expect(screen.getByLabelText('Verification score unknown')).toBeInTheDocument();
+    expect(screen.getByLabelText('Record confidence 90 percent')).toBeInTheDocument();
+    expect(screen.getByLabelText('Record confidence 65 percent')).toBeInTheDocument();
+    expect(screen.getByLabelText('Record confidence 20 percent')).toBeInTheDocument();
+    expect(screen.getByLabelText('Record confidence unknown')).toBeInTheDocument();
   });
 });

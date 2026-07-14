@@ -34,7 +34,7 @@ describe('discovery presentation helpers', () => {
     ).toEqual([
       'Need: Housing',
       'Search: rent help',
-      'Trust: High confidence only',
+      'Record confidence: High confidence only',
       'Sort: Name (Z-A)',
       'Tag: Housing Navigation',
       'Delivery: By Phone',

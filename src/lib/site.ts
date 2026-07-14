@@ -25,7 +25,7 @@ export const SITE = {
   description:
     'Describe what is happening and find a clear next step from stored government, nonprofit, and community service records.',
   mission:
-    'Make verified social-service discovery reliable, safe, and accessible by connecting people to confirmed government, nonprofit, and community resources.',
+    'Make social-service navigation reliable, safe, and accessible by connecting people to source-authorized government, nonprofit, and community resources.',
   vision:
     'A world where finding help is as dependable as emergency routing: fast, factual, privacy-respecting, and available to everyone.',
   founded: '2024',

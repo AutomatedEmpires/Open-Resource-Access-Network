@@ -686,7 +686,7 @@ function buildChatSessionSummary(options: {
   const lastMessage = options.messages[options.messages.length - 1]?.content.trim();
   const fallbackTitle = options.seeded ? options.initialPrompt?.trim() : undefined;
   const title = truncateCopy(firstUserMessage || fallbackTitle || options.existing?.title || 'New chat', 52);
-  const preview = truncateCopy(lastMessage || options.draft.trim() || fallbackTitle || 'Verified service search', 88);
+  const preview = truncateCopy(lastMessage || options.draft.trim() || fallbackTitle || 'Resource search', 88);
   const updatedAt = options.messages.length > 0
     ? options.messages[options.messages.length - 1]?.timestamp.toISOString() ?? new Date().toISOString()
     : options.existing?.updatedAt ?? new Date().toISOString();
@@ -1220,7 +1220,7 @@ export function ChatWindow({
       commitChatSessions(upsertStoredChatSession({
         sessionId: nextActiveSession,
         title: 'New chat',
-        preview: 'Verified service search',
+        preview: 'Resource search',
         updatedAt: new Date().toISOString(),
         messageCount: 0,
         saved: false,
@@ -1360,7 +1360,7 @@ export function ChatWindow({
     commitChatSessions(upsertStoredChatSession({
       sessionId: nextSessionId,
       title: 'New chat',
-      preview: 'Verified service search',
+      preview: 'Resource search',
       updatedAt: new Date().toISOString(),
       messageCount: 0,
       saved: false,
@@ -1850,7 +1850,7 @@ export function ChatWindow({
 
       {/* ── Compact toolbar ── */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-5 py-3 md:px-6">
-        <span className="hidden text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 lg:block">Verified records only</span>
+        <span className="hidden text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 lg:block">Publication-gated records</span>
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
@@ -1957,7 +1957,7 @@ export function ChatWindow({
                 onClick={() => _clearSessionContextField('trustFilter')}
                 className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
               >
-                Trust: {formatFilterLabel(sessionContext.trustFilter)} ×
+                Record confidence: {formatFilterLabel(sessionContext.trustFilter)} ×
               </button>
             )}
             {sessionContext.preferredDeliveryModes?.map((mode) => (
@@ -2118,7 +2118,7 @@ export function ChatWindow({
               )}
               <div className={`rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3.5 ${!sessionContext?.activeGeo && !locationPromptDismissed ? '' : 'sm:col-span-2'}`}>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">How search works</p>
-                <p className="mt-1.5 text-sm text-slate-700">Use <strong className="font-medium text-slate-900">Refine</strong> to add location, trust level, and service-detail filters. Save strong options directly from result cards.</p>
+                <p className="mt-1.5 text-sm text-slate-700">Use <strong className="font-medium text-slate-900">Refine</strong> to add location, record confidence, and service-detail filters. Save strong options directly from result cards.</p>
               </div>
             </div>
           </div>
@@ -2228,7 +2228,7 @@ export function ChatWindow({
                   <DiscoveryContextPanel
                     discoveryContext={(msg as AssistantMessage).discoveryContext}
                     title="Search scope used for these results"
-                    description="This response stayed inside the trust and filter scope active when you sent the message."
+                    description="This response stayed inside the record-confidence and filter scope active when you sent the message."
                     className="border-slate-200 bg-slate-50"
                   />
                   {(() => {
@@ -2261,7 +2261,7 @@ export function ChatWindow({
                           <div className="space-y-2">
                             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800">
                               <span className="font-medium">More options</span>
-                              <span className="ml-1 text-slate-600">Additional verified records that may still fit.</span>
+                              <span className="ml-1 text-slate-600">Additional publication-gated records that may still fit.</span>
                             </div>
                             {additionalMatches.map((card) => (
                               <ChatServiceCard
@@ -2399,7 +2399,7 @@ export function ChatWindow({
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Quick filters</p>
-                  <p className="mt-1 text-xs text-slate-500">Start with the kind of help you need, then add trust and service details below.</p>
+                  <p className="mt-1 text-xs text-slate-500">Start with the kind of help you need, then add record confidence and service details below.</p>
                 </div>
                 {activeNeedId ? (
                   <Button type="button" variant="outline" size="sm" onClick={clearCategory}>

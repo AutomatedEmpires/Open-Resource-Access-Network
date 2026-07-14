@@ -130,6 +130,22 @@ describe('Clerk request boundary', () => {
     await expect(response.text()).resolves.toContain('Authentication is not configured');
   });
 
+  it('restricts production Clerk session tokens to ORAN-owned origins', async () => {
+    mutableEnv.NODE_ENV = 'production';
+    configureClerk();
+    await loadMiddlewareModule();
+
+    expect(clerkMocks.middleware).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        authorizedParties: [
+          'https://openresourceaccessnetwork.com',
+          'https://www.openresourceaccessnetwork.com',
+        ],
+      }),
+    );
+  });
+
   it('redirects a signed-out user to the Clerk sign-in route with a safe relative return path', async () => {
     configureClerk();
     const response = await runRequest(makeRequest('/saved?view=compact'));

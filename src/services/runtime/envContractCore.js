@@ -1,6 +1,8 @@
 const RULES_BY_TARGET = {
   webapp: [
     { name: 'DATABASE_URL', level: 'critical', productionOnly: true },
+    { name: 'ORAN_DATABASE_ROLE', level: 'critical', productionOnly: true },
+    { name: 'ORAN_SUPABASE_PROJECT_REF', level: 'critical', productionOnly: true },
     { name: 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', level: 'critical', productionOnly: true },
     { name: 'CLERK_SECRET_KEY', level: 'critical', productionOnly: true },
     { name: 'CRON_SECRET', level: 'critical', productionOnly: true },

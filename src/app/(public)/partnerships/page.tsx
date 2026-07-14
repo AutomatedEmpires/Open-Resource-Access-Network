@@ -45,7 +45,7 @@ const TRACKS: Track[] = [
   {
     icon: '🛡️',
     title: 'Become a Community Admin',
-    subtitle: 'Verify listings and maintain your local zone',
+    subtitle: 'Review listing changes and steward local coverage',
     href: '/partnerships/admins',
     ctaLabel: 'See the role →',
     color: 'green',
@@ -77,11 +77,11 @@ const DETAILS: Detail[] = [
     icon: '🏢',
     title: 'List Your Organization',
     description:
-      'Make your services discoverable to people who need them most. Listings are free, community-verified, and reach seekers actively looking for help in your area.',
+      'Submit your services for review so people can find a useful next step. Listing requests are free and remain private until they pass the publication workflow.',
     highlights: [
       'Free to list — no subscription required',
-      'Community-verified for accuracy and ongoing data freshness',
-      'Eligible for confidence scoring and elevated placement',
+      'Source and review decisions retained for accountability',
+      'Record confidence kept separate from provider verification',
     ],
     ctaLabel: 'Claim your organization',
     ctaHref: '/partnerships/organizations',
@@ -94,8 +94,8 @@ const DETAILS: Detail[] = [
       'Hospitals, libraries, schools, 211 networks, and government agencies — partner with ORAN to expand coverage, improve data freshness, and reach more people.',
     highlights: [
       'Structured data sharing and ingestion agreements',
-      'White-label and co-branded portal options',
-      'Priority verification queuing for partner organizations',
+      'Coverage, provenance, and update-cadence planning',
+      'Isolated partner scopes with review before publication',
     ],
     ctaLabel: 'Inquire now',
     ctaHref: '/contact',
@@ -105,11 +105,11 @@ const DETAILS: Detail[] = [
     icon: '🛡️',
     title: 'Become a Community Admin',
     description:
-      'Community administrators are the backbone of ORAN\'s verification model. Work your local zone — approve listings, verify records, and keep data accurate.',
+      'ORAN is designed for authorized community reviewers to assess listing changes, document evidence, and help keep local coverage useful.',
     highlights: [
-      'Approve, deny, or escalate org submissions in your zone',
+      'Approve, deny, or escalate submissions within assigned scope',
       'Access the review queue, dashboard, and verification tools',
-      'No minimum hours — contribute at the pace that suits you',
+      'Use auditable decisions and least-privilege access',
     ],
     ctaLabel: 'Learn about the role',
     ctaHref: '/partnerships/admins',
@@ -126,7 +126,7 @@ const DETAILS: Detail[] = [
     description:
       'Support the infrastructure that keeps real help findable. Contributions fund data verification operations, server costs, and ongoing development.',
     highlights: [
-      'Supports continuous data verification',
+      'Supports source review and re-verification tooling',
       'Funds platform reliability and uptime',
       'Enables expanded geographic service coverage',
     ],
@@ -248,9 +248,9 @@ export default function PartnershipsPage() {
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">Why it matters</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { emoji: '🔍', label: 'Real retrieval only', sub: 'No AI-invented results — verified records only' },
+            { emoji: '🔍', label: 'Real retrieval only', sub: 'No invented results — publication-gated records only' },
             { emoji: '📡', label: '211-compatible', sub: 'Feeds downstream social work platforms' },
-            { emoji: '🏅', label: 'Confidence scoring', sub: 'Listings ranked by verification depth' },
+            { emoji: '🏅', label: 'Record confidence', sub: 'Evidence strength, separate from verification' },
             { emoji: '🔒', label: 'Privacy-first', sub: 'Approximate location, no PII in telemetry' },
           ].map(({ emoji, label, sub }) => (
             <div key={label} className="flex flex-col items-center rounded-xl border border-gray-100 bg-white px-3 py-4 text-center">
@@ -268,8 +268,8 @@ export default function PartnershipsPage() {
         <div className="rounded-xl border border-gray-200 bg-white px-6 py-6">
           {[
             { n: '1', label: 'Org submits a claim', detail: 'Organization files a structured form via the claim portal. Takes 10–20 min.' },
-            { n: '2', label: 'Community admin reviews', detail: "A trained admin in the org's geographic zone verifies the submission and approves or denies." },
-            { n: '3', label: 'Listing goes live', detail: 'Approved orgs appear in search, map views, and the 211-compatible API with a confidence score.' },
+            { n: '2', label: 'Authorized reviewer decides', detail: 'A scoped reviewer checks the submission and recorded evidence, then approves, denies, or escalates it.' },
+            { n: '3', label: 'Approved listing publishes', detail: 'Only a listing with positive publication authority can appear in search, chat, map views, and supported data exports.' },
             { n: '4', label: 'Org maintains their record', detail: 'The host portal gives the org an authenticated workspace to update hours, services, and locations at any time.' },
           ].map(({ n, label, detail }, i, arr) => (
             <div key={n} className="flex items-start gap-4">

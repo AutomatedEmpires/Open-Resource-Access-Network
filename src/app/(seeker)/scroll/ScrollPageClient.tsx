@@ -152,7 +152,7 @@ export default function ScrollPageClient() {
 
   const feedTitle = selectedNeed
     ? `${getDiscoveryNeedLabel(selectedNeed) ?? 'Resources'} for you`
-    : 'Verified resources nationwide';
+    : 'Publication-gated resources nationwide';
 
   return (
     <main className="min-h-screen bg-[var(--surface-page)] pb-8">
@@ -162,7 +162,7 @@ export default function ScrollPageClient() {
           <p className="text-sm font-extrabold uppercase tracking-widest text-sky-100">Direct help · not retailer listings</p>
           <h1 className="mt-3 font-display text-4xl font-bold tracking-tight sm:text-5xl">Resources for your next step</h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-blue-50 sm:text-base">
-            Scroll verified services and program navigation from government, nonprofit, and community providers. Stores where benefits are spent stay out of this feed.
+            Scroll publication-gated services and program navigation from government, nonprofit, and community providers. Stores where benefits are spent stay out of this feed.
           </p>
           <div className="mt-5 flex flex-wrap gap-2 text-xs font-semibold text-white">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-white/10 px-3 py-1.5 backdrop-blur">
@@ -295,7 +295,7 @@ export default function ScrollPageClient() {
         </div>
 
         <p className="mx-auto mt-8 max-w-2xl text-center text-xs leading-5 text-slate-600">
-          Service details can change. Review trust and freshness cues, then contact the provider to confirm availability and eligibility. ORAN is not emergency response, medical advice, or legal advice.
+          Service details can change. Review record-confidence and freshness cues, then contact the provider to confirm availability and eligibility. ORAN is not emergency response, medical advice, or legal advice.
         </p>
       </div>
     </main>

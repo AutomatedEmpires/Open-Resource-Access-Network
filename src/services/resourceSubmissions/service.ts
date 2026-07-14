@@ -188,6 +188,23 @@ async function resolveExistingEntitiesForDraft(
 
 const HOST_LISTING_PUBLICATION_CONFIDENCE = 92;
 const REVIEWED_LISTING_PUBLICATION_CONFIDENCE = 85;
+const RESOURCE_PROJECTION_APPROVER_ROLES = new Set(['community_admin', 'oran_admin']);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+interface ResourceProjectionBinding {
+  approvalTransitionId: string;
+  approvedByUserId: string;
+  approvedByRole: 'community_admin' | 'oran_admin';
+  inputSourceRecordId: string;
+  inputPayloadSha256: string;
+  inputSourceVersion: string | null;
+  formTemplateVersion: number;
+}
+
+interface ResourceProjectionResult {
+  organizationId: string | null;
+  serviceId: string | null;
+}
 
 function buildSeedWeek(): ResourceSubmissionDraft['locations'][number]['schedule'] {
   return createEmptyResourceSubmissionDraft('listing', 'host').locations[0]?.schedule ?? [];
@@ -618,6 +635,7 @@ async function attachApprovedProjectionAssertion(
     targetType: 'organization' | 'service';
     submissionType: string;
   },
+  binding: ResourceProjectionBinding,
 ): Promise<string> {
   const { sourceFeedId } = await ensureManualSubmissionSourceSystem(client, channel);
   const payloadJson = JSON.stringify({
@@ -625,6 +643,7 @@ async function attachApprovedProjectionAssertion(
     variant,
     channel,
     projection,
+    binding,
     draft,
   });
   const payloadSha256 = crypto.createHash('sha256').update(payloadJson).digest('hex');
@@ -666,6 +685,10 @@ async function attachApprovedProjectionAssertion(
         actorUserId,
         targetType: projection.targetType,
         submissionType: projection.submissionType,
+        approvalTransitionId: binding.approvalTransitionId,
+        inputSourceRecordId: binding.inputSourceRecordId,
+        inputPayloadSha256: binding.inputPayloadSha256,
+        formTemplateVersion: binding.formTemplateVersion,
       }),
     ],
   );
@@ -685,6 +708,91 @@ async function updateSubmissionPayload(
       WHERE id = $2`,
     [JSON.stringify(payloadPatch), submissionId],
   );
+}
+
+async function findCompletedApprovedProjection(
+  client: PoolClient,
+  input: {
+    submissionId: string;
+    submissionType: string;
+    targetType: string;
+    targetId: string | null;
+    submissionPayload: Record<string, unknown>;
+    draft: ResourceSubmissionDraft;
+    binding: ResourceProjectionBinding;
+  },
+): Promise<ResourceProjectionResult | null> {
+  const projectionSourceRecordId = typeof input.submissionPayload.projectionSourceRecordId === 'string'
+    ? input.submissionPayload.projectionSourceRecordId
+    : '';
+  const organizationId = typeof input.submissionPayload.projectedOrganizationId === 'string'
+    ? input.submissionPayload.projectedOrganizationId
+    : '';
+  const expectedTargetType = input.draft.variant === 'claim' || input.submissionType === 'org_claim'
+    ? 'organization'
+    : 'service';
+  const serviceId = expectedTargetType === 'service'
+    && typeof input.submissionPayload.projectedServiceId === 'string'
+      ? input.submissionPayload.projectedServiceId
+      : null;
+
+  if (
+    !UUID_PATTERN.test(projectionSourceRecordId)
+    || !UUID_PATTERN.test(organizationId)
+    || (expectedTargetType === 'service' && (!serviceId || !UUID_PATTERN.test(serviceId)))
+    || (expectedTargetType === 'organization' && input.submissionPayload.projectedServiceId !== null)
+    || input.targetType !== expectedTargetType
+    || input.targetId !== (expectedTargetType === 'service' ? serviceId : organizationId)
+    || input.submissionPayload.projectionApprovalTransitionId !== input.binding.approvalTransitionId
+    || input.submissionPayload.projectionInputSourceRecordId !== input.binding.inputSourceRecordId
+    || input.submissionPayload.projectionInputPayloadSha256 !== input.binding.inputPayloadSha256
+    || input.submissionPayload.projectionInputSourceVersion !== input.binding.inputSourceVersion
+    || input.submissionPayload.projectionTemplateVersion !== input.binding.formTemplateVersion
+  ) {
+    return null;
+  }
+
+  const projection = {
+    organizationId,
+    serviceId,
+    targetType: expectedTargetType,
+    submissionType: input.submissionType,
+  };
+  const projectionPayloadJson = JSON.stringify({
+    submissionId: input.submissionId,
+    variant: input.draft.variant,
+    channel: input.draft.channel,
+    projection,
+    binding: input.binding,
+    draft: input.draft,
+  });
+  const projectionPayloadSha256 = crypto
+    .createHash('sha256')
+    .update(projectionPayloadJson)
+    .digest('hex');
+  const existing = await client.query<{ id: string }>(
+    `SELECT id
+       FROM source_records
+      WHERE id = $1
+        AND source_record_type = 'mixed_bundle'
+        AND source_record_id = $2
+        AND canonical_source_url = $3
+        AND processing_status = 'published'
+        AND payload_sha256 = $4
+        AND parsed_payload = $5::jsonb
+      FOR SHARE`,
+    [
+      projectionSourceRecordId,
+      input.submissionId,
+      `oran://resource-submissions/${input.submissionId}/projection`,
+      projectionPayloadSha256,
+      projectionPayloadJson,
+    ],
+  );
+
+  return existing.rows[0]
+    ? { organizationId, serviceId }
+    : null;
 }
 
 export async function setResourceSubmissionPublicAccessToken(
@@ -1532,38 +1640,165 @@ function buildSubmissionHsdsPayload(input: {
 export async function projectApprovedResourceSubmission(
   identifier: string,
   actorUserId: string,
-): Promise<{ organizationId: string | null; serviceId: string | null }> {
+): Promise<ResourceProjectionResult> {
   return withTransaction(async (client) => {
-    const resolvedId = await resolveResourceInstanceId(identifier);
-    if (!resolvedId) {
-      return { organizationId: null, serviceId: null };
-    }
-
     const rows = await client.query<{
       submission_id: string;
       submission_type: string;
       target_type: string;
       target_id: string | null;
       submitted_by_user_id: string;
+      status: string;
+      payload: Record<string, unknown>;
       form_data: Record<string, unknown>;
+      template_slug: string;
+      template_version: number;
+      approval_transition_id: string | null;
+      approval_to_status: string | null;
+      approval_actor_user_id: string | null;
+      approval_actor_role: string | null;
+      approval_created_at: string | null;
     }>(
       `SELECT fi.submission_id,
               s.submission_type,
               s.target_type,
               s.target_id,
               s.submitted_by_user_id,
-              fi.form_data
+              s.status,
+              s.payload,
+              fi.form_data,
+              ft.slug AS template_slug,
+              fi.template_version,
+              approval.id AS approval_transition_id,
+              approval.to_status AS approval_to_status,
+              approval.actor_user_id AS approval_actor_user_id,
+              approval.actor_role AS approval_actor_role,
+              approval.created_at::text AS approval_created_at
          FROM form_instances fi
+         JOIN form_templates ft ON ft.id = fi.template_id
          JOIN submissions s ON s.id = fi.submission_id
-        WHERE fi.id = $1
-        FOR UPDATE`,
-      [resolvedId],
+         LEFT JOIN LATERAL (
+           SELECT st.id,
+                  st.to_status,
+                  st.actor_user_id,
+                  st.actor_role,
+                  st.created_at
+             FROM submission_transitions st
+            WHERE st.submission_id = s.id
+              AND st.gates_passed IS TRUE
+            ORDER BY st.created_at DESC, st.id DESC
+            LIMIT 1
+         ) approval ON TRUE
+        WHERE ft.slug LIKE 'resource-%'
+          AND (fi.id = $1 OR fi.submission_id = $1)
+        ORDER BY (fi.id = $1) DESC
+        LIMIT 1
+        FOR UPDATE OF fi, s`,
+      [identifier],
     );
     const row = rows.rows[0];
     if (!row) {
       return { organizationId: null, serviceId: null };
     }
-    const rawDraft = normalizeResourceSubmissionDraft(readObject(row.form_data).draft, 'listing', 'host');
+
+    if (row.status !== 'approved') {
+      throw new Error('Resource projection requires an approved submission');
+    }
+
+    if (
+      !row.approval_transition_id
+      || row.approval_to_status !== 'approved'
+      || !row.approval_actor_user_id
+      || !row.approval_actor_role
+      || !row.approval_created_at
+    ) {
+      throw new Error('Resource projection requires the latest passed transition to be an approval');
+    }
+
+    if (!RESOURCE_PROJECTION_APPROVER_ROLES.has(row.approval_actor_role)) {
+      throw new Error('Resource projection requires approval by a community or ORAN administrator');
+    }
+
+    if (row.approval_actor_user_id === row.submitted_by_user_id) {
+      throw new Error('Resource projection requires an approver distinct from the submitter');
+    }
+
+    if (row.approval_actor_user_id !== actorUserId) {
+      throw new Error('Resource projection actor must match the recorded approver');
+    }
+
+    const rawDraft = normalizeResourceSubmissionDraft(
+      readObject(row.form_data).draft,
+      row.template_slug.includes('claim') ? 'claim' : 'listing',
+      row.template_slug.includes('public') ? 'public' : 'host',
+    );
+    const submissionPayload = readObject(row.payload);
+    const inputSourceRecordId = typeof submissionPayload.sourceRecordId === 'string'
+      ? submissionPayload.sourceRecordId
+      : '';
+    if (!UUID_PATTERN.test(inputSourceRecordId)) {
+      throw new Error('Resource projection requires a valid submitted source assertion');
+    }
+
+    const expectedInputPayloadJson = JSON.stringify({
+      submissionId: row.submission_id,
+      variant: rawDraft.variant,
+      channel: rawDraft.channel,
+      draft: rawDraft,
+    });
+    const expectedInputPayloadSha256 = crypto
+      .createHash('sha256')
+      .update(expectedInputPayloadJson)
+      .digest('hex');
+    const inputSourceRows = await client.query<{
+      id: string;
+      payload_sha256: string;
+      source_version: string | null;
+    }>(
+      `SELECT id,
+              payload_sha256,
+              source_version
+         FROM source_records
+        WHERE id = $1
+          AND source_record_id = $2
+          AND canonical_source_url = $3
+          AND processing_status = 'normalized'
+          AND created_at <= $4::timestamptz
+        FOR SHARE`,
+      [
+        inputSourceRecordId,
+        row.submission_id,
+        `oran://resource-submissions/${row.submission_id}`,
+        row.approval_created_at,
+      ],
+    );
+    const inputSource = inputSourceRows.rows[0];
+    if (!inputSource || inputSource.payload_sha256 !== expectedInputPayloadSha256) {
+      throw new Error('Resource projection input no longer matches the reviewed source assertion');
+    }
+
+    const projectionBinding: ResourceProjectionBinding = {
+      approvalTransitionId: row.approval_transition_id,
+      approvedByUserId: row.approval_actor_user_id,
+      approvedByRole: row.approval_actor_role as ResourceProjectionBinding['approvedByRole'],
+      inputSourceRecordId: inputSource.id,
+      inputPayloadSha256: inputSource.payload_sha256,
+      inputSourceVersion: inputSource.source_version,
+      formTemplateVersion: row.template_version,
+    };
+
+    const completedProjection = await findCompletedApprovedProjection(client, {
+      submissionId: row.submission_id,
+      submissionType: row.submission_type,
+      targetType: row.target_type,
+      targetId: row.target_id,
+      submissionPayload,
+      draft: rawDraft,
+      binding: projectionBinding,
+    });
+    if (completedProjection) {
+      return completedProjection;
+    }
 
     await acquireLivePublicationAdvisoryLock(client, {
       ownerOrganizationId: rawDraft.ownerOrganizationId,
@@ -1624,11 +1859,17 @@ export async function projectApprovedResourceSubmission(
           targetType: 'organization',
           submissionType: row.submission_type,
         },
+        projectionBinding,
       );
       await updateSubmissionPayload(client, row.submission_id, {
         projectionSourceRecordId,
         projectedOrganizationId: organizationId,
         projectedServiceId: null,
+        projectionApprovalTransitionId: projectionBinding.approvalTransitionId,
+        projectionInputSourceRecordId: projectionBinding.inputSourceRecordId,
+        projectionInputPayloadSha256: projectionBinding.inputPayloadSha256,
+        projectionInputSourceVersion: projectionBinding.inputSourceVersion,
+        projectionTemplateVersion: projectionBinding.formTemplateVersion,
       });
 
       return { organizationId, serviceId: null };
@@ -1731,15 +1972,21 @@ export async function projectApprovedResourceSubmission(
       draft,
       {
         organizationId,
-          serviceId: resolvedServiceId,
+        serviceId: resolvedServiceId,
         targetType: 'service',
         submissionType: row.submission_type,
       },
+      projectionBinding,
     );
     await updateSubmissionPayload(client, row.submission_id, {
       projectionSourceRecordId,
       projectedOrganizationId: organizationId,
       projectedServiceId: resolvedServiceId,
+      projectionApprovalTransitionId: projectionBinding.approvalTransitionId,
+      projectionInputSourceRecordId: projectionBinding.inputSourceRecordId,
+      projectionInputPayloadSha256: projectionBinding.inputPayloadSha256,
+      projectionInputSourceVersion: projectionBinding.inputSourceVersion,
+      projectionTemplateVersion: projectionBinding.formTemplateVersion,
       publishedAt: shouldOverwriteExisting ? publicationWindow.lastVerifiedAt : null,
       lastVerifiedAt: shouldOverwriteExisting ? publicationWindow.lastVerifiedAt : null,
       reverifyAt: shouldOverwriteExisting ? publicationWindow.reverifyAt : null,

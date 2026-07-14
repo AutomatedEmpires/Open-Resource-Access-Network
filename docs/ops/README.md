@@ -140,7 +140,7 @@ Never print environment values while diagnosing. Use `.env.example` and
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL`, `DATABASE_POOL_MAX` | Supabase pooled runtime connection |
+| `DATABASE_URL`, `DATABASE_POOL_MAX`, `ORAN_DATABASE_ROLE`, `ORAN_SUPABASE_PROJECT_REF` | Dedicated pooled ORAN backend login plus fixed role/project identity assertions |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` | Clerk identity |
 | `CRON_SECRET` | Vercel Cron authentication |
 | `NEXT_PUBLIC_SENTRY_DSN` | Privacy-filtered error reporting |

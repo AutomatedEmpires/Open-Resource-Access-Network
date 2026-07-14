@@ -491,12 +491,14 @@ export const MAX_SERVICES_PER_RESPONSE = 5;
 
 /**
  * REQUIRED disclaimer — must appear on every response containing service recommendations.
- * ORAN never guarantees eligibility. Services are surfaced from DB records only.
+ * ORAN never guarantees eligibility. Services are surfaced only after the
+ * publication-authority gate accepts source-backed evidence.
  */
 export const ELIGIBILITY_DISCLAIMER =
-  'Results shown are from verified records. Eligibility is determined by each service ' +
+  "Results shown are source-backed records that passed ORAN's publication gate. " +
+  'Eligibility is determined by each service ' +
   'provider — ORAN does not guarantee qualification. Always confirm with the provider. ' +
-  'Information may have changed since last verification.';
+  'Information may have changed since the source was last checked.';
 
 // ============================================================
 // CRISIS RESOURCES

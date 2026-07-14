@@ -5,7 +5,7 @@ import ScrollPageClient from './ScrollPageClient';
 export const metadata: Metadata = {
   title: 'Resource Feed',
   description:
-    'Scroll a personalized feed of verified government, nonprofit, and community services—not retailer directories.',
+    'Scroll a personalized feed of publication-gated government, nonprofit, and community services—not retailer directories.',
   alternates: { canonical: '/scroll' },
 };
 

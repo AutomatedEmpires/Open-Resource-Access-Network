@@ -660,8 +660,10 @@ canonical row. A service must prove one of two authority paths:
    promotion atomically advances those accepted assertions from `normalized`
    to `published`; missing winning-source provenance rolls the promotion back.
 2. A current manual HSDS snapshot tied to an approved `submissions` row, a
-   passed approval transition, and a published `mixed_bundle` source assertion
-   whose projection identifies that same service. Manual systems use the
+   passed approval transition made by a distinct `community_admin` or
+   `oran_admin`, and a published `mixed_bundle` source assertion whose
+   projection identifies that same service. System transitions and submitter
+   self-approval do not create publication authority. Manual systems use the
    schema-defined `manual` family, `manual_entry` feed type, and positive
    `trusted_partner` or `community` trust tiers.
 

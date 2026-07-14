@@ -124,6 +124,11 @@ export async function promoteToLive(
   const sourceSystem = canonicalService.winningSourceSystemId
     ? await stores.sourceSystems.getById(canonicalService.winningSourceSystemId)
     : null;
+  if (sourceSystem?.family === 'manual') {
+    throw new Error(
+      `Canonical service ${canonicalServiceId} cannot use canonical-feed promotion for a manual source; independent submission approval is required`,
+    );
+  }
   const purposeDecision = evaluateStandaloneResourceUse(sourceSystem);
   if (!purposeDecision.allowed) {
     throw new Error(
@@ -200,6 +205,7 @@ export async function promoteToLive(
          JOIN public.source_systems publication_system
            ON publication_system.id = publication_feed.source_system_id
           AND publication_system.is_active IS TRUE
+          AND publication_system.family <> 'manual'
           AND publication_system.trust_tier IN (
             'verified_publisher',
             'trusted_partner',

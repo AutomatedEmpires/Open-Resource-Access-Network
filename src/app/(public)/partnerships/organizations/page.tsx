@@ -5,11 +5,11 @@ import { SITE } from '@/lib/site';
 export const metadata: Metadata = {
   title: 'List Your Organization',
   description:
-    'Register your nonprofit, government agency, or community service organization on ORAN. Free, community-verified, discoverable by people actively searching for help.',
+    'Submit your nonprofit, government agency, or community service organization to ORAN for review. There is no listing fee, and nothing publishes without positive authority.',
   alternates: { canonical: '/partnerships/organizations' },
   openGraph: {
     title: 'List Your Organization — ORAN',
-    description: 'Register your nonprofit, government agency, or community service organization on ORAN. Free, community-verified, discoverable by people actively searching for help.',
+    description: 'Submit your nonprofit, government agency, or community service organization to ORAN for review. There is no listing fee, and nothing publishes without positive authority.',
     url: `${SITE.baseUrl}/partnerships/organizations`,
     type: 'website',
   },
@@ -26,7 +26,7 @@ const HOST_PORTAL_TOOLS = [
     emoji: '🏷️',
     label: 'Organization Profile',
     route: '/org/profile',
-    desc: 'Build your public-facing profile: logo, description, mission, contact links. Complete profiles earn a Verified badge faster.',
+    desc: 'Build your public-facing profile: logo, description, mission, and contact links. Completeness does not substitute for an explicit verification decision.',
   },
   {
     emoji: '🏢',
@@ -50,13 +50,13 @@ const HOST_PORTAL_TOOLS = [
     emoji: '📍',
     label: 'Locations',
     route: '/locations',
-    desc: 'Manage physical service sites. Correct addresses, hours, and site details before they go stale — stale records lower your confidence score.',
+    desc: 'Manage physical service sites. Correct addresses, hours, and site details; material changes may return the record to review.',
   },
   {
     emoji: '📋',
     label: 'Forms',
     route: '/host-forms',
-    desc: 'Create structured intake forms specific to your organization or service area. Helps seekers submit pre-qualified eligibility information.',
+    desc: 'Create structured intake forms specific to your organization or service area. ORAN does not pre-qualify or guarantee eligibility.',
   },
   {
     emoji: '👥',
@@ -68,7 +68,7 @@ const HOST_PORTAL_TOOLS = [
     emoji: '📤',
     label: 'Claim',
     route: '/claim',
-    desc: 'Submit a new organization claim or continue one already in flight. Each claim goes through community admin review before going live.',
+    desc: 'Submit a new organization claim or continue one already in flight. Each claim requires an authorized review decision before going live.',
   },
 ];
 
@@ -79,7 +79,7 @@ const FAQ = [
   },
   {
     q: 'What if my information changes frequently?',
-    a: 'Use the Services or Locations section of the host portal to push updates at any time. Major changes trigger a lightweight re-verification pass to keep your confidence score accurate.',
+    a: 'Use the Services or Locations section of the host portal to submit updates. Material changes may return to review, and record confidence remains separate from provider verification.',
   },
   {
     q: 'Can I have multiple service locations?',
@@ -91,7 +91,7 @@ const FAQ = [
   },
   {
     q: 'Is there a cost?',
-    a: 'No. ORAN listings are and will remain free for service providers. We are funded by institutional partnerships and community supporters.',
+    a: 'ORAN does not charge service providers a listing fee.',
   },
 ];
 
@@ -113,8 +113,8 @@ export default function OrganizationsPage() {
         </div>
         <h1 className="mb-3 text-3xl font-bold tracking-tight text-gray-900">List Your Organization</h1>
         <p className="mb-2 max-w-xl text-base leading-relaxed text-gray-600">
-          Listing on ORAN is free, takes 10–20 minutes, and makes your services reach the people who
-          need them most — including 211 networks and downstream social work platforms.
+          Submit a structured listing at no charge. After an authorized review, approved services can
+          become discoverable in ORAN chat, map, directory, and supported data exports.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link
@@ -142,8 +142,8 @@ export default function OrganizationsPage() {
           <p className="mt-1 text-xs text-gray-500">Always free to list</p>
         </div>
         <div className="px-6 py-5 text-center">
-          <p className="text-2xl font-bold text-gray-900">1–3 days</p>
-          <p className="mt-1 text-xs text-gray-500">Typical review time</p>
+          <p className="text-2xl font-bold text-gray-900">Reviewed</p>
+          <p className="mt-1 text-xs text-gray-500">Before publication</p>
         </div>
         <div className="px-6 py-5 text-center">
           <p className="text-2xl font-bold text-gray-900">30+</p>
@@ -157,8 +157,8 @@ export default function OrganizationsPage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { emoji: '🔍', label: 'Searchable', sub: 'Map, directory & keyword search' },
-            { emoji: '📡', label: '211-ready', sub: 'Included in 211 API exports' },
-            { emoji: '🏅', label: 'Confidence score', sub: 'Ranked by verification depth' },
+            { emoji: '📡', label: 'Structured data', sub: 'Supported exports after approval' },
+            { emoji: '🏅', label: 'Record confidence', sub: 'Separate from verification status' },
             { emoji: '🔄', label: 'Always updatable', sub: 'Edit anytime via the portal' },
           ].map(({ emoji, label, sub }) => (
             <div key={label} className="flex flex-col items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-5 text-center">
@@ -179,31 +179,31 @@ export default function OrganizationsPage() {
             {
               n: '1',
               label: 'Submit a claim',
-              detail: 'Fill out the structured claim form — service categories, hours, eligibility, contact, and location. Takes 10–20 minutes.',
+              detail: 'Fill out the structured claim form with service categories, hours, eligibility, contact details, and location.',
               tag: null,
             },
             {
               n: '2',
-              label: 'Community admin review',
-              detail: 'A trained admin in your geographic zone reviews your submission. They may request clarification or cross-reference public sources.',
-              tag: '1–3 business days',
+              label: 'Authorized review',
+              detail: 'A scoped reviewer checks the submission and recorded evidence. They may request clarification, approve, deny, or escalate it.',
+              tag: null,
             },
             {
               n: '3',
               label: 'Listing goes live',
-              detail: 'Approved orgs appear in ORAN search, map views, and the 211-compatible API. A confidence score is assigned based on verification depth.',
+              detail: 'Only approved records with positive publication authority appear in ORAN search, chat, map views, and supported exports.',
               tag: null,
             },
             {
               n: '4',
               label: 'Manage via Host Portal',
-              detail: 'Once approved, your team gets an authenticated host workspace to update hours, services, locations, and profile at any time without re-review.',
+              detail: 'Once approved, your team gets an authenticated host workspace to propose updates to hours, services, locations, and profile details.',
               tag: 'Ongoing',
             },
             {
               n: '5',
-              label: 'Re-verification on major changes',
-              detail: 'Significant changes to eligibility, services, or operating hours trigger a lightweight re-verification to maintain your confidence score.',
+              label: 'Review material changes',
+              detail: 'Significant changes to eligibility, services, or operating hours may be held for review before publication.',
               tag: null,
             },
           ].map(({ n, label, detail, tag }, i, arr) => (
@@ -296,7 +296,7 @@ export default function OrganizationsPage() {
               <Link href="/contact" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900">Contact page</Link>{' '}
               or review the process in our{' '}
               <Link href="/privacy" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900">Privacy Policy</Link>.
-              Requests are processed within 30 days.
+              Requests are handled under the published privacy process and applicable requirements.
             </p>
           </div>
         </div>

@@ -8,6 +8,8 @@ describe('validateRuntimeEnv', () => {
       {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+        ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+        ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
         CRON_SECRET: 'vercel-cron-secret',
         NEXT_PUBLIC_SENTRY_DSN: 'https://public@example.ingest.sentry.io/1',
         NEXT_PUBLIC_SUPABASE_URL: 'https://project.supabase.co',
@@ -25,12 +27,28 @@ describe('validateRuntimeEnv', () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it('requires the reviewed backend capability role in production', () => {
+    const result = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
+      CRON_SECRET: 'vercel-cron-secret',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.missingCritical).toEqual(['ORAN_DATABASE_ROLE']);
+  });
+
   it('requires both Clerk identity keys in production', () => {
     const result = validateRuntimeEnv(
       'webapp',
       {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+        ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+        ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
         CRON_SECRET: 'vercel-cron-secret',
       },
     );
@@ -52,6 +70,8 @@ describe('validateRuntimeEnv', () => {
     const result = validateRuntimeEnv('webapp', {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
       CLERK_SECRET_KEY: 'sk_test_example',
     });
@@ -64,6 +84,8 @@ describe('validateRuntimeEnv', () => {
     const missingSender = validateRuntimeEnv('webapp', {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
       CRON_SECRET: 'vercel-cron-secret',
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
       CLERK_SECRET_KEY: 'sk_test_example',
@@ -76,6 +98,8 @@ describe('validateRuntimeEnv', () => {
     const missingKey = validateRuntimeEnv('webapp', {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
       CRON_SECRET: 'vercel-cron-secret',
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
       CLERK_SECRET_KEY: 'sk_test_example',
@@ -100,6 +124,8 @@ describe('validateRuntimeEnv', () => {
     const result = validateRuntimeEnv('webapp', {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
       CRON_SECRET: 'vercel-cron-secret',
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
       CLERK_SECRET_KEY: 'sk_test_example',
@@ -117,6 +143,8 @@ describe('validateRuntimeEnv', () => {
     const result = validateRuntimeEnv('webapp', {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
       CRON_SECRET: 'vercel-cron-secret',
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
       CLERK_SECRET_KEY: 'sk_test_example',

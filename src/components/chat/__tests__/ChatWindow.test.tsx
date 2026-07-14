@@ -341,7 +341,7 @@ describe('ChatWindow', () => {
     await screen.findAllByTestId('chat-card-svc-1');
     expect(screen.getAllByText('Search scope used for these results').length).toBeGreaterThan(0);
     expect(screen.getByText('Need: Food')).toBeInTheDocument();
-    expect(screen.getAllByText('Trust: High confidence only').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Record confidence: High confidence only').length).toBeGreaterThan(0);
     expect(chatServiceCardMock).toHaveBeenCalledWith({
       card: expect.objectContaining({ serviceId: 'svc-1' }),
       discoveryContext: {

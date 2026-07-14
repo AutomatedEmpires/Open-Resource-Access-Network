@@ -78,21 +78,6 @@ async function ensureReviewClaim(detail: ResourceSubmissionDetail, reviewerUserI
   await acquireLock(detail.instance.submission_id, reviewerUserId);
 }
 
-function shouldAutoApproveOnSubmit(
-  authCtx: Awaited<ReturnType<typeof getAuthContext>>,
-  detail: ResourceSubmissionDetail,
-): boolean {
-  if (!authCtx) {
-    return false;
-  }
-
-  if (!requireMinRole(authCtx, 'host_member')) {
-    return false;
-  }
-
-  return detail.draft.variant === 'listing' && detail.draft.channel === 'host';
-}
-
 export async function GET(req: NextRequest, ctx: RouteContext) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
@@ -245,54 +230,6 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
         // SLA application is best-effort.
       }
 
-      if (shouldAutoApproveOnSubmit(authCtx, detail)) {
-        const autoChecking = await advance({
-          submissionId: detail.instance.submission_id,
-          toStatus: 'auto_checking',
-          actorUserId,
-          actorRole: 'system',
-          reason: 'Host-controlled listing entered automatic publication review',
-          metadata: { form_instance_id: detail.instance.id, policy: 'host_auto_publish' },
-          skipGates: true,
-        });
-        if (!autoChecking.success) {
-          return NextResponse.json({ error: autoChecking.error ?? 'Unable to start automatic review.' }, { status: 409 });
-        }
-
-        const approved = await advance({
-          submissionId: detail.instance.submission_id,
-          toStatus: 'approved',
-          actorUserId,
-          actorRole: 'system',
-          reason: 'Host-controlled listing auto-published by source-aware policy',
-          metadata: { form_instance_id: detail.instance.id, policy: 'host_auto_publish' },
-          skipGates: true,
-        });
-
-        if (!approved.success) {
-          const queued = await advance({
-            submissionId: detail.instance.submission_id,
-            toStatus: 'needs_review',
-            actorUserId,
-            actorRole: 'system',
-            reason: approved.error ?? 'Automatic publication failed; routed to manual review',
-            metadata: { form_instance_id: detail.instance.id, policy: 'host_auto_publish_fallback' },
-            skipGates: true,
-          });
-          if (!queued.success) {
-            return NextResponse.json({ error: approved.error ?? 'Unable to complete submission workflow.' }, { status: 409 });
-          }
-
-          const refreshed = await getResourceSubmissionDetailForActor(authCtx!, id);
-          return NextResponse.json({ detail: refreshed, submitted, autoChecking, queued });
-        }
-
-        await projectApprovedResourceSubmission(id, actorUserId);
-
-        const refreshed = await getResourceSubmissionDetailForActor(authCtx!, id);
-        return NextResponse.json({ detail: refreshed, submitted, autoChecking, approved });
-      }
-
       const queued = await advance({
         submissionId: detail.instance.submission_id,
         toStatus: 'needs_review',
@@ -314,6 +251,24 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
     if (!authCtx) {
       return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
+    }
+
+    if (parsed.data.action === 'approve' && detail.instance.status === 'approved') {
+      if (saveRequested) {
+        return NextResponse.json(
+          { error: 'Approved submission content cannot be changed during projection repair.' },
+          { status: 409 },
+        );
+      }
+
+      const projection = await projectApprovedResourceSubmission(id, authCtx.userId);
+      const refreshed = await getResourceSubmissionDetailForActor(authCtx, id);
+      return NextResponse.json({
+        detail: refreshed,
+        transition: null,
+        projection,
+        projectionRepair: true,
+      });
     }
 
     if (saveRequested) {

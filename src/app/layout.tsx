@@ -40,7 +40,7 @@ export const metadata: Metadata = {
   keywords: [
     'ORAN',
     'Open Resource Access Network',
-    'verified services',
+    'resource navigation',
     'community services',
     'nonprofit directory',
     'government services',

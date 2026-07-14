@@ -38,6 +38,11 @@ const CLERK_CONFIGURED = Boolean(
   && process.env.CLERK_SECRET_KEY,
 );
 
+const CLERK_AUTHORIZED_PARTIES = [
+  'https://openresourceaccessnetwork.com',
+  'https://www.openresourceaccessnetwork.com',
+] as const;
+
 function isProtectedApiWrite(request: NextRequest): boolean {
   const method = request.method?.toUpperCase() ?? 'GET';
   if (!STATE_CHANGING_METHODS.has(method)) {
@@ -127,6 +132,10 @@ function runRequestBoundary(
 const clerkProxy = clerkMiddleware(async (clerkAuth, request) => {
   const { userId } = await clerkAuth();
   return runRequestBoundary(request, userId);
+}, {
+  authorizedParties: process.env.NODE_ENV === 'production'
+    ? [...CLERK_AUTHORIZED_PARTIES]
+    : undefined,
 });
 
 export async function proxy(request: NextRequest, event: NextFetchEvent): Promise<Response> {

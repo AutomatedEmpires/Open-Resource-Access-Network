@@ -34,6 +34,8 @@ vi.mock('pg', () => ({
 
 const originalDatabaseUrl = process.env.DATABASE_URL;
 const originalNodeEnv = process.env.NODE_ENV;
+const originalDatabaseRole = process.env.ORAN_DATABASE_ROLE;
+const originalSupabaseProjectRef = process.env.ORAN_SUPABASE_PROJECT_REF;
 const globalWithPool = globalThis as typeof globalThis & { __oranPgPool?: unknown };
 const mutableEnv = process.env as Record<string, string | undefined>;
 
@@ -52,6 +54,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   poolInstances.length = 0;
   delete process.env.DATABASE_URL;
+  delete process.env.ORAN_DATABASE_ROLE;
+  delete process.env.ORAN_SUPABASE_PROJECT_REF;
   mutableEnv.NODE_ENV = 'test';
   delete globalWithPool.__oranPgPool;
 });
@@ -67,6 +71,18 @@ afterEach(() => {
     delete mutableEnv.NODE_ENV;
   } else {
     mutableEnv.NODE_ENV = originalNodeEnv;
+  }
+
+  if (originalDatabaseRole === undefined) {
+    delete process.env.ORAN_DATABASE_ROLE;
+  } else {
+    process.env.ORAN_DATABASE_ROLE = originalDatabaseRole;
+  }
+
+  if (originalSupabaseProjectRef === undefined) {
+    delete process.env.ORAN_SUPABASE_PROJECT_REF;
+  } else {
+    process.env.ORAN_SUPABASE_PROJECT_REF = originalSupabaseProjectRef;
   }
 
   delete globalWithPool.__oranPgPool;
@@ -111,7 +127,9 @@ describe('postgres utilities', () => {
   });
 
   it('reuses a module singleton pool in production without touching globalThis', async () => {
-    process.env.DATABASE_URL = 'postgres://oran:test@localhost:5432/oran';
+    process.env.DATABASE_URL = 'postgres://oran_backend_runtime.tpatxospkuqvajusuryw:test@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require';
+    process.env.ORAN_DATABASE_ROLE = 'oran_backend_runtime';
+    process.env.ORAN_SUPABASE_PROJECT_REF = 'tpatxospkuqvajusuryw';
     mutableEnv.NODE_ENV = 'production';
     const postgres = await loadPostgresModule();
 
@@ -120,6 +138,11 @@ describe('postgres utilities', () => {
 
     expect(first).toBe(second);
     expect(PoolMock).toHaveBeenCalledTimes(1);
+    const firstCall = PoolMock.mock.calls[0] as unknown as [Record<string, unknown>];
+    expect(firstCall?.[0].connectionString).toBe(process.env.DATABASE_URL);
+    expect(new URL(String(firstCall?.[0].connectionString)).username).toBe(
+      'oran_backend_runtime.tpatxospkuqvajusuryw',
+    );
     expect(globalWithPool.__oranPgPool).toBeUndefined();
   });
 

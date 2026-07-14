@@ -1,4 +1,7 @@
+import crypto from 'node:crypto';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ResourceSubmissionDraft } from '@/domain/resourceSubmission';
 
 const dbMocks = vi.hoisted(() => ({
   executeQuery: vi.fn(),
@@ -87,6 +90,49 @@ const draftFactory = () => ({
     notes: '',
   },
 });
+
+const INPUT_SOURCE_RECORD_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const APPROVAL_TRANSITION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+function buildProjectionAuthorizationFields(
+  draft: ResourceSubmissionDraft,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    status: 'approved',
+    payload: { sourceRecordId: INPUT_SOURCE_RECORD_ID },
+    template_slug: draft.variant === 'claim'
+      ? 'resource-claim-host'
+      : draft.channel === 'public'
+        ? 'resource-listing-public'
+        : 'resource-listing-host',
+    template_version: 1,
+    approval_transition_id: APPROVAL_TRANSITION_ID,
+    approval_to_status: 'approved',
+    approval_actor_user_id: 'actor-1',
+    approval_actor_role: 'community_admin',
+    approval_created_at: '2026-03-02T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function buildInputSourceAssertion(
+  draft: ResourceSubmissionDraft,
+  submissionId: string,
+) {
+  const payloadJson = JSON.stringify({
+    submissionId,
+    variant: draft.variant,
+    channel: draft.channel,
+    draft,
+  });
+
+  return {
+    id: INPUT_SOURCE_RECORD_ID,
+    payload_sha256: crypto.createHash('sha256').update(payloadJson).digest('hex'),
+    source_version: null,
+  };
+}
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/forms/vault', () => vaultMocks);
@@ -444,12 +490,193 @@ describe('resource submission service', () => {
     );
   });
 
-  it('projects claim submissions into organization membership updates', async () => {
-    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'instance-1' }]);
+  it('refuses projection unless the locked submission is currently approved', async () => {
+    const draft = createEmptyResourceSubmissionDraft('listing', 'host');
+    const clientQuery = vi.fn(async (sql: string, _params?: unknown[]) => {
+      if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
+        expect(sql).toContain('ORDER BY st.created_at DESC, st.id DESC');
+        expect(sql).toContain('FOR UPDATE OF fi, s');
+        return {
+          rows: [{
+            submission_id: 'sub-locked',
+            submission_type: 'new_service',
+            target_type: 'system',
+            target_id: null,
+            submitted_by_user_id: 'submitter-1',
+            form_data: { draft },
+            ...buildProjectionAuthorizationFields(draft, { status: 'needs_review' }),
+          }],
+        };
+      }
+      return { rows: [] };
+    });
+    dbMocks.withTransaction.mockImplementation(async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }));
+
+    await expect(projectApprovedResourceSubmission('instance-1', 'actor-1'))
+      .rejects.toThrow('requires an approved submission');
+    expect(clientQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['a system approval', { approval_actor_role: 'system' }, 'community or ORAN administrator'],
+    ['submitter self-approval', { approval_actor_user_id: 'submitter-1' }, 'distinct from the submitter'],
+    ['a stale non-approval transition', { approval_to_status: 'needs_review' }, 'latest passed transition'],
+    ['a different projection actor', { approval_actor_user_id: 'reviewer-2' }, 'must match the recorded approver'],
+  ])('refuses projection after %s', async (_label, approvalOverrides, expectedError) => {
+    const draft = createEmptyResourceSubmissionDraft('listing', 'host');
     const clientQuery = vi.fn(async (sql: string) => {
       if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
-        const draft = createEmptyResourceSubmissionDraft('claim', 'host');
-        draft.variant = 'claim';
+        return {
+          rows: [{
+            submission_id: 'sub-approval',
+            submission_type: 'new_service',
+            target_type: 'system',
+            target_id: null,
+            submitted_by_user_id: 'submitter-1',
+            form_data: { draft },
+            ...buildProjectionAuthorizationFields(draft, approvalOverrides),
+          }],
+        };
+      }
+      return { rows: [] };
+    });
+    dbMocks.withTransaction.mockImplementation(async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }));
+
+    await expect(projectApprovedResourceSubmission('instance-1', 'actor-1'))
+      .rejects.toThrow(expectedError);
+    expect(clientQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses projection when the current draft hash differs from the reviewed source assertion', async () => {
+    const draft = createEmptyResourceSubmissionDraft('listing', 'host');
+    draft.service.name = 'Changed after review';
+    const clientQuery = vi.fn(async (sql: string) => {
+      if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
+        return {
+          rows: [{
+            submission_id: 'sub-stale',
+            submission_type: 'new_service',
+            target_type: 'system',
+            target_id: null,
+            submitted_by_user_id: 'submitter-1',
+            form_data: { draft },
+            ...buildProjectionAuthorizationFields(draft),
+          }],
+        };
+      }
+      if (sql.includes('FROM source_records') && sql.includes('FOR SHARE')) {
+        expect(sql).toContain("processing_status = 'normalized'");
+        expect(sql).toContain('created_at <= $4::timestamptz');
+        return {
+          rows: [{
+            id: INPUT_SOURCE_RECORD_ID,
+            payload_sha256: '0'.repeat(64),
+            source_version: null,
+          }],
+        };
+      }
+      return { rows: [] };
+    });
+    dbMocks.withTransaction.mockImplementation(async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }));
+
+    await expect(projectApprovedResourceSubmission('instance-1', 'actor-1'))
+      .rejects.toThrow('no longer matches the reviewed source assertion');
+    expect(clientQuery.mock.calls.some(([sql]) => sql.includes('pg_advisory_xact_lock'))).toBe(false);
+    expect(clientQuery.mock.calls.some(([sql]) => sql.includes('INSERT INTO services'))).toBe(false);
+    expect(clientQuery.mock.calls.some(([sql]) => sql.includes('INSERT INTO organizations'))).toBe(false);
+  });
+
+  it('returns a completed bound projection without replaying publication writes', async () => {
+    const draft = createEmptyResourceSubmissionDraft('listing', 'host');
+    draft.organization.name = 'Already projected org';
+    draft.service.name = 'Already projected service';
+    const inputSource = buildInputSourceAssertion(draft, 'sub-idempotent');
+    const projectionSourceRecordId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const organizationId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    const serviceId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    const binding = {
+      approvalTransitionId: APPROVAL_TRANSITION_ID,
+      approvedByUserId: 'actor-1',
+      approvedByRole: 'community_admin',
+      inputSourceRecordId: INPUT_SOURCE_RECORD_ID,
+      inputPayloadSha256: inputSource.payload_sha256,
+      inputSourceVersion: null,
+      formTemplateVersion: 1,
+    };
+    const projectionPayloadJson = JSON.stringify({
+      submissionId: 'sub-idempotent',
+      variant: draft.variant,
+      channel: draft.channel,
+      projection: {
+        organizationId,
+        serviceId,
+        targetType: 'service',
+        submissionType: 'new_service',
+      },
+      binding,
+      draft,
+    });
+    const projectionPayloadSha256 = crypto
+      .createHash('sha256')
+      .update(projectionPayloadJson)
+      .digest('hex');
+    const clientQuery = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
+        return {
+          rows: [{
+            submission_id: 'sub-idempotent',
+            submission_type: 'new_service',
+            target_type: 'service',
+            target_id: serviceId,
+            submitted_by_user_id: 'submitter-1',
+            form_data: { draft },
+            ...buildProjectionAuthorizationFields(draft, {
+              payload: {
+                sourceRecordId: INPUT_SOURCE_RECORD_ID,
+                projectionSourceRecordId,
+                projectedOrganizationId: organizationId,
+                projectedServiceId: serviceId,
+                projectionApprovalTransitionId: APPROVAL_TRANSITION_ID,
+                projectionInputSourceRecordId: INPUT_SOURCE_RECORD_ID,
+                projectionInputPayloadSha256: inputSource.payload_sha256,
+                projectionInputSourceVersion: null,
+                projectionTemplateVersion: 1,
+              },
+            }),
+          }],
+        };
+      }
+      if (sql.includes("processing_status = 'normalized'")) {
+        return { rows: [inputSource] };
+      }
+      if (sql.includes("processing_status = 'published'")) {
+        expect(params).toEqual([
+          projectionSourceRecordId,
+          'sub-idempotent',
+          'oran://resource-submissions/sub-idempotent/projection',
+          projectionPayloadSha256,
+          projectionPayloadJson,
+        ]);
+        return { rows: [{ id: projectionSourceRecordId }] };
+      }
+      return { rows: [] };
+    });
+    dbMocks.withTransaction.mockImplementation(async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }));
+
+    const result = await projectApprovedResourceSubmission('instance-1', 'actor-1');
+
+    expect(result).toEqual({ organizationId, serviceId });
+    expect(clientQuery).toHaveBeenCalledTimes(3);
+    expect(clientQuery.mock.calls.some(([sql]) => sql.includes('pg_advisory_xact_lock'))).toBe(false);
+    expect(clientQuery.mock.calls.some(([sql]) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql))).toBe(false);
+  });
+
+  it('projects claim submissions into organization membership updates', async () => {
+    const draft = createEmptyResourceSubmissionDraft('claim', 'host');
+    draft.variant = 'claim';
+    const inputSource = buildInputSourceAssertion(draft, 'sub-1');
+    const clientQuery = vi.fn(async (sql: string, _params?: unknown[]) => {
+      if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
         return {
           rows: [{
             submission_id: 'sub-1',
@@ -458,8 +685,12 @@ describe('resource submission service', () => {
             target_id: null,
             submitted_by_user_id: 'submitter-1',
             form_data: { draft },
+            ...buildProjectionAuthorizationFields(draft),
           }],
         };
+      }
+      if (sql.includes('FROM source_records') && sql.includes('FOR SHARE')) {
+        return { rows: [inputSource] };
       }
       if (sql.includes('INSERT INTO organizations')) return { rows: [{ id: 'org-1' }] };
       if (sql.includes('INSERT INTO source_systems')) return { rows: [{ id: 'sys-1' }] };
@@ -490,19 +721,29 @@ describe('resource submission service', () => {
           projectionSourceRecordId: 'proj-sr-1',
           projectedOrganizationId: 'org-1',
           projectedServiceId: null,
+          projectionApprovalTransitionId: APPROVAL_TRANSITION_ID,
+          projectionInputSourceRecordId: INPUT_SOURCE_RECORD_ID,
+          projectionInputPayloadSha256: inputSource.payload_sha256,
+          projectionInputSourceVersion: null,
+          projectionTemplateVersion: 1,
         }),
         'sub-1',
       ],
     );
+    const projectionRecordParams = clientQuery.mock.calls.find(
+      ([sql]) => sql.includes('INSERT INTO source_records') && sql.includes("'published'"),
+    )?.[1] as unknown[];
+    expect(projectionRecordParams[5]).toContain(`"approvalTransitionId":"${APPROVAL_TRANSITION_ID}"`);
+    expect(projectionRecordParams[5]).toContain(`"inputSourceRecordId":"${INPUT_SOURCE_RECORD_ID}"`);
   });
 
   it('projects listing submissions into service + org updates', async () => {
-    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'instance-1' }]);
+    const draft = createEmptyResourceSubmissionDraft('listing', 'host');
+    draft.service.name = 'Svc';
+    draft.organization.name = 'Org';
+    const inputSource = buildInputSourceAssertion(draft, 'sub-1');
     const clientQuery = vi.fn(async (sql: string, _params?: unknown[]) => {
       if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
-        const draft = createEmptyResourceSubmissionDraft('listing', 'host');
-        draft.service.name = 'Svc';
-        draft.organization.name = 'Org';
         return {
           rows: [{
             submission_id: 'sub-1',
@@ -511,8 +752,12 @@ describe('resource submission service', () => {
             target_id: null,
             submitted_by_user_id: 'submitter-1',
             form_data: { draft },
+            ...buildProjectionAuthorizationFields(draft),
           }],
         };
+      }
+      if (sql.includes('FROM source_records') && sql.includes('FOR SHARE')) {
+        return { rows: [inputSource] };
       }
       if (sql.includes('INSERT INTO organizations')) return { rows: [{ id: 'org-1' }] };
       if (sql.includes('INSERT INTO services')) return { rows: [{ id: 'svc-1' }] };
@@ -546,6 +791,7 @@ describe('resource submission service', () => {
       ([sql]) => sql.includes('INSERT INTO source_records') && sql.includes("'published'"),
     )?.[1] as unknown[];
     expect(publishedRecordParams[5]).toContain('"projection":{"organizationId":"org-1","serviceId":"svc-1"');
+    expect(publishedRecordParams[5]).toContain(`"inputPayloadSha256":"${inputSource.payload_sha256}"`);
     expect(clientQuery).toHaveBeenCalledWith(
       expect.stringContaining("SET payload = COALESCE(payload, '{}'::jsonb) ||"),
       [
@@ -573,18 +819,18 @@ describe('resource submission service', () => {
   });
 
   it('reuses matching active org and service before projecting listing submissions', async () => {
-    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'instance-1' }]);
+    const draft = createEmptyResourceSubmissionDraft('listing', 'host');
+    draft.organization.name = 'Existing Org';
+    draft.organization.url = 'https://example.org';
+    draft.service.name = 'Existing Service';
+    draft.service.url = 'https://example.org/service';
+    const inputSource = buildInputSourceAssertion(draft, 'sub-1');
     const clientQuery = vi.fn(async (sql: string, params?: unknown[]) => {
       if (sql.includes('pg_advisory_xact_lock')) {
         expect(params).toEqual(['live-publication:example.org|existing org|example.org/service|existing service']);
         return { rows: [{ pg_advisory_xact_lock: '' }] };
       }
       if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
-        const draft = createEmptyResourceSubmissionDraft('listing', 'host');
-        draft.organization.name = 'Existing Org';
-        draft.organization.url = 'https://example.org';
-        draft.service.name = 'Existing Service';
-        draft.service.url = 'https://example.org/service';
         return {
           rows: [{
             submission_id: 'sub-1',
@@ -593,8 +839,12 @@ describe('resource submission service', () => {
             target_id: null,
             submitted_by_user_id: 'submitter-1',
             form_data: { draft },
+            ...buildProjectionAuthorizationFields(draft),
           }],
         };
+      }
+      if (sql.includes('FROM source_records') && sql.includes('FOR SHARE')) {
+        return { rows: [inputSource] };
       }
       if (sql.includes('FROM organizations') && sql.includes("regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')")) {
         expect(params).toEqual(['example.org']);
@@ -638,15 +888,15 @@ describe('resource submission service', () => {
   });
 
   it('links approved public submissions to host-managed live records without overwriting them', async () => {
-    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'instance-1' }]);
+    const draft = createEmptyResourceSubmissionDraft('listing', 'public');
+    draft.organization.name = 'Existing Org';
+    draft.organization.url = 'https://example.org';
+    draft.service.name = 'Existing Service';
+    draft.service.url = 'https://example.org/service';
+    const inputSource = buildInputSourceAssertion(draft, 'sub-2');
     const clientQuery = vi.fn(async (sql: string, _params?: unknown[]) => {
       if (sql.includes('pg_advisory_xact_lock')) return { rows: [{ pg_advisory_xact_lock: '' }] };
       if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
-        const draft = createEmptyResourceSubmissionDraft('listing', 'public');
-        draft.organization.name = 'Existing Org';
-        draft.organization.url = 'https://example.org';
-        draft.service.name = 'Existing Service';
-        draft.service.url = 'https://example.org/service';
         return {
           rows: [{
             submission_id: 'sub-2',
@@ -655,8 +905,15 @@ describe('resource submission service', () => {
             target_id: null,
             submitted_by_user_id: 'submitter-2',
             form_data: { draft },
+            ...buildProjectionAuthorizationFields(draft, {
+              approval_actor_user_id: 'actor-2',
+              approval_actor_role: 'oran_admin',
+            }),
           }],
         };
+      }
+      if (sql.includes('FROM source_records') && sql.includes('FOR SHARE')) {
+        return { rows: [inputSource] };
       }
       if (sql.includes('FROM organizations') && sql.includes("regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')")) {
         return { rows: [{ id: 'org-existing' }] };

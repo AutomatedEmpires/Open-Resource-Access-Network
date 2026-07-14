@@ -2,7 +2,7 @@
  * ORAN Service Search Engine
  *
  * Pure SQL/retrieval + optional pgvector re-ranking.
- * No LLM. Trust-based ordering. Vector similarity only re-ranks, never replaces.
+ * No LLM. Record-confidence ordering. Vector similarity only re-ranks, never replaces.
  */
 
 import { buildVectorSimilarityQuery, reRankWithVectorSimilarity } from './vectorSearch';
@@ -86,13 +86,13 @@ export function buildFiltersWhereClause(
     params.push(...filters.taxonomyTermIds);
   }
 
-  // Trust (verification confidence) filter
+  // Record-confidence filter
   if (filters.minConfidenceScore !== undefined) {
     conditions.push(`cs.verification_confidence >= $${idx++}`);
     params.push(filters.minConfidenceScore);
   }
 
-  // Trust band filter
+  // Record-confidence band filter
   if (filters.minConfidenceBand) {
     const band = CONFIDENCE_BANDS[filters.minConfidenceBand];
     conditions.push(`cs.verification_confidence >= $${idx++}`);
@@ -161,7 +161,7 @@ export interface CityCoords {
 
 /**
  * Builds the ORDER BY clause based on the requested sort option.
- * Defaults to the trust-first relevance sort.
+ * Defaults to the record-confidence-first relevance sort.
  */
 export function buildOrderByClause(sortBy: SortBy | undefined, sortDistanceExpr: string): string {
   switch (sortBy) {
@@ -313,6 +313,7 @@ export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): B
       s.*,
       o.name AS organization_name,
       o.description AS organization_description,
+      o.verified_at AS organization_verified_at,
       o.created_at AS organization_created_at,
       o.updated_at AS organization_updated_at,
       l.id AS location_id,
@@ -471,6 +472,7 @@ export class ServiceSearchEngine {
         s.*,
         o.name AS organization_name,
         o.description AS organization_description,
+        o.verified_at AS organization_verified_at,
         o.created_at AS organization_created_at,
         o.updated_at AS organization_updated_at,
         l.id AS location_id,
@@ -538,6 +540,11 @@ export class ServiceSearchEngine {
           name: (row.organization_name ?? '') as string,
           description: (row.organization_description as string | null) ?? null,
           status: (row.organization_status ?? 'active') as 'active' | 'inactive' | 'defunct',
+          verifiedAt: row.organization_verified_at == null
+            ? null
+            : row.organization_verified_at instanceof Date
+              ? row.organization_verified_at.toISOString()
+              : String(row.organization_verified_at),
           updatedAt: row.organization_updated_at as Date,
           createdAt: row.organization_created_at as Date,
         },

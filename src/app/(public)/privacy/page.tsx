@@ -94,7 +94,7 @@ const YOUR_RIGHTS = [
 ];
 
 const HOW_WE_USE = [
-  'Service matching — finding the most relevant verified services for your location and needs.',
+  'Service matching — finding relevant publication-gated services for the location and needs you choose to share.',
   'Platform integrity — detecting and preventing abuse, spam, and fraudulent submissions.',
   'Data quality improvement — aggregated, anonymized usage patterns to identify service coverage gaps.',
   'Authentication and session management — verifying your identity when you sign in.',
@@ -159,7 +159,7 @@ export default function PrivacyPage() {
       <section className="mb-10">
         <h2 className="mb-3 text-lg font-semibold text-gray-900">Overview</h2>
         <p className="leading-relaxed text-gray-700">
-          ORAN collects and processes data to connect you with verified services. This page
+          ORAN collects and processes data to connect you with publication-gated services. This page
           explains what we collect, how it is used, who may have access, and how to exercise
           your rights. Where practices are still being formalized, we say so plainly.
         </p>

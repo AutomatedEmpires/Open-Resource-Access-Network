@@ -84,7 +84,7 @@ export default function ChatPage() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Seeker chat</p>
                 <div className="mt-1 flex flex-wrap items-center gap-3">
                   <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Chat</h1>
-                  <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
+                  <PageHeaderBadge tone="trust">Publication-gated records</PageHeaderBadge>
                 </div>
               </div>
             </div>
@@ -106,7 +106,7 @@ export default function ChatPage() {
           {/* ── Slim page title bar ── */}
           <div className="flex shrink-0 items-center gap-3 border-b border-slate-100 px-5 py-3">
             <h1 className="text-base font-semibold tracking-tight text-slate-950">Chat</h1>
-            <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
+            <PageHeaderBadge tone="trust">Publication-gated records</PageHeaderBadge>
             <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync' : 'Local device saves'}</PageHeaderBadge>
             <div className="ml-auto flex items-center gap-2">
               <Link href="/saved">

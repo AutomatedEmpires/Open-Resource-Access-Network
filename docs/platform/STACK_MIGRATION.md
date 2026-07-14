@@ -44,13 +44,18 @@ This platform serves the product vision: a nationwide, chat-first navigator that
 - PostGIS 3.3.7 and pgvector 0.8.2 are installed. The `source_resource_purpose` migration is applied and the `source_systems.resource_purpose` column is present with its fail-safe default and constraint.
 - The imported database does not yet have the repository's `schema_migrations` baseline. The GitHub migration workflow is therefore gated by `SUPABASE_MIGRATIONS_ENABLED=true` and fails closed when that baseline is absent; never replay all historical files over the imported schema.
 - The Supabase security advisor reports one error: RLS is disabled on PostGIS table `public.spatial_ref_sys`. It also reports 21 warnings, including mutable function search paths, PostGIS/pgvector in `public`, and executable PostGIS `SECURITY DEFINER` functions. These require a reviewed PostGIS/RLS migration; they were not auto-remediated. See the [Supabase RLS guidance](https://supabase.com/docs/guides/database/postgres/row-level-security).
-- Ninety-six application tables have RLS enabled with no Data API policies. That is currently a deliberate server-only deny posture. Add policies table-by-table only when a Clerk-authenticated browser or user-scoped Supabase client is introduced.
+- Ninety-six application tables have RLS enabled with no Data API policies. That is a deliberate browser/Data API deny posture. The direct ORAN server pool authenticates as a separately reviewed backend login with an explicit ACL manifest; add user-scoped policies table-by-table only when a Clerk-authenticated browser or Supabase client is introduced.
 
 ## Environment contract
 
 Vercel runtime:
 
-- `DATABASE_URL`: Supabase transaction-pooler URL, TLS required
+- `DATABASE_URL`: Supabase transaction-pooler URL for the dedicated
+  `oran_backend_runtime.<project-ref>` login, TLS required
+- `ORAN_DATABASE_ROLE=oran_backend_runtime`: fixed database identity assertion;
+  missing, unknown, or mismatched URL usernames fail closed
+- `ORAN_SUPABASE_PROJECT_REF=tpatxospkuqvajusuryw`: non-secret isolation guard;
+  a pooled URL for any other Supabase project fails closed
 - `DATABASE_POOL_MAX=2`: conservative per-instance connection cap
 - `CRON_SECRET`: dedicated random value of at least 32 characters; Vercel sends
   it as the Bearer credential for registered cron GET requests

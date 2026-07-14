@@ -133,7 +133,7 @@ describe('ServiceDetailClient', () => {
     expect(screen.getAllByText('Food Pantry').length).toBeGreaterThan(0);
     expect(document.title).toBe('Food Pantry | ORAN');
     expect(screen.getByText('not-saved')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Trust and eligibility' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Record confidence and eligibility' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Access and availability' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Contact and next steps' })).toBeInTheDocument();
     expect(screen.getByText('555-0100 ext. 9')).toBeInTheDocument();
@@ -233,7 +233,7 @@ describe('ServiceDetailClient', () => {
     await screen.findByTestId('service-card');
     expect(screen.getByText('Current browse scope')).toBeInTheDocument();
     expect(screen.getByText('Need: Food')).toBeInTheDocument();
-    expect(screen.getByText('Trust: High confidence only')).toBeInTheDocument();
+    expect(screen.getByText('Record confidence: High confidence only')).toBeInTheDocument();
     expect(screen.getByText('Sort: Name (Z-A)')).toBeInTheDocument();
     expect(screen.getByText('Delivery: Virtual')).toBeInTheDocument();
 

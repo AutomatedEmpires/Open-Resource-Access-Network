@@ -96,6 +96,8 @@ describe('Clerk auth pages', () => {
     render(<SignInPage />);
 
     expect(PATHS.map((path) => path.id)).toEqual(['seeker', 'organization', 'admin']);
+    expect(PATHS.find((path) => path.id === 'seeker')?.detail).toContain('publication-gated, source-backed');
+    expect(PATHS.find((path) => path.id === 'seeker')?.detail).not.toContain('verified');
     expect(screen.getByText('Building Bridges | Strengthening Communities')).toBeInTheDocument();
     expect(screen.getAllByRole('radio')).toHaveLength(3);
     expect(screen.getByRole('link', { name: /continue without signing in/i })).toHaveAttribute('href', '/profile');

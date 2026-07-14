@@ -130,10 +130,10 @@ export function ChatServiceCard({
           <Badge
             band={card.confidenceBand}
             className="flex-shrink-0 text-xs"
-            title={`Trust: ${bandShortLabel(card.confidenceBand)}`}
-            aria-label={`Trust: ${bandShortLabel(card.confidenceBand)}`}
+            title={`Record confidence: ${bandShortLabel(card.confidenceBand)}`}
+            aria-label={`Record confidence: ${bandShortLabel(card.confidenceBand)}`}
           >
-            Trust: {bandShortLabel(card.confidenceBand)}
+            Record confidence: {bandShortLabel(card.confidenceBand)}
           </Badge>
         </div>
       </div>
@@ -281,7 +281,7 @@ export function ChatServiceCard({
         </summary>
         <dl className="grid gap-2 border-t border-slate-200 px-3 py-3 sm:grid-cols-3">
           <dt className="font-medium text-slate-500">Verification</dt>
-          <dd className="sm:col-span-2">{card.verificationStatus ? formatVerificationStatus(card.verificationStatus) : `Trust band: ${bandShortLabel(card.confidenceBand)}; exact workflow state unavailable`}</dd>
+          <dd className="sm:col-span-2">{card.verificationStatus ? formatVerificationStatus(card.verificationStatus) : `No provider verification decision recorded; record confidence is ${bandShortLabel(card.confidenceBand).toLowerCase()}`}</dd>
           <dt className="font-medium text-slate-500">Last verified</dt>
           <dd className="sm:col-span-2">{card.verificationLastCheckedAt ? formatCheckedDate(card.verificationLastCheckedAt) : 'Not available in this result'}</dd>
           <dt className="font-medium text-slate-500">Stored source</dt>

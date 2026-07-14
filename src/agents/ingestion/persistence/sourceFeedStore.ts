@@ -4,13 +4,19 @@
  * Manages feed endpoints (HSDS API, CSV, scrape, etc.) belonging
  * to source systems.
  */
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 import { sourceFeeds } from '@/db/schema';
 import type { SourceFeedStore } from '../stores';
 
 type DbSchema = typeof import('@/db/schema');
+
+const POLLABLE_SOURCE_FEED_HANDLERS = ['hsds_api', 'ndp_211'] as const;
+
+function hasPollableHandler(feed: { feedHandler: string }): boolean {
+  return POLLABLE_SOURCE_FEED_HANDLERS.some((handler) => handler === feed.feedHandler);
+}
 
 export function createDrizzleSourceFeedStore(
   db: NodePgDatabase<DbSchema>
@@ -33,16 +39,22 @@ export function createDrizzleSourceFeedStore(
     },
 
     async listDueForPoll() {
-      // A feed is due when: active AND (never polled OR polled more than refreshIntervalHours ago)
-      return db
+      // Handler-less/manual authority feeds may remain active because is_active
+      // is part of publication authority. They are not executable poll jobs.
+      const rows = await db
         .select()
         .from(sourceFeeds)
         .where(
           and(
             eq(sourceFeeds.isActive, true),
+            inArray(sourceFeeds.feedHandler, [...POLLABLE_SOURCE_FEED_HANDLERS]),
             sql`(${sourceFeeds.lastPolledAt} IS NULL OR ${sourceFeeds.lastPolledAt} <= NOW() - (${sourceFeeds.refreshIntervalHours} || ' hours')::interval)`
           )
         );
+
+      // Keep the store boundary fail-closed even when a non-SQL test adapter or
+      // future query wrapper does not enforce the database predicate.
+      return rows.filter(hasPollableHandler);
     },
 
     async create(row) {

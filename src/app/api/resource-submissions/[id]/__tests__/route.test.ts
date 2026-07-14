@@ -121,7 +121,7 @@ beforeEach(() => {
 });
 
 describe('resource submissions item route', () => {
-  it('auto-publishes host listing submissions on submit', async () => {
+  it('routes host listing submissions to independent review instead of self-publishing', async () => {
     authMocks.getAuthContext.mockResolvedValue({
       userId: 'host-1',
       role: 'host_admin',
@@ -130,7 +130,7 @@ describe('resource submissions item route', () => {
     });
     resourceSubmissionMocks.getResourceSubmissionDetailForActor
       .mockResolvedValueOnce(makeDetail('draft'))
-      .mockResolvedValueOnce(makeDetail('approved'));
+      .mockResolvedValueOnce(makeDetail('needs_review'));
 
     const { PUT } = await loadItemRoute();
     const response = await PUT(
@@ -144,9 +144,13 @@ describe('resource submissions item route', () => {
     expect(response.status).toBe(200);
     expect(resourceSubmissionMocks.submitResourceSubmission).toHaveBeenCalledWith('form-1', 'host-1', 'host_admin');
     expect(workflowMocks.advance).toHaveBeenNthCalledWith(1, expect.objectContaining({ toStatus: 'submitted' }));
-    expect(workflowMocks.advance).toHaveBeenNthCalledWith(2, expect.objectContaining({ toStatus: 'auto_checking', metadata: expect.objectContaining({ policy: 'host_auto_publish' }) }));
-    expect(workflowMocks.advance).toHaveBeenNthCalledWith(3, expect.objectContaining({ toStatus: 'approved', metadata: expect.objectContaining({ policy: 'host_auto_publish' }) }));
-    expect(resourceSubmissionMocks.projectApprovedResourceSubmission).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'host-1');
+    expect(workflowMocks.advance).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      toStatus: 'needs_review',
+      actorUserId: 'host-1',
+      actorRole: 'host_admin',
+    }));
+    expect(workflowMocks.advance).toHaveBeenCalledTimes(2);
+    expect(resourceSubmissionMocks.projectApprovedResourceSubmission).not.toHaveBeenCalled();
   });
 
   it('submits a public resource draft using the shared submit path', async () => {
@@ -194,5 +198,59 @@ describe('resource submissions item route', () => {
     expect(workflowMocks.advance).toHaveBeenNthCalledWith(1, expect.objectContaining({ toStatus: 'under_review' }));
     expect(workflowMocks.advance).toHaveBeenNthCalledWith(2, expect.objectContaining({ toStatus: 'approved' }));
     expect(resourceSubmissionMocks.projectApprovedResourceSubmission).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'reviewer-1');
+  });
+
+  it('repairs an approved resource projection without replaying workflow transitions', async () => {
+    resourceSubmissionMocks.getResourceSubmissionDetailForActor
+      .mockResolvedValueOnce(makeDetail('approved'))
+      .mockResolvedValueOnce(makeDetail('approved'));
+
+    const { PUT } = await loadItemRoute();
+    const response = await PUT(
+      createRequest({
+        method: 'PUT',
+        jsonBody: {
+          action: 'approve',
+          reviewerNotes: 'Retry the failed projection.',
+        },
+      }),
+      createContext(),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      transition: null,
+      projectionRepair: true,
+      projection: { organizationId: 'org-1', serviceId: 'svc-1' },
+    }));
+    expect(resourceSubmissionMocks.projectApprovedResourceSubmission).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      'reviewer-1',
+    );
+    expect(workflowMocks.advance).not.toHaveBeenCalled();
+    expect(workflowMocks.assignSubmission).not.toHaveBeenCalled();
+    expect(workflowMocks.acquireLock).not.toHaveBeenCalled();
+    expect(resourceSubmissionMocks.setResourceSubmissionReviewerNotes).not.toHaveBeenCalled();
+  });
+
+  it('does not allow approved submission content to change during projection repair', async () => {
+    resourceSubmissionMocks.getResourceSubmissionDetailForActor.mockResolvedValueOnce(makeDetail('approved'));
+
+    const { PUT } = await loadItemRoute();
+    const response = await PUT(
+      createRequest({
+        method: 'PUT',
+        jsonBody: {
+          action: 'approve',
+          draft: makeDetail('approved').draft,
+        },
+      }),
+      createContext(),
+    );
+
+    expect(response.status).toBe(409);
+    expect(resourceSubmissionMocks.saveResourceSubmissionDraft).not.toHaveBeenCalled();
+    expect(resourceSubmissionMocks.projectApprovedResourceSubmission).not.toHaveBeenCalled();
+    expect(workflowMocks.advance).not.toHaveBeenCalled();
   });
 });

@@ -1,9 +1,10 @@
 -- 0065_verified_hotline_authority.sql
 --
 -- Converts the 13 pre-audited nationwide hotline imports into positive,
--- primary-source publication authority. This migration is deliberately
--- fail-loud: it will not infer targets, overwrite newer edits, or accept ID,
--- contact, count, ownership, or canonical-link drift.
+-- primary-source publication authority. Activation is deliberately fail-loud:
+-- it will not infer targets, overwrite newer edits, or accept ID, contact,
+-- count, ownership, or canonical-link drift. Emergency deactivation is instead
+-- drift-tolerant and repeatedly asserts independent publication blockers.
 --
 -- Generated entities use database UUID defaults. The UUID literals below are
 -- only the exact live service, organization, and phone IDs captured by the
@@ -2028,7 +2029,13 @@ DECLARE
   v_batch_id uuid;
   v_status text;
   v_now timestamptz := pg_catalog.clock_timestamp();
-  v_updates integer;
+  v_member_count bigint;
+  v_remaining_paths bigint;
+  v_authorized bigint;
+  v_services_retracted integer := 0;
+  v_organizations_retracted integer := 0;
+  v_feeds_disabled integer := 0;
+  v_systems_disabled integer := 0;
   v_summary jsonb;
 BEGIN
   PERFORM pg_catalog.pg_advisory_xact_lock(
@@ -2044,28 +2051,18 @@ BEGIN
     RAISE EXCEPTION 'hotline authority batch % was not found', v_slug;
   END IF;
 
-  IF v_status = 'deactivated' THEN
-    RETURN oran_internal.assert_verified_hotline_authority('deactivated');
-  END IF;
-
-  IF v_status <> 'applied' THEN
-    RAISE EXCEPTION 'hotline authority deactivation refused from status %', v_status;
-  END IF;
-
-  PERFORM oran_internal.assert_verified_hotline_authority('applied');
-
+  -- Containment intentionally does not run the full fact/provenance assertion.
+  -- A changed description, contact, hash, or even a missing related row must
+  -- never prevent the emergency brake from disabling every extant authority
+  -- component identified by the immutable batch membership IDs.
   UPDATE public.canonical_services cs
   SET publication_status = 'retracted',
       updated_at = v_now
   FROM oran_internal.hotline_authority_members m
   WHERE m.batch_id = v_batch_id
     AND cs.id = m.canonical_service_id
-    AND cs.publication_status = 'published';
-  GET DIAGNOSTICS v_updates = ROW_COUNT;
-
-  IF v_updates <> 13 THEN
-    RAISE EXCEPTION 'hotline service deactivation drift: expected 13, updated %', v_updates;
-  END IF;
+    AND cs.publication_status IS DISTINCT FROM 'retracted';
+  GET DIAGNOSTICS v_services_retracted = ROW_COUNT;
 
   UPDATE public.canonical_organizations co
   SET publication_status = 'retracted',
@@ -2073,12 +2070,8 @@ BEGIN
   FROM oran_internal.hotline_authority_members m
   WHERE m.batch_id = v_batch_id
     AND co.id = m.canonical_organization_id
-    AND co.publication_status = 'published';
-  GET DIAGNOSTICS v_updates = ROW_COUNT;
-
-  IF v_updates <> 13 THEN
-    RAISE EXCEPTION 'hotline organization deactivation drift: expected 13, updated %', v_updates;
-  END IF;
+    AND co.publication_status IS DISTINCT FROM 'retracted';
+  GET DIAGNOSTICS v_organizations_retracted = ROW_COUNT;
 
   UPDATE public.source_feeds sf
   SET is_active = false,
@@ -2086,12 +2079,8 @@ BEGIN
   FROM oran_internal.hotline_authority_members m
   WHERE m.batch_id = v_batch_id
     AND sf.id = m.source_feed_id
-    AND sf.is_active IS TRUE;
-  GET DIAGNOSTICS v_updates = ROW_COUNT;
-
-  IF v_updates <> 13 THEN
-    RAISE EXCEPTION 'hotline feed deactivation drift: expected 13, updated %', v_updates;
-  END IF;
+    AND sf.is_active IS DISTINCT FROM false;
+  GET DIAGNOSTICS v_feeds_disabled = ROW_COUNT;
 
   UPDATE public.source_systems ss
   SET is_active = false,
@@ -2099,28 +2088,95 @@ BEGIN
   FROM oran_internal.hotline_authority_members m
   WHERE m.batch_id = v_batch_id
     AND ss.id = m.source_system_id
-    AND ss.is_active IS TRUE;
-  GET DIAGNOSTICS v_updates = ROW_COUNT;
+    AND ss.is_active IS DISTINCT FROM false;
+  GET DIAGNOSTICS v_systems_disabled = ROW_COUNT;
 
-  IF v_updates <> 13 THEN
-    RAISE EXCEPTION 'hotline source deactivation drift: expected 13, updated %', v_updates;
+  -- Missing related rows are already fail-closed. Any extant component must be
+  -- independently contained so later changes cannot revive this authority path
+  -- by toggling only one table.
+  SELECT count(*) INTO v_remaining_paths
+  FROM oran_internal.hotline_authority_members m
+  LEFT JOIN public.source_systems ss ON ss.id = m.source_system_id
+  LEFT JOIN public.source_feeds sf ON sf.id = m.source_feed_id
+  LEFT JOIN public.canonical_organizations co ON co.id = m.canonical_organization_id
+  LEFT JOIN public.canonical_services cs ON cs.id = m.canonical_service_id
+  WHERE m.batch_id = v_batch_id
+    AND (
+      (ss.id IS NOT NULL AND ss.is_active IS TRUE)
+      OR (sf.id IS NOT NULL AND sf.is_active IS TRUE)
+      OR (
+        co.id IS NOT NULL
+        AND co.publication_status IS DISTINCT FROM 'retracted'
+      )
+      OR (
+        cs.id IS NOT NULL
+        AND cs.publication_status IS DISTINCT FROM 'retracted'
+      )
+    );
+
+  IF v_remaining_paths <> 0 THEN
+    RAISE EXCEPTION
+      'hotline containment failed: % member paths retain an active component',
+      v_remaining_paths;
   END IF;
+
+  SELECT count(DISTINCT cs.published_service_id) INTO v_authorized
+  FROM oran_internal.hotline_authority_members m
+  JOIN public.canonical_services cs
+    ON cs.id = m.canonical_service_id
+  JOIN public.canonical_provenance cp
+    ON cp.canonical_entity_type = 'service'
+   AND cp.canonical_entity_id = cs.id
+   AND cp.decision_status = 'accepted'
+  JOIN public.source_records sr
+    ON sr.id = cp.source_record_id
+   AND sr.id = m.source_record_id
+   AND sr.processing_status = 'published'
+  JOIN public.source_feeds sf
+    ON sf.id = sr.source_feed_id
+   AND sf.id = m.source_feed_id
+   AND sf.is_active IS TRUE
+  JOIN public.source_systems ss
+    ON ss.id = sf.source_system_id
+   AND ss.id = m.source_system_id
+   AND ss.id = cs.winning_source_system_id
+   AND ss.is_active IS TRUE
+   AND ss.trust_tier = 'verified_publisher'
+   AND ss.resource_purpose IN ('service_catalog', 'program_navigation')
+  WHERE m.batch_id = v_batch_id
+    AND cs.published_service_id = m.service_id
+    AND cs.status = 'active'
+    AND cs.lifecycle_status = 'active'
+    AND cs.publication_status = 'published'
+    AND cs.last_refreshed_at IS NOT NULL;
+
+  IF v_authorized <> 0 THEN
+    RAISE EXCEPTION 'hotline containment failed: % services remain authorized', v_authorized;
+  END IF;
+
+  SELECT count(*) INTO v_member_count
+  FROM oran_internal.hotline_authority_members m
+  WHERE m.batch_id = v_batch_id;
+
+  v_summary := pg_catalog.jsonb_build_object(
+    'batch', v_slug,
+    'status', 'deactivated',
+    'previousStatus', v_status,
+    'membersContained', v_member_count,
+    'authorizedServices', v_authorized,
+    'containmentChanges', pg_catalog.jsonb_build_object(
+      'servicesRetracted', v_services_retracted,
+      'organizationsRetracted', v_organizations_retracted,
+      'feedsDisabled', v_feeds_disabled,
+      'systemsDisabled', v_systems_disabled
+    ),
+    'containedAt', v_now
+  );
 
   UPDATE oran_internal.hotline_authority_batches b
   SET status = 'deactivated',
-      deactivated_at = v_now
-  WHERE b.id = v_batch_id
-    AND b.status = 'applied';
-  GET DIAGNOSTICS v_updates = ROW_COUNT;
-
-  IF v_updates <> 1 THEN
-    RAISE EXCEPTION 'hotline batch deactivation drift: expected 1, updated %', v_updates;
-  END IF;
-
-  v_summary := oran_internal.assert_verified_hotline_authority('deactivated');
-
-  UPDATE oran_internal.hotline_authority_batches b
-  SET validation_summary = v_summary
+      deactivated_at = COALESCE(b.deactivated_at, v_now),
+      validation_summary = v_summary
   WHERE b.id = v_batch_id;
 
   RETURN v_summary;
@@ -2134,7 +2190,11 @@ SECURITY DEFINER
 SET search_path = ''
 AS $function$
 BEGIN
-  IF OLD.correlation_id = 'verified-national-hotlines-2026-07-13' THEN
+  IF EXISTS (
+    SELECT 1
+    FROM oran_internal.hotline_authority_members m
+    WHERE m.source_record_id = OLD.id
+  ) THEN
     RAISE EXCEPTION
       'verified hotline source record % is immutable; append a superseding assertion instead',
       OLD.id;
@@ -2171,19 +2231,35 @@ COMMENT ON FUNCTION oran_internal.protect_verified_hotline_source_records() IS
 
 SELECT oran_internal.apply_verified_hotline_authority();
 
+DROP TRIGGER IF EXISTS trg_protect_verified_hotline_source_records
+  ON public.source_records;
+
+CREATE TRIGGER trg_protect_verified_hotline_source_records
+  BEFORE UPDATE OR DELETE ON public.source_records
+  FOR EACH ROW
+  EXECUTE FUNCTION oran_internal.protect_verified_hotline_source_records();
+
 DO $do$
+DECLARE
+  v_exact_trigger_count bigint;
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_catalog.pg_trigger t
-    WHERE t.tgname = 'trg_protect_verified_hotline_source_records'
-      AND t.tgrelid = 'public.source_records'::pg_catalog.regclass
-      AND t.tgisinternal IS FALSE
-  ) THEN
-    CREATE TRIGGER trg_protect_verified_hotline_source_records
-      BEFORE UPDATE OR DELETE ON public.source_records
-      FOR EACH ROW
-      EXECUTE FUNCTION oran_internal.protect_verified_hotline_source_records();
+  SELECT count(*) INTO v_exact_trigger_count
+  FROM pg_catalog.pg_trigger t
+  WHERE t.tgname = 'trg_protect_verified_hotline_source_records'
+    AND t.tgrelid = 'public.source_records'::pg_catalog.regclass
+    AND t.tgfoid =
+      'oran_internal.protect_verified_hotline_source_records()'::pg_catalog.regprocedure
+    AND t.tgtype = 27
+    AND t.tgenabled = 'O'
+    AND t.tgisinternal IS FALSE
+    AND t.tgnargs = 0
+    AND t.tgqual IS NULL
+    AND t.tgparentid = 0;
+
+  IF v_exact_trigger_count <> 1 THEN
+    RAISE EXCEPTION
+      'verified hotline immutability trigger definition drift: expected 1 exact trigger, found %',
+      v_exact_trigger_count;
   END IF;
 END
 $do$;

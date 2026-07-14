@@ -58,8 +58,8 @@ const HOW_TO_CONTRIBUTE: ContributeArea[] = [
 
 const PRINCIPLES: { marker: string; label: string }[] = [
   { marker: '✦', label: 'Retrieval-first — no hallucinated facts, ever' },
-  { marker: '✦', label: 'Crisis-first routing — 911 / 988 / 211 before everything' },
-  { marker: '✦', label: 'Accessible by default — WCAG 2.1 AA is a requirement' },
+  { marker: '✦', label: 'Safety routing — 911 for imminent danger, 988 for crisis, 211 for navigation' },
+  { marker: '✦', label: 'Accessible by design — WCAG 2.1 AA is the testing target' },
   { marker: '✦', label: 'Privacy-first — approximate location, opt-in profile saving' },
   { marker: '✦', label: 'Open source — MIT license, public roadmap' },
 ];
@@ -85,8 +85,8 @@ export default function TeamPage() {
           Team &amp; Contributors
         </h1>
         <p className="max-w-xl leading-relaxed text-gray-600">
-          ORAN is an open-source project built by a small founding team and a growing community of contributors. Everyone listed here
-          has helped make verified-service access more reliable for real people.
+          ORAN is an open-source project built by a small founding team and its code contributors. Everyone listed here
+          has helped build safer, more reliable access to stored service information.
         </p>
       </div>
 

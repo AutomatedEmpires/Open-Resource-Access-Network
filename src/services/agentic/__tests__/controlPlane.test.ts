@@ -20,7 +20,9 @@ describe('buildAgentControlPlaneSnapshot', () => {
     const snapshot = await buildAgentControlPlaneSnapshot({
       env: {
         NODE_ENV: 'production',
-        DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+        DATABASE_URL: 'postgres://oran_backend_runtime.tpatxospkuqvajusuryw:test@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require',
+        ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+        ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
         CRON_SECRET: 'vercel-cron-secret',
         NEXT_PUBLIC_SENTRY_DSN: 'https://public@example.ingest.sentry.io/1',
         NEXT_PUBLIC_SUPABASE_URL: 'https://project.supabase.co',

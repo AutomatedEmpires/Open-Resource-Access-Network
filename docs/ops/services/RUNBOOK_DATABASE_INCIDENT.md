@@ -40,8 +40,12 @@ integrity-control failures.
 1. Determine whether failures affect direct migration connections, pooled Vercel
    runtime connections, or both.
 2. Check the dedicated Supabase project and Vercel release/runtime logs.
-3. Confirm `DATABASE_URL` is present in the correct Vercel environment without
-   printing it. Production pools default to two connections per instance and
+3. Confirm `DATABASE_URL`, `ORAN_DATABASE_ROLE=oran_backend_runtime`, and
+   `ORAN_SUPABASE_PROJECT_REF=tpatxospkuqvajusuryw` are
+   present in the correct Vercel environment without printing the URL. The URL
+   username must be `oran_backend_runtime.<project-ref>`; the application does
+   not use a pooler startup `SET ROLE`.
+   Production pools default to two connections per instance and
    `DATABASE_POOL_MAX` must remain between 1 and 20.
 4. Review the latest deployment and `schema_migrations` entries.
 5. Run only bounded read-only diagnostics using an approved operator role.

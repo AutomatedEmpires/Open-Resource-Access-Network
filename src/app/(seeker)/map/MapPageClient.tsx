@@ -72,7 +72,7 @@ function normalizeSortOption(value: DiscoverySortOption | string | null | undefi
 
 const SORT_OPTIONS: Array<{ value: SortOption; label: string; description: string }> = [
   { value: 'distance', label: 'Nearby first', description: 'Shows the closest results in the current map area first.' },
-  { value: 'relevance', label: 'Balanced results', description: 'Mixes relevance, verification, and nearby results.' },
+  { value: 'relevance', label: 'Balanced results', description: 'Mixes relevance, record confidence, and nearby results.' },
 ];
 
 /** Canonical resource taxonomy dimensions exposed on the seeker map */
@@ -1355,8 +1355,8 @@ export default function MapPage() {
               <div className="mb-4 flex flex-col gap-4 border-b border-slate-200 pb-4 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Verified discovery</span>
-                    <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)]">Verified records only</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Resource discovery</span>
+                    <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)]">Publication-gated records</span>
                     {deviceCenter ? (
                       <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)]">Approximate location active</span>
                     ) : null}
@@ -1366,7 +1366,7 @@ export default function MapPage() {
                   </div>
                   <div className="flex flex-col gap-1 md:flex-row md:items-end md:gap-3">
                     <h1 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-5xl">Map</h1>
-                    <p className="pb-1 text-sm text-slate-500">Find verified help nearby with the least amount of effort.</p>
+                    <p className="pb-1 text-sm text-slate-500">Find source-authorized help nearby with the least amount of effort.</p>
                   </div>
                 </div>
               </div>
@@ -1881,8 +1881,8 @@ function ConfidenceRing({ enriched }: { enriched: EnrichedService }) {
   return (
     <div
       className="flex-shrink-0 w-10"
-      aria-label={score == null ? 'Verification score unknown' : `Verification ${Math.round(value)} percent`}
-      title={score == null ? 'Verification score unknown' : `Verification: ${Math.round(value)}%`}
+      aria-label={score == null ? 'Record confidence unknown' : `Record confidence ${Math.round(value)} percent`}
+      title={score == null ? 'Record confidence unknown' : `Record confidence: ${Math.round(value)}%`}
     >
       <svg width="40" height="40" viewBox="0 0 40 40" role="img" aria-hidden="true">
         <circle

@@ -68,7 +68,7 @@ const SEEKER_FEATURES: Array<{ icon: React.ElementType; title: string; body: str
   {
     icon: Search,
     title: 'Natural language search',
-    body: 'Type what you need in plain words. ORAN maps your query to structured service records across hundreds of verified categories.',
+    body: 'Type what you need in plain words. ORAN maps your request to structured, publication-gated service records and says when coverage is missing.',
   },
   {
     icon: MapPin,
@@ -77,8 +77,8 @@ const SEEKER_FEATURES: Array<{ icon: React.ElementType; title: string; body: str
   },
   {
     icon: Shield,
-    title: 'Verified records only',
-    body: 'Every displayed fact comes from a stored provider record, with trust and freshness cues that say what is known or unknown.',
+    title: 'Publication-gated records',
+    body: 'Every displayed resource must have positive publication authority from a stored source record. Confidence and freshness cues say what is known or still needs confirmation.',
   },
   {
     icon: CheckCircle2,
@@ -96,12 +96,12 @@ const ORG_FEATURES: Array<{ icon: React.ElementType; title: string; body: string
   {
     icon: Shield,
     title: 'Source provenance tracking',
-    body: 'Every record carries a verifiable provenance trail — origin, last verification date, and a live confidence score.',
+    body: 'Published submissions retain their source, review decision, and freshness state so seekers can distinguish provider-confirmed details from unknowns.',
   },
   {
     icon: Users,
-    title: 'Community-backed verification',
-    body: 'Service changes enter a review workflow where community admins verify updates — protecting data integrity without burdening your staff.',
+    title: 'Community-backed review',
+    body: 'Service changes enter a workflow where community admins review the evidence and approve or reject updates before publication.',
   },
   {
     icon: Zap,
@@ -119,7 +119,7 @@ const PARTNER_FEATURES: Array<{ icon: React.ElementType; title: string; body: st
   {
     icon: Database,
     title: '211 & HSDS data federation',
-    body: 'ORAN ingests and normalizes 211-standard and HSDS feeds. Community contributors maintain quality across federated sources.',
+    body: 'ORAN supports 211-standard and HSDS feeds through a review-first source pipeline. A feed stays private until its publication authority is explicit.',
   },
   {
     icon: Globe,
@@ -138,17 +138,17 @@ const WHY_ORAN = [
   {
     label: 'vs. generic chatbots',
     title: 'Reliable by design',
-    body: 'ORAN only surfaces records that exist in its verified database. No invented contact details, no fabricated service hours — ever.',
+    body: 'ORAN only surfaces stored records that pass a positive publication gate. No invented contact details or fabricated service hours — ever.',
   },
   {
     label: 'vs. search engines',
-    title: 'Structured & eligibility-aware',
-    body: 'Search engines surface pages. ORAN surfaces structured records — hours, eligibility, contact details, and a confidence score.',
+    title: 'Structured & next-step focused',
+    body: 'Search engines surface pages. ORAN presents the contact, location, eligibility, and intake facts a source actually provides—and labels missing details.',
   },
   {
     label: 'vs. stale 211 databases',
-    title: 'Continuously re-verified',
-    body: 'Traditional databases go stale between update cycles. ORAN flags confidence decay and routes verification work to community admins.',
+    title: 'Built for re-verification',
+    body: 'Records can expire, accept user reports, and route source checks to reviewers. Stale or unproven imports do not earn publication by default.',
   },
   {
     label: 'vs. proprietary directories',
@@ -384,9 +384,9 @@ export default function Home() {
               Community-governed.<br className="hidden sm:block" /> Free to use. Built to last.
             </h2>
             <p className="mb-7 sm:mb-10 text-base sm:text-lg leading-relaxed text-[var(--text-secondary)]">
-              ORAN is built on the principle that verified resource access should never be gated
-              behind a paywall. WCAG 2.1 AA accessible, continuously maintained, and free for
-              every person who needs it.
+              ORAN is built on the principle that trustworthy resource access should not sit behind
+              a paywall. WCAG 2.1 AA is the design target, records have explicit maintenance paths,
+              seekers can use the navigator for free, and providers pay no listing fee.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Link

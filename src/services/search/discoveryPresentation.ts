@@ -161,11 +161,11 @@ export function summarizeDiscoveryContext(
   }
 
   if (state.confidenceFilter && state.confidenceFilter !== 'all') {
-    const trustLabel = DISCOVERY_CONFIDENCE_OPTIONS.find((option) => option.value === state.confidenceFilter)?.label;
-    if (trustLabel) {
+    const confidenceLabel = DISCOVERY_CONFIDENCE_OPTIONS.find((option) => option.value === state.confidenceFilter)?.label;
+    if (confidenceLabel) {
       chips.push({
-        key: 'trust',
-        label: `Trust: ${trustLabel}`,
+        key: 'record-confidence',
+        label: `Record confidence: ${confidenceLabel}`,
       });
     }
   }

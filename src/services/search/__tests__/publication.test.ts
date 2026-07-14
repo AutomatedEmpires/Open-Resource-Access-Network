@@ -44,6 +44,7 @@ describe('seeker publication predicates', () => {
     expect(predicate).toContain('public.source_feeds publication_feed');
     expect(predicate).toContain('publication_feed.is_active IS TRUE');
     expect(predicate).toContain('publication_system.id = publication_source.winning_source_system_id');
+    expect(predicate).toContain("publication_system.family <> 'manual'");
     expect(predicate).toContain("publication_source.lifecycle_status = 'active'");
     expect(predicate).toContain("publication_source.publication_status = 'published'");
     expect(predicate).toContain(
@@ -72,6 +73,8 @@ describe('seeker publication predicates', () => {
     expect(predicate).toContain('public.submission_transitions publication_approval');
     expect(predicate).toContain("publication_approval.to_status = 'approved'");
     expect(predicate).toContain('publication_approval.gates_passed IS TRUE');
+    expect(predicate).toContain("publication_approval.actor_role IN ('community_admin', 'oran_admin')");
+    expect(predicate).toContain('publication_approval.actor_user_id <> publication_submission.submitted_by_user_id');
   });
 
   it('supports only a fail-closed emergency override', () => {
@@ -126,6 +129,7 @@ describe('seeker publication predicates', () => {
     expect(migration).toContain('idx_hsds_current_manual_publication');
     expect(migration).toContain('idx_submissions_approved_projection');
     expect(migration).toContain('idx_submission_transitions_approved_passed');
+    expect(migration).toContain("actor_role IN ('community_admin', 'oran_admin')");
     expect(migration).not.toMatch(/^\s*(?:INSERT|UPDATE|DELETE|TRUNCATE)\b/im);
   });
 });

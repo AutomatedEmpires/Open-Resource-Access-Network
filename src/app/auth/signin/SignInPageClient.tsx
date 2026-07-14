@@ -26,7 +26,7 @@ export const PATHS: PathOption[] = [
     icon: Search,
     callbackUrl: '/chat',
     guestAllowed: true,
-    detail: 'Find verified community and government resources, then save what helps.',
+    detail: 'Find publication-gated, source-backed community and government resources, then save what helps.',
     accessTitle: 'Open to everyone',
     accessNotes: [
       'Browse and chat without creating an account.',

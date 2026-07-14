@@ -74,6 +74,7 @@ function buildCanonicalPublicationAuthorityPredicate(serviceAlias: string): stri
       AND publication_source.publication_status = 'published'
       AND publication_source.last_refreshed_at IS NOT NULL
       AND publication_system.is_active IS TRUE
+      AND publication_system.family <> 'manual'
       AND publication_system.trust_tier IN (
         'verified_publisher',
         'trusted_partner',
@@ -131,6 +132,8 @@ function buildApprovedManualPublicationAuthorityPredicate(serviceAlias: string):
         WHERE publication_approval.submission_id = publication_submission.id
           AND publication_approval.to_status = 'approved'
           AND publication_approval.gates_passed IS TRUE
+          AND publication_approval.actor_role IN ('community_admin', 'oran_admin')
+          AND publication_approval.actor_user_id <> publication_submission.submitted_by_user_id
       )
   )`;
 }
@@ -321,7 +324,7 @@ export async function getPublishedOrganizationDetail(deps: PublicationDeps, orga
   const organizationRows = await deps.executeQuery<Record<string, unknown>>(
     `SELECT o.id, o.name, o.description, o.url, o.email, o.tax_status,
             o.tax_id, o.year_incorporated, o.legal_status, o.logo_url,
-            o.uri, o.status, o.created_at, o.updated_at
+            o.uri, o.status, o.verified_at, o.created_at, o.updated_at
      FROM organizations o
      WHERE o.id = $1 AND ${buildPublishedOrganizationPredicate('o')}`,
     [organizationId],

@@ -249,6 +249,7 @@ describe('buildSearchQuery', () => {
     expect(built.sql).toBeTruthy();
     expect(built.sql).toContain('SELECT');
     expect(built.sql).toContain('FROM services');
+    expect(built.sql).toContain('o.verified_at AS organization_verified_at');
     expect(built.params.length).toBeGreaterThan(0);
   });
 

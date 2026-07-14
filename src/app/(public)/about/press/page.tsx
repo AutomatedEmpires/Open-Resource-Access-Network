@@ -73,9 +73,9 @@ const FACT_SHEET: Stat[] = [
   { label: 'Mission', value: SITE.mission },
   { label: 'Vision', value: SITE.vision },
   { label: 'Service categories', value: '30+' },
-  { label: 'Verification model', value: 'Community admin + automated confidence scoring' },
-  { label: 'Crisis routing', value: '911 / 988 / 211 — immediate, non-defeatable' },
-  { label: 'Data policy', value: 'Retrieval-only — no AI hallucinations in results' },
+  { label: 'Publication model', value: 'Positive source authority + auditable review' },
+  { label: 'Safety routing', value: '911 for imminent danger; 988 for crisis; 211 for navigation' },
+  { label: 'Data policy', value: 'Retrieval-grounded — no invented provider details' },
   { label: 'Trust center', value: 'openresourceaccessnetwork.com/trust', href: `${SITE.baseUrl}/trust` },
   { label: 'Status page', value: 'openresourceaccessnetwork.com/status', href: `${SITE.baseUrl}/status` },
   { label: 'Security policy', value: 'openresourceaccessnetwork.com/security', href: `${SITE.baseUrl}/security` },
@@ -88,7 +88,7 @@ const PRESS_MENTIONS: Mention[] = [
 const BRAND_GUIDELINES: { marker: string; tone: 'allow' | 'deny'; text: string }[] = [
   { marker: '✓', tone: 'allow', text: 'Refer to the platform as "ORAN" or "Open Resource Access Network".' },
   { marker: '✓', tone: 'allow', text: 'Use provided logo files without cropping or color alteration.' },
-  { marker: '✓', tone: 'allow', text: 'Quote the mission: "connecting people to verified government, nonprofit, and community services."' },
+  { marker: '✓', tone: 'allow', text: 'Quote the tagline: "Building Bridges | Strengthening Communities."' },
   { marker: '✗', tone: 'deny',  text: 'Do not represent ORAN as a government agency or 211 operator unless explicitly confirmed.' },
   { marker: '✗', tone: 'deny',  text: 'Do not use the logo in contexts that imply endorsement of a specific political position.' },
   { marker: '✗', tone: 'deny',  text: 'Do not alter, distort, or combine the logo mark with other design elements.' },
@@ -135,7 +135,7 @@ export default function PressPage() {
               Contact page
             </Link>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-500">
-              ⏱ Typical response: 2–3 business days
+              Response times vary
             </span>
           </div>
         </div>
@@ -177,9 +177,10 @@ export default function PressPage() {
         </p>
         <blockquote className="rounded-lg border-l-4 border-gray-300 bg-[var(--bg-surface-alt)] px-5 py-4">
           <p className="leading-relaxed text-gray-800 italic">
-            &ldquo;ORAN (Open Resource Access Network) is an open-source, civic-grade platform that connects people to verified
-            government, nonprofit, and community services. Results come exclusively from stored, verified records — no AI
-            hallucinations. Safety routing to 911, 988, and 211 is built in at the system level and cannot be bypassed.&rdquo;
+            &ldquo;ORAN (Open Resource Access Network) is an open-source, chat-first civic resource navigator. It retrieves
+            stored service records only after they pass a positive publication gate, distinguishes record confidence from
+            provider verification, and directs imminent danger to 911, suicide or mental-health crisis to 988, and
+            non-emergency navigation to 211.&rdquo;
           </p>
         </blockquote>
       </section>

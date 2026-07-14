@@ -100,7 +100,7 @@ describe('ChatServiceCard interactions', () => {
 
     expect(screen.getByRole('link', { name: 'Food Pantry' })).toHaveAttribute('href', '/service/svc-1');
     expect(screen.getByText('Helping Hands')).toBeInTheDocument();
-    expect(screen.getByText('Trust: High')).toBeInTheDocument();
+    expect(screen.getByText('Record confidence: High')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Call Food Pantry at 555-0100/i })).toHaveAttribute('href', 'tel:555-0100');
     expect(screen.getByText('Why this may fit')).toBeInTheDocument();
     expect(screen.getByText('Offers phone support')).toBeInTheDocument();

@@ -154,9 +154,9 @@ export interface ServiceCard {
   scheduleDescription?: string;
   /** Optional links derived from stored records only (never invented). */
   links?: ServiceLink[];
-  /** Seeker-facing trust band (derived from verification confidence). */
+  /** Seeker-facing record-confidence band; never an implicit provider-verification claim. */
   confidenceBand: 'HIGH' | 'LIKELY' | 'POSSIBLE';
-  /** Seeker-facing trust score (0–100, derived from verification confidence). */
+  /** Record-confidence score (0–100) used for ranking, separate from workflow verification. */
   confidenceScore: number;
   /** Always use qualifying language — never guarantee eligibility */
   eligibilityHint: string;

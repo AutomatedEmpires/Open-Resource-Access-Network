@@ -28,14 +28,16 @@ const nextConfig = {
           // safeJsonLd() sanitization on all dangerouslySetInnerHTML, and no
           // user-controlled content injected into <script> tags.
           process.env.NODE_ENV === 'development'
-            ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
-            : "script-src 'self' 'unsafe-inline'",
+            ? "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://clerk.openresourceaccessnetwork.com https://*.clerk.accounts.dev https://*.clerk.com https://challenges.cloudflare.com"
+            : "script-src 'self' 'unsafe-inline' https://clerk.openresourceaccessnetwork.com https://*.clerk.accounts.dev https://*.clerk.com https://challenges.cloudflare.com",
           // Tailwind CSS requires 'unsafe-inline' for its generated styles.
           "style-src 'self' 'unsafe-inline'",
           // Allow OpenStreetMap tiles, data URIs for inline images, and HTTPS images.
           "img-src 'self' data: https: blob:",
-          "connect-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.openresourceaccessnetwork.com https://accounts.openresourceaccessnetwork.com https://*.supabase.co https://*.sentry.io",
+          "connect-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.openresourceaccessnetwork.com https://accounts.openresourceaccessnetwork.com https://clerk-telemetry.com https://*.clerk-telemetry.com https://*.supabase.co wss://*.supabase.co https://*.sentry.io",
           "font-src 'self'",
+          "worker-src 'self' blob:",
+          "frame-src 'self' https://challenges.cloudflare.com",
           "object-src 'none'",
           "frame-ancestors 'none'",
           "base-uri 'self'",

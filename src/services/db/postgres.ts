@@ -1,5 +1,7 @@
 import { Pool, PoolClient } from 'pg';
 
+import { buildRuntimeDatabaseConnectionString } from './runtimeRole';
+
 function getDatabaseUrl(): string | null {
   const url = process.env.DATABASE_URL;
   if (!url) return null;
@@ -44,10 +46,11 @@ function getPoolOptions() {
 }
 
 export function getPgPool(): Pool {
-  const databaseUrl = getDatabaseUrl();
-  if (!databaseUrl) {
+  const configuredDatabaseUrl = getDatabaseUrl();
+  if (!configuredDatabaseUrl) {
     throw new Error('DATABASE_URL is not configured');
   }
+  const databaseUrl = buildRuntimeDatabaseConnectionString(configuredDatabaseUrl);
 
   // Dev: cache on globalThis to survive Next.js hot reloads.
   if (process.env.NODE_ENV !== 'production') {

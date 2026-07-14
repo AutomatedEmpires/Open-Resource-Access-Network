@@ -51,8 +51,9 @@ CREATE INDEX IF NOT EXISTS idx_submissions_approved_projection
     AND payload ? 'projectionSourceRecordId';
 
 CREATE INDEX IF NOT EXISTS idx_submission_transitions_approved_passed
-  ON public.submission_transitions (submission_id)
+  ON public.submission_transitions (submission_id, actor_user_id)
   WHERE to_status = 'approved'
-    AND gates_passed IS TRUE;
+    AND gates_passed IS TRUE
+    AND actor_role IN ('community_admin', 'oran_admin');
 
 COMMIT;

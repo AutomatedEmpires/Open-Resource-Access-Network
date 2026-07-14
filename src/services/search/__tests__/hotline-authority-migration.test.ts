@@ -7,6 +7,11 @@ const migration = readFileSync(
   'utf8',
 );
 
+const sourceAssertionMigration = readFileSync(
+  resolve(process.cwd(), 'db/migrations/0032_source_assertion_layer.sql'),
+  'utf8',
+);
+
 const validator = readFileSync(
   resolve(process.cwd(), 'scripts/validate-hotline-authority.sql'),
   'utf8',
@@ -115,6 +120,10 @@ describe('0065 verified hotline authority migration', () => {
     expect(migration).toContain("sr.processing_status = 'normalized'");
     expect(migration).toContain("cp.decision_status = 'candidate'");
     expect(migration).toContain('hotline staging safety drift');
+    expect(sourceAssertionMigration).toContain("'arcgis', 'scrape_seed', 'manual_entry'");
+    expect(migration).toContain("'scrape_seed'");
+    expect(migration).toContain("'none'");
+    expect(migration).toContain('SET is_active = true');
   });
 
   it('records primary-source corrections and quarantines the unverified NDVH TTY', () => {
@@ -132,20 +141,57 @@ describe('0065 verified hotline authority migration', () => {
   });
 
   it('makes assertions immutable and validates the positive authority path', () => {
+    const triggerFunction = migration.slice(
+      migration.indexOf(
+        'CREATE OR REPLACE FUNCTION oran_internal.protect_verified_hotline_source_records()',
+      ),
+      migration.indexOf(
+        'REVOKE ALL ON FUNCTION oran_internal.hotline_service_snapshot(uuid)',
+      ),
+    );
+
     expect(migration).toContain('pg_catalog.sha256');
     expect(migration).toContain('payload_sha256 IS DISTINCT FROM');
     expect(migration).toContain('trg_protect_verified_hotline_source_records');
     expect(migration).toContain('append a superseding assertion instead');
+    expect(triggerFunction).toContain('oran_internal.hotline_authority_members');
+    expect(triggerFunction).toContain('m.source_record_id = OLD.id');
+    expect(triggerFunction).not.toContain('OLD.correlation_id');
+    expect(migration).toContain(
+      'DROP TRIGGER IF EXISTS trg_protect_verified_hotline_source_records',
+    );
+    expect(migration).toContain('t.tgtype = 27');
+    expect(migration).toContain('t.tgenabled = \'O\'');
+    expect(migration).toContain('t.tgnargs = 0');
+    expect(migration).toContain('t.tgqual IS NULL');
+    expect(migration).toContain('t.tgparentid = 0');
+    expect(validator).toContain('t.tgfoid =');
+    expect(validator).toContain('t.tgtype = 27');
     expect(migration).toContain("cp.decision_status = 'accepted'");
     expect(migration).toContain('accepted-provenance drift: expected 92');
     expect(migration).toContain('authority count drift: expected 13');
     expect(migration).toContain('RETURN oran_internal.assert_verified_hotline_authority');
   });
 
-  it('ships an idempotent emergency deactivation and a read-only validator', () => {
+  it('ships drift-tolerant idempotent containment and a read-only validator', () => {
+    const deactivation = migration.slice(
+      migration.indexOf(
+        'CREATE OR REPLACE FUNCTION oran_internal.deactivate_verified_hotline_authority()',
+      ),
+      migration.indexOf(
+        'CREATE OR REPLACE FUNCTION oran_internal.protect_verified_hotline_source_records()',
+      ),
+    );
+
     expect(migration).toContain('deactivate_verified_hotline_authority');
-    expect(migration).toContain("IF v_status = 'deactivated' THEN");
-    expect(migration).toContain("SET publication_status = 'retracted'");
+    expect(deactivation).not.toContain('assert_verified_hotline_authority');
+    expect(deactivation).not.toMatch(/IF v_updates <> \d+/);
+    expect(deactivation).toContain("SET publication_status = 'retracted'");
+    expect(deactivation).toContain('sf.is_active IS DISTINCT FROM false');
+    expect(deactivation).toContain('ss.is_active IS DISTINCT FROM false');
+    expect(deactivation).toContain('hotline containment failed');
+    expect(deactivation).toContain("'previousStatus', v_status");
+    expect(deactivation).toContain('deactivated_at = COALESCE(b.deactivated_at, v_now)');
     expect(migration).toContain("deactivated hotline authority still publishes");
     expect(migration).toContain("'authorizedServices', v_authorized");
     expect(migration).toContain("RETURN oran_internal.assert_verified_hotline_authority('applied')");

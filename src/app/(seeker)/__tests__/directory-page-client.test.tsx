@@ -233,7 +233,7 @@ describe('DirectoryPageClient', () => {
     await screen.findByText('Current search scope');
     expect(screen.getByText('Need: Housing')).toBeInTheDocument();
     expect(screen.getByText('Search: rent help')).toBeInTheDocument();
-    expect(screen.getAllByText('Trust: High confidence only').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Record confidence: High confidence only').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Sort: Name (Z-A)').length).toBeGreaterThan(0);
     expect(screen.getByText('Delivery: By Phone')).toBeInTheDocument();
     expect(screen.getByText('Access: No ID Required')).toBeInTheDocument();
@@ -504,7 +504,7 @@ describe('DirectoryPageClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
 
     await screen.findByText('No matches');
-    expect(screen.getByText('Try different keywords, broaden trust filters, or clear service filters.')).toBeInTheDocument();
+    expect(screen.getByText('Try different keywords, broaden record-confidence filters, or clear service filters.')).toBeInTheDocument();
   });
 
 

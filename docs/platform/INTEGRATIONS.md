@@ -44,11 +44,22 @@ Required production variables:
 
 ## Database
 
-Application server code connects through the Supabase transaction pooler using
-the dedicated, least-privilege `oran_runtime` login. Migration and backup jobs
-use a separate direct connection and must never expose it to the browser.
+Application server code connects through the Supabase transaction pooler by
+authenticating directly as the dedicated `oran_backend_runtime` login. The
+application validates that database identity before creating a production pool;
+it never relies on a startup `SET ROLE`, because Supavisor does not preserve
+arbitrary startup options. The role can bypass Data API RLS only because this is
+a server-only connection with no browser identity; it remains non-superuser,
+has no DDL privileges, and receives an explicit operation-by-table allow-list.
+Migration and backup jobs use a separate direct connection and must never expose
+either credential to the browser.
 
-- `DATABASE_URL`: pooled TLS runtime connection
+- `DATABASE_URL`: pooled TLS runtime connection whose database username is
+  `oran_backend_runtime.<project-ref>`
+- `ORAN_DATABASE_ROLE=oran_backend_runtime`: fixed server identity assertion;
+  the application rejects every other production value or database username
+- `ORAN_SUPABASE_PROJECT_REF`: non-secret project identity guard; the pooled
+  username must resolve to this exact isolated ORAN project
 - `SUPABASE_DB_URL`: direct connection for protected migration jobs only
 - `NEXT_PUBLIC_SUPABASE_URL` and a publishable key may be used only for tables
   whose RLS policies have received an explicit security review

@@ -42,11 +42,11 @@ const SECURITY_PRACTICES = [
   {
     area: 'Input validation',
     detail:
-      'All API routes validate untrusted input with Zod before processing. No raw SQL string interpolation.',
+      'High-risk API inputs use bounded schemas or explicit parsers. User values are parameterized in SQL; dynamic query fragments come from application-controlled allowlists.',
   },
   {
     area: 'Encryption in transit',
-    detail: 'TLS enforced on all endpoints. HTTPS-only. No mixed content.',
+    detail: 'The Vercel application is configured for HTTPS. Public-domain TLS is a required cutover check before general traffic.',
   },
   {
     area: 'Encryption at rest',
@@ -55,7 +55,7 @@ const SECURITY_PRACTICES = [
   {
     area: 'PII in telemetry',
     detail:
-      'Sentry error traces are anonymized. No user identifiers or location data in telemetry payloads.',
+      'Operational telemetry is minimized and must not include precise location, intake answers, or message content. Sentry payload controls are part of release review.',
   },
   {
     area: 'Content Security Policy',
@@ -64,7 +64,7 @@ const SECURITY_PRACTICES = [
   {
     area: 'Rate limiting',
     detail:
-      'Shared rate limiting protects high-value API routes, with local resilience fallback. 429 responses include Retry-After headers.',
+      'Chat quotas use database-enforced daily and burst limits with fail-closed behavior. Other sensitive routes apply bounded request limits and return Retry-After where supported.',
   },
   {
     area: 'Dependency management',

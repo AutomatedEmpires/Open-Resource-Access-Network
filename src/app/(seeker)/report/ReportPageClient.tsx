@@ -304,7 +304,7 @@ function ReportPageInner() {
       >
         <ul className="space-y-2 text-sm text-stone-600">
           <li>Reviewers compare your note against stored provider data and evidence.</li>
-          <li>Listings are corrected, flagged, or removed only after verification.</li>
+          <li>Reports are reviewed before a correction or removal decision; urgent integrity holds can hide a suspect record first.</li>
           <li>Optional contact details are used only if clarification is needed.</li>
         </ul>
       </FormSection>

@@ -875,7 +875,7 @@ export default function ProfilePage() {
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Discovery defaults</p>
             <h2 className="mt-2 text-lg font-semibold text-slate-900">Your profile already shapes search across seeker surfaces</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Service interests, delivery preferences, and documentation barriers flow into the same verified discovery grammar used by chat, directory, and map.
+              Service interests, delivery preferences, and documentation barriers flow into the same publication-gated discovery grammar used by chat, directory, and map.
             </p>
           </div>
 
@@ -951,7 +951,7 @@ export default function ProfilePage() {
                 <p className="font-medium">Your profile is saved on this device only</p>
               </div>
               <p className="mb-2 text-xs text-slate-700">
-                Preferences marked <strong>&ldquo;AI uses this&rdquo;</strong> improve chat and search results right away
+                Preferences marked <strong>&ldquo;Matching uses this&rdquo;</strong> refine chat and search results right away
                 — no account needed. Signing in lets ORAN sync your profile across devices, remember your saved
                 services, and unlock future features like alerts and history.
               </p>
@@ -974,7 +974,7 @@ export default function ProfilePage() {
                 <div>
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-slate-500" aria-hidden="true" />
-                  <span className={`font-semibold text-sm ${selectedTheme.textClass}`}>AI Match Strength</span>
+                  <span className={`font-semibold text-sm ${selectedTheme.textClass}`}>Match readiness</span>
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                     strengthPct < 34 ? 'bg-slate-100 text-slate-700' :
                     strengthPct < 67 ? 'bg-slate-200 text-slate-700' :
@@ -983,8 +983,8 @@ export default function ProfilePage() {
                 </div>
                 <p className="mt-1 text-xs text-stone-600">
                   {strengthPct < 100
-                    ? `Complete ${strength.max - strength.score} more section${strength.max - strength.score === 1 ? '' : 's'} to improve AI matching`
-                    : 'Your profile is fully set up for AI-powered recommendations!'}
+                    ? `Complete ${strength.max - strength.score} more section${strength.max - strength.score === 1 ? '' : 's'} to improve matching`
+                    : 'Your profile is ready to refine recommendations.'}
                 </p>
                 {seeker.profileHeadline && <p className="mt-2 text-xs text-slate-600">{seeker.profileHeadline}</p>}
                 </div>
@@ -1003,7 +1003,7 @@ export default function ProfilePage() {
             subtitle={serviceSubtitle}
             icon={<Star className="h-4 w-4" />}
             accentColor="bg-slate-900"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('services')}
             onToggle={() => toggleSection('services')}
           >
@@ -1037,7 +1037,7 @@ export default function ProfilePage() {
             subtitle={aboutSubtitle}
             icon={<UserCheck className="h-4 w-4" />}
             accentColor="bg-slate-800"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('aboutme')}
             onToggle={() => toggleSection('aboutme')}
           >
@@ -1085,7 +1085,7 @@ export default function ProfilePage() {
             subtitle={constraintsSubtitle}
             icon={<AlertCircle className="h-4 w-4" />}
             accentColor="bg-slate-700"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('constraints')}
             onToggle={() => toggleSection('constraints')}
           >
@@ -1228,7 +1228,7 @@ export default function ProfilePage() {
             }
             icon={<Heart className="h-4 w-4" />}
             accentColor="bg-slate-800"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('identifiers')}
             onToggle={() => toggleSection('identifiers')}
           >
@@ -1259,7 +1259,7 @@ export default function ProfilePage() {
             }
             icon={<CheckCircle className="h-4 w-4" />}
             accentColor="bg-slate-700"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('currentservices')}
             onToggle={() => toggleSection('currentservices')}
           >
@@ -1284,7 +1284,7 @@ export default function ProfilePage() {
             subtitle={seeker.accessibilityNeeds.length > 0 ? `${seeker.accessibilityNeeds.length} preference${seeker.accessibilityNeeds.length === 1 ? '' : 's'} selected` : 'Optional — helps find a better fit'}
             icon={<Heart className="h-4 w-4" />}
             accentColor="bg-slate-700"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('accessibility')}
             onToggle={() => toggleSection('accessibility')}
           >
@@ -1310,7 +1310,7 @@ export default function ProfilePage() {
             subtitle={locationSubtitle}
             icon={<MapPin className="h-4 w-4" />}
             accentColor="bg-slate-900"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('location')}
             onToggle={() => toggleSection('location')}
           >
@@ -1382,7 +1382,7 @@ export default function ProfilePage() {
             }
             icon={<Info className="h-4 w-4" />}
             accentColor="bg-slate-700"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('context')}
             onToggle={() => toggleSection('context')}
           >

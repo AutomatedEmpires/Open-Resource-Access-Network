@@ -9,17 +9,17 @@ import MapPageContent from './MapPageClient';
 export const metadata: Metadata = {
   title: 'Map',
   description:
-    'View verified resources on an interactive map. Find food, housing, healthcare, and more near your location.',
+    'View publication-gated resources on an interactive map. Find food, housing, healthcare, and more near your location.',
   robots: { index: false, follow: false },
   openGraph: {
     title: 'Map | ORAN',
-    description: 'View verified resources near your location on an interactive map.',
+    description: 'View publication-gated resources near your location on an interactive map.',
     type: 'website',
   },
   twitter: {
     card: 'summary',
     title: 'Map | ORAN',
-    description: 'View verified resources near your location on an interactive map.',
+    description: 'View publication-gated resources near your location on an interactive map.',
   },
 };
 

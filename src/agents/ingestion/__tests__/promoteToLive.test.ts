@@ -103,6 +103,7 @@ function createMockStores() {
     sourceSystems: {
       getById: vi.fn().mockResolvedValue({
         id: 'src-sys-1',
+        family: 'hsds_api',
         resourcePurpose: 'service_catalog',
       }),
     },
@@ -165,6 +166,25 @@ describe('promoteToLive', () => {
       canonicalServiceId: 'canon-svc-1',
       actorId: 'system',
     })).rejects.toThrow('source resource purpose is missing or invalid');
+
+    expect(withTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks manual sources from bypassing independent submission approval', async () => {
+    const stores = createMockStores();
+    stores.canonicalServices.getById.mockResolvedValue(buildCanonicalService());
+    stores.sourceSystems.getById.mockResolvedValue({
+      id: 'manual-source',
+      family: 'manual',
+      resourcePurpose: 'service_catalog',
+    });
+
+    const { promoteToLive } = await loadModule();
+    await expect(promoteToLive({
+      stores: stores as never,
+      canonicalServiceId: 'canon-svc-1',
+      actorId: 'system',
+    })).rejects.toThrow('independent submission approval is required');
 
     expect(withTransactionMock).not.toHaveBeenCalled();
   });

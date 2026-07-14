@@ -6,6 +6,14 @@
 - No LLM in retrieval or ranking.
 - Non-default hybrid/vector utilities may exist in this folder, but they must remain flag-gated or operator-only, must operate on stored records only, and must never bypass trust-first ordering or replace the canonical SQL path.
 - Queries must be parameterized.
+- Seeker-visible rows must prove positive publication authority: either a fully
+  published canonical service with accepted provenance from its active winning
+  source, or an approved manual submission whose current snapshot, published
+  source assertion, and passed approval transition all identify the service.
+  Missing provenance never implies permission.
+- `ORAN_PUBLICATION_SAFETY_MODE=deny_all` is the only runtime override. It is a
+  one-way emergency brake; unknown values fail closed and there is no legacy
+  allow mode.
 - Authenticated chat may pass deterministic `profileSignals`, but they may only re-order already eligible results.
 - Personalized chat retrieval must bypass the shared Redis cache.
 - Explicit `sortBy='distance'` is allowed for seeker map/list flows and must remain deterministic, derived only from stored coordinates plus the query geo or visible map viewport center.

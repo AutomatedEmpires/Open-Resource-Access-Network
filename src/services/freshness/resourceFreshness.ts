@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { PoolClient } from 'pg';
 import { withTransaction } from '@/services/db/postgres';
+import { buildPublishedServicePredicate } from '@/services/search/publication';
 
 export const DEFAULT_FRESHNESS_SCAN_LIMIT = 100;
 export const MAX_FRESHNESS_SCAN_LIMIT = 100;
@@ -236,34 +237,21 @@ signal_details AS (
     WHERE candidate.published_service_id = signal.service_id
   ) candidate_verification ON true
   LEFT JOIN LATERAL (
-    SELECT max(score.computed_at) AS last_manual_verification_at
-    FROM public.confidence_scores score
-    WHERE score.service_id = signal.service_id
-      AND score.verification_confidence > 0
+    SELECT max(transition.created_at) AS last_manual_verification_at
+    FROM public.submissions approved_submission
+    JOIN public.submission_transitions transition
+      ON transition.submission_id = approved_submission.id
+     AND transition.to_status = 'approved'
+     AND transition.gates_passed = true
+    WHERE approved_submission.service_id = signal.service_id
+      AND approved_submission.status = 'approved'
+      AND approved_submission.submission_type IN (
+        'new_service',
+        'service_verification',
+        'data_correction'
+      )
   ) manual_verification ON true
-  WHERE service.status = 'active'
-    AND organization.status = 'active'
-    AND service.integrity_hold_at IS NULL
-    AND NOT (
-      service.name = 'SNAP/EBT accepted here'
-      AND service.description LIKE '%Source: USDA FNS SNAP Retailer Locator.%'
-      AND service.description LIKE '%place to SPEND SNAP benefits (not a free-food or food-bank site)%'
-    )
-    AND NOT EXISTS (
-      SELECT 1
-      FROM public.canonical_services publication_source
-      LEFT JOIN public.source_systems publication_system
-        ON publication_system.id = publication_source.winning_source_system_id
-      WHERE publication_source.published_service_id = service.id
-        AND (
-          publication_source.lifecycle_status <> 'active'
-          OR publication_source.publication_status <> 'published'
-          OR publication_source.winning_source_system_id IS NULL
-          OR publication_system.id IS NULL
-          OR publication_system.resource_purpose IS NULL
-          OR publication_system.resource_purpose NOT IN ('service_catalog', 'program_navigation')
-        )
-    )
+  WHERE ${buildPublishedServicePredicate('service', 'organization')}
     AND NOT EXISTS (
       SELECT 1
       FROM oran_internal.resource_freshness_findings open_finding

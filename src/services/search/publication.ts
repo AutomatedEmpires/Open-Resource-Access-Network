@@ -10,6 +10,25 @@ export const SEEKER_PUBLISHABLE_RESOURCE_PURPOSES = [
   'service_catalog',
   'program_navigation',
 ] as const;
+export const PUBLICATION_SAFETY_MODES = [
+  'positive_authority',
+  'deny_all',
+] as const;
+
+export type PublicationSafetyMode = (typeof PUBLICATION_SAFETY_MODES)[number];
+
+/**
+ * The only runtime override is a one-way emergency brake. Empty configuration
+ * uses the affirmative authority gate; any unknown value fails closed.
+ */
+export function resolvePublicationSafetyMode(
+  rawMode = process.env.ORAN_PUBLICATION_SAFETY_MODE,
+): PublicationSafetyMode {
+  const normalized = rawMode?.trim().toLowerCase();
+  return !normalized || normalized === 'positive_authority'
+    ? 'positive_authority'
+    : 'deny_all';
+}
 
 export function buildIntegrityHoldPredicate(serviceAlias = 's'): string {
   return `${serviceAlias}.integrity_hold_at IS NULL`;
@@ -28,30 +47,110 @@ export function buildLegacyRetailerExclusionPredicate(serviceAlias = 's'): strin
   )`;
 }
 
-/**
- * Excludes live services whose canonical publication provenance is missing,
- * stale, or classified for enrichment/exclusion only. Live records created by
- * the host/manual lane have no canonical row and remain eligible.
- */
-export function buildPublishableSourcePredicate(serviceAlias = 's'): string {
+function buildCanonicalPublicationAuthorityPredicate(serviceAlias: string): string {
   const purposes = SEEKER_PUBLISHABLE_RESOURCE_PURPOSES
     .map((purpose) => `'${purpose}'`)
     .join(', ');
 
-  return `NOT EXISTS (
+  return `EXISTS (
     SELECT 1
-    FROM canonical_services publication_source
-    LEFT JOIN source_systems publication_system
-      ON publication_system.id = publication_source.winning_source_system_id
+    FROM public.canonical_services publication_source
+    JOIN public.canonical_provenance publication_provenance
+      ON publication_provenance.canonical_entity_type = 'service'
+     AND publication_provenance.canonical_entity_id = publication_source.id
+     AND publication_provenance.decision_status = 'accepted'
+    JOIN public.source_records publication_record
+      ON publication_record.id = publication_provenance.source_record_id
+     AND publication_record.processing_status = 'published'
+    JOIN public.source_feeds publication_feed
+      ON publication_feed.id = publication_record.source_feed_id
+     AND publication_feed.is_active IS TRUE
+    JOIN public.source_systems publication_system
+      ON publication_system.id = publication_feed.source_system_id
+     AND publication_system.id = publication_source.winning_source_system_id
     WHERE publication_source.published_service_id = ${serviceAlias}.id
-      AND (
-        publication_source.lifecycle_status <> 'active'
-        OR publication_source.publication_status <> 'published'
-        OR publication_source.winning_source_system_id IS NULL
-        OR publication_system.id IS NULL
-        OR publication_system.resource_purpose IS NULL
-        OR publication_system.resource_purpose NOT IN (${purposes})
+      AND publication_source.status = 'active'
+      AND publication_source.lifecycle_status = 'active'
+      AND publication_source.publication_status = 'published'
+      AND publication_source.last_refreshed_at IS NOT NULL
+      AND publication_system.is_active IS TRUE
+      AND publication_system.trust_tier IN (
+        'verified_publisher',
+        'trusted_partner',
+        'curated',
+        'community'
       )
+      AND publication_system.resource_purpose IN (${purposes})
+  )`;
+}
+
+function buildApprovedManualPublicationAuthorityPredicate(serviceAlias: string): string {
+  return `EXISTS (
+    SELECT 1
+    FROM public.hsds_export_snapshots publication_snapshot
+    JOIN public.submissions publication_submission
+      ON publication_submission.id::text = (publication_snapshot.hsds_payload #>> '{meta,sourceSubmissionId}')
+     AND publication_submission.service_id = ${serviceAlias}.id
+     AND publication_submission.status = 'approved'
+     AND publication_submission.submission_type IN (
+       'new_service',
+       'service_verification',
+       'data_correction'
+    )
+    JOIN public.source_records publication_record
+      ON publication_record.id::text = (publication_submission.payload ->> 'projectionSourceRecordId')
+     AND publication_record.source_record_id = publication_submission.id::text
+     AND publication_record.source_record_type = 'mixed_bundle'
+     AND publication_record.processing_status = 'published'
+     AND publication_record.parsed_payload #>> '{projection,serviceId}' = ${serviceAlias}.id::text
+    JOIN public.source_feeds publication_feed
+      ON publication_feed.id = publication_record.source_feed_id
+     AND publication_feed.is_active IS TRUE
+     AND publication_feed.feed_type = 'manual_entry'
+    JOIN public.source_systems publication_system
+      ON publication_system.id = publication_feed.source_system_id
+     AND publication_system.is_active IS TRUE
+     AND publication_system.family = 'manual'
+     AND publication_system.resource_purpose = 'service_catalog'
+    WHERE publication_snapshot.entity_type = 'service'
+      AND publication_snapshot.entity_id = ${serviceAlias}.id
+      AND publication_snapshot.status = 'current'
+      AND (
+        (
+          (publication_snapshot.hsds_payload #>> '{meta,publicationSourceKind}') = 'host_submission'
+          AND publication_system.trust_tier = 'trusted_partner'
+        )
+        OR (
+          (publication_snapshot.hsds_payload #>> '{meta,publicationSourceKind}') = 'community_review'
+          AND publication_system.trust_tier = 'community'
+        )
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM public.submission_transitions publication_approval
+        WHERE publication_approval.submission_id = publication_submission.id
+          AND publication_approval.to_status = 'approved'
+          AND publication_approval.gates_passed IS TRUE
+      )
+  )`;
+}
+
+/**
+ * Requires affirmative publication authority. A live row is not seeker-visible
+ * merely because canonical provenance is absent: it must prove either the
+ * canonical feed path or the approved manual-submission path.
+ */
+export function buildPublishableSourcePredicate(
+  serviceAlias = 's',
+  safetyMode = resolvePublicationSafetyMode(),
+): string {
+  if (safetyMode === 'deny_all') {
+    return 'FALSE /* ORAN_PUBLICATION_SAFETY_MODE deny_all */';
+  }
+
+  return `(
+    ${buildCanonicalPublicationAuthorityPredicate(serviceAlias)}
+    OR ${buildApprovedManualPublicationAuthorityPredicate(serviceAlias)}
   )`;
 }
 

@@ -168,7 +168,7 @@ describe('buildFiltersWhereClause', () => {
     expect(clause.sql).not.toContain('service_attributes');
   });
 
-  it('excludes supporting-reference-only resources on standalone seeker surfaces', () => {
+  it('requires positive publication authority on standalone seeker surfaces', () => {
     const clause = buildFiltersWhereClause({
       status: 'active',
       publishedOnly: true,
@@ -176,7 +176,10 @@ describe('buildFiltersWhereClause', () => {
     });
 
     expect(clause.sql).toContain('canonical_services publication_source');
-    expect(clause.sql).toContain('publication_system.resource_purpose NOT IN');
+    expect(clause.sql).toContain('canonical_provenance publication_provenance');
+    expect(clause.sql).toContain("publication_provenance.decision_status = 'accepted'");
+    expect(clause.sql).toContain("publication_system.resource_purpose IN ('service_catalog', 'program_navigation')");
+    expect(clause.sql).toContain('hsds_export_snapshots publication_snapshot');
     expect(clause.sql).toContain('USDA FNS SNAP Retailer Locator');
     expect(clause.params).toEqual(['active']);
   });

@@ -196,6 +196,11 @@ describe('promoteToLive', () => {
     expect(result.serviceId).toEqual(expect.any(String));
     expect(result.locationIds).toHaveLength(1);
 
+    expect(clientQueryMock).toHaveBeenCalledWith(
+      expect.stringContaining("SET processing_status = 'published'"),
+      ['canon-svc-1', 'src-sys-1'],
+    );
+
     // Verify INSERT queries run
     const insertCalls = clientQueryMock.mock.calls.filter(
       (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('INSERT INTO'),
@@ -372,6 +377,37 @@ describe('promoteToLive', () => {
         actorId: 'system',
       }),
     ).rejects.toThrow('Canonical organization canon-org-1 not found');
+  });
+
+  it('rolls back before materialization when accepted winning-source provenance is absent', async () => {
+    const stores = createMockStores();
+    const clientQueryMock = vi.fn(async (sql: string) => {
+      if (sql.includes('pg_advisory_xact_lock')) {
+        return { rows: [{ pg_advisory_xact_lock: '' }], rowCount: 1 };
+      }
+      if (sql.includes('UPDATE public.source_records')) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    withTransactionMock.mockImplementation(async (cb: (c: unknown) => unknown) =>
+      cb({ query: clientQueryMock }),
+    );
+    stores.canonicalServices.getById.mockResolvedValue(buildCanonicalService());
+    stores.canonicalOrganizations.getById.mockResolvedValue(buildCanonicalOrg());
+    stores.canonicalServiceLocations.listByService.mockResolvedValue([]);
+
+    const { promoteToLive } = await loadModule();
+    await expect(promoteToLive({
+      stores: stores as never,
+      canonicalServiceId: 'canon-svc-1',
+      actorId: 'system',
+    })).rejects.toThrow('no accepted normalized assertion from its active winning source');
+
+    expect(clientQueryMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO services'),
+      expect.anything(),
+    );
   });
 
   it('promotes a service with no locations', async () => {

@@ -90,10 +90,15 @@ describe('resource freshness candidate policy', () => {
     expect(CANONICAL_STALE_AFTER_DAYS).toBe(180);
     expect(UNKNOWN_SOURCE_STALE_AFTER_DAYS).toBe(365);
     expect(RESOURCE_FRESHNESS_CANDIDATE_SQL).toContain("ss.resource_purpose IN ('service_catalog', 'program_navigation')");
-    expect(RESOURCE_FRESHNESS_CANDIDATE_SQL).toContain("publication_system.resource_purpose NOT IN ('service_catalog', 'program_navigation')");
+    expect(RESOURCE_FRESHNESS_CANDIDATE_SQL).toContain('canonical_provenance publication_provenance');
+    expect(RESOURCE_FRESHNESS_CANDIDATE_SQL).toContain("publication_record.processing_status = 'published'");
+    expect(RESOURCE_FRESHNESS_CANDIDATE_SQL).toContain("publication_submission.status = 'approved'");
     expect(RESOURCE_FRESHNESS_CANDIDATE_SQL).toContain('service.integrity_hold_at IS NULL');
     expect(RESOURCE_FRESHNESS_CANDIDATE_SQL).toContain("open_finding.status = 'open'");
     expect(RESOURCE_FRESHNESS_CANDIDATE_SQL).toContain('LIMIT greatest($1::int * 20, 100)');
+    expect(RESOURCE_FRESHNESS_CANDIDATE_SQL).toContain('public.submission_transitions transition');
+    expect(RESOURCE_FRESHNESS_CANDIDATE_SQL).toContain("transition.to_status = 'approved'");
+    expect(RESOURCE_FRESHNESS_CANDIDATE_SQL).not.toContain('public.confidence_scores score');
   });
 });
 

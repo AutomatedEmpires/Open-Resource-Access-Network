@@ -187,6 +187,50 @@ export async function promoteToLive(
       serviceUrl: canonicalService.url,
     });
 
+    // Publication authority is not inferred from a canonical row alone. Move
+    // only accepted assertions from the active winning source to the published
+    // state in the same transaction as the live materialization. A missing or
+    // mismatched assertion rolls the promotion back before seeker data changes.
+    const publishedAssertions = await client.query<{ id: string }>(
+      `UPDATE public.source_records publication_record
+          SET processing_status = 'published',
+              processing_error = NULL,
+              processed_at = NOW()
+         FROM public.source_feeds publication_feed
+         JOIN public.source_systems publication_system
+           ON publication_system.id = publication_feed.source_system_id
+          AND publication_system.is_active IS TRUE
+          AND publication_system.trust_tier IN (
+            'verified_publisher',
+            'trusted_partner',
+            'curated',
+            'community'
+          )
+          AND publication_system.resource_purpose IN (
+            'service_catalog',
+            'program_navigation'
+          )
+        WHERE publication_record.source_feed_id = publication_feed.id
+          AND publication_feed.is_active IS TRUE
+          AND publication_system.id = $2
+          AND publication_record.processing_status IN ('normalized', 'published')
+          AND publication_record.id IN (
+            SELECT accepted_provenance.source_record_id
+            FROM public.canonical_provenance accepted_provenance
+            WHERE accepted_provenance.canonical_entity_type = 'service'
+              AND accepted_provenance.canonical_entity_id = $1
+              AND accepted_provenance.decision_status = 'accepted'
+              AND accepted_provenance.source_record_id IS NOT NULL
+          )
+      RETURNING publication_record.id`,
+      [canonicalServiceId, canonicalService.winningSourceSystemId],
+    );
+    if ((publishedAssertions.rowCount ?? publishedAssertions.rows.length) === 0) {
+      throw new Error(
+        `Canonical service ${canonicalServiceId} has no accepted normalized assertion from its active winning source`,
+      );
+    }
+
     if (!organizationId) {
       const matchedOrganizationId = await resolveExistingLiveOrganizationId(client, {
         organizationName: canonicalOrg.name,

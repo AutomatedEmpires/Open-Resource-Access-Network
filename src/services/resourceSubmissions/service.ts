@@ -484,9 +484,9 @@ async function ensureManualSubmissionSourceSystem(
     channel === 'host'
       ? 'ORAN Resource Studio'
       : 'ORAN Community Resource Submissions';
-  const family = channel === 'host' ? 'host_portal' : 'community_submission';
+  const family = 'manual';
   const baseUrl = channel === 'host' ? 'oran://resource-studio' : 'oran://community-resource-submissions';
-  const trustTier = channel === 'host' ? 'allowlisted' : 'quarantine';
+  const trustTier = channel === 'host' ? 'trusted_partner' : 'community';
 
   const systemRows = await client.query<{ id: string }>(
     `INSERT INTO source_systems
@@ -539,10 +539,10 @@ async function ensureManualSubmissionSourceSystem(
     [
       sourceSystemId,
       feedName,
-      channel === 'host' ? 'manual_portal' : 'manual_submission',
+      'manual_entry',
       'none',
       baseUrl,
-      channel === 'host' ? 'session' : 'none',
+      channel === 'host' ? 'custom' : 'none',
     ],
   );
 
@@ -570,7 +570,7 @@ async function attachSourceAssertion(
         AND source_record_id = $3
         AND payload_sha256 = $4
       LIMIT 1`,
-    [sourceFeedId, variant === 'claim' ? 'org_claim_submission' : 'resource_submission', submissionId, payloadSha256],
+    [sourceFeedId, 'mixed_bundle', submissionId, payloadSha256],
   );
 
   if (existing.rows[0]?.id) {
@@ -582,11 +582,11 @@ async function attachSourceAssertion(
        (source_feed_id, source_record_type, source_record_id, canonical_source_url,
         payload_sha256, raw_payload, parsed_payload, correlation_id,
         source_license, source_confidence_signals, processing_status, processed_at)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $6::jsonb, $7, $8, $9::jsonb, 'processed', NOW())
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $6::jsonb, $7, $8, $9::jsonb, 'normalized', NOW())
      RETURNING id`,
     [
       sourceFeedId,
-      variant === 'claim' ? 'org_claim_submission' : 'resource_submission',
+      'mixed_bundle',
       submissionId,
       `oran://resource-submissions/${submissionId}`,
       payloadSha256,
@@ -628,9 +628,7 @@ async function attachApprovedProjectionAssertion(
     draft,
   });
   const payloadSha256 = crypto.createHash('sha256').update(payloadJson).digest('hex');
-  const sourceRecordType = variant === 'claim'
-    ? 'approved_org_claim_projection'
-    : 'approved_resource_projection';
+  const sourceRecordType = 'mixed_bundle';
 
   const existing = await client.query<{ id: string }>(
     `SELECT id
@@ -652,7 +650,7 @@ async function attachApprovedProjectionAssertion(
        (source_feed_id, source_record_type, source_record_id, canonical_source_url,
         payload_sha256, raw_payload, parsed_payload, correlation_id,
         source_license, source_confidence_signals, processing_status, processed_at)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $6::jsonb, $7, $8, $9::jsonb, 'processed', NOW())
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $6::jsonb, $7, $8, $9::jsonb, 'published', NOW())
      RETURNING id`,
     [
       sourceFeedId,

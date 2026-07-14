@@ -386,7 +386,7 @@ describe('resource submission service', () => {
   });
 
   it('submits resource draft and updates payload with source assertions', async () => {
-    const clientQuery = vi.fn(async (sql: string) => {
+    const clientQuery = vi.fn(async (sql: string, _params?: unknown[]) => {
       if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
         return {
           rows: [{
@@ -413,6 +413,35 @@ describe('resource submission service', () => {
     );
     expect(sourceSystemSql).toContain('resource_purpose');
     expect(sourceSystemSql).toContain("'service_catalog'");
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO source_systems'),
+      expect.arrayContaining([
+        'ORAN Resource Studio',
+        'manual',
+        'oran://resource-studio',
+        'trusted_partner',
+      ]),
+    );
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO source_feeds'),
+      [
+        'sys-1',
+        'Resource Studio Intake',
+        'manual_entry',
+        'none',
+        'oran://resource-studio',
+        'custom',
+      ],
+    );
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining("'normalized'"),
+      expect.arrayContaining([
+        'feed-1',
+        'mixed_bundle',
+        'sub-1',
+        'oran://resource-submissions/sub-1',
+      ]),
+    );
   });
 
   it('projects claim submissions into organization membership updates', async () => {
@@ -449,7 +478,7 @@ describe('resource submission service', () => {
       expect.stringContaining('INSERT INTO source_records'),
       expect.arrayContaining([
         'feed-1',
-        'approved_org_claim_projection',
+        'mixed_bundle',
         'sub-1',
         'oran://resource-submissions/sub-1/projection',
       ]),
@@ -469,7 +498,7 @@ describe('resource submission service', () => {
 
   it('projects listing submissions into service + org updates', async () => {
     dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'instance-1' }]);
-    const clientQuery = vi.fn(async (sql: string) => {
+    const clientQuery = vi.fn(async (sql: string, _params?: unknown[]) => {
       if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
         const draft = createEmptyResourceSubmissionDraft('listing', 'host');
         draft.service.name = 'Svc';
@@ -504,11 +533,19 @@ describe('resource submission service', () => {
       expect.stringContaining('INSERT INTO source_records'),
       expect.arrayContaining([
         'feed-1',
-        'approved_resource_projection',
+        'mixed_bundle',
         'sub-1',
         'oran://resource-submissions/sub-1/projection',
       ]),
     );
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining("'published'"),
+      expect.arrayContaining(['feed-1', 'mixed_bundle', 'sub-1']),
+    );
+    const publishedRecordParams = clientQuery.mock.calls.find(
+      ([sql]) => sql.includes('INSERT INTO source_records') && sql.includes("'published'"),
+    )?.[1] as unknown[];
+    expect(publishedRecordParams[5]).toContain('"projection":{"organizationId":"org-1","serviceId":"svc-1"');
     expect(clientQuery).toHaveBeenCalledWith(
       expect.stringContaining("SET payload = COALESCE(payload, '{}'::jsonb) ||"),
       [
@@ -524,6 +561,11 @@ describe('resource submission service', () => {
       expect.stringContaining('INSERT INTO hsds_export_snapshots'),
       expect.arrayContaining(['service', 'svc-1']),
     );
+    const snapshotParams = clientQuery.mock.calls.find(
+      ([sql]) => sql.includes('INSERT INTO hsds_export_snapshots'),
+    )?.[1] as unknown[];
+    expect(snapshotParams[3]).toContain('"sourceSubmissionId":"sub-1"');
+    expect(snapshotParams[3]).toContain('"publicationSourceKind":"host_submission"');
     expect(clientQuery).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO lifecycle_events'),
       expect.arrayContaining(['service', 'svc-1', 'published', 'submission', 'published', 'human', 'actor-1']),
@@ -648,6 +690,19 @@ describe('resource submission service', () => {
     const result = await projectApprovedResourceSubmission('instance-1', 'actor-2');
 
     expect(result).toEqual({ organizationId: 'org-existing', serviceId: 'svc-existing' });
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO source_systems'),
+      expect.arrayContaining([
+        'ORAN Community Resource Submissions',
+        'manual',
+        'oran://community-resource-submissions',
+        'community',
+      ]),
+    );
+    expect(clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO source_feeds'),
+      expect.arrayContaining(['manual_entry', 'none', 'oran://community-resource-submissions', 'none']),
+    );
     expect(clientQuery).not.toHaveBeenCalledWith(expect.stringContaining('UPDATE organizations'), expect.anything());
     expect(clientQuery).not.toHaveBeenCalledWith(expect.stringContaining('UPDATE services'), expect.anything());
     expect(clientQuery).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO hsds_export_snapshots'), expect.anything());

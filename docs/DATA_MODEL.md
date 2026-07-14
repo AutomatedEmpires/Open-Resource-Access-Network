@@ -648,6 +648,28 @@ Many-to-many junction mapping canonical services to canonical locations with opt
 
 Field-level lineage table describing which `source_record` asserted which canonical field value, the confidence hint for that assertion, and whether the assertion was accepted, superseded, or rejected.
 
+### Positive publication authority (Migration 0064)
+
+Public service reads do not infer publication permission from the absence of a
+canonical row. A service must prove one of two authority paths:
+
+1. A live, published `canonical_services` row whose accepted
+   `canonical_provenance` reaches a published `source_records` assertion through
+   an active feed and the canonical row's active winning source system. The
+   source purpose must be `service_catalog` or `program_navigation`. Canonical
+   promotion atomically advances those accepted assertions from `normalized`
+   to `published`; missing winning-source provenance rolls the promotion back.
+2. A current manual HSDS snapshot tied to an approved `submissions` row, a
+   passed approval transition, and a published `mixed_bundle` source assertion
+   whose projection identifies that same service. Manual systems use the
+   schema-defined `manual` family, `manual_entry` feed type, and positive
+   `trusted_partner` or `community` trust tiers.
+
+Migration `0064_positive_publication_authority.sql` adds partial and expression
+indexes for those checks only; it does not mutate resource data. The runtime
+`deny_all` safety mode can close public discovery during an incident, but no
+legacy allow path exists.
+
 ---
 
 ## Admin Review & Publish (Migrations 0018–0019)

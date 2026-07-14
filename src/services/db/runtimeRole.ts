@@ -75,6 +75,7 @@ export function buildRuntimeDatabaseConnectionString(
       || !parsed.hostname.endsWith('.pooler.supabase.com')
       || parsed.port !== '6543'
       || parsed.pathname !== '/postgres'
+      || parsed.searchParams.get('uselibpqcompat') !== 'true'
       || parsed.searchParams.get('sslmode') !== 'require'
     ) {
       throw new Error('DATABASE_URL must use the isolated ORAN Supabase transaction pooler');

@@ -6,7 +6,7 @@ import {
 } from '../runtimeRole';
 
 const DATABASE_URL = 'postgres://oran_backend_runtime:secret@localhost:5432/oran?sslmode=require';
-const POOLER_DATABASE_URL = 'postgres://oran_backend_runtime.tpatxospkuqvajusuryw:secret@aws-0-us-west-1.pooler.supabase.com:6543/postgres?sslmode=require';
+const POOLER_DATABASE_URL = 'postgres://oran_backend_runtime.tpatxospkuqvajusuryw:secret@aws-0-us-west-1.pooler.supabase.com:6543/postgres?uselibpqcompat=true&sslmode=require';
 const PRODUCTION_ENV = {
   NODE_ENV: 'production',
   ORAN_DATABASE_ROLE: ORAN_BACKEND_DATABASE_ROLE,
@@ -51,6 +51,11 @@ describe('backend database login identity', () => {
 
     expect(() => buildRuntimeDatabaseConnectionString(
       'postgres://oran_backend_runtime.abcdefghijklmnopqrst:secret@aws-0-us-west-1.pooler.supabase.com:6543/postgres?sslmode=require',
+      PRODUCTION_ENV,
+    )).toThrow('must use the isolated ORAN Supabase transaction pooler');
+
+    expect(() => buildRuntimeDatabaseConnectionString(
+      'postgres://oran_backend_runtime.tpatxospkuqvajusuryw:secret@aws-0-us-west-1.pooler.supabase.com:6543/postgres?sslmode=require',
       PRODUCTION_ENV,
     )).toThrow('must use the isolated ORAN Supabase transaction pooler');
   });

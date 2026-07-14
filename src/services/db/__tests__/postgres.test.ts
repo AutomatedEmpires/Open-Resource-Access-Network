@@ -127,7 +127,7 @@ describe('postgres utilities', () => {
   });
 
   it('reuses a module singleton pool in production without touching globalThis', async () => {
-    process.env.DATABASE_URL = 'postgres://oran_backend_runtime.tpatxospkuqvajusuryw:test@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require';
+    process.env.DATABASE_URL = 'postgres://oran_backend_runtime.tpatxospkuqvajusuryw:test@aws-0-us-east-1.pooler.supabase.com:6543/postgres?uselibpqcompat=true&sslmode=require';
     process.env.ORAN_DATABASE_ROLE = 'oran_backend_runtime';
     process.env.ORAN_SUPABASE_PROJECT_REF = 'tpatxospkuqvajusuryw';
     mutableEnv.NODE_ENV = 'production';

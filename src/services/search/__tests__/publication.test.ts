@@ -36,6 +36,9 @@ describe('seeker publication predicates', () => {
   it('requires accepted, published provenance from the winning canonical source', () => {
     const predicate = buildPublishableSourcePredicate('resource', 'positive_authority');
 
+    expect(predicate).toMatch(/^resource\.id IN \(/);
+    expect(predicate).toContain('SELECT publication_source.published_service_id AS service_id');
+    expect(predicate).toContain('publication_source.published_service_id IS NOT NULL');
     expect(predicate).toContain('public.canonical_services publication_source');
     expect(predicate).toContain('public.canonical_provenance publication_provenance');
     expect(predicate).toContain("publication_provenance.decision_status = 'accepted'");
@@ -58,12 +61,16 @@ describe('seeker publication predicates', () => {
   it('requires an approved manual projection with matching snapshot, assertion, and transition', () => {
     const predicate = buildPublishableSourcePredicate('resource', 'positive_authority');
 
+    expect(predicate).toContain('SELECT publication_snapshot.entity_id AS service_id');
     expect(predicate).toContain('public.hsds_export_snapshots publication_snapshot');
     expect(predicate).toContain('public.submissions publication_submission');
     expect(predicate).toContain("publication_submission.status = 'approved'");
     expect(predicate).toContain("payload ->> 'projectionSourceRecordId'");
     expect(predicate).toContain("publication_record.source_record_type = 'mixed_bundle'");
-    expect(predicate).toContain("publication_record.parsed_payload #>> '{projection,serviceId}' = resource.id::text");
+    expect(predicate).toContain('publication_submission.service_id = publication_snapshot.entity_id');
+    expect(predicate).toContain(
+      "publication_record.parsed_payload #>> '{projection,serviceId}' = publication_snapshot.entity_id::text",
+    );
     expect(predicate).toContain("publication_feed.feed_type = 'manual_entry'");
     expect(predicate).toContain("publication_system.family = 'manual'");
     expect(predicate).toContain("= 'host_submission'");
@@ -75,6 +82,14 @@ describe('seeker publication predicates', () => {
     expect(predicate).toContain('publication_approval.gates_passed IS TRUE');
     expect(predicate).toContain("publication_approval.actor_role IN ('community_admin', 'oran_admin')");
     expect(predicate).toContain('publication_approval.actor_user_id <> publication_submission.submitted_by_user_id');
+  });
+
+  it('builds the publication lanes once as an uncorrelated authoritative-ID union', () => {
+    const predicate = buildPublishableSourcePredicate('resource', 'positive_authority');
+
+    expect(predicate).toContain('\n    UNION\n');
+    expect(predicate.match(/resource\.id/g)).toHaveLength(1);
+    expect(predicate).not.toContain('OR EXISTS');
   });
 
   it('supports only a fail-closed emergency override', () => {
@@ -104,7 +119,8 @@ describe('seeker publication predicates', () => {
     expect(predicate).toContain("svc.status = 'active'");
     expect(predicate).toContain('svc.integrity_hold_at IS NULL');
     expect(predicate).toContain("org.status = 'active'");
-    expect(predicate).toContain('publication_source.published_service_id = svc.id');
+    expect(predicate).toContain('svc.id IN (');
+    expect(predicate.match(/svc\.id/g)).toHaveLength(1);
   });
 
   it('requires an organization to have at least one publishable service', () => {
@@ -113,7 +129,8 @@ describe('seeker publication predicates', () => {
     expect(predicate).toContain('EXISTS');
     expect(predicate).toContain('FROM services published_service');
     expect(predicate).toContain('published_service.organization_id = org.id');
-    expect(predicate).toContain('publication_source.published_service_id = published_service.id');
+    expect(predicate).toContain('published_service.id IN (');
+    expect(predicate.match(/published_service\.id/g)).toHaveLength(1);
   });
 
   it('ships read-only supporting indexes for both positive authority lanes', () => {

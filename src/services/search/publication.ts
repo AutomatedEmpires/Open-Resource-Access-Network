@@ -47,13 +47,12 @@ export function buildLegacyRetailerExclusionPredicate(serviceAlias = 's'): strin
   )`;
 }
 
-function buildCanonicalPublicationAuthorityPredicate(serviceAlias: string): string {
+function buildCanonicalAuthoritativeServiceIdsQuery(): string {
   const purposes = SEEKER_PUBLISHABLE_RESOURCE_PURPOSES
     .map((purpose) => `'${purpose}'`)
     .join(', ');
 
-  return `EXISTS (
-    SELECT 1
+  return `SELECT publication_source.published_service_id AS service_id
     FROM public.canonical_services publication_source
     JOIN public.canonical_provenance publication_provenance
       ON publication_provenance.canonical_entity_type = 'service'
@@ -68,7 +67,7 @@ function buildCanonicalPublicationAuthorityPredicate(serviceAlias: string): stri
     JOIN public.source_systems publication_system
       ON publication_system.id = publication_feed.source_system_id
      AND publication_system.id = publication_source.winning_source_system_id
-    WHERE publication_source.published_service_id = ${serviceAlias}.id
+    WHERE publication_source.published_service_id IS NOT NULL
       AND publication_source.status = 'active'
       AND publication_source.lifecycle_status = 'active'
       AND publication_source.publication_status = 'published'
@@ -81,17 +80,15 @@ function buildCanonicalPublicationAuthorityPredicate(serviceAlias: string): stri
         'curated',
         'community'
       )
-      AND publication_system.resource_purpose IN (${purposes})
-  )`;
+      AND publication_system.resource_purpose IN (${purposes})`;
 }
 
-function buildApprovedManualPublicationAuthorityPredicate(serviceAlias: string): string {
-  return `EXISTS (
-    SELECT 1
+function buildApprovedManualAuthoritativeServiceIdsQuery(): string {
+  return `SELECT publication_snapshot.entity_id AS service_id
     FROM public.hsds_export_snapshots publication_snapshot
     JOIN public.submissions publication_submission
       ON publication_submission.id::text = (publication_snapshot.hsds_payload #>> '{meta,sourceSubmissionId}')
-     AND publication_submission.service_id = ${serviceAlias}.id
+     AND publication_submission.service_id = publication_snapshot.entity_id
      AND publication_submission.status = 'approved'
      AND publication_submission.submission_type IN (
        'new_service',
@@ -103,7 +100,7 @@ function buildApprovedManualPublicationAuthorityPredicate(serviceAlias: string):
      AND publication_record.source_record_id = publication_submission.id::text
      AND publication_record.source_record_type = 'mixed_bundle'
      AND publication_record.processing_status = 'published'
-     AND publication_record.parsed_payload #>> '{projection,serviceId}' = ${serviceAlias}.id::text
+     AND publication_record.parsed_payload #>> '{projection,serviceId}' = publication_snapshot.entity_id::text
     JOIN public.source_feeds publication_feed
       ON publication_feed.id = publication_record.source_feed_id
      AND publication_feed.is_active IS TRUE
@@ -114,7 +111,6 @@ function buildApprovedManualPublicationAuthorityPredicate(serviceAlias: string):
      AND publication_system.family = 'manual'
      AND publication_system.resource_purpose = 'service_catalog'
     WHERE publication_snapshot.entity_type = 'service'
-      AND publication_snapshot.entity_id = ${serviceAlias}.id
       AND publication_snapshot.status = 'current'
       AND (
         (
@@ -134,8 +130,7 @@ function buildApprovedManualPublicationAuthorityPredicate(serviceAlias: string):
           AND publication_approval.gates_passed IS TRUE
           AND publication_approval.actor_role IN ('community_admin', 'oran_admin')
           AND publication_approval.actor_user_id <> publication_submission.submitted_by_user_id
-      )
-  )`;
+      )`;
 }
 
 /**
@@ -151,9 +146,10 @@ export function buildPublishableSourcePredicate(
     return 'FALSE /* ORAN_PUBLICATION_SAFETY_MODE deny_all */';
   }
 
-  return `(
-    ${buildCanonicalPublicationAuthorityPredicate(serviceAlias)}
-    OR ${buildApprovedManualPublicationAuthorityPredicate(serviceAlias)}
+  return `${serviceAlias}.id IN (
+    ${buildCanonicalAuthoritativeServiceIdsQuery()}
+    UNION
+    ${buildApprovedManualAuthoritativeServiceIdsQuery()}
   )`;
 }
 

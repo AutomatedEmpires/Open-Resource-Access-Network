@@ -5,6 +5,7 @@
 - Runbook ID: `RUNBOOK_211_API_INGESTION`
 - Owner role: Data Platform Lead
 - Reviewers: Ingestion Operations Lead, Platform On-Call Lead, ORAN Admin Lead
+- Operational status: active
 - Last reviewed (UTC): 2026-03-13
 - Next review due (UTC): 2026-06-13
 - Severity scope: SEV-2 to SEV-4

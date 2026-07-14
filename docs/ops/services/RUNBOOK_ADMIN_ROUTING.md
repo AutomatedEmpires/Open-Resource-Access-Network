@@ -6,6 +6,7 @@ Procedures for when candidate submissions cannot be routed to admin reviewers.
 
 - Owner role: Ingestion Operations Lead
 - Reviewers: Platform On-Call Lead, Data Platform Lead
+- Operational status: active
 - Last reviewed (UTC): 2026-03-06
 - Next review due (UTC): 2026-06-06
 - Severity scope: SEV-2 to SEV-3

@@ -5,9 +5,15 @@
 - Runbook ID: `RUNBOOK_<NAME>`
 - Owner role: `<team/role>`
 - Reviewers: `<roles>`
+- Operational status: `active` or `rollback-only`
 - Last reviewed (UTC): `<YYYY-MM-DD>`
 - Next review due (UTC): `<YYYY-MM-DD>`
 - Severity scope: `SEV-1 | SEV-2 | SEV-3 | SEV-4`
+
+For `rollback-only`, also include:
+
+- Active replacement: `<active runbook path>`
+- Retirement trigger: `<specific decommission condition>`
 
 ## Purpose And Scope
 

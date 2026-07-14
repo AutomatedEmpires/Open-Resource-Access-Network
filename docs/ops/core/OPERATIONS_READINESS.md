@@ -2,79 +2,92 @@
 
 ## Purpose
 
-This document provides an auditable snapshot of operational readiness for production reliability and governance review.
+This document records operational coverage for the active Vercel, Supabase,
+Clerk, Sentry, Resend, and provider-neutral map stack. Runbook existence is not
+the same as current validation; `scripts/check-runbook-freshness.mjs` is the
+authority for review status.
 
-## Runbook Coverage Matrix
+## Active Coverage
 
-| Capability | Runbook | Status |
+| Capability | Primary runbook | Posture |
 | --- | --- | --- |
-| Incident command and triage | `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md` | Implemented |
-| Ingestion pipeline operations | `docs/ops/services/RUNBOOK_INGESTION.md` | Implemented |
-| 211 API ingestion rollout and governance | `docs/ops/services/RUNBOOK_211_API_INGESTION.md` | Implemented |
-| Admin routing reliability | `docs/ops/services/RUNBOOK_ADMIN_ROUTING.md` | Implemented |
-| LLM dependency outage | `docs/ops/services/RUNBOOK_LLM_OUTAGE.md` | Implemented |
-| Database incident response | `docs/ops/services/RUNBOOK_DATABASE_INCIDENT.md` | Implemented |
-| Deployment rollback | `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md` | Implemented |
-| Authentication outage response | `docs/ops/services/RUNBOOK_AUTH_OUTAGE.md` | Implemented |
-| Queue backlog response | `docs/ops/services/RUNBOOK_QUEUE_BACKLOG.md` | Implemented |
-| Security/privacy incident response | `docs/ops/security/RUNBOOK_SECURITY_INCIDENT.md` | Implemented |
-| Dependency outage routing | `docs/ops/services/RUNBOOK_DEPENDENCY_OUTAGE.md` | Implemented |
-| Disaster recovery and restore validation | `docs/ops/dr/RUNBOOK_DR_BACKUP_RESTORE.md` | Implemented |
-| On-call handoff continuity | `docs/ops/core/RUNBOOK_ON_CALL_HANDOFF.md` | Implemented |
-| Change freeze and go/no-go gate | `docs/ops/core/RUNBOOK_CHANGE_FREEZE_GO_NO_GO.md` | Implemented |
-| Web app degradation response | `docs/ops/services/RUNBOOK_WEB_APP_DEGRADATION.md` | Implemented |
-| Function app runtime failure response | `docs/ops/services/RUNBOOK_FUNCTION_APP_FAILURE.md` | Implemented |
-| Rate-limit incident response | `docs/ops/services/RUNBOOK_RATE_LIMIT_INCIDENT.md` | Implemented |
-| Data quality incident response | `docs/ops/services/RUNBOOK_DATA_QUALITY_INCIDENT.md` | Implemented |
-| CI/CD pipeline failure response | `docs/ops/services/RUNBOOK_CI_CD_PIPELINE_FAILURE.md` | Implemented |
-| Cron/internal worker secret rotation | `docs/ops/security/RUNBOOK_INTERNAL_API_KEY_ROTATION.md` | Implemented |
-| Key Vault access failure response | `docs/ops/security/RUNBOOK_KEY_VAULT_ACCESS_FAILURE.md` | Implemented |
-| Observability outage response | `docs/ops/monitoring/RUNBOOK_OBSERVABILITY_OUTAGE.md` | Implemented |
-| Incident postmortem process | `docs/ops/core/RUNBOOK_INCIDENT_POSTMORTEM.md` | Implemented |
-| Runbook staleness governance | `docs/ops/core/RUNBOOK_STALE_RUNBOOK_GOVERNANCE.md` | Implemented |
+| Incident command | `RUNBOOK_INCIDENT_TRIAGE` | Active target stack |
+| Vercel rollback/release gate | `RUNBOOK_DEPLOYMENT_ROLLBACK`, `RUNBOOK_CHANGE_FREEZE_GO_NO_GO` | Active target stack |
+| Web application health | `RUNBOOK_WEB_APP_DEGRADATION` | Active target stack |
+| Supabase/PostgreSQL | `RUNBOOK_DATABASE_INCIDENT` | Active target stack |
+| Clerk identity/ORAN authorization | `RUNBOOK_AUTH_OUTAGE` | Active target stack |
+| Chat quota/rate controls | `RUNBOOK_RATE_LIMIT_INCIDENT` | Active target stack |
+| Resource freshness | `RUNBOOK_RESOURCE_FRESHNESS_REVIEW` | Active target stack |
+| Resource provenance/data quality | `RUNBOOK_DATA_QUALITY_INCIDENT` | Active target stack |
+| 211/feed operations | `RUNBOOK_211_API_INGESTION` | Active, review status enforced by CI |
+| Reviewer routing/capacity | `RUNBOOK_ADMIN_ROUTING` | Active, review status enforced by CI |
+| Membership/reviewer governance | `RUNBOOK_MEMBERSHIP_SCOPE_AND_REVIEWER_GOVERNANCE` | Active, review status enforced by CI |
+| Dependency degradation | `RUNBOOK_DEPENDENCY_OUTAGE` | Active target stack |
+| Security/privacy response | `RUNBOOK_SECURITY_INCIDENT` | Active target stack |
+| Runtime secret/configuration | `RUNBOOK_INTERNAL_API_KEY_ROTATION`, `RUNBOOK_KEY_VAULT_ACCESS_FAILURE` | Active target stack; one historical filename |
+| Sentry/Vercel observability | `RUNBOOK_OBSERVABILITY_OUTAGE` | Active target stack |
+| Disaster recovery | `RUNBOOK_DR_BACKUP_RESTORE` | Active, review and measured drill still required |
+| Handoff/postmortem/governance | Core runbooks | Active target stack |
 
-## Monitoring And Alerting Coverage
+## Rollback-Only Coverage
 
-- Core KQL queries are maintained in `docs/ops/monitoring/MONITORING_QUERIES.md`.
-- Incident triage uses those queries as baseline diagnostics.
-- Alert-to-runbook routing table is maintained in `docs/ops/README.md`.
-- Latest runbook verification audit: `docs/ops/audits/RUNBOOK_AUDIT_2026-03-06.md`.
+| Legacy capability | Runbook | Retirement posture |
+| --- | --- | --- |
+| Azure Function host/timers | `RUNBOOK_FUNCTION_APP_FAILURE` | Review-gated until decommission |
+| Azure Functions/Storage Queue ingestion | `RUNBOOK_INGESTION` | Review-gated until decommission |
+| Azure OpenAI ingestion extraction | `RUNBOOK_LLM_OUTAGE` | Review-gated until decommission |
+| Azure Storage Queue throughput | `RUNBOOK_QUEUE_BACKLOG` | Review-gated until decommission |
+
+These documents are not active incident routes. Their overdue status must not be
+hidden; either validate the rollback path or decommission/archive it.
+
+## Monitoring And Alerting
+
+- Sentry and Vercel provide target-stack error, release, and runtime evidence.
+- `/api/health` independently checks environment readiness and database reachability.
+- Five authenticated, staggered Vercel Cron routes run feed polling, SLA,
+  coverage, confidence-regression, and resource-freshness checks.
+- `MONITORING_QUERIES.md` and `LOAD_SCALE_TESTING.md` remain Azure rollback
+  references and are not target-stack monitoring instructions.
+- Alert-to-runbook routing is maintained in `docs/ops/README.md`.
 
 ## Drill Program
 
-- Monthly tabletop: one incident scenario with role assignment and timeline capture.
-- Quarterly game day: one recovery or rollback scenario executed end-to-end.
-- Track and review:
-  - Time to detect
-  - Time to mitigate
-  - Time to recover
-  - Runbook gaps discovered
+- Monthly tabletop: one safety, auth, data-integrity, or provider incident.
+- Quarterly game day: rollback or restore executed end to end.
+- Capture time to detect, mitigate, and recover plus every runbook gap.
+- A desk review may advance content review dates, but it must not claim a restore,
+  rollback, or provider drill that was not executed.
 
-## Review Cadence
+## Review Governance
 
-- SEV-1/SEV-2 runbooks: reviewed quarterly.
-- SEV-3/SEV-4 runbooks: reviewed semi-annually.
-- Mandatory review on major changes in:
-  - `src/app/api/**`
-  - `src/services/**`
-  - `db/migrations/**`
-  - `infra/**`
-  - `.github/workflows/**`
+- SEV-1/SEV-2 runbooks: quarterly.
+- SEV-3/SEV-4 runbooks: semi-annually.
+- Immediate review after material changes to APIs, services, migrations,
+  functions, infrastructure, workflows, or `vercel.json`.
+- Active and rollback-only documents both fail CI when overdue.
+- Lifecycle/date changes require substantive content and validation evidence.
 
 ## Current Risks
 
-- Some runbooks still rely on manual command execution and operator judgment.
-- Recovery objective targets (RTO/RPO) are documented but not yet baselined with measured drill outcomes.
+- Disaster recovery lacks a measured Supabase restore RTO/RPO.
+- Several active ingestion/governance documents still require target-stack review.
+- The Azure rollback window has no completed decommission evidence.
+- Provider-neutral monitoring/load guidance has not yet replaced the Azure KQL
+  and queue tuning references.
 
 ## Next Actions
 
-1. Run first formal incident tabletop and record outcomes.
-2. Measure and publish first RTO/RPO baseline from DR drill.
-3. Keep runbook freshness automation green and expand it if metadata rules tighten.
+1. Resolve every remaining overdue item reported by the checker through review
+   or evidenced retirement.
+2. Run and record the first Supabase restore drill and Vercel rollback game day.
+3. Close the Azure rollback window after production cutover and backup validation.
+4. Replace the legacy monitoring/load documents with Sentry/Vercel/Supabase guidance.
 
 ## Governance Links
 
-- `docs/SSOT.md`
-- `docs/governance/OPERATING_MODEL.md`
+- `docs/ops/README.md`
+- `docs/ops/core/RUNBOOK_STALE_RUNBOOK_GOVERNANCE.md`
+- `docs/platform/STACK_MIGRATION.md`
 - `docs/SECURITY_PRIVACY.md`
-- `docs/ENGINEERING_LOG.md`
+- `scripts/check-runbook-freshness.mjs`

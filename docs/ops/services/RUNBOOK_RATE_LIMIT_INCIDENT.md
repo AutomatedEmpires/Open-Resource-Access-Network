@@ -1,48 +1,108 @@
-# Runbook: Rate Limit Incident
+# Runbook: Rate Limit And Chat Usage Incident
 
 ## Metadata
 
 - Owner role: Platform On-Call Lead
 - Reviewers: Security Lead, Product Operations Lead
-- Last reviewed (UTC): 2026-03-06
-- Next review due (UTC): 2026-06-06
+- Operational status: active
+- Last reviewed (UTC): 2026-07-13
+- Next review due (UTC): 2026-10-13
 - Severity scope: SEV-2 to SEV-4
 
 ## Purpose And Scope
 
-Address incidents where rate limiting is either too permissive (abuse risk) or too restrictive (legitimate users blocked).
+Respond when ORAN usage controls are too permissive, incorrectly block a
+legitimate seeker, or become unavailable. The primary production control is the
+atomic PostgreSQL reservation implemented by migration
+`0062_atomic_chat_usage_controls.sql`; process-local and optional Redis limiters
+continue to protect other endpoint families.
 
-## Code-Verified Context
+## Production Contract
 
-- Rate limiter implemented in `src/services/security/rateLimit.ts`.
-- API routes return `Retry-After` header on 429 responses.
+- Anonymous devices receive 10 successful non-crisis messages per rolling 24 hours.
+- Authenticated accounts receive 20 successful non-crisis messages per rolling
+  24 hours, constrained by both account and device history.
+- Ordinary chat traffic is limited to six requests per minute.
+- One request per identity may be in flight; an abandoned lease expires after
+  five minutes.
+- A successful ordinary response consumes quota. Errors, temporary retrieval
+  outages, and non-chargeable responses release the reservation.
+- Explicit self-crisis messages bypass usage controls and continue to the
+  deterministic 911/988/211 safety path.
+- When PostgreSQL is configured but usage reservation fails, chat fails closed
+  with `503` and `Retry-After: 30`.
+- Quota and limiter responses are private, non-cacheable, and include an
+  appropriate `Retry-After` header.
 
 ## Triggers
 
-- 429 spikes on critical user endpoints.
-- Evidence of abuse traffic bypassing effective throttling.
-- Support reports of legitimate users repeatedly blocked.
+- Unexpected spikes in `429` or `503` from `/api/chat`.
+- Quota counts exceed the configured anonymous or authenticated ceiling.
+- Concurrent requests both consume the final available slot.
+- A successful response is returned after persistent finalization fails.
+- Crisis routing is blocked by ordinary quota state.
+- Supabase/PostgreSQL errors affect `oran_internal.reserve_chat_request`,
+  `check_chat_quota`, or `finalize_chat_request`.
 
 ## Diagnosis
 
-1. Identify affected endpoints.
-2. Confirm whether 429s include expected `Retry-After` values.
-3. Determine if traffic is abusive or organic growth.
+1. Confirm whether the response is `quota_exceeded`, `rate_limited`,
+   `in_flight`, or `unavailable`; do not ask for raw chat text or identifiers.
+2. Check the current Vercel release and Supabase health before changing limits.
+3. Review privacy-filtered Sentry events for `chat_usage_reserve`,
+   `chat_usage_finalize`, and `api_chat_usage_release`.
+4. Confirm migration `0062_atomic_chat_usage_controls.sql` is applied and the
+   dedicated `oran_runtime` role can execute only the required functions.
+5. Reproduce with opaque test identities. Verify the anonymous and authenticated
+   rolling windows separately and then test account/device rotation.
+6. Send an explicit crisis fixture while quota is exhausted and verify the
+   deterministic safety response still succeeds without consuming quota.
 
 ## Mitigation
 
-1. For false positives, tune endpoint-specific limits cautiously.
-2. For abuse spikes, tighten limits and monitor collateral impact.
-3. Validate protected/internal/admin endpoints remain controlled.
+### Persistent controls unavailable
+
+1. Keep the fail-closed `503` posture; do not enable a per-instance production
+   fallback.
+2. Restore Supabase connectivity or the runtime function grants.
+3. Redeploy only when configuration changed, then verify one reservation,
+   successful finalization, and released finalization.
+
+### Legitimate traffic incorrectly blocked
+
+1. Determine whether the block comes from the rolling quota, minute rate, or
+   in-flight lease.
+2. Correct clock, identity, or reservation defects before considering a limit
+   increase.
+3. Do not delete usage rows or weaken account/device coupling as a convenience
+   workaround.
+
+### Limit bypass or overshoot
+
+1. Preserve relevant audit and Sentry evidence without raw identity values.
+2. Disable the affected release or roll back if atomic reservation/finalization
+   changed.
+3. Verify concurrency at the database boundary before restoring traffic.
 
 ## Validation
 
-- 429 rate returns to acceptable range.
-- Legitimate user flows recover.
-- Abuse indicators decline.
+```bash
+npx vitest run src/services/chat/__tests__/quota-usage-controls.test.ts src/app/api/chat/__tests__/route.test.ts src/app/api/chat/quota/__tests__/route.test.ts
+```
+
+Confirm all of the following:
+
+- a blocked request returns `429` with `Retry-After`
+- configured database failure returns `503`, not an in-memory allowance
+- only successful ordinary responses decrement daily quota
+- a finalization failure cannot ship a successful response
+- explicit crisis routing remains available at exhausted quota
 
 ## References
 
+- `db/migrations/0062_atomic_chat_usage_controls.sql`
+- `src/domain/constants.ts`
+- `src/services/chat/quota.ts`
+- `src/app/api/chat/route.ts`
 - `src/services/security/rateLimit.ts`
-- `docs/ops/monitoring/MONITORING_QUERIES.md`
-- `docs/SECURITY_PRIVACY.md`
+- `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md`

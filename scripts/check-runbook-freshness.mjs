@@ -3,8 +3,10 @@
 /**
  * ORAN Runbook Freshness Checker
  *
- * Validates `Next review due (UTC): YYYY-MM-DD` metadata in operational runbooks.
- * Fails with exit code 1 when a runbook is overdue.
+ * Validates lifecycle and review metadata for operational runbooks. Active and
+ * rollback-only runbooks both remain governed and fail when their review is
+ * overdue. A rollback-only document must also name its active replacement and
+ * the event that ends its rollback window.
  *
  * Usage:
  *   node scripts/check-runbook-freshness.mjs
@@ -12,19 +14,31 @@
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const ROOT = new URL('..', import.meta.url).pathname;
-const RUNBOOK_DIRS = [
-  join(ROOT, 'docs', 'ops', 'core'),
-  join(ROOT, 'docs', 'ops', 'services'),
-  join(ROOT, 'docs', 'ops', 'security'),
-  join(ROOT, 'docs', 'ops', 'dr'),
-  join(ROOT, 'docs', 'ops', 'monitoring'),
+export const REPOSITORY_ROOT = fileURLToPath(new URL('..', import.meta.url));
+
+export const RUNBOOK_RELATIVE_DIRS = [
+  ['docs', 'ops', 'core'],
+  ['docs', 'ops', 'services'],
+  ['docs', 'ops', 'security'],
+  ['docs', 'ops', 'dr'],
+  ['docs', 'ops', 'monitoring'],
+  ['docs', 'ops', 'data'],
 ];
 
-const emitJson = process.argv.includes('--json');
-const DUE_RE = /^-\s+Next review due \(UTC\):\s*(\d{4}-\d{2}-\d{2})\s*$/m;
+const FIELD_PATTERNS = {
+  owner: /^-\s+Owner role:\s*(.+?)\s*$/m,
+  reviewers: /^-\s+Reviewers:\s*(.+?)\s*$/m,
+  lifecycle: /^-\s+Operational status:\s*(active|rollback-only)\s*$/m,
+  lastReviewed: /^-\s+Last reviewed \(UTC\):\s*(\d{4}-\d{2}-\d{2})\s*$/m,
+  nextReview: /^-\s+Next review due \(UTC\):\s*(\d{4}-\d{2}-\d{2})\s*$/m,
+  activeReplacement: /^-\s+Active replacement:\s*(.+?)\s*$/m,
+  retirementTrigger: /^-\s+Retirement trigger:\s*(.+?)\s*$/m,
+};
+
+const REQUIRED_FIELDS = ['owner', 'reviewers', 'lifecycle', 'lastReviewed', 'nextReview'];
 
 function listRunbooks(dir) {
   const files = [];
@@ -41,83 +55,170 @@ function listRunbooks(dir) {
   return files;
 }
 
-function utcDateOnly(d) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+function utcDateOnly(value) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 }
 
-const today = utcDateOnly(new Date());
-const rows = [];
-let missingMetadata = 0;
-let overdue = 0;
+function parseStrictDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value ?? '');
+  if (!match) return null;
 
-for (const baseDir of RUNBOOK_DIRS) {
-  if (!statSync(baseDir, { throwIfNoEntry: false })?.isDirectory()) continue;
-  for (const filePath of listRunbooks(baseDir)) {
-    const rel = relative(ROOT, filePath);
-    const src = readFileSync(filePath, 'utf8');
-    const m = src.match(DUE_RE);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
 
-    if (!m) {
-      missingMetadata++;
-      rows.push({
-        file: rel,
-        due: null,
-        status: 'MISSING_METADATA',
-        daysOverdue: null,
-      });
-      continue;
-    }
-
-    const dueDate = new Date(`${m[1]}T00:00:00Z`);
-    const days = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-    const isOverdue = days > 0;
-
-    if (isOverdue) overdue++;
-
-    rows.push({
-      file: rel,
-      due: m[1],
-      status: isOverdue ? 'OVERDUE' : 'OK',
-      daysOverdue: isOverdue ? days : 0,
-    });
+  if (
+    parsed.getUTCFullYear() !== year
+    || parsed.getUTCMonth() !== month - 1
+    || parsed.getUTCDate() !== day
+  ) {
+    return null;
   }
+
+  return parsed;
 }
 
-rows.sort((a, b) => a.file.localeCompare(b.file));
+function readField(source, field) {
+  return source.match(FIELD_PATTERNS[field])?.[1]?.trim() ?? null;
+}
 
-const summary = {
-  scanned: rows.length,
-  missingMetadata,
-  overdue,
-  passing: missingMetadata === 0 && overdue === 0,
-};
+export function buildRunbookFreshnessReport({
+  root = REPOSITORY_ROOT,
+  now = new Date(),
+  relativeDirs = RUNBOOK_RELATIVE_DIRS,
+} = {}) {
+  const today = utcDateOnly(now);
+  const rows = [];
 
-if (emitJson) {
-  console.log(JSON.stringify({ summary, rows }, null, 2));
-} else {
-  console.log('ORAN Runbook Freshness Report');
-  console.log('--------------------------------');
-  console.log(`Scanned: ${summary.scanned}`);
-  console.log(`Missing metadata: ${summary.missingMetadata}`);
-  console.log(`Overdue: ${summary.overdue}`);
-  console.log('');
+  for (const segments of relativeDirs) {
+    const baseDir = join(root, ...segments);
+    if (!statSync(baseDir, { throwIfNoEntry: false })?.isDirectory()) continue;
 
-  for (const row of rows) {
+    for (const filePath of listRunbooks(baseDir)) {
+      const source = readFileSync(filePath, 'utf8');
+      const metadata = Object.fromEntries(
+        Object.keys(FIELD_PATTERNS).map((field) => [field, readField(source, field)]),
+      );
+      const issues = [];
+
+      for (const field of REQUIRED_FIELDS) {
+        if (!metadata[field]) issues.push(`missing:${field}`);
+      }
+
+      const lastReviewedDate = metadata.lastReviewed
+        ? parseStrictDate(metadata.lastReviewed)
+        : null;
+      const nextReviewDate = metadata.nextReview
+        ? parseStrictDate(metadata.nextReview)
+        : null;
+
+      if (metadata.lastReviewed && !lastReviewedDate) issues.push('invalid:lastReviewed');
+      if (metadata.nextReview && !nextReviewDate) issues.push('invalid:nextReview');
+      if (lastReviewedDate && lastReviewedDate > today) issues.push('invalid:lastReviewedInFuture');
+      if (lastReviewedDate && nextReviewDate && nextReviewDate <= lastReviewedDate) {
+        issues.push('invalid:reviewCadence');
+      }
+
+      if (metadata.lifecycle === 'rollback-only') {
+        if (!metadata.activeReplacement) issues.push('missing:activeReplacement');
+        if (!metadata.retirementTrigger) issues.push('missing:retirementTrigger');
+      }
+
+      const hasMissingMetadata = issues.some((issue) => issue.startsWith('missing:'));
+      const hasInvalidMetadata = issues.some((issue) => issue.startsWith('invalid:'));
+      const isOverdue = issues.length === 0 && nextReviewDate && nextReviewDate < today;
+      const daysOverdue = isOverdue
+        ? Math.floor((today.getTime() - nextReviewDate.getTime()) / 86_400_000)
+        : 0;
+
+      rows.push({
+        file: relative(root, filePath).replaceAll('\\', '/'),
+        lifecycle: metadata.lifecycle,
+        lastReviewed: metadata.lastReviewed,
+        due: metadata.nextReview,
+        status: hasMissingMetadata
+          ? 'MISSING_METADATA'
+          : hasInvalidMetadata
+            ? 'INVALID_METADATA'
+            : isOverdue
+              ? 'OVERDUE'
+              : 'OK',
+        daysOverdue,
+        issues,
+      });
+    }
+  }
+
+  rows.sort((a, b) => a.file.localeCompare(b.file));
+
+  const summary = {
+    scanned: rows.length,
+    active: rows.filter((row) => row.lifecycle === 'active').length,
+    rollbackOnly: rows.filter((row) => row.lifecycle === 'rollback-only').length,
+    missingMetadata: rows.filter((row) => row.status === 'MISSING_METADATA').length,
+    invalidMetadata: rows.filter((row) => row.status === 'INVALID_METADATA').length,
+    overdue: rows.filter((row) => row.status === 'OVERDUE').length,
+  };
+
+  return {
+    summary: {
+      ...summary,
+      passing:
+        summary.missingMetadata === 0
+        && summary.invalidMetadata === 0
+        && summary.overdue === 0,
+    },
+    rows,
+  };
+}
+
+export function formatRunbookFreshnessReport(report) {
+  const lines = [
+    'ORAN Runbook Freshness Report',
+    '--------------------------------',
+    `Scanned: ${report.summary.scanned}`,
+    `Active: ${report.summary.active}`,
+    `Rollback-only: ${report.summary.rollbackOnly}`,
+    `Missing metadata: ${report.summary.missingMetadata}`,
+    `Invalid metadata: ${report.summary.invalidMetadata}`,
+    `Overdue: ${report.summary.overdue}`,
+    '',
+  ];
+
+  for (const row of report.rows) {
+    const lifecycle = row.lifecycle ?? 'unknown';
     if (row.status === 'OK') {
-      console.log(`OK       ${row.file} (due ${row.due})`);
+      lines.push(`OK       ${row.file} (${lifecycle}; due ${row.due})`);
       continue;
     }
     if (row.status === 'OVERDUE') {
-      console.log(`OVERDUE  ${row.file} (due ${row.due}, ${row.daysOverdue} day(s) overdue)`);
+      lines.push(
+        `OVERDUE  ${row.file} (${lifecycle}; due ${row.due}, ${row.daysOverdue} day(s) overdue)`,
+      );
       continue;
     }
-    console.log(`MISSING  ${row.file} (missing \`Next review due (UTC)\` metadata)`);
+    lines.push(`${row.status.padEnd(9)} ${row.file} (${row.issues.join(', ')})`);
   }
 
-  if (!summary.passing) {
-    console.log('');
-    console.log('Runbook freshness check failed.');
+  if (!report.summary.passing) {
+    lines.push('', 'Runbook freshness check failed.');
   }
+
+  return lines.join('\n');
 }
 
-process.exit(summary.passing ? 0 : 1);
+function isDirectInvocation() {
+  if (!process.argv[1]) return false;
+  return pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+}
+
+if (isDirectInvocation()) {
+  const report = buildRunbookFreshnessReport();
+  if (process.argv.includes('--json')) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(formatRunbookFreshnessReport(report));
+  }
+  process.exitCode = report.summary.passing ? 0 : 1;
+}

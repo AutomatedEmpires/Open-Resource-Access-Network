@@ -5,6 +5,7 @@
 - Runbook ID: `RUNBOOK_MEMBERSHIP_SCOPE_AND_REVIEWER_GOVERNANCE`
 - Owner role: Governance Operations Lead
 - Reviewers: Platform Security Lead, ORAN Operations Lead
+- Operational status: active
 - Last reviewed (UTC): 2026-03-16
 - Next review due (UTC): 2026-06-16
 - Severity scope: `SEV-2 | SEV-3 | SEV-4`

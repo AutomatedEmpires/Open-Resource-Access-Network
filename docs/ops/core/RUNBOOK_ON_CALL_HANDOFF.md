@@ -4,8 +4,9 @@
 
 - Owner role: Platform On-Call Lead
 - Reviewers: Release Manager, Security Lead
-- Last reviewed (UTC): 2026-03-06
-- Next review due (UTC): 2026-06-06
+- Operational status: active
+- Last reviewed (UTC): 2026-07-13
+- Next review due (UTC): 2026-10-13
 - Severity scope: SEV-1 to SEV-4
 
 ## Purpose And Scope
@@ -36,6 +37,9 @@ This runbook standardizes shift handoffs to prevent context loss, missed risks, 
    - Crisis routing intact
    - Retrieval-first intact
    - Auth boundaries intact
+   - Publication integrity and resource-freshness holds intact
+8. Dedicated ORAN provider status: Vercel, Supabase, Clerk, Sentry, and Resend.
+9. Azure rollback window state and whether any legacy worker is enabled.
 
 ## Handoff Template
 

@@ -6,9 +6,12 @@ Procedures for operating and troubleshooting the ingestion pipeline.
 
 - Owner role: Ingestion Operations Lead
 - Reviewers: Data Platform Lead, Platform On-Call Lead
+- Operational status: rollback-only
 - Last reviewed (UTC): 2026-03-06
 - Next review due (UTC): 2026-06-06
 - Severity scope: SEV-2 to SEV-3
+- Active replacement: `docs/ops/services/RUNBOOK_211_API_INGESTION.md` and Vercel internal-route operations
+- Retirement trigger: Archive after Azure Functions and Storage Queue rollback resources are decommissioned.
 
 ---
 

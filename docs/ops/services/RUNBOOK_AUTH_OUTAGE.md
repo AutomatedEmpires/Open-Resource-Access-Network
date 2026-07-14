@@ -2,8 +2,9 @@
 
 ## Ownership
 
-- Owner: Identity and Access Lead
+- Owner role: Identity and Access Lead
 - Reviewers: Platform On-Call Lead, Security Lead
+- Operational status: active
 - Last reviewed (UTC): 2026-07-13
 - Next review due (UTC): 2026-10-13
 - Severity: SEV-1 through SEV-3

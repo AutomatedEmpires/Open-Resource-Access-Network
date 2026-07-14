@@ -6,9 +6,12 @@ Procedures for when Azure OpenAI is unavailable or degraded.
 
 - Owner role: Ingestion Operations Lead
 - Reviewers: Data Platform Lead, Platform On-Call Lead
+- Operational status: rollback-only
 - Last reviewed (UTC): 2026-03-06
 - Next review due (UTC): 2026-06-06
 - Severity scope: SEV-2 to SEV-3
+- Active replacement: `docs/ops/services/RUNBOOK_DEPENDENCY_OUTAGE.md`
+- Retirement trigger: Archive after the Azure ingestion rollback path and its Azure OpenAI credential are decommissioned.
 
 ---
 

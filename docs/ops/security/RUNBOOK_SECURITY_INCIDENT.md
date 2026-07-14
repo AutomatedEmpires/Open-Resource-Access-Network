@@ -4,8 +4,9 @@
 
 - Owner role: Security Lead
 - Reviewers: Platform On-Call Lead, Identity And Access Lead
-- Last reviewed (UTC): 2026-03-06
-- Next review due (UTC): 2026-06-06
+- Operational status: active
+- Last reviewed (UTC): 2026-07-13
+- Next review due (UTC): 2026-10-13
 - Severity scope: SEV-1 to SEV-2
 
 ## Purpose And Scope
@@ -56,10 +57,14 @@ Do not include raw secrets or sensitive personal data in incident documents.
    - `SENTRY_AUTH_TOKEN`
    - Supabase database credentials
    - `CRON_SECRET`
+   - `RESEND_API_KEY`
    - `INTERNAL_API_KEY` when the rollback credential is enabled
    - Any exposed integration credentials
-2. Redeploy affected Vercel functions and restart any ORAN-only workers after rotation.
-3. Validate service health and auth flows post-rotation.
+2. Revoke the prior value at its provider; changing only Vercel configuration is
+   not revocation.
+3. Redeploy affected Vercel functions and restart any ORAN-only rollback workers
+   after rotation.
+4. Validate service health, auth, cron, and notification flows after rotation.
 
 ### B. Unauthorized Access Patterns
 
@@ -71,7 +76,9 @@ Do not include raw secrets or sensitive personal data in incident documents.
 
 1. Determine dataset and scope of potential exposure.
 2. Preserve evidence (logs, request metadata, deployment timeline).
-3. Coordinate internal/legal notification workflow per policy.
+3. Restrict further access without deleting audit history.
+4. Coordinate internal/legal notification workflow per policy; do not make a
+   notification-timing promise from this technical runbook.
 
 ## Investigation
 
@@ -93,6 +100,8 @@ Do not include raw secrets or sensitive personal data in incident documents.
 3. Verify:
    - Auth boundary integrity
    - Rate limiting and Retry-After behavior
+   - Published-resource provenance and integrity holds
+   - Internal cron authentication
    - Admin API role enforcement
 4. Monitor for recurrence signals.
 
@@ -117,9 +126,19 @@ Do not include raw secrets or sensitive personal data in incident documents.
 3. Update security controls and this runbook.
 4. Record operational updates in `docs/ENGINEERING_LOG.md`.
 
+## Focused Validation
+
+Run the suites that protect identity mapping, internal-worker authentication,
+chat usage controls, and seeker publication boundaries affected by the incident.
+Select the smallest applicable set, then run repository typecheck before closing
+a corrective release. Never use production personal data as a fixture.
+
 ## References
 
 - `SECURITY.md`
 - `docs/SECURITY_PRIVACY.md`
 - `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md`
-- `docs/ops/monitoring/MONITORING_QUERIES.md`
+- `docs/ops/security/RUNBOOK_INTERNAL_API_KEY_ROTATION.md`
+- `docs/ops/services/RUNBOOK_AUTH_OUTAGE.md`
+- `docs/ops/services/RUNBOOK_RATE_LIMIT_INCIDENT.md`
+- `src/services/telemetry/sentry.ts`

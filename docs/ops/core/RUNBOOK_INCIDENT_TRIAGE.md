@@ -4,8 +4,9 @@
 
 - Owner role: Platform On-Call Lead
 - Reviewers: Security Lead, Data Lead, Product Operations Lead
-- Last reviewed (UTC): 2026-03-06
-- Next review due (UTC): 2026-06-06
+- Operational status: active
+- Last reviewed (UTC): 2026-07-13
+- Next review due (UTC): 2026-10-13
 - Severity scope: SEV-1 to SEV-4
 
 ## Purpose And Scope
@@ -35,9 +36,9 @@ This runbook defines the first-response operating model for production incidents
 
 ## Detection Signals
 
-- GitHub Actions failures on main deployment workflows.
-- Application Insights alerts and KQL in `docs/ops/monitoring/MONITORING_QUERIES.md`.
-- Queue depth increases in ingestion/admin pipelines.
+- GitHub required-check or Vercel production deployment failures.
+- Privacy-filtered Sentry alerts, Vercel runtime errors, and `/api/health` failures.
+- Supabase connection/latency signals or freshness/review backlog growth.
 - Direct user/admin reports through issue forms or internal channels.
 
 ## Incident Command Roles
@@ -62,9 +63,9 @@ This runbook defines the first-response operating model for production incidents
 2. Appoint IC, Operations Driver, Communications Lead.
 3. Freeze non-essential deployments if SEV-1/SEV-2.
 4. Capture baseline status:
-   - Web app health
-   - Function app health
-   - Queue depth
+   - Vercel deployment and web app health
+   - Supabase and Clerk status
+   - Scheduled-job and review backlog state
    - Error rates and latency
 5. Publish incident start update with known impact and next update time.
 
@@ -80,16 +81,23 @@ This runbook defines the first-response operating model for production incidents
    - Infrastructure changes
    - Migration history
 3. Validate dependencies:
-   - Database
-   - Azure OpenAI (ingestion only)
-   - Entra auth
-   - Storage queues
+   - Supabase PostgreSQL/pooler
+   - Clerk identity and ORAN authorization mapping
+   - Vercel hosting/functions/cron
+   - Sentry and OpenStreetMap tiles
+   - Resend or optional AI only when the affected journey uses them
 4. Classify incident path and switch to specialized runbook:
-   - Ingestion issues: `docs/ops/services/RUNBOOK_INGESTION.md`
+   - Resource freshness issues: `docs/ops/data/RUNBOOK_RESOURCE_FRESHNESS_REVIEW.md`
+   - 211/feed issues: `docs/ops/services/RUNBOOK_211_API_INGESTION.md`
    - Admin assignment issues: `docs/ops/services/RUNBOOK_ADMIN_ROUTING.md`
-   - LLM dependency issues: `docs/ops/services/RUNBOOK_LLM_OUTAGE.md`
    - DB issues: `docs/ops/services/RUNBOOK_DATABASE_INCIDENT.md`
+   - Auth issues: `docs/ops/services/RUNBOOK_AUTH_OUTAGE.md`
+   - Usage-control issues: `docs/ops/services/RUNBOOK_RATE_LIMIT_INCIDENT.md`
+   - Dependency issues: `docs/ops/services/RUNBOOK_DEPENDENCY_OUTAGE.md`
    - Deployment regressions: `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md`
+
+Use the Azure Function, queue, ingestion, and LLM runbooks only after an explicit
+decision to activate the rollback platform.
 
 ## Mitigation Priorities
 
@@ -117,7 +125,7 @@ This runbook defines the first-response operating model for production incidents
 
 - Error rates/latency return to normal operating ranges.
 - No active safety/privacy violations.
-- Queue backlog and SLA breach risk stabilized.
+- Review/freshness backlog and SLA breach risk stabilized.
 - Incident channel updated with resolution summary.
 
 ## Post-Incident Requirements
@@ -129,8 +137,8 @@ This runbook defines the first-response operating model for production incidents
 
 ## References
 
-- `docs/ops/monitoring/MONITORING_QUERIES.md`
-- `docs/ops/services/RUNBOOK_INGESTION.md`
+- `docs/ops/monitoring/RUNBOOK_OBSERVABILITY_OUTAGE.md`
+- `docs/ops/data/RUNBOOK_RESOURCE_FRESHNESS_REVIEW.md`
 - `docs/ops/services/RUNBOOK_ADMIN_ROUTING.md`
-- `docs/ops/services/RUNBOOK_LLM_OUTAGE.md`
+- `docs/ops/services/RUNBOOK_DEPENDENCY_OUTAGE.md`
 - `docs/SSOT.md`

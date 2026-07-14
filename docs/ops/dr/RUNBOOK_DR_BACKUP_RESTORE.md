@@ -4,6 +4,7 @@
 
 - Owner role: Data Platform Lead
 - Reviewers: Platform On-Call Lead, Release Manager
+- Operational status: active
 - Last reviewed (UTC): 2026-03-06
 - Next review due (UTC): 2026-06-06
 - Severity scope: SEV-1 to SEV-2

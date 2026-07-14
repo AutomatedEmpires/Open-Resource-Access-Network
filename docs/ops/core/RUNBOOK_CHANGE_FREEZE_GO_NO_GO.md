@@ -4,8 +4,9 @@
 
 - Owner role: Release Manager
 - Reviewers: Platform On-Call Lead, Security Lead, Data Platform Lead
-- Last reviewed (UTC): 2026-03-06
-- Next review due (UTC): 2026-06-06
+- Operational status: active
+- Last reviewed (UTC): 2026-07-13
+- Next review due (UTC): 2026-10-13
 - Severity scope: SEV-1 to SEV-3
 
 ## Purpose And Scope
@@ -34,6 +35,10 @@ Defines when to declare a temporary change freeze and how to execute go/no-go re
 4. Rollback target identified and validated.
 5. On-call coverage confirmed for deployment window.
 6. Communication plan prepared.
+7. Vercel candidate commit, Supabase target, Clerk instance, and ORAN-only
+   environment scope are explicitly identified.
+8. Critical seeker journeys, publication boundaries, and `/api/health` pass on
+   the immutable candidate URL before any domain or alias change.
 
 ## Hard No-Go Criteria
 
@@ -44,6 +49,10 @@ Declare `NO-GO` if any are true:
 - Migration compatibility unresolved.
 - Security incident still in containment or investigation phase.
 - No validated rollback target available.
+- Candidate depends on a secret, database, identity tenant, or project belonging
+  to another business.
+- Root-domain DNS or production alias would be changed before the immutable
+  candidate is validated.
 
 ## Emergency Exception Path
 
@@ -68,6 +77,8 @@ If a deployment is required during freeze:
 ## References
 
 - `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md`
-- `.github/workflows/deploy-azure-appservice.yml`
-- `.github/workflows/deploy-azure-functions.yml`
-- `.github/workflows/deploy-infra.yml`
+- `docs/platform/STACK_MIGRATION.md`
+- `.github/workflows/ci.yml`
+- `.github/workflows/db-migrate.yml`
+- `.github/workflows/runbook-freshness.yml`
+- `vercel.json`

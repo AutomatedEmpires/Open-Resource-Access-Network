@@ -4,6 +4,7 @@
 
 - Owner role: Security Lead
 - Reviewers: Platform On-Call Lead, Ingestion Operations Lead
+- Operational status: active
 - Last reviewed (UTC): 2026-07-13
 - Next review due (UTC): 2026-10-13
 - Severity scope: SEV-2 to SEV-3

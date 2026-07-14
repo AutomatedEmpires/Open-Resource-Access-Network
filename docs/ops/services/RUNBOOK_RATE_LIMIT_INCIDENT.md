@@ -14,8 +14,10 @@
 Respond when ORAN usage controls are too permissive, incorrectly block a
 legitimate seeker, or become unavailable. The primary production control is the
 atomic PostgreSQL reservation implemented by migration
-`0062_atomic_chat_usage_controls.sql`; process-local and optional Redis limiters
-continue to protect other endpoint families.
+`0062_atomic_chat_usage_controls.sql`. Other protected route families use the
+private atomic PostgreSQL limiter from `0068_shared_rate_limit_windows.sql` as
+their production authority. Redis and process-local limiting are database-less
+local/test options, not production failover counters.
 
 ## Production Contract
 
@@ -31,6 +33,8 @@ continue to protect other endpoint families.
   deterministic 911/988/211 safety path.
 - When PostgreSQL is configured but usage reservation fails, chat fails closed
   with `503` and `Retry-After: 30`.
+- When the shared PostgreSQL function fails, generic production route limiting
+  fails closed instead of switching to a fresh provider or per-instance counter.
 - Quota and limiter responses are private, non-cacheable, and include an
   appropriate `Retry-After` header.
 
@@ -42,7 +46,8 @@ continue to protect other endpoint families.
 - A successful response is returned after persistent finalization fails.
 - Crisis routing is blocked by ordinary quota state.
 - Supabase/PostgreSQL errors affect `oran_internal.reserve_chat_request`,
-  `check_chat_quota`, or `finalize_chat_request`.
+  `check_chat_quota`, `finalize_chat_request`, or
+  `consume_shared_rate_limit`.
 
 ## Diagnosis
 
@@ -51,8 +56,9 @@ continue to protect other endpoint families.
 2. Check the current Vercel release and Supabase health before changing limits.
 3. Review privacy-filtered Sentry events for `chat_usage_reserve`,
    `chat_usage_finalize`, and `api_chat_usage_release`.
-4. Confirm migration `0062_atomic_chat_usage_controls.sql` is applied and the
-   dedicated `oran_runtime` role can execute only the required functions.
+4. Confirm migrations `0062_atomic_chat_usage_controls.sql` and
+   `0068_shared_rate_limit_windows.sql` are applied and the dedicated
+   `oran_backend_runtime` role can execute only the required functions.
 5. Reproduce with opaque test identities. Verify the anonymous and authenticated
    rolling windows separately and then test account/device rotation.
 6. Send an explicit crisis fixture while quota is exhausted and verify the
@@ -87,7 +93,7 @@ continue to protect other endpoint families.
 ## Validation
 
 ```bash
-npx vitest run src/services/chat/__tests__/quota-usage-controls.test.ts src/app/api/chat/__tests__/route.test.ts src/app/api/chat/quota/__tests__/route.test.ts
+npx vitest run src/services/security/__tests__/rateLimit.test.ts src/services/security/__tests__/shared-rate-limit-migration.test.ts src/services/chat/__tests__/quota-usage-controls.test.ts src/app/api/chat/__tests__/route.test.ts src/app/api/chat/quota/__tests__/route.test.ts
 ```
 
 Confirm all of the following:
@@ -101,6 +107,7 @@ Confirm all of the following:
 ## References
 
 - `db/migrations/0062_atomic_chat_usage_controls.sql`
+- `db/migrations/0068_shared_rate_limit_windows.sql`
 - `src/domain/constants.ts`
 - `src/services/chat/quota.ts`
 - `src/app/api/chat/route.ts`

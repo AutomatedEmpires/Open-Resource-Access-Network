@@ -20,7 +20,7 @@ Implemented today:
 - No CORS wildcard (`Access-Control-Allow-Origin: *`) on any route—default same-origin policy.
 - Feature flags with typed constants, fail-closed semantics (unknown flag → off).
 - PII redaction in Sentry/telemetry—verified by automated tests.
-- Redis-backed shared rate limiting is available for high-value endpoints when `REDIS_URL` is configured, with in-memory fallback retained for local/test resilience.
+- Shared production route rate limiting uses an atomic private Supabase/PostgreSQL function as its single authority. It fails closed if that authority is unavailable; Redis or in-memory counters are limited to database-less local/test resilience.
 - DB schema exists in db/migrations/** (including feature flags, submissions/workflow tables, and the legacy `verification_queue` compatibility view).
 
 Planned / not yet enforced end-to-end:
@@ -159,7 +159,7 @@ Design intent (not yet implemented end-to-end):
 
 Status: Implemented.
 
-- Implemented: in-memory sliding-window rate limiting on all API routes, including:
+- Implemented: shared fixed-window rate limiting on protected route families, with process-local enforcement retained only for local/test and compatibility paths, including:
   - POST /api/chat (via orchestrator, after crisis+quota)
   - GET /api/search
   - POST /api/feedback
@@ -183,7 +183,8 @@ Status: Implemented.
   - POST/GET /api/submissions/appeal (submit appeal + list own appeals)
   - POST/GET /api/submissions/report (listing reports; POST allows anonymous, GET requires auth)
 - Implemented: all 429 responses include `Retry-After` header with seconds until window reset.
-- Planned: Redis-backed rate limiting for multi-instance deployments.
+- Implemented: `oran_internal.consume_shared_rate_limit` atomically serializes each opaque key in Supabase/PostgreSQL. Raw IP addresses and user identifiers are hashed before any shared-storage boundary, and production does not switch to an independent counter during an outage.
+- Implemented: Vercel production never falls back to per-instance memory when shared limiting is unavailable. High-value writes are denied until a shared backend recovers. Explicit self-crisis chat messages remain outside ordinary usage controls and continue to deterministic safety routing.
 - Implemented: authenticated privacy endpoints (`/api/user/data-export`, `/api/user/data-delete`) rate-limit by authenticated user context instead of shared IP alone.
 
 ---

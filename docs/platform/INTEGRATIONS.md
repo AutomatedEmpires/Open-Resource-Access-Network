@@ -123,8 +123,10 @@ published as a standalone service resource.
 - `INTERNAL_API_KEY` is an optional, separate rollback credential. Approved
   rollback workers send it in `x-oran-internal-key`; legacy Bearer use remains
   temporarily supported during the Azure rollback window.
-- `REDIS_URL` is optional for shared cache/rate limiting; any configured service
-  must be dedicated to ORAN.
+- `REDIS_URL` is an optional ORAN-dedicated cache accelerator. Production route
+  limits use the private atomic Supabase/PostgreSQL limiter as their single
+  authority, so an outage cannot reset callers onto an independent counter.
+  Database-less local/test runtimes may use Redis or bounded process memory.
 - Vercel Cron invokes the following authenticated GET routes once daily in UTC:
   feed polling at 06:00, SLA review at 07:15, coverage-gap review at 08:30,
   confidence-regression review at 09:45, and resource-freshness review at 11:00.

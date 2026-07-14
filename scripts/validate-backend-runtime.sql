@@ -269,7 +269,8 @@ DECLARE
   v_allowed_functions oid[] := ARRAY[
     'oran_internal.check_chat_quota(text,text,integer)'::pg_catalog.regprocedure::oid,
     'oran_internal.reserve_chat_request(uuid,text,text,text,integer,integer,integer,integer)'::pg_catalog.regprocedure::oid,
-    'oran_internal.finalize_chat_request(uuid,boolean)'::pg_catalog.regprocedure::oid
+    'oran_internal.finalize_chat_request(uuid,boolean)'::pg_catalog.regprocedure::oid,
+    'oran_internal.consume_shared_rate_limit(text,integer,integer)'::pg_catalog.regprocedure::oid
   ];
 BEGIN
   IF session_user::text <> 'oran_backend_runtime'

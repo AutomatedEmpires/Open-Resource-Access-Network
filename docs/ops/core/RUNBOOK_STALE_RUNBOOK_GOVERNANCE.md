@@ -19,7 +19,8 @@ Ensure runbooks remain current, accurate, and executable by enforcing review cad
 - SEV-3/SEV-4 runbooks: review semi-annually.
 - Every operational runbook declares `active` or `rollback-only` status.
 - Rollback-only runbooks remain review-gated until they are archived and must
-  name an active replacement and retirement trigger.
+  name an active replacement, retirement trigger, validation status, and dated
+  retirement deadline.
 - A review date records a substantive content/code validation, not a metadata edit.
 - Trigger immediate review after major changes in:
   - `src/app/api/**`
@@ -49,6 +50,8 @@ Operator expectation:
 - keep the workflow green on PRs and scheduled checks
 - treat missing/invalid owner, reviewer, lifecycle, last-review, or next-review
   metadata as a governance defect
+- fail a retained rollback document after its retirement deadline rather than
+  silently extending the rollback window
 - keep both active and rollback-only documents in the weekly full scan
 - update this runbook whenever review cadence rules change
 

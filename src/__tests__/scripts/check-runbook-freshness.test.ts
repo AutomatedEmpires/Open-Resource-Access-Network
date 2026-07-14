@@ -91,7 +91,71 @@ describe('check-runbook-freshness', () => {
     expect(report.rows[0]).toMatchObject({
       status: 'MISSING_METADATA',
       lifecycle: 'rollback-only',
-      issues: ['missing:activeReplacement', 'missing:retirementTrigger'],
+      issues: [
+        'missing:activeReplacement',
+        'missing:retirementTrigger',
+        'missing:validationStatus',
+        'missing:retirementDeadline',
+      ],
+    });
+  });
+
+  it('accepts governed rollback metadata while preserving an unvalidated label', async () => {
+    const root = await createFixtureRunbook(
+      'ROLLBACK_GOVERNED',
+      [
+        '- Owner role: Platform On-Call Lead',
+        '- Reviewers: Security Lead',
+        '- Operational status: rollback-only',
+        '- Last reviewed (UTC): 2026-07-13',
+        '- Next review due (UTC): 2026-07-28',
+        '- Active replacement: `docs/ops/services/RUNBOOK_CURRENT.md`',
+        '- Retirement trigger: Remove after the rollback window closes.',
+        '- Validation status: code-aligned-unvalidated',
+        '- Retirement deadline (UTC): 2026-08-15',
+      ].join('\n'),
+    );
+
+    const report = buildRunbookFreshnessReport({
+      root,
+      now: new Date('2026-07-13T12:00:00.000Z'),
+    });
+
+    expect(report.summary).toMatchObject({
+      rollbackOnly: 1,
+      missingMetadata: 0,
+      invalidMetadata: 0,
+      overdue: 0,
+      passing: true,
+    });
+    expect(report.rows[0]).toMatchObject({ status: 'OK', lifecycle: 'rollback-only' });
+  });
+
+  it('fails a rollback document after its retirement deadline', async () => {
+    const root = await createFixtureRunbook(
+      'ROLLBACK_EXPIRED',
+      [
+        '- Owner role: Platform On-Call Lead',
+        '- Reviewers: Security Lead',
+        '- Operational status: rollback-only',
+        '- Last reviewed (UTC): 2026-07-01',
+        '- Next review due (UTC): 2026-10-01',
+        '- Active replacement: `docs/ops/services/RUNBOOK_CURRENT.md`',
+        '- Retirement trigger: Remove after the rollback window closes.',
+        '- Validation status: unvalidated',
+        '- Retirement deadline (UTC): 2026-07-10',
+      ].join('\n'),
+    );
+
+    const report = buildRunbookFreshnessReport({
+      root,
+      now: new Date('2026-07-13T12:00:00.000Z'),
+    });
+
+    expect(report.summary).toMatchObject({ invalidMetadata: 1, passing: false });
+    expect(report.rows[0]).toMatchObject({
+      status: 'INVALID_METADATA',
+      issues: ['invalid:retirementDeadlinePassed'],
     });
   });
 
@@ -128,6 +192,8 @@ describe('check-runbook-freshness', () => {
         '- Next review due (UTC): 2026-04-01',
         '- Active replacement: `docs/ops/services/RUNBOOK_CURRENT.md`',
         '- Retirement trigger: Remove after the rollback window closes.',
+        '- Validation status: unvalidated',
+        '- Retirement deadline (UTC): 2026-08-15',
       ].join('\n'),
     );
 

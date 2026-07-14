@@ -14,6 +14,12 @@ For `rollback-only`, also include:
 
 - Active replacement: `<active runbook path>`
 - Retirement trigger: `<specific decommission condition>`
+- Validation status: `validated | code-aligned-unvalidated | unvalidated`
+- Retirement deadline (UTC): `<YYYY-MM-DD>`
+
+`validated` requires an executed environment test. A content review or a
+successful local build is `code-aligned-unvalidated` when the live rollback path
+was not exercised.
 
 ## Purpose And Scope
 
@@ -45,8 +51,8 @@ Describe what this runbook covers, when it applies, and what it explicitly does 
 
 ## Preconditions And Access
 
-- Azure subscription/resource group access.
-- Web app / function app operator permissions.
+- Active provider/project access appropriate to the runbook.
+- Web application, database, or worker operator permissions as applicable.
 - Database access level required for diagnostics and mitigation.
 - Access to incident communications channel.
 

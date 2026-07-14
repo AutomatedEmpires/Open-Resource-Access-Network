@@ -1,252 +1,139 @@
-# Runbook: Ingestion Pipeline
-
-Procedures for operating and troubleshooting the ingestion pipeline.
+# Runbook: Azure Queue Ingestion Pipeline (Rollback Only)
 
 ## Metadata
 
 - Owner role: Ingestion Operations Lead
 - Reviewers: Data Platform Lead, Platform On-Call Lead
 - Operational status: rollback-only
-- Last reviewed (UTC): 2026-03-06
-- Next review due (UTC): 2026-06-06
+- Last reviewed (UTC): 2026-07-14
+- Next review due (UTC): 2026-07-28
 - Severity scope: SEV-2 to SEV-3
 - Active replacement: `docs/ops/services/RUNBOOK_211_API_INGESTION.md` and Vercel internal-route operations
-- Retirement trigger: Archive after Azure Functions and Storage Queue rollback resources are decommissioned.
+- Retirement trigger: Archive after Azure Functions, Storage Queue resources, deployment identity, settings, and rollback credentials are decommissioned.
+- Validation status: code-aligned-unvalidated
+- Retirement deadline (UTC): 2026-08-15
 
----
+## Status And Scope
 
-## Architecture Overview
+This document describes retained Azure rollback code, not the active ingestion
+architecture. A 2026-07-14 code review and local bundle build confirmed the
+bindings below; no Azure queue, timer, deployment, or end-to-end record was
+exercised. Activation requires the decision and preconditions in
+`RUNBOOK_FUNCTION_APP_FAILURE.md`.
 
+## Retained Pipeline Contract
+
+```text
+scheduledCrawl (daily 06:00 UTC)
+  -> ingestion-fetch -> fetchPage
+  -> ingestion-extract -> extractService
+  -> ingestion-verify -> verifyCandidate
+  -> ingestion-route -> routeToAdmin
 ```
-Timer (scheduledCrawl) → ingestion-fetch → fetchPage → ingestion-extract
-→ extractService → ingestion-verify → verifyCandidate → ingestion-route → routeToAdmin
-```
 
-All functions are Azure Functions (Consumption plan) triggered by Azure Storage Queues.
+Additional timers retained in function bindings:
 
-Queue and timer bindings are defined under `functions/*/function.json`.
+- `checkSlaBreaches`: hourly
+- `alertCoverageGaps`: daily at 08:00 UTC
+- `scanConfidenceRegressions`: every six hours
+- `pollSourceFeeds`: hourly
 
-Timer schedules (UTC):
+Queue configuration in `functions/host.json`:
 
-- `scheduledCrawl`: `0 0 6 * * *` (daily at 06:00)
-- `checkSlaBreaches`: `0 0 * * * *` (hourly)
-- `alertCoverageGaps`: `0 0 8 * * *` (daily at 08:00)
-- `scanConfidenceRegressions`: `0 0 */6 * * *` (every 6 hours)
+- batch size 4; new-batch threshold 2
+- three dequeue attempts before poison handling
+- five-minute visibility timeout
+- 30-second maximum polling interval
 
----
+`manualSubmit` is bound to `POST /api/ingestion/submit` with Function auth but
+the handler intentionally returns 501 and enqueues nothing. Use the authenticated
+active endpoint `POST /api/admin/ingestion/process` for an approved manual intake.
 
-## Routine Checks
+## Safety Constraints
 
-### Daily
+- Do not run active Vercel polling and Azure scheduled ingestion against the same
+  source/feed concurrently.
+- Do not discard, mass-requeue, or edit queue payloads without preserving IDs,
+  evidence, and an audited reason.
+- Never bypass verification, provenance, reviewer assignment, or publication
+  gates to drain a backlog.
+- Sample poison payloads without copying secrets or sensitive content into logs.
+- Keep merchant-only benefit-acceptance datasets out of the service catalog.
 
-1. Check Application Insights → Logs for extraction/verification success rates
-2. Review `[alertCoverageGaps]` log output (runs 8 AM UTC)
-3. Confirm `[checkSlaBreaches]` ran (hourly — check last entry)
+## Known Blockers To Live Rollback
 
-### Weekly
+- The Function runtime settings contract does not require the `LLM_ENDPOINT` and
+  `LLM_API_KEY` consumed by `extractService`; deployment validation can pass while
+  extraction cannot run.
+- No live Azure infrastructure/settings inventory or successful deployment is
+  recorded in the repository.
+- The HTTP `manualSubmit` Function is not implemented.
+- Build/unit results do not prove database compatibility, queue authorization,
+  timer execution, LLM access, or active-web endpoint authentication.
 
-1. Review SLA breach trend (KQL: `docs/ops/monitoring/MONITORING_QUERIES.md` §2)
-2. Check queue poison message counts:
+Until all four are resolved and drilled, this path remains
+`code-aligned-unvalidated`.
 
-   ```bash
-   az storage queue list --account-name <storage> --query "[?contains(name,'poison')]" -o table
-   ```
+## Triage After Explicit Activation
 
-3. Review confidence regression scan output
+1. Record the deployed commit, source/feed, correlation IDs, queue counts, poison
+   counts, and the first/last successful stage.
+2. Confirm the Function host and every expected binding is loaded.
+3. Compare approximate counts across `ingestion-fetch`, `ingestion-extract`,
+   `ingestion-verify`, `ingestion-route`, and their poison queues.
+4. Inspect Application Insights/Function logs for the correlation ID and classify
+   the failure as fetch, LLM extraction, persistence, verification, routing, or
+   active-app callback.
+5. Confirm the active Vercel scheduler remains paused before retrying work.
 
-### Runtime Queue Settings (from `functions/host.json`)
-
-- `batchSize`: 4
-- `maxDequeueCount`: 3
-- `visibilityTimeout`: `00:05:00`
-- `maxPollingInterval`: `00:00:30`
-
-### Queue Depth Escalation Thresholds
-
-Use queue depth trends over at least 3 consecutive checks (not one-off spikes):
-
-| Signal | Warning | Critical |
-| --- | --- | --- |
-| `ingestion-fetch` depth | > 500 for 15 min | > 2000 for 30 min |
-| `ingestion-extract` depth | > 300 for 15 min | > 1200 for 30 min |
-| `ingestion-verify` depth | > 300 for 15 min | > 1200 for 30 min |
-| Any `*-poison` queue | > 10 messages | > 50 messages |
-
-At critical level, declare at least SEV-2 and follow `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md`.
-
----
-
-## Common Issues
-
-### Queue messages stuck (poison queue)
-
-**Symptom**: Messages appear in `*-poison` queues.
-
-**Diagnosis**:
+Example Azure inspection, only after rollback activation:
 
 ```bash
-# List poison queues
-az storage queue list --account-name <storage> --query "[?contains(name,'poison')].{name:name}" -o table
-
-# Peek at poison messages
-az storage message peek --queue-name ingestion-fetch-poison --account-name <storage> --num-messages 5
+az storage queue list --account-name <storage-account> --query "[].{name:name,count:approximateMessageCount}" -o table
+az webapp log tail --resource-group <resource-group> --name <function-app>
 ```
 
-**Resolution**:
+## Mitigation
 
-1. Check Application Insights for the error that caused the failure
-2. Fix the root cause (usually a malformed URL or LLM parse failure)
-3. Re-queue the message if appropriate:
+1. Stop new `scheduledCrawl` work when queue growth or duplicate intake is unsafe.
+2. Fix the deterministic failing stage before replay. Use
+   `RUNBOOK_LLM_OUTAGE.md` or `RUNBOOK_QUEUE_BACKLOG.md` for those failure classes.
+3. Requeue only bounded, sampled messages whose prior failure is understood and
+   safe to repeat. Preserve the original correlation/evidence relationship.
+4. Use active ORAN admin/API workflows for reviewed manual processing; never call
+   the 501 Function endpoint expecting recovery.
+5. Resume the timer gradually and watch all four stages plus publication evidence.
 
-   ```bash
-   # Move message from poison back to main queue
-   MSG=$(az storage message get --queue-name ingestion-fetch-poison --account-name <storage> --query "[0]" -o json)
-   MSG_TEXT=$(echo "$MSG" | jq -r '.content')
-   az storage message put --queue-name ingestion-fetch --content "$MSG_TEXT" --account-name <storage>
-   az storage message delete --queue-name ingestion-fetch-poison --id <msg-id> --pop-receipt <receipt> --account-name <storage>
-   ```
+## Live Validation Gate
 
-### Extraction failures (LLM errors)
+Before calling Azure ingestion usable, execute one non-sensitive synthetic record
+and prove:
 
-**Symptom**: `[extractService] HTTP 429` or `[extractService] Failed` in logs.
+- exactly one fetch, extraction, verification, and route outcome
+- persisted evidence, provenance, candidate, and assignment link by correlation ID
+- no unexpected poison message or duplicate canonical/public record
+- an authorized reviewer can see and act on the assignment
+- active source polling stayed off for the test window
+- queue depths return to baseline and scheduled timers are deliberately controlled
 
-**Diagnosis**:
+No such evidence is recorded as of the review date.
 
-```kql
-traces
-| where timestamp > ago(1h)
-| where message has "[extractService]" and (message has "Failed" or message has "error" or message has "429")
-| project timestamp, message
-| order by timestamp desc
-```
-
-**Resolution**:
-
-- **429 (rate limited)**: Azure OpenAI throttling. Check quota in Azure Portal → Azure OpenAI → Deployments. Consider reducing `scheduledCrawl` concurrency or increasing TPM quota.
-- **Parse failure**: LLM returned non-JSON. Check the raw response in logs. Usually transient — message will retry automatically (3 attempts before poison queue).
-- **Timeout**: Increase function timeout in `host.json` if consistently timing out.
-
-### No candidates being processed
-
-**Symptom**: No new candidates appearing in admin queues despite crawl running.
-
-**Diagnosis**:
-
-1. Check if `scheduledCrawl` ran:
-
-   ```kql
-   traces | where message has "[scheduledCrawl]" | take 5
-   ```
-
-2. Check if fetch queue has messages:
-
-   ```bash
-   az storage queue show --name ingestion-fetch --account-name <storage> --query "approximateMessageCount"
-   ```
-
-3. Check function execution history:
-
-   ```bash
-   az functionapp function show --resource-group <rg> --name <func-app> --function-name fetchPage
-   ```
-
-**Resolution**:
-
-- If crawl didn't run: Check timer function is enabled and `host.json` has correct schedule
-- If queue is empty but crawl ran: Check source registry — sources may be exhausted or all URLs already processed
-- If queue has messages but no processing: Check function app is running (`az functionapp show --query state`)
-
----
-
-## Manual Operations
-
-### Trigger a manual crawl
-
-Use the ORAN admin ingestion API (implemented path):
+## Code Validation Commands
 
 ```bash
-curl -X POST "https://<web-app>.azurewebsites.net/api/admin/ingestion/process" \
-   -H "Authorization: Bearer <admin-session-token>" \
-   -H "Content-Type: application/json" \
-   -d '{"sourceUrl":"https://example.org/services","forceReprocess":false}'
+npm run build:functions
+npx vitest run functions/alertCoverageGaps/__tests__/index.test.ts functions/pollSourceFeeds/__tests__/index.test.ts functions/routeToAdmin/__tests__/index.test.ts src/services/runtime/__tests__/envContract.test.ts
+npm run typecheck
 ```
 
-Notes:
+## References
 
-- This endpoint requires authenticated `oran_admin` role.
-- The Azure Function `manualSubmit` currently returns 501 (stub).
-
-### Trigger function endpoint directly (only if implemented in your environment)
-
-```bash
-# Route binding is /api/ingestion/submit with function auth level
-curl -X POST "https://<func-app>.azurewebsites.net/api/ingestion/submit?code=<function-key>" \
-  -H "Content-Type: application/json" \
-   -d '{"sourceUrl":"https://example.org/services","sourceId":"manual","priority":5}'
-```
-
-### Force SLA check
-
-```bash
-curl -X POST "https://<web-app>.azurewebsites.net/api/internal/sla-check" \
-  -H "x-oran-internal-key: <INTERNAL_API_KEY>" \
-  -H "Content-Type: application/json"
-```
-
-### Force coverage gap check
-
-```bash
-curl -X POST "https://<web-app>.azurewebsites.net/api/internal/coverage-gaps" \
-  -H "x-oran-internal-key: <INTERNAL_API_KEY>" \
-  -H "Content-Type: application/json" \
-  -d '{"thresholdHours": 24}'
-```
-
-### Force confidence regression scan
-
-```bash
-curl -X POST "https://<web-app>.azurewebsites.net/api/internal/confidence-regression-scan" \
-   -H "x-oran-internal-key: <INTERNAL_API_KEY>" \
-   -H "Content-Type: application/json" \
-   -d '{"limit": 100}'
-```
-
-### 211 feed diagnostics
-
-When the issue is specific to HSDS / 211 feed polling rather than the generic queue pipeline, generate a feed-state report from persisted telemetry:
-
-```bash
-npm run report:211-feed-status -- --feed-id <source-feed-id> --hours 72 --format markdown --out reports/211-feed-status-<date>.md
-```
-
-Review:
-
-- feed health classification and replay cursor state
-- recent source-record counts and normalization outcome
-- canonical entity counts tied to the feed via provenance
-- publication reason and decision-reason aggregates from the latest poll summary
-
-### Restart function app
-
-```bash
-az functionapp restart --resource-group <rg> --name <func-app>
-```
-
-### Re-enable scheduled crawl after pause
-
-```bash
-az functionapp config appsettings delete \
-   --resource-group <rg> \
-   --name <func-app> \
-   --setting-names "AzureWebJobs.scheduledCrawl.Disabled"
-```
-
----
-
-## Escalation
-
-If an issue cannot be resolved with this runbook:
-
-1. Check `docs/ops/services/RUNBOOK_LLM_OUTAGE.md` for LLM-specific issues
-2. Check `docs/ops/services/RUNBOOK_ADMIN_ROUTING.md` for admin assignment problems
-3. File a GitHub Issue with the `ops` label and include relevant KQL query output
+- `functions/host.json`
+- `functions/*/function.json`
+- `functions/manualSubmit/index.ts`
+- `scripts/build-functions.mjs`
+- `.github/workflows/deploy-azure-functions.yml`
+- `docs/ops/services/RUNBOOK_FUNCTION_APP_FAILURE.md`
+- `docs/ops/services/RUNBOOK_LLM_OUTAGE.md`
+- `docs/ops/services/RUNBOOK_QUEUE_BACKLOG.md`
+- `docs/ops/services/RUNBOOK_ADMIN_ROUTING.md`

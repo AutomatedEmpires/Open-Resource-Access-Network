@@ -1,197 +1,172 @@
-# Runbook: Admin Routing Failures
-
-Procedures for when candidate submissions cannot be routed to admin reviewers.
+# Runbook: Reviewer Routing, Capacity, Coverage, And SLA
 
 ## Metadata
 
-- Owner role: Ingestion Operations Lead
-- Reviewers: Platform On-Call Lead, Data Platform Lead
+- Owner role: ORAN Operations Lead
+- Reviewers: Ingestion Operations Lead, Platform On-Call Lead
 - Operational status: active
-- Last reviewed (UTC): 2026-03-06
-- Next review due (UTC): 2026-06-06
-- Severity scope: SEV-2 to SEV-3
+- Last reviewed (UTC): 2026-07-14
+- Next review due (UTC): 2026-10-14
+- Severity scope: SEV-2 to SEV-4
+- Review validation: current code and focused automated tests; active end-to-end assignment drill not executed
 
----
+## Purpose And Scope
 
-## How Routing Works
+Use this runbook when candidates are not reaching an appropriate human reviewer,
+reviewer capacity is exhausted, geographic coverage is missing, or review SLAs
+are breached. This is the active Vercel/Supabase operating path. The Azure
+`routeToAdmin` Function is retained only as an explicitly unvalidated rollback
+artifact.
 
-1. `routeToAdmin` function receives a verified candidate
-2. Queries `admin_review_profiles` for the nearest admins with capacity (PostGIS `ST_Distance`)
-3. Creates assignments in `candidate_admin_assignments` (up to 5 nearest admins)
-4. If no community admins have capacity → falls back to ORAN admins
-5. If no ORAN admins available → writes `system_alert` notification and logs `unrouted_candidate`
+## Safety Constraints
 
-## Routing Thresholds
+- Never publish merely to clear a review backlog.
+- Do not bypass role, jurisdiction, capacity, two-person, provenance, or
+  publication gates.
+- Do not directly insert or edit assignment/profile rows during routine
+  operations. Use reviewed application workflows; reserve database repair for a
+  declared incident with an audited change plan.
+- Preserve existing assignments, outcomes, audit history, and notification
+  idempotency while diagnosing.
+- If no qualified reviewer is available, hold the record for ORAN-admin review
+  or pause its source feed rather than widening access silently.
 
-| Signal | Warning | Critical |
-| --- | --- | --- |
-| Unassigned pending candidates | > 20 for 4 hours | > 50 for 8 hours |
-| SLA breaches per 24h | > 10 | > 25 |
-| ORAN admins accepting new | < 2 | 0 |
+## Implemented Active Controls
 
-Critical conditions should trigger SEV-2 triage and incident command activation.
+- `GET /api/admin/capacity` returns the authenticated community admin's current
+  pending/in-review load, effective limits, performance, coverage, and accepting
+  status. It is role-checked, rate-limited, and private/no-store.
+- `GET /api/internal/coverage-gaps` runs from Vercel Cron at 08:30 UTC daily. It
+  finds candidates without a nonterminal admin assignment after 24 hours and
+  sends idempotent alerts to ORAN admins. Authenticated `POST` accepts a bounded
+  custom threshold for operator diagnosis.
+- `GET /api/internal/sla-check` runs at 07:15 UTC daily. It sends warnings, marks
+  breaches, and executes tiered escalation/reassignment behavior. Authenticated
+  `POST` provides an operator trigger.
+- `/api/admin/ingestion/overview` surfaces pending/in-review candidates, breached
+  submissions, silent reviewers, stalled assignments, and recent reclamation.
+- Ranking, capacity calculation, assignment lifecycle, and PostgreSQL stores are
+  implemented under `src/agents/ingestion/`.
 
-## Decision Matrix
+## Known Active-Path Gap
 
-| Condition | Immediate action |
-| --- | --- |
-| No coverage in area | Manual ORAN assignment + coverage gap escalation |
-| Capacity exhausted | Temporarily increase `max_pending` for approved admins |
-| Auto-pause saturation | Verify resume threshold and manually re-enable if safe |
-| Systemic SLA breach growth | Trigger incident triage and pause new ingestion if needed |
+The reviewed Vercel source-feed service normalizes and marks records
+`pending_review`, and the active system can detect unrouted records. However, no
+active Vercel orchestration was found that selects reviewers and creates initial
+`candidate_admin_assignments` for each newly normalized candidate. The retained
+Azure `functions/routeToAdmin` worker performs that orchestration only in the
+rollback path.
 
----
+Therefore, unit-tested ranking/stores and coverage alerts are not evidence that
+new candidates are automatically routed in production.
 
-## Symptom: Candidates stuck with no assignment
+**Production gate:** unattended ingestion-to-review routing must not be declared
+production-ready until a target-stack handler creates the initial assignment and
+an end-to-end drill proves normalization → assignment → acceptance → decision →
+publication. Seeker launch may proceed only with feed polling disabled or with a
+Release Manager-approved, capacity-bounded manual review plan that cannot
+auto-publish unrouted content.
 
-### Diagnosis
+## Triggers And Severity
 
-```kql
--- Check for unrouted candidates in Application Insights
-traces
-| where timestamp > ago(24h)
-| where message has "unrouted" or message has "No ORAN admins"
-| project timestamp, message
-| order by timestamp desc
-```
+- `SEV-2`: publication integrity is at risk, the review queue is broadly
+  unrouted, or operators cannot keep unreviewed content from going live.
+- `SEV-3`: one region/source has sustained coverage or SLA failures with safe
+  holds intact.
+- `SEV-4`: isolated capacity warning or newly detected unrouted record with no
+  seeker-visible impact.
 
-```sql
--- Direct DB check: candidates with no assignment after 24h
-SELECT c.id, c.created_at, c.organization_name, c.state, c.county
-FROM ingestion_candidates c
-LEFT JOIN candidate_admin_assignments a ON a.candidate_id = c.id
-WHERE a.id IS NULL
-  AND c.created_at < NOW() - INTERVAL '24 hours'
-  AND c.status = 'pending_review'
-ORDER BY c.created_at ASC;
-```
+Trigger on any of:
 
-### Resolution
+- coverage-gap response reports `unroutedCount > 0`
+- pending candidates increase without corresponding assignments
+- SLA warnings/breaches or silent-reviewer reclamations increase unexpectedly
+- an active reviewer returns 404 from `/api/admin/capacity` because no profile exists
+- all relevant profiles are inactive, not accepting new work, or at capacity
+- `pending_review` content is published without the required human decision
 
-1. **Check admin coverage**: Are there any admins with coverage zones overlapping the candidate's location?
+## Diagnosis
 
-   ```sql
-   SELECT arp.user_id, arp.coverage_states, arp.coverage_counties,
-          arp.pending_count, arp.max_pending, arp.is_accepting_new, arp.is_active
-   FROM admin_review_profiles arp
-   WHERE arp.is_active = true
-   ORDER BY arp.pending_count ASC;
+1. Open an incident timeline and record the Vercel release, feed/source, affected
+   geography, candidate count, oldest age, and whether anything became public.
+2. Inspect the ORAN ingestion overview and the affected reviewer's authenticated
+   capacity response.
+3. Run the internal checks with an approved operator credential:
+
+   ```bash
+   curl -X POST "https://<production-host>/api/internal/coverage-gaps" \
+     -H "x-oran-internal-key: <operator-key>" \
+     -H "Content-Type: application/json" \
+     -d '{"thresholdHours":24}'
+
+   curl -X POST "https://<production-host>/api/internal/sla-check" \
+     -H "x-oran-internal-key: <operator-key>"
    ```
 
-2. **If no admins cover the area**:
-   - The coverage gap alerting function should have flagged this (daily at 8 AM UTC)
-   - Manually assign an ORAN admin:
+4. Correlate Sentry/Vercel errors with the scheduled routes, database access,
+   notification failures, and the latest deployment.
+5. Distinguish the failure class:
+   - no initial assignment exists
+   - assigned reviewer is inactive/silent/over capacity
+   - coverage profile excludes the candidate geography
+   - assignment exists but its lifecycle or SLA transition is stuck
+   - data quality or missing location makes routing unsafe
+6. If any unreviewed record became public, switch to
+   `RUNBOOK_DATA_QUALITY_INCIDENT.md` and contain publication first.
 
-     ```sql
-     INSERT INTO candidate_admin_assignments (candidate_id, admin_profile_id, status, sla_deadline)
-     SELECT '<candidate-id>', id, 'pending', NOW() + INTERVAL '48 hours'
-     FROM admin_review_profiles
-     WHERE role = 'oran_admin' AND is_active = true AND is_accepting_new = true
-     LIMIT 1;
-     ```
+## Containment And Mitigation
 
-3. **If admins exist but are at capacity**:
-   - Check capacity status via the admin capacity API:
+1. Pause the affected source feed (`state.emergencyPause=true`) or globally
+   disable source polling when new work would deepen the unsafe backlog.
+2. Keep affected canonical records in `canonical_only` or `pending_review`;
+   confirm auto-publish is not widening the incident.
+3. Restore eligible reviewer coverage through governed admin/profile workflows.
+   Do not expand jurisdiction or capacity without an accountable operator.
+4. Run the SLA check once after fixing reviewer state so implemented escalation
+   and silent-reviewer reclamation can act idempotently.
+5. For records that still have no initial assignment, use the approved ORAN-admin
+   review surface/manual incident plan. Do not fabricate an assignment with ad
+   hoc SQL. Track each record until the target-stack orchestration gap is fixed.
+6. If a deployment caused the failure, follow
+   `RUNBOOK_DEPLOYMENT_ROLLBACK.md` after checking database compatibility.
 
-     ```bash
-     curl "https://<web-app>.azurewebsites.net/api/admin/capacity" \
-       -H "Authorization: Bearer <admin-token>"
-     ```
+## Recovery Validation
 
-   - Consider temporarily increasing `max_pending` for an ORAN admin:
+The incident is not resolved until operators demonstrate:
 
-     ```sql
-     UPDATE admin_review_profiles SET max_pending = 60 WHERE user_id = '<oran-admin-id>';
-     ```
+- one newly normalized candidate receives a qualified initial assignment
+- capacity and geographic rules used for that choice are recorded
+- the reviewer can accept and complete the assignment
+- SLA/coverage checks no longer report that candidate as orphaned
+- a second reviewer or ORAN admin handles the fallback path when the first is unavailable
+- publication remains gated until the required review decision
+- alerts are idempotent and no duplicate active assignments were created
 
-   - The auto-capacity scaling may help fast reviewers take on more if they have > 20 completed reviews
+Capture IDs and timestamps without including seeker PII. A green unit suite alone
+does not satisfy this end-to-end exit gate.
 
-4. **If auto-pause triggered**:
-   - `shouldToggleAcceptingNew()` pauses admins at capacity and resumes at 80% utilization
-   - Check if admins are paused:
-
-     ```sql
-     SELECT user_id, is_accepting_new, pending_count, max_pending
-     FROM admin_review_profiles
-     WHERE is_accepting_new = false AND is_active = true;
-     ```
-
----
-
-## Symptom: SLA breaches accumulating
-
-### Diagnosis
+## Validation Commands
 
 ```bash
-# Check recent SLA breach output
-curl -X POST "https://<web-app>.azurewebsites.net/api/internal/sla-check" \
-  -H "x-oran-internal-key: <INTERNAL_API_KEY>"
+npx vitest run src/agents/ingestion/__tests__/adminAssignments.test.ts src/agents/ingestion/__tests__/routing.test.ts src/agents/ingestion/persistence/__tests__/adminRoutingStore.test.ts src/agents/ingestion/persistence/__tests__/adminAssignmentStore.test.ts src/app/api/admin/capacity/__tests__/route.test.ts src/app/api/internal/coverage-gaps/__tests__/route.test.ts src/app/api/internal/sla-check/__tests__/route.test.ts src/services/workflow/__tests__/engine.test.ts
+npm run typecheck
 ```
 
-```kql
-traces
-| where timestamp > ago(7d)
-| where message has "[checkSlaBreaches]"
-| project timestamp, message
-| order by timestamp desc
-```
+The Azure rollback worker has a separate focused test and is not proof of active
+target-stack routing.
 
-### Resolution
+## References
 
-The escalation engine handles breaches automatically in tiers:
-
-- T+0h: Notify assignee
-- T+12h: Re-notify assignee + alert org host_admins
-- T+24h: Auto-reassign to next available admin
-- T+48h: Escalate to ORAN admin queue
-
-If breaches persist past T+48h with no resolution:
-
-1. Check if any ORAN admins are active and accepting
-2. Manually review and resolve the oldest breached candidates
-3. Consider onboarding more community admins for the affected areas
-
----
-
-## Symptom: Coverage gap alerts firing daily
-
-### Diagnosis
-
-Check the coverage gap report:
-
-```bash
-curl -X POST "https://<web-app>.azurewebsites.net/api/internal/coverage-gaps" \
-  -H "x-oran-internal-key: <INTERNAL_API_KEY>" \
-  -H "Content-Type: application/json" \
-  -d '{"thresholdHours": 24}'
-```
-
-### Resolution
-
-1. Identify states/counties with no admin coverage
-2. Recruit community admins for those areas
-3. In the interim, ensure ORAN admins are handling spillover
-4. Review the admin capacity dashboard (`GET /api/admin/capacity`) to verify ORAN admin headroom
-
----
-
-## Emergency: All admins unavailable
-
-If no admin can accept assignments:
-
-1. **Assess scope**: How many candidates are waiting?
-
-   ```sql
-   SELECT COUNT(*) FROM ingestion_candidates WHERE status = 'pending_review';
-   ```
-
-2. **Temporary measure**: Create a temporary ORAN admin profile for a trusted team member
-
-   ```sql
-   INSERT INTO admin_review_profiles (user_id, role, max_pending, max_in_review, is_active, is_accepting_new, coverage_states)
-   VALUES ('<user-id>', 'oran_admin', 50, 20, true, true, ARRAY['*']);
-   ```
-
-3. **Communicate**: The system sends `system_alert` notifications when routing fails — check ORAN admin notification inboxes
-
-4. **Post-incident**: Review admin coverage map and capacity limits; adjust `ROLE_CAPACITY_DEFAULTS` if needed
+- `vercel.json`
+- `src/app/api/admin/capacity/route.ts`
+- `src/app/api/admin/ingestion/overview/route.ts`
+- `src/app/api/internal/coverage-gaps/route.ts`
+- `src/app/api/internal/sla-check/route.ts`
+- `src/services/coverage/gaps.ts`
+- `src/services/escalation/engine.ts`
+- `src/agents/ingestion/routing.ts`
+- `src/agents/ingestion/adminAssignments.ts`
+- `src/agents/ingestion/persistence/adminAssignmentStore.ts`
+- `functions/routeToAdmin/index.ts`
+- `docs/ops/services/RUNBOOK_211_API_INGESTION.md`
+- `docs/ops/services/RUNBOOK_DATA_QUALITY_INCIDENT.md`

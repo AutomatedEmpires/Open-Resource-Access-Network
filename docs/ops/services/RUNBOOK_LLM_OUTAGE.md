@@ -1,195 +1,120 @@
-# Runbook: LLM Outage (Azure OpenAI)
-
-Procedures for when Azure OpenAI is unavailable or degraded.
+# Runbook: Azure Ingestion LLM Outage (Rollback Only)
 
 ## Metadata
 
 - Owner role: Ingestion Operations Lead
 - Reviewers: Data Platform Lead, Platform On-Call Lead
 - Operational status: rollback-only
-- Last reviewed (UTC): 2026-03-06
-- Next review due (UTC): 2026-06-06
+- Last reviewed (UTC): 2026-07-14
+- Next review due (UTC): 2026-07-28
 - Severity scope: SEV-2 to SEV-3
-- Active replacement: `docs/ops/services/RUNBOOK_DEPENDENCY_OUTAGE.md`
-- Retirement trigger: Archive after the Azure ingestion rollback path and its Azure OpenAI credential are decommissioned.
+- Active replacement: `docs/ops/services/RUNBOOK_DEPENDENCY_OUTAGE.md` and the active source-feed controls
+- Retirement trigger: Archive after the Azure queue ingestion path, LLM/Foundry deployments, credentials, and rollback settings are decommissioned.
+- Validation status: code-aligned-unvalidated
+- Retirement deadline (UTC): 2026-08-15
 
----
+## Status And Scope
 
-## Impact Assessment
+This runbook applies only if the retained Azure queue ingestion path has been
+explicitly activated. It does not govern active seeker chat or search; use
+`RUNBOOK_DEPENDENCY_OUTAGE.md` for current provider degradation. The retained
+code was reviewed and bundled locally on 2026-07-14, but no Azure LLM request,
+quota failure, queue retry, or recovery drill was executed.
 
-The LLM is used **only** for extraction and categorization in the ingestion pipeline. It does **not** affect:
+## Code-Aligned Behavior
 
-- Search (pure SQL + PostGIS)
-- Scoring (deterministic algorithm)
-- Admin workflows (queue, review, approve/reject)
-- Seeker-facing directory browsing
-- Authentication or authorization
+`functions/extractService` consumes `ingestion-extract`, enables the LLM
+extraction/categorization pipeline, persists a candidate, and returns a message
+for `ingestion-verify`. The LLM client implementation reads:
 
-**Severity**: Medium — new candidate ingestion is paused, but existing published services remain fully operational.
+- `LLM_PROVIDER` (defaults to `azure_openai`)
+- `LLM_MODEL` (defaults to `gpt-4o`)
+- `LLM_ENDPOINT` and `LLM_API_KEY`
+- optional API version, temperature, and timeout values
 
----
+`functions/verifyCandidate` separately uses paired `FOUNDRY_ENDPOINT` and
+`FOUNDRY_KEY` when configured for discrepancy checking; it can continue with
+deterministic verification when that optional pair is absent.
 
-## Detection
+The comments in `extractService` mention routing extraction through Foundry with
+`FOUNDRY_*`, but the invoked LLM client reads `LLM_*`. Treat the implementation,
+not the comment, as authoritative until that mismatch is fixed.
 
-### Automated
+## Known Rollback Risks
 
-- Function App failure alerts fire when `extractService` error count > 3 in 15 minutes
-- Application Insights shows failed dependency traces to Azure OpenAI
+- The Function runtime contract does not require `LLM_ENDPOINT` or `LLM_API_KEY`,
+  so the deployment settings check can pass without usable extraction.
+- When an extraction stage returns a failed stage result, `extractService`
+  returns `null`. That may complete the queue invocation without a downstream
+  message instead of producing the retry/poison behavior older guidance assumed.
+  Live failure semantics have not been verified.
+- No live model deployment, quota, identity/network path, data-retention setting,
+  or safe logging behavior has been validated.
 
-### Manual check
+Because of these risks, never claim that “messages will simply wait and nothing
+is lost” during an LLM outage.
 
-```kql
-dependencies
-| where timestamp > ago(1h)
-| where type == "HTTP" and target has "openai.azure.com"
-| summarize
-    total = count(),
-    succeeded = countif(success),
-    failed = countif(not(success)),
-    avgDuration = avg(duration)
-| extend failRate = round(100.0 * failed / total, 1)
-```
+## Detection After Explicit Activation
 
-```bash
-# Check Azure OpenAI service health
-az rest --method get \
-  --url "https://management.azure.com/subscriptions/<sub>/providers/Microsoft.CognitiveServices/locations/<region>/operationStatuses?api-version=2023-05-01"
-```
+- extraction-stage failure or missing downstream `ingestion-verify` message
+- provider 401/403/404/429/5xx or request timeout
+- growing `ingestion-extract` depth, or unexpectedly flat depth with no candidate
+- candidate/output counts lower than extract input counts for the same window
+- LLM configuration absent even though the Function runtime validator passed
 
----
+Correlate by input message/correlation ID, not only aggregate Function success.
 
-## Immediate Response
+## Containment
 
-### Outage Mode Decision Table
-
-| Condition | Action |
-| --- | --- |
-| Fail rate < 10% and stable queue | Continue with close monitoring |
-| Fail rate 10-40% for > 30 min | Reduce crawl pressure and monitor backlog |
-| Fail rate > 40% or sustained 429/5xx | Pause scheduled crawl and protect queue health |
-
-Always preserve ingestion queue integrity and avoid destructive message handling.
-
-### 1. Confirm the outage scope
-
-Is it a regional Azure OpenAI outage or a quota/deployment issue?
-
-```bash
-# Check deployment status
-az cognitiveservices account deployment list \
-  --resource-group <rg> \
-  --name <openai-resource> \
-  -o table
-```
-
-### 2. Pause ingestion (optional)
-
-If the outage is expected to last > 1 hour, disable the timer trigger to prevent queue buildup:
-
-```bash
-# Disable scheduledCrawl timer
-az functionapp config appsettings set \
-  --resource-group <rg> \
-  --name <func-app> \
-  --settings "AzureWebJobs.scheduledCrawl.Disabled=true"
-```
-
-Queue messages will remain in the storage queue with visibility timeout — they will not be lost.
-
-### 3. Monitor queue depth
-
-```bash
-az storage queue show --name ingestion-extract --account-name <storage> --query "approximateMessageCount"
-az storage queue show --name ingestion-extract-poison --account-name <storage> --query "approximateMessageCount"
-```
-
----
+1. Disable `scheduledCrawl` and any Azure source-feed timer so no new records enter
+   the uncertain extraction path.
+2. Keep active Vercel polling off for the same source until ownership of every
+   in-flight record is reconciled.
+3. Snapshot queue counts and audit input/candidate/output IDs. Do not bulk-requeue.
+4. Check provider status, deployment name, endpoint, credential presence, quota,
+   and network access without printing credential values.
+5. If records may have been consumed with a `null` result, identify them from
+   evidence/correlation records before any bounded replay.
 
 ## Recovery
 
-### When LLM is back online
+1. Fix configuration or provider capacity in an isolated environment first.
+2. Run one synthetic extraction and verify structured output, deterministic
+   checks, candidate persistence, and exactly one verify-queue output.
+3. Replay a small, documented set of failed records and compare input, candidate,
+   verify, and poison counts one-for-one.
+4. Confirm no service was published as a side effect and no sensitive content or
+   credential was logged.
+5. Re-enable the timer only after two stable samples and explicit Ingestion
+   Operations Lead approval.
 
-1. Re-enable the timer (if disabled):
+If recovery is uncertain, keep Azure ingestion paused. Existing reviewed public
+resources can remain available through the active web stack.
 
-   ```bash
-   az functionapp config appsettings delete \
-     --resource-group <rg> \
-     --name <func-app> \
-     --setting-names "AzureWebJobs.scheduledCrawl.Disabled"
-   ```
+## Live Exit Gate
 
-2. Check for poison messages accumulated during outage:
+Evidence must include the provider/deployment identifier, deployed commit,
+settings names, test correlation IDs, queue counts before/after, one controlled
+failure, its observed retry/consumption behavior, and one successful recovery.
+No such evidence is recorded as of the review date.
 
-   ```bash
-   az storage queue show --name ingestion-extract-poison --account-name <storage> --query "approximateMessageCount"
-   ```
+## Code Validation Commands
 
-3. Re-queue poison messages if they failed due to the LLM outage (not due to bad data):
+```bash
+npm run build:functions
+npx vitest run src/agents/ingestion/llm/__tests__/client.test.ts src/services/runtime/__tests__/envContract.test.ts
+npm run typecheck
+```
 
-   ```bash
-   # Peek to confirm they are LLM-timeout failures
-   az storage message peek --queue-name ingestion-extract-poison --account-name <storage> --num-messages 5
+These checks do not contact Azure or validate live queue semantics.
 
-   # If appropriate, move them back (see docs/ops/services/RUNBOOK_INGESTION.md for procedure)
-   ```
+## References
 
-4. Verify extraction is succeeding:
-
-   ```kql
-   traces
-   | where timestamp > ago(1h)
-   | where message has "[extractService]"
-   | summarize count() by success = message has "Completed"
-   ```
-
-5. Validate end-to-end progression resumes:
-
-- `ingestion-extract` depth declines
-- `ingestion-verify` receives new messages
-- `ingestion-route` receives new messages
-
----
-
-## Mitigation Options
-
-### Rate limiting (429 errors)
-
-If the issue is Azure OpenAI quota throttling (HTTP 429):
-
-1. Check current quota usage in Azure Portal → Azure OpenAI → Deployments → your model
-2. Request a quota increase via Azure Portal → Quotas
-3. Reduce crawl concurrency in `functions/host.json`:
-
-   ```json
-   {
-     "extensions": {
-       "queues": {
-         "batchSize": 1,
-         "maxPollingInterval": "00:00:30",
-         "maxDequeueCount": 3
-       }
-     }
-   }
-   ```
-
-### Model deployment issue
-
-If the GPT-4o deployment is deleted or misconfigured:
-
-1. Verify deployment exists:
-
-   ```bash
-   az cognitiveservices account deployment show \
-     --resource-group <rg> \
-     --name <openai-resource> \
-     --deployment-name <deployment-name>
-   ```
-
-2. Recreate if needed (see Azure OpenAI documentation)
-3. Update the `AZURE_OPENAI_DEPLOYMENT_NAME` app setting on the Function App if the deployment name changed
-
----
-
-## Key Point
-
-The LLM handles extraction only. Published services, active search, and admin workflows are **completely unaffected** by an LLM outage. The ingestion queue will back up but nothing is lost — messages persist in Azure Storage Queues with retry.
+- `functions/extractService/index.ts`
+- `functions/extractService/function.json`
+- `functions/verifyCandidate/index.ts`
+- `src/agents/ingestion/llm/client.ts`
+- `src/agents/ingestion/pipeline/stages.ts`
+- `src/services/runtime/envContractCore.js`
+- `docs/ops/services/RUNBOOK_INGESTION.md`
+- `docs/ops/services/RUNBOOK_QUEUE_BACKLOG.md`

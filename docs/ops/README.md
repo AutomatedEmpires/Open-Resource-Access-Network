@@ -19,7 +19,8 @@ default live-production route. See
 
 Every `RUNBOOK_*.md` in the governed folders declares its lifecycle, owner,
 reviewers, last review, and next review. Rollback-only documents also name their
-active replacement and retirement trigger.
+active replacement, retirement trigger, validation status, and retirement
+deadline. An expired rollback deadline fails the freshness check.
 
 ## Folder Structure
 
@@ -79,12 +80,12 @@ active replacement and retirement trigger.
 
 These documents are not active-stack incident routes:
 
-| Runbook | Scope | Active replacement |
-| --- | --- | --- |
-| [Azure Function failure](services/RUNBOOK_FUNCTION_APP_FAILURE.md) | Legacy Function host/timers | [Dependency outage](services/RUNBOOK_DEPENDENCY_OUTAGE.md) |
-| [Azure ingestion pipeline](services/RUNBOOK_INGESTION.md) | Legacy Functions/Storage Queue ingestion | [211 API ingestion](services/RUNBOOK_211_API_INGESTION.md) |
-| [Azure OpenAI outage](services/RUNBOOK_LLM_OUTAGE.md) | Legacy ingestion extraction | [Dependency outage](services/RUNBOOK_DEPENDENCY_OUTAGE.md) |
-| [Azure queue backlog](services/RUNBOOK_QUEUE_BACKLOG.md) | Legacy Storage Queue throughput | [211 API ingestion](services/RUNBOOK_211_API_INGESTION.md) |
+| Runbook | Scope | Active replacement | Validation | Retirement deadline |
+| --- | --- | --- | --- | --- |
+| [Azure Function failure](services/RUNBOOK_FUNCTION_APP_FAILURE.md) | Legacy Function host/timers | [Dependency outage](services/RUNBOOK_DEPENDENCY_OUTAGE.md) | Code-aligned; live rollback unvalidated | 2026-08-15 |
+| [Azure ingestion pipeline](services/RUNBOOK_INGESTION.md) | Legacy Functions/Storage Queue ingestion | [211 API ingestion](services/RUNBOOK_211_API_INGESTION.md) | Code-aligned; live rollback unvalidated | 2026-08-15 |
+| [Azure OpenAI outage](services/RUNBOOK_LLM_OUTAGE.md) | Legacy ingestion extraction | [Dependency outage](services/RUNBOOK_DEPENDENCY_OUTAGE.md) | Code-aligned; live rollback unvalidated | 2026-08-15 |
+| [Azure queue backlog](services/RUNBOOK_QUEUE_BACKLOG.md) | Legacy Storage Queue throughput | [211 API ingestion](services/RUNBOOK_211_API_INGESTION.md) | Code-aligned; live rollback unvalidated | 2026-08-15 |
 
 `monitoring/MONITORING_QUERIES.md` and `monitoring/LOAD_SCALE_TESTING.md`
 remain Azure rollback references until provider-neutral replacements are

@@ -6,7 +6,8 @@
  * Validates lifecycle and review metadata for operational runbooks. Active and
  * rollback-only runbooks both remain governed and fail when their review is
  * overdue. A rollback-only document must also name its active replacement and
- * the event that ends its rollback window.
+ * the event and deadline that end its rollback window, plus whether the
+ * retained path has actually been validated.
  *
  * Usage:
  *   node scripts/check-runbook-freshness.mjs
@@ -36,6 +37,8 @@ const FIELD_PATTERNS = {
   nextReview: /^-\s+Next review due \(UTC\):\s*(\d{4}-\d{2}-\d{2})\s*$/m,
   activeReplacement: /^-\s+Active replacement:\s*(.+?)\s*$/m,
   retirementTrigger: /^-\s+Retirement trigger:\s*(.+?)\s*$/m,
+  validationStatus: /^-\s+Validation status:\s*(validated|code-aligned-unvalidated|unvalidated)\s*$/m,
+  retirementDeadline: /^-\s+Retirement deadline \(UTC\):\s*(\d{4}-\d{2}-\d{2})\s*$/m,
 };
 
 const REQUIRED_FIELDS = ['owner', 'reviewers', 'lifecycle', 'lastReviewed', 'nextReview'];
@@ -112,9 +115,15 @@ export function buildRunbookFreshnessReport({
       const nextReviewDate = metadata.nextReview
         ? parseStrictDate(metadata.nextReview)
         : null;
+      const retirementDeadlineDate = metadata.retirementDeadline
+        ? parseStrictDate(metadata.retirementDeadline)
+        : null;
 
       if (metadata.lastReviewed && !lastReviewedDate) issues.push('invalid:lastReviewed');
       if (metadata.nextReview && !nextReviewDate) issues.push('invalid:nextReview');
+      if (metadata.retirementDeadline && !retirementDeadlineDate) {
+        issues.push('invalid:retirementDeadline');
+      }
       if (lastReviewedDate && lastReviewedDate > today) issues.push('invalid:lastReviewedInFuture');
       if (lastReviewedDate && nextReviewDate && nextReviewDate <= lastReviewedDate) {
         issues.push('invalid:reviewCadence');
@@ -123,6 +132,18 @@ export function buildRunbookFreshnessReport({
       if (metadata.lifecycle === 'rollback-only') {
         if (!metadata.activeReplacement) issues.push('missing:activeReplacement');
         if (!metadata.retirementTrigger) issues.push('missing:retirementTrigger');
+        if (!metadata.validationStatus) issues.push('missing:validationStatus');
+        if (!metadata.retirementDeadline) issues.push('missing:retirementDeadline');
+        if (
+          lastReviewedDate
+          && retirementDeadlineDate
+          && retirementDeadlineDate < lastReviewedDate
+        ) {
+          issues.push('invalid:retirementDeadlineBeforeReview');
+        }
+        if (retirementDeadlineDate && retirementDeadlineDate < today) {
+          issues.push('invalid:retirementDeadlinePassed');
+        }
       }
 
       const hasMissingMetadata = issues.some((issue) => issue.startsWith('missing:'));

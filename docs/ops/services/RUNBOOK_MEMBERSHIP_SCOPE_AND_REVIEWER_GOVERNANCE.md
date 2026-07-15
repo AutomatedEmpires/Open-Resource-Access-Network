@@ -5,9 +5,11 @@
 - Runbook ID: `RUNBOOK_MEMBERSHIP_SCOPE_AND_REVIEWER_GOVERNANCE`
 - Owner role: Governance Operations Lead
 - Reviewers: Platform Security Lead, ORAN Operations Lead
-- Last reviewed (UTC): 2026-03-16
-- Next review due (UTC): 2026-06-16
+- Operational status: active
+- Last reviewed (UTC): 2026-07-14
+- Next review due (UTC): 2026-10-14
 - Severity scope: `SEV-2 | SEV-3 | SEV-4`
+- Review validation: current route/service code, 77 focused tests, and repository typecheck
 
 ## Purpose And Scope
 
@@ -73,7 +75,7 @@ Primary implementation:
 Implemented today:
 
 - ORAN-admin can freeze or restore a user account with a required operator note
-- frozen users are denied authenticated request context through the shared session helper and NextAuth session shaping
+- frozen users are denied authenticated request context through the Clerk-to-ORAN session helper
 - host-team invite/reactivation flow rejects frozen users
 - org-claim approval rejects frozen claimants before promotion to `host_admin`
 - account freeze is non-destructive and preserves audit history plus security metadata
@@ -81,7 +83,6 @@ Implemented today:
 Primary implementation:
 
 - `db/migrations/0053_account_status_and_security_controls.sql`
-- `src/lib/auth.ts`
 - `src/services/auth/session.ts`
 - `src/app/api/admin/security/accounts/route.ts`
 - `src/app/api/host/admins/route.ts`
@@ -102,7 +103,7 @@ Primary implementation:
 - `src/services/escalation/engine.ts`
 - `src/app/api/admin/ingestion/overview/route.ts`
 
-### 5. Membership deactivation during user data deletion
+### 6. Membership deactivation during user data deletion
 
 Implemented today:
 
@@ -150,8 +151,12 @@ Suggested checks:
 ```bash
 npx vitest run src/services/workflow/__tests__/two-person.test.ts src/app/api/host/__tests__/host-admins-extra-coverage.test.ts src/app/api/admin/__tests__/approvals-zones-extra.test.ts src/app/api/admin/__tests__/routes.test.ts src/app/api/admin/__tests__/scopes-routes.test.ts
 
-npx tsc --noEmit
+npm run typecheck
 ```
+
+The 2026-07-14 review passed the listed focused suites (77 tests) and typecheck.
+That evidence validates implemented code contracts; it does not close the
+unsupported governance gaps above or claim a live production drill.
 
 If changing host-admin or scope-grant behavior, run the corresponding focused Vitest suites in that area before merge.
 

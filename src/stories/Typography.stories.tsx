@@ -51,12 +51,12 @@ export const FontFamilies: Story = {
   render: () => (
     <div className="space-y-6 p-6">
       <div>
-        <p className="mb-1 font-mono text-[10px] text-gray-400">font-sans (Patrick Hand — UI body)</p>
+        <p className="mb-1 font-mono text-[10px] text-gray-400">font-sans (Manrope — UI body)</p>
         <p className="font-sans text-2xl">The quick brown fox jumps over the lazy dog — 0123456789</p>
         <p className="font-sans text-base mt-1 text-gray-500">Find verified government, nonprofit, and community services near you.</p>
       </div>
       <div>
-        <p className="mb-1 font-mono text-[10px] text-gray-400">font-display (Caveat — headings / display accents)</p>
+        <p className="mb-1 font-mono text-[10px] text-gray-400">font-display (Space Grotesk — headings / display)</p>
         <p className="font-display text-4xl font-bold">ORAN — Open Resource Access Network</p>
         <p className="font-display text-2xl mt-1">Find help. Instantly. Verified.</p>
       </div>

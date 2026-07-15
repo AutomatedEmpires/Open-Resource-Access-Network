@@ -14,11 +14,10 @@
  */
 
 import { executeQuery, withTransaction } from '@/services/db/postgres';
-import { sendEmail, isEmailConfigured } from '@/services/email/azureEmail';
+import { sendEmail, isEmailConfigured } from '@/services/email/resendEmail';
 import {
   SUBMISSION_TRANSITIONS,
   TWO_PERSON_REQUIRED_TYPES,
-  AUTO_CHECK_THRESHOLDS,
   FEATURE_FLAGS,
 } from '@/domain/constants';
 import type {
@@ -203,6 +202,31 @@ function checkTransitionGate(
   return { gate, passed: true };
 }
 
+/**
+ * Automated actors may collect signals and route work, but they may never
+ * issue a human approval. This gate is deliberately not skippable.
+ */
+function checkHumanApprovalGate(
+  toStatus: SubmissionStatus,
+  actorRole: string,
+): GateCheckResult {
+  const gate = 'human_approval_required';
+
+  if (toStatus !== 'approved') {
+    return { gate, passed: true, message: 'Not an approval transition' };
+  }
+
+  if (actorRole.trim().toLowerCase() === 'system') {
+    return {
+      gate,
+      passed: false,
+      message: 'System actors cannot approve submissions; independent human review is required',
+    };
+  }
+
+  return { gate, passed: true, message: 'Approval actor is human' };
+}
+
 // ============================================================
 // CORE ENGINE
 // ============================================================
@@ -252,6 +276,9 @@ export async function advance(req: AdvanceRequest): Promise<AdvanceResult> {
 
     // ALWAYS check transition graph validity — cannot be skipped
     gateResults.push(checkTransitionGate(fromStatus, req.toStatus));
+
+    // System/automated approval is never permitted and cannot be skipped.
+    gateResults.push(checkHumanApprovalGate(req.toStatus, req.actorRole));
 
     // Check lock (skippable)
     if (!skipOpts.lockCheck) {
@@ -641,8 +668,8 @@ export async function bulkAdvance(
 
 /**
  * Run automated confidence checks on a submission.
- * Uses confidence_scores for service_verification types.
- * Transitions to approved (high confidence), needs_review (low), or needs_review (unknown).
+ * Uses confidence_scores for service_verification types as a review signal.
+ * Confidence never authorizes publication; every result routes to needs_review.
  */
 export async function runAutoCheck(
   submissionId: string,
@@ -682,28 +709,20 @@ export async function runAutoCheck(
   const row = rows[0];
   const confidence = row?.score;
 
-  if (confidence !== null && confidence !== undefined && confidence >= AUTO_CHECK_THRESHOLDS.autoApproveMin) {
-    return advance({
-      submissionId,
-      toStatus: 'approved',
-      actorUserId,
-      actorRole: 'system',
-      reason: `Auto-approved: confidence score ${confidence} >= ${AUTO_CHECK_THRESHOLDS.autoApproveMin}`,
-      skipGates: true,
-      metadata: { auto_score: confidence },
-    });
-  }
-
   return advance({
     submissionId,
     toStatus: 'needs_review',
     actorUserId,
     actorRole: 'system',
     reason: confidence !== null && confidence !== undefined
-      ? `Confidence score ${confidence} below auto-approve threshold`
+      ? `Confidence score ${confidence} recorded; independent human review required`
       : 'No confidence score available, routing to manual review',
     skipGates: true,
-    metadata: { auto_score: confidence ?? null },
+    metadata: {
+      auto_score: confidence ?? null,
+      confidence_only: true,
+      requires_independent_review: true,
+    },
   });
 }
 

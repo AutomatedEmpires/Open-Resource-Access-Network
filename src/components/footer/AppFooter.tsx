@@ -1,7 +1,7 @@
 /**
  * AppFooter
  *
- * Role-aware global footer. Uses the NextAuth session to determine which
+ * Role-aware global footer. Uses the ORAN authorization context to determine which
  * column variant to render. Falls back to the public variant while loading
  * or when unauthenticated.
  *
@@ -14,7 +14,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/services/auth/client';
 import { ExternalLink, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { OranRole } from '@/domain/types';

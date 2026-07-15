@@ -71,9 +71,9 @@ describe('NotificationsPageClient', () => {
     render(<NotificationsPageClient />);
 
     await screen.findByText('Sign in to view notifications');
-    expect(screen.getByRole('link', { name: 'Sign in with Microsoft' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Sign in to ORAN' })).toHaveAttribute(
       'href',
-      '/api/auth/signin?callbackUrl=/notifications',
+      '/auth/signin?callbackUrl=%2Fnotifications',
     );
   });
 

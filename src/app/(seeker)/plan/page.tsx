@@ -8,7 +8,7 @@ import PlanPageClient from './PlanPageClient';
 
 export const metadata: Metadata = {
   title: 'Plan',
-  description: 'Build a local-first action plan from verified ORAN services and your own next steps.',
+  description: 'Build a local-first action plan from publication-gated ORAN services and your own next steps.',
 };
 
 export default async function PlanPage() {

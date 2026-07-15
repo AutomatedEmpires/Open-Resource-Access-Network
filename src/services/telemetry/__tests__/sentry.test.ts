@@ -16,6 +16,8 @@ const sentryMocks = vi.hoisted(() => ({
 }));
 const mutableEnv = process.env as Record<string, string | undefined>;
 
+vi.mock('@sentry/nextjs', () => sentryMocks);
+
 async function loadSentryModule() {
   return import('../sentry');
 }
@@ -157,14 +159,15 @@ describe('sentry telemetry wrapper', () => {
     expect(debugSpy).toHaveBeenCalled();
   });
 
-  it('returns early in browser-like runtime without injected sentry', async () => {
+  it('uses the configured SDK in a browser-like runtime', async () => {
     mutableEnv.NEXT_PUBLIC_SENTRY_DSN = 'https://dsn';
     const withWindow = globalThis as unknown as { window?: unknown };
     withWindow.window = {};
 
     const { captureMessage } = await loadSentryModule();
     await captureMessage('browser runtime');
-    expect(sentryMocks.withScope).not.toHaveBeenCalled();
+    expect(sentryMocks.withScope).toHaveBeenCalledOnce();
+    expect(sentryMocks.captureMessage).toHaveBeenCalledWith('browser runtime', 'info');
 
     withWindow.window = undefined;
   });

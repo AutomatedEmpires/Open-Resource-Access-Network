@@ -40,7 +40,7 @@ const TESTING_MATRIX = [
 
 const KNOWN_ISSUES = [
   {
-    issue: 'Map component (Azure Maps)',
+    issue: 'Interactive map (OpenStreetMap)',
     detail:
       'The interactive map does not currently meet keyboard-only navigation requirements. A list-view fallback is available for all map search results.',
     severity: 'Medium' as const,
@@ -48,7 +48,7 @@ const KNOWN_ISSUES = [
   {
     issue: 'Complex data tables — admin portals',
     detail:
-      'Some admin-facing tables lack explicit row/column header associations. Remediation is scheduled for Q2 2026.',
+      'Some admin-facing tables lack explicit row/column header associations. Remediation is tracked as an active accessibility improvement.',
     severity: 'Low' as const,
   },
 ];

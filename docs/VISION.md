@@ -1,10 +1,14 @@
 # ORAN Vision
 
-ORAN is a civic-grade, safety-critical, chatbot-first, GIS-enabled platform that helps people find government, state, county, nonprofit, and community services quickly and safely.
+**Building Bridges | Strengthening Communities**
+
+ORAN is a nationwide, civic-grade, safety-critical, chatbot-first, GIS-enabled platform that helps people across the United States find government, state, county, nonprofit, and community services quickly and safely.
 
 ## Core Mission
 
 Connect people in need to real, verified services — never invented ones.
+
+The core journey is situation → need → eligibility and access constraints → the best verified next step. ORAN is not a collection of benefit-adjacent directories. Supporting datasets such as stores that accept SNAP may enrich a recommendation, but direct services, official programs, application paths, and human help remain the seeker-facing product.
 
 ## Non-Negotiables
 
@@ -13,10 +17,12 @@ Connect people in need to real, verified services — never invented ones.
 3. **Accessibility**: Keyboard navigable, screen-reader friendly, mobile-first, low-bandwidth tolerant.
 4. **Privacy**: Approximate location by default. Explicit consent before saving profile data.
 5. **Retrieval-First**: No LLM in retrieval or ranking. LLM (if enabled by flag) may only summarize already-retrieved records.
+6. **Nationwide by Design**: Local quality canaries help validate the system, but they never narrow the product's United States coverage boundary.
+7. **Source Purpose**: Trustworthiness and usefulness are distinct. Supporting reference data may enrich results but cannot masquerade as a standalone service.
 
 ## Product Surfaces
 
-- **Chatbot** (primary): Conversational navigation using profile + geo + constraints
+- **Chat-first intake** (primary): plain-language need intake, focused follow-up, and conversational navigation using only the profile, approximate geography, and constraints that can change the match
 - **Map UI**: Live filtering on pan/zoom, clustering, listing cards
 - **Directory UI**: Fast searchable list with filters
 

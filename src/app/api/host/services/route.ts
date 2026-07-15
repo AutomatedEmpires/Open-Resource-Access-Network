@@ -345,7 +345,6 @@ export async function POST(req: NextRequest) {
       detail,
       actorUserId: authCtx.userId,
       actorRole: authCtx.role,
-      allowAutoApprove: true,
     });
     if (!processed.success) {
       return NextResponse.json({ error: processed.error ?? 'Unable to create service submission.' }, { status: 409 });
@@ -357,14 +356,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         detail: responseDetail,
-        queuedForReview: !processed.autoPublished,
-        published: processed.autoPublished,
+        queuedForReview: true,
+        published: false,
         submissionId: detail.instance.submission_id,
-        serviceId: processed.autoPublished ? responseDetail.reviewMeta.targetId : null,
+        serviceId: null,
         sourceRecordId: responseDetail.reviewMeta.sourceRecordId,
-        message: processed.autoPublished
-          ? 'Service published and added to your live listings.'
-          : 'Service submitted for review. It will publish after approval.',
+        message: 'Service submitted for independent review. It will publish after approval.',
       },
       { status: 201 },
     );

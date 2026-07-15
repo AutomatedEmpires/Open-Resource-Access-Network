@@ -16,7 +16,7 @@ vi.mock('next/navigation', () => ({
   usePathname: usePathnameMock,
   useRouter: useRouterMock,
 }));
-vi.mock('next-auth/react', () => ({
+vi.mock('@/services/auth/client', () => ({
   useSession: useSessionMock,
 }));
 vi.mock('@/services/auth/roles', () => ({
@@ -131,6 +131,7 @@ describe('portal layouts', () => {
     expect(screen.getByText('Workspace core')).toBeInTheDocument();
     expect(screen.getByText('Record maintenance')).toBeInTheDocument();
     expect(screen.getAllByText('Mobile-first').length).toBeGreaterThan(0);
+    expect(screen.getByRole('navigation', { name: 'Organization mobile navigation' })).toBeInTheDocument();
     expect(main?.textContent).toContain('Child');
   });
 
@@ -168,6 +169,7 @@ describe('portal layouts', () => {
     expect(screen.getByText('Review workspace')).toBeInTheDocument();
     expect(screen.getByText('Coverage oversight')).toBeInTheDocument();
     expect(screen.getAllByText('Mobile-first').length).toBeGreaterThan(0);
+    expect(screen.getByRole('navigation', { name: 'Community volunteer mobile navigation' })).toBeInTheDocument();
     expect(container.querySelector('#main-content')?.textContent).toContain('Child');
   });
 
@@ -185,6 +187,7 @@ describe('portal layouts', () => {
 
     expect(rulesLink?.getAttribute('aria-current')).toBe('page');
     expect(auditLink?.getAttribute('aria-current')).toBe(null);
+    expect(screen.getByRole('navigation', { name: 'ORAN admin mobile navigation' })).toBeInTheDocument();
   });
 
   it('renders the seeker shell with active desktop and mobile navigation links', async () => {
@@ -194,11 +197,16 @@ describe('portal layouts', () => {
     const { container } = render(<SeekerLayoutShell planEnabled={false}>Child</SeekerLayoutShell>) as { container: HTMLElement };
     const main = container.querySelectorAll('#main-content');
     const chatLink = container.querySelector('a[href="/chat"]');
-    const savedLink = container.querySelector('a[href="/saved"]');
+    const mapLink = container.querySelector('a[href="/map"]');
+    const scrollLink = container.querySelector('a[href="/scroll"]');
+    const profileLink = container.querySelector('a[href="/profile"]');
 
     expect(main).toHaveLength(1);
     expect(screen.getByTestId('app-nav')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Seeker mobile navigation' })).toBeInTheDocument();
     expect(chatLink).toBeTruthy();
-    expect(savedLink).toBeTruthy();
+    expect(mapLink).toBeTruthy();
+    expect(scrollLink).toBeTruthy();
+    expect(profileLink).toBeTruthy();
   });
 });

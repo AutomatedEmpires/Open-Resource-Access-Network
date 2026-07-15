@@ -20,11 +20,12 @@ export const SITE = {
   acronym: 'ORAN',
   legalName: 'Open Resource Access Network',
   title: 'ORAN — Open Resource Access Network',
+  tagline: 'Building Bridges | Strengthening Communities',
   baseUrl: normalizeBaseUrl(process.env.NEXT_PUBLIC_SITE_URL),
   description:
-    'Find verified government, nonprofit, and community services near you. No hallucinated results — real, confirmed information only.',
+    'Describe what is happening and find a clear next step from stored government, nonprofit, and community service records.',
   mission:
-    'Make verified social-service discovery reliable, safe, and accessible by connecting people to confirmed government, nonprofit, and community resources.',
+    'Make social-service navigation reliable, safe, and accessible by connecting people to source-authorized government, nonprofit, and community resources.',
   vision:
     'A world where finding help is as dependable as emergency routing: fast, factual, privacy-respecting, and available to everyone.',
   founded: '2024',
@@ -50,6 +51,7 @@ export const PUBLIC_SITEMAP_ENTRIES: ReadonlyArray<{
   { path: '/chat', changeFrequency: 'monthly', priority: 0.9 },
   { path: '/directory', changeFrequency: 'daily', priority: 0.9 },
   { path: '/map', changeFrequency: 'daily', priority: 0.8 },
+  { path: '/scroll', changeFrequency: 'daily', priority: 0.9 },
   { path: '/status', changeFrequency: 'daily', priority: 0.7 },
   { path: '/changelog', changeFrequency: 'weekly', priority: 0.7 },
   { path: '/security', changeFrequency: 'monthly', priority: 0.7 },
@@ -98,7 +100,7 @@ export function buildOrganizationJsonLd() {
     foundingDate: SITE.founded,
     description: SITE.description,
     mission: SITE.mission,
-    slogan: 'Verified civic resource discovery',
+    slogan: SITE.tagline,
     sameAs: sameAs.length > 0 ? sameAs : undefined,
   };
 }

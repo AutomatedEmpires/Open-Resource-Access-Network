@@ -60,6 +60,71 @@ afterEach(() => {
 });
 
 describe('ChatWindow interactions', () => {
+  it('keeps the initial intake at the top and scrolls as conversation messages arrive', async () => {
+    let resolveChat!: (response: Response) => void;
+    const pendingChatResponse = new Promise<Response>((resolve) => {
+      resolveChat = resolve;
+    });
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
+      if (url === '/api/chat') {
+        return pendingChatResponse;
+      }
+
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    render(<ChatWindow sessionId="scroll-session" />);
+
+    expect(screen.getByText('Tell ORAN what is wrong.')).toBeInTheDocument();
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Chat message input'), {
+      target: { value: 'Need food support' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await waitFor(() => {
+      expect(scrollIntoViewMock.mock.calls.length).toBeGreaterThan(0);
+    });
+    const callsAfterUserMessage = scrollIntoViewMock.mock.calls.length;
+
+    resolveChat({
+      ok: true,
+      json: async () => ({
+        message: 'Here are food support options.',
+        services: [],
+        isCrisis: false,
+        sessionId: 'scroll-session',
+        quotaRemaining: 49,
+        intent: { category: 'food_assistance', rawQuery: 'food', urgencyQualifier: 'standard' },
+        eligibilityDisclaimer: 'Always verify eligibility before visiting.',
+        llmSummarized: false,
+      }),
+    } as Response);
+
+    await screen.findByText('Here are food support options.');
+    await waitFor(() => {
+      expect(scrollIntoViewMock.mock.calls.length).toBeGreaterThan(callsAfterUserMessage);
+    });
+    expect(scrollIntoViewMock).toHaveBeenLastCalledWith({ behavior: 'smooth' });
+
+    const messageLog = screen.getByRole('log', { name: 'Chat messages' });
+    messageLog.scrollTop = 320;
+    fireEvent.scroll(messageLog);
+    fireEvent.click(screen.getByRole('button', { name: 'Clear conversation' }));
+
+    expect(messageLog.scrollTop).toBe(0);
+    expect(screen.getByText('Tell ORAN what is wrong.')).toBeInTheDocument();
+  });
+
   it('sends chat messages, renders service cards, and toggles save/unsave', async () => {
     localStorage.setItem(PREFS_KEY, JSON.stringify({ serverSyncEnabled: true }));
     localStorage.setItem('oran:saved-service-ids', JSON.stringify(['existing-service']));
@@ -203,7 +268,7 @@ describe('ChatWindow interactions', () => {
     expect(fetchMock.mock.calls.some((call) => String(call[0]) === '/api/saved')).toBe(false);
   });
 
-  it('submits suggestion chips, renders crisis banner, and disables input at quota 0', async () => {
+  it('keeps crisis messaging available after the daily discovery quota reaches 0', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ remaining: 50, resetAt: null }),
@@ -216,6 +281,18 @@ describe('ChatWindow interactions', () => {
         sessionId: 'session-2',
         quotaRemaining: 0,
         intent: { category: 'housing', rawQuery: 'shelter', urgencyQualifier: 'urgent' },
+        eligibilityDisclaimer: 'Always verify eligibility before visiting.',
+        llmSummarized: false,
+      }),
+    }).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        message: 'Call 911 now if you are in immediate danger.',
+        services: [],
+        isCrisis: true,
+        sessionId: 'session-2',
+        quotaRemaining: 0,
+        intent: { category: 'housing', rawQuery: 'danger', urgencyQualifier: 'urgent' },
         eligibilityDisclaimer: 'Always verify eligibility before visiting.',
         llmSummarized: false,
       }),
@@ -234,13 +311,21 @@ describe('ChatWindow interactions', () => {
     });
 
     expect(screen.queryByRole('note', { name: 'Verification tip' })).not.toBeInTheDocument();
-    expect(screen.getByText('Message limit reached.')).toBeInTheDocument();
+    expect(screen.getByText('Daily discovery limit reached.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open Directory' })).toHaveAttribute('href', '/directory?q=Need+shelter+tonight');
     expect(screen.getByRole('link', { name: 'Open Map' })).toHaveAttribute('href', '/map?q=Need+shelter+tonight');
     expect(screen.getByRole('button', { name: 'Start new chat session' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Chat message input')).toBeDisabled();
+    expect(screen.getByLabelText('Chat message input')).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Food' })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Chat message input'), {
+      target: { value: 'I am in immediate danger' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await screen.findByText('Call 911 now if you are in immediate danger.');
+    expect(getChatCalls()).toHaveLength(2);
   });
 
   it('handles Enter key submission and network failures gracefully', async () => {

@@ -1,5 +1,7 @@
 import { Pool, PoolClient } from 'pg';
 
+import { buildRuntimeDatabaseConnectionString } from './runtimeRole';
+
 function getDatabaseUrl(): string | null {
   const url = process.env.DATABASE_URL;
   if (!url) return null;
@@ -20,27 +22,42 @@ export function isDatabaseConfigured(): boolean {
  */
 let modulePool: Pool | undefined;
 
+function getPoolMax(): number {
+  const configured = Number.parseInt(process.env.DATABASE_POOL_MAX ?? '', 10);
+  if (Number.isFinite(configured) && configured > 0 && configured <= 20) {
+    return configured;
+  }
+
+  // Vercel instances scale horizontally. Keep each instance's pool small and let
+  // Supavisor multiplex runtime traffic across the database connections.
+  return process.env.NODE_ENV === 'production' ? 2 : 10;
+}
+
 /** Shared pool options for safety: timeout, connection limits */
-const POOL_OPTIONS = {
-  max: 10,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
-  /** Abort any query running longer than 30 seconds — prevents DoS via slow queries */
-  statement_timeout: 30_000,
-} as const;
+function getPoolOptions() {
+  return {
+    max: getPoolMax(),
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+    /** Abort any query running longer than 30 seconds — prevents DoS via slow queries */
+    statement_timeout: 30_000,
+    allowExitOnIdle: true,
+  } as const;
+}
 
 export function getPgPool(): Pool {
-  const databaseUrl = getDatabaseUrl();
-  if (!databaseUrl) {
+  const configuredDatabaseUrl = getDatabaseUrl();
+  if (!configuredDatabaseUrl) {
     throw new Error('DATABASE_URL is not configured');
   }
+  const databaseUrl = buildRuntimeDatabaseConnectionString(configuredDatabaseUrl);
 
   // Dev: cache on globalThis to survive Next.js hot reloads.
   if (process.env.NODE_ENV !== 'production') {
     if (!globalThis.__oranPgPool) {
       globalThis.__oranPgPool = new Pool({
         connectionString: databaseUrl,
-        ...POOL_OPTIONS,
+        ...getPoolOptions(),
       });
     }
     return globalThis.__oranPgPool;
@@ -50,7 +67,7 @@ export function getPgPool(): Pool {
   if (!modulePool) {
     modulePool = new Pool({
       connectionString: databaseUrl,
-      ...POOL_OPTIONS,
+      ...getPoolOptions(),
     });
   }
   return modulePool;

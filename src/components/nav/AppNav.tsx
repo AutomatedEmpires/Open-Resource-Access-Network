@@ -10,17 +10,21 @@
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { signOut, useSession } from 'next-auth/react';
+import { useOranAuth } from '@/services/auth/client';
 import { ChevronDown, List, LogOut, MapPin, Menu, MessageCircle, User, X } from 'lucide-react';
 import type { OranRole } from '@/domain/types';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { useLocale } from '@/contexts/LocaleContext';
 
-function useOptionalSession() {
+function useOptionalAuth() {
   try {
-    return useSession();
+    return useOranAuth();
   } catch {
-    return { data: null };
+    return {
+      data: null,
+      status: 'unauthenticated' as const,
+      signOut: async () => undefined,
+    };
   }
 }
 
@@ -105,7 +109,7 @@ function getScopeBadge(role: OranRole | undefined, pathname: string): { label: s
     return { label: 'Seeker', href: '/chat' };
   }
 
-  if (/^\/(chat|directory|map|saved|profile|notifications|invitations|report|submit-resource|service)(?:\/|$)/.test(pathname)) {
+  if (/^\/(chat|directory|map|scroll|saved|profile|notifications|invitations|report|submit-resource|service)(?:\/|$)/.test(pathname)) {
     return { label: 'Seeker', href: '/chat' };
   }
 
@@ -155,7 +159,7 @@ function getProfileMenuItems(role: OranRole | undefined, signInHref: string, t: 
 
 export function AppNav() {
   const pathname = usePathname() ?? '';
-  const { data: session } = useOptionalSession();
+  const { data: session, signOut } = useOptionalAuth();
   const [uiState, setUiState] = useState<{ mobileOpen: boolean; openMenu: OpenMenu }>({
     mobileOpen: false,
     openMenu: null,
@@ -201,7 +205,7 @@ export function AppNav() {
 
   const handleSignOut = () => {
     closeAllMenus();
-    void signOut({ callbackUrl: '/' });
+    void signOut({ redirectUrl: '/' });
   };
 
   return (

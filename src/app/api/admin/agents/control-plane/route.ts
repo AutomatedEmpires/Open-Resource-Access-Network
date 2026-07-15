@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
-import { trackEvent } from '@/services/telemetry/appInsights';
+import { trackEvent } from '@/services/telemetry/events';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
 import { buildAgentControlPlaneSnapshot } from '@/services/agentic/controlPlane';

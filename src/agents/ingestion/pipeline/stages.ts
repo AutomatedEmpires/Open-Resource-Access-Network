@@ -18,7 +18,7 @@ import { createLLMClient, getLLMConfigFromEnv } from '../llm';
 
 import '../llm/providers';
 
-import { trackAiEvent } from '@/services/telemetry/appInsights';
+import { trackAiEvent } from '@/services/telemetry/events';
 
 import type {
   PipelineContext,

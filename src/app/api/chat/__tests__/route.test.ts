@@ -13,6 +13,7 @@ const authMocks = vi.hoisted(() => ({
 
 const searchMock = vi.hoisted(() => vi.fn());
 const orchestrateChatMock = vi.hoisted(() => vi.fn());
+const detectCrisisMock = vi.hoisted(() => vi.fn());
 const hydrateChatContextMock = vi.hoisted(() => vi.fn());
 const isEnabledMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
@@ -20,7 +21,8 @@ const translateBatchMock = vi.hoisted(() => vi.fn());
 const isTranslatorConfiguredMock = vi.hoisted(() => vi.fn());
 const chatQuotaMocks = vi.hoisted(() => ({
   checkQuotaByIdentity: vi.fn(),
-  incrementQuotaByIdentity: vi.fn(),
+  finalizeChatRequest: vi.fn(),
+  reserveChatRequest: vi.fn(),
 }));
 
 class MockChatRateLimitExceededError extends Error {
@@ -42,6 +44,7 @@ vi.mock('@/services/search/engine', () => ({
 }));
 vi.mock('@/services/chat/orchestrator', () => ({
   orchestrateChat: orchestrateChatMock,
+  detectCrisis: detectCrisisMock,
   ChatRateLimitExceededError: MockChatRateLimitExceededError,
 }));
 vi.mock('@/services/profile/chatHydration', () => ({
@@ -98,6 +101,7 @@ beforeEach(() => {
   isEnabledMock.mockReturnValue(false);
   isTranslatorConfiguredMock.mockReturnValue(false);
   translateBatchMock.mockResolvedValue([]);
+  detectCrisisMock.mockReturnValue(false);
   chatQuotaMocks.checkQuotaByIdentity.mockResolvedValue({
     sessionId: 'device:test',
     messageCount: 0,
@@ -105,7 +109,30 @@ beforeEach(() => {
     exceeded: false,
     resetAt: undefined,
   });
-  chatQuotaMocks.incrementQuotaByIdentity.mockResolvedValue(undefined);
+  chatQuotaMocks.reserveChatRequest.mockImplementation(async (input: {
+    requestId: string;
+    deviceId: string;
+    userId?: string;
+  }) => ({
+    ...input,
+    decision: 'allowed',
+    backend: 'database',
+    quota: {
+      sessionId: 'device:test',
+      messageCount: 0,
+      remaining: 50,
+      exceeded: false,
+      resetAt: undefined,
+    },
+    retryAfterSeconds: 60,
+  }));
+  chatQuotaMocks.finalizeChatRequest.mockResolvedValue({
+    sessionId: 'device:test',
+    messageCount: 0,
+    remaining: 50,
+    exceeded: false,
+    resetAt: undefined,
+  });
   orchestrateChatMock.mockResolvedValue({ reply: 'ok' });
   hydrateChatContextMock.mockImplementation(async (context: unknown) => context);
   captureExceptionMock.mockResolvedValue(undefined);
@@ -689,5 +716,284 @@ describe('api/chat route', () => {
       services: [{ id: 'svc-1', description: 'Food pantry' }],
       quotaRemaining: 50,
     });
+  });
+
+  it('bypasses every usage control for explicit self-crisis routing', async () => {
+    detectCrisisMock.mockReturnValueOnce(true);
+    chatQuotaMocks.checkQuotaByIdentity.mockResolvedValueOnce({
+      sessionId: 'device:test',
+      messageCount: 7,
+      remaining: 3,
+      exceeded: false,
+      resetAt: undefined,
+    });
+    orchestrateChatMock.mockResolvedValueOnce({
+      message: 'Call or text 988 now.',
+      services: [],
+      isCrisis: true,
+      quotaRemaining: 20,
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'I want to kill myself',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        locale: 'en',
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(chatQuotaMocks.reserveChatRequest).not.toHaveBeenCalled();
+    expect(chatQuotaMocks.finalizeChatRequest).not.toHaveBeenCalled();
+    expect(chatQuotaMocks.checkQuotaByIdentity).toHaveBeenCalledWith(
+      expect.any(String),
+      undefined,
+    );
+    expect(await response.json()).toMatchObject({
+      isCrisis: true,
+      quotaRemaining: 3,
+    });
+  });
+
+  it('bypasses quota for deterministic crisis-scope clarification', async () => {
+    orchestrateChatMock.mockResolvedValueOnce({
+      message: 'If someone is in immediate danger, call 911 now.',
+      services: [],
+      isCrisis: false,
+      retrievalStatus: 'clarification_required',
+      clarification: {
+        reason: 'crisis_scope',
+        prompt: 'If someone is in immediate danger, call 911 now.',
+        suggestions: [],
+      },
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'What is the suicide hotline?',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        locale: 'en',
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(chatQuotaMocks.reserveChatRequest).not.toHaveBeenCalled();
+    expect(chatQuotaMocks.finalizeChatRequest).not.toHaveBeenCalled();
+  });
+
+  it('releases quota when search is temporarily unavailable', async () => {
+    orchestrateChatMock.mockResolvedValueOnce({
+      message: 'Search is temporarily unavailable.',
+      services: [],
+      isCrisis: false,
+      retrievalStatus: 'temporarily_unavailable',
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'Find food nearby',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        locale: 'en',
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(chatQuotaMocks.finalizeChatRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ decision: 'allowed' }),
+      false,
+    );
+  });
+
+  it('releases a reservation when orchestration errors', async () => {
+    orchestrateChatMock.mockRejectedValueOnce(new Error('search exploded'));
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'Find rental help',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        locale: 'en',
+      },
+    }));
+
+    expect(response.status).toBe(500);
+    expect(chatQuotaMocks.finalizeChatRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ decision: 'allowed' }),
+      false,
+    );
+  });
+
+  it('commits quota only for a successful ordinary response', async () => {
+    orchestrateChatMock.mockResolvedValueOnce({
+      message: 'I found two services.',
+      services: [],
+      isCrisis: false,
+      retrievalStatus: 'results',
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'Find a food pantry',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        locale: 'en',
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(chatQuotaMocks.finalizeChatRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ decision: 'allowed' }),
+      true,
+    );
+  });
+
+  it('returns an atomic quota denial before orchestration and establishes the device cookie', async () => {
+    chatQuotaMocks.reserveChatRequest.mockResolvedValueOnce({
+      requestId: '22222222-2222-4222-8222-222222222222',
+      deviceId: '33333333-3333-4333-8333-333333333333',
+      decision: 'quota_exceeded',
+      backend: 'database',
+      quota: {
+        sessionId: 'device:test',
+        messageCount: 10,
+        remaining: 0,
+        exceeded: true,
+        resetAt: new Date('2027-01-16T00:00:00.000Z'),
+      },
+      retryAfterSeconds: 3600,
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'Find food',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        locale: 'en',
+      },
+    }));
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('3600');
+    expect(response.headers.get('set-cookie')).toContain('oran-did=');
+    expect(orchestrateChatMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a retryable 503 when configured usage controls are unavailable', async () => {
+    chatQuotaMocks.reserveChatRequest.mockResolvedValueOnce({
+      requestId: '22222222-2222-4222-8222-222222222222',
+      deviceId: '33333333-3333-4333-8333-333333333333',
+      decision: 'unavailable',
+      backend: 'database',
+      quota: {
+        sessionId: 'device:test',
+        messageCount: 0,
+        remaining: 10,
+        exceeded: false,
+        resetAt: undefined,
+      },
+      retryAfterSeconds: 30,
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'Find food',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        locale: 'en',
+      },
+    }));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Retry-After')).toBe('30');
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(response.headers.get('set-cookie')).toContain('oran-did=');
+    await expect(response.json()).resolves.toEqual({
+      error: 'Chat is temporarily unavailable. Please try again shortly.',
+    });
+    expect(orchestrateChatMock).not.toHaveBeenCalled();
+    expect(chatQuotaMocks.finalizeChatRequest).not.toHaveBeenCalled();
+  });
+
+  it('never ships a successful response when persistent quota finalization fails', async () => {
+    orchestrateChatMock.mockResolvedValueOnce({
+      message: 'I found a food pantry.',
+      services: [],
+      isCrisis: false,
+      retrievalStatus: 'results',
+    });
+    chatQuotaMocks.finalizeChatRequest
+      .mockRejectedValueOnce(new Error('finalize database unavailable'))
+      .mockResolvedValueOnce({
+        sessionId: 'device:test',
+        messageCount: 0,
+        remaining: 10,
+        exceeded: false,
+        resetAt: undefined,
+      });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'Find a food pantry',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        locale: 'en',
+      },
+    }));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: 'Internal server error' });
+    expect(chatQuotaMocks.finalizeChatRequest).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ decision: 'allowed' }),
+      true,
+    );
+    expect(chatQuotaMocks.finalizeChatRequest).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ decision: 'allowed' }),
+      false,
+    );
+  });
+
+  it('rejects messages above 2,000 characters before any usage reservation', async () => {
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'x'.repeat(2001),
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        locale: 'en',
+      },
+    }));
+
+    expect(response.status).toBe(400);
+    expect(chatQuotaMocks.reserveChatRequest).not.toHaveBeenCalled();
+  });
+
+  it('does not provide OpenAI summarization or enrichment dependencies', async () => {
+    orchestrateChatMock.mockImplementationOnce(async (...args: unknown[]) => {
+      const deps = args[5] as Record<string, unknown>;
+      expect(deps).not.toHaveProperty('summarizeWithLLM');
+      expect(deps).not.toHaveProperty('enrichIntent');
+      return {
+        message: 'Deterministic response',
+        services: [],
+        isCrisis: false,
+        retrievalStatus: 'no_match',
+      };
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'Find utility help',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        locale: 'en',
+      },
+    }));
+
+    expect(response.status).toBe(200);
   });
 });

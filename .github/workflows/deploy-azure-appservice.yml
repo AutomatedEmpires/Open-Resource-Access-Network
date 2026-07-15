@@ -2,7 +2,7 @@ name: Deploy (Azure App Service)
 
 on:
   workflow_dispatch:
-  # Keep deploy manual-only to avoid noisy runs on every push.
+  # Legacy rollback only. The active platform is Vercel + Supabase.
 
 permissions:
   contents: read
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: ${{ vars.AZURE_DEPLOY_ENABLED == 'true' }}
+    if: ${{ vars.AZURE_ROLLBACK_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
@@ -27,7 +27,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -163,4 +163,5 @@ jobs:
             echo "::error::Missing X-Content-Type-Options: nosniff header on deployed app."
             exit 1
           }
+
           echo "Deployment verified successfully"

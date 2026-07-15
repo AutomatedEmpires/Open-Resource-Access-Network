@@ -24,7 +24,7 @@ interface Command {
 
 const COMMANDS: Command[] = [
   { id: 'chat',      label: 'Go to Chat',      description: 'AI-assisted service search', icon: MessageCircle, href: '/chat'      },
-  { id: 'directory', label: 'Open Directory',   description: 'Browse all verified services', icon: List,          href: '/directory' },
+  { id: 'directory', label: 'Open Directory',   description: 'Browse publication-gated services', icon: List,          href: '/directory' },
   { id: 'map',       label: 'Go to Map',        description: 'Map view of nearby services',  icon: MapPin,        href: '/map'       },
   { id: 'saved',     label: 'Go to Saved',      description: 'Your saved services',          icon: Bookmark,      href: '/saved'     },
   { id: 'profile',   label: 'Go to Profile',    description: 'Account and display settings', icon: User,          href: '/profile'   },

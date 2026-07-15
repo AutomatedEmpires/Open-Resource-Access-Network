@@ -675,14 +675,13 @@ describe('AppNav route configuration', () => {
   /** These must match the SEEKER_NAV array in AppNav.tsx */
   const SEEKER_NAV = [
     { label: 'Chat',      href: '/chat' },
-    { label: 'Directory', href: '/directory' },
     { label: 'Map',       href: '/map' },
-    { label: 'Saved',     href: '/saved' },
+    { label: 'Scroll',    href: '/scroll' },
     { label: 'Profile',   href: '/profile' },
   ];
 
-  it('has 5 seeker navigation items', () => {
-    expect(SEEKER_NAV).toHaveLength(5);
+  it('has 4 seeker navigation items', () => {
+    expect(SEEKER_NAV).toHaveLength(4);
   });
 
   it('all routes start with /', () => {

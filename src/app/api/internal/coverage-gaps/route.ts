@@ -1,16 +1,14 @@
 /**
- * POST /api/internal/coverage-gaps
+ * GET|POST /api/internal/coverage-gaps
  *
- * Internal endpoint called by alertCoverageGaps Azure Function (daily timer).
- * Finds unrouted candidates and geographic coverage gaps, then notifies ORAN admins.
- *
- * Protected by shared secret (INTERNAL_API_KEY via Bearer auth) — not accessible to end users.
+ * Vercel Cron uses GET with the default threshold. POST remains available to
+ * authenticated rollback workers and operational tooling with a custom threshold.
  */
 
-import { timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { isDatabaseConfigured } from '@/services/db/postgres';
+import { rejectUnauthorizedInternalRequest } from '@/services/auth/internalRequest';
 import { captureException } from '@/services/telemetry/sentry';
 import {
   getCoverageGapSummaries,
@@ -21,49 +19,15 @@ const BodySchema = z.object({
   thresholdHours: z.number().int().min(1).max(720).default(24),
 }).strict();
 
-export async function POST(req: NextRequest) {
-  // Validate internal API key (same pattern as sla-check)
-  const apiKey = process.env.INTERNAL_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: 'Internal API not configured' },
-      { status: 503 },
-    );
-  }
+export const dynamic = 'force-dynamic';
 
-  const authHeader = req.headers.get('authorization') ?? '';
-  const expected = `Bearer ${apiKey}`;
-  const authBuf = Buffer.from(authHeader);
-  const expectedBuf = Buffer.from(expected);
-  if (authBuf.length !== expectedBuf.length || !timingSafeEqual(authBuf, expectedBuf)) {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 },
-    );
-  }
-
+async function runCoverageGapCheck(
+  body: z.infer<typeof BodySchema>,
+) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json(
       { error: 'Database not configured' },
       { status: 503 },
-    );
-  }
-
-  let body: z.infer<typeof BodySchema>;
-  try {
-    const raw = await req.json();
-    const parsed = BodySchema.safeParse(raw);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: 'Invalid request body', details: parsed.error.issues },
-        { status: 400 },
-      );
-    }
-    body = parsed.data;
-  } catch {
-    return NextResponse.json(
-      { error: 'Invalid JSON body' },
-      { status: 400 },
     );
   }
 
@@ -91,4 +55,35 @@ export async function POST(req: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+export async function GET(req: NextRequest) {
+  const authFailure = rejectUnauthorizedInternalRequest(req);
+  if (authFailure) return authFailure;
+
+  return runCoverageGapCheck({ thresholdHours: 24 });
+}
+
+export async function POST(req: NextRequest) {
+  const authFailure = rejectUnauthorizedInternalRequest(req);
+  if (authFailure) return authFailure;
+
+  let body: z.infer<typeof BodySchema>;
+  try {
+    const parsed = BodySchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid request body', details: parsed.error.issues },
+        { status: 400 },
+      );
+    }
+    body = parsed.data;
+  } catch {
+    return NextResponse.json(
+      { error: 'Invalid JSON body' },
+      { status: 400 },
+    );
+  }
+
+  return runCoverageGapCheck(body);
 }

@@ -8,6 +8,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { SourceResourcePurposeSchema } from '@/agents/ingestion/sourcePurpose';
+
 import { isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
@@ -72,6 +74,7 @@ const CreateSourceSystemSchema = z.object({
     'quarantine',
     'blocked',
   ]),
+  resourcePurpose: SourceResourcePurposeSchema,
   homepageUrl: z.string().url().optional(),
   licenseNotes: z.string().max(4000).optional(),
   termsUrl: z.string().url().optional(),
@@ -156,6 +159,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (parsed.data.initialFeed?.feedHandler === 'azure_function') {
+      return NextResponse.json(
+        {
+          error: 'Legacy Azure Function feeds cannot be created.',
+          code: 'legacy_feed_handler_read_only',
+        },
+        { status: 400 },
+      );
+    }
+
     const { createIngestionStores } = await import('@/agents/ingestion/persistence/storeFactory');
     const { getDrizzle } = await import('@/services/db/drizzle');
 
@@ -169,6 +182,7 @@ export async function POST(req: NextRequest) {
       licenseNotes: parsed.data.licenseNotes ?? null,
       termsUrl: parsed.data.termsUrl ?? null,
       trustTier: parsed.data.trustTier,
+      resourcePurpose: parsed.data.resourcePurpose,
       hsdsProfileUri: parsed.data.hsdsProfileUri ?? null,
       domainRules: parsed.data.domainRules,
       crawlPolicy: {},

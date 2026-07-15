@@ -10,7 +10,7 @@ import {
 export const metadata: Metadata = {
   title: 'About ORAN',
   description:
-    'Learn about the Open Resource Access Network — a civic-grade platform connecting people to verified government, nonprofit, and community services.',
+    'Learn about the Open Resource Access Network — a chat-first civic platform connecting people to source-authorized government, nonprofit, and community services.',
   alternates: { canonical: '/about' },
   openGraph: {
     title: 'About ORAN',
@@ -36,17 +36,17 @@ const HOW_IT_WORKS = [
   {
     step: '1',
     title: 'Find',
-    body: 'Search by what you need, your location, and eligibility. Chat or browse — both use the same verified, retrieval-only data.',
+    body: 'Describe what you need and share only the location or eligibility details that can change the match. Chat, map, and browse use the same publication-gated records.',
   },
   {
     step: '2',
     title: 'Verify',
-    body: 'Every listing carries a confidence score. Community admins and automated checks flag stale or inaccurate records before they reach you.',
+    body: 'Each listing separates source authority, record confidence, and explicit verification. Reports and freshness checks can hold suspect records for review.',
   },
   {
     step: '3',
     title: 'Connect',
-    body: 'Live phone numbers, hours, and eligibility details. Save resources to your profile or share them directly.',
+    body: 'Use the stored phone, website, location, hours, and intake steps, then confirm changing details directly with the provider.',
   },
 ];
 
@@ -54,12 +54,12 @@ const NON_NEGOTIABLES = [
   {
     title: 'Truth first',
     description:
-      'Results come from stored, verified records only. No AI hallucinations — no invented phone numbers, addresses, or hours.',
+      'Results come only from stored records with positive publication authority. ORAN does not invent phone numbers, addresses, or hours.',
   },
   {
     title: 'Crisis-first routing',
     description:
-      'Any imminent-risk signal immediately surfaces 911 / 988 / 211. Safety is never deferred to the normal result flow.',
+      'Imminent danger routes to 911; suicide or mental-health crisis routes to 988; 211 supports non-emergency navigation. ORAN is not an emergency service.',
   },
   {
     title: 'Eligibility caution',
@@ -74,34 +74,34 @@ const NON_NEGOTIABLES = [
   {
     title: 'Accessible to everyone',
     description:
-      'WCAG 2.1 AA is a functional requirement. ORAN is designed to work for people with disabilities and on low-bandwidth connections.',
+      'WCAG 2.1 AA is the design and testing target. ORAN is built for assistive technology, mobile devices, and low-bandwidth connections.',
   },
 ];
 
 const PLATFORM_STATS = [
   { label: 'Service categories', value: '30+' },
-  { label: 'Verification model', value: 'Community-driven' },
+  { label: 'Publication model', value: 'Positive authority + review' },
   { label: 'Crisis gate', value: '911 / 988 / 211' },
   { label: 'License', value: 'MIT' },
-  { label: 'WCAG conformance', value: '2.1 AA' },
+  { label: 'Accessibility target', value: 'WCAG 2.1 AA' },
   { label: 'Listing cost', value: 'Free' },
 ];
 
 const DIFFERENTIATORS = [
   {
     vs: 'vs. AI chatbots',
-    title: 'Zero hallucinations',
-    body: 'ORAN never invents phone numbers, addresses, or service hours. Every result is retrieved from a verified, stored record — not generated on the fly.',
+    title: 'Retrieval-grounded',
+    body: 'ORAN does not invent phone numbers, addresses, or service hours. Every result is retrieved from a stored record that passed the publication gate.',
   },
   {
     vs: 'vs. search engines',
     title: 'Structured & eligibility-aware',
-    body: 'Search engines surface pages. ORAN surfaces structured service records — with hours, eligibility criteria, contact details, and a live confidence score.',
+    body: 'Search engines surface pages. ORAN surfaces the structured contact, location, eligibility, and intake facts a source actually provides, with missing details labeled.',
   },
   {
     vs: 'vs. stale 211 databases',
-    title: 'Continuously re-verified',
-    body: 'Traditional 211 databases go stale between update cycles. ORAN flags confidence decay automatically and routes re-verification work to community admins.',
+    title: 'Freshness review built in',
+    body: 'Records can expire, receive issue reports, and enter re-verification queues. A recent import or confidence score alone does not count as verification.',
   },
   {
     vs: 'vs. proprietary directories',
@@ -131,15 +131,14 @@ export default function AboutPage() {
           Open Resource Access Network
         </h1>
         <p className="max-w-2xl text-xl leading-relaxed text-gray-600">
-          The verified civic directory — connecting people in need to real, confirmed government,
-          nonprofit, and community services.
+          A chat-first civic resource navigator that helps people move from a real-life need to a trustworthy next step.
         </p>
         {/* Credential strip */}
         <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
           {[
-            { dot: 'bg-gray-900', text: 'WCAG 2.1 AA' },
+            { dot: 'bg-gray-900', text: 'WCAG 2.1 AA target' },
             { dot: 'bg-gray-700', text: 'MIT open source' },
-            { dot: 'bg-red-500',   text: '911 / 988 / 211 crisis gate' },
+            { dot: 'bg-red-500',   text: '911 / 988 safety routing' },
             { dot: 'bg-gray-500', text: 'Free to use' },
           ].map(({ dot, text }) => (
             <span key={text} className="inline-flex items-center gap-1.5 text-xs text-gray-500">
@@ -159,9 +158,9 @@ export default function AboutPage() {
           of mouth. When someone is in crisis, &ldquo;Google it&rdquo; is not good enough.
         </p>
         <p className="leading-relaxed text-gray-700">
-          ORAN is a single, continuously verified directory of government, nonprofit, and community
-          services — searchable by location, category, and eligibility — with a chat interface that
-          guides people to the right resource without inventing facts.
+          ORAN is a chat-first navigation system for government, nonprofit, and community services.
+          It gathers only the context needed to improve a match, retrieves publication-gated records,
+          and guides the person toward a concrete next step without inventing facts.
         </p>
       </section>
 
@@ -219,10 +218,9 @@ export default function AboutPage() {
       <section className="mb-12">
         <h2 className="mb-3 text-lg font-semibold text-gray-900">Open governance</h2>
         <p className="mb-3 leading-relaxed text-gray-700">
-          Service accuracy is maintained through a layered verification model. Organizations
-          self-list and are reviewed by community administrators — trusted local experts who
-          verify addresses, hours, and eligibility criteria. An automated confidence scoring
-          system flags records that may have gone stale between reviews.
+          Service quality uses a layered review model. Approved provider and community submissions
+          retain their source and decision trail. Freshness checks and user reports can place records
+          on hold for human review; a record is never called provider-verified from an update timestamp alone.
         </p>
         <p className="leading-relaxed text-gray-700">
           ORAN is open source. The platform code is publicly available on GitHub, enabling public
@@ -300,7 +298,7 @@ export default function AboutPage() {
             <h3 className="mb-1 flex items-center justify-between font-semibold text-gray-900 group-hover:text-gray-900">
               Get Help <span aria-hidden="true" className="text-gray-300 group-hover:text-gray-500">→</span>
             </h3>
-            <p className="text-sm text-gray-500">Search verified services near you.</p>
+            <p className="text-sm text-gray-500">Tell ORAN what is wrong and find a trustworthy next step.</p>
           </Link>
           <Link
             href="/partnerships/organizations"

@@ -133,9 +133,9 @@ export default function TermsPage() {
           </div>
         </div>
         <p className="mb-3 text-sm leading-relaxed text-gray-700">
-          ORAN provides best-effort verified information about government, nonprofit, and community
-          services. While we use community review, automated verification, and confidence scoring
-          to maintain data quality, we cannot guarantee that any listing is current, complete, or
+          ORAN provides best-effort, publication-gated information about government, nonprofit, and community
+          services. Source review, issue reporting, freshness checks, and record-confidence scoring
+          support data quality, but we cannot guarantee that any listing is current, complete, or
           accurate at the time you access it. Service hours, eligibility criteria, phone numbers,
           and locations may change without notice.
         </p>

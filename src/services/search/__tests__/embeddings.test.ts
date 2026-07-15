@@ -117,9 +117,12 @@ describe('search embeddings service', () => {
     const rows = await getServicesNeedingEmbedding(25, executeQuery);
     expect(executeQuery).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining('WHERE embedding IS NULL'),
+      expect.stringContaining('WHERE s.embedding IS NULL'),
       [25],
     );
+    const embeddingSelectionSql = String(executeQuery.mock.calls[1][0]);
+    expect(embeddingSelectionSql).toContain('JOIN organizations o');
+    expect(embeddingSelectionSql).toContain('source_systems publication_system');
     expect(rows).toEqual([{ id: 'svc-1', name: 'Food Pantry', description: 'Emergency food' }]);
   });
 });

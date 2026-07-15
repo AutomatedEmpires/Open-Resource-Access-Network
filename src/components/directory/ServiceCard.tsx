@@ -210,12 +210,12 @@ export function ServiceCard({
         )}
       </div>
 
-      {/* Badge row: trust band + match + capacity — below org name, above description */}
+      {/* Badge row: record confidence + match + capacity — below org name, above description */}
       <div className="flex flex-wrap items-center gap-1.5 mb-2">
         <Badge
           band={trustBand}
-          title={`Trust: ${bandShortLabel(trustBand)}`}
-          aria-label={`Trust: ${bandShortLabel(trustBand)}`}
+          title={`Record confidence: ${bandShortLabel(trustBand)}`}
+          aria-label={`Record confidence: ${bandShortLabel(trustBand)}`}
         >
           {bandShortLabel(trustBand)}
         </Badge>

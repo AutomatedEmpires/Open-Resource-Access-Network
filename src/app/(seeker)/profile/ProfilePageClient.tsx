@@ -22,6 +22,7 @@ import {
   UserCheck, Star, Trash2, LogOut, AlertCircle,
 } from 'lucide-react';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
+import { SignOutAction } from '@/components/auth/SignOutAction';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
@@ -226,9 +227,10 @@ const ACCENT_THEME_OPTIONS: Array<{
 ];
 
 const AUTH_PROVIDER_LABELS: Record<string, string> = {
-  'azure-ad': 'Microsoft Entra ID',
-  google: 'Google',
-  credentials: 'Email + password',
+  clerk: 'Clerk',
+  'azure-ad': 'Legacy account',
+  credentials: 'Legacy account',
+  google: 'Clerk',
 };
 
 const LANGUAGE_OPTIONS = [
@@ -544,10 +546,6 @@ export default function ProfilePage() {
   const [language, setLanguage] = useState(() => readStoredProfilePreferences().language ?? 'en');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hasLoadedServerProfile, setHasLoadedServerProfile] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [savedCount, setSavedCount] = useState(() => readStoredSavedServiceCount());
   const [isDark, setIsDark] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -782,48 +780,6 @@ export default function ProfilePage() {
     toast('info', 'Cross-device sync is now off. Existing account data remains until you delete it.');
   }, [account.displayName, account.phone, city, isAuthenticated, language, prefs, seeker, toast]);
 
-  const updatePassword = useCallback(async () => {
-    if (!isAuthenticated) {
-      toast('error', 'You need to sign in first.');
-      return;
-    }
-    if (account.authProvider !== 'credentials') {
-      toast('info', 'Password changes are only available for email + password accounts.');
-      return;
-    }
-    if (!currentPassword || !newPassword) {
-      toast('error', 'Enter your current and new password.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      toast('error', 'New password confirmation does not match.');
-      return;
-    }
-
-    setIsUpdatingPassword(true);
-    try {
-      const res = await fetch('/api/user/security/password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-      const json = (await res.json()) as { error?: string; message?: string };
-      if (!res.ok) {
-        toast('error', json.error ?? 'Failed to update password.');
-        return;
-      }
-
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      toast('success', json.message ?? 'Password updated successfully.');
-    } catch {
-      toast('error', 'Failed to update password.');
-    } finally {
-      setIsUpdatingPassword(false);
-    }
-  }, [account.authProvider, confirmPassword, currentPassword, isAuthenticated, newPassword, toast]);
-
   // ── Delete all data ─────────────────────────────────────────
   const deleteAllData = useCallback(async () => {
     if (isAuthenticated) {
@@ -920,7 +876,7 @@ export default function ProfilePage() {
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Discovery defaults</p>
             <h2 className="mt-2 text-lg font-semibold text-slate-900">Your profile already shapes search across seeker surfaces</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Service interests, delivery preferences, and documentation barriers flow into the same verified discovery grammar used by chat, directory, and map.
+              Service interests, delivery preferences, and documentation barriers flow into the same publication-gated discovery grammar used by chat, directory, and map.
             </p>
           </div>
 
@@ -978,13 +934,12 @@ export default function ProfilePage() {
                       : 'You are signed in. Profile changes stay on this device until you turn on cross-device sync.'}
                 </span>
               </div>
-              <Link
-                href="/api/auth/signout"
+              <SignOutAction
                 className="flex-none inline-flex min-h-[44px] items-center gap-1 whitespace-nowrap px-2 text-xs font-medium underline underline-offset-2 text-slate-700 transition-colors hover:text-red-700 hover:no-underline"
               >
                 <LogOut className="h-3 w-3" aria-hidden="true" />
                 Sign out
-              </Link>
+              </SignOutAction>
             </div>
           )}
 
@@ -996,12 +951,12 @@ export default function ProfilePage() {
                 <p className="font-medium">Your profile is saved on this device only</p>
               </div>
               <p className="mb-2 text-xs text-slate-700">
-                Preferences marked <strong>&ldquo;AI uses this&rdquo;</strong> improve chat and search results right away
+                Preferences marked <strong>&ldquo;Matching uses this&rdquo;</strong> refine chat and search results right away
                 — no account needed. Signing in lets ORAN sync your profile across devices, remember your saved
                 services, and unlock future features like alerts and history.
               </p>
               <Link
-                href="/api/auth/signin"
+                href="/auth/signin?callbackUrl=%2Fprofile"
                 className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-slate-700"
               >
                 Sign in to sync across devices
@@ -1019,7 +974,7 @@ export default function ProfilePage() {
                 <div>
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-slate-500" aria-hidden="true" />
-                  <span className={`font-semibold text-sm ${selectedTheme.textClass}`}>AI Match Strength</span>
+                  <span className={`font-semibold text-sm ${selectedTheme.textClass}`}>Match readiness</span>
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                     strengthPct < 34 ? 'bg-slate-100 text-slate-700' :
                     strengthPct < 67 ? 'bg-slate-200 text-slate-700' :
@@ -1028,8 +983,8 @@ export default function ProfilePage() {
                 </div>
                 <p className="mt-1 text-xs text-stone-600">
                   {strengthPct < 100
-                    ? `Complete ${strength.max - strength.score} more section${strength.max - strength.score === 1 ? '' : 's'} to improve AI matching`
-                    : 'Your profile is fully set up for AI-powered recommendations!'}
+                    ? `Complete ${strength.max - strength.score} more section${strength.max - strength.score === 1 ? '' : 's'} to improve matching`
+                    : 'Your profile is ready to refine recommendations.'}
                 </p>
                 {seeker.profileHeadline && <p className="mt-2 text-xs text-slate-600">{seeker.profileHeadline}</p>}
                 </div>
@@ -1048,7 +1003,7 @@ export default function ProfilePage() {
             subtitle={serviceSubtitle}
             icon={<Star className="h-4 w-4" />}
             accentColor="bg-slate-900"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('services')}
             onToggle={() => toggleSection('services')}
           >
@@ -1082,7 +1037,7 @@ export default function ProfilePage() {
             subtitle={aboutSubtitle}
             icon={<UserCheck className="h-4 w-4" />}
             accentColor="bg-slate-800"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('aboutme')}
             onToggle={() => toggleSection('aboutme')}
           >
@@ -1130,7 +1085,7 @@ export default function ProfilePage() {
             subtitle={constraintsSubtitle}
             icon={<AlertCircle className="h-4 w-4" />}
             accentColor="bg-slate-700"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('constraints')}
             onToggle={() => toggleSection('constraints')}
           >
@@ -1273,7 +1228,7 @@ export default function ProfilePage() {
             }
             icon={<Heart className="h-4 w-4" />}
             accentColor="bg-slate-800"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('identifiers')}
             onToggle={() => toggleSection('identifiers')}
           >
@@ -1304,7 +1259,7 @@ export default function ProfilePage() {
             }
             icon={<CheckCircle className="h-4 w-4" />}
             accentColor="bg-slate-700"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('currentservices')}
             onToggle={() => toggleSection('currentservices')}
           >
@@ -1329,7 +1284,7 @@ export default function ProfilePage() {
             subtitle={seeker.accessibilityNeeds.length > 0 ? `${seeker.accessibilityNeeds.length} preference${seeker.accessibilityNeeds.length === 1 ? '' : 's'} selected` : 'Optional — helps find a better fit'}
             icon={<Heart className="h-4 w-4" />}
             accentColor="bg-slate-700"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('accessibility')}
             onToggle={() => toggleSection('accessibility')}
           >
@@ -1355,7 +1310,7 @@ export default function ProfilePage() {
             subtitle={locationSubtitle}
             icon={<MapPin className="h-4 w-4" />}
             accentColor="bg-slate-900"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('location')}
             onToggle={() => toggleSection('location')}
           >
@@ -1427,7 +1382,7 @@ export default function ProfilePage() {
             }
             icon={<Info className="h-4 w-4" />}
             accentColor="bg-slate-700"
-            badge="AI uses this"
+            badge="Matching uses this"
             isOpen={openSections.has('context')}
             onToggle={() => toggleSection('context')}
           >
@@ -1636,53 +1591,12 @@ export default function ProfilePage() {
                   Save account details
                 </Button>
 
-                {account.authProvider === 'credentials' ? (
-                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-sm font-medium text-slate-900">Update password</p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <FormField label="Current password" htmlFor="current-password">
-                        <input
-                          id="current-password"
-                          type="password"
-                          autoComplete="current-password"
-                          value={currentPassword}
-                          onChange={e => setCurrentPassword(e.target.value)}
-                          className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-                        />
-                      </FormField>
-                      <FormField label="New password" htmlFor="new-password">
-                        <input
-                          id="new-password"
-                          type="password"
-                          autoComplete="new-password"
-                          value={newPassword}
-                          onChange={e => setNewPassword(e.target.value)}
-                          className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-                        />
-                      </FormField>
-                    </div>
-                    <FormField label="Confirm new password" htmlFor="confirm-password">
-                      <input
-                        id="confirm-password"
-                        type="password"
-                        autoComplete="new-password"
-                        value={confirmPassword}
-                        onChange={e => setConfirmPassword(e.target.value)}
-                        className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
-                      />
-                    </FormField>
-                    <Button type="button" size="sm" onClick={() => void updatePassword()} disabled={isUpdatingPassword}>
-                      {isUpdatingPassword ? 'Updating password...' : 'Update password'}
-                    </Button>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500">
-                    Password changes for social or Microsoft sign-in accounts are managed by your identity provider. Notification preferences are available in the separate notifications section.
-                  </p>
-                )}
+                <p className="text-xs text-slate-500">
+                  Passwords, multi-factor authentication, and connected sign-in methods are managed securely by Clerk. Use the account menu to open your sign-in settings.
+                </p>
               </div>
             ) : (
-              <p className="text-sm text-slate-500">Sign in to manage account identity, password settings, and cross-device profile sync.</p>
+              <p className="text-sm text-slate-500">Sign in to manage account identity, security settings, and cross-device profile sync.</p>
             )}
           </CollapsibleSection>
 
@@ -1796,13 +1710,12 @@ export default function ProfilePage() {
                     >
                       Export my data
                     </button>
-                    <Link
-                      href="/api/auth/signout"
+                    <SignOutAction
                       className="flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700"
                     >
                       <LogOut className="h-4 w-4" aria-hidden="true" />
                       Sign out
-                    </Link>
+                    </SignOutAction>
                   </div>
                   <p className="text-xs text-slate-400">
                     Export sends a copy of your data to your account email. Sign out clears your session on this device.

@@ -28,7 +28,7 @@ export const DISCOVERY_SORT_OPTIONS: ReadonlyArray<{
   label: string;
 }> = [
   { value: 'relevance', label: 'Relevance' },
-  { value: 'trust', label: 'Trust (highest)' },
+  { value: 'trust', label: 'Record confidence (highest)' },
   { value: 'distance', label: 'Distance (nearest)' },
   { value: 'name_asc', label: 'Name (A-Z)' },
   { value: 'name_desc', label: 'Name (Z-A)' },

@@ -2,7 +2,7 @@
  * ORAN Service Search Engine
  *
  * Pure SQL/retrieval + optional pgvector re-ranking.
- * No LLM. Trust-based ordering. Vector similarity only re-ranks, never replaces.
+ * No LLM. Record-confidence ordering. Vector similarity only re-ranks, never replaces.
  */
 
 import { buildVectorSimilarityQuery, reRankWithVectorSimilarity } from './vectorSearch';
@@ -68,7 +68,10 @@ export function buildFiltersWhereClause(
   conditions.push(`s.status = $${idx++}`);
   params.push(filters.status);
 
-  if (filters.publishedOnly) {
+  // Public retrieval and explicit standalone-only retrieval share one
+  // authoritative publication predicate. standaloneOnly is an alias for
+  // internal callers, not a second source-purpose policy.
+  if (filters.publishedOnly || filters.standaloneOnly) {
     conditions.push(buildPublishedServicePredicate('s', 'o'));
   }
 
@@ -83,13 +86,13 @@ export function buildFiltersWhereClause(
     params.push(...filters.taxonomyTermIds);
   }
 
-  // Trust (verification confidence) filter
+  // Record-confidence filter
   if (filters.minConfidenceScore !== undefined) {
     conditions.push(`cs.verification_confidence >= $${idx++}`);
     params.push(filters.minConfidenceScore);
   }
 
-  // Trust band filter
+  // Record-confidence band filter
   if (filters.minConfidenceBand) {
     const band = CONFIDENCE_BANDS[filters.minConfidenceBand];
     conditions.push(`cs.verification_confidence >= $${idx++}`);
@@ -158,7 +161,7 @@ export interface CityCoords {
 
 /**
  * Builds the ORDER BY clause based on the requested sort option.
- * Defaults to the trust-first relevance sort.
+ * Defaults to the record-confidence-first relevance sort.
  */
 export function buildOrderByClause(sortBy: SortBy | undefined, sortDistanceExpr: string): string {
   switch (sortBy) {
@@ -233,6 +236,8 @@ export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): B
   // Geo filter
   let distanceExpr = 'NULL::float';
   let cityBiasDistanceExpr = 'NULL::float';
+  let bboxCenter: CityCoords | undefined;
+  let pendingCityBias: CityCoords | undefined;
 
   if (query.geo) {
     if (query.geo.type === 'radius') {
@@ -248,31 +253,18 @@ export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): B
       const geoClause = buildBboxWhereClause(query.geo, paramIdx);
       conditions.push(geoClause.sql);
       params.push(...geoClause.params);
-      const bboxCenterLat = (query.geo.minLat + query.geo.maxLat) / 2;
-      const bboxCenterLng = (query.geo.minLng + query.geo.maxLng) / 2;
-      distanceExpr = `ST_Distance(
-        l.geom::geography,
-        ST_SetSRID(ST_MakePoint($${paramIdx + geoClause.params.length + 2}, $${paramIdx + geoClause.params.length + 1}), 4326)::geography
-      )`;
-      params.push(bboxCenterLat, bboxCenterLng);
-      paramIdx += 2;
       paramIdx += geoClause.params.length;
+      bboxCenter = {
+        lat: (query.geo.minLat + query.geo.maxLat) / 2,
+        lng: (query.geo.minLng + query.geo.maxLng) / 2,
+      };
     }
   }
 
   // City bias for sorting (does NOT filter, only affects sort order)
   if (cityCoords && !query.geo) {
-    // If there's no explicit geo query, use cityCoords for distance-based sorting
-    cityBiasDistanceExpr = `ST_Distance(
-      l.geom::geography,
-      ST_SetSRID(ST_MakePoint($${paramIdx + 1}, $${paramIdx}), 4326)::geography
-    )`;
-    params.push(cityCoords.lat, cityCoords.lng);
-    paramIdx += 2;
+    pendingCityBias = cityCoords;
   }
-
-  // Use cityBias distance for sorting if available, otherwise use geo distance
-  const sortDistanceExpr = cityCoords && !query.geo ? cityBiasDistanceExpr : distanceExpr;
 
   // Text search
   if (query.text && query.text.trim()) {
@@ -281,6 +273,32 @@ export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): B
     params.push(...textClause.params);
     paramIdx += textClause.params.length;
   }
+
+  // Count queries share only filter parameters. Values used exclusively by
+  // SELECT/ORDER BY must be appended afterward so the count statement has no
+  // placeholder gaps or extra bind values.
+  const countParams = [...params];
+
+  if (bboxCenter) {
+    distanceExpr = `ST_Distance(
+      l.geom::geography,
+      ST_SetSRID(ST_MakePoint($${paramIdx + 1}, $${paramIdx}), 4326)::geography
+    )`;
+    params.push(bboxCenter.lat, bboxCenter.lng);
+    paramIdx += 2;
+  }
+
+  if (pendingCityBias) {
+    cityBiasDistanceExpr = `ST_Distance(
+      l.geom::geography,
+      ST_SetSRID(ST_MakePoint($${paramIdx + 1}, $${paramIdx}), 4326)::geography
+    )`;
+    params.push(pendingCityBias.lat, pendingCityBias.lng);
+    paramIdx += 2;
+  }
+
+  // Use cityBias distance for sorting if available, otherwise use geo distance
+  const sortDistanceExpr = pendingCityBias ? cityBiasDistanceExpr : distanceExpr;
 
   const profileBoostClause = buildProfileBoostExpression(query.profileSignals, paramIdx);
   params.push(...profileBoostClause.params);
@@ -295,6 +313,7 @@ export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): B
       s.*,
       o.name AS organization_name,
       o.description AS organization_description,
+      o.verified_at AS organization_verified_at,
       o.created_at AS organization_created_at,
       o.updated_at AS organization_updated_at,
       l.id AS location_id,
@@ -320,7 +339,9 @@ export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): B
     FROM services s
     JOIN organizations o ON o.id = s.organization_id
     LEFT JOIN service_at_location sal ON sal.service_id = s.id
-    LEFT JOIN locations l ON l.id = sal.location_id
+    LEFT JOIN locations l
+      ON l.id = sal.location_id
+      AND l.status = 'active'
     LEFT JOIN addresses a ON a.location_id = l.id
     LEFT JOIN confidence_scores cs ON cs.service_id = s.id
     ${whereStr}
@@ -333,7 +354,9 @@ export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): B
     FROM services s
     JOIN organizations o ON o.id = s.organization_id
     LEFT JOIN service_at_location sal ON sal.service_id = s.id
-    LEFT JOIN locations l ON l.id = sal.location_id
+    LEFT JOIN locations l
+      ON l.id = sal.location_id
+      AND l.status = 'active'
     LEFT JOIN addresses a ON a.location_id = l.id
     LEFT JOIN confidence_scores cs ON cs.service_id = s.id
     ${whereStr}
@@ -343,7 +366,7 @@ export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): B
     sql,
     params: [...params, query.pagination.limit, offset],
     countSql,
-    countParams: params,
+    countParams,
   };
 }
 
@@ -375,14 +398,21 @@ export class ServiceSearchEngine {
     try {
       const result = await this.deps.executeQuery<{ lat: number; lng: number }>(
         `SELECT
-           AVG(l.latitude) AS lat,
-           AVG(l.longitude) AS lng
-         FROM addresses a
-         JOIN locations l ON l.id = a.location_id
-         WHERE LOWER(a.city) = LOWER($1)
-           AND l.latitude IS NOT NULL
-           AND l.longitude IS NOT NULL
-         GROUP BY LOWER(a.city)
+           AVG(public_location.latitude)::float AS lat,
+           AVG(public_location.longitude)::float AS lng
+         FROM (
+           SELECT DISTINCT l.id, l.latitude, l.longitude
+           FROM addresses a
+           JOIN locations l ON l.id = a.location_id
+           JOIN service_at_location sal ON sal.location_id = l.id
+           JOIN services s ON s.id = sal.service_id
+           JOIN organizations o ON o.id = s.organization_id
+           WHERE LOWER(a.city) = LOWER($1)
+             AND l.status = 'active'
+             AND l.latitude IS NOT NULL
+             AND l.longitude IS NOT NULL
+             AND ${buildPublishedServicePredicate('s', 'o')}
+         ) public_location
          LIMIT 1`,
         [cityName]
       );
@@ -442,6 +472,7 @@ export class ServiceSearchEngine {
         s.*,
         o.name AS organization_name,
         o.description AS organization_description,
+        o.verified_at AS organization_verified_at,
         o.created_at AS organization_created_at,
         o.updated_at AS organization_updated_at,
         l.id AS location_id,
@@ -465,7 +496,9 @@ export class ServiceSearchEngine {
       FROM services s
       JOIN organizations o ON o.id = s.organization_id
       LEFT JOIN service_at_location sal ON sal.service_id = s.id
-      LEFT JOIN locations l ON l.id = sal.location_id
+      LEFT JOIN locations l
+        ON l.id = sal.location_id
+        AND l.status = 'active'
       LEFT JOIN addresses a ON a.location_id = l.id
       LEFT JOIN confidence_scores cs ON cs.service_id = s.id
       WHERE s.id = ANY($1::uuid[])
@@ -507,6 +540,11 @@ export class ServiceSearchEngine {
           name: (row.organization_name ?? '') as string,
           description: (row.organization_description as string | null) ?? null,
           status: (row.organization_status ?? 'active') as 'active' | 'inactive' | 'defunct',
+          verifiedAt: row.organization_verified_at == null
+            ? null
+            : row.organization_verified_at instanceof Date
+              ? row.organization_verified_at.toISOString()
+              : String(row.organization_verified_at),
           updatedAt: row.organization_updated_at as Date,
           createdAt: row.organization_created_at as Date,
         },

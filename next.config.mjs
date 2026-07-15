@@ -1,11 +1,9 @@
+import { withSentryConfig } from '@sentry/nextjs';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
   poweredByHeader: false,
-  // applicationinsights uses dynamic require() internally (diagnostic-channel-publishers).
-  // Turbopack cannot statically resolve dynamic requires, so these packages must be treated
-  // as external Node.js modules rather than bundled by Turbopack.
-  serverExternalPackages: ['applicationinsights', 'diagnostic-channel-publishers'],
   async headers() {
     const securityHeaders = [
       { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
@@ -30,15 +28,16 @@ const nextConfig = {
           // safeJsonLd() sanitization on all dangerouslySetInnerHTML, and no
           // user-controlled content injected into <script> tags.
           process.env.NODE_ENV === 'development'
-            ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
-            : "script-src 'self' 'unsafe-inline'",
+            ? "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://clerk.openresourceaccessnetwork.com https://*.clerk.accounts.dev https://*.clerk.com https://challenges.cloudflare.com"
+            : "script-src 'self' 'unsafe-inline' https://clerk.openresourceaccessnetwork.com https://*.clerk.accounts.dev https://*.clerk.com https://challenges.cloudflare.com",
           // Tailwind CSS requires 'unsafe-inline' for its generated styles.
           "style-src 'self' 'unsafe-inline'",
-          // Allow map tiles (Azure Maps), data URIs for inline images, and HTTPS images.
+          // Allow OpenStreetMap tiles, data URIs for inline images, and HTTPS images.
           "img-src 'self' data: https: blob:",
-          // Allow connections to self, Azure Maps, Azure AD, Application Insights, Sentry.
-          "connect-src 'self' https://atlas.microsoft.com https://login.microsoftonline.com https://*.applicationinsights.azure.com https://*.sentry.io",
+          "connect-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.openresourceaccessnetwork.com https://accounts.openresourceaccessnetwork.com https://clerk-telemetry.com https://*.clerk-telemetry.com https://*.supabase.co wss://*.supabase.co https://*.sentry.io",
           "font-src 'self'",
+          "worker-src 'self' blob:",
+          "frame-src 'self' https://challenges.cloudflare.com",
           "object-src 'none'",
           "frame-ancestors 'none'",
           "base-uri 'self'",
@@ -57,4 +56,13 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  telemetry: false,
+  sourcemaps: {
+    disable: !process.env.SENTRY_AUTH_TOKEN,
+  },
+});

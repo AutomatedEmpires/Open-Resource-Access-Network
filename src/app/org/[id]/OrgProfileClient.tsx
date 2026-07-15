@@ -30,6 +30,7 @@ interface OrgData {
     status: string;
     year_incorporated: number | null;
     logo_url: string | null;
+    verified_at: string | null;
     updated_at: string;
   };
   services: Array<{
@@ -54,14 +55,9 @@ interface OrgData {
 // ============================================================
 
 function deriveTrustLevel(org: OrgData['organization']): TrustLevel {
-  // For MVP: if the org has been recently updated (within 90 days), show verified;
-  // older than 90 but within 365 → community_verified; else unverified.
-  const daysSinceUpdate = Math.floor(
-    (Date.now() - new Date(org.updated_at).getTime()) / (1000 * 60 * 60 * 24),
-  );
-  if (daysSinceUpdate <= 90) return 'verified';
-  if (daysSinceUpdate <= 365) return 'community_verified';
-  return 'unverified';
+  // Record updates and import timestamps are not verification decisions.
+  // Only an explicit organization verification timestamp earns the badge.
+  return org.verified_at ? 'verified' : 'unverified';
 }
 
 const CAPACITY_LABELS: Record<string, { label: string; color: string }> = {
@@ -151,7 +147,7 @@ export default function OrgProfileClient({ orgId }: OrgProfileClientProps) {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{org.name}</h1>
-            <TrustBadge level={trustLevel} lastVerifiedAt={org.updated_at} className="mt-2" />
+            <TrustBadge level={trustLevel} lastVerifiedAt={org.verified_at} className="mt-2" />
           </div>
           {org.logo_url && (
             <Image

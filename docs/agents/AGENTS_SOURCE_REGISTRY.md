@@ -6,7 +6,7 @@ This document defines the **Source Registry** contract: how ingestion agents dec
 
 - The Source Registry is the **only** entry point for automated crawling.
 - Unknown domains are **quarantined** by default.
-- Allowlisting a domain does **not** imply publishability. Publish still requires verification + human approval.
+- Allowlisting a domain does **not** imply publishability. Publish still requires an eligible resource purpose, verification, and the configured approval policy.
 - Seekers never see unverified or non-stored facts.
 
 ## Nationwide bootstrap strategy (practical)
@@ -33,18 +33,28 @@ This is safe, manageable, and scalable.
 - `quarantine`: agent may fetch/snapshot/extract into staging for seeded URLs but **may not** expand discovery without admin approval.
 - `blocked`: agent must not fetch.
 
+## Resource purpose
+
+Trust controls whether ORAN may ingest from a source. `resourcePurpose` controls how the resulting data may be used:
+
+- `service_catalog`: direct service/provider records; eligible for standalone publication.
+- `program_navigation`: official program, application, or referral entry points; eligible for standalone publication.
+- `supporting_reference`: coverage, retailer acceptance, eligibility reference, or enrichment data; never eligible for standalone publication.
+- `excluded`: out of seeker-facing scope; never eligible for standalone publication.
+
+Changing resource purpose is a high-risk governance action and requires second approval. Publication code enforces the purpose gate even when a source has a high trust tier.
+
 ## Default allowlist (initial)
 
-For “nationwide immediately”, the safe default is:
+For “nationwide immediately”, the safe bootstrap is:
 
-- allowlisted: `*.gov`, `*.edu`
-- quarantined-by-default (seed fetch allowed, no expansion): `*.mil` (primarily veteran-only relevant sources)
+- quarantined-by-default (seed fetch allowed, no expansion): `*.gov`, `*.edu`, and `*.mil`
 - everything else: quarantine unless explicitly added as allowlisted
 
 Rationale:
 
-- `*.gov` covers most federal/state/county/city official programs.
-- `*.edu` often hosts official student/basic-needs resources and campus/community programs, but still requires verification.
+- `*.gov` covers most federal/state/county/city official programs, but a broad suffix alone does not establish source purpose or publication readiness.
+- `*.edu` often hosts official student/basic-needs resources and campus/community programs, but still requires explicit verification.
 - `*.mil` can be relevant for veteran resources, but should be treated as restricted: allowed for seeded ingestion, flagged for admin review, and never expanded automatically.
 
 Note on “city sites”:
@@ -67,6 +77,8 @@ A Source entry defines:
   - directory index patterns
 - **Coverage hint** (optional):
   - national/state/county/virtual
+- **Resource purpose**:
+  - service catalog/program navigation/supporting reference/excluded
 
 ## How it interacts with verification
 

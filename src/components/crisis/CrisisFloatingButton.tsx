@@ -23,11 +23,9 @@ export function CrisisFloatingButton() {
     <button
       type="button"
       onClick={openCrisis}
-      // bottom offset includes env(safe-area-inset-bottom) for notched iPhones
-      style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
       className={cn(
         // Positioning — sits above nav, below modal overlay
-        'fixed right-6 z-[var(--z-fab)]',
+        'crisis-fab-position fixed right-6 z-[var(--z-fab)]',
         // Shape & size — pill, min 44 px touch target (WCAG 2.5.5)
         'inline-flex items-center gap-2 rounded-full',
         'min-h-[44px] px-4 py-2.5',

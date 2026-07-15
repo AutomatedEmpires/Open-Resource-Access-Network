@@ -1,148 +1,154 @@
 # ORAN Operational Runbooks
 
-This directory is the operational control plane for production support, incident response, and recovery.
+This directory is the operational control plane for production support,
+incident response, resource integrity, and recovery.
+
+The active platform is Vercel + Supabase + Clerk + Sentry + Resend. Azure
+Function, Storage Queue, and Azure OpenAI runbooks are explicitly rollback-only
+until their resources and credentials are decommissioned. They are never the
+default live-production route. See
+[`STACK_MIGRATION.md`](../platform/STACK_MIGRATION.md).
+
+## Lifecycle Contract
+
+- `active`: primary instructions for the target production stack.
+- `rollback-only`: instructions used only after an explicit rollback-platform
+  activation decision. They remain freshness-gated until retirement.
+- Retired documents leave the active catalog only after their replacement,
+  links, credentials, and decommission evidence are reconciled.
+
+Every `RUNBOOK_*.md` in the governed folders declares its lifecycle, owner,
+reviewers, last review, and next review. Rollback-only documents also name their
+active replacement, retirement trigger, validation status, and retirement
+deadline. An expired rollback deadline fails the freshness check.
 
 ## Folder Structure
 
 - `core/`: incident command, rollback, release controls, handoff, readiness.
-- `services/`: service-specific operational runbooks.
-- `security/`: security and privacy incident procedures.
+- `services/`: target services plus explicitly labeled rollback procedures.
+- `security/`: security, privacy, and credential incident procedures.
+- `data/`: resource integrity and freshness operations.
 - `dr/`: disaster recovery and restore procedures.
-- `monitoring/`: KQL and load/scale operating references.
-- `audits/`: runbook audit reports.
-- `templates/`: reusable runbook and communication templates.
+- `monitoring/`: observability and legacy monitoring references.
+- `audits/`: historical runbook audit reports.
+- `templates/`: runbook and communication templates.
 
 ## Severity Model
 
-- `SEV-1`: Platform-wide outage, severe safety/privacy risk, or confirmed active security incident.
-- `SEV-2`: Major user-facing degradation with significant workflow disruption.
-- `SEV-3`: Partial degradation with workarounds.
-- `SEV-4`: Low-impact issue or warning condition.
+- `SEV-1`: Platform-wide outage, severe safety/privacy risk, or confirmed breach.
+- `SEV-2`: Major user-facing degradation or resource-integrity failure.
+- `SEV-3`: Partial degradation with a safe workaround.
+- `SEV-4`: Low-impact issue or early warning.
 
-## Runbook Catalog
+## Active Target-Stack Catalog
 
-### Core Incident Management
-
-| Runbook | Scope |
-| --- | --- |
-| [RUNBOOK_INCIDENT_TRIAGE.md](core/RUNBOOK_INCIDENT_TRIAGE.md) | Incident command, first response, severity classification, escalation |
-| [RUNBOOK_DEPLOYMENT_ROLLBACK.md](core/RUNBOOK_DEPLOYMENT_ROLLBACK.md) | Rollback procedure for failed or risky production deployments |
-| [RUNBOOK_CHANGE_FREEZE_GO_NO_GO.md](core/RUNBOOK_CHANGE_FREEZE_GO_NO_GO.md) | Change freeze criteria and release go/no-go decision workflow |
-| [RUNBOOK_ON_CALL_HANDOFF.md](core/RUNBOOK_ON_CALL_HANDOFF.md) | On-call shift handoff protocol and risk transfer checklist |
-| [RUNBOOK_INCIDENT_POSTMORTEM.md](core/RUNBOOK_INCIDENT_POSTMORTEM.md) | Standardized post-incident review and corrective action workflow |
-| [RUNBOOK_STALE_RUNBOOK_GOVERNANCE.md](core/RUNBOOK_STALE_RUNBOOK_GOVERNANCE.md) | Runbook review cadence and staleness enforcement process |
-| [OPERATIONS_READINESS.md](core/OPERATIONS_READINESS.md) | Readiness matrix, review cadence, and drill program |
-
-### Service Operations
+### Core
 
 | Runbook | Scope |
 | --- | --- |
-| [RUNBOOK_INGESTION.md](services/RUNBOOK_INGESTION.md) | Ingestion pipeline issues, queue failures, poison queue recovery |
-| [RUNBOOK_211_API_INGESTION.md](services/RUNBOOK_211_API_INGESTION.md) | Phased rollout, bootstrap, publish policy, and sync strategy for 211 API ingestion |
-| [RUNBOOK_ADMIN_ROUTING.md](services/RUNBOOK_ADMIN_ROUTING.md) | Admin assignment failures, SLA breaches, capacity and coverage gaps |
-| [RUNBOOK_LLM_OUTAGE.md](services/RUNBOOK_LLM_OUTAGE.md) | Azure OpenAI degradation affecting ingestion extraction |
-| [RUNBOOK_DATABASE_INCIDENT.md](services/RUNBOOK_DATABASE_INCIDENT.md) | DB connectivity, saturation, lock contention, migration incidents |
-| [RUNBOOK_AUTH_OUTAGE.md](services/RUNBOOK_AUTH_OUTAGE.md) | Entra/NextAuth failures, role enforcement degradation, auth recovery |
-| [RUNBOOK_ACCOUNT_AND_FORM_RESILIENCE.md](services/RUNBOOK_ACCOUNT_AND_FORM_RESILIENCE.md) | Code-backed registration and managed-form hardening controls, diagnostics, and validation |
-| [RUNBOOK_MEMBERSHIP_SCOPE_AND_REVIEWER_GOVERNANCE.md](services/RUNBOOK_MEMBERSHIP_SCOPE_AND_REVIEWER_GOVERNANCE.md) | Host membership lifecycle, scope-grant operations, reviewer dormancy handling, and explicit governance gaps |
-| [RUNBOOK_QUEUE_BACKLOG.md](services/RUNBOOK_QUEUE_BACKLOG.md) | Queue growth, poison queue handling, throughput restoration |
-| [RUNBOOK_WEB_APP_DEGRADATION.md](services/RUNBOOK_WEB_APP_DEGRADATION.md) | Web/API latency or error degradation response |
-| [RUNBOOK_FUNCTION_APP_FAILURE.md](services/RUNBOOK_FUNCTION_APP_FAILURE.md) | Function host/runtime failure diagnosis and recovery |
-| [RUNBOOK_RATE_LIMIT_INCIDENT.md](services/RUNBOOK_RATE_LIMIT_INCIDENT.md) | 429 over-throttling/under-throttling incident response |
-| [RUNBOOK_DATA_QUALITY_INCIDENT.md](services/RUNBOOK_DATA_QUALITY_INCIDENT.md) | Ingestion and verification data quality incident response |
-| [RUNBOOK_CI_CD_PIPELINE_FAILURE.md](services/RUNBOOK_CI_CD_PIPELINE_FAILURE.md) | Pipeline and deployment workflow failure response |
-| [RUNBOOK_SECURITY_INCIDENT.md](security/RUNBOOK_SECURITY_INCIDENT.md) | Security/privacy incident containment and recovery |
-| [RUNBOOK_INTERNAL_API_KEY_ROTATION.md](security/RUNBOOK_INTERNAL_API_KEY_ROTATION.md) | Secure rotation procedure for internal API shared secret |
-| [RUNBOOK_KEY_VAULT_ACCESS_FAILURE.md](security/RUNBOOK_KEY_VAULT_ACCESS_FAILURE.md) | Key Vault/managed identity secret-resolution failure response |
-| [RUNBOOK_DEPENDENCY_OUTAGE.md](services/RUNBOOK_DEPENDENCY_OUTAGE.md) | Outages in external dependencies and degraded-mode routing |
-| [RUNBOOK_DR_BACKUP_RESTORE.md](dr/RUNBOOK_DR_BACKUP_RESTORE.md) | Disaster recovery readiness and restore validation workflow |
+| [Incident triage](core/RUNBOOK_INCIDENT_TRIAGE.md) | First response, severity, command, escalation |
+| [Deployment rollback](core/RUNBOOK_DEPLOYMENT_ROLLBACK.md) | Vercel rollback with Supabase compatibility checks |
+| [Change freeze/go-no-go](core/RUNBOOK_CHANGE_FREEZE_GO_NO_GO.md) | Release freeze and promotion decision |
+| [On-call handoff](core/RUNBOOK_ON_CALL_HANDOFF.md) | Risk and incident ownership transfer |
+| [Incident postmortem](core/RUNBOOK_INCIDENT_POSTMORTEM.md) | Evidence-backed follow-up and corrective actions |
+| [Runbook governance](core/RUNBOOK_STALE_RUNBOOK_GOVERNANCE.md) | Lifecycle, cadence, and CI enforcement |
+| [Operations readiness](core/OPERATIONS_READINESS.md) | Coverage, drills, and known risks |
 
-### Monitoring And Testing
+### Product, Data, And Platform Services
 
-| Document | Scope |
+| Runbook | Scope |
 | --- | --- |
-| [MONITORING_QUERIES.md](monitoring/MONITORING_QUERIES.md) | KQL query baselines for detection and triage |
-| [LOAD_SCALE_TESTING.md](monitoring/LOAD_SCALE_TESTING.md) | Throughput targets, queue concurrency tuning, DB pool sizing |
-| [RUNBOOK_OBSERVABILITY_OUTAGE.md](monitoring/RUNBOOK_OBSERVABILITY_OUTAGE.md) | Telemetry pipeline outage response and blind-spot controls |
-| [RUNBOOK_AUDIT_2026-03-06.md](audits/RUNBOOK_AUDIT_2026-03-06.md) | Code-verified audit log of runbook coverage and corrections |
+| [Resource freshness review](data/RUNBOOK_RESOURCE_FRESHNESS_REVIEW.md) | Expiry, staleness, reverification, holds, and review |
+| [211 API ingestion](services/RUNBOOK_211_API_INGESTION.md) | Governed source bootstrap, polling, and publication rollout |
+| [Admin routing](services/RUNBOOK_ADMIN_ROUTING.md) | Reviewer assignment, capacity, coverage, and SLA issues |
+| [Resource data quality](services/RUNBOOK_DATA_QUALITY_INCIDENT.md) | Provenance, quarantine, dedupe, and publication incidents |
+| [Database incident](services/RUNBOOK_DATABASE_INCIDENT.md) | Supabase/PostgreSQL/pool/migration incidents |
+| [Authentication outage](services/RUNBOOK_AUTH_OUTAGE.md) | Clerk identity and database-owned authorization |
+| [Account and form resilience](services/RUNBOOK_ACCOUNT_AND_FORM_RESILIENCE.md) | Account, onboarding, profile, and managed forms |
+| [Membership and reviewer governance](services/RUNBOOK_MEMBERSHIP_SCOPE_AND_REVIEWER_GOVERNANCE.md) | Membership, scope grants, freezes, reviewer dormancy |
+| [Web degradation](services/RUNBOOK_WEB_APP_DEGRADATION.md) | Vercel application and critical journeys |
+| [Rate limit and chat usage](services/RUNBOOK_RATE_LIMIT_INCIDENT.md) | Atomic daily quota, minute rate, and in-flight controls |
+| [CI/CD failure](services/RUNBOOK_CI_CD_PIPELINE_FAILURE.md) | GitHub, Vercel, Sentry source maps, Supabase migrations |
+| [Dependency outage](services/RUNBOOK_DEPENDENCY_OUTAGE.md) | Provider failures and safe degraded modes |
+| [Security incident](security/RUNBOOK_SECURITY_INCIDENT.md) | Security/privacy containment and recovery |
+| [Scheduled worker secret rotation](security/RUNBOOK_INTERNAL_API_KEY_ROTATION.md) | Vercel Cron and rollback-worker credentials |
+| [Runtime configuration failure](security/RUNBOOK_KEY_VAULT_ACCESS_FAILURE.md) | Doppler/Vercel configuration; historical filename retained |
+| [Observability outage](monitoring/RUNBOOK_OBSERVABILITY_OUTAGE.md) | Sentry/Vercel blind spots and fallback checks |
+| [Disaster recovery](dr/RUNBOOK_DR_BACKUP_RESTORE.md) | Backup/restore readiness and recovery validation |
 
-### Templates
+## Azure Rollback-Only Catalog
 
-| Template | Purpose |
-| --- | --- |
-| [templates/RUNBOOK_TEMPLATE.md](templates/RUNBOOK_TEMPLATE.md) | Standard structure for all new runbooks |
-| [templates/INCIDENT_COMMS_TEMPLATE.md](templates/INCIDENT_COMMS_TEMPLATE.md) | Standard format for internal and external incident updates |
+These documents are not active-stack incident routes:
 
-## Alert To Runbook Routing
+| Runbook | Scope | Active replacement | Validation | Retirement deadline |
+| --- | --- | --- | --- | --- |
+| [Azure Function failure](services/RUNBOOK_FUNCTION_APP_FAILURE.md) | Legacy Function host/timers | [Dependency outage](services/RUNBOOK_DEPENDENCY_OUTAGE.md) | Code-aligned; live rollback unvalidated | 2026-08-15 |
+| [Azure ingestion pipeline](services/RUNBOOK_INGESTION.md) | Legacy Functions/Storage Queue ingestion | [211 API ingestion](services/RUNBOOK_211_API_INGESTION.md) | Code-aligned; live rollback unvalidated | 2026-08-15 |
+| [Azure OpenAI outage](services/RUNBOOK_LLM_OUTAGE.md) | Legacy ingestion extraction | [Dependency outage](services/RUNBOOK_DEPENDENCY_OUTAGE.md) | Code-aligned; live rollback unvalidated | 2026-08-15 |
+| [Azure queue backlog](services/RUNBOOK_QUEUE_BACKLOG.md) | Legacy Storage Queue throughput | [211 API ingestion](services/RUNBOOK_211_API_INGESTION.md) | Code-aligned; live rollback unvalidated | 2026-08-15 |
 
-| Trigger/Signal | Primary Runbook | Secondary Runbook |
+`monitoring/MONITORING_QUERIES.md` and `monitoring/LOAD_SCALE_TESTING.md`
+remain Azure rollback references until provider-neutral replacements are
+validated. Do not use their KQL, App Service, or queue guidance for Vercel.
+
+## Active Alert Routing
+
+| Trigger | Primary | Secondary |
 | --- | --- | --- |
-| API 5xx spike or latency regression | `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md` | `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md` |
-| Queue depth/backlog growth | `docs/ops/services/RUNBOOK_INGESTION.md` | `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md` |
-| Unrouted candidates / SLA breaches | `docs/ops/services/RUNBOOK_ADMIN_ROUTING.md` | `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md` |
-| OpenAI extraction failures/429 | `docs/ops/services/RUNBOOK_LLM_OUTAGE.md` | `docs/ops/services/RUNBOOK_INGESTION.md` |
-| DB timeout/connection errors | `docs/ops/services/RUNBOOK_DATABASE_INCIDENT.md` | `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md` |
-| Post-deploy regression | `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md` | `docs/ops/services/RUNBOOK_DATABASE_INCIDENT.md` |
-| Auth failure spikes (401/403/503) | `docs/ops/services/RUNBOOK_AUTH_OUTAGE.md` | `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md` |
-| Security/privacy signal | `docs/ops/security/RUNBOOK_SECURITY_INCIDENT.md` | `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md` |
-| Queue backlog/poison growth | `docs/ops/services/RUNBOOK_QUEUE_BACKLOG.md` | `docs/ops/services/RUNBOOK_INGESTION.md` |
-| Web/API degradation | `docs/ops/services/RUNBOOK_WEB_APP_DEGRADATION.md` | `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md` |
-| Function host/runtime failure | `docs/ops/services/RUNBOOK_FUNCTION_APP_FAILURE.md` | `docs/ops/services/RUNBOOK_QUEUE_BACKLOG.md` |
-| Key Vault secret resolution failure | `docs/ops/security/RUNBOOK_KEY_VAULT_ACCESS_FAILURE.md` | `docs/ops/services/RUNBOOK_AUTH_OUTAGE.md` |
-| Internal API key compromise | `docs/ops/security/RUNBOOK_INTERNAL_API_KEY_ROTATION.md` | `docs/ops/security/RUNBOOK_SECURITY_INCIDENT.md` |
-| Observability blind spot | `docs/ops/monitoring/RUNBOOK_OBSERVABILITY_OUTAGE.md` | `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md` |
+| Web/API latency or 5xx | `RUNBOOK_WEB_APP_DEGRADATION` | `RUNBOOK_DEPLOYMENT_ROLLBACK` |
+| Supabase/pool/migration failure | `RUNBOOK_DATABASE_INCIDENT` | `RUNBOOK_INCIDENT_TRIAGE` |
+| Clerk/auth/RBAC failure | `RUNBOOK_AUTH_OUTAGE` | `RUNBOOK_INCIDENT_TRIAGE` |
+| Quota/rate/finalization failure | `RUNBOOK_RATE_LIMIT_INCIDENT` | `RUNBOOK_DATABASE_INCIDENT` |
+| Expired/stale resource findings | `RUNBOOK_RESOURCE_FRESHNESS_REVIEW` | `RUNBOOK_DATA_QUALITY_INCIDENT` |
+| Supporting-reference or provenance leak | `RUNBOOK_DATA_QUALITY_INCIDENT` | `RUNBOOK_SECURITY_INCIDENT` |
+| 211 feed/replay/publication issue | `RUNBOOK_211_API_INGESTION` | `RUNBOOK_DATA_QUALITY_INCIDENT` |
+| Reviewer capacity/SLA issue | `RUNBOOK_ADMIN_ROUTING` | `RUNBOOK_INCIDENT_TRIAGE` |
+| External provider outage | `RUNBOOK_DEPENDENCY_OUTAGE` | `RUNBOOK_INCIDENT_TRIAGE` |
+| Sentry/telemetry blind spot | `RUNBOOK_OBSERVABILITY_OUTAGE` | `RUNBOOK_INCIDENT_TRIAGE` |
+| Runtime configuration failure | `RUNBOOK_KEY_VAULT_ACCESS_FAILURE` | `RUNBOOK_AUTH_OUTAGE` |
+| Cron/internal credential exposure | `RUNBOOK_INTERNAL_API_KEY_ROTATION` | `RUNBOOK_SECURITY_INCIDENT` |
+| Any security/privacy signal | `RUNBOOK_SECURITY_INCIDENT` | `RUNBOOK_INCIDENT_TRIAGE` |
 
-## First-Response Flow
+## First Response
 
-1. Open `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md` and classify severity.
-2. Assign Incident Commander, Operations Driver, and Communications Lead.
-3. Route to service-specific runbook based on dominant failure signal.
-4. Stabilize service using least-risk mitigation path.
-5. Validate against exit criteria and capture post-incident actions.
+1. Open `core/RUNBOOK_INCIDENT_TRIAGE.md` and assign severity.
+2. Name Incident Commander, Operations Driver, and Communications Lead.
+3. Capture the Vercel release, `/api/health`, affected journey, Supabase/Clerk
+   status, and privacy-filtered Sentry evidence.
+4. Route through the active table above unless incident command explicitly
+   activates the Azure rollback platform.
+5. Stabilize the safest degraded service, validate exit criteria, and capture
+   post-incident actions.
 
-## Quick Reference
+## Target-Stack Quick Reference
 
-### Key URLs
-
-| Resource | URL |
+| Resource | Reference |
 | --- | --- |
-| Web App | `https://<prefix>-prod-web.azurewebsites.net` |
-| Function App | `https://<prefix>-prod-func.azurewebsites.net` |
-| Application Insights | Azure Portal -> Application Insights -> `<prefix>-prod-insights` |
-| Key Vault | Azure Portal -> Key Vaults -> `<prefix>-prod-kv` |
+| Stable Vercel candidate | `https://oran-sandy.vercel.app` |
+| Readiness | `GET /api/health` |
+| Hosting/jobs | Dedicated Vercel project `oran` and `vercel.json` |
+| Database | Dedicated Supabase project and pooled `DATABASE_URL` |
+| Identity | Dedicated ORAN Clerk production instance |
+| Errors/releases | Dedicated Sentry project `oran` |
+| Secrets | Dedicated Doppler project/config plus Vercel environment |
+| Email | Dedicated Resend domain and sending-only credential |
 
-### Common CLI Commands
+Never print environment values while diagnosing. Use `.env.example` and
+`.github/runtime/webapp-production-settings.txt` as name-only contracts.
 
-```bash
-# Check web app status
-az webapp show --resource-group <rg> --name <webapp> --query state
+## Critical Environment Names
 
-# Check function app status
-az functionapp show --resource-group <rg> --name <func-app> --query state
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL`, `DATABASE_POOL_MAX`, `ORAN_DATABASE_ROLE`, `ORAN_SUPABASE_PROJECT_REF` | Dedicated pooled ORAN backend login plus fixed role/project identity assertions |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` | Clerk identity |
+| `CRON_SECRET` | Vercel Cron authentication |
+| `NEXT_PUBLIC_SENTRY_DSN` | Privacy-filtered error reporting |
+| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | Release/source-map upload |
+| `RESEND_API_KEY`, `RESEND_FROM` | Transactional email |
+| `INTERNAL_API_KEY` | Optional, separate rollback-worker credential |
 
-# View function app logs (live)
-az webapp log tail --resource-group <rg> --name <func-app>
+## Templates
 
-# Check queue depths
-az storage queue list --account-name <storage> --query "[].{name:name,count:approximateMessageCount}" -o table
-
-# Restart web app
-az webapp restart --resource-group <rg> --name <webapp>
-
-# Restart function app
-az functionapp restart --resource-group <rg> --name <func-app>
-```
-
-### Critical Environment Variables
-
-See `.env.example` for full definitions.
-
-| Variable | Service | Source |
-| --- | --- | --- |
-| `DATABASE_URL` | Web App + Functions | Key Vault reference |
-| `INTERNAL_API_KEY` | Functions -> Web App | Key Vault reference |
-| `ORAN_APP_URL` | Functions | App setting |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Both | App setting |
-| `AZURE_AD_CLIENT_ID` | Web App | App setting |
-| `AZURE_AD_CLIENT_SECRET` | Web App | Key Vault reference |
-| `NEXTAUTH_SECRET` | Web App | Key Vault reference |
+- [Runbook template](templates/RUNBOOK_TEMPLATE.md)
+- [Incident communications template](templates/INCIDENT_COMMS_TEMPLATE.md)

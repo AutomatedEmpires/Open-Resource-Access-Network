@@ -1,60 +1,37 @@
+// @vitest-environment jsdom
+
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const searchParamsGetMock = vi.hoisted(() => vi.fn());
-const signInMock = vi.hoisted(() => vi.fn());
-const setStateMock = vi.hoisted(() => vi.fn());
+const signInPropsMock = vi.hoisted(() => vi.fn());
+const signUpPropsMock = vi.hoisted(() => vi.fn());
 
-vi.mock('react', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('react')>();
-  return {
-    ...actual,
-    useState: (initial: unknown) => {
-      // For providerIds state, return all four providers so button tests work
-      if (initial instanceof Set) {
-        return [new Set(['azure-ad', 'google', 'apple', 'credentials']), setStateMock];
-      }
-      return [initial, setStateMock];
-    },
-    useEffect: () => {},
-  };
-});
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => ({
-    get: searchParamsGetMock,
-  }),
+  useSearchParams: () => ({ get: searchParamsGetMock }),
 }));
-vi.mock('next-auth/react', () => ({
-  getProviders: vi.fn().mockResolvedValue({
-    'azure-ad': { id: 'azure-ad' },
-    google: { id: 'google' },
-    apple: { id: 'apple' },
-    credentials: { id: 'credentials' },
-  }),
-  signIn: signInMock,
+
+vi.mock('@clerk/nextjs', () => ({
+  SignIn: (props: Record<string, unknown>) => {
+    signInPropsMock(props);
+    return React.createElement('div', {
+      'data-testid': 'clerk-sign-in',
+      'data-redirect': props.fallbackRedirectUrl,
+    });
+  },
+  SignUp: (props: Record<string, unknown>) => {
+    signUpPropsMock(props);
+    return React.createElement('div', {
+      'data-testid': 'clerk-sign-up',
+      'data-redirect': props.fallbackRedirectUrl,
+    });
+  },
 }));
+
 vi.mock('next/link', () => ({
-  default: ({
-    href,
-    children,
-    ...props
-  }: {
-    href: string;
-    children: React.ReactNode;
-  }) => React.createElement('a', { href, ...props }, children),
-}));
-vi.mock('lucide-react', () => ({
-  AlertTriangle: (props: Record<string, unknown>) => React.createElement('svg', props),
-  ArrowLeft: (props: Record<string, unknown>) => React.createElement('svg', props),
-  Shield: (props: Record<string, unknown>) => React.createElement('svg', props),
-  Search: (props: Record<string, unknown>) => React.createElement('svg', props),
-  Building2: (props: Record<string, unknown>) => React.createElement('svg', props),
-  ShieldCheck: (props: Record<string, unknown>) => React.createElement('svg', props),
-  Mail: (props: Record<string, unknown>) => React.createElement('svg', props),
-}));
-vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, onClick, ...props }: { children: React.ReactNode; onClick?: () => void }) =>
-    React.createElement('button', { ...props, onClick }, children),
+  default: ({ href, children, ...props }: { href: string; children: React.ReactNode }) =>
+    React.createElement('a', { href, ...props }, children),
 }));
 
 async function loadAuthErrorPage() {
@@ -65,196 +42,93 @@ async function loadSignInPage() {
   return import('../signin/SignInPageClient');
 }
 
+async function loadSignUpPage() {
+  return import('../signup/[[...signup]]/page');
+}
+
 beforeEach(() => {
-  vi.resetModules();
   vi.clearAllMocks();
   searchParamsGetMock.mockReturnValue(null);
 });
 
-describe('auth pages', () => {
-  it('builds the auth error page content from the error query param', async () => {
-    searchParamsGetMock.mockImplementation((key: string) =>
-      key === 'error' ? 'AccessDenied' : null,
-    );
+afterEach(() => {
+  cleanup();
+});
+
+describe('Clerk auth pages', () => {
+  it('keeps the existing friendly auth-error mapping', async () => {
+    searchParamsGetMock.mockImplementation((key: string) => key === 'error' ? 'AccessDenied' : null);
     const { default: AuthErrorPage } = await loadAuthErrorPage();
 
-    const suspense = AuthErrorPage() as React.ReactElement<any, any>;
-    const content = (suspense.props.children as React.ReactElement<any, any>).type() as React.ReactElement<any, any>;
-    const card = React.Children.only(content.props.children) as React.ReactElement<any, any>;
-    const children = React.Children.toArray(card.props.children) as React.ReactElement<any, any>[];
-    const links = children[3] as React.ReactElement<any, any>;
+    render(<AuthErrorPage />);
 
-    expect(children[1].props.children).toBe('Authentication Error');
-    expect(children[2].props.children).toBe('You do not have permission to sign in.');
-    expect(React.Children.toArray(links.props.children)).toHaveLength(2);
+    expect(screen.getByRole('heading', { name: 'Authentication Error' })).toBeInTheDocument();
+    expect(screen.getByText('You do not have permission to sign in.')).toBeInTheDocument();
   });
 
-  it('falls back to the default auth error message', async () => {
-    searchParamsGetMock.mockImplementation((key: string) =>
-      key === 'error' ? 'Unknown' : null,
-    );
-    const { default: AuthErrorPage } = await loadAuthErrorPage();
+  it('classifies seeker, organization, and admin return paths', async () => {
+    const { detectPath } = await loadSignInPage();
 
-    const suspense = AuthErrorPage() as React.ReactElement<any, any>;
-    const content = (suspense.props.children as React.ReactElement<any, any>).type() as React.ReactElement<any, any>;
-    const card = React.Children.only(content.props.children) as React.ReactElement<any, any>;
-    const children = React.Children.toArray(card.props.children) as React.ReactElement<any, any>[];
-
-    expect(children[2].props.children).toBe('An unexpected authentication error occurred.');
-  });
-
-  it('builds the sign-in page with a callback url and mapped error', async () => {
-    searchParamsGetMock.mockImplementation((key: string) => {
-      if (key === 'callbackUrl') return '/profile';
-      if (key === 'error') return 'OAuthSignin';
-      return null;
-    });
-    const { default: SignInPage } = await loadSignInPage();
-
-    const suspense = SignInPage() as React.ReactElement<any, any>;
-    const content = (suspense.props.children as React.ReactElement<any, any>).type() as React.ReactElement<any, any>;
-    const contentChildren = React.Children.toArray(content.props.children) as React.ReactElement<any, any>[];
-    const card = contentChildren[0] as React.ReactElement<any, any>;
-    const cardChildren = React.Children.toArray(card.props.children) as React.ReactElement<any, any>[];
-
-    // Find the error alert in the dynamic content area
-    const dynamicArea = cardChildren[2] as React.ReactElement<any, any>;
-    const dynamicChildren = React.Children.toArray(dynamicArea.props.children) as React.ReactElement<any, any>[];
-    const errorAlert = dynamicChildren.find((c: any) => c?.props?.role === 'alert') as React.ReactElement<any, any>;
-
-    // OAuth buttons are now inside a wrapper div (space-y-3)
-    const oauthGroup = dynamicChildren.find((c: any) => c?.props?.className?.includes('space-y-3')) as React.ReactElement<any, any>;
-    const oauthChildren = React.Children.toArray(oauthGroup.props.children) as React.ReactElement<any, any>[];
-    const signInButton = oauthChildren.find((c: any) => c?.props?.onClick) as React.ReactElement<any, any>;
-
-    expect(errorAlert).toBeDefined();
-    expect(React.Children.toArray(errorAlert.props.children)).toContain(
-      'Could not start the sign-in process. Please try again.',
-    );
-    // Sign-in button calls signIn with the detected seeker path (callbackUrl=/profile → seeker)
-    expect(signInButton.props.onClick).toBeDefined();
-    signInButton.props.onClick();
-    expect(signInMock).toHaveBeenCalledWith('azure-ad', { callbackUrl: '/profile' });
-  });
-
-  it('uses the default chat callback and fallback error message', async () => {
-    searchParamsGetMock.mockImplementation((key: string) => {
-      if (key === 'error') return 'Unexpected';
-      return null;
-    });
-    const { default: SignInPage } = await loadSignInPage();
-
-    const suspense = SignInPage() as React.ReactElement<any, any>;
-    const content = (suspense.props.children as React.ReactElement<any, any>).type() as React.ReactElement<any, any>;
-    const contentChildren = React.Children.toArray(content.props.children) as React.ReactElement<any, any>[];
-    const card = contentChildren[0] as React.ReactElement<any, any>;
-    const cardChildren = React.Children.toArray(card.props.children) as React.ReactElement<any, any>[];
-
-    // Dynamic content area contains the error + OAuth group + guest link
-    const dynamicArea = cardChildren[2] as React.ReactElement<any, any>;
-    const dynamicChildren = React.Children.toArray(dynamicArea.props.children) as React.ReactElement<any, any>[];
-    const errorAlert = dynamicChildren.find((c: any) => c?.props?.role === 'alert') as React.ReactElement<any, any>;
-
-    expect(React.Children.toArray(errorAlert.props.children)).toContain(
-      'An unexpected error occurred. Please try again.',
-    );
-
-    // Guest link is in its own border-t section
-    const guestSection = dynamicChildren.find((c: any) => c?.props?.className?.includes('border-t')) as React.ReactElement<any, any>;
-    // Guest link defaults to /chat for seeker path
-    const guestLink = React.Children.only(guestSection.props.children) as React.ReactElement<any, any>;
-    expect(guestLink.props.href).toBe('/chat');
-  });
-
-  it('detects organization path from callbackUrl', async () => {
-    const { detectPath } = await import('../signin/SignInPageClient');
+    expect(detectPath('/profile')).toBe('seeker');
     expect(detectPath('/claim')).toBe('organization');
-    expect(detectPath('/org')).toBe('organization');
-    expect(detectPath('/services')).toBe('organization');
-    expect(detectPath(null)).toBe('seeker');
-  });
-
-  it('detects admin path from callbackUrl', async () => {
-    const { detectPath } = await import('../signin/SignInPageClient');
-    expect(detectPath('/approvals')).toBe('admin');
-    expect(detectPath('/triage')).toBe('admin');
+    expect(detectPath('/host/services')).toBe('organization');
     expect(detectPath('/queue')).toBe('admin');
-    expect(detectPath('/audit')).toBe('admin');
+    expect(detectPath('/operations')).toBe('admin');
   });
 
-  it('renders three path selector buttons', async () => {
-    const { default: SignInPage, PATHS } = await loadSignInPage();
-    const suspense = SignInPage() as React.ReactElement<any, any>;
-    const content = (suspense.props.children as React.ReactElement<any, any>).type() as React.ReactElement<any, any>;
-    const contentChildren = React.Children.toArray(content.props.children) as React.ReactElement<any, any>[];
-    const card = contentChildren[0] as React.ReactElement<any, any>;
-    const cardChildren = React.Children.toArray(card.props.children) as React.ReactElement<any, any>[];
+  it('allows only same-origin relative return paths', async () => {
+    const { safeRedirect } = await loadSignInPage();
 
-    // Path selector area (radiogroup)
-    const pathSelector = cardChildren[1] as React.ReactElement<any, any>;
-    expect(pathSelector.props.role).toBe('radiogroup');
-
-    // Should have 3 paths defined
-    expect(PATHS).toHaveLength(3);
-    expect(PATHS.map((p: any) => p.id)).toEqual(['seeker', 'organization', 'admin']);
-    expect(PATHS[1].accessNotes[1]).toContain('approves the claim');
-    expect(PATHS[2].accessNotes[1]).toContain('not created by self-service registration');
+    expect(safeRedirect('/saved?from=chat', '/chat')).toBe('/saved?from=chat');
+    expect(safeRedirect('https://attacker.example', '/chat')).toBe('/chat');
+    expect(safeRedirect('//attacker.example', '/chat')).toBe('/chat');
+    expect(safeRedirect('/\\attacker.example', '/chat')).toBe('/chat');
+    expect(safeRedirect('/chat\u0000', '/chat')).toBe('/chat');
   });
 
-  it('renders Google, Apple, and identifier sign-in buttons alongside Microsoft', async () => {
-    const { default: SignInPage } = await loadSignInPage();
-    const suspense = SignInPage() as React.ReactElement<any, any>;
-    const content = (suspense.props.children as React.ReactElement<any, any>).type() as React.ReactElement<any, any>;
-    const contentChildren = React.Children.toArray(content.props.children) as React.ReactElement<any, any>[];
-    const card = contentChildren[0] as React.ReactElement<any, any>;
-    const cardChildren = React.Children.toArray(card.props.children) as React.ReactElement<any, any>[];
-
-    const dynamicArea = cardChildren[2] as React.ReactElement<any, any>;
-    const dynamicChildren = React.Children.toArray(dynamicArea.props.children) as React.ReactElement<any, any>[];
-
-    // Find the OAuth buttons group
-    const oauthGroup = dynamicChildren.find((c: any) => c?.props?.className?.includes('space-y-3')) as React.ReactElement<any, any>;
-    expect(oauthGroup).toBeDefined();
-
-    const oauthButtons = React.Children.toArray(oauthGroup.props.children) as React.ReactElement<any, any>[];
-    // React 19 does not flatten fragments in Children.toArray — expand them manually
-    const flatButtons = oauthButtons.flatMap((c: any) =>
-      c?.type === React.Fragment
-        ? (React.Children.toArray(c.props.children) as React.ReactElement<any, any>[])
-        : [c],
-    );
-    const buttonsWithClick = flatButtons.filter((c: any) => c?.props?.onClick);
-    // Microsoft, Google, Apple, and identifier buttons
-    expect(buttonsWithClick.length).toBe(4);
-
-    // Click Google button
-    buttonsWithClick[1].props.onClick();
-    expect(signInMock).toHaveBeenCalledWith('google', { callbackUrl: '/chat' });
-
-    // Click Apple button
-    buttonsWithClick[2].props.onClick();
-    expect(signInMock).toHaveBeenCalledWith('apple', { callbackUrl: '/chat' });
-
-    expect(JSON.stringify(oauthGroup)).toContain('Sign in with Email, Username, or Phone');
-  });
-
-  it('builds the registration payload with optional phone normalization and the honeypot field', async () => {
-    const { buildRegistrationPayload } = await import('../signin/SignInPageClient');
-
-    expect(buildRegistrationPayload({
-      username: 'user-1',
-      email: 'user@example.com',
-      password: 'StrongPass123',
-      displayName: 'User One',
-      phone: '',
-      website: '',
-    })).toEqual({
-      username: 'user-1',
-      email: 'user@example.com',
-      password: 'StrongPass123',
-      displayName: 'User One',
-      phone: undefined,
-      website: '',
+  it('renders the ORAN paths and hands a safe deep link to Clerk', async () => {
+    searchParamsGetMock.mockImplementation((key: string) => {
+      if (key === 'redirect_url') return '/profile';
+      return null;
     });
+    const { default: SignInPage, PATHS } = await loadSignInPage();
+
+    render(<SignInPage />);
+
+    expect(PATHS.map((path) => path.id)).toEqual(['seeker', 'organization', 'admin']);
+    expect(PATHS.find((path) => path.id === 'seeker')?.detail).toContain('publication-gated, source-backed');
+    expect(PATHS.find((path) => path.id === 'seeker')?.detail).not.toContain('verified');
+    expect(screen.getByText('Building Bridges | Strengthening Communities')).toBeInTheDocument();
+    expect(screen.getAllByRole('radio')).toHaveLength(3);
+    expect(screen.getByRole('link', { name: /continue without signing in/i })).toHaveAttribute('href', '/profile');
+    expect(screen.getByTestId('clerk-sign-in')).toHaveAttribute('data-redirect', '/profile');
+  });
+
+  it('switches to the organization destination without granting a role', async () => {
+    const { default: SignInPage } = await loadSignInPage();
+    render(<SignInPage />);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Organization' }));
+
+    expect(screen.queryByRole('link', { name: /continue without signing in/i })).not.toBeInTheDocument();
+    const latestProps = signInPropsMock.mock.calls.at(-1)?.[0];
+    expect(latestProps?.fallbackRedirectUrl).toBe('/claim');
+    expect(screen.getByText(/access begins after the claim is reviewed and approved/i)).toBeInTheDocument();
+  });
+
+  it('routes account creation through privacy-first onboarding', async () => {
+    const { default: SignUpPage, metadata } = await loadSignUpPage();
+
+    render(<SignUpPage />);
+
+    expect(metadata.title).toBe('Create your account');
+    expect(screen.getByText('Building Bridges | Strengthening Communities')).toBeInTheDocument();
+    expect(screen.getByTestId('clerk-sign-up')).toHaveAttribute('data-redirect', '/onboarding');
+    expect(signUpPropsMock).toHaveBeenCalledWith(expect.objectContaining({
+      path: '/auth/signup',
+      routing: 'path',
+      signInUrl: '/auth/signin',
+      fallbackRedirectUrl: '/onboarding',
+    }));
   });
 });

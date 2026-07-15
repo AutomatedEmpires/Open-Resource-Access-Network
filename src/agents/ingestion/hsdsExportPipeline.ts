@@ -14,6 +14,7 @@ import type {
   CanonicalServiceRow,
   CanonicalLocationRow,
 } from '@/db/schema';
+import { evaluateStandaloneResourceUse } from './sourcePurpose';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -135,6 +136,18 @@ export async function runHsdsExport(
         result.skipped.push({
           entityId: svc.id,
           reason: `publication status is '${svc.publicationStatus}', not 'published'`,
+        });
+        continue;
+      }
+
+      const sourceSystem = svc.winningSourceSystemId
+        ? await stores.sourceSystems.getById(svc.winningSourceSystemId)
+        : null;
+      const purposeDecision = evaluateStandaloneResourceUse(sourceSystem);
+      if (!purposeDecision.allowed) {
+        result.skipped.push({
+          entityId: svc.id,
+          reason: `resource purpose '${purposeDecision.purpose}' blocked: ${purposeDecision.reason}`,
         });
         continue;
       }

@@ -21,6 +21,7 @@ import type {
   ServiceCard,
 } from '@/services/chat/types';
 import { ChatServiceCard } from '@/components/chat/ChatServiceCard';
+import { GuidedIntake } from '@/components/chat/GuidedIntake';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
 import { DistanceRadiusControl } from '@/components/seeker/DistanceRadiusControl';
 import { QuickNeedFilterGrid } from '@/components/seeker/QuickNeedFilterGrid';
@@ -685,7 +686,7 @@ function buildChatSessionSummary(options: {
   const lastMessage = options.messages[options.messages.length - 1]?.content.trim();
   const fallbackTitle = options.seeded ? options.initialPrompt?.trim() : undefined;
   const title = truncateCopy(firstUserMessage || fallbackTitle || options.existing?.title || 'New chat', 52);
-  const preview = truncateCopy(lastMessage || options.draft.trim() || fallbackTitle || 'Verified service search', 88);
+  const preview = truncateCopy(lastMessage || options.draft.trim() || fallbackTitle || 'Resource search', 88);
   const updatedAt = options.messages.length > 0
     ? options.messages[options.messages.length - 1]?.timestamp.toISOString() ?? new Date().toISOString()
     : options.existing?.updatedAt ?? new Date().toISOString();
@@ -966,6 +967,17 @@ export function ChatWindow({
   }, []);
 
   useEffect(() => {
+    // The empty state contains the welcome and guided intake. Scrolling its
+    // end marker into view on mount skips that content (and can move the whole
+    // page on mobile). Reset an existing message log as well, so clearing a
+    // conversation cannot leave the fresh intake stranded below the fold.
+    if (messages.length === 0) {
+      if (messageLogRef.current) {
+        messageLogRef.current.scrollTop = 0;
+      }
+      return;
+    }
+
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
@@ -1219,7 +1231,7 @@ export function ChatWindow({
       commitChatSessions(upsertStoredChatSession({
         sessionId: nextActiveSession,
         title: 'New chat',
-        preview: 'Verified service search',
+        preview: 'Resource search',
         updatedAt: new Date().toISOString(),
         messageCount: 0,
         saved: false,
@@ -1359,7 +1371,7 @@ export function ChatWindow({
     commitChatSessions(upsertStoredChatSession({
       sessionId: nextSessionId,
       title: 'New chat',
-      preview: 'Verified service search',
+      preview: 'Resource search',
       updatedAt: new Date().toISOString(),
       messageCount: 0,
       saved: false,
@@ -1555,10 +1567,20 @@ export function ChatWindow({
       if (!response.ok) {
         let errorMsg = 'Something went wrong. Please try again.';
         try {
-          const errBody = await response.json() as { error?: string };
+          const errBody = await response.json() as {
+            error?: string;
+            quotaRemaining?: number;
+            quotaResetAt?: string | null;
+          };
           if (typeof errBody.error === 'string' && errBody.error) errorMsg = errBody.error;
+          if (typeof errBody.quotaRemaining === 'number') {
+            quotaStateVersionRef.current += 1;
+            applyQuotaState(errBody.quotaRemaining, errBody.quotaResetAt);
+          }
         } catch { /* fall through to generic message */ }
-        throw new Error(errorMsg);
+        const responseError = new Error(errorMsg);
+        responseError.name = 'ChatResponseError';
+        throw responseError;
       }
 
       const data: ChatResponse = await response.json();
@@ -1609,12 +1631,14 @@ export function ChatWindow({
           followUpSuggestions: data.followUpSuggestions,
         },
       ]);
-    } catch {
+    } catch (error) {
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: 'Something went wrong. Please try again.',
+          content: error instanceof Error && error.name === 'ChatResponseError'
+            ? error.message
+            : 'Something went wrong. Please try again.',
           timestamp: new Date(),
         },
       ]);
@@ -1849,7 +1873,7 @@ export function ChatWindow({
 
       {/* ── Compact toolbar ── */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-5 py-3 md:px-6">
-        <span className="hidden text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 lg:block">Verified records only</span>
+        <span className="hidden text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 lg:block">Publication-gated records</span>
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
@@ -1956,7 +1980,7 @@ export function ChatWindow({
                 onClick={() => _clearSessionContextField('trustFilter')}
                 className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
               >
-                Trust: {formatFilterLabel(sessionContext.trustFilter)} ×
+                Record confidence: {formatFilterLabel(sessionContext.trustFilter)} ×
               </button>
             )}
             {sessionContext.preferredDeliveryModes?.map((mode) => (
@@ -2068,8 +2092,8 @@ export function ChatWindow({
             {/* ── Welcome heading ── */}
             <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div className="max-w-[46rem]">
-                <p className="text-2xl font-semibold tracking-tight text-slate-900 md:text-[2rem]">What verified help do you need?</p>
-                <p className="mt-1.5 text-[15px] leading-7 text-slate-500">Start with a common need or type your question below. Refine narrows scope without losing this conversation.</p>
+                <p className="text-2xl font-semibold tracking-tight text-slate-900 md:text-[2rem]">Tell ORAN what is wrong.</p>
+                <p className="mt-1.5 text-[15px] leading-7 text-slate-500">Describe the situation in your own words. Add only the details that can change which provider serves you.</p>
               </div>
               {activeGeo ? (
                 <span className="inline-flex min-h-[32px] items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
@@ -2079,7 +2103,16 @@ export function ChatWindow({
               ) : null}
             </div>
 
+            <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <GuidedIntake
+                submitLabel="Search stored provider records"
+                onSubmit={(prompt) => sendMessage(prompt)}
+              />
+            </div>
+
             {/* ── Quick-need grid ── */}
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Or start with a common need</p>
             <QuickNeedFilterGrid
               activeNeedId={activeNeedId}
               onSelect={handleCategoryClick}
@@ -2087,6 +2120,7 @@ export function ChatWindow({
               className="w-full"
               gridClassName="grid grid-cols-2 gap-2 lg:grid-cols-4"
             />
+            </div>
 
             {/* ── Info row: location prompt + search flow ── */}
             <div className="grid gap-3 sm:grid-cols-2">
@@ -2107,7 +2141,7 @@ export function ChatWindow({
               )}
               <div className={`rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3.5 ${!sessionContext?.activeGeo && !locationPromptDismissed ? '' : 'sm:col-span-2'}`}>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">How search works</p>
-                <p className="mt-1.5 text-sm text-slate-700">Use <strong className="font-medium text-slate-900">Refine</strong> to add location, trust level, and service-detail filters. Save strong options directly from result cards.</p>
+                <p className="mt-1.5 text-sm text-slate-700">Use <strong className="font-medium text-slate-900">Refine</strong> to add location, record confidence, and service-detail filters. Save strong options directly from result cards.</p>
               </div>
             </div>
           </div>
@@ -2217,7 +2251,7 @@ export function ChatWindow({
                   <DiscoveryContextPanel
                     discoveryContext={(msg as AssistantMessage).discoveryContext}
                     title="Search scope used for these results"
-                    description="This response stayed inside the trust and filter scope active when you sent the message."
+                    description="This response stayed inside the record-confidence and filter scope active when you sent the message."
                     className="border-slate-200 bg-slate-50"
                   />
                   {(() => {
@@ -2250,7 +2284,7 @@ export function ChatWindow({
                           <div className="space-y-2">
                             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800">
                               <span className="font-medium">More options</span>
-                              <span className="ml-1 text-slate-600">Additional verified records that may still fit.</span>
+                              <span className="ml-1 text-slate-600">Additional publication-gated records that may still fit.</span>
                             </div>
                             {additionalMatches.map((card) => (
                               <ChatServiceCard
@@ -2332,11 +2366,11 @@ export function ChatWindow({
               className="min-h-[84px] flex-1 resize-none rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5 text-[15px] leading-7 text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-300"
               rows={1}
               aria-label="Chat message input"
-              disabled={isLoading || quotaRemaining === 0}
+              disabled={isLoading}
             />
             <Button
               onClick={() => void sendMessage()}
-              disabled={isLoading || !input.trim() || quotaRemaining === 0}
+              disabled={isLoading || !input.trim()}
               size="icon"
               aria-label="Send message"
               className="min-h-[64px] min-w-[64px] self-end rounded-[22px] bg-slate-900 shadow-sm hover:bg-slate-800"
@@ -2345,7 +2379,9 @@ export function ChatWindow({
             </Button>
           </div>
           <div className="px-2 pt-3 text-[11px] text-slate-500">
-            Ask for nearby services, provider details, eligibility hints, or next steps from stored records.
+            {quotaRemaining === 0
+              ? 'Daily discovery limit reached. Immediate safety and crisis messages still work.'
+              : 'Ask for nearby services, provider details, eligibility hints, or next steps from stored records.'}
           </div>
         </div>
         {quotaRemaining === 0 && quotaResetAt && (
@@ -2353,8 +2389,8 @@ export function ChatWindow({
         )}
         {quotaRemaining === 0 && !quotaResetAt && (
           <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-800 shadow-sm" role="alert">
-            <p className="font-medium">Message limit reached.</p>
-            <p className="mt-1">Continue with the same scope in Directory or Map, or start a fresh chat session.</p>
+            <p className="font-medium">Daily discovery limit reached.</p>
+            <p className="mt-1">Immediate safety and crisis messages still work. For other needs, continue with the same scope in Directory or Map.</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <a href={_directoryHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-900 shadow-sm">
                 Open Directory
@@ -2388,7 +2424,7 @@ export function ChatWindow({
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Quick filters</p>
-                  <p className="mt-1 text-xs text-slate-500">Start with the kind of help you need, then add trust and service details below.</p>
+                  <p className="mt-1 text-xs text-slate-500">Start with the kind of help you need, then add record confidence and service details below.</p>
                 </div>
                 {activeNeedId ? (
                   <Button type="button" variant="outline" size="sm" onClick={clearCategory}>

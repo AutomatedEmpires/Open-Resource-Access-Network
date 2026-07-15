@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { SourceResourcePurposeSchema } from './sourcePurpose';
+
 export const SourceTrustLevelSchema = z.enum(['allowlisted', 'quarantine', 'blocked']);
 export type SourceTrustLevel = z.infer<typeof SourceTrustLevelSchema>;
 
@@ -51,6 +53,7 @@ export const SourceRegistryEntrySchema = z
     id: z.string().min(1),
     displayName: z.string().min(1),
     trustLevel: SourceTrustLevelSchema,
+    resourcePurpose: SourceResourcePurposeSchema,
     domainRules: z.array(DomainRuleSchema).min(1),
     discovery: z.array(DiscoveryRuleSchema).default([{ type: 'seeded_only' }]),
     crawl: CrawlPolicySchema.default(() => ({
@@ -98,6 +101,12 @@ function hostMatchesRule(host: string, rule: DomainRule): boolean {
   }
 
   return false;
+}
+
+function ruleSpecificity(host: string, rule: DomainRule): number | null {
+  if (!hostMatchesRule(host, rule)) return null;
+  const normalizedValue = normalizeHost(rule.value.replace(/^\./, ''));
+  return (rule.type === 'exact_host' ? 100_000 : 0) + normalizedValue.length;
 }
 
 const TRACKING_PARAM_KEYS = new Set([
@@ -171,21 +180,34 @@ export function matchSourceForUrl(
   const u = new URL(canonical);
   const host = u.hostname;
 
-  for (const entry of registry) {
-    const matches = entry.domainRules.some((r) => hostMatchesRule(host, r));
-    if (!matches) continue;
+  const trustRestriction = { allowlisted: 0, quarantine: 1, blocked: 2 } as const;
+  const matches = registry
+    .map((entry) => ({
+      entry,
+      specificity: Math.max(
+        ...entry.domainRules.map((rule) => ruleSpecificity(host, rule) ?? -1),
+      ),
+    }))
+    .filter((match) => match.specificity >= 0)
+    .sort((left, right) =>
+      right.specificity - left.specificity ||
+      trustRestriction[right.entry.trustLevel] - trustRestriction[left.entry.trustLevel] ||
+      left.entry.id.localeCompare(right.entry.id),
+    );
 
-    if (entry.trustLevel === 'blocked') {
-      return { allowed: false, trustLevel: 'blocked', sourceId: entry.id, reason: 'blocked_source' };
-    }
+  const matchedEntry = matches[0]?.entry;
+  if (matchedEntry?.trustLevel === 'blocked') {
+    return { allowed: false, trustLevel: 'blocked', sourceId: matchedEntry.id, reason: 'blocked_source' };
+  }
 
-    if (entry.trustLevel === 'quarantine') {
-      // Quarantine means: fetch is allowed for seeded URLs, but the agent must not do
-      // within-host expansion or auto-promotion without admin approval.
-      return { allowed: true, trustLevel: 'quarantine', sourceId: entry.id };
-    }
+  if (matchedEntry?.trustLevel === 'quarantine') {
+    // Quarantine means: fetch is allowed for seeded URLs, but the agent must not do
+    // within-host expansion or auto-promotion without admin approval.
+    return { allowed: true, trustLevel: 'quarantine', sourceId: matchedEntry.id };
+  }
 
-    return { allowed: true, trustLevel: 'allowlisted', sourceId: entry.id };
+  if (matchedEntry?.trustLevel === 'allowlisted') {
+    return { allowed: true, trustLevel: 'allowlisted', sourceId: matchedEntry.id };
   }
 
   return { allowed: false, trustLevel: 'quarantine', reason: 'unregistered_domain' };
@@ -207,6 +229,7 @@ export function buildBootstrapRegistry(nowIso: string = new Date().toISOString()
       id: 'bootstrap-gov',
       displayName: 'US Government (.gov)',
       trustLevel: 'quarantine',
+      resourcePurpose: 'program_navigation',
       domainRules: [{ type: 'suffix', value: '.gov' }],
       discovery: [{ type: 'seeded_only' }],
       coverage: [{ kind: 'national', country: 'US' }],
@@ -216,6 +239,7 @@ export function buildBootstrapRegistry(nowIso: string = new Date().toISOString()
       id: 'bootstrap-edu',
       displayName: 'US Higher Education (.edu)',
       trustLevel: 'quarantine',
+      resourcePurpose: 'service_catalog',
       domainRules: [{ type: 'suffix', value: '.edu' }],
       discovery: [{ type: 'seeded_only' }],
       coverage: [{ kind: 'national', country: 'US' }],
@@ -225,6 +249,7 @@ export function buildBootstrapRegistry(nowIso: string = new Date().toISOString()
       id: 'bootstrap-mil',
       displayName: 'US Military (.mil) (quarantined by default)',
       trustLevel: 'quarantine',
+      resourcePurpose: 'program_navigation',
       domainRules: [{ type: 'suffix', value: '.mil' }],
       discovery: [{ type: 'seeded_only' }],
       coverage: [{ kind: 'national', country: 'US' }],
@@ -234,6 +259,7 @@ export function buildBootstrapRegistry(nowIso: string = new Date().toISOString()
       id: 'bootstrap-org',
       displayName: 'Non-profit Organizations (.org) (quarantined)',
       trustLevel: 'quarantine',
+      resourcePurpose: 'service_catalog',
       domainRules: [{ type: 'suffix', value: '.org' }],
       discovery: [{ type: 'seeded_only' }],
       coverage: [{ kind: 'national', country: 'US' }],

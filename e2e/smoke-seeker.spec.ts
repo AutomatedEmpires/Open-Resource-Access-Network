@@ -2,15 +2,35 @@ import { test, expect } from '@playwright/test';
 import { isDbConfigured } from './helpers/db';
 
 test.describe('Seeker flows (public)', () => {
+  test('mobile landing navigation is seeker-scoped and clears crisis help', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+
+    const nav = page.getByRole('navigation', { name: 'Seeker mobile navigation' });
+    const crisis = page.getByRole('button', { name: /open crisis resources and emergency hotlines/i });
+
+    await expect(nav).toBeVisible();
+    await expect(nav.getByRole('link')).toHaveText(['Chat', 'Map', 'Scroll', 'Profile']);
+    await expect(nav.getByRole('link', { name: 'Chat', exact: true })).toHaveAttribute('href', '/chat');
+    await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);
+    await expect(crisis).toBeVisible();
+
+    const navBox = await nav.boundingBox();
+    const crisisBox = await crisis.boundingBox();
+    expect(navBox).not.toBeNull();
+    expect(crisisBox).not.toBeNull();
+    expect(crisisBox!.y + crisisBox!.height).toBeLessThanOrEqual(navBox!.y);
+  });
+
   test('landing page shows crisis FAB and can reach chat', async ({ page }) => {
     await page.goto('/');
 
     // Persistent floating crisis help button — present on every page
     await expect(
-      page.getByRole('button', { name: /open crisis resources/i }),
+      page.getByRole('button', { name: /open crisis resources and emergency hotlines/i }),
     ).toBeVisible();
 
-    await page.getByRole('link', { name: 'Find services' }).click();
+    await page.getByRole('link', { name: 'Find services with chat' }).click();
     await expect(page).toHaveURL(/\/chat$/);
     await expect(page.getByRole('textbox', { name: 'Chat message input' })).toBeVisible();
   });
@@ -46,16 +66,16 @@ test.describe('Seeker flows (public)', () => {
     }
 
     // When DB is configured, we should land in a results state.
-    await expect(page.getByRole('heading', { name: 'Service Directory' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Directory', exact: true })).toBeVisible();
     await expect(page.getByRole('status')).toContainText(/Showing|0 of/i);
   });
 
   test('map page loads (and search box is present)', async ({ page }) => {
     await page.goto('/map');
 
-    await expect(page.getByRole('heading', { name: 'Service Map' })).toBeVisible();
-    await expect(page.getByRole('searchbox', { name: 'Search services to plot' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Map', exact: true })).toBeVisible();
+    await expect(page.getByRole('searchbox', { name: 'Search services' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Search map', exact: true })).toBeVisible();
   });
 
   test('service detail page renders for a retrieved record when DB is configured', async ({ page }) => {

@@ -62,7 +62,7 @@ ORAN is not trying to be another generic directory. It is trying to become the t
 | Data trust | Import-first, verify-before-publish lifecycle | [docs/contracts/INGESTION_CONTRACT.md](docs/contracts/INGESTION_CONTRACT.md), [db/README.md](db/README.md) |
 | Match discipline | Deterministic trust and match scoring | [docs/SCORING_MODEL.md](docs/SCORING_MODEL.md), [docs/contracts/SCORING_CONTRACT.md](docs/contracts/SCORING_CONTRACT.md) |
 | AI boundaries | AI can assist ingestion and summarization, not seeker-facing fact invention | [docs/CHAT_ARCHITECTURE.md](docs/CHAT_ARCHITECTURE.md), [docs/agents/AGENTS_OVERVIEW.md](docs/agents/AGENTS_OVERVIEW.md), [docs/platform/OWNER_INFO.md](docs/platform/OWNER_INFO.md) |
-| Platform posture | Azure-first web, functions, secrets, and data stack | [docs/platform/PLATFORM_AZURE.md](docs/platform/PLATFORM_AZURE.md), [infra/README.md](infra/README.md) |
+| Platform posture | Migrating to Vercel + Supabase + Clerk + Sentry; Azure is rollback-only | [docs/platform/STACK_MIGRATION.md](docs/platform/STACK_MIGRATION.md) |
 | External brief | Investor, partner, and collaborator brief with proof links | [docs/INVESTOR_PARTNER_BRIEF.md](docs/INVESTOR_PARTNER_BRIEF.md) |
 
 ## How ORAN Works

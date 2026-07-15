@@ -100,6 +100,13 @@ function buildCanonicalLocation(overrides: Record<string, unknown> = {}) {
 
 function createMockStores() {
   return {
+    sourceSystems: {
+      getById: vi.fn().mockResolvedValue({
+        id: 'src-sys-1',
+        family: 'hsds_api',
+        resourcePurpose: 'service_catalog',
+      }),
+    },
     canonicalOrganizations: {
       getById: vi.fn(),
       update: vi.fn(),
@@ -128,6 +135,60 @@ describe('promoteToLive', () => {
     vi.clearAllMocks();
   });
 
+  it('blocks a SNAP retailer supporting-reference source before opening a transaction', async () => {
+    const stores = createMockStores();
+    stores.canonicalServices.getById.mockResolvedValue(buildCanonicalService());
+    stores.sourceSystems.getById.mockResolvedValue({
+      id: 'snap-retailers',
+      name: 'USDA SNAP retailer locations',
+      resourcePurpose: 'supporting_reference',
+    });
+
+    const { promoteToLive } = await loadModule();
+    await expect(promoteToLive({
+      stores: stores as never,
+      canonicalServiceId: 'canon-svc-1',
+      actorId: 'system',
+    })).rejects.toThrow('supporting_reference sources may enrich services');
+
+    expect(withTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks canonical promotion when its winning source is missing', async () => {
+    const stores = createMockStores();
+    stores.canonicalServices.getById.mockResolvedValue(
+      buildCanonicalService({ winningSourceSystemId: null }),
+    );
+
+    const { promoteToLive } = await loadModule();
+    await expect(promoteToLive({
+      stores: stores as never,
+      canonicalServiceId: 'canon-svc-1',
+      actorId: 'system',
+    })).rejects.toThrow('source resource purpose is missing or invalid');
+
+    expect(withTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks manual sources from bypassing independent submission approval', async () => {
+    const stores = createMockStores();
+    stores.canonicalServices.getById.mockResolvedValue(buildCanonicalService());
+    stores.sourceSystems.getById.mockResolvedValue({
+      id: 'manual-source',
+      family: 'manual',
+      resourcePurpose: 'service_catalog',
+    });
+
+    const { promoteToLive } = await loadModule();
+    await expect(promoteToLive({
+      stores: stores as never,
+      canonicalServiceId: 'canon-svc-1',
+      actorId: 'system',
+    })).rejects.toThrow('independent submission approval is required');
+
+    expect(withTransactionMock).not.toHaveBeenCalled();
+  });
+
   it('inserts new live records from canonical entities (first promote)', async () => {
     const stores = createMockStores();
     const clientQueryMock = vi.fn().mockResolvedValue({ rows: [], rowCount: 1 });
@@ -154,6 +215,11 @@ describe('promoteToLive', () => {
     expect(result.organizationId).toEqual(expect.any(String));
     expect(result.serviceId).toEqual(expect.any(String));
     expect(result.locationIds).toHaveLength(1);
+
+    expect(clientQueryMock).toHaveBeenCalledWith(
+      expect.stringContaining("SET processing_status = 'published'"),
+      ['canon-svc-1', 'src-sys-1'],
+    );
 
     // Verify INSERT queries run
     const insertCalls = clientQueryMock.mock.calls.filter(
@@ -331,6 +397,37 @@ describe('promoteToLive', () => {
         actorId: 'system',
       }),
     ).rejects.toThrow('Canonical organization canon-org-1 not found');
+  });
+
+  it('rolls back before materialization when accepted winning-source provenance is absent', async () => {
+    const stores = createMockStores();
+    const clientQueryMock = vi.fn(async (sql: string) => {
+      if (sql.includes('pg_advisory_xact_lock')) {
+        return { rows: [{ pg_advisory_xact_lock: '' }], rowCount: 1 };
+      }
+      if (sql.includes('UPDATE public.source_records')) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    withTransactionMock.mockImplementation(async (cb: (c: unknown) => unknown) =>
+      cb({ query: clientQueryMock }),
+    );
+    stores.canonicalServices.getById.mockResolvedValue(buildCanonicalService());
+    stores.canonicalOrganizations.getById.mockResolvedValue(buildCanonicalOrg());
+    stores.canonicalServiceLocations.listByService.mockResolvedValue([]);
+
+    const { promoteToLive } = await loadModule();
+    await expect(promoteToLive({
+      stores: stores as never,
+      canonicalServiceId: 'canon-svc-1',
+      actorId: 'system',
+    })).rejects.toThrow('no accepted normalized assertion from its active winning source');
+
+    expect(clientQueryMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO services'),
+      expect.anything(),
+    );
   });
 
   it('promotes a service with no locations', async () => {

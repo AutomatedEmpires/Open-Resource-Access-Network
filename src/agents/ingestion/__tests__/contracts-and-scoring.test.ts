@@ -179,7 +179,7 @@ describe('confidence tiers', () => {
 
   test('getTierDisplayInfo returns correct info', () => {
     const green = getTierDisplayInfo('green');
-    expect(green.label).toBe('Ready');
+    expect(green.label).toBe('High signal');
     expect(green.color).toBe('#22c55e');
 
     const red = getTierDisplayInfo('red');

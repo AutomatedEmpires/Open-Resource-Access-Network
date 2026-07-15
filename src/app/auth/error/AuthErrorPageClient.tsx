@@ -1,7 +1,7 @@
 /**
  * Auth Error Page
  *
- * Displayed when NextAuth.js encounters an authentication error.
+ * Displayed when the Clerk sign-in flow encounters an authentication error.
  */
 
 'use client';

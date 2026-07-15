@@ -12,7 +12,7 @@ const emailMocks = vi.hoisted(() => ({
 const clientQueryMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/db/postgres', () => dbMocks);
-vi.mock('@/services/email/azureEmail', () => emailMocks);
+vi.mock('@/services/email/resendEmail', () => emailMocks);
 
 import {
   acquireLock,
@@ -83,6 +83,40 @@ describe('workflow/engine', () => {
     expect(result.success).toBe(false);
     expect(result.transitionId).toBe('transition-failed-1');
     expect(result.error).toContain('not permitted');
+  });
+
+  it('advance never allows a system actor to approve, even when gates are skipped', async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-system-approval',
+          submission_type: 'service_verification',
+          status: 'auto_checking',
+          is_locked: false,
+          locked_by_user_id: null,
+          assigned_to_user_id: null,
+          service_id: 'svc-system',
+          submitted_by_user_id: 'submitter-system',
+          target_type: 'service',
+          target_id: 'svc-system',
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-system-rejected' }] });
+
+    const result = await advance({
+      submissionId: 'sub-system-approval',
+      toStatus: 'approved',
+      actorUserId: 'system',
+      actorRole: 'system',
+      skipGates: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('System actors cannot approve submissions');
+    expect(result.transitionId).toBe('transition-system-rejected');
+    expect(
+      clientQueryMock.mock.calls.some(([sql]) => String(sql).startsWith('UPDATE submissions')),
+    ).toBe(false);
   });
 
   it('advance enforces lock gate for different lock holder', async () => {
@@ -558,7 +592,7 @@ describe('workflow/engine', () => {
     expect(result.toStatus).toBe('needs_review');
   });
 
-  it('runAutoCheck auto-approves when confidence meets threshold', async () => {
+  it('runAutoCheck routes high confidence to independent review without approving', async () => {
     dbMocks.executeQuery
       .mockResolvedValueOnce([{ enabled: true }])
       .mockResolvedValueOnce([{ service_id: 'svc-14', score: 95 }]);
@@ -579,13 +613,19 @@ describe('workflow/engine', () => {
         }],
       })
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: 'transition-ok-3' }] });
 
     const result = await runAutoCheck('sub-14', 'system');
 
     expect(result.success).toBe(true);
-    expect(result.toStatus).toBe('approved');
+    expect(result.toStatus).toBe('needs_review');
+    expect(result.transitionId).toBe('transition-ok-3');
+    const transitionParams = clientQueryMock.mock.calls.find(
+      ([sql]) => String(sql).includes('INSERT INTO submission_transitions'),
+    )?.[1] as unknown[];
+    expect(transitionParams[2]).toBe('needs_review');
+    expect(transitionParams[5]).toContain('independent human review required');
+    expect(transitionParams[7]).toContain('"confidence_only":true');
   });
 
   it('runAutoCheck routes to manual review for low or missing confidence', async () => {

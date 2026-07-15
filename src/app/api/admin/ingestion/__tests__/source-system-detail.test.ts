@@ -193,6 +193,61 @@ describe('source system and feed detail routes', () => {
     expect(deleteResponse.status).toBe(202);
   });
 
+  it('rejects changing a non-Azure source feed to the legacy Azure Function handler', async () => {
+    sourceFeedsStore.getById.mockResolvedValueOnce({
+      id: 'feed-1',
+      sourceSystemId: 'sys-1',
+      feedName: 'Current HSDS Feed',
+      feedHandler: 'hsds_api',
+    });
+    const { PUT } = await import('../source-feeds/[id]/route');
+
+    const response = await PUT(
+      createRequest({ feedHandler: 'azure_function' }),
+      createRouteContext('feed-1'),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Source feeds cannot be changed to the legacy Azure Function handler.',
+      code: 'legacy_feed_handler_read_only',
+    });
+    expect(sourceFeedsStore.update).not.toHaveBeenCalled();
+    expect(sourceFeedStatesStore.upsert).not.toHaveBeenCalled();
+  });
+
+  it('allows editing a legacy Azure feed and migrating it to a supported handler', async () => {
+    sourceFeedsStore.getById.mockResolvedValue({
+      id: 'feed-legacy',
+      sourceSystemId: 'sys-1',
+      feedName: 'Legacy Azure Feed',
+      feedHandler: 'azure_function',
+    });
+    const { PUT } = await import('../source-feeds/[id]/route');
+
+    const editResponse = await PUT(
+      createRequest({ feedName: 'Legacy Azure Feed (migration pending)' }),
+      createRouteContext('feed-legacy'),
+    );
+    const migrationResponse = await PUT(
+      createRequest({ feedHandler: 'hsds_api' }),
+      createRouteContext('feed-legacy'),
+    );
+
+    expect(sourceFeedsStore.update).toHaveBeenNthCalledWith(
+      1,
+      'feed-legacy',
+      { feedName: 'Legacy Azure Feed (migration pending)' },
+    );
+    expect(sourceFeedsStore.update).toHaveBeenNthCalledWith(
+      2,
+      'feed-legacy',
+      { feedHandler: 'hsds_api' },
+    );
+    expect(editResponse.status).toBe(200);
+    expect(migrationResponse.status).toBe(200);
+  });
+
   it('queues high-risk feed rollout changes for second approval', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1', role: 'oran_admin' });
     controlChangeMocks.isHighRiskSourceFeedUpdate.mockReturnValueOnce(true);

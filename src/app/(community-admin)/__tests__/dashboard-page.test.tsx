@@ -6,7 +6,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 const fetchMock = vi.hoisted(() => vi.fn());
 
-vi.mock('next-auth/react', () => ({
+vi.mock('@/services/auth/client', () => ({
   useSession: () => ({
     data: {
       user: { name: 'Jordan Rivera' },

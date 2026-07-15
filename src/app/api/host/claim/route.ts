@@ -133,7 +133,6 @@ export async function POST(req: NextRequest) {
       detail,
       actorUserId: authCtx.userId,
       actorRole: authCtx.role,
-      allowAutoApprove: false,
     });
     if (!processed.success) {
       return NextResponse.json({ error: processed.error ?? 'Unable to submit claim.' }, { status: 409 });

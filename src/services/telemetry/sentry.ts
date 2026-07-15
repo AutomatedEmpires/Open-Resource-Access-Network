@@ -5,6 +5,8 @@
  * Privacy rules: no user PII in events; sessionId (UUID) allowed as correlation ID.
  */
 
+import * as SentrySdk from '@sentry/nextjs';
+
 // ============================================================
 // TYPES
 // ============================================================
@@ -93,8 +95,7 @@ function sanitizeExtra(extra: Record<string, unknown>): Record<string, unknown> 
 // ============================================================
 
 /**
- * Lazy Sentry loader — only imports Sentry if DSN is configured.
- * This prevents build failures when NEXT_PUBLIC_SENTRY_DSN is not set.
+ * Sentry accessor gated by the public DSN. Tests may inject a narrow mock.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getSentry(): Promise<any | null> {
@@ -107,19 +108,7 @@ async function getSentry(): Promise<any | null> {
     return injected as any;
   }
 
-  if (typeof window !== 'undefined') {
-    return null;
-  }
-
-  try {
-    // Keep module loading on server-only runtime path and avoid static import resolution.
-    const nodeRequire = (0, eval)('require') as (id: string) => unknown;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const Sentry = nodeRequire('@sentry/nextjs') as any;
-    return Sentry;
-  } catch {
-    return null;
-  }
+  return SentrySdk;
 }
 
 /**

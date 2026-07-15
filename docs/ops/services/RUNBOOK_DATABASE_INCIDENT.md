@@ -4,63 +4,72 @@
 
 - Owner role: Data Platform Lead
 - Reviewers: Platform On-Call Lead, Security Lead
-- Last reviewed (UTC): 2026-03-06
-- Next review due (UTC): 2026-06-06
+- Operational status: active
+- Last reviewed (UTC): 2026-07-13
+- Next review due (UTC): 2026-10-13
 - Severity scope: SEV-1 to SEV-3
 
 ## Purpose And Scope
 
-This runbook covers PostgreSQL/PostGIS production incidents: connectivity failures, saturation, lock contention, runaway query latency, and migration-related instability.
+Handle Supabase PostgreSQL/PostGIS incidents: connectivity failures, Supavisor
+pool saturation, lock contention, runaway latency, migration instability, and
+integrity-control failures.
 
-## Safety Constraints (Must Always Hold)
+## Safety Constraints
 
-- Do not bypass authz checks to compensate for DB issues.
-- Do not disable crisis routing logic.
-- Avoid ad-hoc writes that could corrupt service record integrity.
-- Avoid querying or exporting sensitive data outside approved channels.
+- Do not bypass authorization, publication, crisis, or usage-accounting controls
+  to compensate for database failure.
+- Start with read-only diagnostics through the dedicated ORAN project.
+- Do not export personal or seeker-entered data into tickets, chat, or telemetry.
+- Never replay the full migration directory over an imported schema.
+- Emergency writes, cancellations, and terminations require an identified owner,
+  reason, affected scope, and audit note.
 
 ## Triggers
 
-- API request failures with DB connection errors.
-- Elevated p95/p99 latency for search/admin endpoints.
-- Connection pool exhaustion.
-- Lock contention/deadlock symptoms.
-- Migration failure during deployment.
+- `/api/health` reports the database unconfigured or unreachable.
+- API failures contain connection, pool, timeout, deadlock, or serialization errors.
+- Search/chat/admin latency rises with database wait time.
+- Supabase reports service degradation or connection pressure.
+- A migration partially applies or a required `oran_internal` function/grant is missing.
+- Resource publication, freshness holds, or chat quota finalization cannot be
+  trusted because a transaction failed.
 
-## Initial Diagnostics
+## Initial Diagnosis
 
-1. Confirm app-level impact:
-   - `GET /api/services` latency/error rate.
-   - Admin route error rates.
-2. Check app and function logs for DB exceptions.
-3. Confirm DB service health in Azure portal.
-4. Review recent deploy/migration timeline.
-
-## SQL Diagnostics (Read-Only First)
+1. Determine whether failures affect direct migration connections, pooled Vercel
+   runtime connections, or both.
+2. Check the dedicated Supabase project and Vercel release/runtime logs.
+3. Confirm `DATABASE_URL`, `ORAN_DATABASE_ROLE=oran_backend_runtime`, and
+   `ORAN_SUPABASE_PROJECT_REF=tpatxospkuqvajusuryw` are
+   present in the correct Vercel environment without printing the URL. The URL
+   username must be `oran_backend_runtime.<project-ref>`; the application does
+   not use a pooler startup `SET ROLE`.
+   Production pools default to two connections per instance and
+   `DATABASE_POOL_MAX` must remain between 1 and 20.
+4. Review the latest deployment and `schema_migrations` entries.
+5. Run only bounded read-only diagnostics using an approved operator role.
 
 ```sql
--- Active connections by state
 SELECT state, count(*)
 FROM pg_stat_activity
+WHERE datname = current_database()
 GROUP BY state
 ORDER BY count(*) DESC;
 ```
 
 ```sql
--- Long-running queries
-SELECT pid, now() - query_start AS duration, state, wait_event_type, wait_event, query
+SELECT pid, now() - query_start AS duration, state, wait_event_type, wait_event
 FROM pg_stat_activity
-WHERE state <> 'idle'
+WHERE datname = current_database()
+  AND state <> 'idle'
 ORDER BY duration DESC
 LIMIT 20;
 ```
 
 ```sql
--- Blocking and blocked queries
-SELECT blocked.pid AS blocked_pid,
-       blocker.pid AS blocker_pid,
-       blocked.query AS blocked_query,
-       blocker.query AS blocker_query
+SELECT blocked.pid AS blocked_pid, blocker.pid AS blocker_pid,
+       blocked.wait_event_type, blocked.wait_event
 FROM pg_locks blocked_locks
 JOIN pg_stat_activity blocked ON blocked.pid = blocked_locks.pid
 JOIN pg_locks blocker_locks
@@ -69,61 +78,56 @@ JOIN pg_locks blocker_locks
  AND blocker_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
  AND blocker_locks.page IS NOT DISTINCT FROM blocked_locks.page
  AND blocker_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
- AND blocker_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
  AND blocker_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
- AND blocker_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
- AND blocker_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
- AND blocker_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
  AND blocker_locks.pid <> blocked_locks.pid
 JOIN pg_stat_activity blocker ON blocker.pid = blocker_locks.pid
-WHERE NOT blocked_locks.granted;
+WHERE NOT blocked_locks.granted
+LIMIT 20;
 ```
 
-## Mitigation Paths
+## Mitigation
 
-### A. Connection Saturation
+### Connection saturation
 
-1. Reduce ingress pressure (temporary rate-limit tightening if required).
-2. Restart affected application instance only if saturation is app-side leak related.
-3. Verify pool settings and active query count stabilize.
+1. Reduce optional job pressure and confirm no release raised the per-instance
+   pool unexpectedly.
+2. Roll back connection-leaking code before raising pool size.
+3. Coordinate any Supabase capacity change with the number of horizontally
+   scaled Vercel instances.
 
-### B. Lock Contention
+### Lock contention
 
-1. Identify blocker query and owner session.
-2. Coordinate safe cancellation (`pg_cancel_backend`) before force terminate.
-3. If writes are blocked platform-wide, declare SEV-1/SEV-2 and execute controlled mitigation.
+1. Identify the owning operation and blast radius.
+2. Prefer `pg_cancel_backend` after owner approval; use termination only when a
+   platform-wide write block outweighs rollback risk.
+3. Verify the affected transaction was rolled back before retrying it.
 
-### C. Migration Failure
+### Migration failure
 
-1. Stop further deploys.
-2. Determine if migration is partially applied.
-3. Execute rollback/forward-fix based on migration safety.
-4. Use `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md` for full release rollback decisions.
-
-## Rollback Criteria
-
-- Sustained 5xx and DB exceptions beyond 15 minutes.
-- No safe mitigation path without code/data rollback.
-- Safety-critical workflows blocked (admin routing, ingestion verification).
+1. Stop further promotion.
+2. Determine the exact last successful statement and migration-history state.
+3. Use a reviewed forward fix for non-reversible data changes; use application
+   rollback only when schema compatibility is established.
+4. Preserve the migration baseline guard in `.github/workflows/db-migrate.yml`.
 
 ## Validation
 
-1. Critical APIs recover to baseline latency and success rates.
-2. Queue consumers resume healthy throughput.
-3. No growing deadlock/long query pattern.
-4. Incident channel confirms stabilized state.
+```bash
+npx vitest run src/services/db/__tests__/postgres.test.ts src/app/api/health/__tests__/route.test.ts
+```
 
-## Post-Incident Actions
-
-1. Add root cause + mitigation summary.
-2. Add query tuning/index follow-up items if relevant.
-3. Update this runbook with observed failure signature.
-4. Record contract-impacting changes in `docs/ENGINEERING_LOG.md`.
+- `/api/health` is ready and connected.
+- Connection, lock, and latency signals return to baseline.
+- Chat reservation/finalization and publication integrity checks succeed when
+  those transactions were in scope.
+- `schema_migrations` contains each applied migration exactly once.
+- No temporary privilege or direct-data workaround remains.
 
 ## References
 
+- `src/services/db/postgres.ts`
+- `src/app/api/health/route.ts`
+- `.github/workflows/db-migrate.yml`
 - `db/migrations/`
-- `docs/DATA_MODEL.md`
-- `docs/ops/monitoring/MONITORING_QUERIES.md`
+- `docs/platform/STACK_MIGRATION.md`
 - `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md`
-- `docs/SECURITY_PRIVACY.md`

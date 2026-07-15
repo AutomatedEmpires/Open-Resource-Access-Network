@@ -61,8 +61,8 @@ describe('confidence thresholds and validation', () => {
 describe('display helpers', () => {
   it('returns stable metadata for tiers and bands', () => {
     expect(getTierDisplayInfo('green')).toEqual({
-      label: 'Ready',
-      description: 'Sufficient verification for publication',
+      label: 'High signal',
+      description: 'Strong record evidence; publication authority is checked separately',
       color: '#22c55e',
       textColor: '#ffffff',
     });
@@ -78,14 +78,14 @@ describe('display helpers', () => {
 });
 
 describe('workflow decisions and formatting', () => {
-  it('derives workflow flags from the same threshold rules', () => {
-    expect(canAutoApprove(CONFIDENCE_THRESHOLDS.GREEN)).toBe(true);
+  it('never treats an advisory confidence score as workflow authority', () => {
+    expect(canAutoApprove(CONFIDENCE_THRESHOLDS.GREEN)).toBe(false);
     expect(canAutoApprove(CONFIDENCE_THRESHOLDS.GREEN - 1)).toBe(false);
 
-    expect(requiresReview(CONFIDENCE_THRESHOLDS.GREEN)).toBe(false);
+    expect(requiresReview(CONFIDENCE_THRESHOLDS.GREEN)).toBe(true);
     expect(requiresReview(CONFIDENCE_THRESHOLDS.GREEN - 1)).toBe(true);
 
-    expect(isPublishReady(CONFIDENCE_THRESHOLDS.YELLOW)).toBe(true);
+    expect(isPublishReady(CONFIDENCE_THRESHOLDS.YELLOW)).toBe(false);
     expect(isPublishReady(CONFIDENCE_THRESHOLDS.YELLOW - 1)).toBe(false);
   });
 
@@ -103,7 +103,7 @@ describe('workflow decisions and formatting', () => {
 
   it('formats scores for display', () => {
     expect(formatConfidencePercent(84.6)).toBe('85%');
-    expect(formatConfidenceWithTier(85)).toBe('85% (Ready)');
+    expect(formatConfidenceWithTier(85)).toBe('85% (High signal)');
     expect(formatConfidenceWithTier(60)).toBe('60% (Review)');
   });
 });

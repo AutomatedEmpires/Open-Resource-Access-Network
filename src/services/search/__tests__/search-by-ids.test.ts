@@ -40,6 +40,7 @@ describe('ServiceSearchEngine.searchByIds', () => {
     expect(mockExecuteQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = mockExecuteQuery.mock.calls[0];
     expect(sql).toContain('WHERE s.id = ANY($1::uuid[])');
+    expect(sql).toContain('o.verified_at AS organization_verified_at');
     expect(params).toEqual([ids]);
   });
 
@@ -56,6 +57,7 @@ describe('ServiceSearchEngine.searchByIds', () => {
         email: 'test@example.com',
         organization_name: 'Test Org',
         organization_description: 'A test org',
+        organization_verified_at: new Date('2026-01-15T12:00:00.000Z'),
         organization_created_at: new Date(),
         organization_updated_at: new Date(),
         location_id: null,
@@ -77,6 +79,7 @@ describe('ServiceSearchEngine.searchByIds', () => {
     expect(results[0].service.service.id).toBe('00000000-0000-0000-0000-000000000001');
     expect(results[0].service.service.name).toBe('Test Service');
     expect(results[0].service.organization.name).toBe('Test Org');
+    expect(results[0].service.organization.verifiedAt).toBe('2026-01-15T12:00:00.000Z');
     expect(results[0].service.confidenceScore?.verificationConfidence).toBe(80);
   });
 
@@ -149,6 +152,7 @@ describe('ServiceSearchEngine.searchByIds', () => {
     expect(row.service.service.status).toBe('active');
     expect(row.service.organization.name).toBe('');
     expect(row.service.organization.status).toBe('active');
+    expect(row.service.organization.verifiedAt).toBeNull();
     expect(row.service.location?.status).toBe('active');
     expect(row.service.address?.address1).toBeNull();
     expect(row.service.confidenceScore?.id).toBe('');

@@ -43,6 +43,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
 
+  vi.stubEnv('CRON_SECRET', 'cron-secret');
   vi.stubEnv('INTERNAL_API_KEY', 'secret-key');
   vi.stubEnv('SOURCE_FEED_POLLING_ENABLED', 'true');
   vi.stubEnv('NDP_211_POLLING_ENABLED', 'true');
@@ -63,14 +64,24 @@ beforeEach(() => {
   });
 });
 
-describe('POST /api/internal/ingestion/feed-poll', () => {
-  it('returns 503 when INTERNAL_API_KEY is not configured', async () => {
+describe('GET|POST /api/internal/ingestion/feed-poll', () => {
+  it('returns 503 when no internal credential is configured', async () => {
+    vi.stubEnv('CRON_SECRET', '');
     vi.stubEnv('INTERNAL_API_KEY', '');
     const { POST } = await loadRoute();
 
     const response = await POST(makeRequest('secret-key'));
 
     expect(response.status).toBe(503);
+  });
+
+  it('accepts a Vercel Cron GET request', async () => {
+    const { GET } = await loadRoute();
+
+    const response = await GET(makeRequest('cron-secret'));
+
+    expect(response.status).toBe(200);
+    expect(createIngestionServiceMock).toHaveBeenCalledOnce();
   });
 
   it('returns 401 for missing authorization', async () => {

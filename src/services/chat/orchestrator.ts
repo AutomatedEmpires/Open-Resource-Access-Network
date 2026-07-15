@@ -335,7 +335,7 @@ export function assembleOutOfScopeResponse(
 
   return {
     message:
-      'I’m ORAN Chat. I only help with verified service discovery from stored ORAN records, so I can’t answer unrelated, off-brand, or inappropriate requests. If you need help finding services, tell me the need, such as housing, food, healthcare, mental health, transportation, childcare, employment, legal help, or utility assistance.',
+      'I’m ORAN Chat. I only help navigate publication-gated services from stored ORAN records, so I can’t answer unrelated, off-brand, or inappropriate requests. If you need help finding services, tell me the need, such as housing, food, healthcare, mental health, transportation, childcare, employment, legal help, or utility assistance.',
     services: [],
     isCrisis: false,
     intent,

@@ -2,11 +2,7 @@ name: Deploy (Azure Functions)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'functions/**'
-      - 'scripts/build-functions.mjs'
+  # Legacy rollback only. The active platform is Vercel + Supabase.
 
 permissions:
   contents: read
@@ -18,7 +14,7 @@ concurrency:
 
 jobs:
   deploy-functions:
-    if: ${{ vars.AZURE_DEPLOY_ENABLED == 'true' }}
+    if: ${{ vars.AZURE_ROLLBACK_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
@@ -29,7 +25,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies

@@ -550,7 +550,7 @@ export default function SavedPage() {
                 <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 shadow-sm">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Saved total</p>
                   <p className="mt-3 text-3xl font-semibold text-slate-950">{services.length}</p>
-                  <p className="mt-1 text-sm text-slate-600">Verified services kept close across chat, directory, and map.</p>
+                  <p className="mt-1 text-sm text-slate-600">Publication-gated services kept close across chat, directory, and map.</p>
                 </div>
                 <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 shadow-sm">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Organized</p>
@@ -574,7 +574,7 @@ export default function SavedPage() {
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="max-w-2xl">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Continue discovery</p>
-                  <h2 className="mt-2 text-lg font-semibold text-slate-900">Jump back into the same verified search flow</h2>
+                  <h2 className="mt-2 text-lg font-semibold text-slate-900">Jump back into the same source-authorized search flow</h2>
                   <p className="mt-2 text-sm text-slate-600">
                     Your saved workspace already knows your preferred discovery context. Use it to reopen chat, directory, or map without starting from a blank state.
                   </p>

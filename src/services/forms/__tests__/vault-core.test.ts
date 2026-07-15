@@ -29,6 +29,7 @@ const SUBMISSION_ID = '33333333-3333-4333-8333-333333333333';
 
 function makeAuthCtx(role: OranRole = 'oran_admin', userId = 'user-admin-1') {
   return {
+    clerkUserId: userId,
     userId,
     role,
     accountStatus: 'active' as const,

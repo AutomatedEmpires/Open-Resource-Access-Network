@@ -91,12 +91,29 @@ describe('sourceFeedStore', () => {
     expect(await store.listBySystem('sys-1')).toEqual(rows);
   });
 
-  it('listDueForPoll returns active feeds past their interval', async () => {
-    const rows = [makeRow({ lastPolledAt: new Date('2025-01-01') })];
+  it('listDueForPoll returns only executable handlers before poll orchestration', async () => {
+    const rows = [
+      makeRow({ id: 'feed-hsds', lastPolledAt: new Date('2025-01-01') }),
+      makeRow({
+        id: 'feed-211',
+        feedHandler: 'ndp_211',
+        lastPolledAt: new Date('2025-01-01'),
+      }),
+      makeRow({
+        id: 'feed-manual-authority',
+        feedHandler: 'none',
+        lastPolledAt: null,
+      }),
+      makeRow({
+        id: 'feed-legacy-azure',
+        feedHandler: 'azure_function',
+        lastPolledAt: null,
+      }),
+    ];
     const { db } = createMockDb([rows]);
     const store = createDrizzleSourceFeedStore(db as never);
 
-    expect(await store.listDueForPoll()).toEqual(rows);
+    expect(await store.listDueForPoll()).toEqual(rows.slice(0, 2));
   });
 
   it('create inserts and returns the row via returning()', async () => {

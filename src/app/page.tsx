@@ -3,13 +3,16 @@ import Link from 'next/link';
 import { MessageCircle, List, MapPin, Shield, Building2, Users, ArrowRight, Search, CheckCircle2, Zap, Globe, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppNav } from '@/components/nav/AppNav';
+import { ScopedMobileNav, SEEKER_MOBILE_NAV_ITEMS } from '@/components/nav/ScopedMobileNav';
 import { AppFooter } from '@/components/footer';
+import { ChatFirstIntakeHero } from '@/components/home/ChatFirstIntakeHero';
 import { SITE, buildOrganizationJsonLd, getSameAsLinks, toSafeJsonLd } from '@/lib/site';
+import { ORAN_USER_TYPES } from '@/domain/resourceNavigator';
 
 export const metadata: Metadata = {
   title: SITE.title,
   description:
-    'Find verified government, nonprofit, and community services near you. Real, confirmed records — structured, searchable, and maintained by real people.',
+    'Tell ORAN what is happening and find a clear next step from stored government, nonprofit, and community provider records.',
   alternates: { canonical: '/' },
   openGraph: {
     title: SITE.title,
@@ -34,7 +37,7 @@ const websiteSchema = {
     '@type': 'SearchAction',
     target: {
       '@type': 'EntryPoint',
-      urlTemplate: `${SITE.baseUrl}/directory?q={search_term_string}`,
+      urlTemplate: `${SITE.baseUrl}/chat?q={search_term_string}`,
     },
     'query-input': 'required name=search_term_string',
   },
@@ -42,18 +45,21 @@ const websiteSchema = {
 
 // ── Browse-by-need category chips ───────────────────────────
 const CATEGORIES = [
-  { label: 'Food & Nutrition',       href: '/directory?q=food+nutrition' },
-  { label: 'Housing & Shelter',      href: '/directory?q=housing+shelter' },
+  { label: 'SNAP & Food Benefits',   href: '/directory?q=SNAP+food+benefits' },
+  { label: 'Food Banks & Meals',     href: '/directory?q=food+banks+meal+centers' },
+  { label: 'Clothing',               href: '/directory?q=clothing+bank' },
+  { label: 'Rent & Housing',         href: '/directory?q=rent+housing+shelter' },
+  { label: 'Electricity & Utilities', href: '/directory?q=electricity+utility+assistance' },
+  { label: 'Medicaid & Health',      href: '/directory?q=Medicaid+healthcare' },
   { label: 'Mental Health',          href: '/directory?q=mental+health' },
-  { label: 'Healthcare',             href: '/directory?q=healthcare+medical' },
-  { label: 'Crisis Support',         href: '/directory?q=crisis+support' },
+  { label: 'Medical & Dental',       href: '/directory?q=sliding+scale+medical+dental' },
+  { label: 'Urgent support',         href: '/chat?q=I+need+urgent+support' },
   { label: 'Employment',             href: '/directory?q=employment+jobs' },
   { label: 'Legal Aid',              href: '/directory?q=legal+aid' },
-  { label: 'Financial Assistance',   href: '/directory?q=financial+assistance' },
+  { label: 'Immigration',            href: '/directory?q=immigration+services' },
   { label: 'Child & Family',         href: '/directory?q=children+family' },
   { label: 'Disability Services',    href: '/directory?q=disability+services' },
   { label: 'Veteran Services',       href: '/directory?q=veteran+services' },
-  { label: 'Substance Use',          href: '/directory?q=substance+use+recovery' },
 ] as const;
 
 // ── Per-audience feature data ────────────────────────────────
@@ -62,7 +68,7 @@ const SEEKER_FEATURES: Array<{ icon: React.ElementType; title: string; body: str
   {
     icon: Search,
     title: 'Natural language search',
-    body: 'Type what you need in plain words. ORAN maps your query to structured service records across hundreds of verified categories.',
+    body: 'Type what you need in plain words. ORAN maps your request to structured, publication-gated service records and says when coverage is missing.',
   },
   {
     icon: MapPin,
@@ -71,8 +77,8 @@ const SEEKER_FEATURES: Array<{ icon: React.ElementType; title: string; body: str
   },
   {
     icon: Shield,
-    title: 'Verified records only',
-    body: 'Every phone number, address, and service detail comes from a confirmed, structured source record — reviewed and dated.',
+    title: 'Publication-gated records',
+    body: 'Every displayed resource must have positive publication authority from a stored source record. Confidence and freshness cues say what is known or still needs confirmation.',
   },
   {
     icon: CheckCircle2,
@@ -90,12 +96,12 @@ const ORG_FEATURES: Array<{ icon: React.ElementType; title: string; body: string
   {
     icon: Shield,
     title: 'Source provenance tracking',
-    body: 'Every record carries a verifiable provenance trail — origin, last verification date, and a live confidence score.',
+    body: 'Published submissions retain their source, review decision, and freshness state so seekers can distinguish provider-confirmed details from unknowns.',
   },
   {
     icon: Users,
-    title: 'Community-backed verification',
-    body: 'Service changes enter a review workflow where community admins verify updates — protecting data integrity without burdening your staff.',
+    title: 'Community-backed review',
+    body: 'Service changes enter a workflow where community admins review the evidence and approve or reject updates before publication.',
   },
   {
     icon: Zap,
@@ -113,7 +119,7 @@ const PARTNER_FEATURES: Array<{ icon: React.ElementType; title: string; body: st
   {
     icon: Database,
     title: '211 & HSDS data federation',
-    body: 'ORAN ingests and normalizes 211-standard and HSDS feeds. Community contributors maintain quality across federated sources.',
+    body: 'ORAN supports 211-standard and HSDS feeds through a review-first source pipeline. A feed stays private until its publication authority is explicit.',
   },
   {
     icon: Globe,
@@ -132,17 +138,17 @@ const WHY_ORAN = [
   {
     label: 'vs. generic chatbots',
     title: 'Reliable by design',
-    body: 'ORAN only surfaces records that exist in its verified database. No invented contact details, no fabricated service hours — ever.',
+    body: 'ORAN only surfaces stored records that pass a positive publication gate. No invented contact details or fabricated service hours — ever.',
   },
   {
     label: 'vs. search engines',
-    title: 'Structured & eligibility-aware',
-    body: 'Search engines surface pages. ORAN surfaces structured records — hours, eligibility, contact details, and a confidence score.',
+    title: 'Structured & next-step focused',
+    body: 'Search engines surface pages. ORAN presents the contact, location, eligibility, and intake facts a source actually provides—and labels missing details.',
   },
   {
     label: 'vs. stale 211 databases',
-    title: 'Continuously re-verified',
-    body: 'Traditional databases go stale between update cycles. ORAN flags confidence decay and routes verification work to community admins.',
+    title: 'Built for re-verification',
+    body: 'Records can expire, accept user reports, and route source checks to reviewers. Stale or unproven imports do not earn publication by default.',
   },
   {
     label: 'vs. proprietary directories',
@@ -153,7 +159,7 @@ const WHY_ORAN = [
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--bg-page)]">
+    <div className="flex min-h-screen flex-col bg-[var(--bg-page)] pb-14 md:pb-0">
       {/* JSON-LD */}
       <script
         type="application/ld+json"
@@ -168,73 +174,8 @@ export default function Home() {
 
       <main id="main-content" tabIndex={-1} className="flex-1">
 
-        {/* ══ HERO ══════════════════════════════════════════════ */}
-        <section className="border-b border-[var(--border)] bg-white px-4 py-14 sm:py-24 md:py-32 text-center">
-          <div className="mx-auto max-w-3xl">
-            {/* Identity badge */}
-            <div className="mb-5 sm:mb-8 inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-white px-4 py-1.5 text-xs font-medium text-[var(--text-secondary)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]" aria-hidden="true" />
-              Community-verified &middot; Always free
-            </div>
-
-            <h1 className="mb-4 font-display text-3xl font-bold tracking-tight text-[var(--text-primary)] sm:text-5xl lg:text-6xl leading-tight">
-              Find verified services<br className="hidden sm:block" /> for real needs
-            </h1>
-
-            <p className="mb-7 sm:mb-10 text-base sm:text-lg leading-relaxed text-[var(--text-secondary)] max-w-xl mx-auto">
-              ORAN connects people to confirmed government, nonprofit, and community programs.
-              Every record is structured, sourced, and reviewed — so the results you see are real.
-            </p>
-
-            {/* Search form */}
-            <form
-              action="/directory"
-              method="get"
-              role="search"
-              aria-label="Search community services"
-              className="mb-6 flex max-w-2xl mx-auto items-stretch overflow-hidden rounded-xl shadow-sm ring-1 ring-[var(--border)]"
-            >
-              <div className="relative flex-1">
-                <Search
-                  className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]"
-                  aria-hidden="true"
-                />
-                <input
-                  type="search"
-                  name="q"
-                  placeholder="Food assistance, housing, mental health…"
-                  aria-label="Search for a service or need"
-                  className="h-full w-full border-0 bg-white py-4 pl-11 pr-4 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-0"
-                />
-              </div>
-              <button
-                type="submit"
-                className="flex-shrink-0 border-l border-[var(--border)] bg-white px-5 sm:px-8 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-surface-alt)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--text-muted)]"
-              >
-                Search
-              </button>
-            </form>
-
-            {/* Quick-access pills */}
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <span className="text-xs text-[var(--text-muted)]">or explore</span>
-              <Link
-                href="/directory"
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white px-4 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
-              >
-                <List className="h-3.5 w-3.5" aria-hidden="true" />
-                Directory
-              </Link>
-              <Link
-                href="/map"
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white px-4 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
-              >
-                <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                Map view
-              </Link>
-            </div>
-          </div>
-        </section>
+        {/* ══ CHAT-FIRST INTAKE ═════════════════════════════════ */}
+        <ChatFirstIntakeHero />
 
         {/* ══ BROWSE BY NEED ══════════════════════════════════════ */}
         <section className="border-b border-[var(--border)] bg-white px-4 py-6 sm:py-8">
@@ -256,6 +197,21 @@ export default function Home() {
           </div>
         </section>
 
+        <section className="border-b border-[var(--border)] bg-slate-50 px-4 py-5" aria-labelledby="audience-scopes-heading">
+          <div className="mx-auto flex max-w-5xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <h2 id="audience-scopes-heading" className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+              One network, clear scopes
+            </h2>
+            <div className="flex flex-wrap justify-center gap-2">
+              {ORAN_USER_TYPES.map((audience) => (
+                <span key={audience.id} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
+                  {audience.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ══ SEEKERS ══════════════════════════════════════════════ */}
         <section className="bg-[var(--bg-page)] px-4 py-12 sm:py-20 md:py-28">
           <div className="mx-auto max-w-5xl">
@@ -268,7 +224,7 @@ export default function Home() {
               </h2>
               <p className="leading-relaxed text-[var(--text-secondary)]">
                 When accuracy matters — and with services it always does — ORAN retrieves real,
-                verified records and presents them clearly. No guesswork, no stale data.
+                stored provider records and presents them clearly. No invented facts; missing or stale details stay visible.
               </p>
             </div>
 
@@ -428,9 +384,9 @@ export default function Home() {
               Community-governed.<br className="hidden sm:block" /> Free to use. Built to last.
             </h2>
             <p className="mb-7 sm:mb-10 text-base sm:text-lg leading-relaxed text-[var(--text-secondary)]">
-              ORAN is built on the principle that verified resource access should never be gated
-              behind a paywall. WCAG 2.1 AA accessible, continuously maintained, and free for
-              every person who needs it.
+              ORAN is built on the principle that trustworthy resource access should not sit behind
+              a paywall. WCAG 2.1 AA is the design target, records have explicit maintenance paths,
+              seekers can use the navigator for free, and providers pay no listing fee.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Link
@@ -453,6 +409,7 @@ export default function Home() {
       </main>
 
       <AppFooter />
+      <ScopedMobileNav scopeLabel="Seeker" pathname="/" items={SEEKER_MOBILE_NAV_ITEMS} />
     </div>
   );
 }

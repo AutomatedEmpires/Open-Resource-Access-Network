@@ -64,17 +64,23 @@ export interface PendingIngestionControlChangeRow {
 }
 
 export function isHighRiskSourceUpdate(
-  existing: { trustLevel?: string | null },
-  patch: { trustLevel?: string },
+  existing: { trustLevel?: string | null; resourcePurpose?: string | null },
+  patch: { trustLevel?: string; resourcePurpose?: string },
 ): boolean {
-  return patch.trustLevel !== undefined && patch.trustLevel !== existing.trustLevel;
+  return (
+    (patch.trustLevel !== undefined && patch.trustLevel !== existing.trustLevel) ||
+    (patch.resourcePurpose !== undefined && patch.resourcePurpose !== existing.resourcePurpose)
+  );
 }
 
 export function isHighRiskSourceSystemUpdate(
-  existing: { trustTier?: string | null },
-  patch: { trustTier?: string },
+  existing: { trustTier?: string | null; resourcePurpose?: string | null },
+  patch: { trustTier?: string; resourcePurpose?: string },
 ): boolean {
-  return patch.trustTier !== undefined && patch.trustTier !== existing.trustTier;
+  return (
+    (patch.trustTier !== undefined && patch.trustTier !== existing.trustTier) ||
+    (patch.resourcePurpose !== undefined && patch.resourcePurpose !== existing.resourcePurpose)
+  );
 }
 
 export function isHighRiskSourceFeedUpdate(

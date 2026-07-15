@@ -8,16 +8,17 @@ describe('validateRuntimeEnv', () => {
       {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-        NEXTAUTH_SECRET: 'secret',
-        NEXTAUTH_URL: 'https://oran.test',
-        INTERNAL_API_KEY: 'internal-key',
-        APPLICATIONINSIGHTS_CONNECTION_STRING: 'InstrumentationKey=test',
+        ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+        ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
+        CRON_SECRET: 'vercel-cron-secret',
+        NEXT_PUBLIC_SENTRY_DSN: 'https://public@example.ingest.sentry.io/1',
+        NEXT_PUBLIC_SUPABASE_URL: 'https://project.supabase.co',
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+        CLERK_SECRET_KEY: 'sk_test_example',
+        RESEND_API_KEY: 're_test',
+        RESEND_FROM: 'ORAN <notifications@openresourceaccessnetwork.com>',
         REDIS_URL: 'redis://localhost:6379',
-        AZURE_MAPS_KEY: 'maps-key',
-        AZURE_MAPS_SAS_TOKEN: 'sas-token',
-        AZURE_TRANSLATOR_KEY: 'trans-key',
-        AZURE_TRANSLATOR_ENDPOINT: 'https://api.example.com',
-        AZURE_TRANSLATOR_REGION: 'eastus',
       },
     );
 
@@ -26,31 +27,87 @@ describe('validateRuntimeEnv', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('flags conditional auth settings when a provider is partially configured', () => {
+  it('requires the reviewed backend capability role in production', () => {
+    const result = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
+      CRON_SECRET: 'vercel-cron-secret',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.missingCritical).toEqual(['ORAN_DATABASE_ROLE']);
+  });
+
+  it('requires both Clerk identity keys in production', () => {
     const result = validateRuntimeEnv(
       'webapp',
       {
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-        NEXTAUTH_SECRET: 'secret',
-        NEXTAUTH_URL: 'https://oran.test',
-        INTERNAL_API_KEY: 'internal-key',
-        AZURE_AD_CLIENT_ID: 'entra-client-id',
+        ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+        ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
+        CRON_SECRET: 'vercel-cron-secret',
       },
     );
 
     expect(result.ok).toBe(false);
-    expect(result.missingCritical).toEqual(['AZURE_AD_CLIENT_SECRET']);
+    expect(result.missingCritical).toEqual([
+      'CLERK_SECRET_KEY',
+      'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY',
+    ]);
     expect(result.warnings).toEqual([
-      'APPLICATIONINSIGHTS_CONNECTION_STRING',
-      'AZURE_AD_TENANT_ID',
-      'AZURE_MAPS_KEY',
-      'AZURE_MAPS_SAS_TOKEN',
-      'AZURE_TRANSLATOR_ENDPOINT',
-      'AZURE_TRANSLATOR_KEY',
-      'AZURE_TRANSLATOR_REGION',
+      'NEXT_PUBLIC_SENTRY_DSN',
+      'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+      'NEXT_PUBLIC_SUPABASE_URL',
       'REDIS_URL',
     ]);
+  });
+
+  it('requires the Vercel Cron credential in production', () => {
+    const result = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.missingCritical).toEqual(['CRON_SECRET']);
+  });
+
+  it('requires Resend credentials as a complete pair when email is enabled', () => {
+    const missingSender = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
+      CRON_SECRET: 'vercel-cron-secret',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
+      RESEND_API_KEY: 're_test',
+    });
+
+    expect(missingSender.ok).toBe(false);
+    expect(missingSender.missingCritical).toContain('RESEND_FROM');
+
+    const missingKey = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
+      CRON_SECRET: 'vercel-cron-secret',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
+      RESEND_FROM: 'ORAN <notifications@openresourceaccessnetwork.com>',
+    });
+
+    expect(missingKey.ok).toBe(false);
+    expect(missingKey.missingCritical).toContain('RESEND_API_KEY');
   });
 
   it('skips production-only requirements outside production', () => {
@@ -67,9 +124,11 @@ describe('validateRuntimeEnv', () => {
     const result = validateRuntimeEnv('webapp', {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-      NEXTAUTH_SECRET: 'secret',
-      NEXTAUTH_URL: 'https://oran.test',
-      INTERNAL_API_KEY: 'internal-key',
+      ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
+      CRON_SECRET: 'vercel-cron-secret',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
       NDP_211_POLLING_ENABLED: 'true',
     });
 
@@ -84,9 +143,11 @@ describe('validateRuntimeEnv', () => {
     const result = validateRuntimeEnv('webapp', {
       NODE_ENV: 'production',
       DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-      NEXTAUTH_SECRET: 'secret',
-      NEXTAUTH_URL: 'https://oran.test',
-      INTERNAL_API_KEY: 'internal-key',
+      ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
+      CRON_SECRET: 'vercel-cron-secret',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
       NDP_211_POLLING_ENABLED: 'false',
     });
 
@@ -94,7 +155,7 @@ describe('validateRuntimeEnv', () => {
     expect(result.missingCritical).toEqual([]);
   });
 
-  it('validates Azure Functions contracts from names-only sources', () => {
+  it('validates legacy Functions contracts from names-only sources', () => {
     const result = validateRuntimeEnv(
       'functions',
       [
@@ -102,12 +163,13 @@ describe('validateRuntimeEnv', () => {
         'FUNCTIONS_WORKER_RUNTIME',
         'ORAN_APP_URL',
         'INTERNAL_API_KEY',
+        'NEXT_PUBLIC_SENTRY_DSN',
       ],
       { nodeEnv: 'production' },
     );
 
     expect(result.ok).toBe(true);
     expect(result.missingCritical).toEqual([]);
-    expect(result.warnings).toEqual(['APPLICATIONINSIGHTS_CONNECTION_STRING']);
+    expect(result.warnings).toEqual([]);
   });
 });

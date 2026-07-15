@@ -577,10 +577,10 @@ export default function DirectoryPage() {
 
     if (confidenceFilter !== 'all') {
       items.push({
-        id: 'trust',
-        label: `Trust: ${confidenceFilter === 'HIGH' ? 'High' : 'Likely+'}`,
+        id: 'record-confidence',
+        label: `Record confidence: ${confidenceFilter === 'HIGH' ? 'High' : 'Likely+'}`,
         onClick: clearTrust,
-        ariaLabel: 'Clear trust filter',
+        ariaLabel: 'Clear record confidence filter',
       });
     }
 
@@ -666,11 +666,11 @@ export default function DirectoryPage() {
       <div className="container mx-auto max-w-6xl px-4 pt-4 pb-8 md:py-8">
         <section className="rounded-[30px] border border-slate-200 bg-white p-4 shadow-sm md:p-8">
             <PageHeader
-              eyebrow="Verified discovery"
+              eyebrow="Resource discovery"
               title="Directory"
               badges={(
                 <>
-                  <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
+                  <PageHeaderBadge tone="trust">Publication-gated records</PageHeaderBadge>
                   {deviceLocation ? <PageHeaderBadge tone="accent">Approximate location active</PageHeaderBadge> : null}
                   {hasActiveRefinements ? <PageHeaderBadge>Refinements on</PageHeaderBadge> : null}
                 </>
@@ -785,7 +785,7 @@ export default function DirectoryPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-slate-900">Start with a common need</p>
-                      <p className="mt-1 text-xs text-slate-500">Choose a category first, then refine with trust, service details, and sort order.</p>
+                      <p className="mt-1 text-xs text-slate-500">Choose a category first, then refine with record confidence, service details, and sort order.</p>
                     </div>
                     <button
                       type="button"
@@ -839,7 +839,7 @@ export default function DirectoryPage() {
                       <div className="space-y-3 border-t border-slate-200 pt-5">
                         <div>
                           <p className="text-sm font-semibold text-slate-900">Service details</p>
-                          <p className="mt-1 text-xs text-slate-500">Narrow by common service attributes without hiding verified records outside your exact wording.</p>
+                          <p className="mt-1 text-xs text-slate-500">Narrow by common service attributes without hiding other publication-gated records outside your exact wording.</p>
                         </div>
                         <div className="space-y-4">
                           {SEEKER_ATTRIBUTE_DIMENSIONS.map((dim) => {
@@ -906,7 +906,7 @@ export default function DirectoryPage() {
                         <div className="space-y-3">
                           <div>
                             <p className="text-sm font-semibold text-slate-900">Sort order</p>
-                            <p className="mt-1 text-xs text-slate-500">Choose how verified matches should be ranked in this list.</p>
+                            <p className="mt-1 text-xs text-slate-500">Choose how publication-gated matches should be ranked in this list.</p>
                           </div>
                           <label className="block text-xs font-medium text-slate-500" htmlFor="directory-sort-select">
                             Sort results
@@ -977,7 +977,7 @@ export default function DirectoryPage() {
                 {!isLoading && !data && !error && (
                   <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-8 text-center shadow-sm">
                     <p className="text-base font-semibold text-slate-900">Start with a search</p>
-                    <p className="mt-1 text-sm text-slate-500">Results come from verified service records only.</p>
+                    <p className="mt-1 text-sm text-slate-500">Results come only from stored records with positive publication authority.</p>
                   </div>
                 )}
 
@@ -1019,7 +1019,7 @@ export default function DirectoryPage() {
                     {allResults.length === 0 ? (
                       <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-8 text-center shadow-sm">
                         <p className="text-base font-semibold text-slate-900">No matches</p>
-                        <p className="mt-1 text-sm text-slate-500">Try different keywords, broaden trust filters, or clear service filters.</p>
+                        <p className="mt-1 text-sm text-slate-500">Try different keywords, broaden record-confidence filters, or clear service filters.</p>
                         <div className="mt-4 flex flex-wrap justify-center gap-2">
                           {hasActiveAttributes && (
                             <Button type="button" variant="outline" size="sm" onClick={clearAttributes}>
@@ -1028,7 +1028,7 @@ export default function DirectoryPage() {
                           )}
                           {confidenceFilter !== 'all' && (
                             <Button type="button" variant="outline" size="sm" onClick={clearTrust}>
-                              Show all trust levels
+                              Show all record-confidence levels
                             </Button>
                           )}
                           {activeCategory && (

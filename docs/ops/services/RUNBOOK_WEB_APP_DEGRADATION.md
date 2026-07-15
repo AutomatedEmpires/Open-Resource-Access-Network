@@ -1,45 +1,67 @@
-# Runbook: Web App Degradation
+# Runbook: Web Application Degradation
 
 ## Metadata
 
 - Owner role: Platform On-Call Lead
 - Reviewers: Release Manager, Identity And Access Lead
-- Last reviewed (UTC): 2026-03-06
-- Next review due (UTC): 2026-06-06
+- Operational status: active
+- Last reviewed (UTC): 2026-07-13
+- Next review due (UTC): 2026-10-13
 - Severity scope: SEV-1 to SEV-3
 
 ## Purpose And Scope
 
-Respond to elevated latency, 5xx spikes, or partial user journey failures in the ORAN web app and API surface.
+Respond to elevated latency, function failures, or partial journey failures in
+the Vercel-hosted ORAN web application and API surface.
 
 ## Triggers
 
-- `/api/search` or core API p95/p99 latency spike.
-- Sustained 5xx growth in Application Insights.
-- Authentication redirects failing for protected routes.
+- `/api/health` reports unready, database disconnected, or sustained high latency.
+- `/api/chat`, `/map`, or public-resource retrieval has elevated latency or 5xx.
+- Sentry or Vercel reports a sustained production error increase.
+- Clerk redirects or protected-route enforcement fail.
+- A new deployment correlates with a critical seeker, host, reviewer, or admin
+  journey regression.
 
-## Triage Steps
+## Triage
 
 1. Open `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md` and assign severity.
-2. Validate current deployment and recent config changes.
-3. Check request/error trends using `docs/ops/monitoring/MONITORING_QUERIES.md`.
-4. Confirm auth behavior if 401/403/503 spikes appear.
+2. Record the production deployment URL and commit SHA; distinguish root-domain
+   DNS failure from application failure by checking the Vercel deployment URL.
+3. Check `/api/health`, Vercel deployment/runtime logs, and privacy-filtered
+   Sentry events.
+4. Test public home, chat, map, and scroll separately from authenticated profile,
+   queue, and verification routes.
+5. Confirm Supabase and Clerk status when failures affect database or auth paths.
+6. Check the five authenticated Vercel Cron routes only when scheduled resource
+   maintenance is affected.
 
 ## Mitigation
 
-1. Scale down risk by pausing non-critical jobs if needed.
-2. Restart web app if app process appears degraded.
-3. Roll back to known-good version when regression is deployment-linked.
-4. Route auth-specific failures to `docs/ops/services/RUNBOOK_AUTH_OUTAGE.md`.
+1. Pause optional scheduled work if it materially increases database or function
+   pressure.
+2. Roll back to a known-good Vercel deployment when the regression is release-linked.
+3. Restore the ORAN-only environment configuration and redeploy when readiness
+   reports missing runtime settings.
+4. Route specialized failures to auth, database, rate-limit, dependency, or
+   observability runbooks.
+5. Do not bypass Clerk, publication integrity, chat usage accounting, or crisis
+   routing to restore availability.
 
 ## Validation
 
-- Error rates trend down to baseline.
-- Core user journeys pass (search, service details, admin entrypoints).
-- No new high-severity alerts for one stabilization window.
+- `/api/health` returns healthy, ready, and database connected.
+- Home, chat, map, scroll, sign-in, and sign-up return expected responses.
+- Profile, queue, and verify remain protected at the correct role boundary.
+- A bounded ordinary chat request and an exhausted-quota crisis fixture preserve
+  their respective usage and safety contracts.
+- Error rates remain normal for one stabilization window.
 
 ## References
 
 - `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md`
 - `docs/ops/services/RUNBOOK_AUTH_OUTAGE.md`
-- `docs/ops/monitoring/MONITORING_QUERIES.md`
+- `docs/ops/services/RUNBOOK_DATABASE_INCIDENT.md`
+- `docs/ops/services/RUNBOOK_RATE_LIMIT_INCIDENT.md`
+- `docs/ops/monitoring/RUNBOOK_OBSERVABILITY_OUTAGE.md`
+- `docs/platform/STACK_MIGRATION.md`

@@ -42,16 +42,18 @@ Update-on-touch rule:
 
 ## Key integration contracts
 
-- Auth: Microsoft Entra ID via NextAuth.js (`next-auth`) with route gating via `src/middleware.ts`.
-- Platform: **Azure-first**. Deployment and production ops assume Azure.
-- DB: PostgreSQL + PostGIS (Azure Database for PostgreSQL Flexible Server in production) via `pg` / `@neondatabase/serverless` and Drizzle ORM.
-- Telemetry: Sentry is optional and must not receive PII.
+- Auth: Clerk owns identity and sessions; ORAN's database owns roles, account status, and memberships. Legacy providers are retired.
+- Platform target: Vercel + Supabase + Clerk + Sentry. Azure artifacts are rollback-only.
+- DB: Supabase PostgreSQL + PostGIS + pgvector via `pg` and Drizzle ORM.
+- Telemetry: Sentry is the production backend and must not receive PII.
 - Feature flags gate risky/optional features (e.g., `llm_summarize`).
 
-## Azure-first rules
+## Platform migration rules
 
-- Prefer Azure-native services when adding infrastructure (App Service, PostgreSQL Flexible Server, Key Vault, Azure Cache for Redis, Application Insights).
-- Never introduce a new external provider for core hosting/DB/secrets without updating `docs/platform/PLATFORM_AZURE.md` and `docs/platform/INTEGRATIONS.md`.
+- Do not add new Azure dependencies or attach the production domain to Azure.
+- Prefer Vercel, Supabase, Clerk, and Sentry where the platform capability fits.
+- Treat `docs/platform/STACK_MIGRATION.md` as the active stack decision; Azure platform documents are rollback history.
+- Do not expose Supabase tables through the Data API until every exposed table has reviewed RLS.
 
 ## Chat behavior rules
 

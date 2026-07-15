@@ -177,7 +177,7 @@ beforeEach(() => {
   });
   submissionExecutionMocks.processSubmittedResourceSubmission.mockResolvedValue({
     success: true,
-    autoPublished: true,
+    autoPublished: false,
   });
 
   captureExceptionMock.mockResolvedValue(undefined);
@@ -645,12 +645,12 @@ describe('host services collection route', () => {
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({
       detail: expect.any(Object),
-      queuedForReview: false,
-      published: true,
+      queuedForReview: true,
+      published: false,
       submissionId: 'submission-1',
-      serviceId: 'svc-live-1',
+      serviceId: null,
       sourceRecordId: 'source-record-1',
-      message: 'Service published and added to your live listings.',
+      message: 'Service submitted for independent review. It will publish after approval.',
     });
     expect(resourceSubmissionMocks.createResourceSubmission).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -664,7 +664,6 @@ describe('host services collection route', () => {
       expect.objectContaining({
         actorUserId: 'user-1',
         actorRole: 'host_admin',
-        allowAutoApprove: true,
       }),
     );
   });

@@ -187,12 +187,11 @@ export function hasFailingCriticalChecks(checks: VerificationCheckResult[]): boo
 /**
  * Check if a candidate meets the GREEN tier threshold + no critical failures.
  *
- * NOTE: This is stricter than the canonical publish gate in publish.ts
- * (which requires only ≥60 / yellow tier). Use this for auto-approval
- * decisions; use publish.ts isReadyForPublish() for the actual publish gate.
+ * This is a legacy candidate field/tag quality heuristic only. A confidence
+ * score never grants resource publication authority. Canonical promotion must
+ * satisfy the explicit feed-approval and accepted-provenance policy.
  *
- * @deprecated Prefer publish.ts isReadyForPublish() for publish decisions,
- *   or canAutoApprove() from @/domain/confidence for auto-approval checks.
+ * @deprecated Do not use this helper for resource publication decisions.
  */
 export function meetsGreenTierForPublish(
   score: number,

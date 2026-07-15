@@ -1,45 +1,51 @@
-# Runbook: Key Vault Access Failure
+# Runbook: runtime secret/configuration failure
+
+> Historical filename retained for links. ORAN no longer uses Key Vault as its
+> production secret source.
 
 ## Metadata
 
 - Owner role: Security Lead
-- Reviewers: Platform On-Call Lead, Release Manager
-- Last reviewed (UTC): 2026-03-06
-- Next review due (UTC): 2026-06-06
+- Reviewers: Platform On-Call Lead
+- Operational status: active
+- Last reviewed (UTC): 2026-07-13
+- Next review due (UTC): 2026-10-13
 - Severity scope: SEV-1 to SEV-3
 
-## Purpose And Scope
+## Scope
 
-Handle incidents where applications cannot read secrets via Key Vault references or managed identity permissions.
+Use this runbook when the Vercel application or an ORAN-only worker cannot read
+required values from the dedicated Doppler/Vercel configuration.
 
 ## Triggers
 
-- Startup/runtime failures linked to missing secrets.
-- Auth failures from missing `NEXTAUTH_SECRET` or Entra client secret.
-- Internal API failures from missing `INTERNAL_API_KEY`.
+- Readiness reports missing production settings.
+- Clerk identity fails because a publishable or secret key is unavailable.
+- Supabase connections fail after a credential/configuration change.
+- Internal worker calls fail because `INTERNAL_API_KEY` differs by runtime.
 
 ## Diagnosis
 
-1. Validate managed identity is enabled for affected app.
-2. Validate Key Vault access policy/RBAC grants.
-3. Validate secret names and reference syntax.
-4. Correlate with recent infra/config changes.
+1. Confirm the incident is in the dedicated ORAN projects; do not inspect or
+   copy configuration from another business.
+2. Compare the Vercel deployment's configured variable names with
+   `.github/runtime/webapp-production-settings.txt` without printing values.
+3. Review Doppler and Vercel audit history for the incident window.
+4. Confirm environment scope (Production, Preview, or Development) and redeploy
+   after correcting a value; existing deployments do not always receive changes.
+5. Rotate any value that may have been exposed during diagnosis.
 
-## Mitigation
+## Required validation
 
-1. Restore identity permissions.
-2. Correct broken secret references.
-3. Restart affected app(s).
-4. Validate dependent endpoints and workflows.
-
-## Validation
-
-- Critical secrets resolve correctly.
-- Auth and internal API checks recover.
-- No recurring secret-resolution errors in logs.
+- `/api/health` returns configuration `ready` and database `connected`.
+- Clerk sign-in, sign-up, sign-out, and `/api/auth/context` succeed.
+- Protected routes still deny unauthenticated and underprivileged requests.
+- Sentry release/error reporting works without transmitting secret values.
+- Worker calls authenticate only with the ORAN `INTERNAL_API_KEY`.
 
 ## References
 
-- `docs/platform/DEPLOYMENT_AZURE.md`
-- `docs/platform/PLATFORM_AZURE.md`
+- `.env.example`
+- `.github/runtime/webapp-production-settings.txt`
+- `docs/platform/STACK_MIGRATION.md`
 - `docs/ops/services/RUNBOOK_AUTH_OUTAGE.md`

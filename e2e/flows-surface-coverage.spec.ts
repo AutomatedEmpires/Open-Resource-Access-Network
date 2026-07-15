@@ -172,17 +172,20 @@ test.describe('Role surface coverage', () => {
 
     await expect(page.getByRole('heading', { name: 'Appeal a Decision' })).toBeVisible();
     await expect(page.getByText('Sign in required')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/api/auth/signin');
+    await expect(page.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+      'href',
+      '/auth/signin?callbackUrl=/appeal',
+    );
   });
 
   test('notifications page unauthenticated state prompts for sign-in', async ({ page }) => {
     await gotoStable(page, '/notifications');
 
     const signInHeading = page.getByRole('heading', { name: 'Sign in to view notifications' });
-    const signInButton = page.getByRole('link', { name: 'Sign in with Microsoft' });
+    const signInButton = page.getByRole('link', { name: 'Sign in to ORAN' });
 
     if (await signInHeading.isVisible().catch(() => false)) {
-      await expect(signInButton).toHaveAttribute('href', /\/api\/auth\/signin/);
+      await expect(signInButton).toHaveAttribute('href', '/auth/signin?callbackUrl=%2Fnotifications');
     } else {
       await expect(page.getByRole('heading', { name: 'Notifications' })).toBeVisible();
     }

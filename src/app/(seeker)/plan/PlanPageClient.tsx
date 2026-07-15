@@ -324,7 +324,7 @@ export default function PlanPageClient() {
         subtitle="Turn saved services and your own next steps into a local-first action plan grounded in stored ORAN records."
         badges={[
           <PageHeaderBadge key="local">Local-first</PageHeaderBadge>,
-          <PageHeaderBadge key="retrieval">Verified-record linked</PageHeaderBadge>,
+          <PageHeaderBadge key="retrieval">Publication-gated record linked</PageHeaderBadge>,
           activePlan ? <PageHeaderBadge key="items">{activeItems.length} active items</PageHeaderBadge> : null,
         ].filter(Boolean)}
       />
@@ -592,7 +592,7 @@ export default function PlanPageClient() {
                                     ) : null}
                                     {item.linkedService.trustBand ? (
                                       <span className="inline-flex min-h-[40px] items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700">
-                                        Trust: {item.linkedService.trustBand}
+                                        Record confidence: {item.linkedService.trustBand}
                                       </span>
                                     ) : null}
                                   </div>
@@ -626,7 +626,7 @@ export default function PlanPageClient() {
                   <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
                     <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Import from saved</p>
                     <h3 className="mt-2 text-lg font-semibold text-slate-950">Promising services into next actions</h3>
-                    <p className="mt-1 text-sm leading-6 text-slate-600">Saved stays your working set. Plan turns those verified options into time-bound action.</p>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">Saved stays your working set. Plan turns those publication-gated options into time-bound action.</p>
 
                     <div className="mt-4 space-y-3">
                       {isLoadingSaved ? (
@@ -715,7 +715,7 @@ export default function PlanPageClient() {
                 <CheckCircle2 className="mt-1 h-5 w-5 flex-shrink-0 text-slate-500" aria-hidden="true" />
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">Create your first plan</h2>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">A plan is where saved services become actual next steps. Start with a short objective, then add manual tasks or pull in verified service records from saved.</p>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">A plan is where saved services become actual next steps. Start with a short objective, then add manual tasks or pull in publication-gated service records from saved.</p>
                 </div>
               </div>
             </div>

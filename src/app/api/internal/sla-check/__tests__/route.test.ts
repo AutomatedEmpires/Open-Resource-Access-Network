@@ -24,7 +24,7 @@ import {
   escalateBreachedSubmissions,
 } from '@/services/escalation/engine';
 import { isDatabaseConfigured } from '@/services/db/postgres';
-import { POST } from '../route';
+import { GET, POST } from '../route';
 import { NextRequest } from 'next/server';
 
 const mockCheckSlaBreaches = vi.mocked(checkSlaBreaches);
@@ -43,9 +43,17 @@ function makeRequest(apiKey?: string): NextRequest {
   });
 }
 
-describe('POST /api/internal/sla-check', () => {
+function makeRollbackRequest(apiKey: string): NextRequest {
+  return new NextRequest('http://localhost/api/internal/sla-check', {
+    method: 'POST',
+    headers: { 'x-oran-internal-key': apiKey },
+  });
+}
+
+describe('GET|POST /api/internal/sla-check', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('CRON_SECRET', 'test-cron-secret');
     vi.stubEnv('INTERNAL_API_KEY', 'test-secret-key');
     mockIsDatabaseConfigured.mockReturnValue(true);
     mockCheckSlaWarnings.mockResolvedValue(1);
@@ -61,10 +69,25 @@ describe('POST /api/internal/sla-check', () => {
     });
   });
 
-  it('returns 503 when INTERNAL_API_KEY is not configured', async () => {
+  it('returns 503 when no internal credential is configured', async () => {
+    vi.stubEnv('CRON_SECRET', '');
     vi.stubEnv('INTERNAL_API_KEY', '');
     const res = await POST(makeRequest('test-secret-key'));
     expect(res.status).toBe(503);
+  });
+
+  it('accepts a Vercel Cron GET request', async () => {
+    const res = await GET(makeRequest('test-cron-secret'));
+
+    expect(res.status).toBe(200);
+    expect(mockCheckSlaWarnings).toHaveBeenCalledOnce();
+  });
+
+  it('retains the dedicated rollback header for POST requests', async () => {
+    const res = await POST(makeRollbackRequest('test-secret-key'));
+
+    expect(res.status).toBe(200);
+    expect(mockCheckSlaWarnings).toHaveBeenCalledOnce();
   });
 
   it('returns 401 when authorization header is missing', async () => {

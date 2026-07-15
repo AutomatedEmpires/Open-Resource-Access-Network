@@ -36,6 +36,8 @@ export const SearchFiltersSchema = z.object({
 
 export type SearchFilters = z.infer<typeof SearchFiltersSchema> & {
   publishedOnly?: boolean;
+  /** Exclude datasets that may enrich services but cannot be seeker-facing resources. */
+  standaloneOnly?: boolean;
 };
 
 // ============================================================

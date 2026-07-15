@@ -1,22 +1,19 @@
 /**
  * ORAN Middleware
  *
- * Route-level authentication and authorization via Microsoft Entra ID.
- * If Entra is not configured (no AZURE_AD_CLIENT_ID env var), middleware is a no-op.
+ * Route-level identity enforcement via Clerk plus same-origin write protection.
+ * ORAN roles remain database-owned and are enforced by route handlers/layouts.
  */
 
 import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import { getToken } from 'next-auth/jwt';
-import type { OranRole } from '@/domain/types';
-import { isRoleAtLeast } from '@/services/auth/roles';
+import type { NextFetchEvent, NextRequest } from 'next/server';
+import { clerkMiddleware } from '@clerk/nextjs/server';
 
-// Protected route patterns by minimum role
-const PROTECTED_ROUTES: { pattern: RegExp; minRole: OranRole }[] = [
-  { pattern: /^\/(saved|profile|appeal|notifications)/, minRole: 'seeker' },
-  { pattern: /^\/(host|host-forms|resource-studio|claim|org|locations|services|admins)/, minRole: 'host_member' },
-  { pattern: /^\/(queue|verify|coverage|dashboard|community-forms)/, minRole: 'community_admin' },
-  { pattern: /^\/(operations|approvals|rules|audit|zone-management|ingestion|appeals|reports|admin-security|scopes|triage|templates|discovery-preview|forms)/, minRole: 'oran_admin' },
+const PROTECTED_ROUTES: RegExp[] = [
+  /^\/(saved|profile|appeal|notifications)/,
+  /^\/(host|host-forms|resource-studio|claim|org|locations|services|admins)/,
+  /^\/(queue|verify|coverage|dashboard|community-forms)/,
+  /^\/(operations|approvals|rules|audit|zone-management|ingestion|appeals|reports|admin-security|scopes|triage|templates|discovery-preview|forms)/,
 ];
 
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -36,7 +33,42 @@ const CSRF_PROTECTED_API_PREFIXES = [
   '/api/reports',
 ] as const;
 
-const ENTRA_CLIENT_ID = process.env.AZURE_AD_CLIENT_ID;
+const CLERK_CONFIGURED = Boolean(
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  && process.env.CLERK_SECRET_KEY,
+);
+
+const CLERK_AUTHORIZED_PARTIES = [
+  'https://openresourceaccessnetwork.com',
+  'https://www.openresourceaccessnetwork.com',
+] as const;
+
+function runEarlyRouteBoundary(request: NextRequest): NextResponse | null {
+  const { pathname } = request.nextUrl;
+
+  // Encoded Windows path separators can reach filesystem route resolution on
+  // Windows and turn an invalid URL into an internal module lookup. Reject the
+  // path while it is still encoded; query values are intentionally excluded.
+  if (/%5c/i.test(pathname)) {
+    return new NextResponse('Invalid request path', {
+      status: 400,
+      headers: {
+        'cache-control': 'no-store',
+        'content-type': 'text/plain; charset=utf-8',
+      },
+    });
+  }
+
+  // Preserve old Clerk entry-point links and their return intent. Supporting
+  // nested paths also keeps path-routed Clerk flow URLs intact.
+  if (pathname === '/sign-in' || pathname.startsWith('/sign-in/')) {
+    const destination = new URL(request.url);
+    destination.pathname = `/auth/signin${pathname.slice('/sign-in'.length)}`;
+    return NextResponse.redirect(destination, 308);
+  }
+
+  return null;
+}
 
 function isProtectedApiWrite(request: NextRequest): boolean {
   const method = request.method?.toUpperCase() ?? 'GET';
@@ -57,7 +89,21 @@ function isSameOriginWriteAllowed(request: NextRequest): boolean {
 
   const origin = request.headers.get('origin')?.trim();
   if (origin) {
-    return origin === request.nextUrl.origin;
+    if (origin === request.nextUrl.origin) {
+      return true;
+    }
+
+    // Next can normalize nextUrl.origin to the configured canonical host in
+    // development and behind proxies. Compare against the actual HTTP Host as
+    // well so a browser request to 127.0.0.1 (or a forwarded deployment host)
+    // is not mistaken for a cross-site write. Browsers do not allow scripts to
+    // forge either Origin or Host.
+    try {
+      const requestHost = request.headers.get('host')?.trim().toLowerCase();
+      return Boolean(requestHost && new URL(origin).host.toLowerCase() === requestHost);
+    } catch {
+      return false;
+    }
   }
 
   const fetchSite = request.headers.get('sec-fetch-site')?.trim().toLowerCase();
@@ -68,7 +114,11 @@ function isSameOriginWriteAllowed(request: NextRequest): boolean {
   return process.env.NODE_ENV !== 'production';
 }
 
-export async function proxy(request: NextRequest) {
+function runRequestBoundary(
+  request: NextRequest,
+  clerkUserId: string | null,
+  identityUnavailable = false,
+): NextResponse {
   const { pathname } = request.nextUrl;
 
   if (isProtectedApiWrite(request) && !isSameOriginWriteAllowed(request)) {
@@ -76,13 +126,13 @@ export async function proxy(request: NextRequest) {
   }
 
   // Check if route requires authentication
-  const protectedRoute = PROTECTED_ROUTES.find((r) => r.pattern.test(pathname));
+  const protectedRoute = PROTECTED_ROUTES.find((pattern) => pattern.test(pathname));
   if (!protectedRoute) {
     return NextResponse.next();
   }
 
-  // If Entra is not configured, skip auth (development/test mode)
-  if (!ENTRA_CLIENT_ID) {
+  // Local development may run without Clerk; production always fails closed.
+  if (!CLERK_CONFIGURED) {
     // In production, protected routes must not be reachable without auth configured.
     if (process.env.NODE_ENV === 'production') {
       return new NextResponse('Authentication is not configured', { status: 503 });
@@ -90,42 +140,56 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (identityUnavailable) {
+    return new NextResponse('Authentication is temporarily unavailable', { status: 503 });
+  }
+
+  if (!clerkUserId) {
+    const signInUrl = new URL('/auth/signin', request.url);
+    signInUrl.searchParams.set(
+      'redirect_url',
+      `${pathname}${request.nextUrl.search}`,
+    );
+    return NextResponse.redirect(signInUrl);
+  }
+
+  return NextResponse.next();
+}
+
+const clerkProxy = clerkMiddleware(async (clerkAuth, request) => {
+  const { userId } = await clerkAuth();
+  return runRequestBoundary(request, userId);
+}, {
+  authorizedParties: process.env.NODE_ENV === 'production'
+    ? [...CLERK_AUTHORIZED_PARTIES]
+    : undefined,
+});
+
+export async function proxy(request: NextRequest, event: NextFetchEvent): Promise<Response> {
+  const earlyResponse = runEarlyRouteBoundary(request);
+  if (earlyResponse) {
+    return earlyResponse;
+  }
+
+  if (!CLERK_CONFIGURED) {
+    return runRequestBoundary(request, null);
+  }
+
   try {
-    // Decode JWT token from session cookie using next-auth/jwt
-    // This works in Edge middleware and extracts claims including role
-    const token = await getToken({
-      req: request,
-      secret: process.env.NEXTAUTH_SECRET,
-    });
-
-    if (!token) {
-      // No valid session token — redirect to sign-in
-      const signInUrl = new URL('/api/auth/signin', request.url);
-      signInUrl.searchParams.set('callbackUrl', pathname);
-      return NextResponse.redirect(signInUrl);
-    }
-
-    // Extract role from token (default to 'seeker' if not present)
-    const userRole = (token.role as OranRole) ?? 'seeker';
-
-    // Check if user's role meets the minimum required for this route
-    if (!isRoleAtLeast(userRole, protectedRoute.minRole)) {
-      return new NextResponse('Forbidden: Insufficient permissions', { status: 403 });
-    }
-
-    // Role check passed — allow request
-    return NextResponse.next();
+    const response = await clerkProxy(request, event);
+    return response ?? runRequestBoundary(request, null, true);
   } catch {
-    // In production, protected routes must fail closed.
-    if (process.env.NODE_ENV === 'production') {
-      return new NextResponse('Authentication is temporarily unavailable', { status: 503 });
-    }
-    return NextResponse.next();
+    // Public discovery remains available during an IdP interruption, while
+    // protected surfaces fail closed with an explicit service response.
+    return runRequestBoundary(request, null, true);
   }
 }
 
 export const config = {
   matcher: [
+    // Always intercept encoded backslashes, including asset-shaped paths that
+    // the general extension exclusion below intentionally skips.
+    '/((?:.*%5[cC].*))',
     /*
      * Match all request paths except:
      * - _next/static (static files)
@@ -133,6 +197,8 @@ export const config = {
      * - favicon.ico
      * - public folder
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
+    '/(api|trpc)(.*)',
+    '/__clerk/(.*)',
   ],
 };

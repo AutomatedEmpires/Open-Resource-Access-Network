@@ -155,8 +155,8 @@ export function getTierDisplayInfo(tier: ConfidenceTier): TierDisplayInfo {
   switch (tier) {
     case 'green':
       return {
-        label: 'Ready',
-        description: 'Sufficient verification for publication',
+        label: 'High signal',
+        description: 'Strong record evidence; publication authority is checked separately',
         color: '#22c55e', // green-500
         textColor: '#ffffff',
       };
@@ -177,7 +177,7 @@ export function getTierDisplayInfo(tier: ConfidenceTier): TierDisplayInfo {
     case 'red':
       return {
         label: 'Incomplete',
-        description: 'Insufficient data for publication',
+        description: 'Limited record evidence; publication authority is checked separately',
         color: '#ef4444', // red-500
         textColor: '#ffffff',
       };
@@ -192,7 +192,7 @@ export function getBandDisplayInfo(band: ConfidenceBand): TierDisplayInfo {
     case 'HIGH':
       return {
         label: 'High confidence',
-        description: 'Well-verified service information',
+        description: 'Stronger stored-record evidence',
         color: '#22c55e',
         textColor: '#ffffff',
       };
@@ -218,27 +218,24 @@ export function getBandDisplayInfo(band: ConfidenceBand): TierDisplayInfo {
 // ============================================================
 
 /**
- * Check if a confidence score qualifies for auto-approval.
- * Only green tier (≥80) can be auto-approved.
+ * @deprecated Confidence is advisory and must never authorize approval.
  */
-export function canAutoApprove(score: ConfidenceScore): boolean {
-  return score >= CONFIDENCE_THRESHOLDS.GREEN;
+export function canAutoApprove(_score: ConfidenceScore): boolean {
+  return false;
 }
 
 /**
- * Check if a confidence score requires human review.
- * Anything below green tier needs review.
+ * Confidence alone never removes the independent-review requirement.
  */
-export function requiresReview(score: ConfidenceScore): boolean {
-  return score < CONFIDENCE_THRESHOLDS.GREEN;
+export function requiresReview(_score: ConfidenceScore): boolean {
+  return true;
 }
 
 /**
- * Check if a confidence score is ready for publish.
- * Minimum is yellow tier (≥60).
+ * @deprecated Publication readiness requires positive authority, not a score.
  */
-export function isPublishReady(score: ConfidenceScore): boolean {
-  return score >= CONFIDENCE_THRESHOLDS.YELLOW;
+export function isPublishReady(_score: ConfidenceScore): boolean {
+  return false;
 }
 
 // ============================================================

@@ -75,6 +75,7 @@ vi.mock('lucide-react', () => ({
   MapPin: 'svg',
   BellRing: 'svg',
   ListTodo: 'svg',
+  ArrowRight: 'svg',
 }));
 
 vi.mock('@/components/seeker/SeekerFeatureFlags', () => ({
@@ -235,7 +236,7 @@ describe('ChatWindow', () => {
 
     expect(screen.getByRole('note', { name: 'Eligibility disclaimer' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
-    expect(screen.getByText('What verified help do you need?')).toBeInTheDocument();
+    expect(screen.getByText('Tell ORAN what is wrong.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
@@ -340,7 +341,7 @@ describe('ChatWindow', () => {
     await screen.findAllByTestId('chat-card-svc-1');
     expect(screen.getAllByText('Search scope used for these results').length).toBeGreaterThan(0);
     expect(screen.getByText('Need: Food')).toBeInTheDocument();
-    expect(screen.getAllByText('Trust: High confidence only').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Record confidence: High confidence only').length).toBeGreaterThan(0);
     expect(chatServiceCardMock).toHaveBeenCalledWith({
       card: expect.objectContaining({ serviceId: 'svc-1' }),
       discoveryContext: {
@@ -407,7 +408,11 @@ describe('ChatWindow', () => {
       if (url === '/api/chat') {
         return {
           ok: false,
-          json: async () => ({ error: 'upstream down' }),
+          json: async () => ({
+            error: 'Daily message limit reached.',
+            quotaRemaining: 0,
+            quotaResetAt: '2099-01-01T00:00:00.000Z',
+          }),
         } as Response;
       }
       return {
@@ -423,7 +428,9 @@ describe('ChatWindow', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
-    await screen.findByText('Something went wrong. Please try again.');
+    await screen.findByText('Daily message limit reached.');
+    expect(screen.getByText(/Daily discovery limit reached/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Chat message input')).toBeEnabled();
   });
 
   it('handles crisis responses, quota exhaustion, and saved toggles', async () => {
@@ -485,7 +492,7 @@ describe('ChatWindow', () => {
     await screen.findByText('Immediate Help Available');
     expect(
       screen.getAllByRole('alert').some((el: HTMLElement) =>
-        String(el.textContent).includes('Message limit reached.'),
+        String(el.textContent).includes('Daily discovery limit reached.'),
       ),
     ).toBe(true);
 

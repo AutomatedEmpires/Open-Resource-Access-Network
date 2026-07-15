@@ -2,7 +2,7 @@
  * Service Detail Page
  *
  * Displays a full service view reached via deep-link or click from search results.
- * Data comes from verified service records only — no invented facts.
+ * Data comes from publication-gated service records only — no invented facts.
  */
 
 'use client';
@@ -187,8 +187,14 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
     }, {});
   }, [service?.taxonomyTerms]);
 
-  const trustScore = service?.confidenceScore?.verificationConfidence ?? null;
-  const trustLabel = trustScore == null ? 'Trust information unavailable' : trustScore >= 80 ? 'High trust record' : trustScore >= 60 ? 'Likely match record' : 'Review provider details';
+  const recordConfidenceScore = service?.confidenceScore?.verificationConfidence ?? null;
+  const recordConfidenceLabel = recordConfidenceScore == null
+    ? 'Record confidence unavailable'
+    : recordConfidenceScore >= 80
+      ? 'High record confidence'
+      : recordConfidenceScore >= 60
+        ? 'Moderate record confidence'
+        : 'Limited record confidence';
   const matchScore = computeMatchScore(service?.confidenceScore);
   const formattedAddress = service ? formatAddress(service) : null;
 
@@ -262,7 +268,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
         {service && !isLoading && !notFound && (
           <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-5">
             <PageHeader
-              eyebrow="Verified service record"
+              eyebrow="Published service record"
               title={service.service.name}
               subtitle={
                 <>
@@ -275,7 +281,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               }
               badges={(
                 <>
-                  <PageHeaderBadge tone="trust">{trustLabel}</PageHeaderBadge>
+                  <PageHeaderBadge tone="trust">{recordConfidenceLabel}</PageHeaderBadge>
                   <PageHeaderBadge tone="accent">Eligibility not guaranteed</PageHeaderBadge>
                   <PageHeaderBadge>{serverSyncEnabled ? 'Saves can sync to your account' : 'Saves stay on this device'}</PageHeaderBadge>
                   {matchScore != null ? <PageHeaderBadge>Overall score: {Math.round(matchScore)}</PageHeaderBadge> : null}
@@ -316,7 +322,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
             </FormSection>
 
             <FormSection
-              title="Trust and eligibility"
+              title="Record confidence and eligibility"
               description="Confidence cues and qualification details from the stored record. ORAN does not guarantee eligibility."
               className="mt-4"
             >
@@ -324,22 +330,22 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                 <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4 shadow-sm">
                   <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                     <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-                    Trust evidence
+                    Record evidence
                   </p>
                   <div className="mt-3 space-y-2 text-sm text-slate-800">
                     <p>
-                      <span className="font-medium">Record status:</span> {trustLabel}
+                      <span className="font-medium">Record status:</span> {recordConfidenceLabel}
                     </p>
                     <p>
-                      <span className="font-medium">Verification confidence:</span>{' '}
-                      {trustScore == null ? 'Unavailable' : `${Math.round(trustScore)} / 100`}
+                      <span className="font-medium">Record confidence:</span>{' '}
+                      {recordConfidenceScore == null ? 'Unavailable' : `${Math.round(recordConfidenceScore)} / 100`}
                     </p>
                     <p>
                       <span className="font-medium">Overall match score:</span>{' '}
                       {matchScore == null ? 'Unavailable' : `${Math.round(matchScore)} / 100`}
                     </p>
                     <p className="text-xs text-slate-600">
-                      Trust cues summarize stored evidence only. Confirm current hours, intake rules, and availability with the provider.
+                      Record-confidence cues summarize stored evidence only. Confirm current hours, intake rules, and availability with the provider.
                     </p>
                   </div>
                 </div>
@@ -499,7 +505,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                 <div className="rounded-[20px] border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
                   <p className="font-semibold text-slate-900">Continue exploring</p>
                   <p className="mt-1 text-sm text-slate-600">
-                    Use another seeker surface if you want nearby alternatives or conversational routing without losing the trust-first contract.
+                    Use another seeker surface if you want nearby alternatives or conversational routing without losing the source-authority boundary.
                   </p>
                   <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                     <Link href={chatHref} className="sm:flex-1">
@@ -522,7 +528,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
             <div className="mt-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-sm">
               <p className="font-medium">Confirm details with the provider before visiting.</p>
               <p className="mt-1 text-xs text-slate-600">
-                ORAN shows stored, verified records only, but hours, eligibility, intake requirements, and availability can still change.
+                ORAN only shows stored records that pass its publication gate, but hours, eligibility, intake requirements, and availability can still change.
               </p>
             </div>
           </div>
@@ -537,7 +543,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               <ul className="mt-3 space-y-3 text-sm leading-6 text-slate-600">
                 <li>This page shows stored provider details only, with no invented facts.</li>
                 <li>Browse scope carries into Directory, Map, and Chat when available.</li>
-                <li>Trust cues help compare records, but provider confirmation still matters.</li>
+                <li>Record-confidence cues help compare records, but provider confirmation still matters.</li>
               </ul>
             </div>
 

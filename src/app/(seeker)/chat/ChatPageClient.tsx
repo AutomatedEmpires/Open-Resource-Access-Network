@@ -9,6 +9,10 @@ import { Button } from '@/components/ui/button';
 import { PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonLine } from '@/components/ui/skeleton';
 import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
+import {
+  consumeOnboardingChatHandoff,
+  type OnboardingChatHandoff,
+} from '@/services/profile/onboardingHandoff';
 import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
 import {
   hasMeaningfulDiscoveryState,
@@ -30,7 +34,9 @@ export default function ChatPage() {
   // Initialised in useEffect so SSR and client first-render both produce the
   // same empty-string value, eliminating the hydration mismatch / skeleton flash.
   const [sessionId, setSessionId] = useState<string>('');
+  const [onboardingHandoff, setOnboardingHandoff] = useState<OnboardingChatHandoff | null>(null);
   const [savedSyncEnabled] = useState(() => isServerSyncEnabledOnDevice());
+  const fromOnboarding = searchParams.get('from') === 'onboarding';
 
   const urlDiscoveryIntent = useMemo(() => parseDiscoveryUrlState(searchParams), [searchParams]);
   const discoveryIntent = useMemo(() => {
@@ -55,16 +61,18 @@ export default function ChatPage() {
     };
   }, [sessionId, urlDiscoveryIntent]);
   const initialPrompt = useMemo(
-    () => resolveDiscoverySearchText(discoveryIntent.text, discoveryIntent.needId),
-    [discoveryIntent.needId, discoveryIntent.text],
+    () => onboardingHandoff?.prompt
+      ?? resolveDiscoverySearchText(discoveryIntent.text, discoveryIntent.needId),
+    [discoveryIntent.needId, discoveryIntent.text, onboardingHandoff],
   );
 
   useEffect(() => {
     // sessionStorage unavailable on SSR — initialising via effect ensures SSR and first client
     // render produce identical '' output, eliminating hydration mismatch / skeleton flash.
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOnboardingHandoff(fromOnboarding ? consumeOnboardingChatHandoff() : null);
     setSessionId(generateSessionId());
-  }, []);
+  }, [fromOnboarding]);
 
   if (!sessionId) {
     return (
@@ -76,7 +84,7 @@ export default function ChatPage() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Seeker chat</p>
                 <div className="mt-1 flex flex-wrap items-center gap-3">
                   <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Chat</h1>
-                  <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
+                  <PageHeaderBadge tone="trust">Publication-gated records</PageHeaderBadge>
                 </div>
               </div>
             </div>
@@ -98,7 +106,7 @@ export default function ChatPage() {
           {/* ── Slim page title bar ── */}
           <div className="flex shrink-0 items-center gap-3 border-b border-slate-100 px-5 py-3">
             <h1 className="text-base font-semibold tracking-tight text-slate-950">Chat</h1>
-            <PageHeaderBadge tone="trust">Verified records only</PageHeaderBadge>
+            <PageHeaderBadge tone="trust">Publication-gated records</PageHeaderBadge>
             <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync' : 'Local device saves'}</PageHeaderBadge>
             <div className="ml-auto flex items-center gap-2">
               <Link href="/saved">
@@ -114,7 +122,7 @@ export default function ChatPage() {
               <ChatWindow
                   sessionId={sessionId}
                   initialPrompt={initialPrompt}
-                  initialNeedId={discoveryIntent.needId}
+                  initialNeedId={onboardingHandoff?.needId ?? discoveryIntent.needId}
                   initialTrustFilter={discoveryIntent.confidenceFilter}
                   initialSortBy={discoveryIntent.sortBy}
                   initialPage={discoveryIntent.page}

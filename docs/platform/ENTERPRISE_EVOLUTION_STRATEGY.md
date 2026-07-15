@@ -1,5 +1,9 @@
 # ORAN Enterprise Evolution Strategy
 
+> **Superseded planning record (2026-07-13).** Azure-first recommendations below
+> are historical. The active isolated stack decision is
+> `docs/platform/STACK_MIGRATION.md` (Vercel, Supabase, Clerk, Sentry, and Doppler).
+
 This document defines how ORAN should evolve as an enterprise-grade application without turning into an over-integrated, high-cost platform.
 
 The goal is not to add every new tool. The goal is to build a modern, durable system that stays current, improves operator leverage, improves seeker experience, and remains economically rational now and five years from now.

@@ -51,6 +51,7 @@ const SearchParamsSchema = z.object({
    *  text + attribute filters; user params take precedence. */
   preset:         z.string().max(50).optional(),
   organizationId: z.string().uuid().optional(),
+  standaloneOnly: z.enum(['true', 'false', '1', '0']).optional(),
   sortBy:         z.enum(SORT_OPTIONS).default('relevance'),
   page:           z.coerce.number().int().min(1).default(1),
   limit:          z.coerce.number().int().min(1).max(100).default(DEFAULT_PAGE_SIZE),
@@ -193,6 +194,9 @@ export async function GET(req: NextRequest) {
       taxonomyTermIds: taxonomyTermIds as undefined | string[],
       attributeFilters,
       publishedOnly: true,
+      ...(params.standaloneOnly === 'true' || params.standaloneOnly === '1'
+        ? { standaloneOnly: true }
+        : {}),
     },
     pagination: {
       page: params.page,

@@ -1,8 +1,10 @@
-# ORAN Platform (Azure-First)
+# ORAN legacy platform (Azure rollback)
+
+> Historical rollback reference. New platform work follows [STACK_MIGRATION.md](STACK_MIGRATION.md).
 
 ORAN is **Azure-first** for hosting, production database, and secrets management.
 
-This document is the SSOT for platform direction. If you introduce a non-Azure provider for **core hosting**, **database**, or **secrets**, update this doc and `docs/platform/INTEGRATIONS.md`.
+This document is no longer the platform-direction SSOT. It remains for rollback and decommission planning.
 
 ## Targets
 

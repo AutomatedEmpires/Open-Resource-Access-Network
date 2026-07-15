@@ -1,355 +1,151 @@
-# ORAN Integrations
-
----
-
-## Implementation Status (Truth Contract)
-
-This doc describes both **Implemented** and **Planned** integrations. When it conflicts with executable behavior, follow docs/SSOT.md.
-
-Implemented today:
-
-- Local Postgres/PostGIS via db/docker-compose.yml.
-- SQL migrations in db/migrations/**.
-- Optional Microsoft Entra ID wiring (middleware gating when env vars exist).
-- Sentry wrapper exists; DSN-dependent activation.
-- Azure Application Insights (connection-string-dependent; `src/instrumentation.ts` + `src/services/telemetry/appInsights.ts`).
-- Azure Maps geocoding service (`src/services/geocoding/azureMaps.ts`).
-- Azure AI Translator service (`src/services/i18n/translator.ts`).
-
-Platform direction:
-
-- **Azure-first** for hosting, production DB, secrets, observability, geocoding, and translation.
-- See `docs/platform/DEPLOYMENT_AZURE.md` and `docs/platform/PLATFORM_AZURE.md`.
-
-Implemented (recently):
-
-- Full RBAC enforcement (middleware + API route guards + `shouldEnforceAuth()` production fail-closed).
-- Hybrid feature flags with a DB-backed authoritative catalog when `DATABASE_URL` is configured, plus an in-memory fallback for local development and runtime recovery.
-- Content Security Policy (see ADR-0005).
-- Rate limiting on all API routes with Retry-After headers, with Redis-backed shared enforcement available for high-value endpoints when `REDIS_URL` is configured.
-- Azure Communication Services — transactional email dispatch for notification channel='email' (`src/services/email/azureEmail.ts`).
-- Azure Cache for Redis — search result caching with 5-min TTL (`src/services/cache/redis.ts`, `src/services/search/cache.ts`).
-- Azure Functions Timer Trigger — hourly SLA breach checker (`functions/checkSlaBreaches/`, `src/app/api/internal/sla-check/route.ts`).
-- Azure OpenAI — post-retrieval summarization and guarded intent-enrichment hooks (`src/services/chat/llm.ts`, `src/services/chat/intentEnrich.ts`).
-- Azure Speech — authenticated TTS summary endpoint behind `tts_summaries` (`src/services/tts/azureSpeech.ts`, `src/app/api/tts/summary/route.ts`).
-
-Planned:
-
-- Any external 211 API integration.
-
-## Authentication: Microsoft Entra ID
-
-ORAN uses [Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity/) for authentication and session management via NextAuth.js with the Azure AD provider.
-
-Optional auth providers are deliberately gated:
-
-- Apple OAuth is enabled only when `ORAN_ENABLE_APPLE_AUTH=1` is set alongside `APPLE_CLIENT_ID` and `APPLE_CLIENT_SECRET`.
-- Google OAuth is enabled only when `ORAN_ENABLE_GOOGLE_AUTH=1` is set alongside Google client credentials.
-- Credentials auth supports email, username, or phone number plus password and must be explicitly enabled in production with `ORAN_ENABLE_CREDENTIALS_AUTH=1`.
-- A single `user_profiles` row may now support both Microsoft Entra sign-in and password-based credentials sign-in when a password hash is present; credentials lookup is keyed by stored password hash, not by forcing `auth_provider = 'credentials'`.
-- Phone is an alternate identifier for credentials auth only; ORAN does not currently implement SMS or OTP-based phone authentication.
-
-### Configuration
-
-- Environment variables required:
-  - `AZURE_AD_CLIENT_ID`
-  - `AZURE_AD_CLIENT_SECRET`
-  - `AZURE_AD_TENANT_ID`
-  - `NEXTAUTH_URL` (e.g., `https://yourapp.azurewebsites.net`)
-  - `NEXTAUTH_SECRET` (random secret for JWT encryption)
-- Optional provider variables:
-  - `APPLE_CLIENT_ID`
-  - `APPLE_CLIENT_SECRET`
-  - `ORAN_ENABLE_APPLE_AUTH=1`
-  - `GOOGLE_CLIENT_ID`
-  - `GOOGLE_CLIENT_SECRET`
-  - `ORAN_ENABLE_GOOGLE_AUTH=1`
-  - `ORAN_ENABLE_CREDENTIALS_AUTH=1`
-
-### Implementation
-
-- `src/proxy.ts`: JWT extraction via `getToken()` + role enforcement via `isRoleAtLeast()` for protected page routes.
-- `src/app/api/auth/[...nextauth]/route.ts`: NextAuth.js handler with Azure AD provider. Rate-limited per IP.
-- `src/app/providers.tsx`: client-side `SessionProvider` boundary for authenticated UI surfaces.
-- `src/services/auth/guards.ts`: `isRoleAtLeast()`, `requireMinRole()`, `requireOrgAccess()`, `requireOrgRole()`.
-- `src/services/auth/session.ts`: `getAuthContext()` for server-side session extraction; `shouldEnforceAuth()` for production fail-closed behavior.
-- Roles: currently derived from org memberships via `organization_members` table. Entra ID app roles planned.
-
-### Protected Routes
-
-| Route Pattern         | Minimum Role     |
-|-----------------------|-----------------|
-| `/saved`, `/profile`  | seeker (any auth)|
-| `/claim`, `/org/**`   | host_member      |
-| `/queue`, `/verify`   | community_admin  |
-| `/approvals/**`       | oran_admin       |
-
-Status: Implemented — middleware enforces role-based page access; API routes enforce auth+RBAC server-side.
-
----
-
-## Hosting: Azure App Service (Azure-first)
-
-ORAN is deployed to **Azure App Service (Linux)** with Node.js 20 LTS.
-
-- Deployment guide: `docs/platform/DEPLOYMENT_AZURE.md`
-- Deploy workflow: `.github/workflows/deploy-azure-appservice.yml`
-- Secrets: App Service Application Settings and/or Azure Key Vault references
-- Bootstrap helper: `scripts/azure/bootstrap.sh` now provisions the core web stack plus Azure Maps account parity, but still requires a caller-supplied scoped `--azure-maps-sas-token` secret.
-
----
-
-## Database: PostgreSQL + PostGIS (Azure in production)
-
-ORAN runs on PostgreSQL with the PostGIS extension.
-
-Production target (Azure-first):
-
-- **Azure Database for PostgreSQL Flexible Server** with PostGIS enabled.
-
-Optional alternative:
-
-- Neon can be used for non-Azure environments, as long as the `DATABASE_URL` contract is maintained.
-
-### Configuration
-
-- Environment variable: `DATABASE_URL` (PostgreSQL connection string; SSL required in production)
-
-### ORM: Drizzle ORM
-
-Status: Raw SQL migrations are the source of truth today.
-
-- Implemented: migrations in db/migrations/** (plain SQL files).
-- Implemented: `.github/workflows/db-migrate.yml` applies the SQL migration chain via `psql` and records applied files in `schema_migrations`.
-- Drizzle remains part of the repository for schema typing and related tooling, not as the production migration orchestrator.
-
-### PostGIS
-
-- Enable extension: `CREATE EXTENSION IF NOT EXISTS postgis;`
-- Location geometry column: `geom GEOMETRY(Point, 4326)`
-- Spatial queries use `ST_DWithin` for radius search and `ST_MakeEnvelope` for bbox search
-
----
-
-## Feature Flags
-
-ORAN uses a hybrid in-house feature flag service. When `DATABASE_URL` is configured, the `feature_flags` table is the authoritative catalog; otherwise the service falls back to an in-memory baseline and last-known-good cache.
-
-### Interface (`src/services/flags/flags.ts`)
-
-```typescript
-interface FlagService {
-  isEnabled(flagName: string, subjectKey?: string): Promise<boolean>;
-  getFlag(flagName: string): Promise<FeatureFlag | null>;
-  setFlag(flagName: string, enabled: boolean, rolloutPct?: number): Promise<void>;
-}
-```
-
-Current implementation notes:
-
-- The expanded catalog is maintained in `db/migrations/0035_feature_flag_catalog.sql`.
-- DB-backed writes record best-effort audit metadata and keep the in-memory fallback synchronized.
-- Safety-critical AI flags default off unless explicitly enabled.
-
-### Representative Flags
-
-| Flag Name       | Default | Description |
-|-----------------|---------|-------------|
-| `llm_summarize` | false   | Enable LLM post-retrieval summarization |
-| `content_safety_crisis` | true | Run Azure AI Content Safety as the second-layer crisis gate |
-| `vector_search` | false | Enable pgvector-backed semantic search and re-ranking |
-| `llm_intent_enrich` | false | Enable LLM-based intent enrichment for ambiguous chat queries |
-| `multilingual_descriptions` | false | Enable translated service descriptions post-retrieval |
-| `tts_summaries` | false | Enable spoken service summaries via Azure Speech |
-| `map_enabled`   | true    | Show map surface in nav |
-| `feedback_form` | true    | Allow seeker feedback submission |
-| `host_claims`   | true    | Allow new host claims |
-
-For the full registry, see `src/services/flags/README.md` and `src/services/flags/flags.ts`.
-
----
-
-## Error Tracking: Sentry
-
-ORAN uses [Sentry](https://sentry.io) for error monitoring and performance tracking.
-
-### Configuration
-
-- Environment variable: `NEXT_PUBLIC_SENTRY_DSN`
-- `SENTRY_AUTH_TOKEN` for source map uploads
-
-### Wrapper (`src/services/telemetry/sentry.ts`)
-
-Provides typed wrappers:
-
-- `captureException(error, context?)` — report errors
-- `captureMessage(message, level?)` — report events
-- `addBreadcrumb(message, category?, data?)` — add context
-
-### Privacy Rules
-
-- No user PII in Sentry events
-- SessionId (UUID) is allowed as a correlation identifier
-- Location data: city-level only, no coordinates in Sentry
-
-### Azure-first note
-
-- **Azure Application Insights** is now the primary production observability backend (see below).
-- If Sentry is also used, it must remain strictly PII-free per `docs/SECURITY_PRIVACY.md`.
-
----
-
-## Observability: Azure Application Insights
-
-ORAN uses **Azure Application Insights** (backed by a Log Analytics workspace) as the primary production telemetry backend.
-
-### Configuration
-
-- Environment variable: `APPLICATIONINSIGHTS_CONNECTION_STRING`
-- The SDK auto-initializes via the Next.js instrumentation hook (`src/instrumentation.ts`).
-
-### Wrapper (`src/services/telemetry/appInsights.ts`)
-
-Provides typed wrappers:
-
-- `trackException(error, context?)` — report errors
-- `trackEvent(name, properties?)` — report custom events
-- `trackMetric(name, value)` — report numeric metrics
-- `trackTrace(message, severityLevel?)` — structured log entries
-- `flush()` — drain pending telemetry
-
-### Auto-instrumentation
-
-- HTTP incoming/outgoing requests
-- PostgreSQL queries (via `pg` driver)
-- Azure SDK instrumentation is disabled to reduce noise
-
-### Privacy Rules
-
-- Same PII constraints as Sentry: no user PII in telemetry events.
-- Session correlation uses anonymous IDs only.
-
----
-
-## Geocoding: Azure Maps
-
-ORAN uses **Azure Maps** (G2 Gen2 SKU) for geocoding queries.
-
-### Configuration
-
-- Server-side geocoding key: `AZURE_MAPS_KEY` (stored as Key Vault reference in App Service)
-- Interactive web map token broker: `AZURE_MAPS_SAS_TOKEN` (scoped SAS token returned by `/api/maps/token`)
-- Production resource: `oranhf57ir-prod-maps` in `westus2`
-- Provisioning status: the Azure Maps account is provisioned by `infra/main.bicep`
-
-### Service (`src/services/geocoding/azureMaps.ts`)
-
-```typescript
-interface AzureMapsGeocodingResult {
-  lat: number;
-  lon: number;
-  formattedAddress: string;
-  confidence: 'High' | 'Medium' | 'Low';
-  type: string;
-}
-```
-
-- `isConfigured()` — checks for API key
-- `geocode(query, options?)` — forward geocoding with optional bbox/country filters
-- `reverseGeocode(lat, lon)` — reverse geocoding
-
-### Privacy
-
-- Only query text is sent to Azure Maps; no user PII.
-- Approximate location by default (city-level for seekers).
-- Raw Azure Maps shared keys are never exposed to the client. The web map consumes only the brokered SAS token from `/api/maps/token`.
-
----
-
-## Translation: Azure AI Translator
-
-ORAN uses **Azure AI Translator** (F0 free tier — 2M characters/month) for dynamic content translation.
-
-### Configuration
-
-- Environment variables:
-  - `AZURE_TRANSLATOR_KEY` (stored as Key Vault reference)
-  - `AZURE_TRANSLATOR_ENDPOINT` (`https://api.cognitive.microsofttranslator.com/`)
-  - `AZURE_TRANSLATOR_REGION` (`westus2`)
-- Provisioning status: supported by application code and runtime validation; not currently provisioned by `infra/main.bicep`
-
-### Service (`src/services/i18n/translator.ts`)
-
-```typescript
-async function translate(request: TranslateRequest): Promise<TranslateResult>
-async function translateBatch(texts: string[], to: string, from?: string): Promise<TranslateResult[]>
-```
-
-- `isConfigured()` — checks for key + endpoint + region
-- In-memory LRU cache (500 entries) to minimize API calls
-- Batch support (up to 100 items per API call)
-- 10,000 character limit per text; 8-second timeout
-
-### Privacy
-
-- Only service record text (names, descriptions) is translated; no user PII.
-- Translation cache is server-side only.
-
----
-
-## 211 API (Interface Only)
-
-ORAN defines an interface for potential 211 API integration. **No live 211 API is wired up without explicit configuration.**
-
-### Interface (future)
-
-```typescript
-interface TwoOneOneService {
-  search(params: { zip: string; category: string }): Promise<ExternalService[]>;
-  isConfigured(): boolean;
-}
-```
-
-### Policy
-
-- Results from 211 API must go through the same staging/validation pipeline as CSV imports
-- Never served directly to seekers from external API without verification step
-- Feature flag `use_211_api` must be enabled
-
----
-
-## Integration Snapshot
-
-| Integration | Purpose | Status |
-|-------------|---------|--------|
-| Azure Application Insights | Production observability + telemetry | **Implemented** |
-| Azure Maps | Geocoding (forward + reverse) | **Implemented** |
-| Azure AI Translator | Dynamic content translation (F0 free tier) | **Implemented** |
-| Azure Cache for Redis | Search result caching and shared cache infrastructure | **Implemented** |
-| Azure Blob Storage | Evidence file storage for verification | Planned |
-| Azure OpenAI | LLM summarization and intent enrichment hooks (both flag-gated) | **Implemented** |
-| Azure Communication Services (Email) | Email notifications to hosts (Azure-first) | **Implemented** |
-| Azure Functions | Queue and timer workloads for ingestion and operational workflows | **Implemented** |
-| Azure Speech | Optional spoken summaries behind `tts_summaries` | **Implemented** |
-| Codecov | Test coverage reporting in CI | Configured |
-
----
-
-## GitHub-Native Integrations
-
-ORAN uses GitHub-native automation for quality and security.
-
-### CI: GitHub Actions
-
-- Workflow: `.github/workflows/ci.yml`
-- Runs lint, typecheck, tests (with coverage), and build on PRs and main.
-
-### Dependency Updates: Dependabot
-
-- Config: `.github/dependabot.yml`
-- Weekly update PRs for npm dependencies and GitHub Actions.
-
-### Security Scanning: CodeQL
-
-- Workflow: `.github/workflows/codeql.yml`
-- Runs on PRs, pushes to main, and a weekly schedule.
+# ORAN integrations
+
+This is the active integration contract for Open Resource Access Network. ORAN
+uses dedicated projects, credentials, data, domains, alerts, and operator access.
+No environment or account data may be shared with another portfolio business.
+
+## Production stack
+
+| Concern | Provider | ORAN boundary | Status |
+| --- | --- | --- | --- |
+| Web application | Vercel | Dedicated `oran` project | Provisioned; production candidate required before DNS cutover |
+| Database | Supabase PostgreSQL | Dedicated ORAN project and runtime login | Provisioned and connected |
+| Identity | Clerk | Dedicated ORAN application and production instance | Active in code; custom domain and Supabase bridge configured |
+| Errors and releases | Sentry | Dedicated ORAN project and source-map token | Provisioned |
+| Configuration | Doppler | Dedicated ORAN project/config | Provisioned |
+| Interactive map | Leaflet + OpenStreetMap | Public tiles with attribution; no shared cloud key | Active target |
+| Transactional email | Resend | Dedicated ORAN key and verified sender | Active runtime adapter |
+| Optional language tasks | Direct OpenAI/provider-neutral adapter | ORAN-only API project and key | Optional; deterministic safety/retrieval remain authoritative |
+
+## Identity and authorization
+
+Clerk owns sign-in, session lifecycle, account recovery, connected identity
+methods, and multi-factor authentication. ORAN owns authorization.
+
+- `src/proxy.ts` uses Clerk middleware for identity and applies the same-origin
+  write guard.
+- `src/services/auth/session.ts` maps the Clerk user ID to `user_profiles` and
+  resolves account status, platform role, and organization membership.
+- New users default to `seeker`. No identity-provider claim can grant an ORAN
+  administrative role.
+- Existing accounts are linked only with an explicit Clerk ID. Email matching
+  is never sufficient to migrate or elevate an identity.
+- `scripts/provision-owner-access.mjs` requires explicit Clerk IDs and never
+  creates or mutates passwords.
+- Supabase third-party auth trusts the dedicated issuer at
+  `https://clerk.openresourceaccessnetwork.com`.
+
+Required production variables:
+
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
+- `CLERK_SIGN_IN_URL=/auth/signin`
+- `CLERK_SIGN_UP_URL=/auth/signup`
+
+## Database
+
+Application server code connects through the Supabase transaction pooler by
+authenticating directly as the dedicated `oran_backend_runtime` login. The
+application validates that database identity before creating a production pool;
+it never relies on a startup `SET ROLE`, because Supavisor does not preserve
+arbitrary startup options. The role can bypass Data API RLS only because this is
+a server-only connection with no browser identity; it remains non-superuser,
+has no DDL privileges, and receives an explicit operation-by-table allow-list.
+Migration and backup jobs use a separate direct connection and must never expose
+either credential to the browser.
+
+- `DATABASE_URL`: pooled TLS runtime connection whose database username is
+  `oran_backend_runtime.<project-ref>`
+- `ORAN_DATABASE_ROLE=oran_backend_runtime`: fixed server identity assertion;
+  the application rejects every other production value or database username
+- `ORAN_SUPABASE_PROJECT_REF`: non-secret project identity guard; the pooled
+  username must resolve to this exact isolated ORAN project
+- `SUPABASE_DB_URL`: direct connection for protected migration jobs only
+- `NEXT_PUBLIC_SUPABASE_URL` and a publishable key may be used only for tables
+  whose RLS policies have received an explicit security review
+- Service publication remains fail-closed on provenance, source purpose,
+  quarantine state, organization state, and resource integrity holds
+
+## Hosting and releases
+
+Vercel is the sole target for new ORAN releases. A candidate must pass build,
+health, Clerk sign-in/sign-up, chat, map, scroll, profile, and authorization
+checks before the public domain is moved. Azure deployment assets are rollback
+history only and must not receive new ORAN secrets or releases.
+
+## Observability
+
+Sentry receives privacy-filtered application errors, traces, and release source
+maps. Never send chat text, search text, form content, auth headers, email,
+precise location, or sensitive seeker context.
+
+Required variables:
+
+- `NEXT_PUBLIC_SENTRY_DSN`
+- `SENTRY_ORG`
+- `SENTRY_PROJECT`
+- `SENTRY_AUTH_TOKEN` (build-time source maps only)
+
+## Maps and location
+
+The seeker map uses Leaflet and OpenStreetMap tiles with visible attribution.
+The application does not request precise browser location automatically. City,
+ZIP, map movement, or explicit one-time device-location actions may drive a
+search; precise coordinates are not saved to the seeker profile.
+
+## Transactional email
+
+Resend is the active provider for best-effort transactional notifications and
+workflow updates. The runtime requires both values before it will construct a
+client; a partial configuration fails the environment contract.
+
+- `RESEND_API_KEY`: server-only credential from the dedicated ORAN account
+- `RESEND_FROM`: verified ORAN sender, optionally including a display name
+
+Email dispatch respects notification preferences and existing application rate
+limits. Provider failures are recorded without recipient addresses or message
+content in telemetry. No marketing email or SMS is enabled by this adapter.
+
+## AI boundary
+
+AI is optional and may assist with language or operator review, but it cannot
+publish a resource, decide eligibility, or replace crisis routing. Seekers only
+receive stored, provenance-backed resources. Retailer acceptance data (for
+example, stores that accept SNAP) is supporting reference data and cannot be
+published as a standalone service resource.
+
+## Shared infrastructure and scheduled work
+
+- `CRON_SECRET` is required in Vercel Production and authenticates Vercel Cron
+  through `Authorization: Bearer <CRON_SECRET>`. Use a dedicated random value
+  of at least 32 characters and never expose it through a `NEXT_PUBLIC_*`
+  variable.
+- `INTERNAL_API_KEY` is an optional, separate rollback credential. Approved
+  rollback workers send it in `x-oran-internal-key`; legacy Bearer use remains
+  temporarily supported during the Azure rollback window.
+- `REDIS_URL` is an optional ORAN-dedicated cache accelerator. Production route
+  limits use the private atomic Supabase/PostgreSQL limiter as their single
+  authority, so an outage cannot reset callers onto an independent counter.
+  Database-less local/test runtimes may use Redis or bounded process memory.
+- Vercel Cron invokes the following authenticated GET routes once daily in UTC:
+  feed polling at 06:00, SLA review at 07:15, coverage-gap review at 08:30,
+  confidence-regression review at 09:45, and resource-freshness review at 11:00.
+  These schedules are deliberately staggered and stay within the once-daily
+  Hobby-plan interval; Hobby execution may occur anywhere within the scheduled
+  hour. Production can increase frequency only after plan, runtime, database,
+  idempotency, and alerting review.
+- Transactional email uses Resend. SMS remains unselected and must not be
+  enabled before consent, suppression, and incident controls are approved.
+
+## Retirement inventory
+
+Some source files and archived operational documents still describe earlier
+Microsoft/Azure experiments (AI, email, speech, translation, Functions, and
+deployment). They are not the active platform contract and must not be enabled
+in the Vercel production project. Remove each adapter only after its caller has
+an approved replacement or has been safely retired. Historical migrations,
+engineering logs, and audits remain immutable evidence and should be labelled
+as historical rather than rewritten.
+
+See [STACK_MIGRATION.md](STACK_MIGRATION.md) for cutover gates and retirement
+order.

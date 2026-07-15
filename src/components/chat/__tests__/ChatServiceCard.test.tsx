@@ -20,6 +20,8 @@ vi.mock('@/components/feedback/FeedbackForm', () => ({
   FeedbackForm: 'feedback-form',
 }));
 vi.mock('lucide-react', () => ({
+  AlertTriangle: 'svg',
+  Award: 'svg',
   MapPin: 'svg',
   Phone: 'svg',
   Clock: 'svg',
@@ -28,6 +30,8 @@ vi.mock('lucide-react', () => ({
   BookmarkCheck: 'svg',
   MessageSquare: 'svg',
   Flag: 'svg',
+  ShieldCheck: 'svg',
+  FileText: 'svg',
 }));
 
 async function loadChatServiceCard() {

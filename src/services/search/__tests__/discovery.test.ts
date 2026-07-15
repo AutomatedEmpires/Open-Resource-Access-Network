@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DISCOVERY_SORT_OPTIONS,
   buildDiscoveryHref,
   buildDiscoveryUrlParams,
   buildSearchApiParamsFromDiscovery,
@@ -12,6 +13,11 @@ import {
 } from '../discovery';
 
 describe('search discovery helpers', () => {
+  it('labels confidence ordering without implying a blanket trust judgment', () => {
+    expect(DISCOVERY_SORT_OPTIONS.find((option) => option.value === 'trust')?.label)
+      .toBe('Record confidence (highest)');
+  });
+
   it('resolves discovery text from explicit text first and falls back to need text', () => {
     expect(resolveDiscoverySearchText(' rent help ', 'housing')).toBe('rent help');
     expect(resolveDiscoverySearchText('', 'food_assistance')).toBe('food');

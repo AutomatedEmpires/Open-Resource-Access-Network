@@ -2,8 +2,7 @@ name: Rotate Azure Maps SAS
 
 "on":
   workflow_dispatch:
-  schedule:
-    - cron: '0 */8 * * *'
+  # Legacy rollback only; scheduled rotation is disabled during the map migration.
 
 permissions:
   contents: read
@@ -15,7 +14,7 @@ concurrency:
 
 jobs:
   rotate:
-    if: ${{ vars.AZURE_DEPLOY_ENABLED == 'true' }}
+    if: ${{ vars.AZURE_ROLLBACK_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production

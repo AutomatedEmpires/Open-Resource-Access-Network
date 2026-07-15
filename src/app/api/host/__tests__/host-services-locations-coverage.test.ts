@@ -410,7 +410,7 @@ describe('host services collection route coverage', () => {
       queuedForReview: true,
       submissionId: 'submission-1',
       sourceRecordId: 'source-record-1',
-      message: 'Service submitted for review. It will publish after approval.',
+      message: 'Service submitted for independent review. It will publish after approval.',
       published: false,
       serviceId: null,
     });

@@ -49,6 +49,7 @@ interface OrgDataOverrides {
     status: string;
     year_incorporated: number | null;
     logo_url: string | null;
+    verified_at: string | null;
     updated_at: string;
   }>;
   services?: Array<Record<string, unknown>>;
@@ -88,6 +89,7 @@ function makeOrgData(overrides: OrgDataOverrides = {}) {
       status: 'active',
       year_incorporated: 2010,
       logo_url: 'https://cdn.example.org/logo.png',
+      verified_at: '2026-02-15T00:00:00.000Z',
       updated_at: '2026-02-15T00:00:00.000Z',
       ...overrides.organization,
     },
@@ -192,29 +194,20 @@ describe('OrgProfileClient', () => {
     expect(screen.getByText('No active services listed.')).toBeInTheDocument();
   });
 
-  it('maps older updated timestamps to community and unverified trust levels', async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          makeOrgData({
-            organization: { updated_at: '2025-10-15T00:00:00.000Z' },
-          }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          makeOrgData({
-            organization: { updated_at: '2024-01-01T00:00:00.000Z' },
-          }),
-      });
+  it('never treats a recent update or import as an organization verification', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () =>
+        makeOrgData({
+          organization: {
+            verified_at: null,
+            updated_at: '2026-03-01T00:00:00.000Z',
+          },
+        }),
+    });
 
-    const { rerender } = render(<OrgProfileClient orgId="org-community" />);
+    render(<OrgProfileClient orgId="org-unverified" />);
 
-    await screen.findByRole('heading', { name: 'Helping Hands' });
-    expect(screen.getByTestId('trust-level')).toHaveTextContent('community_verified');
-
-    rerender(<OrgProfileClient orgId="org-unverified" />);
     await screen.findByRole('heading', { name: 'Helping Hands' });
     expect(screen.getByTestId('trust-level')).toHaveTextContent('unverified');
   });

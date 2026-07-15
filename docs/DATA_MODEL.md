@@ -594,7 +594,7 @@ This layer normalizes every intake path before publication. No HSDS feed, partne
 
 ### `source_systems`
 
-Unified registry of upstream publishers and source families. Stores trust tier, crawl policy, domain rules, jurisdiction scope, and legacy linkage back to `ingestion_sources` during migration.
+Unified registry of upstream publishers and source families. Stores trust tier, resource purpose, crawl policy, domain rules, jurisdiction scope, and legacy linkage back to `ingestion_sources` during migration. Trust controls ingestion authority; `resource_purpose` controls whether records are direct service catalogs, official program navigation, supporting reference data, or excluded from seeker-facing publication. Migration `0055_source_resource_purpose.sql` adds this fail-closed publication boundary while preserving supporting data for enrichment.
 
 ### `source_feeds`
 
@@ -647,6 +647,30 @@ Many-to-many junction mapping canonical services to canonical locations with opt
 ### `canonical_provenance`
 
 Field-level lineage table describing which `source_record` asserted which canonical field value, the confidence hint for that assertion, and whether the assertion was accepted, superseded, or rejected.
+
+### Positive publication authority (Migration 0064)
+
+Public service reads do not infer publication permission from the absence of a
+canonical row. A service must prove one of two authority paths:
+
+1. A live, published `canonical_services` row whose accepted
+   `canonical_provenance` reaches a published `source_records` assertion through
+   an active feed and the canonical row's active winning source system. The
+   source purpose must be `service_catalog` or `program_navigation`. Canonical
+   promotion atomically advances those accepted assertions from `normalized`
+   to `published`; missing winning-source provenance rolls the promotion back.
+2. A current manual HSDS snapshot tied to an approved `submissions` row, a
+   passed approval transition made by a distinct `community_admin` or
+   `oran_admin`, and a published `mixed_bundle` source assertion whose
+   projection identifies that same service. System transitions and submitter
+   self-approval do not create publication authority. Manual systems use the
+   schema-defined `manual` family, `manual_entry` feed type, and positive
+   `trusted_partner` or `community` trust tiers.
+
+Migration `0064_positive_publication_authority.sql` adds partial and expression
+indexes for those checks only; it does not mutate resource data. The runtime
+`deny_all` safety mode can close public discovery during an incident, but no
+legacy allow path exists.
 
 ---
 
@@ -905,6 +929,12 @@ extracted_candidates ──< candidate_readiness
 ---
 
 ## Data Integrity Rules
+
+### Chat-first navigator presentation contract
+
+`src/domain/resourceNavigator.ts` defines the typed intake and recommendation foundation for `UserNeed`, `NeedCategory`, `IntakeQuestion`, `IntakeAnswer`, `ResourceProvider`, `ServiceOffering`, `EligibilityRule`, `CoverageArea`, `ContactMethod`, `IntakeStep`, `SourceRecordSummary`, `IssueReport`, `VolunteerReviewTask`, `ProviderClaim`, `MatchScore`, `UrgencyLevel`, and the expanded resource verification states.
+
+This is a presentation/workflow contract, not a second persistence model. Canonical HSDS tables, submission workflows, confidence scores, ingestion source records, and provenance remain authoritative. A future schema migration is required before any new navigator-only field is persisted. Exact verification states and checked dates must never be inferred from confidence bands or generic update timestamps.
 
 1. **No hallucinated data**: All records must have a traceable source (import file, host submission, or manual admin entry).
 2. **Phone numbers**: Stored exactly as submitted. Display logic adds formatting. Never generated.

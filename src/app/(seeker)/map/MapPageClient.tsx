@@ -46,8 +46,8 @@ import { useToast } from '@/components/ui/toast';
 import { DISCOVERY_ATTRIBUTE_LABELS } from '@/services/search/discoveryPresentation';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-// Azure Maps SDK accesses `window` at module evaluation time — must be loaded
-// client-side only. The ssr:false dynamic import prevents SSR prerender errors.
+// Leaflet accesses the browser DOM at module evaluation time, so the map stays
+// client-only while the surrounding seeker page remains server-renderable.
 const MapContainer = dynamic(
   () => import('@/components/map/MapContainer').then((m) => m.MapContainer),
   {
@@ -72,7 +72,7 @@ function normalizeSortOption(value: DiscoverySortOption | string | null | undefi
 
 const SORT_OPTIONS: Array<{ value: SortOption; label: string; description: string }> = [
   { value: 'distance', label: 'Nearby first', description: 'Shows the closest results in the current map area first.' },
-  { value: 'relevance', label: 'Balanced results', description: 'Mixes relevance, verification, and nearby results.' },
+  { value: 'relevance', label: 'Balanced results', description: 'Mixes relevance, record confidence, and nearby results.' },
 ];
 
 /** Canonical resource taxonomy dimensions exposed on the seeker map */
@@ -207,7 +207,6 @@ export default function MapPage() {
   });
   const confidenceFilter = 'all' as const;
   const { success, error: toastError, info } = useToast();
-  const didRequestLocationRef = useRef(false);
   const didInitialMobileSearchRef = useRef(false);
 
   useEffect(() => {
@@ -278,12 +277,6 @@ export default function MapPage() {
     requestDeviceLocation(true);
   }, [requestDeviceLocation]);
 
-  useEffect(() => {
-    if (didRequestLocationRef.current || deviceCenter || isLocating) return;
-    didRequestLocationRef.current = true;
-    requestDeviceLocation(false);
-  }, [deviceCenter, isLocating, requestDeviceLocation]);
-
   // Load saved IDs from localStorage on mount
   useEffect(() => {
     const next = readStoredSavedServiceIdSet();
@@ -320,11 +313,10 @@ export default function MapPage() {
     nextQuery: string,
     nextCategory: DiscoveryNeedId | null,
     nextAttributes: Record<string, string[]>,
-    hasBounds = false,
+    _hasBounds = false,
   ) => {
     return Boolean(resolveDiscoverySearchText(nextQuery, nextCategory))
-      || Object.keys(nextAttributes).length > 0
-      || hasBounds;
+      || Object.keys(nextAttributes).length > 0;
   }, []);
 
   const hasShareableIntent = useCallback((
@@ -984,7 +976,7 @@ export default function MapPage() {
             </div>
 
             {/* "Search this area" pill — floats below search bar */}
-            {isAreaDirty && (
+            {isAreaDirty && canSearch && (
               <div
                 className="absolute left-0 right-0 z-30 flex justify-center pointer-events-none"
                 style={{ top: `${56 + (appliedFilterItems.length > 0 ? 40 : 0) + 8}px` }}
@@ -1005,7 +997,7 @@ export default function MapPage() {
               <div
                 role="alert"
                 className="absolute left-3 right-3 z-30 flex items-start gap-2 rounded-2xl border border-error-soft bg-white/95 p-3 shadow-md"
-                style={{ top: `${56 + (appliedFilterItems.length > 0 ? 40 : 0) + (isAreaDirty ? 48 : 8)}px` }}
+                style={{ top: `${56 + (appliedFilterItems.length > 0 ? 40 : 0) + (isAreaDirty && canSearch ? 48 : 8)}px` }}
               >
                 <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
                 <div>
@@ -1311,7 +1303,9 @@ export default function MapPage() {
                       <p className="mt-2 text-center text-xs text-slate-400">Approximate location active (not saved)</p>
                     )}
                     {!deviceCenter && !isLocating && locationState !== 'unsupported' && (
-                      <p className="mt-2 text-center text-xs text-slate-400">Location is requested automatically when this map opens.</p>
+                      <p className="mt-2 text-center text-xs text-slate-400">
+                        Location is optional and used only after you tap Allow location. It is not saved.
+                      </p>
                     )}
                   </div>
 
@@ -1361,8 +1355,8 @@ export default function MapPage() {
               <div className="mb-4 flex flex-col gap-4 border-b border-slate-200 pb-4 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Verified discovery</span>
-                    <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)]">Verified records only</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Resource discovery</span>
+                    <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)]">Publication-gated records</span>
                     {deviceCenter ? (
                       <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)]">Approximate location active</span>
                     ) : null}
@@ -1372,7 +1366,7 @@ export default function MapPage() {
                   </div>
                   <div className="flex flex-col gap-1 md:flex-row md:items-end md:gap-3">
                     <h1 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-5xl">Map</h1>
-                    <p className="pb-1 text-sm text-slate-500">Find verified help nearby with the least amount of effort.</p>
+                    <p className="pb-1 text-sm text-slate-500">Find source-authorized help nearby with the least amount of effort.</p>
                   </div>
                 </div>
               </div>
@@ -1431,7 +1425,7 @@ export default function MapPage() {
                               discoveryContext={mapDiscoveryContext}
                               onBoundsChange={handleBoundsChange}
                             />
-                            {isAreaDirty && (
+                            {isAreaDirty && canSearch && (
                               <div className="pointer-events-none absolute left-0 right-0 top-3 flex justify-center px-3">
                                 <Button
                                   type="button"
@@ -1453,13 +1447,16 @@ export default function MapPage() {
                               variant="outline"
                               size="sm"
                               onClick={searchThisArea}
+                              disabled={!canSearch}
                               className="gap-1.5 bg-white text-xs"
                             >
                               <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
                               Search this area
                             </Button>
                             {searchMode === 'bbox' && (
-                              <span className="text-xs text-[var(--text-muted)]">Updates as you pan.</span>
+                              <span className="text-xs text-[var(--text-muted)]">
+                                {canSearch ? 'Updates as you pan.' : 'Choose a need before searching this area.'}
+                              </span>
                             )}
                             {searchMode === 'radius' && deviceCenter ? (
                               <span className="text-xs text-[var(--text-muted)]">Showing results within {radiusMiles} miles of your location.</span>
@@ -1527,7 +1524,7 @@ export default function MapPage() {
                                           ? 'Location was blocked. Allow it to start near you.'
                                           : locationState === 'unsupported'
                                             ? 'This browser cannot provide device location.'
-                                            : 'The map asks for your approximate location when this page opens.'}
+                                            : 'Location is optional. Allow it to start near you; ORAN does not save it.'}
                                   </p>
                                 </div>
                                 {!deviceCenter && locationState !== 'unsupported' ? (
@@ -1632,7 +1629,7 @@ export default function MapPage() {
                               <MapPin className="mx-auto mb-2 h-8 w-8 text-slate-300" aria-hidden="true" />
                               <p className="text-sm font-semibold text-[var(--text-primary)]">Ready to search</p>
                               <p className="mt-1 text-xs text-[var(--text-muted)]">
-                                Search, tap a common category, or pan the map and use <strong>Search this area</strong>.
+                                Search by need or tap a common category, then refine the map area.
                               </p>
                             </div>
                           )}
@@ -1884,8 +1881,8 @@ function ConfidenceRing({ enriched }: { enriched: EnrichedService }) {
   return (
     <div
       className="flex-shrink-0 w-10"
-      aria-label={score == null ? 'Verification score unknown' : `Verification ${Math.round(value)} percent`}
-      title={score == null ? 'Verification score unknown' : `Verification: ${Math.round(value)}%`}
+      aria-label={score == null ? 'Record confidence unknown' : `Record confidence ${Math.round(value)} percent`}
+      title={score == null ? 'Record confidence unknown' : `Record confidence: ${Math.round(value)}%`}
     >
       <svg width="40" height="40" viewBox="0 0 40 40" role="img" aria-hidden="true">
         <circle

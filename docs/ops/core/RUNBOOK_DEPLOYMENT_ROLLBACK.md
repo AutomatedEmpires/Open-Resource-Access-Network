@@ -4,92 +4,92 @@
 
 - Owner role: Release Manager
 - Reviewers: Platform On-Call Lead, Data Platform Lead
-- Last reviewed (UTC): 2026-03-06
-- Next review due (UTC): 2026-06-06
+- Operational status: active
+- Last reviewed (UTC): 2026-07-13
+- Next review due (UTC): 2026-10-13
 - Severity scope: SEV-1 to SEV-3
 
 ## Purpose And Scope
 
-This runbook defines rollback procedures for failed or risky production deployments affecting web app, functions, infrastructure configuration, or database migration compatibility.
+Rollback a failed or unsafe Vercel production release while preserving Supabase
+schema compatibility, Clerk authorization, resource integrity, and auditability.
+Azure deployment workflows are a separate rollback-only platform path and are
+not the default application rollback mechanism.
 
-## Safety Constraints (Must Always Hold)
+## Safety Constraints
 
-- Maintain crisis routing behavior and retrieval-first guarantees.
-- Never roll back to a build that is known to violate safety or privacy controls.
-- Avoid schema/code version mismatches that break production reads/writes.
-- Preserve auditability of all rollback actions.
+- Maintain deterministic crisis routing and provenance-backed retrieval.
+- Never restore a build known to weaken privacy, auth, publication, or usage limits.
+- Confirm schema compatibility before moving an alias to older code.
+- Do not reverse an applied data migration by deleting history or replaying the
+  migration directory.
+- Record the deployment ID, commit SHA, operator, reason, and validation outcome.
 
 ## Triggers
 
-- Elevated 5xx/error rates immediately after deployment.
-- Authentication failures or authorization boundary regressions.
-- Severe latency regressions with no quick mitigation.
-- Broken critical journeys: seeker search, admin routing, ingestion verification.
+- A critical journey regresses immediately after production promotion.
+- Auth or role boundaries fail.
+- Publication or resource-integrity controls regress.
+- Error rate or latency rises materially and correlates with the release.
+- Database or configuration changes leave the new release unsafe.
 
 ## Pre-Rollback Checklist
 
-1. Confirm incident severity and appoint IC.
-2. Confirm issue correlates with latest deployment window.
-3. Capture current health snapshot for postmortem.
-4. Confirm rollback target version and artifact integrity.
-5. Validate DB migration compatibility with rollback target.
-
-Record rollback target details before execution:
-
-- Previous known-good commit SHA
-- Previous successful workflow run ID
-- Environment and timestamp of known-good deploy
+1. Assign the incident commander and freeze unrelated releases.
+2. Identify the current Vercel deployment, commit SHA, aliases, and incident start.
+3. Select a previously successful, reviewed deployment as the rollback target.
+4. Compare all database migrations between target and current commits.
+5. Confirm the target expects the current Clerk, Supabase, Sentry, Resend, cron,
+   and environment-variable contract.
+6. Capture `/api/health`, critical journey status, and privacy-filtered Sentry
+   evidence before changing the alias.
 
 ## Rollback Paths
 
-### A. Application Rollback (Web App / Functions)
+### Application-only rollback
 
-1. Pause ongoing deploy workflows.
-2. Redeploy last known good build artifact or previous release ref.
-3. Restart affected service if needed.
-4. Validate health checks and critical API routes.
+1. Promote or re-alias the known-good Vercel deployment through the ORAN project.
+2. Confirm root, `www`, and the stable Vercel alias resolve to the intended deployment.
+3. Do not change DNS when a deployment alias rollback is sufficient.
 
-### B. Infrastructure Rollback
+### Configuration rollback
 
-1. Identify failing infra change set.
-2. Re-apply last known good infrastructure parameters/state.
-3. Validate app settings, secrets references, identity bindings.
+1. Restore the last reviewed ORAN-only environment values without printing them.
+2. Redeploy the known-good commit; existing immutable deployments do not receive
+   every configuration change automatically.
+3. Revoke any credential involved in a suspected exposure.
 
-### C. Data/Migration Risk
+### Database/migration incompatibility
 
-1. If schema migration is backward compatible, roll back application first.
-2. If schema migration is not backward compatible, execute forward-fix migration plan.
-3. Never drop/alter critical tables under emergency pressure without explicit approval.
+1. Prefer application rollback when the schema remains backward compatible.
+2. Use a reviewed forward-fix migration when data/schema changes are not reversible.
+3. Stop and escalate if the older application would write invalid data against
+   the current schema.
 
-## Validation Checklist
+## Validation
 
-1. `CI` and deployment checks are green for rollback target.
-2. p95 latency and error rates return to baseline.
-3. Auth and role-guarded routes behave correctly.
-4. Ingestion and admin routing pipelines process normally.
-5. No active SEV-level alerts remain.
+- `/api/health` is healthy, ready, and database connected.
+- Home, chat, map, scroll, sign-in, and sign-up respond correctly.
+- Profile, queue, verify, host, and admin boundaries deny unauthorized users.
+- Ordinary chat usage and exhausted-quota crisis routing both behave correctly.
+- Published search excludes quarantined/supporting-reference records.
+- All five Vercel Cron routes retain authentication and bounded behavior.
+- Sentry associates events with the rollback release and no secret enters logs.
 
-Stabilization window:
+Monitor for at least 30 minutes before declaring the rollback stable.
 
-- Monitor for at least 30 minutes after rollback before declaring resolved.
+## Post-Rollback
 
-## Communications
-
-- Announce rollback start and expected duration.
-- Publish mitigation completion with user impact summary.
-- Share known residual risks and monitoring window.
-
-## Post-Rollback Follow-Up
-
-1. Lock further deploys until corrective patch is reviewed.
-2. Open corrective issue with clear root cause and tests.
-3. Update runbook with any missing pre-check or validation step.
-4. Log the event in `docs/ENGINEERING_LOG.md` when operational contracts changed.
+1. Keep the release freeze until the corrective change is reviewed.
+2. Record root cause, user impact, rollback deployment, and residual risks.
+3. Update affected tests/runbooks and complete a postmortem when severity requires it.
 
 ## References
 
-- `.github/workflows/deploy-infra.yml`
-- `.github/workflows/deploy-azure-appservice.yml`
-- `.github/workflows/deploy-azure-functions.yml`
-- `docs/platform/DEPLOYMENT_AZURE.md`
+- `docs/platform/STACK_MIGRATION.md`
+- `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md`
+- `docs/ops/services/RUNBOOK_DATABASE_INCIDENT.md`
+- `docs/ops/services/RUNBOOK_AUTH_OUTAGE.md`
+- `docs/ops/services/RUNBOOK_WEB_APP_DEGRADATION.md`
+- `vercel.json`
 - `db/migrations/`

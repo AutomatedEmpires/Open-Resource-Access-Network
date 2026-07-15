@@ -81,6 +81,13 @@ describe('UpdateProfileSchema', () => {
         urgencyWindow: 'same_day',
         documentationBarriers: ['no_id'],
         digitalAccessBarrier: true,
+        employmentStatus: 'employed_part_time',
+        incomeRange: '1500_2999_monthly',
+        householdSize: 3,
+        veteranServicePreference: true,
+        onboardingProfileConsent: true,
+        onboardingConsentVersion: 'onboarding-profile-v1',
+        onboardingCompletedAt: '2026-07-13T20:00:00.000Z',
         pronouns: 'she/her',
         profileHeadline: 'Looking for family-friendly support',
         avatarEmoji: '🌟',
@@ -93,6 +100,43 @@ describe('UpdateProfileSchema', () => {
 
     expect(result.success).toBe(true);
     expect(result.data?.seekerProfile?.serviceInterests).toEqual(['housing', 'food_assistance']);
+    expect(result.data?.seekerProfile?.householdSize).toBe(3);
+  });
+
+  it('rejects exact or invented income values and unreasonable household counts', () => {
+    expect(UpdateProfileSchema.safeParse({
+      seekerProfile: { incomeRange: '2487.32', householdSize: 3 },
+    }).success).toBe(false);
+
+    expect(UpdateProfileSchema.safeParse({
+      seekerProfile: { incomeRange: 'under_1500_monthly', householdSize: 21 },
+    }).success).toBe(false);
+  });
+
+  it('requires explicit, auditable consent before onboarding-only context can be persisted', () => {
+    expect(UpdateProfileSchema.safeParse({
+      seekerProfile: {
+        employmentStatus: 'employed_part_time',
+        onboardingProfileConsent: false,
+      },
+    }).success).toBe(false);
+
+    expect(UpdateProfileSchema.safeParse({
+      seekerProfile: {
+        onboardingProfileConsent: true,
+        onboardingConsentVersion: '',
+        onboardingCompletedAt: '',
+      },
+    }).success).toBe(false);
+
+    expect(UpdateProfileSchema.safeParse({
+      seekerProfile: {
+        householdSize: 3,
+        onboardingProfileConsent: true,
+        onboardingConsentVersion: 'onboarding-profile-v1',
+        onboardingCompletedAt: '2026-07-13T20:00:00.000Z',
+      },
+    }).success).toBe(true);
   });
 
   it('rejects seekerProfile.additionalContext longer than 500 characters', () => {
@@ -143,15 +187,20 @@ describe('UpdateProfileSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('strips extra fields (Zod default strip behavior)', () => {
+  it('strips identity, authorization, and other extra fields', () => {
     const result = UpdateProfileSchema.safeParse({
       approximateCity: 'Portland',
+      userId: 'attacker-selected-user',
+      clerkUserId: 'user_attacker',
+      authProvider: 'credentials',
       role: 'oran_admin', // should NOT be settable via this endpoint
       unknownField: 'extra',
     });
     expect(result.success).toBe(true);
     expect(result.data).toEqual({ approximateCity: 'Portland' });
-    // role and unknownField must NOT appear in parsed data
+    expect((result.data as Record<string, unknown>)['userId']).toBeUndefined();
+    expect((result.data as Record<string, unknown>)['clerkUserId']).toBeUndefined();
+    expect((result.data as Record<string, unknown>)['authProvider']).toBeUndefined();
     expect((result.data as Record<string, unknown>)['role']).toBeUndefined();
     expect((result.data as Record<string, unknown>)['unknownField']).toBeUndefined();
   });

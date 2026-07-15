@@ -27,12 +27,20 @@ function createStores() {
     tagConfirmations: {
       listConfirmed: vi.fn(),
     },
+    sourceRegistry: {
+      findForUrl: vi.fn().mockResolvedValue({ resourcePurpose: 'service_catalog' }),
+    },
   };
 }
 
 function buildCandidate() {
   return {
     candidateId: 'cand-1',
+    investigation: {
+      canonicalUrl: 'https://example.gov/pantry',
+      discoveredLinks: [],
+      importantArtifacts: [],
+    },
     fields: {
       organizationName: 'Example Community Action',
       serviceName: 'Pantry Program',
@@ -55,6 +63,48 @@ describe('publishCandidateToLiveService', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+  });
+
+  it('blocks a supporting-reference candidate before opening a publication transaction', async () => {
+    const stores = createStores();
+    stores.candidates.getById.mockResolvedValue({
+      ...buildCandidate(),
+      investigation: {
+        canonicalUrl: 'https://snap-retailers.example.gov/list',
+        discoveredLinks: [],
+        importantArtifacts: [],
+      },
+    });
+    stores.sourceRegistry.findForUrl.mockResolvedValue({
+      resourcePurpose: 'supporting_reference',
+    });
+
+    const { publishCandidateToLiveService } = await loadModule();
+    await expect(publishCandidateToLiveService({
+      stores: stores as never,
+      candidateId: 'cand-1',
+      publishedByUserId: 'oran-1',
+    })).rejects.toThrow('supporting_reference sources may enrich services');
+
+    expect(stores.sourceRegistry.findForUrl).toHaveBeenCalledWith(
+      'https://snap-retailers.example.gov/list',
+    );
+    expect(withTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks an unregistered candidate source before opening a publication transaction', async () => {
+    const stores = createStores();
+    stores.candidates.getById.mockResolvedValue(buildCandidate());
+    stores.sourceRegistry.findForUrl.mockResolvedValue(null);
+
+    const { publishCandidateToLiveService } = await loadModule();
+    await expect(publishCandidateToLiveService({
+      stores: stores as never,
+      candidateId: 'cand-1',
+      publishedByUserId: 'oran-1',
+    })).rejects.toThrow('source resource purpose is missing or invalid');
+
+    expect(withTransactionMock).not.toHaveBeenCalled();
   });
 
   it('materializes a published candidate into the live seeker tables and HSDS snapshot', async () => {

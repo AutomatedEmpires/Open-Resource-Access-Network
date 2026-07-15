@@ -8,6 +8,7 @@ import { drizzle as drizzlePg, type NodePgDatabase } from 'drizzle-orm/node-post
 import { Pool } from 'pg';
 
 import * as schema from './schema';
+import { buildRuntimeDatabaseConnectionString } from '@/services/db/runtimeRole';
 
 let _db: NodePgDatabase<typeof schema> | null = null;
 let _pool: Pool | null = null;
@@ -19,16 +20,18 @@ let _pool: Pool | null = null;
 export function getDb(): NodePgDatabase<typeof schema> {
   if (_db) return _db;
 
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
+  const configuredConnectionString = process.env.DATABASE_URL;
+  if (!configuredConnectionString) {
     throw new Error('DATABASE_URL environment variable is required');
   }
+  const connectionString = buildRuntimeDatabaseConnectionString(configuredConnectionString);
 
   _pool = new Pool({
     connectionString,
-    max: 10,
+    max: process.env.NODE_ENV === 'production' ? 2 : 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
+    allowExitOnIdle: true,
   });
 
   _db = drizzlePg(_pool, { schema });

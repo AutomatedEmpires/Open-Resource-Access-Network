@@ -16,7 +16,7 @@ import { AzureOpenAI } from 'openai';
 import type { EnrichedService } from '@/domain/types';
 import type { Intent } from './types';
 import { ELIGIBILITY_DISCLAIMER, MAX_SERVICES_PER_RESPONSE } from '@/domain/constants';
-import { trackAiEvent } from '@/services/telemetry/appInsights';
+import { trackAiEvent } from '@/services/telemetry/events';
 
 // ---------------------------------------------------------------------------
 // Client (lazy singleton — created once per process)

@@ -13,14 +13,14 @@ Implemented today:
 - Chat requests are capped at 20 messages per 24-hour identity/device window, with an additional matching session-scoped cap for local resilience.
 - Rate limiting on all API routes, including auth endpoints, with `Retry-After` headers on 429 responses.
 - Same-origin protection for authenticated, cookie-based write APIs enforced centrally in `src/proxy.ts` for `/api/profile`, `/api/saved`, `/api/user/**`, `/api/host/**`, `/api/community/**`, `/api/admin/**`, `/api/templates/**`, and `/api/submissions/appeal`.
-- Protected route authentication gating via middleware (JWT extraction + role enforcement via `isRoleAtLeast()`).
+- Protected route identity gating via Clerk middleware, with ORAN role enforcement near layouts and API data access.
 - All protected API routes enforce auth server-side via `getAuthContext()` + role guards.
-- Host API routes fail-closed in production—return 401 even if Entra ID is not configured.
+- Protected API routes fail closed in production when Clerk or the ORAN authorization store is unavailable.
 - Content Security Policy (CSP) header applied sitewide via `next.config.mjs` (see ADR-0005).
 - No CORS wildcard (`Access-Control-Allow-Origin: *`) on any route—default same-origin policy.
 - Feature flags with typed constants, fail-closed semantics (unknown flag → off).
 - PII redaction in Sentry/telemetry—verified by automated tests.
-- Redis-backed shared rate limiting is available for high-value endpoints when `REDIS_URL` is configured, with in-memory fallback retained for local/test resilience.
+- Shared production route rate limiting uses an atomic private Supabase/PostgreSQL function as its single authority. It fails closed if that authority is unavailable; Redis or in-memory counters are limited to database-less local/test resilience.
 - DB schema exists in db/migrations/** (including feature flags, submissions/workflow tables, and the legacy `verification_queue` compatibility view).
 
 Planned / not yet enforced end-to-end:
@@ -30,31 +30,30 @@ Planned / not yet enforced end-to-end:
 
 ## Authentication Model
 
-ORAN uses **Microsoft Entra ID** for identity management via NextAuth.js with the Azure AD provider.
+ORAN uses **Clerk** for identity, sessions, account recovery, connected sign-in
+methods, and multi-factor authentication. ORAN's dedicated database remains the
+source of truth for roles, account status, organization memberships, and access
+decisions. No identity or Clerk instance is shared with another business.
 
-Optional providers:
-
-- Apple OAuth is supported only when `ORAN_ENABLE_APPLE_AUTH=1` is set alongside valid Apple client credentials.
-- Google OAuth is supported only when explicitly enabled with `ORAN_ENABLE_GOOGLE_AUTH=1` and matching Google client credentials.
-- Credentials auth accepts email, username, or phone number plus password. It is available in local or test environments and is disabled in production unless `ORAN_ENABLE_CREDENTIALS_AUTH=1` is set deliberately.
-- Credentials auth may coexist with Microsoft Entra on the same account when an existing profile also carries a password hash; this does not introduce SMS/OTP or phone-based MFA.
-- Phone sign-in currently means password-based identifier login against a stored phone number. SMS/OTP phone auth is not implemented.
+The application does not accept or store passwords. Any password, social login,
+passkey, or second-factor flow is handled by Clerk and configured in the dedicated
+ORAN Clerk application.
 
 ### Session Validation
 
-- Implemented: protected UI routes are gated by middleware when Entra is configured (`AZURE_AD_CLIENT_ID`).
-- Implemented: in production, protected routes fail closed if auth is misconfigured or temporarily unavailable (middleware returns 503; API routes return 401).
-- Implemented: protected API routes validate NextAuth.js session server-side via `getAuthContext()`.
+- Implemented: protected UI routes use Clerk middleware to require an authenticated identity.
+- Implemented: production fails closed if Clerk keys are missing or identity resolution is unavailable.
+- Implemented: protected API routes call `getAuthContext()`, which maps the Clerk user ID to the ORAN-owned authorization record.
 - Implemented: unauthenticated requests to protected routes return HTTP 401.
 - Implemented: role checks return HTTP 403 for insufficient permissions.
-- Implemented: optional non-Entra providers fail closed in production unless explicitly enabled.
-- Implemented: first successful non-credentials OAuth sign-in upserts a `user_profiles` row so role/profile hydration remains stable across providers.
+- Implemented: new ORAN profiles default to the `seeker` role; elevated roles require an explicit ORAN governance action.
+- Implemented: legacy identities are linked only by an explicit Clerk user ID. Email matching never grants or migrates access.
 
 ### Role Enforcement
 
-- Implemented: middleware extracts JWT via `getToken()` and enforces role-based route-level access via `isRoleAtLeast()`.
+- Implemented: Clerk middleware handles identity while ORAN layouts and API guards enforce database-owned roles via `isRoleAtLeast()` and resource checks.
 - Implemented: API handlers enforce resource-level permissions via `requireMinRole()`, `requireOrgAccess()`, `requireOrgRole()`.
-- Planned: roles provisioned as Entra ID app roles (currently derived from org memberships).
+- Implemented: roles are derived from `user_profiles` and active organization memberships, not identity-provider claims.
 
 ---
 
@@ -73,15 +72,14 @@ Optional providers:
 
 ### What ORAN Stores
 
-- Entra Object ID (pseudonymous identifier, not PII by itself)
+- Clerk user ID mapped to a stable ORAN user profile
 - Approximate location preference (city/county level, not precise coordinates)
 - Service category preferences
 - Feedback ratings (no identifying info required)
 
 ### What ORAN Does NOT Store (current implementation)
 
-- Full name (managed by Entra ID)
-- Email address in ORAN DB (managed by Entra ID)
+- Passwords, passkeys, recovery codes, or multi-factor secrets
 - Precise GPS coordinates of seekers (see Approximate Location section)
 - Chat message content beyond session metadata
 - Sensitive inferences (health conditions, immigration status, etc.)
@@ -161,7 +159,7 @@ Design intent (not yet implemented end-to-end):
 
 Status: Implemented.
 
-- Implemented: in-memory sliding-window rate limiting on all API routes, including:
+- Implemented: shared fixed-window rate limiting on protected route families, with process-local enforcement retained only for local/test and compatibility paths, including:
   - POST /api/chat (via orchestrator, after crisis+quota)
   - GET /api/search
   - POST /api/feedback
@@ -169,7 +167,7 @@ Status: Implemented.
   - GET /api/maps/token
   - GET/PUT /api/profile
   - GET/POST/DELETE /api/saved
-  - GET/POST /api/auth/[...nextauth]
+  - Clerk's hosted identity endpoints (rate limiting and bot protection are managed by Clerk)
   - All /api/admin/** routes
   - All /api/community/** routes
   - All /api/host/** routes
@@ -185,7 +183,8 @@ Status: Implemented.
   - POST/GET /api/submissions/appeal (submit appeal + list own appeals)
   - POST/GET /api/submissions/report (listing reports; POST allows anonymous, GET requires auth)
 - Implemented: all 429 responses include `Retry-After` header with seconds until window reset.
-- Planned: Redis-backed rate limiting for multi-instance deployments.
+- Implemented: `oran_internal.consume_shared_rate_limit` atomically serializes each opaque key in Supabase/PostgreSQL. Raw IP addresses and user identifiers are hashed before any shared-storage boundary, and production does not switch to an independent counter during an outage.
+- Implemented: Vercel production never falls back to per-instance memory when shared limiting is unavailable. High-value writes are denied until a shared backend recovers. Explicit self-crisis chat messages remain outside ordinary usage controls and continue to deterministic safety routing.
 - Implemented: authenticated privacy endpoints (`/api/user/data-export`, `/api/user/data-delete`) rate-limit by authenticated user context instead of shared IP alone.
 
 ---
@@ -199,7 +198,7 @@ Status: Implemented.
 
 ### Authentication & Authorization
 
-- Implemented: write endpoints require valid Entra ID / NextAuth.js session via `getAuthContext()`.
+- Implemented: write endpoints require a valid Clerk session mapped to an active ORAN authorization context via `getAuthContext()`.
 - Implemented: role-based access control via `isRoleAtLeast()`, `requireMinRole()`, `requireOrgRole()`.
 - Implemented: scope-based access control via `platform_scopes`, `user_scope_grants`, and two-person approval workflow.
 - Implemented: same-origin write enforcement for authenticated cookie-based APIs; cross-site state-changing requests are rejected before route handlers execute.

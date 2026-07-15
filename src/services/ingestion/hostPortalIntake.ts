@@ -2,10 +2,11 @@ import crypto from 'node:crypto';
 import type { PoolClient } from 'pg';
 
 const HOST_PORTAL_SOURCE_NAME = 'ORAN Host Portal';
-const HOST_PORTAL_SOURCE_FAMILY = 'host_portal';
+const HOST_PORTAL_SOURCE_FAMILY = 'manual';
 const HOST_PORTAL_SOURCE_FEED_NAME = 'Host Portal Intake';
-const HOST_PORTAL_SOURCE_FEED_TYPE = 'manual_portal';
+const HOST_PORTAL_SOURCE_FEED_TYPE = 'manual_entry';
 const HOST_PORTAL_BASE_URL = 'oran://host-portal';
+const HOST_PORTAL_SOURCE_RECORD_TYPE = 'mixed_bundle';
 
 export interface HostPortalPhoneInput {
   number: string;
@@ -82,13 +83,14 @@ export interface QueueServiceVerificationSubmissionInput {
 async function ensureHostPortalSourceSystem(client: PoolClient): Promise<string> {
   const rows = await client.query<{ id: string }>(
     `INSERT INTO source_systems
-       (name, family, homepage_url, trust_tier, domain_rules, crawl_policy, jurisdiction_scope, contact_info, notes)
-     VALUES ($1, $2, $3, 'allowlisted', '[]'::jsonb, $4::jsonb, '{}'::jsonb, '{}'::jsonb, $5)
+       (name, family, homepage_url, trust_tier, resource_purpose, domain_rules, crawl_policy, jurisdiction_scope, contact_info, notes)
+     VALUES ($1, $2, $3, 'trusted_partner', 'service_catalog', '[]'::jsonb, $4::jsonb, '{}'::jsonb, '{}'::jsonb, $5)
      ON CONFLICT (name)
      DO UPDATE SET
        family = EXCLUDED.family,
        homepage_url = EXCLUDED.homepage_url,
        trust_tier = EXCLUDED.trust_tier,
+       resource_purpose = EXCLUDED.resource_purpose,
        domain_rules = EXCLUDED.domain_rules,
        crawl_policy = EXCLUDED.crawl_policy,
        updated_at = NOW()
@@ -126,7 +128,7 @@ async function ensureHostPortalFeed(client: PoolClient, sourceSystemId: string):
   const created = await client.query<{ id: string }>(
     `INSERT INTO source_feeds
        (source_system_id, feed_name, feed_type, feed_handler, base_url, auth_type, jurisdiction_scope, refresh_interval_hours)
-     VALUES ($1, $2, $3, 'none', $4, 'session', '{}'::jsonb, 24)
+     VALUES ($1, $2, $3, 'none', $4, 'custom', '{}'::jsonb, 24)
      RETURNING id`,
     [sourceSystemId, HOST_PORTAL_SOURCE_FEED_NAME, HOST_PORTAL_SOURCE_FEED_TYPE, HOST_PORTAL_BASE_URL],
   );
@@ -152,7 +154,7 @@ export async function createHostPortalSourceAssertion(
        AND source_record_id = $3
        AND payload_sha256 = $4
      LIMIT 1`,
-    [sourceFeedId, input.recordType, input.recordId, payloadSha256],
+    [sourceFeedId, HOST_PORTAL_SOURCE_RECORD_TYPE, input.recordId, payloadSha256],
   );
 
   if (existing.rows[0]?.id) {
@@ -168,11 +170,11 @@ export async function createHostPortalSourceAssertion(
        (source_feed_id, source_record_type, source_record_id, canonical_source_url,
         payload_sha256, raw_payload, parsed_payload, correlation_id,
         source_license, source_confidence_signals, processing_status, processed_at)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $6::jsonb, $7, $8, $9::jsonb, 'processed', NOW())
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $6::jsonb, $7, $8, $9::jsonb, 'normalized', NOW())
      RETURNING id`,
     [
       sourceFeedId,
-      input.recordType,
+      HOST_PORTAL_SOURCE_RECORD_TYPE,
       input.recordId,
       input.canonicalSourceUrl,
       payloadSha256,
@@ -181,6 +183,7 @@ export async function createHostPortalSourceAssertion(
       'internal_submission',
       JSON.stringify({
         origin: 'host_portal',
+        assertionType: input.recordType,
         actorUserId: input.actorUserId,
         actorRole: input.actorRole ?? null,
         authenticated: true,

@@ -12,7 +12,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getAuthContext } from '@/services/auth/session';
 import { checkQuotaByIdentity } from '@/services/chat/quota';
-import { MAX_CHAT_QUOTA, CHAT_DEVICE_COOKIE, RATE_LIMIT_WINDOW_MS, SEARCH_RATE_LIMIT_MAX_REQUESTS } from '@/domain/constants';
+import {
+  ANONYMOUS_CHAT_QUOTA,
+  CHAT_DEVICE_COOKIE,
+  RATE_LIMIT_WINDOW_MS,
+  SEARCH_RATE_LIMIT_MAX_REQUESTS,
+} from '@/domain/constants';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { getIp } from '@/services/security/ip';
 
@@ -38,7 +43,7 @@ export async function GET(req: NextRequest) {
   if (!deviceId && !userId) {
     // No identity established yet — return full quota (first visit)
     return NextResponse.json(
-      { remaining: MAX_CHAT_QUOTA, resetAt: null },
+      { remaining: ANONYMOUS_CHAT_QUOTA, resetAt: null },
       { headers: { 'Cache-Control': 'private, no-store' } },
     );
   }

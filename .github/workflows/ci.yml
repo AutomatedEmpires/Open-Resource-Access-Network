@@ -33,7 +33,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Validate committed production webapp env contract
         run: |
@@ -42,9 +42,11 @@ jobs:
             --names-file .github/runtime/webapp-production-settings.txt \
             --node-env production \
             --format github \
-            --require-warning REDIS_URL \
-            --require-warning AZURE_MAPS_KEY \
-            --require-warning AZURE_MAPS_SAS_TOKEN
+            --require-warning NEXT_PUBLIC_SENTRY_DSN \
+            --require-warning NEXT_PUBLIC_SUPABASE_URL \
+            --require-warning NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY \
+            --require-warning NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
+            --require-warning CLERK_SECRET_KEY
 
   lint:
     name: Lint
@@ -58,7 +60,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -79,7 +81,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -100,7 +102,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -129,7 +131,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -152,7 +154,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -173,7 +175,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -194,7 +196,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies

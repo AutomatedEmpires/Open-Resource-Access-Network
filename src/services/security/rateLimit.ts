@@ -1,3 +1,9 @@
+import { createHash } from 'node:crypto';
+
+import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
+import { getRedisClient } from '@/services/cache/redis';
+import { captureException } from '@/services/telemetry/sentry';
+
 export interface RateLimitState {
   key: string;
   count: number;
@@ -5,10 +11,9 @@ export interface RateLimitState {
   exceeded: boolean;
   /** Seconds until the current window resets (use for HTTP Retry-After). */
   retryAfterSeconds: number;
+  /** True when production denied the request because no shared backend succeeded. */
+  backendUnavailable?: boolean;
 }
-
-import { getRedisClient } from '@/services/cache/redis';
-import { captureException } from '@/services/telemetry/sentry';
 
 const rateLimitWindows = new Map<string, { count: number; windowStart: number }>();
 
@@ -106,9 +111,87 @@ redis.call('PEXPIRE', KEYS[1], expiresIn)
 return { tostring(currentCount), tostring(windowStart) }
 `;
 
+interface DatabaseRateLimitRow {
+  request_count: number | string;
+  window_started_at: Date | string;
+  reset_at: Date | string;
+}
+
+function hashSharedRateLimitKey(key: string): string {
+  return createHash('sha256')
+    .update('oran:shared-rate-limit:v1\0', 'utf8')
+    .update(key, 'utf8')
+    .digest('hex');
+}
+
+function parseDatabaseTimestamp(value: Date | string, field: string): number {
+  const timestamp = value instanceof Date ? value.getTime() : Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    throw new Error(`Shared rate limiter returned an invalid ${field}`);
+  }
+  return timestamp;
+}
+
+async function checkRateLimitInDatabase(
+  key: string,
+  options: {
+    windowMs: number;
+    maxRequests: number;
+  },
+): Promise<RateLimitState> {
+  const rows = await executeQuery<DatabaseRateLimitRow>(
+    `SELECT request_count, window_started_at, reset_at
+     FROM oran_internal.consume_shared_rate_limit($1::text, $2::integer, $3::integer)`,
+    [
+      hashSharedRateLimitKey(key),
+      Math.max(1, Math.ceil(options.windowMs / 1_000)),
+      options.maxRequests,
+    ],
+  );
+
+  const row = rows[0];
+  const count = Number(row?.request_count);
+  if (!row || !Number.isSafeInteger(count) || count < 1) {
+    throw new Error('Shared rate limiter returned an invalid count');
+  }
+
+  const windowStart = parseDatabaseTimestamp(row.window_started_at, 'window start');
+  const resetAt = parseDatabaseTimestamp(row.reset_at, 'reset time');
+  const retryAfterSeconds = Math.max(0, Math.ceil((resetAt - Date.now()) / 1_000));
+
+  return {
+    key,
+    count,
+    windowStart,
+    exceeded: count > options.maxRequests,
+    retryAfterSeconds,
+  };
+}
+
+function unavailableRateLimitState(
+  key: string,
+  options: {
+    windowMs: number;
+    maxRequests: number;
+  },
+): RateLimitState {
+  const now = Date.now();
+  return {
+    key,
+    count: options.maxRequests + 1,
+    windowStart: now,
+    exceeded: true,
+    retryAfterSeconds: Math.max(1, Math.ceil(options.windowMs / 1_000)),
+    backendUnavailable: true,
+  };
+}
+
 /**
- * Shared-capable limiter for production endpoints. Uses Redis when available
- * and falls back to the in-memory limiter when Redis is unavailable.
+ * Shared limiter for horizontally scaled endpoints. The private Postgres
+ * limiter is authoritative whenever the application database is configured.
+ * This avoids switching between independent counters during a provider outage.
+ * Redis remains available for database-less local/test runtimes. Production
+ * never falls back to a different counter or to per-instance memory.
  */
 export async function checkRateLimitShared(
   key: string,
@@ -117,37 +200,56 @@ export async function checkRateLimitShared(
     maxRequests: number;
   }
 ): Promise<RateLimitState> {
+  if (isDatabaseConfigured()) {
+    try {
+      return await checkRateLimitInDatabase(key, options);
+    } catch (error) {
+      await captureException(error, { feature: 'shared_rate_limit_database' });
+      if (process.env.NODE_ENV === 'production') {
+        return unavailableRateLimitState(key, options);
+      }
+    }
+  }
+
   const client = getRedisClient();
-  if (!client) {
-    return checkRateLimit(key, options);
+  if (client && process.env.NODE_ENV !== 'production') {
+    const now = Date.now();
+    try {
+      const result = await client.eval(
+        SHARED_RATE_LIMIT_LUA,
+        1,
+        `rate-limit:${hashSharedRateLimitKey(key)}`,
+        String(now),
+        String(options.windowMs),
+      ) as [string | number, string | number];
+
+      const count = Number(result?.[0] ?? 0);
+      const windowStart = Number(result?.[1] ?? now);
+      if (
+        !Number.isSafeInteger(count)
+        || count < 1
+        || !Number.isFinite(windowStart)
+        || windowStart < 0
+      ) {
+        throw new Error('Redis shared rate limiter returned an invalid result');
+      }
+      const resetAt = windowStart + options.windowMs;
+      const retryAfterSeconds = Math.max(0, Math.ceil((resetAt - now) / 1000));
+
+      return {
+        key,
+        count,
+        windowStart,
+        exceeded: count > options.maxRequests,
+        retryAfterSeconds,
+      };
+    } catch (error) {
+      await captureException(error, { feature: 'shared_rate_limit_redis' });
+    }
   }
 
-  const now = Date.now();
-  try {
-    const result = await client.eval(
-      SHARED_RATE_LIMIT_LUA,
-      1,
-      `rate-limit:${key}`,
-      String(now),
-      String(options.windowMs),
-    ) as [string | number, string | number];
-
-    const count = Number(result?.[0] ?? 0);
-    const windowStart = Number(result?.[1] ?? now);
-    const resetAt = windowStart + options.windowMs;
-    const retryAfterSeconds = Math.max(0, Math.ceil((resetAt - now) / 1000));
-
-    return {
-      key,
-      count,
-      windowStart,
-      exceeded: count > options.maxRequests,
-      retryAfterSeconds,
-    };
-  } catch (error) {
-    await captureException(error, { feature: 'shared_rate_limit' });
-    return checkRateLimit(key, options);
-  }
+  if (process.env.NODE_ENV !== 'production') return checkRateLimit(key, options);
+  return unavailableRateLimitState(key, options);
 }
 
 export function resetRateLimitsForTests(): void {

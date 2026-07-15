@@ -518,6 +518,13 @@ export const seekerProfiles = pgTable(
     urgencyWindow: text('urgency_window'),
     documentationBarriers: text('documentation_barriers').array().notNull().default([]),
     digitalAccessBarrier: boolean('digital_access_barrier').notNull().default(false),
+    employmentStatus: text('employment_status'),
+    incomeRange: text('income_range'),
+    householdSize: integer('household_size'),
+    veteranServicePreference: boolean('veteran_service_preference').notNull().default(false),
+    onboardingProfileConsent: boolean('onboarding_profile_consent').notNull().default(false),
+    onboardingConsentVersion: text('onboarding_consent_version'),
+    onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
     pronouns: text('pronouns'),
     profileHeadline: text('profile_headline'),
     avatarEmoji: text('avatar_emoji'),
@@ -1200,6 +1207,9 @@ export const sourceSystems = pgTable(
     licenseNotes: text('license_notes'),
     termsUrl: text('terms_url'),
     trustTier: text('trust_tier').notNull().default('quarantine'),
+    // Deliberately has no application-side default. Every creation path must
+    // classify source purpose explicitly; missing purpose fails closed.
+    resourcePurpose: text('resource_purpose').notNull(),
     hsdsProfileUri: text('hsds_profile_uri'),
     domainRules: jsonb('domain_rules').notNull().default([]),
     crawlPolicy: jsonb('crawl_policy').notNull().default({}),
@@ -1215,6 +1225,7 @@ export const sourceSystems = pgTable(
     uniqueIndex('idx_source_systems_name').on(table.name),
     index('idx_source_systems_family').on(table.family),
     index('idx_source_systems_trust').on(table.trustTier),
+    index('idx_source_systems_resource_purpose').on(table.resourcePurpose),
     index('idx_source_systems_active').on(table.isActive),
   ]
 );
@@ -2848,7 +2859,9 @@ export const userProfiles = pgTable(
     email: text('email'),
     passwordHash: text('password_hash'),
     phone: text('phone'),
-    authProvider: text('auth_provider').notNull().default('azure-ad'),
+    authProvider: text('auth_provider').notNull().default('clerk'),
+    clerkUserId: text('clerk_user_id'),
+    authMigratedAt: timestamp('auth_migrated_at', { withTimezone: true }),
     accountStatus: text('account_status').notNull().default('active'),
     securityNote: text('security_note'),
     suspendedAt: timestamp('suspended_at', { withTimezone: true }),
@@ -2864,6 +2877,7 @@ export const userProfiles = pgTable(
     index('idx_user_profiles_account_status').on(table.accountStatus),
     index('idx_user_profiles_role').on(table.role),
     index('idx_user_profiles_username').on(table.username),
+    uniqueIndex('idx_user_profiles_clerk_user_id').on(table.clerkUserId),
   ]
 );
 

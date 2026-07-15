@@ -176,6 +176,66 @@ describe('chat types + conversion', () => {
     expect(card.eligibilityHint.toLowerCase()).toContain('may qualify');
   });
 
+  it('builds next-step, coverage, eligibility, document, distance, and verification details from stored fields', () => {
+    const card = enrichedServiceToCard(makeEnrichedService({
+      service: {
+        id: 'svc-intake',
+        organizationId: 'org-1',
+        name: 'Utility Relief Intake',
+        description: 'Utility payment support.',
+        applicationProcess: 'Call before 3 p.m. to complete intake.',
+        status: 'active',
+        url: 'https://example.org/utility-intake',
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+      organization: {
+        id: 'org-1',
+        name: 'Helping Org',
+        status: 'active',
+        verifiedAt: '2026-02-20T12:00:00.000Z',
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      },
+      eligibility: [{
+        id: 'elig-1',
+        serviceId: 'svc-intake',
+        description: 'Residents of Kootenai County may apply.',
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      }],
+      requiredDocuments: [{
+        id: 'doc-1',
+        serviceId: 'svc-intake',
+        document: 'Current utility bill',
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      }],
+      serviceAreas: [{
+        id: 'area-1',
+        serviceId: 'svc-intake',
+        name: 'Kootenai County',
+        extentType: 'county',
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      }],
+      distanceMeters: 1609.344,
+    }));
+
+    expect(card).toMatchObject({
+      distanceMeters: 1609.344,
+      serviceAreaSummary: 'Kootenai County',
+      requiredDocuments: ['Current utility bill'],
+      nextStep: 'Call before 3 p.m. to complete intake.',
+      verificationStatus: 'provider_verified',
+      verificationLastCheckedAt: '2026-02-20T12:00:00.000Z',
+      sourceLabel: 'Helping Org provider page',
+      sourceUrl: 'https://example.org/utility-intake',
+    });
+    expect(card.eligibilityHint).toContain('Residents of Kootenai County may apply.');
+    expect(card.whatToAsk).toContain('Utility Relief Intake');
+  });
+
   it('derives deterministic match reasons from browse filters, taxonomy, and action intent', () => {
     const card = enrichedServiceToCard(
       makeEnrichedService({

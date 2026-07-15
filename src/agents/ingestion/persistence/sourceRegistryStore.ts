@@ -44,15 +44,16 @@ function isRegistryCompatible(row: typeof sourceSystems.$inferSelect): boolean {
   return Array.isArray(row.domainRules) && row.domainRules.length > 0;
 }
 
-function rowToEntry(row: typeof sourceSystems.$inferSelect): SourceRegistryEntry {
+function rowToEntry(row: typeof sourceSystems.$inferSelect): SourceRegistryEntry | null {
   const crawlPolicy = asRecord(row.crawlPolicy);
   const discovery = Array.isArray(crawlPolicy.discovery) ? crawlPolicy.discovery : [{ type: 'seeded_only' }];
   const jurisdictionScope = Array.isArray(row.jurisdictionScope) ? row.jurisdictionScope : [];
 
-  return SourceRegistryEntrySchema.parse({
+  const parsed = SourceRegistryEntrySchema.safeParse({
     id: row.id,
     displayName: row.name,
     trustLevel: row.trustTier,
+    resourcePurpose: row.resourcePurpose,
     domainRules: Array.isArray(row.domainRules) ? row.domainRules : [],
     discovery,
     crawl: {
@@ -74,6 +75,10 @@ function rowToEntry(row: typeof sourceSystems.$inferSelect): SourceRegistryEntry
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   });
+
+  // Legacy or externally-written rows with an absent/invalid purpose must not
+  // enter the allowlist through an inferred service-catalog classification.
+  return parsed.success ? parsed.data : null;
 }
 
 function entryToRow(entry: SourceRegistryEntry) {
@@ -85,6 +90,7 @@ function entryToRow(entry: SourceRegistryEntry) {
     family: entry.discovery[0]?.type ?? 'seeded_only',
     homepageUrl,
     trustTier: entry.trustLevel,
+    resourcePurpose: entry.resourcePurpose,
     domainRules: entry.domainRules,
     crawlPolicy: {
       ...entry.crawl,
@@ -106,7 +112,10 @@ export function createDrizzleSourceRegistryStore(
         .select()
         .from(sourceSystems)
         .where(eq(sourceSystems.isActive, true));
-      return rows.filter(isRegistryCompatible).map(rowToEntry);
+      return rows
+        .filter(isRegistryCompatible)
+        .map(rowToEntry)
+        .filter((entry): entry is SourceRegistryEntry => entry !== null);
     },
 
     async getById(id: string): Promise<SourceRegistryEntry | null> {

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { EnrichedService } from '@/domain/types';
 import { CRISIS_RESOURCES, ELIGIBILITY_DISCLAIMER } from '@/domain/constants';
 import { DISCOVERY_NEED_IDS, type DiscoveryNeedId } from '@/domain/discoveryNeeds';
+import type { ResourceVerificationStatus } from '@/domain/resourceNavigator';
 import { buildSeekerDiscoveryProfile } from '@/services/profile/discoveryProfile';
 import { selectServiceLinks, type ServiceLink } from '@/services/chat/links';
 import { formatDiscoveryAttributeLabel } from '@/services/search/discoveryPresentation';
@@ -153,14 +154,32 @@ export interface ServiceCard {
   scheduleDescription?: string;
   /** Optional links derived from stored records only (never invented). */
   links?: ServiceLink[];
-  /** Seeker-facing trust band (derived from verification confidence). */
+  /** Seeker-facing record-confidence band; never an implicit provider-verification claim. */
   confidenceBand: 'HIGH' | 'LIKELY' | 'POSSIBLE';
-  /** Seeker-facing trust score (0–100, derived from verification confidence). */
+  /** Record-confidence score (0–100) used for ranking, separate from workflow verification. */
   confidenceScore: number;
   /** Always use qualifying language — never guarantee eligibility */
   eligibilityHint: string;
   /** Deterministic fit reasons derived only from stored facts and active filters/preferences. */
   matchReasons?: string[];
+  /** Distance from the seeker-provided approximate location, when available. */
+  distanceMeters?: number;
+  /** Stored geographic coverage summary. */
+  serviceAreaSummary?: string;
+  /** Stored documents that the provider may request. */
+  requiredDocuments?: string[];
+  /** The clearest action supported by the stored record. */
+  nextStep?: string;
+  /** A safe, deterministic question to ask the provider. */
+  whatToAsk?: string;
+  /** Exact workflow state only when present in stored verification evidence. */
+  verificationStatus?: ResourceVerificationStatus;
+  /** Date tied to the exact verification state, never a guessed source-check date. */
+  verificationLastCheckedAt?: string;
+  /** A stored provider/source page. Presence does not imply it was recently checked. */
+  sourceLabel?: string;
+  sourceUrl?: string;
+  sourceLastCheckedAt?: string;
 }
 
 export const CHAT_RETRIEVAL_STATUSES = [
@@ -383,6 +402,30 @@ export function enrichedServiceToCard(
     context: options?.context,
     links,
   });
+  const eligibilityDescriptions = (enriched.eligibility ?? [])
+    .map((rule) => rule.description?.trim())
+    .filter((description): description is string => Boolean(description))
+    .slice(0, 2);
+  const eligibilityHint = eligibilityDescriptions.length > 0
+    ? `You may qualify if these stored criteria fit: ${eligibilityDescriptions.join(' · ')} Confirm current eligibility with the provider.`
+    : 'You may qualify, but eligibility details are not available in this result. Confirm requirements with the provider.';
+  const serviceAreaSummary = (enriched.serviceAreas ?? [])
+    .map((area) => area.name?.trim() || area.description?.trim() || area.extentType)
+    .filter((area): area is string => Boolean(area))
+    .slice(0, 3)
+    .join(', ') || undefined;
+  const requiredDocuments = (enriched.requiredDocuments ?? [])
+    .map((document) => document.document?.trim())
+    .filter((document): document is string => Boolean(document));
+  const applyLink = links.find((link) => link.kind === 'apply');
+  const providerLink = links.find((link) => link.url === service.url)
+    ?? links.find((link) => ['primary', 'service_page', 'organization_home'].includes(link.kind));
+  const nextStep = service.applicationProcess?.trim()
+    || (applyLink ? `Open ${applyLink.label} and review the provider's intake instructions.` : undefined)
+    || (phone ? 'Call the provider to confirm current hours, eligibility, and intake steps.' : undefined)
+    || (providerLink ? 'Open the provider page and confirm the current intake process.' : undefined)
+    || 'Open ORAN details and confirm the current intake process with the provider.';
+  const verificationLastCheckedAt = organization.verifiedAt?.trim() || undefined;
 
   return {
     serviceId: service.id,
@@ -395,7 +438,16 @@ export function enrichedServiceToCard(
     links: links.length > 0 ? links : undefined,
     confidenceBand: band,
     confidenceScore: trustScore,
-    eligibilityHint: 'You may qualify for this service. Please confirm eligibility with the provider.',
+    eligibilityHint,
     matchReasons: matchReasons.length > 0 ? matchReasons : undefined,
+    distanceMeters: enriched.distanceMeters ?? undefined,
+    serviceAreaSummary,
+    requiredDocuments: requiredDocuments.length > 0 ? requiredDocuments : undefined,
+    nextStep,
+    whatToAsk: `Ask whether ${service.name} is currently available, what you need to bring, and how to start.`,
+    verificationStatus: verificationLastCheckedAt ? 'provider_verified' : undefined,
+    verificationLastCheckedAt,
+    sourceLabel: providerLink ? `${organization.name} provider page` : undefined,
+    sourceUrl: providerLink?.url,
   };
 }

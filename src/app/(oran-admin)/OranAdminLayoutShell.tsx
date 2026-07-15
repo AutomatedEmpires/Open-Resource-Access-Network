@@ -10,7 +10,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/services/auth/client';
 import {
   Activity,
   ArrowRight,
@@ -31,6 +31,7 @@ import { isRoleAtLeast } from '@/services/auth/roles';
 import { AccessDenied } from '@/components/ui/access-denied';
 import { Skeleton } from '@/components/ui/skeleton';
 import AppNav from '@/components/nav/AppNav';
+import { ScopedMobileNav } from '@/components/nav/ScopedMobileNav';
 import { AppFooter } from '@/components/footer';
 import OranAdminContextStrip from '@/components/oran-admin/OranAdminContextStrip';
 
@@ -103,7 +104,7 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg-page)]">
+    <div className="min-h-screen bg-[var(--bg-page)] pb-14 md:pb-0">
       {/* Skip-to-main-content: first focusable element for keyboard / screen-reader users */}
       <a
         href="#main-content"
@@ -190,6 +191,7 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
 
       <main id="main-content" className="container mx-auto max-w-7xl px-4 py-6">{children}</main>
       <AppFooter />
+      <ScopedMobileNav scopeLabel="ORAN admin" pathname={pathname} items={PRIMARY_LINKS} />
     </div>
   );
 }

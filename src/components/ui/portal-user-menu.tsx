@@ -5,7 +5,7 @@
  * (ORAN Admin, Host, Community Admin).
  *
  * Shows the signed-in user's initials, display name (truncated),
- * and a "Sign out" button that calls NextAuth's signOut() to
+ * and a "Sign out" button that clears the Clerk session to
  * cleanly clear the session client-side and redirect to the homepage.
  *
  * Usage:
@@ -18,7 +18,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useSession, signOut } from 'next-auth/react';
+import { useOranAuth } from '@/services/auth/client';
 import { LogOut, User, HelpCircle } from 'lucide-react';
 
 // ──────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ const ROLE_LABELS: Record<string, string> = {
 // Component
 // ──────────────────────────────────────────────────────────────
 export function PortalUserMenu() {
-  const { data: session, status } = useSession();
+  const { data: session, status, signOut } = useOranAuth();
 
   // Don't render until session is resolved
   if (status === 'loading') {
@@ -115,7 +115,7 @@ export function PortalUserMenu() {
       {/* Sign-out button */}
       <button
         type="button"
-        onClick={() => void signOut({ callbackUrl: '/' })}
+        onClick={() => void signOut({ redirectUrl: '/' })}
         className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 min-h-[36px]"
         aria-label={`Sign out (signed in as ${displayName})`}
         title="Sign out"

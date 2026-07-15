@@ -54,6 +54,13 @@ interface SeekerProfileRow {
   urgency_window: string | null;
   documentation_barriers: string[] | null;
   digital_access_barrier: boolean | null;
+  employment_status: string | null;
+  income_range: string | null;
+  household_size: number | null;
+  veteran_service_preference: boolean | null;
+  onboarding_profile_consent: boolean | null;
+  onboarding_consent_version: string | null;
+  onboarding_completed_at: string | Date | null;
   pronouns: string | null;
   profile_headline: string | null;
   avatar_emoji: string | null;
@@ -86,6 +93,14 @@ function checkProfileRateLimit(ip: string) {
   return rateLimit;
 }
 
+function normalizeDbTimestamp(value: string | Date | null): string {
+  if (!value) return '';
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? '' : value.toISOString();
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+}
+
 function mapSeekerProfileRow(row: SeekerProfileRow | undefined): SeekerProfile | null {
   if (!row) return null;
 
@@ -102,6 +117,13 @@ function mapSeekerProfileRow(row: SeekerProfileRow | undefined): SeekerProfile |
     urgencyWindow: (row.urgency_window ?? '') as SeekerProfile['urgencyWindow'],
     documentationBarriers: (row.documentation_barriers ?? EMPTY_SEEKER_PROFILE.documentationBarriers) as SeekerProfile['documentationBarriers'],
     digitalAccessBarrier: row.digital_access_barrier ?? false,
+    employmentStatus: (row.employment_status ?? '') as SeekerProfile['employmentStatus'],
+    incomeRange: (row.income_range ?? '') as SeekerProfile['incomeRange'],
+    householdSize: row.household_size ?? null,
+    veteranServicePreference: row.veteran_service_preference ?? false,
+    onboardingProfileConsent: row.onboarding_profile_consent ?? false,
+    onboardingConsentVersion: row.onboarding_consent_version ?? '',
+    onboardingCompletedAt: normalizeDbTimestamp(row.onboarding_completed_at),
     pronouns: row.pronouns ?? '',
     profileHeadline: row.profile_headline ?? '',
     avatarEmoji: row.avatar_emoji ?? '',
@@ -159,7 +181,10 @@ export async function GET(req: NextRequest) {
       `SELECT user_id, service_interests, age_group, household_type, housing_situation,
               self_identifiers, current_services, accessibility_needs,
               transportation_barrier, preferred_delivery_modes, urgency_window,
-              documentation_barriers, digital_access_barrier, pronouns,
+              documentation_barriers, digital_access_barrier,
+              employment_status, income_range, household_size, veteran_service_preference,
+              onboarding_profile_consent, onboarding_consent_version,
+              onboarding_completed_at, pronouns,
               profile_headline, avatar_emoji, accent_theme,
               contact_phone, contact_email, additional_context
          FROM seeker_profiles
@@ -254,19 +279,37 @@ export async function PUT(req: NextRequest) {
   const { approximateCity, preferredLocale, displayName, phone, seekerProfile } = parsed.data;
 
   try {
-    // Upsert profile (INSERT ON CONFLICT UPDATE)
-    // Note: role and display_name are NOT settable via this endpoint
+    // Identity and authorization fields always come from the authenticated
+    // Clerk -> ORAN context, never from the request body.
     const rows = await executeQuery<UserProfileRow>(
-      `INSERT INTO user_profiles (user_id, display_name, phone, preferred_locale, approximate_city)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO user_profiles (
+         user_id, clerk_user_id, auth_provider,
+         display_name, phone, preferred_locale, approximate_city
+       )
+       VALUES ($1, $2, 'clerk', $3, $4, $5, $6)
        ON CONFLICT (user_id) DO UPDATE SET
-         display_name = COALESCE($2, user_profiles.display_name),
-         phone = COALESCE($3, user_profiles.phone),
-         preferred_locale = COALESCE($4, user_profiles.preferred_locale),
-         approximate_city = COALESCE($5, user_profiles.approximate_city),
+         clerk_user_id = EXCLUDED.clerk_user_id,
+         auth_provider = 'clerk',
+         auth_migrated_at = CASE
+           WHEN user_profiles.clerk_user_id IS DISTINCT FROM EXCLUDED.clerk_user_id
+             OR user_profiles.auth_provider IS DISTINCT FROM 'clerk'
+           THEN COALESCE(user_profiles.auth_migrated_at, now())
+           ELSE user_profiles.auth_migrated_at
+         END,
+         display_name = COALESCE($3, user_profiles.display_name),
+         phone = COALESCE($4, user_profiles.phone),
+         preferred_locale = COALESCE($5, user_profiles.preferred_locale),
+         approximate_city = COALESCE($6, user_profiles.approximate_city),
          updated_at = now()
        RETURNING user_id, display_name, email, phone, auth_provider, preferred_locale, approximate_city`,
-      [authCtx.userId, displayName?.trim() || null, phone?.trim() || null, preferredLocale ?? null, approximateCity ?? null]
+      [
+        authCtx.userId,
+        authCtx.clerkUserId,
+        displayName?.trim() || null,
+        phone?.trim() || null,
+        preferredLocale ?? null,
+        approximateCity ?? null,
+      ]
     );
 
     if (seekerProfile) {
@@ -286,6 +329,13 @@ export async function PUT(req: NextRequest) {
             urgency_window,
             documentation_barriers,
             digital_access_barrier,
+            employment_status,
+            income_range,
+            household_size,
+            veteran_service_preference,
+            onboarding_profile_consent,
+            onboarding_consent_version,
+            onboarding_completed_at,
             pronouns,
             profile_headline,
             avatar_emoji,
@@ -295,7 +345,7 @@ export async function PUT(req: NextRequest) {
             additional_context,
             updated_by_user_id
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $1)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $1)
           ON CONFLICT (user_id) DO UPDATE SET
             service_interests = EXCLUDED.service_interests,
             age_group = EXCLUDED.age_group,
@@ -309,6 +359,13 @@ export async function PUT(req: NextRequest) {
             urgency_window = EXCLUDED.urgency_window,
             documentation_barriers = EXCLUDED.documentation_barriers,
             digital_access_barrier = EXCLUDED.digital_access_barrier,
+            employment_status = EXCLUDED.employment_status,
+            income_range = EXCLUDED.income_range,
+            household_size = EXCLUDED.household_size,
+            veteran_service_preference = EXCLUDED.veteran_service_preference,
+            onboarding_profile_consent = EXCLUDED.onboarding_profile_consent,
+            onboarding_consent_version = EXCLUDED.onboarding_consent_version,
+            onboarding_completed_at = EXCLUDED.onboarding_completed_at,
             pronouns = EXCLUDED.pronouns,
             profile_headline = EXCLUDED.profile_headline,
             avatar_emoji = EXCLUDED.avatar_emoji,
@@ -332,6 +389,13 @@ export async function PUT(req: NextRequest) {
           normalized.urgencyWindow || null,
           normalized.documentationBarriers,
           normalized.digitalAccessBarrier,
+          normalized.employmentStatus || null,
+          normalized.incomeRange || null,
+          normalized.householdSize,
+          normalized.veteranServicePreference,
+          normalized.onboardingProfileConsent,
+          normalized.onboardingConsentVersion || null,
+          normalized.onboardingCompletedAt || null,
           normalized.pronouns || null,
           normalized.profileHeadline || null,
           normalized.avatarEmoji || null,
@@ -347,7 +411,10 @@ export async function PUT(req: NextRequest) {
       `SELECT user_id, service_interests, age_group, household_type, housing_situation,
               self_identifiers, current_services, accessibility_needs,
               transportation_barrier, preferred_delivery_modes, urgency_window,
-              documentation_barriers, digital_access_barrier, pronouns,
+              documentation_barriers, digital_access_barrier,
+              employment_status, income_range, household_size, veteran_service_preference,
+              onboarding_profile_consent, onboarding_consent_version,
+              onboarding_completed_at, pronouns,
               profile_headline, avatar_emoji, accent_theme,
               contact_phone, contact_email, additional_context
          FROM seeker_profiles

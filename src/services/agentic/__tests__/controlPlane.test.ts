@@ -20,20 +20,20 @@ describe('buildAgentControlPlaneSnapshot', () => {
     const snapshot = await buildAgentControlPlaneSnapshot({
       env: {
         NODE_ENV: 'production',
-        DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
-        NEXTAUTH_SECRET: 'secret',
-        NEXTAUTH_URL: 'https://oran.test',
-        INTERNAL_API_KEY: 'internal-key',
-        APPLICATIONINSIGHTS_CONNECTION_STRING: 'InstrumentationKey=test',
-        AZURE_AD_CLIENT_ID: 'entra-id',
-        AZURE_AD_CLIENT_SECRET: 'entra-secret',
-        AZURE_AD_TENANT_ID: 'tenant-id',
-        AZURE_CONTENT_SAFETY_ENDPOINT: 'https://safety.example.cognitiveservices.azure.com',
-        AZURE_CONTENT_SAFETY_KEY: 'safety-key',
-        AZURE_MAPS_KEY: 'maps-key',
-        AZURE_MAPS_SAS_TOKEN: 'maps-sas-token',
-        AZURE_OPENAI_ENDPOINT: 'https://openai.example.openai.azure.com',
-        AZURE_OPENAI_KEY: 'openai-key',
+        DATABASE_URL: 'postgres://oran_backend_runtime.tpatxospkuqvajusuryw:test@aws-0-us-east-1.pooler.supabase.com:6543/postgres?uselibpqcompat=true&sslmode=require',
+        ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+        ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
+        CRON_SECRET: 'vercel-cron-secret',
+        NEXT_PUBLIC_SENTRY_DSN: 'https://public@example.ingest.sentry.io/1',
+        NEXT_PUBLIC_SUPABASE_URL: 'https://project.supabase.co',
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+        CLERK_SECRET_KEY: 'sk_test_example',
+        RESEND_API_KEY: 're_test',
+        RESEND_FROM: 'ORAN <notifications@openresourceaccessnetwork.com>',
+        VERCEL: '1',
+        LLM_ENDPOINT: 'https://llm.example.test',
+        LLM_API_KEY: 'llm-key',
       },
       databaseConfigured: true,
       authConfigured: true,
@@ -53,7 +53,8 @@ describe('buildAgentControlPlaneSnapshot', () => {
 
     expect(snapshot.summary.readinessScore).toBeGreaterThan(60);
     expect(snapshot.summary.posture).toBe('worldclass_foundation');
-    expect(snapshot.integrations.find((item) => item.id === 'app_insights')?.state).toBe('configured');
+    expect(snapshot.integrations.find((item) => item.id === 'sentry')?.state).toBe('configured');
+    expect(snapshot.integrations.find((item) => item.id === 'resend')?.state).toBe('configured');
     expect(snapshot.operators.find((item) => item.id === 'trust_guardian')?.state).toBe('ready');
     expect(snapshot.featureFlags.implementation).toBe('database');
     expect(snapshot.trustModel.openGaps).not.toContain('feature flags are still backed by an in-memory store');

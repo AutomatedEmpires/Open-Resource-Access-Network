@@ -1,6 +1,6 @@
-# Deploy ORAN to Azure (App Service)
+# Legacy rollback: deploy ORAN to Azure App Service
 
-This is the recommended deployment path for ORAN.
+This path is retained only for rollback during the Vercel/Supabase migration. It is not the active production target. Set `AZURE_ROLLBACK_DEPLOY_ENABLED=true` only for an approved rollback. See [STACK_MIGRATION.md](STACK_MIGRATION.md).
 
 ## Overview
 
@@ -122,7 +122,7 @@ If you want a scripted setup, use:
   --github-environment production
 ```
 
-GitHub secrets required:
+GitHub environment variables required for an approved rollback:
 
 - `AZURE_CLIENT_ID`
 - `AZURE_TENANT_ID`
@@ -132,9 +132,11 @@ GitHub secrets required:
 
 GitHub variable gate (recommended):
 
-- `AZURE_DEPLOY_ENABLED=true`
+- `AZURE_ROLLBACK_DEPLOY_ENABLED=true`
 
 Until this variable is set, the deploy workflow will skip automatically.
+
+GitHub environment secrets required by infrastructure deployment include `PG_ADMIN_PASSWORD`, `NEXTAUTH_SECRET`, `INTERNAL_API_KEY`, `AZURE_MAPS_SAS_TOKEN`, and any configured identity-provider secret.
 
 Note: the included deploy workflow targets the `production` GitHub Environment by default.
 

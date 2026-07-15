@@ -15,6 +15,7 @@ import {
 } from '../src/agents/ingestion/sourceRegistry';
 import { closeDb, getDb, getPool } from '../src/db';
 import { geocode, isConfigured as isGeocodingConfigured } from '../src/services/geocoding/azureMaps';
+import type { SourceResourcePurpose } from '../src/agents/ingestion/sourcePurpose';
 
 type CampaignOptions = {
   urls: string[];
@@ -24,6 +25,7 @@ type CampaignOptions = {
   allowedSourceQuality: Set<string>;
   actorId: string;
   registerHosts: SourceTrustLevel | null;
+  resourcePurpose: SourceResourcePurpose;
   expandAllowlisted: boolean;
   expandDepth: number;
   expandMaxPages: number;
@@ -170,6 +172,8 @@ function printUsage(): void {
     '  --actor-id <id>                 Audit actor id (default: system:ingestion-campaign)',
     '  --register-hosts <trust>        Upsert exact-host source entries for supplied URLs',
     '                                  Allowed values: allowlisted, quarantine, blocked',
+    '  --resource-purpose <purpose>    Source use: service_catalog, program_navigation,',
+    '                                  supporting_reference, or excluded',
     '  --dry-run                       Validate env/schema/inputs without running ingestion',
     '  --help                          Show this message',
   ].join('\n'));
@@ -188,6 +192,7 @@ function parseArgs(argv: string[]): CampaignOptions {
   let allowedSourceQuality = new Set(['gov_source', 'edu_source']);
   let actorId = 'system:ingestion-campaign';
   let registerHosts: SourceTrustLevel | null = null;
+  let resourcePurpose: SourceResourcePurpose = 'service_catalog';
   let expandAllowlisted = true;
   let expandDepth = 1;
   let expandMaxPages = 150;
@@ -253,6 +258,21 @@ function parseArgs(argv: string[]): CampaignOptions {
         fail('--register-hosts must be one of: allowlisted, quarantine, blocked');
       }
       registerHosts = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--resource-purpose') {
+      const value = argv[index + 1] ?? '';
+      if (
+        value !== 'service_catalog' &&
+        value !== 'program_navigation' &&
+        value !== 'supporting_reference' &&
+        value !== 'excluded'
+      ) {
+        fail('--resource-purpose must be one of: service_catalog, program_navigation, supporting_reference, excluded');
+      }
+      resourcePurpose = value;
       index += 1;
       continue;
     }
@@ -340,6 +360,7 @@ function parseArgs(argv: string[]): CampaignOptions {
     allowedSourceQuality,
     actorId,
     registerHosts,
+    resourcePurpose,
     expandAllowlisted,
     expandDepth,
     expandMaxPages,
@@ -585,6 +606,7 @@ async function registerHostsIfRequested(
   stores: ReturnType<typeof createIngestionStores>,
   urls: string[],
   trustLevel: SourceTrustLevel | null,
+  resourcePurpose: SourceResourcePurpose,
 ): Promise<number> {
   if (!trustLevel) {
     return 0;
@@ -605,6 +627,7 @@ async function registerHostsIfRequested(
       id,
       displayName: `Campaign Source: ${host}`,
       trustLevel,
+      resourcePurpose,
       domainRules: [{ type: 'exact_host', value: host }],
       discovery: [{ type: 'seeded_only', seedUrls }],
       crawl: {
@@ -724,13 +747,19 @@ export async function main(): Promise<void> {
   const db = getDb();
   const stores = createIngestionStores(db);
 
-  const registeredHosts = await registerHostsIfRequested(stores, campaignUrls, options.registerHosts);
+  const registeredHosts = await registerHostsIfRequested(
+    stores,
+    campaignUrls,
+    options.registerHosts,
+    options.resourcePurpose,
+  );
 
   console.log(`Seed URLs: ${options.urls.length}`);
   console.log(`URLs queued: ${campaignUrls.length}`);
   console.log(`Publish pass: ${options.publishReady ? 'enabled' : 'disabled'}`);
   console.log(`Allowlisted expansion: ${options.expandAllowlisted ? 'enabled' : 'disabled'}`);
   console.log(`Registered hosts: ${registeredHosts}`);
+  console.log(`Registered source purpose: ${options.resourcePurpose}`);
 
   if (options.dryRun) {
     console.log('Dry run complete. Runtime and schema checks passed.');

@@ -14,9 +14,14 @@ import { z } from 'zod';
 import { OranRole } from '@/domain/types';
 import { getAuthContext, shouldEnforceAuth, requireOrgRole, isOranAdmin } from '@/services/auth';
 import { isDatabaseConfigured, executeQuery, withTransaction } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { getIp } from '@/services/security/ip';
 import { captureException } from '@/services/telemetry/sentry';
+import {
+  acquireAuthoritativeMutationGatesShared,
+  assertAuthoritativeEntitiesMutable,
+  ProtectedAuthoritativeMutationConflict,
+} from '@/services/publication/protectedAuthoritativeMutation';
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const HOST_WRITE_RATE_LIMIT_MAX_REQUESTS = 20;
@@ -53,11 +58,17 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:admins:read:${ip}`, {
+  const rl = await checkRateLimitShared(`host:admins:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: 60,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
       return NextResponse.json(
         { error: 'Rate limit exceeded.' },
         {
@@ -117,11 +128,17 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:admins:write:${ip}`, {
+  const rl = await checkRateLimitShared(`host:admins:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
       return NextResponse.json(
         { error: 'Rate limit exceeded.' },
         {
@@ -159,24 +176,53 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
   try {
     const result = await withTransaction(async (client) => {
-      // Get existing member
-      const memberResult = await client.query<OrganizationMember>(
+      await acquireAuthoritativeMutationGatesShared(client);
+      const memberTarget = await client.query<OrganizationMember>(
         `SELECT id, user_id, organization_id, role, status, created_at, updated_at
          FROM organization_members
          WHERE id = $1 AND (status IS NULL OR status != 'deactivated')`,
         [id],
       );
 
-      if (memberResult.rows.length === 0) {
+      if (memberTarget.rows.length === 0) {
         return { error: 'Member not found', status: 404 };
       }
 
-      const member = memberResult.rows[0];
+      const target = memberTarget.rows[0];
 
       // Only host_admin of this org or oran_admin can update roles
-      if (!requireOrgRole(auth, member.organization_id, 'host_admin') && !isOranAdmin(auth)) {
+      if (!requireOrgRole(auth, target.organization_id, 'host_admin') && !isOranAdmin(auth)) {
         return { error: 'Forbidden', status: 403 };
       }
+
+      await assertAuthoritativeEntitiesMutable(client, {
+        organizationIds: [target.organization_id],
+      });
+      const activeOrganization = await client.query<{ id: string }>(
+        `SELECT id
+         FROM organizations
+         WHERE id = $1
+           AND (status IS NULL OR status != 'defunct')
+         FOR UPDATE`,
+        [target.organization_id],
+      );
+      if (!activeOrganization.rows[0]) {
+        return { error: 'Organization is retired', status: 409 };
+      }
+
+      const memberResult = await client.query<OrganizationMember>(
+        `SELECT id, user_id, organization_id, role, status, created_at, updated_at
+         FROM organization_members
+         WHERE id = $1
+           AND organization_id = $2
+           AND (status IS NULL OR status != 'deactivated')
+         FOR UPDATE`,
+        [id, target.organization_id],
+      );
+      if (!memberResult.rows[0]) {
+        return { error: 'Member not found', status: 404 };
+      }
+      const member = memberResult.rows[0];
 
       // If demoting from host_admin, ensure there's at least one other host_admin
       if (member.role === 'host_admin' && newRole !== 'host_admin') {
@@ -209,6 +255,9 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
     return NextResponse.json(result.member);
   } catch (error) {
+    if (error instanceof ProtectedAuthoritativeMutationConflict) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     await captureException(error, { feature: 'api_host_admins_update' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -229,11 +278,17 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:admins:write:${ip}`, {
+  const rl = await checkRateLimitShared(`host:admins:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
       return NextResponse.json(
         { error: 'Rate limit exceeded.' },
         {
@@ -254,24 +309,53 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
 
   try {
     const result = await withTransaction(async (client) => {
-      // Get existing member
-      const memberResult = await client.query<OrganizationMember>(
+      await acquireAuthoritativeMutationGatesShared(client);
+      const memberTarget = await client.query<OrganizationMember>(
         `SELECT id, user_id, organization_id, role, status, created_at, updated_at
          FROM organization_members
          WHERE id = $1 AND (status IS NULL OR status != 'deactivated')`,
         [id],
       );
 
-      if (memberResult.rows.length === 0) {
+      if (memberTarget.rows.length === 0) {
         return { error: 'Member not found', status: 404 };
       }
 
-      const member = memberResult.rows[0];
+      const target = memberTarget.rows[0];
 
       // Only host_admin of this org or oran_admin can remove members
-      if (!requireOrgRole(auth, member.organization_id, 'host_admin') && !isOranAdmin(auth)) {
+      if (!requireOrgRole(auth, target.organization_id, 'host_admin') && !isOranAdmin(auth)) {
         return { error: 'Forbidden', status: 403 };
       }
+
+      await assertAuthoritativeEntitiesMutable(client, {
+        organizationIds: [target.organization_id],
+      });
+      const activeOrganization = await client.query<{ id: string }>(
+        `SELECT id
+         FROM organizations
+         WHERE id = $1
+           AND (status IS NULL OR status != 'defunct')
+         FOR UPDATE`,
+        [target.organization_id],
+      );
+      if (!activeOrganization.rows[0]) {
+        return { error: 'Organization is retired', status: 409 };
+      }
+
+      const memberResult = await client.query<OrganizationMember>(
+        `SELECT id, user_id, organization_id, role, status, created_at, updated_at
+         FROM organization_members
+         WHERE id = $1
+           AND organization_id = $2
+           AND (status IS NULL OR status != 'deactivated')
+         FOR UPDATE`,
+        [id, target.organization_id],
+      );
+      if (!memberResult.rows[0]) {
+        return { error: 'Member not found', status: 404 };
+      }
+      const member = memberResult.rows[0];
 
       // If removing a host_admin, ensure there's at least one other host_admin
       if (member.role === 'host_admin') {
@@ -301,6 +385,9 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
 
     return NextResponse.json({ deleted: true, id: result.id });
   } catch (error) {
+    if (error instanceof ProtectedAuthoritativeMutationConflict) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     await captureException(error, { feature: 'api_host_admins_delete' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

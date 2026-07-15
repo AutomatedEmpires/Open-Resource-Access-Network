@@ -37,11 +37,17 @@ export async function GET(
   }
 
   const ip = getIp(req);
-  const rl = await checkRateLimitShared(`ai-review:${ip}`, {
+  const rl = await checkRateLimitShared(`admin:ingestion:candidates:ai-review:read:${ip}`, {
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
     windowMs: RATE_LIMIT_WINDOW_MS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },

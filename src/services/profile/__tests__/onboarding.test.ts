@@ -23,6 +23,7 @@ describe('privacy-first onboarding contracts', () => {
     expect(normalizeOnboardingDraft({})).toEqual(expect.objectContaining({
       needId: '',
       approximateLocation: '',
+      ageGroup: '',
       householdSize: null,
       employmentStatus: '',
       incomeRange: '',
@@ -40,6 +41,7 @@ describe('privacy-first onboarding contracts', () => {
       approximateLocation: 'Tacoma, WA',
       urgency: 'today',
       audience: 'household',
+      ageGroup: '25_54',
       householdSize: 3,
       employmentStatus: 'unemployed_looking',
       incomeRange: 'under_1500_monthly',
@@ -50,6 +52,7 @@ describe('privacy-first onboarding contracts', () => {
 
     expect(prompt).toContain('I need help with housing.');
     expect(prompt).toContain('Please look near Tacoma, WA.');
+    expect(prompt).toContain('The person who needs help is age 25 to 54.');
     expect(prompt).toContain('My household has 3 people.');
     expect(prompt).toContain('veteran or military-family services');
     expect(prompt).toContain('immigration legal aid');
@@ -62,6 +65,7 @@ describe('privacy-first onboarding contracts', () => {
       customNeed: 'help paying an electric bill',
       urgency: 'prefer_not_to_say',
       audience: 'prefer_not_to_say',
+      ageGroup: 'prefer_not_to_say',
       employmentStatus: 'prefer_not_to_say',
       incomeRange: 'prefer_not_to_say',
     });
@@ -76,6 +80,7 @@ describe('privacy-first onboarding contracts', () => {
       {
         needId: 'housing',
         urgency: 'one_to_two_days',
+        ageGroup: '55_64',
         householdSize: 4,
         employmentStatus: 'employed_part_time',
         incomeRange: '1500_2999_monthly',
@@ -92,6 +97,7 @@ describe('privacy-first onboarding contracts', () => {
     expect(merged.accessibilityNeeds).toEqual(['hearing_support', 'language_interpretation']);
     expect(merged.documentationBarriers).toEqual(['no_ssn']);
     expect(merged.urgencyWindow).toBe('next_day');
+    expect(merged.ageGroup).toBe('55_64');
     expect(merged.householdSize).toBe(4);
     expect(merged.employmentStatus).toBe('employed_part_time');
     expect(merged.incomeRange).toBe('1500_2999_monthly');

@@ -2,25 +2,31 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createDrizzleSourceRecordStore } from '../sourceRecordStore';
 
-function createMockDb(selectResults: unknown[] = [], returningResults: unknown[] = []) {
+function createMockDb(
+  selectResults: unknown[] = [],
+  returningResults: unknown[] = [],
+  updateReturningResults: unknown[] = [],
+) {
   const insertValues: unknown[] = [];
   const updateSets: unknown[] = [];
+  const selectForModes: unknown[] = [];
 
   const db = {
     select: vi.fn(() => {
       const result = selectResults.shift() ?? [];
-      const terminal: any = {
+      const builder: any = {
+        from: vi.fn(() => builder),
+        where: vi.fn(() => builder),
+        limit: vi.fn(() => builder),
+        orderBy: vi.fn(() => builder),
+        for: vi.fn((mode: unknown) => {
+          selectForModes.push(mode);
+          return builder;
+        }),
         then: (
           onFulfilled?: ((value: unknown) => unknown) | null,
           onRejected?: ((reason: unknown) => unknown) | null,
         ) => Promise.resolve(result).then(onFulfilled ?? undefined, onRejected ?? undefined),
-      };
-      const builder: any = {
-        from: vi.fn(() => builder),
-        where: vi.fn(() => builder),
-        limit: vi.fn(() => terminal),
-        orderBy: vi.fn(() => builder),
-        then: terminal.then,
       };
       return builder;
     }),
@@ -37,14 +43,21 @@ function createMockDb(selectResults: unknown[] = [], returningResults: unknown[]
     update: vi.fn(() => ({
       set: vi.fn((value: unknown) => {
         updateSets.push(value);
-        return {
-          where: vi.fn(() => Promise.resolve()),
+        const result = updateReturningResults.shift() ?? [];
+        const builder: any = {
+          where: vi.fn(() => builder),
+          returning: vi.fn(() => Promise.resolve(result)),
+          then: (
+            onFulfilled?: ((value: unknown) => unknown) | null,
+            onRejected?: ((reason: unknown) => unknown) | null,
+          ) => Promise.resolve(undefined).then(onFulfilled ?? undefined, onRejected ?? undefined),
         };
+        return builder;
       }),
     })),
   };
 
-  return { db, insertValues, updateSets };
+  return { db, insertValues, updateSets, selectForModes };
 }
 
 function makeRow(overrides: Record<string, unknown> = {}) {
@@ -143,6 +156,80 @@ describe('sourceRecordStore', () => {
     await store.updateStatus('rec-1', 'failed', 'parse error');
     const set = updateSets[0] as Record<string, unknown>;
     expect(set).toHaveProperty('processingError', 'parse error');
+  });
+
+  it('locks and claims a pending source record with a pending-to-processing CAS', async () => {
+    const pending = makeRow();
+    const processing = makeRow({ processingStatus: 'processing' });
+    const { db, updateSets, selectForModes } = createMockDb(
+      [[pending]],
+      [],
+      [[processing]],
+    );
+    const store = createDrizzleSourceRecordStore(db as never);
+
+    const result = await store.claimPendingForNormalization({
+      id: 'rec-1',
+      sourceFeedId: 'feed-1',
+      sourceRecordType: 'organization',
+      sourceRecordId: 'ext-org-1',
+      payloadSha256: 'abc123',
+    });
+
+    expect(result).toEqual({ claimed: true, sourceRecord: processing });
+    expect(selectForModes).toEqual(['update']);
+    expect(updateSets).toContainEqual(expect.objectContaining({
+      processingStatus: 'processing',
+      processingError: null,
+      processedAt: null,
+    }));
+  });
+
+  it('returns an idempotent non-claim after locking an already normalized record', async () => {
+    const normalized = makeRow({ processingStatus: 'normalized' });
+    const { db, selectForModes } = createMockDb([[normalized]]);
+    const store = createDrizzleSourceRecordStore(db as never);
+
+    const result = await store.claimPendingForNormalization({
+      id: 'rec-1',
+      sourceFeedId: 'feed-1',
+      sourceRecordType: 'organization',
+      sourceRecordId: 'ext-org-1',
+      payloadSha256: 'abc123',
+    });
+
+    expect(result).toEqual({ claimed: false, sourceRecord: normalized });
+    expect(selectForModes).toEqual(['update']);
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale caller identity before the CAS', async () => {
+    const pending = makeRow();
+    const { db } = createMockDb([[pending]]);
+    const store = createDrizzleSourceRecordStore(db as never);
+
+    await expect(store.claimPendingForNormalization({
+      id: 'rec-1',
+      sourceFeedId: 'feed-1',
+      sourceRecordType: 'organization',
+      sourceRecordId: 'ext-org-1',
+      payloadSha256: 'different-hash',
+    })).rejects.toThrow('changed before normalization could claim it');
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('fails when the pending-to-processing CAS unexpectedly loses', async () => {
+    const pending = makeRow();
+    const { db } = createMockDb([[pending]], [], [[]]);
+    const store = createDrizzleSourceRecordStore(db as never);
+
+    await expect(store.claimPendingForNormalization({
+      id: 'rec-1',
+      sourceFeedId: 'feed-1',
+      sourceRecordType: 'organization',
+      sourceRecordId: 'ext-org-1',
+      payloadSha256: 'abc123',
+    })).rejects.toThrow('normalization claim was lost');
   });
 
   it('listPending returns pending records in FIFO order', async () => {

@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { isDatabaseConfigured, executeQuery } from '@/services/db/postgres';
+import { isDatabaseConfigured, executeQuery, withTransaction } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
@@ -24,6 +24,10 @@ import {
   getServicesNeedingEmbedding,
   updateServiceEmbedding,
 } from '@/services/search/embeddings';
+import {
+  acquireAuthoritativeMutationGatesShared,
+  assertAuthoritativeEntitiesMutable,
+} from '@/services/publication/protectedAuthoritativeMutation';
 
 const ReindexSchema = z.object({
   limit: z.number().int().min(1).max(500).default(100),
@@ -34,11 +38,17 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = await checkRateLimitShared(ip, {
+  const rl = await checkRateLimitShared(`admin:embeddings:reindex:write:${ip}`, {
     maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
     windowMs: RATE_LIMIT_WINDOW_MS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
@@ -73,7 +83,17 @@ export async function POST(req: NextRequest) {
       const text = buildServiceEmbeddingText(svc);
       const embedding = await embedForIndexing(text);
       if (embedding) {
-        await updateServiceEmbedding(svc.id, embedding, executeQuery);
+        await withTransaction(async (client) => {
+          await acquireAuthoritativeMutationGatesShared(client);
+          await assertAuthoritativeEntitiesMutable(client, { serviceIds: [svc.id] });
+          await updateServiceEmbedding(
+            svc.id,
+            embedding,
+            text,
+            svc.source_updated_at,
+            async (sql, params) => (await client.query(sql, params)).rows,
+          );
+        });
         reindexed++;
       } else {
         failed++;

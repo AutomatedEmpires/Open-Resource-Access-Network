@@ -6,6 +6,7 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import ServiceDetailContent from './ServiceDetailClient';
+import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy';
 
 async function getBaseUrlFromHeaders(): Promise<string> {
   const defaultBaseUrl = 'https://openresourceaccessnetwork.com';
@@ -42,7 +43,8 @@ interface ServiceMeta {
 
 async function fetchServiceMeta(id: string, baseUrl: string): Promise<ServiceMeta | null> {
   try {
-    const res = await fetch(`${baseUrl}/api/services?ids=${encodeURIComponent(id)}`, {
+    const allowedBaseUrl = assertAllowedRuntimeEndpoint(baseUrl, 'service metadata base URL');
+    const res = await fetch(`${allowedBaseUrl}/api/services?ids=${encodeURIComponent(id)}`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return null;

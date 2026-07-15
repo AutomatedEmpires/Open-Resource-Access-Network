@@ -15,10 +15,15 @@ const authMocks = vi.hoisted(() => ({
   requireOrgAccess: vi.fn(),
   isOranAdmin: vi.fn(),
 }));
+const protectedMutationMocks = vi.hoisted(() => ({
+  acquireAuthoritativeMutationGatesShared: vi.fn(),
+  assertAuthoritativeEntitiesMutable: vi.fn(),
+}));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimit: rateLimitMock,
+  checkRateLimitShared: rateLimitMock,
 }));
 vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
@@ -27,6 +32,10 @@ vi.mock('@/services/security/ip', () => ({
   getIp: () => '127.0.0.1',
 }));
 vi.mock('@/services/auth', () => authMocks);
+vi.mock('@/services/publication/protectedAuthoritativeMutation', () => ({
+  ...protectedMutationMocks,
+  ProtectedAuthoritativeMutationConflict: class ProtectedAuthoritativeMutationConflict extends Error {},
+}));
 
 type RequestOptions = {
   search?: string;
@@ -89,6 +98,8 @@ beforeEach(() => {
   authMocks.requireOrgRole.mockReturnValue(true);
   authMocks.requireOrgAccess.mockReturnValue(true);
   authMocks.isOranAdmin.mockReturnValue(false);
+  protectedMutationMocks.acquireAuthoritativeMutationGatesShared.mockResolvedValue(undefined);
+  protectedMutationMocks.assertAuthoritativeEntitiesMutable.mockResolvedValue(undefined);
 });
 
 describe('host admins collection extra coverage', () => {
@@ -302,12 +313,14 @@ describe('host admins collection extra coverage', () => {
     expect(invalid.status).toBe(400);
 
     authMocks.getAuthContext.mockResolvedValueOnce({ userId: USER_ID });
-    dbMocks.executeQuery.mockResolvedValueOnce([]);
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: {
+      query: ReturnType<typeof vi.fn>;
+    }) => Promise<unknown>) => callback({ query: vi.fn().mockResolvedValue({ rows: [] }) }));
     const notFound = await PATCH(createRequest({ jsonBody: { membershipId: MEMBER_ID, action: 'decline' } }));
     expect(notFound.status).toBe(404);
 
     authMocks.getAuthContext.mockResolvedValueOnce({ userId: USER_ID });
-    dbMocks.executeQuery.mockRejectedValueOnce(new Error('update failed'));
+    dbMocks.withTransaction.mockRejectedValueOnce(new Error('update failed'));
     const failed = await PATCH(createRequest({ jsonBody: { membershipId: MEMBER_ID, action: 'accept' } }));
     expect(failed.status).toBe(500);
     expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(Error), {

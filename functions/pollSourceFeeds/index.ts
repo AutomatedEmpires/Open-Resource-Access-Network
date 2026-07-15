@@ -5,6 +5,8 @@
  * and 211 feeds are polled on schedule instead of relying on manual admin runs.
  */
 
+import { assertLegacyAzureFunctionsArchived } from '../archiveBoundary';
+
 export interface TimerInfo {
   schedule: { isRunning: boolean };
   isPastDue: boolean;
@@ -25,6 +27,7 @@ function isEnabled(value: string | undefined): boolean {
 }
 
 export async function pollSourceFeeds(timer: TimerInfo): Promise<void> {
+  assertLegacyAzureFunctionsArchived();
   if (!isEnabled(process.env.SOURCE_FEED_POLLING_ENABLED)) {
     console.log('[pollSourceFeeds] SOURCE_FEED_POLLING_ENABLED disabled — skipping');
     return;

@@ -12,7 +12,15 @@ import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
-import { advance, acquireLock, releaseLock } from '@/services/workflow/engine';
+import {
+  buildCommunitySubmissionScope,
+  getCommunityAdminScope,
+} from '@/services/community/scope';
+import { acquireLivePublicationGateShared } from '@/services/publication/liveEntityMerge';
+import {
+  advanceInTransaction,
+  sendTerminalStatusEmail,
+} from '@/services/workflow/engine';
 import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -58,7 +66,13 @@ export async function GET(req: NextRequest) {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
@@ -88,8 +102,15 @@ export async function GET(req: NextRequest) {
     const offset = (page - 1) * limit;
 
     const conditions = [`s.submission_type = 'appeal'`];
-    const params: (string | number)[] = [];
+    const params: unknown[] = [];
     let paramIdx = 1;
+
+    if (authCtx.role !== 'oran_admin') {
+      const scope = await getCommunityAdminScope(authCtx.userId);
+      const scopeCondition = buildCommunitySubmissionScope('s', scope, params);
+      if (scopeCondition) conditions.push(scopeCondition);
+      paramIdx = params.length + 1;
+    }
 
     if (status) {
       conditions.push(`s.status = $${paramIdx}`);
@@ -158,7 +179,13 @@ export async function POST(req: NextRequest) {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
@@ -191,75 +218,219 @@ export async function POST(req: NextRequest) {
   const { appealId, decision, notes } = parsed.data;
 
   try {
-    // Acquire lock to prevent concurrent decisions
-    const locked = await acquireLock(appealId, authCtx.userId);
-    if (!locked) {
+    const scope = authCtx.role === 'oran_admin'
+      ? null
+      : await getCommunityAdminScope(authCtx.userId);
+    const atomicResult = await withTransaction(async (client) => {
+      await acquireLivePublicationGateShared(client);
+      // Resolve the typed lane under a row lock before changing the logical
+      // review lock, notes, workflow state, or original submission.
+      const appealParams: unknown[] = [appealId];
+      const appealScope = scope
+        ? buildCommunitySubmissionScope('appeal', scope, appealParams)
+        : null;
+      const appealRows = await client.query<{
+        payload: Record<string, unknown> | null;
+        status: SubmissionStatus;
+      }>(
+        `SELECT appeal.payload, appeal.status
+         FROM submissions appeal
+         WHERE appeal.id = $1
+           AND appeal.submission_type = 'appeal'
+           ${appealScope ? `AND ${appealScope}` : ''}
+         FOR UPDATE OF appeal`,
+        appealParams,
+      );
+      const appeal = appealRows.rows[0];
+      if (!appeal) return { kind: 'not_found' } as const;
+      if (!['submitted', 'returned', 'needs_review', 'under_review'].includes(appeal.status)) {
+        return { kind: 'invalid_state', status: appeal.status } as const;
+      }
+
+      const originalId = appeal.payload?.original_submission_id;
+      let originalToReopen: string | null = null;
+
+      if (decision === 'approved' && typeof originalId === 'string') {
+        // Serialize against the scanner so an appeal cannot race a new
+        // freshness finding onto the original submission after this check.
+        await client.query(
+          `SELECT pg_catalog.pg_advisory_xact_lock(
+             pg_catalog.hashtextextended('oran:resource-freshness-scan', 0)
+           )`,
+        );
+        const originalRows = await client.query<{
+          status: string;
+          has_resource_freshness_packet: boolean;
+          has_resource_freshness_finding: boolean;
+        }>(
+          `SELECT original.status,
+                  coalesce(original.payload, '{}'::jsonb) ? 'resourceFreshness'
+                    AS has_resource_freshness_packet,
+                  EXISTS (
+                    SELECT 1
+                    FROM oran_internal.resource_freshness_findings finding
+                    WHERE finding.submission_id = original.id
+                  ) AS has_resource_freshness_finding
+           FROM submissions original
+           WHERE original.id = $1
+           FOR UPDATE OF original`,
+          [originalId],
+        );
+        const original = originalRows.rows[0];
+        if (
+          original?.has_resource_freshness_packet
+          || original?.has_resource_freshness_finding
+        ) {
+          return { kind: 'freshness_original' } as const;
+        }
+        if (original?.status === 'denied') originalToReopen = originalId;
+      }
+
+      const lockRows = await client.query<{ id: string }>(
+        `UPDATE submissions
+         SET is_locked = true, locked_at = NOW(), locked_by_user_id = $1,
+             assigned_to_user_id = $1, updated_at = NOW()
+         WHERE id = $2
+           AND submission_type = 'appeal'
+           AND (is_locked = false OR locked_by_user_id = $1)
+           AND (assigned_to_user_id IS NULL OR assigned_to_user_id = $1)
+         RETURNING id`,
+        [authCtx.userId, appealId],
+      );
+      if (lockRows.rows.length === 0) return { kind: 'locked' } as const;
+
+      if (notes) {
+        await client.query(
+          `UPDATE submissions
+           SET reviewer_notes = $1, updated_at = NOW()
+           WHERE id = $2 AND submission_type = 'appeal'`,
+          [notes, appealId],
+        );
+      }
+
+      // Appeals are created in submitted and may be returned for more
+      // information. Route them through the same auditable review states as
+      // every other manual decision before applying a terminal outcome.
+      const routing: Partial<Record<SubmissionStatus, SubmissionStatus>> = {
+        returned: 'submitted',
+        submitted: 'needs_review',
+        needs_review: 'under_review',
+      };
+      let currentStatus = appeal.status;
+      while (currentStatus !== 'under_review') {
+        const nextStatus = routing[currentStatus];
+        if (!nextStatus) {
+          return { kind: 'invalid_state', status: currentStatus } as const;
+        }
+        const routed = await advanceInTransaction(client, {
+          submissionId: appealId,
+          toStatus: nextStatus,
+          actorUserId: authCtx.userId,
+          actorRole: authCtx.role,
+          reason: 'Appeal routed for manual decision',
+          metadata: { appealReviewRouting: true },
+        });
+        if (!routed.success) {
+          await client.query(
+            `UPDATE submissions
+             SET is_locked = false, locked_at = NULL, locked_by_user_id = NULL,
+                 updated_at = NOW()
+             WHERE id = $1
+               AND submission_type = 'appeal'
+               AND locked_by_user_id = $2`,
+            [appealId, authCtx.userId],
+          );
+          return { kind: 'transition_failed', result: routed } as const;
+        }
+        currentStatus = nextStatus;
+      }
+
+      const result = await advanceInTransaction(client, {
+        submissionId: appealId,
+        toStatus: decision as SubmissionStatus,
+        actorUserId: authCtx.userId,
+        actorRole: authCtx.role,
+        reason: notes ?? `Appeal ${decision}`,
+        metadata: { decision },
+      });
+
+      if (!result.success) {
+        await client.query(
+          `UPDATE submissions
+           SET is_locked = false, locked_at = NULL, locked_by_user_id = NULL,
+               updated_at = NOW()
+           WHERE id = $1
+             AND submission_type = 'appeal'
+             AND locked_by_user_id = $2`,
+          [appealId, authCtx.userId],
+        );
+        return { kind: 'transition_failed', result } as const;
+      }
+
+      // Re-opening is a projection of the appeal decision, so it must commit
+      // atomically with the appeal transition and its audit record.
+      if (originalToReopen) {
+        const reopened = await client.query<{ id: string }>(
+          `UPDATE submissions
+           SET status = 'needs_review',
+               reviewer_notes = 'Re-opened after successful appeal',
+               updated_at = NOW()
+           WHERE id = $1 AND status = 'denied'
+           RETURNING id`,
+          [originalToReopen],
+        );
+        if (reopened.rows.length === 0) {
+          throw new Error('Original submission could not be re-opened atomically');
+        }
+
+        await client.query(
+          `INSERT INTO submission_transitions
+             (submission_id, from_status, to_status, actor_user_id, actor_role,
+              reason, gates_checked, gates_passed, metadata)
+           VALUES ($1, 'denied', 'needs_review', $2, $3, $4, '[]', true, $5)`,
+          [
+            originalToReopen,
+            authCtx.userId,
+            authCtx.role,
+            'Re-opened after appeal approved',
+            JSON.stringify({ appeal_id: appealId }),
+          ],
+        );
+      }
+
+      return { kind: 'success', result } as const;
+    });
+
+    if (atomicResult.kind === 'not_found') {
+      return NextResponse.json({ error: 'Appeal not found' }, { status: 404 });
+    }
+    if (atomicResult.kind === 'freshness_original') {
+      return NextResponse.json(
+        { error: 'Resource freshness decisions cannot be re-opened through appeals' },
+        { status: 409 },
+      );
+    }
+    if (atomicResult.kind === 'invalid_state') {
+      return NextResponse.json(
+        { error: `Appeal cannot be decided from status ${atomicResult.status}` },
+        { status: 409 },
+      );
+    }
+    if (atomicResult.kind === 'locked') {
       return NextResponse.json(
         { error: 'Appeal is currently being reviewed by another admin' },
         { status: 409 },
       );
     }
-
-    // Save reviewer notes before advancing (like admin/approvals pattern)
-    if (notes) {
-      await executeQuery(
-        `UPDATE submissions SET reviewer_notes = $1, updated_at = NOW() WHERE id = $2`,
-        [notes, appealId],
-      );
-    }
-
-    // Use WorkflowEngine for full gate checks, transition validation, and notifications
-    const result = await advance({
-      submissionId: appealId,
-      toStatus: decision as SubmissionStatus,
-      actorUserId: authCtx.userId,
-      actorRole: authCtx.role,
-      reason: notes ?? `Appeal ${decision}`,
-      metadata: { decision },
-    });
-
-    if (!result.success) {
-      // Release lock so the appeal doesn't remain stuck
-      await releaseLock(appealId, authCtx.userId, false);
+    if (atomicResult.kind === 'transition_failed') {
       return NextResponse.json(
-        { error: result.error ?? 'Cannot apply this decision' },
+        { error: atomicResult.result.error ?? 'Cannot apply this decision' },
         { status: 409 },
       );
     }
 
-    // Appeal-specific side effect: re-open original submission on approval
-    if (decision === 'approved') {
-      await withTransaction(async (client) => {
-        const appealRow = await client.query<{ payload: Record<string, unknown> }>(
-          `SELECT payload FROM submissions WHERE id = $1`,
-          [appealId],
-        );
-        const originalId = appealRow.rows[0]?.payload?.original_submission_id;
-        if (typeof originalId === 'string') {
-          await client.query(
-            `UPDATE submissions
-             SET status = 'needs_review', reviewer_notes = 'Re-opened after successful appeal',
-                 updated_at = NOW()
-             WHERE id = $1 AND status = 'denied'`,
-            [originalId],
-          );
-
-          await client.query(
-            `INSERT INTO submission_transitions
-               (submission_id, from_status, to_status, actor_user_id, actor_role,
-                reason, gates_checked, gates_passed, metadata)
-             VALUES ($1, 'denied', 'needs_review', $2, $3, $4, '[]', true, $5)`,
-            [
-              originalId,
-              authCtx.userId,
-              authCtx.role,
-              'Re-opened after appeal approved',
-              JSON.stringify({ appeal_id: appealId }),
-            ],
-          );
-        }
-      });
-    }
+    const { result } = atomicResult;
+    await sendTerminalStatusEmail(result.submissionId, result.toStatus);
 
     return NextResponse.json(
       {
@@ -274,10 +445,6 @@ export async function POST(req: NextRequest) {
       { headers: { 'Cache-Control': 'private, no-store' } },
     );
   } catch (error) {
-    // Best-effort lock release on unexpected failure
-    try {
-      await releaseLock(appealId, authCtx.userId, false);
-    } catch { /* lock release is best-effort */ }
     await captureException(error, { feature: 'api_admin_appeals_decide' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

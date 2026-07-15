@@ -5,8 +5,8 @@
 - Owner role: Data Platform Lead
 - Reviewers: Ingestion Operations Lead, Security Lead
 - Operational status: active
-- Last reviewed (UTC): 2026-07-13
-- Next review due (UTC): 2026-10-13
+- Last reviewed (UTC): 2026-07-14
+- Next review due (UTC): 2026-10-14
 - Severity scope: SEV-2 to SEV-3
 
 ## Purpose And Scope
@@ -57,6 +57,19 @@ supporting-reference source such as a benefit retailer directory.
    rules and add a regression fixture.
 5. Reprocess in bounded batches with before/after counts and an auditable rollback.
 
+## Offline Database Maintenance
+
+The verified-hotline authority and USDA retailer-quarantine routines are
+owner-only database maintenance paths. They do not run through the application
+publication gate and must remain non-executable by runtime, browser, anonymous,
+and service roles.
+
+Before an authorized DBA invokes one of those routines, drain and pause both
+live publication writers and ORAN-admin merges. Confirm no publication or merge
+transaction remains in flight, run one bounded maintenance step, validate its
+batch and member counts, and then resume application writers. Do not overlap
+these routines with a deploy or grant them to make automation convenient.
+
 ## Validation
 
 - All public retrieval surfaces exclude quarantined, inactive, non-publishable,
@@ -78,3 +91,5 @@ in the incident, followed by typecheck. Do not use a production write as a test.
 - `src/services/freshness/resourceFreshness.ts`
 - `db/migrations/0060_source_purpose_fail_closed.sql`
 - `db/migrations/0063_resource_freshness_review_lane.sql`
+- `db/migrations/0057_resource_quarantine_batching.sql`
+- `db/migrations/0065_verified_hotline_authority.sql`

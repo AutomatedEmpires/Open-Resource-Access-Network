@@ -1,5 +1,5 @@
 /**
- * ORAN Azure Speech TTS Service — Idea 15
+ * Retired Azure Speech TTS Adapter
  *
  * Converts text to speech using Azure Cognitive Services Speech REST API.
  * Returns MP3 audio as a Buffer, or null if not configured or on any error.
@@ -10,10 +10,11 @@
  * Free tier (F0): 5 hours/month free.
  * Neural HD (S0): $16/1M chars.
  *
- * Requires env:
- *   AZURE_SPEECH_KEY    — subscription key (Key Vault reference in production)
- *   AZURE_SPEECH_REGION — e.g. eastus
+ * Retained for historical tests only. Production returns null until a reviewed
+ * non-Microsoft speech provider is implemented.
  */
+
+import { isRetiredMicrosoftProviderRuntime } from '@/services/runtime/providerPolicy';
 
 // ============================================================
 // TYPES
@@ -49,6 +50,7 @@ const DEFAULT_LOCALE = 'en-US';
 // ============================================================
 
 function getConfig(): { key: string; region: string } | null {
+  if (isRetiredMicrosoftProviderRuntime()) return null;
   const key = process.env.AZURE_SPEECH_KEY;
   const region = process.env.AZURE_SPEECH_REGION;
   if (!key || !region) return null;

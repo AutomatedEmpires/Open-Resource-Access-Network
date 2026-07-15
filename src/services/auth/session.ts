@@ -96,6 +96,14 @@ async function getUserSecurity(clerkUserId: string): Promise<UserSecurityRow> {
   }
 
   try {
+    const erasureRows = await executeQuery<{ erased: boolean }>(
+      `SELECT oran_internal.is_account_erased($1::text) AS erased`,
+      [clerkUserId],
+    );
+    if (erasureRows[0]?.erased) {
+      return { user_id: clerkUserId, role: 'seeker', account_status: 'frozen' };
+    }
+
     const rows = await executeQuery<UserSecurityRow>(
       `SELECT user_id, role, account_status
        FROM user_profiles

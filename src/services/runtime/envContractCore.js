@@ -1,3 +1,5 @@
+import { findProhibitedMicrosoftRuntimeSettings } from './providerPolicyCore.js';
+
 const RULES_BY_TARGET = {
   webapp: [
     { name: 'DATABASE_URL', level: 'critical', productionOnly: true },
@@ -15,15 +17,9 @@ const RULES_BY_TARGET = {
     { name: 'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY', level: 'warning', productionOnly: true },
     { name: 'REDIS_URL', level: 'warning', productionOnly: true },
   ],
-  functions: [
-    { name: 'AzureWebJobsStorage', level: 'critical', productionOnly: true },
-    { name: 'FUNCTIONS_WORKER_RUNTIME', level: 'critical', productionOnly: true },
-    { name: 'ORAN_APP_URL', level: 'critical', productionOnly: true },
-    { name: 'INTERNAL_API_KEY', level: 'critical', productionOnly: true },
-    { name: 'NEXT_PUBLIC_SENTRY_DSN', level: 'warning', productionOnly: true },
-    { name: 'FOUNDRY_KEY', level: 'warning', whenPresent: 'FOUNDRY_ENDPOINT' },
-    { name: 'FOUNDRY_ENDPOINT', level: 'warning', whenPresent: 'FOUNDRY_KEY' },
-  ],
+  // Kept as an explicit rejected target so old deployment automation fails
+  // closed instead of silently recreating an Azure Functions runtime.
+  functions: [],
 };
 
 function isTruthyValue(value) {
@@ -88,6 +84,13 @@ export function validateRuntimeEnv(target, envSource = process.env, options = {}
   const presentNames = getPresentNames(envSource);
   const missingCritical = [];
   const warnings = [];
+  const prohibitedSettings = nodeEnv === 'production'
+    ? findProhibitedMicrosoftRuntimeSettings(envSource)
+    : [];
+
+  if (nodeEnv === 'production' && target === 'functions') {
+    prohibitedSettings.push('runtime-target:functions');
+  }
 
   for (const rule of rules) {
     if (rule.productionOnly && nodeEnv !== 'production') {
@@ -117,8 +120,9 @@ export function validateRuntimeEnv(target, envSource = process.env, options = {}
   return {
     target,
     nodeEnv,
-    ok: missingCritical.length === 0,
+    ok: missingCritical.length === 0 && prohibitedSettings.length === 0,
     missingCritical: uniqueSorted(missingCritical),
     warnings: uniqueSorted(warnings),
+    prohibitedSettings: uniqueSorted(prohibitedSettings),
   };
 }

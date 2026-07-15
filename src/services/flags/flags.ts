@@ -46,6 +46,23 @@ interface FeatureFlagRow {
 
 const FLAG_CACHE_TTL_MS = 5_000;
 
+/**
+ * These flags still point exclusively at retired Microsoft adapters. Database
+ * state cannot reactivate them; a reviewed non-Microsoft implementation must
+ * remove the corresponding name from this set as part of its release.
+ */
+const PROVIDER_BLOCKED_FLAGS = new Set<string>([
+  FEATURE_FLAGS.LLM_SUMMARIZE,
+  FEATURE_FLAGS.CONTENT_SAFETY_CRISIS,
+  FEATURE_FLAGS.VECTOR_SEARCH,
+  FEATURE_FLAGS.LLM_INTENT_ENRICH,
+  FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS,
+  FEATURE_FLAGS.TTS_SUMMARIES,
+  FEATURE_FLAGS.LLM_ADMIN_ASSIST,
+  FEATURE_FLAGS.LLM_FEEDBACK_TRIAGE,
+  FEATURE_FLAGS.DOC_INTELLIGENCE_INTAKE,
+]);
+
 function normalizeRolloutPct(rolloutPct: number | undefined): number {
   if (typeof rolloutPct !== 'number' || Number.isNaN(rolloutPct)) return 0;
   const clamped = Math.max(0, Math.min(100, rolloutPct));
@@ -53,8 +70,11 @@ function normalizeRolloutPct(rolloutPct: number | undefined): number {
 }
 
 function cloneFlag(flag: FeatureFlag): FeatureFlag {
+  const providerBlocked = PROVIDER_BLOCKED_FLAGS.has(flag.name);
   return {
     ...flag,
+    enabled: providerBlocked ? false : flag.enabled,
+    rolloutPct: providerBlocked ? 0 : flag.rolloutPct,
     createdAt: new Date(flag.createdAt),
     updatedAt: new Date(flag.updatedAt),
   };
@@ -96,17 +116,17 @@ const DEFAULT_FLAGS: FeatureFlag[] = [
   makeFlag(FEATURE_FLAGS.NOTIFICATIONS_IN_APP, true, 100, 'Enable in-app notification surfaces and events.'),
   makeFlag(
     FEATURE_FLAGS.CONTENT_SAFETY_CRISIS,
-    true,
-    100,
-    'Run Azure AI Content Safety as a second-layer crisis gate after keyword checks.',
+    false,
+    0,
+    'Reserved for a reviewed non-Microsoft second-layer crisis safety provider.',
   ),
   makeFlag(FEATURE_FLAGS.VECTOR_SEARCH, false, 0, 'Enable pgvector-backed semantic search and re-ranking.'),
   makeFlag(FEATURE_FLAGS.LLM_INTENT_ENRICH, false, 0, 'Enable LLM-based intent enrichment for ambiguous chat queries.'),
   makeFlag(FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS, false, 0, 'Enable translated service descriptions post-retrieval.'),
-  makeFlag(FEATURE_FLAGS.TTS_SUMMARIES, false, 0, 'Enable spoken service summaries via Azure Speech.'),
+  makeFlag(FEATURE_FLAGS.TTS_SUMMARIES, false, 0, 'Enable spoken summaries after a provider review.'),
   makeFlag(FEATURE_FLAGS.LLM_ADMIN_ASSIST, false, 0, 'Enable LLM-assisted admin review suggestions.'),
   makeFlag(FEATURE_FLAGS.LLM_FEEDBACK_TRIAGE, false, 0, 'Enable LLM classification of submitted feedback comments.'),
-  makeFlag(FEATURE_FLAGS.DOC_INTELLIGENCE_INTAKE, false, 0, 'Enable Azure Document Intelligence for PDF intake parsing.'),
+  makeFlag(FEATURE_FLAGS.DOC_INTELLIGENCE_INTAKE, false, 0, 'Enable PDF intake parsing after a provider review.'),
   makeFlag(FEATURE_FLAGS.TELEMETRY_INTERACTIONS, false, 0, 'Enable privacy-safe UI breadcrumb telemetry.'),
   makeFlag(FEATURE_FLAGS.SEEKER_PLANS_ENABLED, false, 0, 'Enable the local-first seeker execution plan workspace and linked plan actions.'),
   makeFlag(FEATURE_FLAGS.SEEKER_REMINDERS_ENABLED, false, 0, 'Enable seeker reminder scheduling for plan items.'),
@@ -159,6 +179,7 @@ function hashBucket(subjectKey: string, flagName: string): number {
 
 function evaluateFlag(flag: FeatureFlag | null, subjectKey?: string): boolean {
   if (!flag || !flag.enabled) return false;
+  if (PROVIDER_BLOCKED_FLAGS.has(flag.name)) return false;
   if (flag.rolloutPct <= 0) return false;
   if (flag.rolloutPct >= 100) return true;
   if (!subjectKey) return false;
@@ -188,6 +209,9 @@ export class InMemoryFlagService implements FlagService {
     rolloutPct = 100,
     options: FlagUpdateOptions = {},
   ): Promise<void> {
+    const providerBlocked = PROVIDER_BLOCKED_FLAGS.has(flagName);
+    const effectiveEnabled = providerBlocked ? false : enabled;
+    const effectiveRolloutPct = providerBlocked ? 0 : normalizeRolloutPct(rolloutPct);
     const existing = this.store.get(flagName);
     const defaultFlag = getDefaultFlag(flagName);
     const now = new Date();
@@ -195,8 +219,8 @@ export class InMemoryFlagService implements FlagService {
     this.store.set(flagName, {
       id: existing?.id ?? defaultFlag?.id ?? `flag-${flagName}`,
       name: flagName,
-      enabled,
-      rolloutPct: normalizeRolloutPct(rolloutPct),
+      enabled: effectiveEnabled,
+      rolloutPct: effectiveRolloutPct,
       description: existing?.description ?? defaultFlag?.description ?? null,
       createdByUserId: existing?.createdByUserId ?? defaultFlag?.createdByUserId ?? actorUserId,
       updatedByUserId: actorUserId ?? existing?.updatedByUserId ?? defaultFlag?.updatedByUserId ?? null,
@@ -312,10 +336,12 @@ export class HybridFlagService implements FlagService {
     rolloutPct = 100,
     options: FlagUpdateOptions = {},
   ): Promise<void> {
-    const normalizedRolloutPct = normalizeRolloutPct(rolloutPct);
+    const providerBlocked = PROVIDER_BLOCKED_FLAGS.has(flagName);
+    const effectiveEnabled = providerBlocked ? false : enabled;
+    const normalizedRolloutPct = providerBlocked ? 0 : normalizeRolloutPct(rolloutPct);
 
     if (!isDatabaseConfigured()) {
-      await this.fallback.setFlag(flagName, enabled, normalizedRolloutPct, options);
+      await this.fallback.setFlag(flagName, effectiveEnabled, normalizedRolloutPct, options);
       this.invalidateCache();
       return;
     }
@@ -338,13 +364,13 @@ export class HybridFlagService implements FlagService {
            updated_at = now()
        RETURNING id, name, enabled, rollout_pct, description, created_by_user_id,
                  updated_by_user_id, created_at, updated_at`,
-      [flagName, enabled, normalizedRolloutPct, description, actorUserId],
+      [flagName, effectiveEnabled, normalizedRolloutPct, description, actorUserId],
     );
 
-    const after = rows[0] ? mapRowToFeatureFlag(rows[0]) : null;
+    const after = rows[0] ? cloneFlag(mapRowToFeatureFlag(rows[0])) : null;
 
     if (after) {
-      await this.fallback.setFlag(flagName, enabled, normalizedRolloutPct, options);
+      await this.fallback.setFlag(flagName, effectiveEnabled, normalizedRolloutPct, options);
       try {
         await executeQuery(
           `INSERT INTO audit_logs

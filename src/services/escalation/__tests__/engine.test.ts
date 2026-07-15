@@ -18,6 +18,8 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  dbMocks.executeQuery.mockReset();
+  dbMocks.withTransaction.mockReset();
   dbMocks.executeQuery.mockResolvedValue([]);
 });
 
@@ -374,9 +376,47 @@ describe('escalateBreachedSubmissions', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
 
+    const transactionQuery = vi.fn(async (sql: string) => {
+      if (sql.includes('FROM organizations')) {
+        return { rows: [{ id: 'org-1', name: 'Silent Org' }] };
+      }
+      if (sql.includes('FROM services') && sql.includes('FOR UPDATE')) {
+        return { rows: [{ id: 'svc-1' }, { id: 'svc-2' }, { id: 'svc-3' }] };
+      }
+      if (sql.includes('FROM organization_members')) {
+        return {
+          rows: [{
+            host_admin_user_ids: ['host-1', 'host-2'],
+            all_silent: true,
+          }],
+        };
+      }
+      if (sql.includes('FROM notification_events')) return { rows: [] };
+      if (sql.includes('UPDATE services')) {
+        return { rows: [{ id: 'svc-1' }, { id: 'svc-2' }, { id: 'svc-3' }] };
+      }
+      return { rows: [] };
+    });
+    dbMocks.withTransaction.mockImplementation(async (fn: (client: { query: typeof transactionQuery }) => unknown) => (
+      fn({ query: transactionQuery })
+    ));
+
     const result = await escalateBreachedSubmissions();
 
     expect(result.ownerOutreachAlerts).toBe(1);
+    expect(result.integrityHoldsApplied).toBe(3);
+    const txSql = transactionQuery.mock.calls.map(([sql]) => String(sql));
+    expect(txSql[0]).toContain('pg_advisory_xact_lock_shared');
+    expect(txSql.findIndex((sql) => sql.includes('FROM organizations'))).toBeLessThan(
+      txSql.findIndex((sql) => sql.includes('FROM services')),
+    );
+    expect(txSql.findIndex((sql) => sql.includes('UPDATE services'))).toBeLessThan(
+      txSql.findIndex((sql) => sql.includes('Silent owner organization marker')),
+    );
+    expect(txSql.some((sql) => (
+      sql.includes("NOW() - INTERVAL '30 days'")
+      && sql.includes('BOOL_AND(last_owner_activity')
+    ))).toBe(true);
   });
 });
 

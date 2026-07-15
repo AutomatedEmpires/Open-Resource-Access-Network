@@ -45,14 +45,28 @@ const UpdateSourceFeedSchema = z.object({
   refreshIntervalHours: z.number().int().min(1).max(720).optional(),
   isActive: z.boolean().optional(),
   state: SourceFeedStatePatchSchema.optional(),
-}).strict();
-async function requireAdmin(req: NextRequest, maxRequests: number) {
+}).strict().refine((value) => Object.keys(value).length > 0, {
+  message: 'At least one source-feed field is required.',
+});
+async function requireAdmin(req: NextRequest, operation: 'read' | 'write') {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }
 
-  const rl = await checkRateLimitShared(getIp(req), { maxRequests, windowMs: RATE_LIMIT_WINDOW_MS });
-  if (rl.exceeded) {
+  const maxRequests = operation === 'read'
+    ? ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS
+    : ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS;
+  const rl = await checkRateLimitShared(
+    `admin:ingestion:source-feeds:${operation}:${getIp(req)}`,
+    { maxRequests, windowMs: RATE_LIMIT_WINDOW_MS },
+  );
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
@@ -80,7 +94,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const guard = await requireAdmin(req, ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS);
+  const guard = await requireAdmin(req, 'read');
   if (guard) return guard;
 
   try {
@@ -103,7 +117,7 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const guard = await requireAdmin(req, ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS);
+  const guard = await requireAdmin(req, 'write');
   if (guard) return guard;
 
   try {
@@ -143,8 +157,17 @@ export async function PUT(
       ? mergeSourceFeedState(id, existingState, state, { actorId: session?.userId ?? null })
       : null;
 
-    if (state && isHighRiskSourceFeedUpdate({ state })) {
-      const { submissionId } = await queueIngestionControlChange({
+    const combinedAuthorityPatch = { ...feedUpdates, state };
+    // Evaluate the complete strict-schema patch. This intentionally includes
+    // origin, authentication, scope, cadence, activation, and rollout fields.
+    if (!isHighRiskSourceFeedUpdate(combinedAuthorityPatch)) {
+      return NextResponse.json(
+        { error: 'Source-feed change is not in the reviewed authority field set.' },
+        { status: 400 },
+      );
+    }
+
+    const { submissionId } = await queueIngestionControlChange({
         submittedByUserId: session?.userId ?? 'unknown',
         actorRole: session?.role ?? 'oran_admin',
         targetId: id,
@@ -165,20 +188,10 @@ export async function PUT(
         },
       });
 
-      return NextResponse.json(
-        { queued: true, submissionId, status: 'pending_second_approval' },
-        { status: 202 },
-      );
-    }
-
-    if (Object.keys(feedUpdates).length > 0) {
-      await stores.sourceFeeds.update(id, feedUpdates);
-    }
-    if (state) {
-      await stores.sourceFeedStates.upsert(nextState!);
-    }
-
-    return NextResponse.json({ updated: true });
+    return NextResponse.json(
+      { queued: true, submissionId, status: 'pending_second_approval' },
+      { status: 202 },
+    );
   } catch (error) {
     captureException(error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
@@ -189,7 +202,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const guard = await requireAdmin(req, ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS);
+  const guard = await requireAdmin(req, 'write');
   if (guard) return guard;
 
   try {

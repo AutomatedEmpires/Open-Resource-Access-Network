@@ -60,10 +60,19 @@ export async function GET(req: NextRequest) {
 
   // Rate limiting
   const ip = getIp(req);
-  const rateLimit = await checkRateLimitShared(`services:ip:${ip}`, {
+  const rateLimit = await checkRateLimitShared(`services:read:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: SERVICES_RATE_LIMIT_MAX,
   });
+  if (rateLimit.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      {
+        status: 503,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      },
+    );
+  }
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },

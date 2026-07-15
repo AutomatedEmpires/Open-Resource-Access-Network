@@ -7,10 +7,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, requireOrgAccess, isOranAdmin } from '@/services/auth';
 import { applySla } from '@/services/workflow/engine';
+import {
+  acquireAuthoritativeMutationGatesShared,
+  acquireFreshnessSensitiveAuthoritativeMutationGates,
+  assertAuthoritativeEntitiesMutable,
+  ProtectedAuthoritativeMutationConflict,
+} from '@/services/publication/protectedAuthoritativeMutation';
 import {
   createHostPortalSourceAssertion,
   queueServiceVerificationSubmission,
@@ -63,6 +69,16 @@ const UpdateServiceSchema = z.object({
 // HELPERS
 // ============================================================
 type RouteContext = { params: Promise<{ id: string }> };
+
+// `pg` returns database column names verbatim. Keep this separate from the
+// camel-cased domain `Service` contract so authorization and response code do
+// not accidentally read a property that is absent at runtime.
+interface ServiceDatabaseRow extends Record<string, unknown> {
+  id: string;
+  organization_id: string;
+  name: string;
+  status: Service['status'];
+}
 
 function buildRequestedChanges(
   input: {
@@ -119,11 +135,17 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:svc:read:${ip}`, {
+  const rl = await checkRateLimitShared(`host:services:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       {
@@ -136,7 +158,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
   try {
     // Exclude defunct unless oran_admin
     const statusFilter = authCtx && isOranAdmin(authCtx) ? '' : `AND s.status != 'defunct'`;
-    const rows = await executeQuery<Service & { organization_name?: string; organization_id: string }>(
+    const rows = await executeQuery<ServiceDatabaseRow & { organization_name?: string }>(
       `SELECT s.*, o.name AS organization_name
        FROM services s
        JOIN organizations o ON o.id = s.organization_id
@@ -179,11 +201,17 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:svc:write:${ip}`, {
+  const rl = await checkRateLimitShared(`host:services:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       {
@@ -210,6 +238,12 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
   const d = parsed.data;
 
+  let checkedService: {
+    organization_id: string;
+    status: Service['status'];
+    name: string;
+  };
+
   // First verify service exists and check authorization
   try {
     const svcCheck = await executeQuery<{
@@ -226,6 +260,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
     if (authCtx && !requireOrgAccess(authCtx, svcCheck[0].organization_id)) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
+    checkedService = svcCheck[0];
   } catch (error) {
     await captureException(error, { feature: 'api_host_svc_update' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -279,23 +314,41 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
   });
 
   try {
-    const svcRows = await executeQuery<{
-      organization_id: string;
-      status: Service['status'];
-      name: string;
-    }>(
-      'SELECT organization_id, status, name FROM services WHERE id = $1',
-      [id],
-    );
-
-    if (svcRows.length === 0) {
-      return NextResponse.json({ error: 'Service not found' }, { status: 404 });
-    }
-
-    const currentService = svcRows[0];
+    const currentService = checkedService;
 
     if (currentService.status === 'active') {
       const queued = await withTransaction(async (client) => {
+        await acquireAuthoritativeMutationGatesShared(client);
+        await assertAuthoritativeEntitiesMutable(client, {
+          organizationIds: [currentService.organization_id],
+          serviceIds: [id],
+        });
+        const lockedRows = await client.query<{
+          organization_id: string;
+          status: Service['status'];
+          name: string;
+        }>(
+          `SELECT organization_id, status, name
+           FROM services
+           WHERE id = $1
+           FOR UPDATE`,
+          [id],
+        );
+        const lockedService = lockedRows.rows[0];
+        if (!lockedService) throw Object.assign(new Error('not_found'), { code: 'not_found' });
+        if (lockedService.status === 'defunct') {
+          throw Object.assign(new Error('retired'), { code: 'retired' });
+        }
+        if (lockedService.status !== 'active') {
+          throw Object.assign(new Error('state_changed'), { code: 'state_changed' });
+        }
+        if (lockedService.organization_id !== currentService.organization_id) {
+          throw Object.assign(new Error('state_changed'), { code: 'state_changed' });
+        }
+        if (authCtx && !requireOrgAccess(authCtx, lockedService.organization_id)) {
+          throw Object.assign(new Error('access_denied'), { code: 'access_denied' });
+        }
+
         const assertion = await createHostPortalSourceAssertion(client, {
           actorUserId: authCtx?.userId ?? 'system',
           actorRole: authCtx?.role ?? null,
@@ -304,8 +357,8 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
           canonicalSourceUrl: `oran://host-portal/services/${id}`,
           payload: {
             serviceId: id,
-            organizationId: currentService.organization_id,
-            currentStatus: currentService.status,
+            organizationId: lockedService.organization_id,
+            currentStatus: lockedService.status,
             requestedChanges,
           },
         });
@@ -314,15 +367,15 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
           serviceId: id,
           submittedByUserId: authCtx?.userId ?? 'system',
           actorRole: authCtx?.role ?? 'host_admin',
-          title: `Service change review: ${currentService.name}`,
+          title: `Service change review: ${lockedService.name}`,
           notes: 'Published service change submitted via host portal.',
           payload: {
             flow: 'host_portal',
             changeType: 'host_service_update',
             sourceRecordId: assertion.sourceRecordId,
-            organizationId: currentService.organization_id,
+            organizationId: lockedService.organization_id,
             serviceId: id,
-            currentStatus: currentService.status,
+            currentStatus: lockedService.status,
             requestedChanges,
           },
         });
@@ -351,21 +404,50 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
       );
     }
 
-    const saved = await withTransaction<Service & { sourceRecordId: string }>(async (client) => {
-      let service: Service;
+    const saved = await withTransaction<ServiceDatabaseRow & { sourceRecordId: string }>(async (client) => {
+      await acquireFreshnessSensitiveAuthoritativeMutationGates(client);
+      await assertAuthoritativeEntitiesMutable(client, {
+        organizationIds: [currentService.organization_id],
+        serviceIds: [id],
+      });
+      const lockedRows = await client.query<ServiceDatabaseRow>(
+        `SELECT *
+         FROM services
+         WHERE id = $1
+         FOR UPDATE`,
+        [id],
+      );
+      const lockedService = lockedRows.rows[0];
+      if (!lockedService) throw Object.assign(new Error('not_found'), { code: 'not_found' });
+      if (lockedService.status === 'defunct') {
+        throw Object.assign(new Error('retired'), { code: 'retired' });
+      }
+      if (lockedService.status === 'active') {
+        throw Object.assign(new Error('state_changed'), { code: 'state_changed' });
+      }
+      if (lockedService.organization_id !== currentService.organization_id) {
+        throw Object.assign(new Error('state_changed'), { code: 'state_changed' });
+      }
+      if (authCtx && !requireOrgAccess(authCtx, lockedService.organization_id)) {
+        throw Object.assign(new Error('access_denied'), { code: 'access_denied' });
+      }
+
+      let service = lockedService;
 
       if (hasScalarChanges) {
-        params.push(id);
-        const rows = await client.query<Service>(
-          `UPDATE services SET ${setClauses.join(', ')} WHERE id = $${params.length} RETURNING *`,
-          params,
+        const updateParams = [...params, id];
+        const rows = await client.query<ServiceDatabaseRow>(
+          `UPDATE services
+           SET ${setClauses.join(', ')}
+           WHERE id = $${updateParams.length}
+             AND status IS DISTINCT FROM 'defunct'
+             AND status IS DISTINCT FROM 'active'
+           RETURNING *`,
+          updateParams,
         );
-        if (rows.rows.length === 0) throw Object.assign(new Error('not_found'), { code: 'not_found' });
-        service = rows.rows[0];
-      } else {
-        // Only phones/schedule changing — fetch current row for the response
-        const rows = await client.query<Service>('SELECT * FROM services WHERE id = $1', [id]);
-        if (rows.rows.length === 0) throw Object.assign(new Error('not_found'), { code: 'not_found' });
+        if (rows.rows.length === 0) {
+          throw Object.assign(new Error('state_changed'), { code: 'state_changed' });
+        }
         service = rows.rows[0];
       }
 
@@ -400,7 +482,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
         canonicalSourceUrl: `oran://host-portal/services/${id}`,
         payload: {
           serviceId: id,
-          organizationId: currentService.organization_id,
+          organizationId: lockedService.organization_id,
           currentStatus: service.status,
           requestedChanges,
         },
@@ -411,8 +493,23 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
     return NextResponse.json(saved);
   } catch (error) {
-    if (error instanceof Error && (error as NodeJS.ErrnoException & { code?: string }).code === 'not_found') {
+    const code = error instanceof Error
+      ? (error as NodeJS.ErrnoException & { code?: string }).code
+      : undefined;
+    if (code === 'not_found') {
       return NextResponse.json({ error: 'Service not found' }, { status: 404 });
+    }
+    if (code === 'retired' || code === 'state_changed') {
+      return NextResponse.json(
+        { error: 'Service is no longer editable. Refresh and try again.' },
+        { status: 409 },
+      );
+    }
+    if (code === 'access_denied') {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+    if (error instanceof ProtectedAuthoritativeMutationConflict) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
     }
     await captureException(error, { feature: 'api_host_svc_update' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -436,11 +533,17 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:svc:write:${ip}`, {
+  const rl = await checkRateLimitShared(`host:services:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       {
@@ -469,6 +572,37 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
 
     if (svcCheck[0].status === 'active') {
       const queued = await withTransaction(async (client) => {
+        await acquireAuthoritativeMutationGatesShared(client);
+        await assertAuthoritativeEntitiesMutable(client, {
+          organizationIds: [svcCheck[0].organization_id],
+          serviceIds: [id],
+        });
+        const lockedRows = await client.query<{
+          organization_id: string;
+          status: Service['status'];
+          name: string;
+        }>(
+          `SELECT organization_id, status, name
+           FROM services
+           WHERE id = $1
+           FOR UPDATE`,
+          [id],
+        );
+        const lockedService = lockedRows.rows[0];
+        if (!lockedService) throw Object.assign(new Error('not_found'), { code: 'not_found' });
+        if (lockedService.status === 'defunct') {
+          throw Object.assign(new Error('retired'), { code: 'retired' });
+        }
+        if (lockedService.status !== 'active') {
+          throw Object.assign(new Error('state_changed'), { code: 'state_changed' });
+        }
+        if (lockedService.organization_id !== svcCheck[0].organization_id) {
+          throw Object.assign(new Error('state_changed'), { code: 'state_changed' });
+        }
+        if (authCtx && !requireOrgAccess(authCtx, lockedService.organization_id)) {
+          throw Object.assign(new Error('access_denied'), { code: 'access_denied' });
+        }
+
         const assertion = await createHostPortalSourceAssertion(client, {
           actorUserId: authCtx?.userId ?? 'system',
           actorRole: authCtx?.role ?? null,
@@ -477,8 +611,8 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
           canonicalSourceUrl: `oran://host-portal/services/${id}`,
           payload: {
             serviceId: id,
-            organizationId: svcCheck[0].organization_id,
-            currentStatus: svcCheck[0].status,
+            organizationId: lockedService.organization_id,
+            currentStatus: lockedService.status,
           },
         });
 
@@ -486,15 +620,15 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
           serviceId: id,
           submittedByUserId: authCtx?.userId ?? 'system',
           actorRole: authCtx?.role ?? 'host_admin',
-          title: `Service archive review: ${svcCheck[0].name}`,
+          title: `Service archive review: ${lockedService.name}`,
           notes: 'Published service archive submitted via host portal.',
           payload: {
             flow: 'host_portal',
             changeType: 'host_service_archive',
             sourceRecordId: assertion.sourceRecordId,
-            organizationId: svcCheck[0].organization_id,
+            organizationId: lockedService.organization_id,
             serviceId: id,
-            currentStatus: svcCheck[0].status,
+            currentStatus: lockedService.status,
           },
         });
 
@@ -524,6 +658,36 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
     }
 
     const archived = await withTransaction<{ id: string; sourceRecordId: string }>(async (client) => {
+      await acquireFreshnessSensitiveAuthoritativeMutationGates(client);
+      await assertAuthoritativeEntitiesMutable(client, {
+        organizationIds: [svcCheck[0].organization_id],
+        serviceIds: [id],
+      });
+      const lockedRows = await client.query<{
+        organization_id: string;
+        status: Service['status'];
+      }>(
+        `SELECT organization_id, status
+         FROM services
+         WHERE id = $1
+         FOR UPDATE`,
+        [id],
+      );
+      const lockedService = lockedRows.rows[0];
+      if (!lockedService) throw Object.assign(new Error('not_found'), { code: 'not_found' });
+      if (lockedService.status === 'defunct') {
+        throw Object.assign(new Error('retired'), { code: 'retired' });
+      }
+      if (lockedService.status === 'active') {
+        throw Object.assign(new Error('state_changed'), { code: 'state_changed' });
+      }
+      if (lockedService.organization_id !== svcCheck[0].organization_id) {
+        throw Object.assign(new Error('state_changed'), { code: 'state_changed' });
+      }
+      if (authCtx && !requireOrgAccess(authCtx, lockedService.organization_id)) {
+        throw Object.assign(new Error('access_denied'), { code: 'access_denied' });
+      }
+
       const rows = await client.query<{ id: string }>(
         `UPDATE services
          SET status = 'defunct', updated_at = now(), updated_by_user_id = $2
@@ -544,7 +708,7 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
         canonicalSourceUrl: `oran://host-portal/services/${id}`,
         payload: {
           serviceId: id,
-          organizationId: svcCheck[0].organization_id,
+          organizationId: lockedService.organization_id,
           currentStatus: 'defunct',
         },
       });
@@ -557,8 +721,23 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
 
     return NextResponse.json({ archived: true, id: archived.id, sourceRecordId: archived.sourceRecordId });
   } catch (error) {
-    if (error instanceof Error && (error as NodeJS.ErrnoException & { code?: string }).code === 'not_found') {
+    const code = error instanceof Error
+      ? (error as NodeJS.ErrnoException & { code?: string }).code
+      : undefined;
+    if (code === 'not_found') {
       return NextResponse.json({ error: 'Service not found' }, { status: 404 });
+    }
+    if (code === 'retired' || code === 'state_changed') {
+      return NextResponse.json(
+        { error: 'Service state changed. Refresh and try again.' },
+        { status: 409 },
+      );
+    }
+    if (code === 'access_denied') {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+    if (error instanceof ProtectedAuthoritativeMutationConflict) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
     }
     await captureException(error, { feature: 'api_host_svc_delete' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

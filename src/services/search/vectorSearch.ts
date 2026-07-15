@@ -57,13 +57,15 @@ export function buildVectorSimilarityQuery(
     sql: `
       SELECT
         s.id,
-        (1 - (s.embedding <=> $1::vector))::float AS similarity
+        (1 - (service_embedding.embedding <=> $1::vector))::float AS similarity
       FROM services s
       JOIN organizations o ON o.id = s.organization_id
+      JOIN service_embeddings service_embedding
+        ON service_embedding.service_id = s.id
+       AND service_embedding.source_updated_at = s.updated_at
       WHERE s.id = ANY($2::uuid[])
-        AND s.embedding IS NOT NULL
         AND ${buildPublishedServicePredicate('s', 'o')}
-      ORDER BY s.embedding <=> $1::vector
+      ORDER BY service_embedding.embedding <=> $1::vector
       LIMIT $3
     `,
     params: [vectorLiteral, candidateIds, limit],
@@ -92,13 +94,15 @@ export function buildVectorTopKQuery(
     sql: `
       SELECT
         s.id,
-        (1 - (s.embedding <=> $1::vector))::float AS similarity
+        (1 - (service_embedding.embedding <=> $1::vector))::float AS similarity
       FROM services s
       JOIN organizations o ON o.id = s.organization_id
-      WHERE s.embedding IS NOT NULL
-        AND s.status = $2
+      JOIN service_embeddings service_embedding
+        ON service_embedding.service_id = s.id
+       AND service_embedding.source_updated_at = s.updated_at
+      WHERE s.status = $2
         AND ${buildPublishedServicePredicate('s', 'o')}
-      ORDER BY s.embedding <=> $1::vector
+      ORDER BY service_embedding.embedding <=> $1::vector
       LIMIT $3
     `,
     params: [vectorLiteral, statusFilter, limit],

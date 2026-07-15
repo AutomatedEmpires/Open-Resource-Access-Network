@@ -8,19 +8,21 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
-import { buildCommunitySubmissionScope, getCommunityAdminScope } from '@/services/community/scope';
-import { advance } from '@/services/workflow/engine';
+import { getCommunityAdminScope } from '@/services/community/scope';
+import { advanceInTransaction, sendTerminalStatusEmail } from '@/services/workflow/engine';
+import { lockBulkReviewSubmissions } from '@/services/queue/bulkReviewGuard';
 import {
   RATE_LIMIT_WINDOW_MS,
   COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
 import type { SubmissionStatus } from '@/domain/types';
 import { getIp } from '@/services/security/ip';
+import { acquireLivePublicationGateShared } from '@/services/publication/liveEntityMerge';
 
 // ============================================================
 // SCHEMA
@@ -31,6 +33,16 @@ const BulkDecisionSchema = z.object({
   decision: z.enum(['approved', 'denied']),
   notes: z.string().max(5000).optional(),
 }).strict();
+
+class BulkDecisionConflict extends Error {
+  constructor(
+    readonly submissionId: string,
+    readonly clientMessage: string,
+  ) {
+    super(clientMessage);
+    this.name = 'BulkDecisionConflict';
+  }
+}
 
 // ============================================================
 // HELPERS
@@ -45,10 +57,16 @@ export async function PATCH(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`community:queue:bulk:${ip}`, {
+  const rl = await checkRateLimitShared(`community:queue:bulk:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
@@ -79,49 +97,49 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  const { ids, decision, notes } = parsed.data;
-
-  const succeeded: string[] = [];
-  const failed: { id: string; error: string }[] = [];
+  const { decision, notes } = parsed.data;
+  const ids = [...new Set(parsed.data.ids)];
 
   try {
     const scope = await getCommunityAdminScope(authCtx.userId);
-    const accessibleIds = new Set<string>();
-
-    if (scope.hasExplicitScope) {
-      const accessParams: unknown[] = [ids];
-      const scopeCondition = buildCommunitySubmissionScope('sub', scope, accessParams);
-      const accessibleRows = await executeQuery<{ id: string }>(
-        `SELECT sub.id
-         FROM submissions sub
-         WHERE sub.id = ANY($1::uuid[])${scopeCondition ? ` AND ${scopeCondition}` : ''}`,
-        accessParams,
+    const outcome = await withTransaction(async (client) => {
+      await acquireLivePublicationGateShared(client);
+      const preflight = await lockBulkReviewSubmissions(
+        client,
+        ids,
+        scope,
+        authCtx.role === 'oran_admin',
+        authCtx.userId,
       );
 
-      for (const row of accessibleRows) {
-        accessibleIds.add(row.id);
+      if (preflight.inaccessibleIds.length > 0) {
+        return { kind: 'scope_denied' as const, ids: preflight.inaccessibleIds };
       }
-    } else {
+
+      if (preflight.reviewOwnershipConflictIds.length > 0) {
+        return { kind: 'ownership_denied' as const, ids: preflight.reviewOwnershipConflictIds };
+      }
+
+      if (preflight.structuredFreshnessIds.length > 0) {
+        return { kind: 'freshness_blocked' as const, ids: preflight.structuredFreshnessIds };
+      }
+
+      if (decision === 'approved' && preflight.individualReviewRequiredIds.length > 0) {
+        return {
+          kind: 'individual_review_required' as const,
+          ids: preflight.individualReviewRequiredIds,
+        };
+      }
+
       for (const id of ids) {
-        accessibleIds.add(id);
-      }
-    }
-
-    for (const id of ids) {
-      if (!accessibleIds.has(id)) {
-        failed.push({ id, error: 'Submission is outside your assigned community scope' });
-        continue;
-      }
-
-      try {
         if (notes) {
-          await executeQuery(
+          await client.query(
             `UPDATE submissions SET reviewer_notes = $1, updated_at = NOW() WHERE id = $2`,
             [notes, id],
           );
         }
 
-        const result = await advance({
+        const result = await advanceInTransaction(client, {
           submissionId: id,
           toStatus: decision as SubmissionStatus,
           actorUserId: authCtx.userId,
@@ -130,36 +148,90 @@ export async function PATCH(req: NextRequest) {
         });
 
         if (!result.success) {
-          failed.push({ id, error: result.error ?? 'Cannot apply this decision' });
-          continue;
-        }
-
-        if (decision === 'approved') {
-          const serviceRows = await executeQuery<{ service_id: string }>(
-            `SELECT service_id FROM submissions WHERE id = $1 AND service_id IS NOT NULL`,
-            [id],
+          throw new BulkDecisionConflict(
+            id,
+            result.error ?? 'Cannot apply this decision',
           );
-          if (serviceRows.length > 0) {
-            await executeQuery(
-              `INSERT INTO confidence_scores (service_id, score, verification_confidence, eligibility_match, constraint_fit)
-               VALUES ($1, 80, 80, 50, 50)
-               ON CONFLICT (service_id)
-               DO UPDATE SET verification_confidence = 80,
-                             score = GREATEST(confidence_scores.score, 80),
-                             computed_at = now()`,
-              [serviceRows[0].service_id],
-            );
-          }
         }
-
-        succeeded.push(id);
-      } catch (itemError) {
-        failed.push({ id, error: itemError instanceof Error ? itemError.message : 'Unknown error' });
       }
+
+      return { kind: 'success' as const };
+    });
+
+    if (outcome.kind === 'scope_denied') {
+      return NextResponse.json(
+        {
+          error: 'One or more submissions are outside your assigned community scope',
+          succeeded: [],
+          failed: outcome.ids.map((id) => ({
+            id,
+            error: 'Submission is outside your assigned community scope',
+          })),
+        },
+        { status: 403 },
+      );
     }
 
-    return NextResponse.json({ succeeded, failed });
+    if (outcome.kind === 'freshness_blocked') {
+      return NextResponse.json(
+        {
+          error: 'Structured freshness reviews require individual evidence review',
+          blockedIds: outcome.ids,
+          succeeded: [],
+          failed: outcome.ids.map((id) => ({
+            id,
+            error: 'Individual structured evidence review required',
+          })),
+        },
+        { status: 409 },
+      );
+    }
+
+    if (outcome.kind === 'individual_review_required') {
+      return NextResponse.json(
+        {
+          error: 'Bulk approval is unavailable for submissions with dedicated review effects',
+          blockedIds: outcome.ids,
+          succeeded: [],
+          failed: outcome.ids.map((id) => ({
+            id,
+            error: 'Use the dedicated single-item review endpoint',
+          })),
+        },
+        { status: 409 },
+      );
+    }
+
+    if (outcome.kind === 'ownership_denied') {
+      return NextResponse.json(
+        {
+          error: 'Every submission must be claimed and locked by you before a bulk decision',
+          succeeded: [],
+          failed: outcome.ids.map((id) => ({
+            id,
+            error: 'Submission is not assigned and locked by the acting reviewer',
+          })),
+        },
+        { status: 409 },
+      );
+    }
+
+    for (const id of ids) {
+      await sendTerminalStatusEmail(id, decision as SubmissionStatus);
+    }
+
+    return NextResponse.json({ succeeded: ids, failed: [] });
   } catch (error) {
+    if (error instanceof BulkDecisionConflict) {
+      return NextResponse.json(
+        {
+          error: 'Bulk decision failed; no changes were applied',
+          succeeded: [],
+          failed: [{ id: error.submissionId, error: error.clientMessage }],
+        },
+        { status: 409 },
+      );
+    }
     await captureException(error, { feature: 'api_community_queue_bulk' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

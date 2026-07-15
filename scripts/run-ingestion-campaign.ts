@@ -170,8 +170,7 @@ function printUsage(): void {
     '  --publish-min-confidence <n>    Minimum confidence for publish pass (default: 80)',
     '  --allowed-source-quality <csv>  Allowed source_quality tags for publish (default: gov_source,edu_source)',
     '  --actor-id <id>                 Audit actor id (default: system:ingestion-campaign)',
-    '  --register-hosts <trust>        Upsert exact-host source entries for supplied URLs',
-    '                                  Allowed values: allowlisted, quarantine, blocked',
+    '  --register-hosts <trust>        Disabled: source authority must be queued in the admin control workflow',
     '  --resource-purpose <purpose>    Source use: service_catalog, program_navigation,',
     '                                  supporting_reference, or excluded',
     '  --dry-run                       Validate env/schema/inputs without running ingestion',
@@ -602,7 +601,7 @@ async function assertSchemaReady(): Promise<void> {
   }
 }
 
-async function registerHostsIfRequested(
+export async function registerHostsIfRequested(
   stores: ReturnType<typeof createIngestionStores>,
   urls: string[],
   trustLevel: SourceTrustLevel | null,
@@ -611,41 +610,12 @@ async function registerHostsIfRequested(
   if (!trustLevel) {
     return 0;
   }
-
-  const grouped = new Map<string, string[]>();
-  for (const url of urls) {
-    const host = new URL(url).hostname.toLowerCase();
-    const current = grouped.get(host) ?? [];
-    current.push(url);
-    grouped.set(host, current);
-  }
-
-  const now = new Date().toISOString();
-  for (const [host, seedUrls] of grouped.entries()) {
-    const id = `campaign-${host.replace(/[^a-z0-9]+/g, '-')}`;
-    await stores.sourceRegistry.upsert({
-      id,
-      displayName: `Campaign Source: ${host}`,
-      trustLevel,
-      resourcePurpose,
-      domainRules: [{ type: 'exact_host', value: host }],
-      discovery: [{ type: 'seeded_only', seedUrls }],
-      crawl: {
-        obeyRobotsTxt: true,
-        userAgent: 'oran-ingestion-agent/1.0',
-        allowedPathPrefixes: ['/'],
-        blockedPathPrefixes: [],
-        maxRequestsPerMinute: 60,
-        maxConcurrentRequests: 3,
-        fetchTtlHours: 24,
-      },
-      coverage: [{ kind: 'national', country: 'US' }],
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-
-  return grouped.size;
+  void stores;
+  void urls;
+  void resourcePurpose;
+  throw new Error(
+    'Direct campaign source registration is disabled. Queue each source through the ORAN admin two-person source-authority workflow before running ingestion.',
+  );
 }
 
 async function publishReadyCandidates(options: {
@@ -707,7 +677,6 @@ async function publishReadyCandidates(options: {
       geocode: isGeocodingConfigured() ? geocode : undefined,
     });
 
-    await options.stores.candidates.markPublished(candidateId, result.serviceId, options.actorId);
     published.push({ candidateId, serviceId: result.serviceId });
   }
 

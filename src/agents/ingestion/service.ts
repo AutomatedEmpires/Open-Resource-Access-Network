@@ -46,10 +46,7 @@ interface NormalizationBatchResult {
 
 type CandidateAutoPublishReason =
   | 'no_candidate'
-  | 'source_not_allowlisted'
-  | 'readiness_threshold_not_met'
-  | 'published'
-  | 'publish_failed';
+  | 'candidate_human_approval_required';
 
 interface CandidateAutoPublishOutcome {
   published: boolean;
@@ -390,83 +387,20 @@ function getSupportedSourceFeedHandler(feed: { feedHandler?: string | null }): S
   return null;
 }
 
-function resolvePublicationActor(triggeredBy?: string): {
-  actorType: 'system' | 'service_principal' | 'human';
-  actorId: string;
-} {
-  if (!triggeredBy) {
-    return { actorType: 'service_principal', actorId: 'ingestion-service' };
-  }
-
-  if (triggeredBy === 'system') {
-    return { actorType: 'system', actorId: 'system' };
-  }
-
-  if (triggeredBy.endsWith('-service')) {
-    return { actorType: 'service_principal', actorId: triggeredBy };
-  }
-
-  return { actorType: 'human', actorId: triggeredBy };
-}
-
 async function maybeAutoPublishPipelineCandidate(
-  stores: IngestionStores,
+  _stores: IngestionStores,
   result: PipelineResult,
-  triggeredBy?: string,
+  _triggeredBy?: string,
 ): Promise<CandidateAutoPublishOutcome> {
   if (!result.candidateId) {
     return { published: false, reason: 'no_candidate' };
   }
 
-  if (result.sourceCheck?.trustLevel !== 'allowlisted') {
-    return { published: false, reason: 'source_not_allowlisted' };
-  }
-
-  const meetsThreshold = await stores.publishReadiness.meetsThreshold(result.candidateId);
-  if (!meetsThreshold) {
-    return { published: false, reason: 'readiness_threshold_not_met' };
-  }
-
-  try {
-    const { publishCandidateToLiveService } = await import('./livePublish');
-    const published = await publishCandidateToLiveService({
-      stores,
-      candidateId: result.candidateId,
-      publishedByUserId: triggeredBy ?? 'ingestion-service',
-    });
-    const actor = resolvePublicationActor(triggeredBy);
-
-    await stores.audit.append({
-      eventId: crypto.randomUUID(),
-      correlationId: result.correlationId,
-      eventType: 'publish.approved',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      targetType: 'service',
-      targetId: published.serviceId,
-      timestamp: new Date().toISOString(),
-      inputs: {
-        candidateId: result.candidateId,
-        sourceUrl: result.sourceUrl,
-        publicationChannel: 'candidate_auto_publish',
-      },
-      outputs: {
-        organizationId: published.organizationId,
-        locationId: published.locationId ?? null,
-      },
-      evidenceRefs: result.evidenceId ? [result.evidenceId] : [],
-    });
-
-    return {
-      published: true,
-      reason: 'published',
-      serviceId: published.serviceId,
-      organizationId: published.organizationId,
-      locationId: published.locationId,
-    };
-  } catch {
-    return { published: false, reason: 'publish_failed' };
-  }
+  // MVP boundary: source allowlisting and automated readiness are evidence,
+  // not human verification. Candidate publication remains review-only until a
+  // passed, per-candidate approval transition can be bound into the live
+  // snapshot and lifecycle event atomically.
+  return { published: false, reason: 'candidate_human_approval_required' };
 }
 
 // ============================================================
@@ -618,7 +552,8 @@ export function createIngestionService(
       // 7. Persist audit output for the completed pipeline
       await persistPipelineResults(stores, pipelineResult, correlationId, options.triggeredBy);
 
-      // 7a. Auto-publish allowlisted high-readiness candidates; fall back to review when policy blocks.
+      // 7a. Candidate ingestion is review-only for the MVP. This helper keeps
+      // the result explicit while refusing to equate source trust with approval.
       const publication = await maybeAutoPublishPipelineCandidate(stores, pipelineResult, options.triggeredBy);
 
       // 8. Update job stats

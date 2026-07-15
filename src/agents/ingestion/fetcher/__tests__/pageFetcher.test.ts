@@ -50,6 +50,7 @@ beforeEach(() => {
 
 afterEach(() => {
   global.fetch = originalFetch;
+  vi.unstubAllEnvs();
 });
 
 describe('PageFetcher', () => {
@@ -147,6 +148,27 @@ describe('PageFetcher', () => {
     expect(result.code).toBe('blocked');
     expect(result.httpStatus).toBe(403);
     expect(result.retryable).toBe(false);
+  });
+
+  it('blocks Microsoft hosts and redirects before the prohibited network call', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VITEST', '');
+    const fetcher = new PageFetcher();
+
+    const direct = await fetcher.fetch('https://oran.azurewebsites.net/resource');
+    expect(isFetchError(direct)).toBe(true);
+    if (isFetchError(direct)) expect(direct.code).toBe('blocked');
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fetchMock.mockResolvedValueOnce(makeResponse(null, {
+      status: 302,
+      headers: { location: 'https://files.microsoft.com/resource' },
+    }));
+    const redirected = await fetcher.fetch('https://example.org/start');
+    expect(isFetchError(redirected)).toBe(true);
+    if (isFetchError(redirected)) expect(redirected.code).toBe('blocked');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('https://example.org/start', expect.any(Object));
   });
 
   it('returns too_many_redirects when redirect count exceeds the configured maximum', async () => {

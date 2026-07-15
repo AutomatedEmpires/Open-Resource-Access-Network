@@ -78,10 +78,19 @@ export async function GET(req: NextRequest) {
     );
   }
   const ip = getIp(req);
-  const rateLimit = await checkRateLimitShared(`search:ip:${ip}`, {
+  const rateLimit = await checkRateLimitShared(`search:read:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: SEARCH_RATE_LIMIT_MAX_REQUESTS,
   });
+  if (rateLimit.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      {
+        status: 503,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      },
+    );
+  }
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before searching again.' },

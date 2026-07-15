@@ -93,7 +93,7 @@ local/test options, not production failover counters.
 ## Validation
 
 ```bash
-npx vitest run src/services/security/__tests__/rateLimit.test.ts src/services/security/__tests__/shared-rate-limit-migration.test.ts src/services/chat/__tests__/quota-usage-controls.test.ts src/app/api/chat/__tests__/route.test.ts src/app/api/chat/quota/__tests__/route.test.ts
+npx vitest run src/services/security/__tests__/rateLimit.test.ts src/services/security/__tests__/shared-rate-limit-migration.test.ts src/services/security/__tests__/sharedRateLimitRoutes.test.ts src/services/chat/__tests__/quota-usage-controls.test.ts src/app/api/chat/__tests__/route.test.ts src/app/api/chat/quota/__tests__/route.test.ts
 ```
 
 Confirm all of the following:

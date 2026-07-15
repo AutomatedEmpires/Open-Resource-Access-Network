@@ -22,6 +22,7 @@ const notificationMocks = vi.hoisted(() => ({
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimit: rateLimitMock,
+  checkRateLimitShared: rateLimitMock,
 }));
 vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
@@ -240,11 +241,26 @@ describe('PUT /api/user/notifications/read-all', () => {
     const response = await PUT(createRequest({ ip: '203.0.113.55, 10.0.0.2' }));
 
     expect(rateLimitMock).toHaveBeenCalledWith(
-      'user:notifications:read-all:203.0.113.55',
+      'user:notifications:read-all:write:203.0.113.55',
       expect.any(Object),
     );
     expect(response.status).toBe(429);
     expect(response.headers.get('Retry-After')).toBe('14');
+  });
+
+  it('fails closed when the shared limiter is unavailable', async () => {
+    rateLimitMock.mockReturnValueOnce({
+      backendUnavailable: true,
+      exceeded: true,
+      retryAfterSeconds: 19,
+    });
+    const { PUT } = await loadReadAllRoute();
+
+    const response = await PUT(createRequest());
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Retry-After')).toBe('19');
+    expect(notificationMocks.markAllRead).not.toHaveBeenCalled();
   });
 
   it('marks all notifications as read', async () => {

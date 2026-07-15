@@ -27,13 +27,33 @@ function buildSourceRecord(overrides: Partial<SourceRecordRow> = {}): SourceReco
 
 function createMockNormalizerStores() {
   const tagCalls: Array<Record<string, unknown>> = [];
-  return {
-    stores: {
-      sourceRecords: {
+  let processingStatus = 'pending';
+  const stores: Record<string, any> = {
+    runAtomically: vi.fn(async (callback) => callback(stores)),
+    sourceRecords: {
         findByDedup: vi.fn().mockResolvedValue(null),
         create: vi.fn().mockImplementation((row) => ({ id: `sr-gen-${Math.random().toString(36).slice(2, 6)}`, ...row })),
         addTaxonomy: vi.fn().mockResolvedValue(undefined),
-        updateStatus: vi.fn().mockResolvedValue(undefined),
+        claimPendingForNormalization: vi.fn().mockImplementation(async (expected) => {
+          const sourceRecord = {
+            ...expected,
+            processingStatus,
+            rawPayload: {},
+            parsedPayload: {},
+            sourceConfidenceSignals: {},
+            fetchedAt: new Date(),
+            createdAt: new Date(),
+          };
+          if (processingStatus !== 'pending') return { claimed: false, sourceRecord };
+          processingStatus = 'processing';
+          return {
+            claimed: true,
+            sourceRecord: { ...sourceRecord, processingStatus: 'processing' },
+          };
+        }),
+        updateStatus: vi.fn().mockImplementation(async (_id, status) => {
+          processingStatus = status;
+        }),
       },
       sourceFeeds: {
         getById: vi.fn().mockResolvedValue({ id: 'feed-211', sourceSystemId: 'source-system-211' }),
@@ -65,8 +85,10 @@ function createMockNormalizerStores() {
       },
       conceptTagDerivations: {
         bulkCreate: vi.fn().mockResolvedValue(undefined),
-      },
     },
+  };
+  return {
+    stores,
     tagCalls,
   };
 }

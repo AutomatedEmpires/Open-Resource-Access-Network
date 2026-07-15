@@ -12,6 +12,8 @@
 //   LOAD_TEST_TOTAL       — total requests to send (default: 100)
 //   LOAD_TEST_ENDPOINT    — API path to test (default: /api/search?q=food+assistance&lat=40.7&lng=-74.0)
 
+import { assertAllowedRuntimeEndpoint } from '../src/services/runtime/providerPolicyCore.js';
+
 const APP_URL = process.env.ORAN_APP_URL;
 if (!APP_URL) {
   console.error('Set ORAN_APP_URL environment variable');
@@ -22,7 +24,7 @@ const CONCURRENCY = parseInt(process.env.LOAD_TEST_CONCURRENCY || '10', 10);
 const TOTAL = parseInt(process.env.LOAD_TEST_TOTAL || '100', 10);
 const ENDPOINT = process.env.LOAD_TEST_ENDPOINT || '/api/search?q=food+assistance&lat=40.7&lng=-74.0';
 
-const url = `${APP_URL}${ENDPOINT}`;
+const url = assertAllowedRuntimeEndpoint(`${APP_URL}${ENDPOINT}`, 'ORAN_APP_URL');
 
 console.log(`Load test: ${url}`);
 console.log(`  Concurrency: ${CONCURRENCY}`);

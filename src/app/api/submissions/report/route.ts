@@ -16,6 +16,8 @@ import { getAuthContext } from '@/services/auth/session';
 import { applySla } from '@/services/workflow/engine';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { getIp } from '@/services/security/ip';
+import { acquireLivePublicationGateShared } from '@/services/publication/liveEntityMerge';
+import { buildAnonymousUserId } from '@/services/security/anonymousIdentity';
 
 // ============================================================
 // SCHEMAS
@@ -58,6 +60,12 @@ export async function POST(req: NextRequest) {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: 10, // Restrictive to prevent abuse
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
@@ -67,7 +75,7 @@ export async function POST(req: NextRequest) {
 
   // Auth is optional — anonymous users can report, but authenticated reports are prioritized
   const authCtx = await getAuthContext();
-  const userId = authCtx?.userId ?? `anon_${ip}`;
+  const userId = authCtx?.userId ?? buildAnonymousUserId();
 
   let body: unknown;
   try {
@@ -88,14 +96,19 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await withTransaction(async (client) => {
+      await acquireLivePublicationGateShared(client);
       // Verify the service exists
       const service = await client.query<{ id: string; name: string }>(
-        `SELECT id, name FROM services WHERE id = $1`,
+        `SELECT id, name
+         FROM services
+         WHERE id = $1
+           AND status = 'active'
+         FOR UPDATE`,
         [serviceId],
       );
 
       if (service.rows.length === 0) {
-        return { error: 'Service not found', status: 404 };
+        return { error: 'Service not found or retired', status: 404 };
       }
 
       const serviceName = service.rows[0].name;
@@ -219,6 +232,12 @@ export async function GET(req: NextRequest) {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: 60,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },

@@ -75,7 +75,7 @@ const FEEDBACK_SEVERITY_THRESHOLD = 3;
 /** Rolling window (days) for the feedback severity signal. */
 const FEEDBACK_WINDOW_DAYS = 30;
 
-/** High-risk fraud reports should immediately suppress visibility. */
+/** Human-approved high-risk fraud reports can suppress visibility. */
 const FRAUD_REPORT_THRESHOLD = 1;
 const FRAUD_WINDOW_DAYS = 14;
 
@@ -181,7 +181,8 @@ export async function detectFeedbackSeverity(
        SELECT
          sf.service_id,
          sf.triage_category AS issue_type,
-         sf.created_at
+         sf.created_at,
+         false AS suppression_eligible
        FROM seeker_feedback sf
        WHERE sf.triage_category IN ('service_closed', 'incorrect_phone', 'incorrect_address', 'incorrect_hours')
          AND sf.created_at > NOW() - INTERVAL '30 days'
@@ -190,8 +191,9 @@ export async function detectFeedbackSeverity(
 
        SELECT
          sub.service_id,
-         COALESCE(sub.payload->>'reason', '') AS issue_type,
-         sub.created_at
+         COALESCE(sub.payload->>'reason', sub.payload->>'issueType', '') AS issue_type,
+         sub.created_at,
+         (sub.status = 'approved') AS suppression_eligible
        FROM submissions sub
        WHERE sub.submission_type = 'community_report'
          AND sub.service_id IS NOT NULL
@@ -215,10 +217,12 @@ export async function detectFeedbackSeverity(
        COUNT(*)::text AS neg_count,
        COUNT(*) FILTER (
          WHERE rs.issue_type = 'suspected_fraud'
+           AND rs.suppression_eligible
            AND rs.created_at > NOW() - INTERVAL '14 days'
        )::text AS fraud_count,
        COUNT(*) FILTER (
          WHERE rs.issue_type IN ('service_closed', 'permanently_closed', 'temporarily_closed')
+           AND rs.suppression_eligible
            AND rs.created_at > NOW() - INTERVAL '14 days'
        )::text AS closure_count,
        string_agg(DISTINCT rs.issue_type, ', ' ORDER BY rs.issue_type) AS categories
@@ -230,10 +234,12 @@ export async function detectFeedbackSeverity(
      HAVING COUNT(*) >= $2
          OR COUNT(*) FILTER (
            WHERE rs.issue_type = 'suspected_fraud'
+             AND rs.suppression_eligible
              AND rs.created_at > NOW() - INTERVAL '14 days'
          ) >= $3
          OR COUNT(*) FILTER (
            WHERE rs.issue_type IN ('service_closed', 'permanently_closed', 'temporarily_closed')
+             AND rs.suppression_eligible
              AND rs.created_at > NOW() - INTERVAL '14 days'
          ) >= $4
      ORDER BY COUNT(*) DESC
@@ -266,6 +272,9 @@ export async function detectFeedbackSeverity(
       );
     }
 
+    const suppressionEligible = fraudCount >= FRAUD_REPORT_THRESHOLD
+      || closureCount >= CLOSURE_REPORT_THRESHOLD;
+
     return {
       serviceId: row.service_id,
       serviceName: row.service_name,
@@ -273,15 +282,17 @@ export async function detectFeedbackSeverity(
       currentScore: score,
       currentBand: getConfidenceBand(score),
       reasons,
-      recommendedAction: 'suppress',
+      recommendedAction: suppressionEligible ? 'suppress' : 'reverify',
       actionReason:
         fraudCount >= FRAUD_REPORT_THRESHOLD
           ? 'Suspected fraud report threshold reached'
           : closureCount >= CLOSURE_REPORT_THRESHOLD
             ? 'Closure report threshold reached'
-            : 'Repeated negative reports require reverification',
+          : 'Repeated unconfirmed reports require human reverification',
       dedupeKey: makeDedupeKey(row.service_id, 'feedback_severity'),
-      notesText: `Auto-flagged: ${negCount} negative reports in last ${FEEDBACK_WINDOW_DAYS} days (${row.categories}); seeker visibility should be suspended pending reverification.`,
+      notesText: suppressionEligible
+        ? `Auto-flagged: ${negCount} negative reports in last ${FEEDBACK_WINDOW_DAYS} days (${row.categories}); human-approved high-risk evidence supports temporary visibility suspension.`
+        : `Auto-flagged: ${negCount} unconfirmed reports in last ${FEEDBACK_WINDOW_DAYS} days (${row.categories}); human reverification is required before any visibility change.`,
     };
   });
 }

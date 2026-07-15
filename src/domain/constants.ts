@@ -170,6 +170,7 @@ export const SUBMISSION_STATUSES: readonly SubmissionStatus[] = [
 export const SUBMISSION_TYPES: readonly SubmissionType[] = [
   'service_verification',
   'confidence_regression',
+  'ingestion_control_change',
   'org_claim',
   'data_correction',
   'new_service',
@@ -177,6 +178,7 @@ export const SUBMISSION_TYPES: readonly SubmissionType[] = [
   'community_report',
   'appeal',
   'managed_form',
+  'ownership_transfer',
 ] as const;
 
 export const SUBMISSION_TARGET_TYPES: readonly SubmissionTargetType[] = [
@@ -197,7 +199,7 @@ export const SUBMISSION_TRANSITIONS: Record<SubmissionStatus, readonly Submissio
   submitted:                ['auto_checking', 'needs_review', 'withdrawn'],
   auto_checking:            ['needs_review', 'approved', 'denied'],
   needs_review:             ['under_review', 'expired'],
-  under_review:             ['escalated', 'pending_second_approval', 'approved', 'denied', 'returned'],
+  under_review:             ['needs_review', 'escalated', 'pending_second_approval', 'approved', 'denied', 'returned'],
   escalated:                ['under_review', 'approved', 'denied'],
   pending_second_approval:  ['approved', 'denied', 'returned'],
   approved:                 ['archived'],

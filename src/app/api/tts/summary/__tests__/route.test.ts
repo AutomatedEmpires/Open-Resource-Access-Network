@@ -14,6 +14,7 @@ const captureExceptionMock = vi.hoisted(() => vi.fn());
 vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimit: rateLimitMock,
+  checkRateLimitShared: rateLimitMock,
 }));
 vi.mock('@/services/flags/flags', () => ({
   flagService: {
@@ -87,6 +88,21 @@ describe('api/tts/summary route', () => {
 
     expect(response.status).toBe(429);
     expect(response.headers.get('Retry-After')).toBe('12');
+  });
+
+  it('fails closed when the shared limiter is unavailable', async () => {
+    rateLimitMock.mockReturnValueOnce({
+      backendUnavailable: true,
+      exceeded: true,
+      retryAfterSeconds: 21,
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({ body: { text: 'hello' } }));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Retry-After')).toBe('21');
+    expect(ttsMocks.synthesizeSpeech).not.toHaveBeenCalled();
   });
 
   it('checks feature flag and service configuration', async () => {

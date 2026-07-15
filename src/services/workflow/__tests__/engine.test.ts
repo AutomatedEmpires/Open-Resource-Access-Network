@@ -23,18 +23,19 @@ import {
   checkSlaBreaches,
   releaseLock,
   runAutoCheck,
+  sendTerminalStatusEmail,
 } from '@/services/workflow/engine';
 
 beforeEach(() => {
   vi.clearAllMocks();
 
-  dbMocks.executeQuery.mockResolvedValue([]);
-  dbMocks.withTransaction.mockImplementation(async (fn: (client: { query: typeof clientQueryMock }) => unknown) => {
+  dbMocks.executeQuery.mockReset().mockResolvedValue([]);
+  dbMocks.withTransaction.mockReset().mockImplementation(async (fn: (client: { query: typeof clientQueryMock }) => unknown) => {
     return fn({ query: clientQueryMock });
   });
 
   clientQueryMock.mockReset();
-  emailMocks.sendEmail.mockClear();
+  emailMocks.sendEmail.mockReset().mockResolvedValue(undefined);
   emailMocks.isEmailConfigured.mockReset();
   emailMocks.isEmailConfigured.mockReturnValue(false);
 });
@@ -119,6 +120,180 @@ describe('workflow/engine', () => {
     ).toBe(false);
   });
 
+  it('advance never terminally decides open freshness work without bound structured evidence', async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-freshness-bypass',
+          submission_type: 'service_verification',
+          status: 'under_review',
+          is_locked: false,
+          locked_by_user_id: null,
+          assigned_to_user_id: null,
+          service_id: 'svc-freshness',
+          submitted_by_user_id: 'system:resource-freshness-scan',
+          target_type: 'service',
+          target_id: 'svc-freshness',
+          payload: {},
+          has_open_freshness_finding: true,
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-freshness-rejected' }] });
+
+    const result = await advance({
+      submissionId: 'sub-freshness-bypass',
+      toStatus: 'approved',
+      actorUserId: 'oran-admin',
+      actorRole: 'oran_admin',
+      skipGates: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Structured freshness evidence is required');
+    expect(result.transitionId).toBe('transition-freshness-rejected');
+    expect(
+      clientQueryMock.mock.calls.some(([sql]) => String(sql).startsWith('UPDATE submissions')),
+    ).toBe(false);
+  });
+
+  it('advance accepts a freshness decision only when evidence matches the packet and outcome', async () => {
+    const findingId = '40000000-0000-4000-8000-000000000001';
+    const checkedAt = new Date().toISOString();
+    const packet = {
+      schemaVersion: 1,
+      findingId,
+      signal: 'stale_source',
+      requiredAction: 'refresh_authoritative_source',
+      hold: {
+        actor: 'system:resource-freshness-scan',
+        reason: `resource_freshness:stale_source:${findingId}`,
+      },
+      observed: {
+        detectedAsOf: new Date(Date.now() - 60_000).toISOString(),
+        signalObservedAt: new Date(Date.now() - 86_400_000).toISOString(),
+        freshnessThresholdDays: 180,
+        serviceUpdatedAt: new Date(Date.now() - 86_400_000).toISOString(),
+        lastSourceRefreshAt: null,
+        lastCandidateVerifiedAt: null,
+        lastManualVerificationAt: null,
+        reverifyAt: null,
+        schedule: { totalCount: 0, datedCount: 0, maxValidTo: null },
+      },
+      reviewRequirements: {
+        evidenceRequired: true,
+        scheduleCorrectionRequiredBeforeApproval: false,
+      },
+    };
+    const review = {
+      schemaVersion: 1,
+      outcome: 'confirmed_current',
+      verificationMethod: 'provider_website',
+      checkedAt,
+      evidenceUrl: 'https://provider.example/current-services',
+      reviewerSummary: 'The current provider publication confirms this service remains available.',
+    };
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-freshness-evidenced',
+          submission_type: 'service_verification',
+          status: 'under_review',
+          is_locked: true,
+          locked_by_user_id: 'oran-admin',
+          assigned_to_user_id: 'oran-admin',
+          service_id: 'svc-freshness',
+          submitted_by_user_id: 'system:resource-freshness-scan',
+          target_type: 'service',
+          target_id: 'svc-freshness',
+          payload: { resourceFreshness: packet },
+          has_open_freshness_finding: true,
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-freshness-approved' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await advance({
+      submissionId: 'sub-freshness-evidenced',
+      toStatus: 'approved',
+      actorUserId: 'oran-admin',
+      actorRole: 'oran_admin',
+      metadata: {
+        resourceFreshnessReview: review,
+        resourceFreshnessFindingId: findingId,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.transitionId).toBe('transition-freshness-approved');
+  });
+
+  it('advance never lets a community admin transition escalated work, even when gates are skipped', async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-escalated-community',
+          submission_type: 'service_verification',
+          status: 'escalated',
+          is_locked: true,
+          locked_by_user_id: 'community-reviewer',
+          assigned_to_user_id: 'community-reviewer',
+          service_id: 'svc-escalated',
+          submitted_by_user_id: 'system:resource-freshness-scan',
+          target_type: 'service',
+          target_id: 'svc-escalated',
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-escalation-rejected' }] });
+
+    const result = await advance({
+      submissionId: 'sub-escalated-community',
+      toStatus: 'approved',
+      actorUserId: 'community-reviewer',
+      actorRole: 'community_admin',
+      skipGates: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Only an ORAN admin');
+    expect(result.transitionId).toBe('transition-escalation-rejected');
+    expect(
+      clientQueryMock.mock.calls.some(([sql]) => String(sql).startsWith('UPDATE submissions')),
+    ).toBe(false);
+  });
+
+  it('advance allows an ORAN admin to take escalated work back under review', async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-escalated-oran',
+          submission_type: 'service_verification',
+          status: 'escalated',
+          is_locked: true,
+          locked_by_user_id: 'oran-admin',
+          assigned_to_user_id: 'oran-admin',
+          service_id: 'svc-escalated',
+          submitted_by_user_id: 'system:resource-freshness-scan',
+          target_type: 'service',
+          target_id: 'svc-escalated',
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-escalation-claimed' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await advance({
+      submissionId: 'sub-escalated-oran',
+      toStatus: 'under_review',
+      actorUserId: 'oran-admin',
+      actorRole: 'oran_admin',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.transitionId).toBe('transition-escalation-claimed');
+  });
+
   it('advance enforces lock gate for different lock holder', async () => {
     clientQueryMock
       .mockResolvedValueOnce({
@@ -185,9 +360,9 @@ describe('workflow/engine', () => {
           id: 'sub-4b',
           submission_type: 'org_claim',
           status: 'pending_second_approval',
-          is_locked: false,
-          locked_by_user_id: null,
-          assigned_to_user_id: null,
+          is_locked: true,
+          locked_by_user_id: 'reviewer-other',
+          assigned_to_user_id: 'reviewer-other',
           service_id: null,
           submitted_by_user_id: 'submitter-x',
           target_type: 'organization',
@@ -273,6 +448,41 @@ describe('workflow/engine', () => {
     expect(result.transitionId).toBe('transition-ok-lock');
   });
 
+  it('advance returns released review work to needs_review', async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-release',
+          submission_type: 'service_verification',
+          status: 'under_review',
+          is_locked: true,
+          locked_by_user_id: 'reviewer-release',
+          assigned_to_user_id: 'reviewer-release',
+          service_id: 'svc-release',
+          submitted_by_user_id: 'submitter-release',
+          target_type: 'service',
+          target_id: 'svc-release',
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-release' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await advance({
+      submissionId: 'sub-release',
+      toStatus: 'needs_review',
+      actorUserId: 'reviewer-release',
+      actorRole: 'community_admin',
+      reason: 'Released back to the review queue',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.fromStatus).toBe('under_review');
+    expect(result.toStatus).toBe('needs_review');
+    expect(result.transitionId).toBe('transition-release');
+  });
+
   it('advance succeeds, records transition, and releases lock on terminal status', async () => {
     clientQueryMock
       .mockResolvedValueOnce({
@@ -280,9 +490,9 @@ describe('workflow/engine', () => {
           id: 'sub-5',
           submission_type: 'service_verification',
           status: 'under_review',
-          is_locked: false,
-          locked_by_user_id: null,
-          assigned_to_user_id: null,
+          is_locked: true,
+          locked_by_user_id: 'reviewer-2',
+          assigned_to_user_id: 'reviewer-2',
           service_id: 'svc-1',
           submitted_by_user_id: 'submitter-1',
           target_type: 'service',
@@ -314,15 +524,16 @@ describe('workflow/engine', () => {
           id: 'sub-5b',
           submission_type: 'org_claim',
           status: 'under_review',
-          is_locked: false,
-          locked_by_user_id: null,
-          assigned_to_user_id: null,
+          is_locked: true,
+          locked_by_user_id: 'reviewer-5b',
+          assigned_to_user_id: 'reviewer-5b',
           service_id: null,
           submitted_by_user_id: 'submitter-5b',
           target_type: 'organization',
           target_id: null,
         }],
       })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: 'transition-ok-5b' }] })
       .mockResolvedValueOnce({ rows: [] })
@@ -337,20 +548,25 @@ describe('workflow/engine', () => {
 
     expect(result.success).toBe(true);
     expect(result.toStatus).toBe('pending_second_approval');
-    expect(clientQueryMock).toHaveBeenCalledTimes(5);
+    expect(result.transitionId).toBe('transition-ok-5b');
+    expect(clientQueryMock).toHaveBeenCalledTimes(6);
   });
 
   it('sends terminal status email when configured and contact email exists', async () => {
     emailMocks.isEmailConfigured.mockReturnValue(true);
+    dbMocks.executeQuery.mockResolvedValueOnce([{
+      payload: { contact_email: 'person@example.org' },
+      title: 'Broken listing',
+    }]);
     clientQueryMock
       .mockResolvedValueOnce({
         rows: [{
           id: 'sub-5c',
           submission_type: 'community_report',
           status: 'under_review',
-          is_locked: false,
-          locked_by_user_id: null,
-          assigned_to_user_id: null,
+          is_locked: true,
+          locked_by_user_id: 'reviewer-5c',
+          assigned_to_user_id: 'reviewer-5c',
           service_id: null,
           submitted_by_user_id: 'submitter-5c',
           target_type: 'service',
@@ -360,10 +576,7 @@ describe('workflow/engine', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: 'transition-ok-5c' }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({
-        rows: [{ payload: JSON.stringify({ contact_email: 'person@example.org' }), title: 'Broken listing' }],
-      });
+      .mockResolvedValueOnce({ rows: [] });
 
     const result = await advance({
       submissionId: 'sub-5c',
@@ -378,6 +591,55 @@ describe('workflow/engine', () => {
       subject: 'Update: Broken listing — approved',
       text: 'Your submission has been updated to "approved". Thank you for your report.',
     });
+  });
+
+  it('never sends a terminal email from advanceInTransaction before commit', async () => {
+    emailMocks.isEmailConfigured.mockReturnValue(true);
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-deferred-email',
+          submission_type: 'community_report',
+          status: 'under_review',
+          is_locked: true,
+          locked_by_user_id: 'reviewer-deferred',
+          assigned_to_user_id: 'reviewer-deferred',
+          service_id: null,
+          submitted_by_user_id: 'submitter-deferred',
+          target_type: 'service',
+          target_id: null,
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-deferred-email' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const { advanceInTransaction } = await import('@/services/workflow/engine');
+    const result = await advanceInTransaction(
+      { query: clientQueryMock } as never,
+      {
+        submissionId: 'sub-deferred-email',
+        toStatus: 'approved',
+        actorUserId: 'reviewer-deferred',
+        actorRole: 'community_admin',
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(emailMocks.sendEmail).not.toHaveBeenCalled();
+    expect(dbMocks.executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('treats post-commit terminal email lookup and malformed payload as best-effort', async () => {
+    emailMocks.isEmailConfigured.mockReturnValue(true);
+    dbMocks.executeQuery
+      .mockRejectedValueOnce(new Error('post-commit lookup failed'))
+      .mockResolvedValueOnce([{ payload: '{broken-json', title: 'Broken' }]);
+
+    await expect(sendTerminalStatusEmail('sub-email-1', 'approved')).resolves.toBeUndefined();
+    await expect(sendTerminalStatusEmail('sub-email-2', 'denied')).resolves.toBeUndefined();
+    expect(emailMocks.sendEmail).not.toHaveBeenCalled();
   });
 
   it('uses submitter action URL mapping for routed submission types', async () => {
@@ -441,7 +703,7 @@ describe('workflow/engine', () => {
   it('assignSubmission returns false when target submission is missing', async () => {
     // LB8: capacity check passes, then submission UPDATE returns empty
     clientQueryMock
-      .mockResolvedValueOnce({ rows: [{ pending_count: '0', max_capacity: '50' }] })
+      .mockResolvedValueOnce({ rows: [{ pending_count: '0', max_pending: '50', is_active: true, is_accepting_new: true }] })
       .mockResolvedValueOnce({ rows: [] });
 
     await expect(assignSubmission('sub-8', 'reviewer-1', 'admin-1', 'community_admin')).resolves.toBe(false);
@@ -450,7 +712,7 @@ describe('workflow/engine', () => {
   it('assignSubmission writes audit + notification when assignment succeeds', async () => {
     clientQueryMock
       // LB8: capacity check
-      .mockResolvedValueOnce({ rows: [{ pending_count: '0', max_capacity: '50' }] })
+      .mockResolvedValueOnce({ rows: [{ pending_count: '0', max_pending: '50', is_active: true, is_accepting_new: true }] })
       .mockResolvedValueOnce({ rows: [{ id: 'sub-9' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
@@ -510,9 +772,9 @@ describe('workflow/engine', () => {
                 id: ids[idx],
                 submission_type: 'service_verification',
                 status: 'under_review',
-                is_locked: false,
-                locked_by_user_id: null,
-                assigned_to_user_id: null,
+                is_locked: true,
+                locked_by_user_id: 'reviewer-1',
+                assigned_to_user_id: 'reviewer-1',
                 service_id: 'svc-1',
                 submitted_by_user_id: 'submitter-1',
                 target_type: 'service',

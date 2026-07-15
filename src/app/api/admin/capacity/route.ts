@@ -60,11 +60,17 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rateLimit = await checkRateLimitShared(`admin_capacity:${ip}`, {
+  const rateLimit = await checkRateLimitShared(`admin:capacity:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rateLimit.exceeded) {
+  if (rateLimit.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) } },
+    );
+  }
+  if (rateLimit.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) } },

@@ -21,6 +21,7 @@ import {
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import { queueIngestionControlChange } from '@/services/ingestion/controlChanges';
 
 const JurisdictionScopeSchema = z.object({
   kind: z.enum(['local', 'regional', 'statewide', 'national', 'virtual']).optional(),
@@ -86,17 +87,25 @@ const CreateSourceSystemSchema = z.object({
   isActive: z.boolean().optional(),
   initialFeed: InitialFeedSchema.optional(),
 }).strict();
-async function requireAdmin(req: NextRequest, maxRequests: number) {
+async function requireAdmin(req: NextRequest, operation: 'read' | 'write') {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }
 
   const ip = getIp(req);
-  const rl = await checkRateLimitShared(ip, {
-    maxRequests,
+  const rl = await checkRateLimitShared(`admin:ingestion:source-systems:${operation}:${ip}`, {
+    maxRequests: operation === 'read'
+      ? ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS
+      : ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
     windowMs: RATE_LIMIT_WINDOW_MS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
@@ -115,7 +124,7 @@ async function requireAdmin(req: NextRequest, maxRequests: number) {
 }
 
 export async function GET(req: NextRequest) {
-  const guard = await requireAdmin(req, ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS);
+  const guard = await requireAdmin(req, 'read');
   if (guard) return guard;
 
   try {
@@ -146,7 +155,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const guard = await requireAdmin(req, ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS);
+  const guard = await requireAdmin(req, 'write');
   if (guard) return guard;
 
   try {
@@ -169,13 +178,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { createIngestionStores } = await import('@/agents/ingestion/persistence/storeFactory');
-    const { getDrizzle } = await import('@/services/db/drizzle');
-
-    const db = getDrizzle();
-    const stores = createIngestionStores(db);
-
-    const sourceSystem = await stores.sourceSystems.create({
+    const session = await getAuthContext();
+    const sourceSystemId = crypto.randomUUID();
+    const initialFeedId = parsed.data.initialFeed ? crypto.randomUUID() : null;
+    const createState = {
+      id: sourceSystemId,
       name: parsed.data.name,
       family: parsed.data.family,
       homepageUrl: parsed.data.homepageUrl ?? null,
@@ -190,12 +197,10 @@ export async function POST(req: NextRequest) {
       contactInfo: parsed.data.contactInfo ?? {},
       notes: parsed.data.notes ?? null,
       isActive: parsed.data.isActive ?? true,
-    });
-
-    let feed = null;
-    if (parsed.data.initialFeed) {
-      feed = await stores.sourceFeeds.create({
-        sourceSystemId: sourceSystem.id,
+    };
+    const initialFeed = parsed.data.initialFeed && initialFeedId ? {
+        id: initialFeedId,
+        sourceSystemId,
         feedName: parsed.data.initialFeed.feedName,
         feedType: parsed.data.initialFeed.feedType,
         feedHandler: parsed.data.initialFeed.feedHandler,
@@ -206,23 +211,35 @@ export async function POST(req: NextRequest) {
         jurisdictionScope: parsed.data.initialFeed.jurisdictionScope ?? {},
         refreshIntervalHours: parsed.data.initialFeed.refreshIntervalHours,
         isActive: parsed.data.initialFeed.isActive ?? true,
-      });
-      await stores.sourceFeedStates.upsert({
-        sourceFeedId: feed.id,
-        publicationMode: 'review_required',
-        emergencyPause: false,
-        includedDataOwners: [],
-        excludedDataOwners: [],
-      });
-    }
+      } : undefined;
+
+    const { submissionId } = await queueIngestionControlChange({
+      submittedByUserId: session?.userId ?? 'unknown',
+      actorRole: session?.role ?? 'oran_admin',
+      targetId: sourceSystemId,
+      title: `Source system creation queued: ${parsed.data.name}`,
+      summary: `Creating and activating source system ${parsed.data.name} requires a different ORAN administrator to approve the exact source and feed configuration.`,
+      payload: {
+        entityType: 'source_system',
+        action: 'create',
+        entityId: sourceSystemId,
+        entityLabel: parsed.data.name,
+        summary: `Create ${parsed.data.family} source at ${parsed.data.trustTier} trust for ${parsed.data.resourcePurpose}`,
+        beforeState: null,
+        createState,
+        initialFeed,
+      },
+    });
 
     return NextResponse.json(
       {
-        sourceSystemId: sourceSystem.id,
-        initialFeedId: feed?.id ?? null,
-        created: true,
+        sourceSystemId,
+        initialFeedId,
+        submissionId,
+        queued: true,
+        status: 'pending_second_approval',
       },
-      { status: 201 },
+      { status: 202 },
     );
   } catch (error) {
     captureException(error instanceof Error ? error : new Error(String(error)));

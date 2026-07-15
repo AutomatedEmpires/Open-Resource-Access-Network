@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { poll211NdpFeed } from '../ndp211Connector';
 import type { Ndp211Organization } from '../ndp211Types';
@@ -235,6 +235,10 @@ function createMockStores() {
 // ── Tests ─────────────────────────────────────────────────────
 
 describe('poll211NdpFeed', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('fetches and decomposes an organization bundle into child source records', async () => {
     const stores = createMockStores();
     const fetchMock = vi.fn()
@@ -660,5 +664,30 @@ describe('poll211NdpFeed', () => {
     // Verify it's NOT the external 211 ID
     const taxCall = stores.sourceRecords.addTaxonomy.mock.calls[0][0];
     expect(taxCall[0].sourceRecordId).not.toBe('211montere-4491387');
+  });
+
+  it('rejects a prohibited redirect before requesting its target', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production');
+    const stores = createMockStores();
+    const prohibitedTarget = 'https://enroll.azure-devices-provisioning.net/register';
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, {
+      status: 307,
+      headers: { Location: prohibitedTarget },
+    }));
+
+    const result = await poll211NdpFeed({
+      stores: stores as never,
+      sourceSystem: buildSourceSystem() as never,
+      feed: buildFeed() as never,
+      fetchFn: fetchMock as never,
+      organizationIds: [SAMPLE_211_ORG.id],
+      maxRetries: 0,
+    });
+
+    expect(result.errors).toEqual([
+      expect.stringContaining('prohibited Microsoft endpoint'),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls.some(([url]) => String(url) === prohibitedTarget)).toBe(false);
   });
 });

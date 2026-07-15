@@ -8,13 +8,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
 import { buildCommunitySubmissionScope, getCommunityAdminScope } from '@/services/community/scope';
-import { advance, acquireLock, releaseLock } from '@/services/workflow/engine';
+import { advanceInTransaction } from '@/services/workflow/engine';
 import { computeTriagePriority } from '@/services/queue/triage';
 import { getIp } from '@/services/security/ip';
 import {
@@ -46,6 +46,16 @@ const ClaimSchema = z.object({
   submissionId: z.string().uuid('submissionId must be a valid UUID'),
 }).strict();
 
+class QueueMutationConflict extends Error {
+  constructor(
+    readonly clientMessage: string,
+    readonly status: number = 409,
+  ) {
+    super(clientMessage);
+    this.name = 'QueueMutationConflict';
+  }
+}
+
 // ============================================================
 // HELPERS
 // ============================================================
@@ -59,10 +69,16 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`community:queue:read:${ip}`, {
+  const rl = await checkRateLimitShared(`community:queue:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: COMMUNITY_READ_RATE_LIMIT_MAX_REQUESTS,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
@@ -99,7 +115,9 @@ export async function GET(req: NextRequest) {
     const conditions: string[] = [];
     const params: unknown[] = [];
 
-    const scopeCondition = buildCommunitySubmissionScope('sub', scope, params);
+    const scopeCondition = authCtx.role === 'oran_admin'
+      ? null
+      : buildCommunitySubmissionScope('sub', scope, params);
     if (scopeCondition) {
       conditions.push(scopeCondition);
     }
@@ -151,6 +169,7 @@ export async function GET(req: NextRequest) {
       organization_id: string | null;
       organization_name: string | null;
       assigned_to_display_name: string | null;
+      requires_structured_freshness_review: boolean;
     }>(
       `SELECT sub.id, sub.submission_type, sub.status,
               sub.service_id, sub.target_type, sub.target_id,
@@ -159,6 +178,19 @@ export async function GET(req: NextRequest) {
               sub.is_locked, sub.locked_by_user_id,
               sub.sla_deadline, sub.sla_breached,
               sub.created_at, sub.updated_at,
+              (
+                CASE
+                  WHEN pg_catalog.jsonb_typeof(sub.payload) = 'object'
+                    THEN sub.payload ? 'resourceFreshness'
+                  ELSE false
+                END
+                OR EXISTS (
+                  SELECT 1
+                  FROM oran_internal.resource_freshness_findings finding
+                  WHERE finding.submission_id = sub.id
+                    AND finding.status = 'open'
+                )
+              ) AS requires_structured_freshness_review,
               s.name AS service_name, s.status AS service_status,
               o.id AS organization_id, o.name AS organization_name,
               up_assign.display_name AS assigned_to_display_name
@@ -199,10 +231,16 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`community:queue:write:${ip}`, {
+  const rl = await checkRateLimitShared(`community:queue:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
@@ -239,39 +277,168 @@ export async function POST(req: NextRequest) {
   const { submissionId } = parsed.data;
 
   try {
-    // Acquire lock + assign
-    const locked = await acquireLock(submissionId, authCtx.userId);
-    if (!locked) {
+    // Resolve the caller's review scope and authorize the row before taking a
+    // lock. Returning the same not-found response for missing and out-of-scope
+    // rows avoids disclosing queue entries outside a community admin's remit.
+    const scope = await getCommunityAdminScope(authCtx.userId);
+    if (authCtx.role !== 'oran_admin' && scope.profileExists && !scope.isActive) {
+      return NextResponse.json(
+        { error: 'Your community review profile is inactive.' },
+        { status: 403 },
+      );
+    }
+    if (authCtx.role !== 'oran_admin' && scope.profileExists && !scope.isAcceptingNew) {
+      return NextResponse.json(
+        { error: 'Your community review profile is paused and cannot claim new work.' },
+        { status: 409 },
+      );
+    }
+    const authorizationParams: unknown[] = [submissionId];
+    const authorizationScope = authCtx.role === 'oran_admin'
+      ? null
+      : buildCommunitySubmissionScope('sub', scope, authorizationParams, {
+          requireAcceptingNew: true,
+        });
+    const authorizedRows = await executeQuery<{
+      id: string;
+      status: string;
+      assigned_to_user_id: string | null;
+    }>(
+      `SELECT sub.id, sub.status, sub.assigned_to_user_id
+       FROM submissions sub
+       WHERE sub.id = $1
+         ${authorizationScope ? `AND ${authorizationScope}` : ''}
+       LIMIT 1`,
+      authorizationParams,
+    );
+    const authorized = authorizedRows[0];
+
+    if (!authorized) {
+      return NextResponse.json(
+        { error: 'Submission not found in your review scope' },
+        { status: 404 },
+      );
+    }
+
+    const isStandardClaim = authorized.status === 'submitted' || authorized.status === 'needs_review';
+    const isEscalatedClaim = authorized.status === 'escalated';
+    const isSecondApprovalClaim = authorized.status === 'pending_second_approval';
+    const canTakeOverEscalation = isEscalatedClaim && authCtx.role === 'oran_admin';
+
+    if (isEscalatedClaim && authCtx.role !== 'oran_admin') {
+      return NextResponse.json(
+        { error: 'Escalated submissions can only be claimed by an ORAN admin' },
+        { status: 403 },
+      );
+    }
+
+    if (!isStandardClaim && !isEscalatedClaim && !isSecondApprovalClaim) {
+      return NextResponse.json(
+        { error: `Submission cannot be claimed from status ${authorized.status}` },
+        { status: 409 },
+      );
+    }
+
+    if (
+      authorized.assigned_to_user_id
+      && authorized.assigned_to_user_id !== authCtx.userId
+      && !canTakeOverEscalation
+    ) {
+      return NextResponse.json(
+        { error: 'Submission is already assigned to another reviewer' },
+        { status: 409 },
+      );
+    }
+
+    const claimed = await withTransaction(async (client) => {
+      // Lock and assign in one guarded UPDATE. Re-checking status and scope in
+      // the transaction closes the race after the authorization read.
+      const claimParams: unknown[] = [authCtx.userId, submissionId, authorized.status];
+      const claimScope = authCtx.role === 'oran_admin'
+        ? null
+        : buildCommunitySubmissionScope('sub', scope, claimParams, {
+            requireAcceptingNew: true,
+          });
+      const claimResult = await client.query<{ id: string }>(
+        `UPDATE submissions sub
+         SET is_locked = true,
+             locked_at = NOW(),
+             locked_by_user_id = $1,
+             assigned_to_user_id = $1,
+             updated_at = NOW()
+         WHERE sub.id = $2
+           AND sub.status = $3
+           ${canTakeOverEscalation ? '' : 'AND (sub.is_locked = false OR sub.locked_by_user_id = $1)'}
+           ${canTakeOverEscalation ? '' : 'AND (sub.assigned_to_user_id IS NULL OR sub.assigned_to_user_id = $1)'}
+           ${isSecondApprovalClaim ? `AND NOT EXISTS (
+             SELECT 1
+             FROM submission_transitions prior_review
+             WHERE prior_review.submission_id = sub.id
+               AND prior_review.actor_user_id = $1
+               AND prior_review.gates_passed = true
+               AND prior_review.to_status IN ('under_review', 'pending_second_approval')
+           )` : ''}
+           ${claimScope ? `AND ${claimScope}` : ''}
+         RETURNING sub.id`,
+        claimParams,
+      );
+
+      if (claimResult.rows.length === 0) {
+        return false;
+      }
+
+      // Submitted work must pass through needs_review because the workflow
+      // graph intentionally forbids submitted → under_review.
+      if (authorized.status === 'submitted') {
+        const queued = await advanceInTransaction(client, {
+          submissionId,
+          toStatus: 'needs_review',
+          actorUserId: authCtx.userId,
+          actorRole: authCtx.role,
+          reason: 'Claimed for manual review',
+        });
+
+        if (!queued.success) {
+          throw new QueueMutationConflict(
+            queued.error ?? 'Cannot queue this submission for review',
+          );
+        }
+      }
+
+      if (isSecondApprovalClaim) {
+        // The handoff status is itself the second approver's review lane. Do
+        // not force it through under_review; the guarded claim above establishes
+        // reviewer B's assignment and lock while excluding reviewer A.
+        return true;
+      }
+
+      const result = await advanceInTransaction(client, {
+        submissionId,
+        toStatus: 'under_review',
+        actorUserId: authCtx.userId,
+        actorRole: authCtx.role,
+        reason: 'Claimed for review',
+      });
+
+      if (!result.success) {
+        throw new QueueMutationConflict(result.error ?? 'Cannot claim this submission');
+      }
+
+      return true;
+    });
+
+    if (!claimed) {
       return NextResponse.json(
         { error: 'Submission not found, already locked, or already assigned' },
         { status: 409 },
       );
     }
 
-    // Move submitted → under_review via workflow engine
-    const result = await advance({
-      submissionId,
-      toStatus: 'under_review',
-      actorUserId: authCtx.userId,
-      actorRole: authCtx.role,
-      reason: 'Claimed for review',
-    });
-
-    if (!result.success) {
-      // Release lock so the submission doesn't remain stuck
-      await releaseLock(submissionId, authCtx.userId, false);
-      return NextResponse.json(
-        { error: result.error ?? 'Cannot claim this submission' },
-        { status: 409 },
-      );
-    }
-
     return NextResponse.json({ success: true, id: submissionId }, { status: 200 });
   } catch (error) {
-    // Best-effort lock release on unexpected failure
-    try {
-      await releaseLock(submissionId, authCtx.userId, false);
-    } catch { /* lock release is best-effort */ }
+    if (error instanceof QueueMutationConflict) {
+      return NextResponse.json({ error: error.clientMessage }, { status: error.status });
+    }
     await captureException(error, { feature: 'api_community_queue_assign' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -291,10 +458,16 @@ export async function DELETE(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`community:queue:write:${ip}`, {
+  const rl = await checkRateLimitShared(`community:queue:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
@@ -332,32 +505,122 @@ export async function DELETE(req: NextRequest) {
 
   try {
     const isAdmin = authCtx.role === 'oran_admin';
-    const released = await releaseLock(submissionId, authCtx.userId, isAdmin);
-    if (!released) {
+    const scope = await getCommunityAdminScope(authCtx.userId);
+    const authorizationParams: unknown[] = [submissionId];
+    const authorizationScope = isAdmin
+      ? null
+      : buildCommunitySubmissionScope('sub', scope, authorizationParams);
+    const authorizedRows = await executeQuery<{
+      id: string;
+      status: string;
+      assigned_to_user_id: string | null;
+      is_locked: boolean;
+      locked_by_user_id: string | null;
+    }>(
+      `SELECT sub.id, sub.status, sub.assigned_to_user_id,
+              sub.is_locked, sub.locked_by_user_id
+       FROM submissions sub
+       WHERE sub.id = $1
+         ${authorizationScope ? `AND ${authorizationScope}` : ''}
+       LIMIT 1`,
+      authorizationParams,
+    );
+    const authorized = authorizedRows[0];
+
+    if (!authorized) {
+      return NextResponse.json(
+        { error: 'Submission not found in your review scope' },
+        { status: 404 },
+      );
+    }
+
+    if (
+      authorized.status !== 'under_review'
+      || authorized.assigned_to_user_id !== authCtx.userId
+      || !authorized.is_locked
+      || authorized.locked_by_user_id !== authCtx.userId
+    ) {
       return NextResponse.json(
         { error: 'Cannot release — submission not found or not locked by you' },
         { status: 409 },
       );
     }
+    const released = await withTransaction(async (client) => {
+      const releaseParams: unknown[] = [authCtx.userId, submissionId];
+      const releaseScope = isAdmin
+        ? null
+        : buildCommunitySubmissionScope('sub', scope, releaseParams);
+      // Keep reviewer ownership intact until advanceInTransaction validates it.
+      // The workflow status-exit cleanup releases assignment and lock only
+      // after the audited transition succeeds.
+      const releaseResult = await client.query<{ id: string }>(
+        `SELECT sub.id
+         FROM submissions sub
+         WHERE sub.id = $2
+           AND sub.status = 'under_review'
+           AND sub.is_locked = true
+           AND sub.locked_by_user_id = $1
+           AND sub.assigned_to_user_id = $1
+           ${releaseScope ? `AND ${releaseScope}` : ''}
+         FOR UPDATE OF sub`,
+        releaseParams,
+      );
 
-    // Revert status back to submitted via workflow engine
-    const result = await advance({
-      submissionId,
-      toStatus: 'submitted',
-      actorUserId: authCtx.userId,
-      actorRole: authCtx.role,
-      reason: 'Released by reviewer',
+      if (releaseResult.rows.length === 0) {
+        return false;
+      }
+
+      // Resolve the active review's origin after the guarded UPDATE has locked
+      // the submission row. This prevents a concurrent takeover from changing
+      // which lane receives the released work.
+      const originResult = await client.query<{ from_status: string }>(
+        `SELECT st.from_status
+         FROM submission_transitions st
+         WHERE st.submission_id = $1
+           AND st.to_status = 'under_review'
+           AND st.gates_passed = true
+         ORDER BY st.created_at DESC, st.id DESC
+         LIMIT 1`,
+        [submissionId],
+      );
+      const releaseStatus = originResult.rows[0]?.from_status === 'escalated'
+        ? 'escalated'
+        : 'needs_review';
+
+      const result = await advanceInTransaction(client, {
+        submissionId,
+        toStatus: releaseStatus,
+        actorUserId: authCtx.userId,
+        actorRole: authCtx.role,
+        reason: releaseStatus === 'escalated'
+          ? 'Released back to the ORAN escalation queue'
+          : 'Released back to the review queue',
+        metadata: releaseStatus === 'escalated'
+          ? { resourceFreshnessEscalationRelease: true }
+          : undefined,
+      });
+
+      if (!result.success) {
+        throw new QueueMutationConflict(
+          result.error ?? 'Cannot return this submission to the review queue',
+        );
+      }
+
+      return true;
     });
 
-    if (!result.success) {
+    if (!released) {
       return NextResponse.json(
-        { error: result.error ?? 'Lock released but could not revert status' },
+        { error: 'Cannot release — submission changed or is no longer locked by you' },
         { status: 409 },
       );
     }
 
     return NextResponse.json({ success: true, id: submissionId }, { status: 200 });
   } catch (error) {
+    if (error instanceof QueueMutationConflict) {
+      return NextResponse.json({ error: error.clientMessage }, { status: error.status });
+    }
     await captureException(error, { feature: 'api_community_queue_unclaim' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

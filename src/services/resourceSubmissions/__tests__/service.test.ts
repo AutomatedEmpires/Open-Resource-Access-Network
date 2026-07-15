@@ -14,7 +14,9 @@ const vaultMocks = vi.hoisted(() => ({
   getAccessibleFormInstance: vi.fn(),
   listAccessibleFormInstances: vi.fn(),
   setFormSubmissionReviewerNotes: vi.fn(),
+  setFormSubmissionReviewerNotesInTransaction: vi.fn(),
   updateFormInstanceDraft: vi.fn(),
+  updateFormInstanceDraftInTransaction: vi.fn(),
 }));
 
 const draftFactory = () => ({
@@ -279,7 +281,9 @@ beforeEach(() => {
   vaultMocks.getAccessibleFormInstance.mockResolvedValue(null);
   vaultMocks.listAccessibleFormInstances.mockResolvedValue({ instances: [] });
   vaultMocks.updateFormInstanceDraft.mockResolvedValue(undefined);
+  vaultMocks.updateFormInstanceDraftInTransaction.mockResolvedValue(undefined);
   vaultMocks.setFormSubmissionReviewerNotes.mockResolvedValue(undefined);
+  vaultMocks.setFormSubmissionReviewerNotesInTransaction.mockResolvedValue(undefined);
   dbMocks.executeQuery.mockResolvedValue([]);
   dbMocks.withTransaction.mockImplementation(async (fn: (client: { query: ReturnType<typeof vi.fn> }) => unknown) => {
     const client = { query: vi.fn().mockResolvedValue({ rows: [] }) };
@@ -423,11 +427,18 @@ describe('resource submission service', () => {
   it('saves draft by merging with current payload when no explicit draft is provided', async () => {
     const currentDraft = createEmptyResourceSubmissionDraft('listing', 'host');
     currentDraft.evidence.notes = 'n';
-    dbMocks.executeQuery.mockResolvedValueOnce([{ form_data: { draft: currentDraft } }]);
+    const query = vi.fn(async (sql: string) => (
+      sql.includes('SELECT form_data FROM form_instances')
+        ? { rows: [{ form_data: { draft: currentDraft } }] }
+        : { rows: [] }
+    ));
+    dbMocks.withTransaction.mockImplementation(async (fn: (client: { query: typeof query }) => unknown) => (
+      fn({ query })
+    ));
 
     await saveResourceSubmissionDraft('instance-1', { title: 'T' });
-    expect(vaultMocks.updateFormInstanceDraft).toHaveBeenCalledOnce();
-    const [, payload] = vaultMocks.updateFormInstanceDraft.mock.calls[0];
+    expect(vaultMocks.updateFormInstanceDraftInTransaction).toHaveBeenCalledOnce();
+    const [, , payload] = vaultMocks.updateFormInstanceDraftInTransaction.mock.calls[0];
     expect(payload.notes).toBe('n');
   });
 
@@ -477,6 +488,7 @@ describe('resource submission service', () => {
         'none',
         'oran://resource-studio',
         'custom',
+        'oran:reserved-feed:resource-submission:host:sys-1',
       ],
     );
     expect(clientQuery).toHaveBeenCalledWith(
@@ -514,7 +526,7 @@ describe('resource submission service', () => {
 
     await expect(projectApprovedResourceSubmission('instance-1', 'actor-1'))
       .rejects.toThrow('requires an approved submission');
-    expect(clientQuery).toHaveBeenCalledTimes(1);
+    expect(clientQuery).toHaveBeenCalledTimes(5);
   });
 
   it.each([
@@ -544,7 +556,7 @@ describe('resource submission service', () => {
 
     await expect(projectApprovedResourceSubmission('instance-1', 'actor-1'))
       .rejects.toThrow(expectedError);
-    expect(clientQuery).toHaveBeenCalledTimes(1);
+    expect(clientQuery).toHaveBeenCalledTimes(5);
   });
 
   it('refuses projection when the current draft hash differs from the reviewed source assertion', async () => {
@@ -581,9 +593,132 @@ describe('resource submission service', () => {
 
     await expect(projectApprovedResourceSubmission('instance-1', 'actor-1'))
       .rejects.toThrow('no longer matches the reviewed source assertion');
-    expect(clientQuery.mock.calls.some(([sql]) => sql.includes('pg_advisory_xact_lock'))).toBe(false);
+    expect(clientQuery.mock.calls.some((call) => {
+      const [sql, params] = call as unknown as [string, unknown[]?];
+      return sql.includes('pg_advisory_xact_lock(hashtext')
+        && Array.isArray(params)
+        && String(params[0]).startsWith('live-publication:');
+    })).toBe(false);
     expect(clientQuery.mock.calls.some(([sql]) => sql.includes('INSERT INTO services'))).toBe(false);
     expect(clientQuery.mock.calls.some(([sql]) => sql.includes('INSERT INTO organizations'))).toBe(false);
+  });
+
+  it('fails with a refresh conflict when the explicitly reviewed organization is no longer active', async () => {
+    const draft = createEmptyResourceSubmissionDraft('listing', 'host');
+    draft.ownerOrganizationId = '11111111-1111-4111-8111-111111111111';
+    draft.organization.name = 'Reviewed organization';
+    draft.service.name = 'Reviewed service';
+    const inputSource = buildInputSourceAssertion(draft, 'sub-stale-org');
+    const clientQuery = vi.fn(async (sql: string) => {
+      if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
+        return {
+          rows: [{
+            submission_id: 'sub-stale-org',
+            submission_type: 'new_service',
+            target_type: 'organization',
+            target_id: draft.ownerOrganizationId,
+            submitted_by_user_id: 'submitter-1',
+            form_data: { draft },
+            ...buildProjectionAuthorizationFields(draft),
+          }],
+        };
+      }
+      if (sql.includes("processing_status = 'normalized'")) return { rows: [inputSource] };
+      if (sql.includes('FROM organizations') && sql.includes("status = 'active'") && sql.includes('FOR UPDATE')) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+    dbMocks.withTransaction.mockImplementation(
+      async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }),
+    );
+
+    await expect(projectApprovedResourceSubmission('instance-1', 'actor-1'))
+      .rejects.toThrow('selected organization is no longer active');
+    expect(clientQuery.mock.calls.some(([sql]) => (
+      /^(INSERT|UPDATE|DELETE)\s+(?:INTO\s+)?(?:public\.)?(?:organizations|services)\b/i.test(String(sql).trim())
+    ))).toBe(false);
+  });
+
+  it('fails with a refresh conflict when the explicitly reviewed service is no longer active', async () => {
+    const draft = createEmptyResourceSubmissionDraft('listing', 'host');
+    draft.ownerOrganizationId = '11111111-1111-4111-8111-111111111111';
+    draft.existingServiceId = '22222222-2222-4222-8222-222222222222';
+    draft.organization.name = 'Reviewed organization';
+    draft.service.name = 'Reviewed service';
+    const inputSource = buildInputSourceAssertion(draft, 'sub-stale-service');
+    const clientQuery = vi.fn(async (sql: string) => {
+      if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
+        return {
+          rows: [{
+            submission_id: 'sub-stale-service',
+            submission_type: 'new_service',
+            target_type: 'service',
+            target_id: draft.existingServiceId,
+            submitted_by_user_id: 'submitter-1',
+            form_data: { draft },
+            ...buildProjectionAuthorizationFields(draft),
+          }],
+        };
+      }
+      if (sql.includes("processing_status = 'normalized'")) return { rows: [inputSource] };
+      if (sql.includes('FROM organizations') && sql.includes('FOR UPDATE')) {
+        return { rows: [{ id: draft.ownerOrganizationId }] };
+      }
+      if (sql.includes('FROM services') && sql.includes('FOR UPDATE')) return { rows: [] };
+      return { rows: [] };
+    });
+    dbMocks.withTransaction.mockImplementation(
+      async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }),
+    );
+
+    await expect(projectApprovedResourceSubmission('instance-1', 'actor-1'))
+      .rejects.toThrow('selected service is no longer active for this organization');
+    expect(clientQuery.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO services'))).toBe(false);
+  });
+
+  it('fails with a refresh conflict when the reviewed service moved to another organization', async () => {
+    const draft = createEmptyResourceSubmissionDraft('listing', 'host');
+    draft.ownerOrganizationId = '11111111-1111-4111-8111-111111111111';
+    draft.existingServiceId = '22222222-2222-4222-8222-222222222222';
+    draft.organization.name = 'Reviewed organization';
+    draft.service.name = 'Reviewed service';
+    const inputSource = buildInputSourceAssertion(draft, 'sub-moved-service');
+    const clientQuery = vi.fn(async (sql: string) => {
+      if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
+        return {
+          rows: [{
+            submission_id: 'sub-moved-service',
+            submission_type: 'new_service',
+            target_type: 'service',
+            target_id: draft.existingServiceId,
+            submitted_by_user_id: 'submitter-1',
+            form_data: { draft },
+            ...buildProjectionAuthorizationFields(draft),
+          }],
+        };
+      }
+      if (sql.includes("processing_status = 'normalized'")) return { rows: [inputSource] };
+      if (sql.includes('FROM organizations') && sql.includes('FOR UPDATE')) {
+        return { rows: [{ id: draft.ownerOrganizationId }] };
+      }
+      if (sql.includes('FROM services') && sql.includes('FOR UPDATE')) {
+        return {
+          rows: [{
+            id: draft.existingServiceId,
+            organization_id: '33333333-3333-4333-8333-333333333333',
+          }],
+        };
+      }
+      return { rows: [] };
+    });
+    dbMocks.withTransaction.mockImplementation(
+      async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }),
+    );
+
+    await expect(projectApprovedResourceSubmission('instance-1', 'actor-1'))
+      .rejects.toThrow('selected service is no longer active for this organization');
+    expect(clientQuery.mock.calls.some(([sql]) => String(sql).includes('UPDATE services'))).toBe(false);
   });
 
   it('returns a completed bound projection without replaying publication writes', async () => {
@@ -666,8 +801,12 @@ describe('resource submission service', () => {
     const result = await projectApprovedResourceSubmission('instance-1', 'actor-1');
 
     expect(result).toEqual({ organizationId, serviceId });
-    expect(clientQuery).toHaveBeenCalledTimes(3);
-    expect(clientQuery.mock.calls.some(([sql]) => sql.includes('pg_advisory_xact_lock'))).toBe(false);
+    expect(clientQuery).toHaveBeenCalledTimes(7);
+    expect(clientQuery.mock.calls.some(([sql, params]) => (
+      sql.includes('pg_advisory_xact_lock(hashtext')
+      && Array.isArray(params)
+      && String(params[0]).startsWith('live-publication:')
+    ))).toBe(false);
     expect(clientQuery.mock.calls.some(([sql]) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql))).toBe(false);
   });
 
@@ -826,7 +965,7 @@ describe('resource submission service', () => {
     draft.service.url = 'https://example.org/service';
     const inputSource = buildInputSourceAssertion(draft, 'sub-1');
     const clientQuery = vi.fn(async (sql: string, params?: unknown[]) => {
-      if (sql.includes('pg_advisory_xact_lock')) {
+      if (sql.includes('pg_advisory_xact_lock(hashtext')) {
         expect(params).toEqual(['live-publication:example.org|existing org|example.org/service|existing service']);
         return { rows: [{ pg_advisory_xact_lock: '' }] };
       }
@@ -850,12 +989,21 @@ describe('resource submission service', () => {
         expect(params).toEqual(['example.org']);
         return { rows: [{ id: 'org-existing' }] };
       }
+      if (sql.includes('FROM organizations') && sql.includes('FOR UPDATE')) {
+        expect(params).toEqual(['org-existing']);
+        return { rows: [{ id: 'org-existing' }] };
+      }
       if (sql.includes('FROM services') && sql.includes("regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')")) {
         expect(params).toEqual(['org-existing', 'example.org/service']);
         return { rows: [{ id: 'svc-existing' }] };
       }
-      if (sql.includes('UPDATE organizations')) return { rows: [] };
-      if (sql.includes('UPDATE services')) return { rows: [] };
+      if (sql.includes('FROM services') && sql.includes('FOR UPDATE')) {
+        expect(sql).toContain('organization_id = $2');
+        expect(params).toEqual(['svc-existing', 'org-existing']);
+        return { rows: [{ id: 'svc-existing' }] };
+      }
+      if (sql.includes('UPDATE organizations')) return { rows: [{ id: 'org-existing' }] };
+      if (sql.includes('UPDATE services')) return { rows: [{ id: 'svc-existing' }] };
       if (sql.includes('SELECT location_id FROM service_at_location')) return { rows: [] };
       if (sql.includes('INSERT INTO source_systems')) return { rows: [{ id: 'sys-1' }] };
       if (sql.includes('FROM source_feeds')) return { rows: [] };
@@ -895,7 +1043,6 @@ describe('resource submission service', () => {
     draft.service.url = 'https://example.org/service';
     const inputSource = buildInputSourceAssertion(draft, 'sub-2');
     const clientQuery = vi.fn(async (sql: string, _params?: unknown[]) => {
-      if (sql.includes('pg_advisory_xact_lock')) return { rows: [{ pg_advisory_xact_lock: '' }] };
       if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
         return {
           rows: [{
@@ -918,7 +1065,13 @@ describe('resource submission service', () => {
       if (sql.includes('FROM organizations') && sql.includes("regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')")) {
         return { rows: [{ id: 'org-existing' }] };
       }
+      if (sql.includes('FROM organizations') && sql.includes('FOR UPDATE')) {
+        return { rows: [{ id: 'org-existing' }] };
+      }
       if (sql.includes('FROM services') && sql.includes("regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')")) {
+        return { rows: [{ id: 'svc-existing' }] };
+      }
+      if (sql.includes('FROM services') && sql.includes('FOR UPDATE')) {
         return { rows: [{ id: 'svc-existing' }] };
       }
       if (sql.includes('FROM hsds_export_snapshots')) {
@@ -967,6 +1120,52 @@ describe('resource submission service', () => {
       expect.stringContaining('INSERT INTO lifecycle_events'),
       expect.arrayContaining(['service', 'svc-existing', 'linked_existing']),
     );
+  });
+
+  it('fails closed when an identity-derived service moves before its row lock', async () => {
+    const draft = createEmptyResourceSubmissionDraft('listing', 'host');
+    draft.organization.name = 'Existing Org';
+    draft.organization.url = 'https://example.org';
+    draft.service.name = 'Existing Service';
+    draft.service.url = 'https://example.org/service';
+    const inputSource = buildInputSourceAssertion(draft, 'sub-derived-race');
+    const clientQuery = vi.fn(async (sql: string) => {
+      if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
+        return {
+          rows: [{
+            submission_id: 'sub-derived-race',
+            submission_type: 'new_service',
+            target_type: 'system',
+            target_id: null,
+            submitted_by_user_id: 'submitter-1',
+            form_data: { draft },
+            ...buildProjectionAuthorizationFields(draft),
+          }],
+        };
+      }
+      if (sql.includes("processing_status = 'normalized'")) return { rows: [inputSource] };
+      if (sql.includes('FROM organizations') && sql.includes('regexp_replace')) {
+        return { rows: [{ id: 'org-existing' }] };
+      }
+      if (sql.includes('FROM organizations') && sql.includes('FOR UPDATE')) {
+        return { rows: [{ id: 'org-existing' }] };
+      }
+      if (sql.includes('FROM services') && sql.includes('regexp_replace')) {
+        return { rows: [{ id: 'svc-existing' }] };
+      }
+      if (sql.includes('FROM services') && sql.includes('FOR UPDATE')) {
+        expect(sql).toContain('organization_id = $2');
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+    dbMocks.withTransaction.mockImplementation(
+      async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }),
+    );
+
+    await expect(projectApprovedResourceSubmission('instance-1', 'actor-1'))
+      .rejects.toThrow('changed ownership or status during review');
+    expect(clientQuery.mock.calls.some(([sql]) => String(sql).includes('UPDATE services'))).toBe(false);
   });
 
   it('gets, lists, and resolves accessible resource submissions', async () => {

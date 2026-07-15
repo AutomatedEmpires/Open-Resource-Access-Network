@@ -50,7 +50,7 @@ function makeRow(overrides: Record<string, unknown> = {}) {
     homepageUrl: 'https://example.gov',
     licenseNotes: null,
     termsUrl: null,
-    trustTier: 'allowlisted',
+    trustTier: 'curated',
     resourcePurpose: 'service_catalog',
     hsdsProfileUri: null,
     domainRules: [{ type: 'exact_host', value: 'example.gov' }],
@@ -107,6 +107,30 @@ describe('sourceRegistryStore', () => {
         }),
         coverage: [{ kind: 'statewide', country: 'US', stateProvince: 'WA' }],
       }),
+    ]);
+  });
+
+  it('maps production publisher trust tiers to crawler admission without widening community sources', async () => {
+    const { db } = createMockDb([[
+      makeRow({ id: 'verified', trustTier: 'verified_publisher' }),
+      makeRow({ id: 'partner', trustTier: 'trusted_partner' }),
+      makeRow({ id: 'curated', trustTier: 'curated' }),
+      makeRow({ id: 'community', trustTier: 'community' }),
+      makeRow({ id: 'quarantine', trustTier: 'quarantine' }),
+      makeRow({ id: 'blocked', trustTier: 'blocked' }),
+      makeRow({ id: 'invalid', trustTier: 'allowlisted' }),
+    ]]);
+    const store = createDrizzleSourceRegistryStore(db as never);
+
+    const results = await store.listActive();
+
+    expect(results.map(({ id, trustLevel }) => ({ id, trustLevel }))).toEqual([
+      { id: 'verified', trustLevel: 'allowlisted' },
+      { id: 'partner', trustLevel: 'allowlisted' },
+      { id: 'curated', trustLevel: 'allowlisted' },
+      { id: 'community', trustLevel: 'quarantine' },
+      { id: 'quarantine', trustLevel: 'quarantine' },
+      { id: 'blocked', trustLevel: 'blocked' },
     ]);
   });
 
@@ -216,7 +240,7 @@ describe('sourceRegistryStore', () => {
         name: 'Inserted Feed',
         family: 'seeded_only',
         homepageUrl: 'https://inserted.gov',
-        trustTier: 'allowlisted',
+        trustTier: 'curated',
         resourcePurpose: 'program_navigation',
         domainRules: [{ type: 'exact_host', value: 'inserted.gov' }],
         jurisdictionScope: [],

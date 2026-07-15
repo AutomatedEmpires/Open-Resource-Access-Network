@@ -2,7 +2,7 @@ name: Rotate Azure Maps SAS
 
 "on":
   workflow_dispatch:
-  # Legacy rollback only; scheduled rotation is disabled during the map migration.
+  # Archived definition only. Azure Maps token brokerage is retired.
 
 permissions:
   contents: read
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   rotate:
-    if: ${{ vars.AZURE_ROLLBACK_DEPLOY_ENABLED == 'true' }}
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production

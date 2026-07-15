@@ -20,6 +20,8 @@ import { isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { captureException } from '@/services/telemetry/sentry';
 import { applySla } from '@/services/workflow/engine';
 import { getIp } from '@/services/security/ip';
+import { acquireLivePublicationGateShared } from '@/services/publication/liveEntityMerge';
+import { buildAnonymousUserId } from '@/services/security/anonymousIdentity';
 
 // ============================================================
 // REQUEST SCHEMA
@@ -62,10 +64,19 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rateLimit = await checkRateLimitShared(`report:ip:${ip}`, {
+  const rateLimit = await checkRateLimitShared(`report:write:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: REPORT_RATE_LIMIT_MAX,
   });
+  if (rateLimit.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      {
+        status: 503,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      },
+    );
+  }
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Too many reports submitted. Please wait before reporting again.' },
@@ -95,6 +106,17 @@ export async function POST(req: NextRequest) {
 
   try {
     const submissionId = await withTransaction(async (client) => {
+      await acquireLivePublicationGateShared(client);
+      const activeService = await client.query<{ id: string }>(
+        `SELECT id
+         FROM services
+         WHERE id = $1
+           AND status = 'active'
+         FOR UPDATE`,
+        [serviceId],
+      );
+      if (!activeService.rows[0]) return null;
+
       // 1. Create submission in the universal pipeline
       const submissionResult = await client.query<{ id: string }>(
         `INSERT INTO submissions
@@ -105,7 +127,7 @@ export async function POST(req: NextRequest) {
         [
           serviceId,
           JSON.stringify({ issueType, comment: comment ?? null }),
-          `anon_${ip}`,
+          buildAnonymousUserId(),
         ],
       );
 
@@ -138,13 +160,18 @@ export async function POST(req: NextRequest) {
       return newId;
     });
 
+    if (!submissionId) {
+      return NextResponse.json(
+        { error: 'Service not found or retired.' },
+        { status: 409 },
+      );
+    }
+
     // 4. Apply SLA deadline (outside transaction — non-critical)
-    if (submissionId) {
-      try {
-        await applySla(submissionId, 'community_report');
-      } catch {
-        // SLA application is best-effort; don't fail the report
-      }
+    try {
+      await applySla(submissionId, 'community_report');
+    } catch {
+      // SLA application is best-effort; don't fail the report
     }
 
     return NextResponse.json(

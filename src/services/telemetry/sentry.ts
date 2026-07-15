@@ -6,6 +6,7 @@
  */
 
 import * as SentrySdk from '@sentry/nextjs';
+import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy';
 
 // ============================================================
 // TYPES
@@ -101,6 +102,7 @@ function sanitizeExtra(extra: Record<string, unknown>): Record<string, unknown> 
 async function getSentry(): Promise<any | null> {
   const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
   if (!dsn) return null;
+  assertAllowedRuntimeEndpoint(dsn, 'NEXT_PUBLIC_SENTRY_DSN');
 
   const injected = (globalThis as { __ORAN_SENTRY__?: unknown }).__ORAN_SENTRY__;
   if (injected) {

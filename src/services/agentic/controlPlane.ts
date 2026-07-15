@@ -151,6 +151,13 @@ function scoreOperator(baseReady: boolean, blockers: string[], accelerators: str
   return clampScore(92 - blockers.length * 14 - accelerators.length * 6);
 }
 
+function describeRuntimeContractIssues(validation: RuntimeEnvValidationResult): string {
+  return [
+    ...validation.missingCritical,
+    ...validation.prohibitedSettings.map((name) => `prohibited:${name}`),
+  ].join(', ');
+}
+
 export async function buildAgentControlPlaneSnapshot(
   options: BuildControlPlaneOptions = {},
 ): Promise<ControlPlaneSnapshot> {
@@ -247,7 +254,7 @@ export async function buildAgentControlPlaneSnapshot(
   const trustSafetyBlockers: string[] = [];
   const trustSafetyAccelerators: string[] = [];
   if (!runtimeValidation.ok) {
-    trustSafetyBlockers.push(`Runtime contract is incomplete: ${runtimeValidation.missingCritical.join(', ')}`);
+    trustSafetyBlockers.push(`Runtime contract is invalid: ${describeRuntimeContractIssues(runtimeValidation)}`);
   }
   if (!authEnforced) {
     trustSafetyBlockers.push('Fail-closed auth enforcement is not active for this runtime.');
@@ -314,7 +321,7 @@ export async function buildAgentControlPlaneSnapshot(
   const releaseBlockers: string[] = [];
   const releaseAccelerators: string[] = [];
   if (!runtimeValidation.ok) {
-    releaseBlockers.push(`Runtime contract is incomplete: ${runtimeValidation.missingCritical.join(', ')}`);
+    releaseBlockers.push(`Runtime contract is invalid: ${describeRuntimeContractIssues(runtimeValidation)}`);
   }
   if (integrationById.get('sentry')?.state !== 'configured') {
     releaseBlockers.push('Sentry is required for production release telemetry.');

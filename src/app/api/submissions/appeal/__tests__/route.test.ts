@@ -183,6 +183,36 @@ describe('POST /api/submissions/appeal', () => {
     expect(response.status).toBe(409);
   });
 
+  it('rejects a denied freshness submission when only the authoritative finding remains', async () => {
+    clientQueryMock.mockResolvedValueOnce({
+      rows: [{
+        id: validBody.submissionId,
+        status: 'denied',
+        submitted_by_user_id: '11111111-1111-4111-8111-111111111111',
+        submission_type: 'service_verification',
+        target_type: 'service',
+        target_id: null,
+        service_id: '77777777-7777-4777-8777-777777777777',
+        title: 'Closed freshness review',
+        has_resource_freshness_packet: false,
+        has_resource_freshness_finding: true,
+      }],
+    });
+
+    const { POST } = await loadRoute();
+    const response = await POST(createRequest({ jsonBody: validBody }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Resource freshness decisions cannot be appealed through this route',
+    });
+    expect(clientQueryMock).toHaveBeenCalledTimes(1);
+    expect(String(clientQueryMock.mock.calls[0]?.[0])).toContain(
+      'oran_internal.resource_freshness_findings',
+    );
+    expect(engineMocks.applySla).not.toHaveBeenCalled();
+  });
+
   it('returns 409 when another active appeal already exists', async () => {
     clientQueryMock
       .mockResolvedValueOnce({

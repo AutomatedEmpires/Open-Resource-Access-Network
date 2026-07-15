@@ -488,7 +488,7 @@ describe('LLM Suggestions', () => {
       expect(sugg.llmConfidence).toBe(0.85);
       expect(sugg.suggestionStatus).toBe('pending');
       expect(sugg.llmModel).toBe('unknown');
-      expect(sugg.llmProvider).toBe('azure');
+      expect(sugg.llmProvider).toBe('unknown');
     });
 
     it('creates suggestion with options', () => {

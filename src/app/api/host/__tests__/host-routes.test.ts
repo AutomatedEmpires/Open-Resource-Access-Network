@@ -32,10 +32,16 @@ const submissionExecutionMocks = vi.hoisted(() => ({
 const workflowMocks = vi.hoisted(() => ({
   applySla: vi.fn(),
 }));
+const protectedMutationMocks = vi.hoisted(() => ({
+  acquireAuthoritativeMutationGatesShared: vi.fn(),
+  acquireFreshnessSensitiveAuthoritativeMutationGates: vi.fn(),
+  assertAuthoritativeEntitiesMutable: vi.fn(),
+}));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimit: rateLimitMock,
+  checkRateLimitShared: rateLimitMock,
 }));
 vi.mock('@/services/security/ip', () => ({
   getIp: getIpMock,
@@ -48,6 +54,10 @@ vi.mock('@/services/workflow/engine', () => workflowMocks);
 vi.mock('@/services/ingestion/hostPortalIntake', () => hostPortalIntakeMocks);
 vi.mock('@/services/resourceSubmissions/service', () => resourceSubmissionMocks);
 vi.mock('@/services/resourceSubmissions/submissionExecution', () => submissionExecutionMocks);
+vi.mock('@/services/publication/protectedAuthoritativeMutation', () => ({
+  ...protectedMutationMocks,
+  ProtectedAuthoritativeMutationConflict: class ProtectedAuthoritativeMutationConflict extends Error {},
+}));
 
 type JsonRequestOptions = {
   search?: string;
@@ -140,6 +150,9 @@ beforeEach(() => {
   authMocks.requireOrgAccess.mockReturnValue(true);
   authMocks.requireOrgRole.mockReturnValue(true);
   authMocks.shouldEnforceAuth.mockReturnValue(false);
+  protectedMutationMocks.acquireAuthoritativeMutationGatesShared.mockResolvedValue(undefined);
+  protectedMutationMocks.acquireFreshnessSensitiveAuthoritativeMutationGates.mockResolvedValue(undefined);
+  protectedMutationMocks.assertAuthoritativeEntitiesMutable.mockResolvedValue(undefined);
   hostPortalIntakeMocks.createHostPortalSourceAssertion.mockResolvedValue({
     sourceSystemId: 'source-system-1',
     sourceFeedId: 'source-feed-1',
@@ -283,7 +296,7 @@ describe('host organizations collection route', () => {
       sourceRecordId: 'source-record-1',
     });
     expect(rateLimitMock).toHaveBeenCalledWith(
-      'host:org:write:203.0.113.10',
+      'host:organizations:write:203.0.113.10',
       expect.any(Object),
     );
     expect(dbMocks.withTransaction).toHaveBeenCalledOnce();
@@ -809,15 +822,16 @@ describe('host service detail route', () => {
       orgIds: ['org-1'],
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
-    dbMocks.executeQuery
-      .mockResolvedValueOnce([{ organization_id: 'org-1', status: 'active', name: 'Updated Name' }])
-      .mockResolvedValueOnce([
-        {
-          organization_id: 'org-1',
-          status: 'active',
-          name: 'Updated Name',
-        },
-      ]);
+    dbMocks.executeQuery.mockResolvedValueOnce([
+      { organization_id: 'org-1', status: 'active', name: 'Updated Name' },
+    ]);
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: {
+      query: ReturnType<typeof vi.fn>;
+    }) => Promise<unknown>) => callback({
+      query: vi.fn().mockResolvedValue({
+        rows: [{ organization_id: 'org-1', status: 'active', name: 'Updated Name' }],
+      }),
+    }));
     const { PUT } = await loadServiceDetailRoute();
 
     const response = await PUT(
@@ -884,6 +898,13 @@ describe('host service detail route', () => {
     authMocks.requireOrgAccess.mockReturnValue(true);
     dbMocks.executeQuery
       .mockResolvedValueOnce([{ organization_id: 'org-1', status: 'active', name: 'Food Pantry' }]);
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: {
+      query: ReturnType<typeof vi.fn>;
+    }) => Promise<unknown>) => callback({
+      query: vi.fn().mockResolvedValue({
+        rows: [{ organization_id: 'org-1', status: 'active', name: 'Food Pantry' }],
+      }),
+    }));
     const { DELETE } = await loadServiceDetailRoute();
 
     const response = await DELETE(
@@ -1085,9 +1106,14 @@ describe('host locations routes', () => {
       query: ReturnType<typeof vi.fn>;
     }) => Promise<unknown>) => {
       const client = {
-        query: vi.fn().mockResolvedValueOnce({
-          rows: [{ id: 'loc-1', organization_id: 'org-1' }],
-        }),
+        query: vi.fn()
+          .mockResolvedValueOnce({
+            rows: [{ organization_id: 'org-1', service_ids: [] }],
+          })
+          .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
+          .mockResolvedValueOnce({
+            rows: [{ id: 'loc-1', organization_id: 'org-1' }],
+          }),
       };
       return callback(client);
     });
@@ -1119,8 +1145,10 @@ describe('host locations routes', () => {
         query: vi
           .fn()
           .mockResolvedValueOnce({
-            rows: [{ id: 'loc-1', organization_id: 'org-1' }],
+            rows: [{ organization_id: 'org-1', service_ids: [] }],
           })
+          .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
+          .mockResolvedValueOnce({ rows: [{ id: 'loc-1', organization_id: 'org-1' }] })
           .mockResolvedValueOnce({ rows: [] })
           .mockResolvedValueOnce({ rows: [] })
           .mockResolvedValueOnce({ rows: [] })
@@ -1204,7 +1232,11 @@ describe('host locations routes', () => {
   });
 
   it('returns 404 when deleting a missing location', async () => {
-    dbMocks.executeQuery.mockResolvedValueOnce([]);
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: {
+      query: ReturnType<typeof vi.fn>;
+    }) => Promise<unknown>) => callback({
+      query: vi.fn().mockResolvedValue({ rows: [] }),
+    }));
     const { DELETE } = await loadLocationDetailRoute();
 
     const response = await DELETE(
@@ -1225,7 +1257,14 @@ describe('host locations routes', () => {
       orgRoles: new Map([['org-2', 'host_member']]),
     });
     authMocks.requireOrgAccess.mockReturnValue(false);
-    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'loc-1', organization_id: 'org-1' }]);
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: {
+      query: ReturnType<typeof vi.fn>;
+    }) => Promise<unknown>) => callback({
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ organization_id: 'org-1', service_ids: [] }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'loc-1', organization_id: 'org-1' }] }),
+    }));
     const { DELETE } = await loadLocationDetailRoute();
 
     const response = await DELETE(
@@ -1246,9 +1285,12 @@ describe('host locations routes', () => {
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
     authMocks.requireOrgAccess.mockReturnValue(true);
-    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'loc-1', organization_id: 'org-1' }]);
     const client = {
-      query: vi.fn().mockResolvedValueOnce({ rows: [{ id: 'loc-1' }] }),
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ organization_id: 'org-1', service_ids: [] }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'loc-1', organization_id: 'org-1' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'loc-1' }] }),
     };
     dbMocks.withTransaction.mockImplementationOnce(async (callback: (transactionClient: typeof client) => Promise<unknown>) => {
       return callback(client);
@@ -1286,10 +1328,12 @@ describe('host locations routes', () => {
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
     authMocks.requireOrgAccess.mockReturnValue(true);
-    dbMocks.executeQuery.mockResolvedValueOnce([{ id: 'loc-1', organization_id: 'org-1' }]);
     const client = {
       query: vi
         .fn()
+        .mockResolvedValueOnce({ rows: [{ organization_id: 'org-1', service_ids: [] }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 'loc-1', organization_id: 'org-1' }] })
         .mockRejectedValueOnce(new Error('column "status" of relation "locations" does not exist'))
         .mockResolvedValueOnce({ rows: [{ id: 'loc-1' }] }),
     };
@@ -1602,6 +1646,16 @@ describe('host admins routes', () => {
               },
             ],
           })
+          .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: 'member-1',
+                organization_id: 'org-1',
+                role: 'host_admin',
+              },
+            ],
+          })
           .mockResolvedValueOnce({ rows: [{ count: '1' }] }),
       };
       return callback(client);
@@ -1735,6 +1789,20 @@ describe('host admins routes', () => {
               },
             ],
           })
+          .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: 'member-1',
+                user_id: 'user-2',
+                organization_id: 'org-1',
+                role: 'host_admin',
+                status: null,
+                created_at: '2026-03-03T00:00:00.000Z',
+                updated_at: null,
+              },
+            ],
+          })
           .mockResolvedValueOnce({ rows: [{ count: '1' }] }),
       };
       return callback(client);
@@ -1770,6 +1838,20 @@ describe('host admins routes', () => {
       const client = {
         query: vi
           .fn()
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: 'member-1',
+                user_id: 'user-2',
+                organization_id: 'org-1',
+                role: 'host_member',
+                status: null,
+                created_at: '2026-03-03T00:00:00.000Z',
+                updated_at: null,
+              },
+            ],
+          })
+          .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
           .mockResolvedValueOnce({
             rows: [
               {
@@ -1855,6 +1937,20 @@ describe('host admins routes', () => {
       const client = {
         query: vi
           .fn()
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: 'member-1',
+                user_id: 'user-2',
+                organization_id: 'org-1',
+                role: 'host_member',
+                status: null,
+                created_at: '2026-03-03T00:00:00.000Z',
+                updated_at: null,
+              },
+            ],
+          })
+          .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
           .mockResolvedValueOnce({
             rows: [
               {

@@ -82,7 +82,7 @@ describe('reviewCandidateWithLLM', () => {
     delete process.env.AZURE_OPENAI_ENDPOINT;
     delete process.env.AZURE_OPENAI_KEY;
     await expect(reviewCandidateWithLLM(minCandidate())).rejects.toThrow(
-      'Azure OpenAI is not configured',
+      'LLM review assist provider is not configured',
     );
   });
 

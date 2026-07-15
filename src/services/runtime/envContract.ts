@@ -12,6 +12,7 @@ export interface RuntimeEnvValidationResult {
   ok: boolean;
   missingCritical: string[];
   warnings: string[];
+  prohibitedSettings: string[];
 }
 
 const validateRuntimeEnvBridge = validateRuntimeEnvCore as (

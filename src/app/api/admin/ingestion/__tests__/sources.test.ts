@@ -124,7 +124,7 @@ describe('admin ingestion source routes', () => {
 
     const response = await GET(createRequest({ ip: '203.0.113.12' }));
 
-    expect(rateLimitMock).toHaveBeenCalledWith('203.0.113.12', expect.any(Object));
+    expect(rateLimitMock).toHaveBeenCalledWith('admin:ingestion:sources:read:203.0.113.12', expect.any(Object));
     expect(response.status).toBe(429);
     expect(response.headers.get('Retry-After')).toBe('12');
     await expect(response.json()).resolves.toEqual({
@@ -188,25 +188,41 @@ describe('admin ingestion source routes', () => {
       })
     );
 
-    expect(rateLimitMock).toHaveBeenCalledWith('203.0.113.50', expect.any(Object));
-    expect(sourceRegistryStore.upsert).toHaveBeenCalledWith(
+    expect(rateLimitMock).toHaveBeenCalledWith('admin:ingestion:sources:write:203.0.113.50', expect.any(Object));
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: 'generated-source-id',
-        displayName: 'Community Feed',
-        trustLevel: 'allowlisted',
-        resourcePurpose: 'service_catalog',
-        discovery: [{ type: 'seeded_only' }],
-        coverage: [],
-        crawl: expect.objectContaining({
-          obeyRobotsTxt: true,
-          maxRequestsPerMinute: 60,
+        submittedByUserId: 'oran-1',
+        targetId: 'generated-source-id',
+        payload: expect.objectContaining({
+          entityType: 'source_system',
+          action: 'create',
+          entityId: 'generated-source-id',
+          beforeState: null,
+          createState: expect.objectContaining({
+            id: 'generated-source-id',
+            name: 'Community Feed',
+            family: 'allowlisted_scrape',
+            trustTier: 'curated',
+            resourcePurpose: 'service_catalog',
+            domainRules: [{ type: 'suffix', value: 'example.org' }],
+            crawlPolicy: expect.objectContaining({
+              obeyRobotsTxt: true,
+              maxRequestsPerMinute: 60,
+              discovery: [{ type: 'seeded_only' }],
+            }),
+            jurisdictionScope: [],
+            isActive: true,
+          }),
         }),
       })
     );
-    expect(response.status).toBe(201);
+    expect(sourceRegistryStore.upsert).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({
       id: 'generated-source-id',
-      created: true,
+      submissionId: 'sub-1',
+      queued: true,
+      status: 'pending_second_approval',
     });
 
     randomUuidSpy.mockRestore();
@@ -279,7 +295,7 @@ describe('admin ingestion source routes', () => {
     expect(body.error).toBe('Invalid input.');
   });
 
-  it('merges updates into the existing source record', async () => {
+  it('queues the complete merged source update for second approval', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
     sourceRegistryStore.getById.mockResolvedValueOnce({
       id: 'source-1',
@@ -301,17 +317,31 @@ describe('admin ingestion source routes', () => {
     );
 
     expect(sourceRegistryStore.getById).toHaveBeenCalledWith('source-1');
-    expect(sourceRegistryStore.upsert).toHaveBeenCalledWith(
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: 'source-1',
-        displayName: 'New Name',
-        trustLevel: 'allowlisted',
-        domainRules: [{ type: 'suffix', value: 'old.example.org' }],
+        targetId: 'source-1',
+        payload: expect.objectContaining({
+          entityType: 'source',
+          action: 'update',
+          entityId: 'source-1',
+          beforeState: expect.objectContaining({
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          }),
+          nextState: expect.objectContaining({
+            id: 'source-1',
+            displayName: 'New Name',
+            trustLevel: 'allowlisted',
+            domainRules: [{ type: 'suffix', value: 'old.example.org' }],
+          }),
+        }),
       })
     );
-    expect(response.status).toBe(200);
+    expect(sourceRegistryStore.upsert).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({
-      updated: true,
+      queued: true,
+      submissionId: 'sub-1',
+      status: 'pending_second_approval',
     });
   });
 

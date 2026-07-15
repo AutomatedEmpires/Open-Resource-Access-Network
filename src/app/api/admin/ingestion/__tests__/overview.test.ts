@@ -120,7 +120,7 @@ describe('admin ingestion overview route', () => {
     const { GET } = await loadRoute();
     const response = await GET(createRequest('198.51.100.7'));
 
-    expect(rateLimitMock).toHaveBeenCalledWith('198.51.100.7', expect.any(Object));
+    expect(rateLimitMock).toHaveBeenCalledWith('admin:ingestion:overview:read:198.51.100.7', expect.any(Object));
     expect(requireMinRoleMock).toHaveBeenCalledWith({ userId: 'oran-1' }, 'oran_admin');
     expect(executeQueryMock).toHaveBeenCalledTimes(10);
     expect(response.status).toBe(200);

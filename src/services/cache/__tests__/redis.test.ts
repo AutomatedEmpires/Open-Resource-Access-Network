@@ -74,6 +74,21 @@ describe('Redis Cache', () => {
     expect(redisCtorMock).not.toHaveBeenCalled();
   });
 
+  it('rejects a Microsoft-hosted REDIS_URL before constructing a client', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VITEST', '');
+    vi.stubEnv('REDIS_URL', 'rediss://secret@oran.redis.cache.windows.net:6380');
+    const redisModule = await import('../redis');
+
+    expect(() => redisModule.isRedisConfigured()).toThrow(
+      'REDIS_URL uses a prohibited Microsoft endpoint',
+    );
+    await expect(redisModule.cacheGet('blocked')).rejects.toThrow(
+      'REDIS_URL uses a prohibited Microsoft endpoint',
+    );
+    expect(redisCtorMock).not.toHaveBeenCalled();
+  });
+
   it('uses a singleton client for get/set/del operations', async () => {
     vi.stubEnv('REDIS_URL', 'rediss://:pass@host:6380');
     const client = createClient({

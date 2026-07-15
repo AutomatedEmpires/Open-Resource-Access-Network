@@ -399,7 +399,9 @@ describe('createFormInstance', () => {
     const instanceResult = makeInstance();
 
     mockClient.query
-      .mockResolvedValueOnce({ rows: [] }) // advisory lock
+      .mockResolvedValueOnce({ rows: [] }) // shared publication gate
+      .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] }) // linked organization lock
+      .mockResolvedValueOnce({ rows: [] }) // create-key advisory lock
       .mockResolvedValueOnce({ rows: [] }) // existing draft lookup
       .mockResolvedValueOnce({ rows: [{ id: SUBMISSION_ID }] }) // INSERT submission
       .mockResolvedValueOnce({ rows: [] }) // INSERT form_instance
@@ -414,20 +416,24 @@ describe('createFormInstance', () => {
     });
 
     expect(result).toEqual({ instance: instanceResult, reusedExistingDraft: false });
-    expect(mockClient.query).toHaveBeenCalledTimes(5);
+    expect(mockClient.query).toHaveBeenCalledTimes(7);
 
-    const [lockSql] = mockClient.query.mock.calls[0];
-    expect(lockSql).toContain('pg_advisory_xact_lock');
+    const [gateSql] = mockClient.query.mock.calls[0];
+    expect(gateSql).toContain('pg_advisory_xact_lock_shared');
 
-    const [lookupSql] = mockClient.query.mock.calls[1];
+    const [parentLockSql] = mockClient.query.mock.calls[1];
+    expect(parentLockSql).toContain('FROM organizations');
+
+    const [createLockSql] = mockClient.query.mock.calls[2];
+    expect(createLockSql).toContain('pg_advisory_xact_lock');
+
+    const [lookupSql] = mockClient.query.mock.calls[3];
     expect(lookupSql).toContain("WHERE s.status = 'draft'");
 
-    // Third call: INSERT submissions
-    const [subSql] = mockClient.query.mock.calls[2];
+    const [subSql] = mockClient.query.mock.calls[4];
     expect(subSql).toContain('INSERT INTO submissions');
 
-    // Fourth call: INSERT form_instances
-    const [fiSql] = mockClient.query.mock.calls[3];
+    const [fiSql] = mockClient.query.mock.calls[5];
     expect(fiSql).toContain('INSERT INTO form_instances');
   });
 
@@ -436,7 +442,9 @@ describe('createFormInstance', () => {
     const existingInstance = makeInstance({ title: 'Retried draft' });
 
     mockClient.query
-      .mockResolvedValueOnce({ rows: [] }) // advisory lock
+      .mockResolvedValueOnce({ rows: [] }) // shared publication gate
+      .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] }) // linked organization lock
+      .mockResolvedValueOnce({ rows: [] }) // create-key advisory lock
       .mockResolvedValueOnce({ rows: [existingInstance] }); // existing draft lookup
 
     const { createFormInstance } = await loadVault();
@@ -450,7 +458,7 @@ describe('createFormInstance', () => {
     });
 
     expect(result).toEqual({ instance: existingInstance, reusedExistingDraft: true });
-    expect(mockClient.query).toHaveBeenCalledTimes(2);
+    expect(mockClient.query).toHaveBeenCalledTimes(4);
   });
 
   it('throws when organization-scoped template has no owner org', async () => {
@@ -488,6 +496,8 @@ describe('createFormInstance', () => {
 
     mockClient.query
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: SUBMISSION_ID }] })
       .mockResolvedValueOnce({ rows: [] })
@@ -500,7 +510,7 @@ describe('createFormInstance', () => {
       ownerOrganizationId: 'org-1',
     });
 
-    const [, subParams] = mockClient.query.mock.calls[2];
+    const [, subParams] = mockClient.query.mock.calls[4];
     expect(subParams).toContain(2); // routing.defaultPriority
   });
 
@@ -509,6 +519,8 @@ describe('createFormInstance', () => {
     const instanceResult = makeInstance({ priority: 3 });
 
     mockClient.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'org-1' }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: SUBMISSION_ID }] })
@@ -523,7 +535,7 @@ describe('createFormInstance', () => {
       priority: 3,
     });
 
-    const [, subParams] = mockClient.query.mock.calls[2];
+    const [, subParams] = mockClient.query.mock.calls[4];
     expect(subParams).toContain(3);
   });
 });

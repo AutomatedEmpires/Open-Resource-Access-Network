@@ -16,6 +16,10 @@ DECLARE
   v_actual boolean;
   v_public_execute boolean;
   v_select text[] := ARRAY[
+    'oran_internal.hotline_authority_batches',
+    'oran_internal.hotline_authority_members',
+    'oran_internal.resource_quarantine_batches',
+    'oran_internal.resource_quarantine_members',
     'public.accessibility_for_disabilities',
     'public.addresses',
     'public.admin_review_profiles',
@@ -33,8 +37,10 @@ DECLARE
     'public.confidence_regressions',
     'public.confidence_scores',
     'public.concept_tag_derivations',
+    'public.contacts',
     'public.content_templates',
     'public.coverage_zones',
+    'public.dietary_options',
     'public.discovered_links',
     'public.eligibility',
     'public.entity_cluster_members',
@@ -49,12 +55,14 @@ DECLARE
     'public.hsds_export_snapshots',
     'public.ingestion_audit_events',
     'public.ingestion_jobs',
+    'public.ingestion_sources',
     'public.languages',
     'public.lifecycle_events',
     'public.llm_suggestions',
     'public.locations',
     'public.notification_events',
     'public.notification_preferences',
+    'public.org_service_scope',
     'public.organization_members',
     'public.organizations',
     'public.ownership_transfers',
@@ -62,6 +70,7 @@ DECLARE
     'public.phones',
     'public.platform_roles',
     'public.platform_scopes',
+    'public.programs',
     'public.publish_criteria',
     'public.required_documents',
     'public.resolution_candidates',
@@ -75,15 +84,20 @@ DECLARE
     'public.scope_audit_log',
     'public.seeker_feedback',
     'public.seeker_profiles',
+    'public.service_adaptations',
     'public.service_areas',
     'public.service_at_location',
     'public.service_attributes',
+    'public.service_embeddings',
     'public.service_taxonomy',
     'public.services',
     'public.source_feed_states',
     'public.source_feeds',
     'public.source_records',
     'public.source_systems',
+    'public.staging_locations',
+    'public.staging_organizations',
+    'public.staging_services',
     'public.submission_slas',
     'public.submission_transitions',
     'public.submissions',
@@ -161,6 +175,7 @@ DECLARE
     'public.service_areas',
     'public.service_at_location',
     'public.service_attributes',
+    'public.service_embeddings',
     'public.service_taxonomy',
     'public.services',
     'public.source_feed_states',
@@ -197,8 +212,11 @@ DECLARE
     'public.canonical_services',
     'public.chat_sessions',
     'public.confidence_scores',
+    'public.contacts',
     'public.content_templates',
     'public.coverage_zones',
+    'public.dietary_options',
+    'public.eligibility',
     'public.entity_clusters',
     'public.entity_identifiers',
     'public.extracted_candidates',
@@ -207,19 +225,36 @@ DECLARE
     'public.form_templates',
     'public.hsds_export_snapshots',
     'public.ingestion_jobs',
+    'public.ingestion_sources',
+    'public.languages',
+    'public.lifecycle_events',
     'public.llm_suggestions',
     'public.locations',
     'public.notification_events',
     'public.notification_preferences',
+    'public.org_service_scope',
     'public.organization_members',
     'public.organizations',
     'public.ownership_transfers',
     'public.pending_scope_grants',
+    'public.phones',
+    'public.programs',
     'public.publish_criteria',
+    'public.required_documents',
     'public.resolution_candidates',
+    'public.resource_tags',
+    'public.saved_collection_services',
     'public.saved_collections',
+    'public.saved_services',
+    'public.schedules',
     'public.seeker_feedback',
     'public.seeker_profiles',
+    'public.service_adaptations',
+    'public.service_areas',
+    'public.service_at_location',
+    'public.service_attributes',
+    'public.service_embeddings',
+    'public.service_taxonomy',
     'public.services',
     'public.source_feed_states',
     'public.source_feeds',
@@ -270,7 +305,16 @@ DECLARE
     'oran_internal.check_chat_quota(text,text,integer)'::pg_catalog.regprocedure::oid,
     'oran_internal.reserve_chat_request(uuid,text,text,text,integer,integer,integer,integer)'::pg_catalog.regprocedure::oid,
     'oran_internal.finalize_chat_request(uuid,boolean)'::pg_catalog.regprocedure::oid,
-    'oran_internal.consume_shared_rate_limit(text,integer,integer)'::pg_catalog.regprocedure::oid
+    'oran_internal.consume_shared_rate_limit(text,integer,integer)'::pg_catalog.regprocedure::oid,
+    'oran_internal.is_account_erased(text)'::pg_catalog.regprocedure::oid,
+    'oran_internal.queue_account_erasure(text,text,text,uuid)'::pg_catalog.regprocedure::oid,
+    'oran_internal.claim_account_erasure_requests(integer)'::pg_catalog.regprocedure::oid,
+    'oran_internal.record_account_erasure_failure(uuid,text)'::pg_catalog.regprocedure::oid,
+    'oran_internal.mark_clerk_account_deleted(uuid,text,text)'::pg_catalog.regprocedure::oid,
+    'oran_internal.process_account_erasure_page(uuid,integer)'::pg_catalog.regprocedure::oid,
+    'oran_internal.export_user_governance_data(text)'::pg_catalog.regprocedure::oid,
+    'oran_internal.assign_candidate_reviewers(text,integer)'::pg_catalog.regprocedure::oid,
+    'oran_internal.escalate_candidate_for_review(text)'::pg_catalog.regprocedure::oid
   ];
 BEGIN
   IF session_user::text <> 'oran_backend_runtime'
@@ -542,6 +586,47 @@ BEGIN
         v_function.nspname, v_function.proname;
     END IF;
   END LOOP;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_attribute
+    WHERE attrelid = 'public.extracted_candidates'::pg_catalog.regclass
+      AND attname = 'revision_of_candidate_id'
+      AND NOT attisdropped
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_attribute
+    WHERE attrelid = 'public.extracted_candidates'::pg_catalog.regclass
+      AND attname = 'revision_number'
+      AND NOT attisdropped
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_attribute
+    WHERE attrelid = 'public.extracted_candidates'::pg_catalog.regclass
+      AND attname = 'lineage_root_candidate_id'
+      AND NOT attisdropped
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_attribute
+    WHERE attrelid = 'public.candidate_admin_assignments'::pg_catalog.regclass
+      AND attname = 'decision_reviewer_user_id'
+      AND NOT attisdropped
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_constraint
+    WHERE conrelid = 'public.candidate_admin_assignments'::pg_catalog.regclass
+      AND conname = 'candidate_admin_assignments_decision_reviewer_check'
+      AND contype = 'c'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_constraint
+    WHERE conrelid = 'public.candidate_admin_assignments'::pg_catalog.regclass
+      AND confrelid = 'public.admin_review_profiles'::pg_catalog.regclass
+      AND contype = 'f'
+      AND confdeltype = 'r'
+  ) THEN
+    RAISE EXCEPTION 'candidate revision-lineage schema is missing';
+  END IF;
 END
 $validate_backend_runtime$;
 

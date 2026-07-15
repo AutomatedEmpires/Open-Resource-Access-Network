@@ -28,6 +28,9 @@ function extractMigrationManifest(operation: Operation): string[] {
 
   const names: string[] = [...(manifestBody.match(/(?:public|oran_internal)\.[a-z_]+/g) ?? [])];
   names.push('oran_internal.resource_freshness_findings');
+  if (operation !== 'DELETE') {
+    names.push('public.service_embeddings');
+  }
   return [...new Set(names)].sort();
 }
 
@@ -116,6 +119,12 @@ describe('0066 backend runtime capability migration', () => {
     expect(manifests.SELECT).toContain('public.services');
     expect(manifests.INSERT).toContain('public.services');
     expect(manifests.UPDATE).toContain('public.services');
+    expect(manifests.SELECT).toContain('public.service_embeddings');
+    expect(manifests.INSERT).toContain('public.service_embeddings');
+    expect(manifests.UPDATE).toContain('public.service_embeddings');
+    expect(manifests.DELETE).not.toContain('public.service_embeddings');
+    expect(manifests.UPDATE).toContain('public.dietary_options');
+    expect(manifests.UPDATE).toContain('public.org_service_scope');
     expect(manifests.DELETE).not.toContain('public.services');
 
     expect(manifests.INSERT).toContain('public.source_record_taxonomy');

@@ -7,10 +7,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, requireOrgAccess, requireOrgRole, isOranAdmin } from '@/services/auth';
 import { createHostPortalSourceAssertion } from '@/services/ingestion/hostPortalIntake';
+import {
+  acquireAuthoritativeMutationGatesShared,
+  assertAuthoritativeEntitiesMutable,
+  ProtectedAuthoritativeMutationConflict,
+} from '@/services/publication/protectedAuthoritativeMutation';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -81,11 +86,17 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:org:read:${ip}`, {
+  const rl = await checkRateLimitShared(`host:organizations:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       {
@@ -143,11 +154,17 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:org:write:${ip}`, {
+  const rl = await checkRateLimitShared(`host:organizations:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       {
@@ -227,10 +244,13 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
   try {
     const result = await withTransaction(async (client) => {
+      await acquireAuthoritativeMutationGatesShared(client);
+      await assertAuthoritativeEntitiesMutable(client, { organizationIds: [id] });
       const updateResult = await client.query<Organization>(
         `UPDATE organizations
          SET ${setClauses.join(', ')}
          WHERE id = $${params.length}
+           AND status IS DISTINCT FROM 'defunct'
          RETURNING id, name, description, url, email, tax_status, tax_id,
                    year_incorporated, legal_status, logo_url, uri,
                    mission_statement, who_we_serve, service_region, social_links,
@@ -264,6 +284,18 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
     return NextResponse.json(result);
   } catch (error) {
+    if (
+      error instanceof Error
+      && (error as NodeJS.ErrnoException & { code?: string }).code === 'retired'
+    ) {
+      return NextResponse.json(
+        { error: 'Organization is no longer editable. Refresh and try again.' },
+        { status: 409 },
+      );
+    }
+    if (error instanceof ProtectedAuthoritativeMutationConflict) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     await captureException(error, { feature: 'api_host_org_update' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -291,11 +323,17 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:org:write:${ip}`, {
+  const rl = await checkRateLimitShared(`host:organizations:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       {
@@ -318,6 +356,8 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
     }
 
     const result = await withTransaction(async (client) => {
+      await acquireAuthoritativeMutationGatesShared(client);
+      await assertAuthoritativeEntitiesMutable(client, { organizationIds: [id] });
       const archiveResult = await client.query<{ id: string }>(
         `UPDATE organizations
          SET status = 'defunct', updated_at = now(), updated_by_user_id = $2
@@ -352,6 +392,9 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
 
     return NextResponse.json({ archived: true, id: result.id });
   } catch (error) {
+    if (error instanceof ProtectedAuthoritativeMutationConflict) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     await captureException(error, { feature: 'api_host_org_delete' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

@@ -18,15 +18,21 @@ import {
   RATE_LIMIT_WINDOW_MS,
   SEARCH_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { getIp } from '@/services/security/ip';
 
 export async function GET(req: NextRequest) {
   const ip = getIp(req);
-  const rl = checkRateLimit(`chat:quota:read:${ip}`, {
+  const rl = await checkRateLimitShared(`chat:quota:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: SEARCH_RATE_LIMIT_MAX_REQUESTS,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },

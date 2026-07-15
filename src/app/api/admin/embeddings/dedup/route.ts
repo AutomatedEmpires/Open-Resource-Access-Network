@@ -50,11 +50,17 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = await checkRateLimitShared(ip, {
+  const rl = await checkRateLimitShared(`admin:embeddings:dedup:read:${ip}`, {
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
     windowMs: RATE_LIMIT_WINDOW_MS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
@@ -83,10 +89,13 @@ export async function POST(req: NextRequest) {
 
     // Load probe services (those with embeddings)
     const probes = await executeQuery<ServiceProbe>(
-      `SELECT id, name, embedding::text AS embedding
-       FROM services
-       WHERE embedding IS NOT NULL AND status = 'active'
-       ORDER BY updated_at DESC
+      `SELECT service.id, service.name, service_embedding.embedding::text AS embedding
+       FROM services service
+       JOIN service_embeddings service_embedding
+         ON service_embedding.service_id = service.id
+        AND service_embedding.source_updated_at = service.updated_at
+       WHERE service.status = 'active'
+       ORDER BY service.updated_at DESC
        LIMIT $1`,
       [probeLimit],
     );

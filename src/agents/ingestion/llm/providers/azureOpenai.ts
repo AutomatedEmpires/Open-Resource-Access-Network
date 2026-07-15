@@ -29,6 +29,10 @@ import {
 
 import { buildExtractionMessages } from '../prompts/extraction';
 import { buildCategorizationMessages } from '../prompts/categorization';
+import {
+  isProhibitedMicrosoftEndpoint,
+  isRetiredMicrosoftProviderRuntime,
+} from '@/services/runtime/providerPolicy';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -280,10 +284,16 @@ export class AzureOpenAIClient implements LLMClient {
 export async function createAzureOpenAIClient(
   config: LLMClientConfig
 ): Promise<LLMClient> {
+  if (isRetiredMicrosoftProviderRuntime()) {
+    throw new Error('The Azure OpenAI provider is retired for this runtime.');
+  }
   if (!config.endpoint) {
     throw new Error(
       'Azure OpenAI requires an endpoint. Set LLM_ENDPOINT or provide config.endpoint.'
     );
+  }
+  if (isProhibitedMicrosoftEndpoint(config.endpoint) && process.env.NODE_ENV !== 'test') {
+    throw new Error('Microsoft-hosted LLM endpoints are prohibited.');
   }
 
   const client = new AzureOpenAI({
@@ -301,4 +311,6 @@ export async function createAzureOpenAIClient(
 // Self-register with the provider registry
 // ---------------------------------------------------------------------------
 
-registerLLMClientProvider('azure_openai', createAzureOpenAIClient);
+if (!isRetiredMicrosoftProviderRuntime()) {
+  registerLLMClientProvider('azure_openai', createAzureOpenAIClient);
+}

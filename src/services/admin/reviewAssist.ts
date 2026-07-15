@@ -18,6 +18,7 @@
 
 import { z } from 'zod';
 import { trackEvent } from '@/services/telemetry/events';
+import { isRetiredMicrosoftProviderRuntime } from '@/services/runtime/providerPolicy';
 
 // ============================================================
 // TYPES
@@ -82,6 +83,7 @@ RULES:
 // ============================================================
 
 function getConfig(): { endpoint: string; key: string; deployment: string } | null {
+  if (isRetiredMicrosoftProviderRuntime()) return null;
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const key = process.env.AZURE_OPENAI_KEY;
   const deployment = process.env.AZURE_OPENAI_DEPLOYMENT ?? 'gpt-4o-mini';
@@ -137,7 +139,7 @@ export async function reviewCandidateWithLLM(
   const config = getConfig();
   if (!config) {
     throw new Error(
-      'Azure OpenAI is not configured (AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_KEY missing)',
+      'LLM review assist provider is not configured.',
     );
   }
 

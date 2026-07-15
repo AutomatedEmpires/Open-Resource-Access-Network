@@ -95,7 +95,7 @@ describe('api/reports route', () => {
     );
 
     expect(rateLimitMock).toHaveBeenCalledWith(
-      'report:ip:203.0.113.10',
+      'report:write:ip:203.0.113.10',
       expect.objectContaining({ maxRequests: 5 }),
     );
     expect(response.status).toBe(429);
@@ -149,7 +149,7 @@ describe('api/reports route', () => {
     );
 
     expect(rateLimitMock).toHaveBeenCalledWith(
-      'report:ip:unknown',
+      'report:write:ip:unknown',
       expect.objectContaining({ maxRequests: 5 }),
     );
     // Now uses withTransaction — verify it was called

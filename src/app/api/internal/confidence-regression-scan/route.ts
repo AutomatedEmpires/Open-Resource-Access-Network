@@ -36,6 +36,10 @@ import { captureException } from '@/services/telemetry/sentry';
 import { detectRegressions } from '@/services/regression/detector';
 import type { RegressionCandidate } from '@/services/regression/detector';
 import { applyRegressionVisibilityPolicies } from '@/services/regression/policy';
+import {
+  acquireFreshnessSensitiveAuthoritativeMutationGates,
+  findProtectedAuthoritativeEntities,
+} from '@/services/publication/protectedAuthoritativeMutation';
 
 type ScanResult = {
   createdCount: number;
@@ -67,8 +71,39 @@ async function runRegressionScan(body: unknown) {
 
     // Write phase — short transaction only for the batch inserts.
     const result = await withTransaction(async (client) => {
-      const createdCount = await persistRegressions(client, candidates);
-      const policySummary = await applyRegressionVisibilityPolicies(client, candidates);
+      await acquireFreshnessSensitiveAuthoritativeMutationGates(client);
+      const candidateServiceIds = [...new Set(candidates.map((candidate) => candidate.serviceId))].sort();
+      const protectedMatches = await findProtectedAuthoritativeEntities(client, {
+        serviceIds: candidateServiceIds,
+      });
+      const protectedServiceIds = new Set(
+        protectedMatches
+          .filter((match) => match.entityType === 'service')
+          .map((match) => match.entityId),
+      );
+      const activeServiceRows = candidateServiceIds.length > 0
+        ? await client.query<{ id: string }>(
+            `SELECT id
+             FROM services
+             WHERE id = ANY($1::uuid[])
+               AND status = 'active'
+             ORDER BY id
+             FOR UPDATE`,
+            [candidateServiceIds],
+          )
+        : { rows: [] as Array<{ id: string }> };
+      const activeServiceIds = new Set(activeServiceRows.rows.map((row) => row.id));
+      const currentCandidates = candidates.filter((candidate) => (
+        activeServiceIds.has(candidate.serviceId)
+      ));
+
+      const createdCount = await persistRegressions(client, currentCandidates);
+      // Protected records still produce evidence and routed review work, but
+      // only their owning authority workflow may change live visibility.
+      const policySummary = await applyRegressionVisibilityPolicies(
+        client,
+        currentCandidates.filter((candidate) => !protectedServiceIds.has(candidate.serviceId)),
+      );
       const res: ScanResult = {
         createdCount,
         suppressedCount: policySummary.suppressedCount,

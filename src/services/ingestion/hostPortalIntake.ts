@@ -81,59 +81,114 @@ export interface QueueServiceVerificationSubmissionInput {
 }
 
 async function ensureHostPortalSourceSystem(client: PoolClient): Promise<string> {
+  const crawlPolicy = JSON.stringify({
+    origin: 'host_portal',
+    discovery: [{ type: 'manual_portal' }],
+    userAgent: 'oran-host-portal/1.0',
+  });
+  const notes = 'Authenticated host portal submissions and change requests.';
   const rows = await client.query<{ id: string }>(
-    `INSERT INTO source_systems
+    `WITH authority_lock AS MATERIALIZED (
+       SELECT pg_advisory_xact_lock(lock_key)
+       FROM (SELECT hashtextextended($6, 0) AS lock_key) lock_keys
+     ), existing AS MATERIALIZED (
+       SELECT source.id,
+              source.family = $2
+                AND source.homepage_url IS NOT DISTINCT FROM $3
+                AND source.trust_tier = 'trusted_partner'
+                AND source.resource_purpose = 'service_catalog'
+                AND source.domain_rules = '[]'::jsonb
+                AND source.crawl_policy = $4::jsonb
+                AND source.jurisdiction_scope = '{}'::jsonb
+                AND source.contact_info = '{}'::jsonb
+                AND source.notes IS NOT DISTINCT FROM $5
+                AND source.is_active = true AS configuration_matches
+       FROM public.source_systems source
+       CROSS JOIN authority_lock
+       WHERE source.name = $1
+     ), inserted AS (
+       INSERT INTO source_systems
        (name, family, homepage_url, trust_tier, resource_purpose, domain_rules, crawl_policy, jurisdiction_scope, contact_info, notes)
-     VALUES ($1, $2, $3, 'trusted_partner', 'service_catalog', '[]'::jsonb, $4::jsonb, '{}'::jsonb, '{}'::jsonb, $5)
-     ON CONFLICT (name)
-     DO UPDATE SET
-       family = EXCLUDED.family,
-       homepage_url = EXCLUDED.homepage_url,
-       trust_tier = EXCLUDED.trust_tier,
-       resource_purpose = EXCLUDED.resource_purpose,
-       domain_rules = EXCLUDED.domain_rules,
-       crawl_policy = EXCLUDED.crawl_policy,
-       updated_at = NOW()
-     RETURNING id`,
+       SELECT $1, $2, $3, 'trusted_partner', 'service_catalog', '[]'::jsonb,
+              $4::jsonb, '{}'::jsonb, '{}'::jsonb, $5
+       FROM authority_lock
+       WHERE NOT EXISTS (SELECT 1 FROM existing)
+       ON CONFLICT (name) DO NOTHING
+       RETURNING id
+     )
+     SELECT id
+     FROM existing
+     WHERE configuration_matches
+       AND (SELECT COUNT(*) FROM existing) = 1
+     UNION ALL
+     SELECT id FROM inserted
+     LIMIT 1`,
     [
       HOST_PORTAL_SOURCE_NAME,
       HOST_PORTAL_SOURCE_FAMILY,
       HOST_PORTAL_BASE_URL,
-      JSON.stringify({
-        origin: 'host_portal',
-        discovery: [{ type: 'manual_portal' }],
-        userAgent: 'oran-host-portal/1.0',
-      }),
-      'Authenticated host portal submissions and change requests.',
+      crawlPolicy,
+      notes,
+      'oran:reserved-source:host-portal',
     ],
   );
+  if (!rows.rows[0]?.id) {
+    throw new Error(
+      `${HOST_PORTAL_SOURCE_NAME} exists with configuration drift; use the reviewed source-authority workflow`,
+    );
+  }
   return rows.rows[0].id;
 }
 
 async function ensureHostPortalFeed(client: PoolClient, sourceSystemId: string): Promise<string> {
-  const existing = await client.query<{ id: string }>(
-    `SELECT id
-     FROM source_feeds
-     WHERE source_system_id = $1
-       AND feed_name = $2
-     ORDER BY created_at ASC
-     LIMIT 1`,
-    [sourceSystemId, HOST_PORTAL_SOURCE_FEED_NAME],
-  );
-
-  if (existing.rows[0]?.id) {
-    return existing.rows[0].id;
-  }
-
-  const created = await client.query<{ id: string }>(
-    `INSERT INTO source_feeds
+  const rows = await client.query<{ id: string }>(
+    `WITH authority_lock AS MATERIALIZED (
+       SELECT pg_advisory_xact_lock(lock_key)
+       FROM (SELECT hashtextextended($5, 0) AS lock_key) lock_keys
+     ), existing AS MATERIALIZED (
+       SELECT feed.id,
+              feed.feed_type = $3
+                AND feed.feed_handler = 'none'
+                AND feed.base_url IS NOT DISTINCT FROM $4
+                AND feed.healthcheck_url IS NULL
+                AND feed.auth_type = 'custom'
+                AND feed.profile_uri IS NULL
+                AND feed.jurisdiction_scope = '{}'::jsonb
+                AND feed.refresh_interval_hours = 24
+                AND feed.is_active = true AS configuration_matches
+       FROM public.source_feeds feed
+       CROSS JOIN authority_lock
+       WHERE feed.source_system_id = $1
+         AND feed.feed_name = $2
+     ), inserted AS (
+       INSERT INTO source_feeds
        (source_system_id, feed_name, feed_type, feed_handler, base_url, auth_type, jurisdiction_scope, refresh_interval_hours)
-     VALUES ($1, $2, $3, 'none', $4, 'custom', '{}'::jsonb, 24)
-     RETURNING id`,
-    [sourceSystemId, HOST_PORTAL_SOURCE_FEED_NAME, HOST_PORTAL_SOURCE_FEED_TYPE, HOST_PORTAL_BASE_URL],
+       SELECT $1, $2, $3, 'none', $4, 'custom', '{}'::jsonb, 24
+       FROM authority_lock
+       WHERE NOT EXISTS (SELECT 1 FROM existing)
+       RETURNING id
+     )
+     SELECT id
+     FROM existing
+     WHERE configuration_matches
+       AND (SELECT COUNT(*) FROM existing) = 1
+     UNION ALL
+     SELECT id FROM inserted
+     LIMIT 1`,
+    [
+      sourceSystemId,
+      HOST_PORTAL_SOURCE_FEED_NAME,
+      HOST_PORTAL_SOURCE_FEED_TYPE,
+      HOST_PORTAL_BASE_URL,
+      `oran:reserved-feed:host-portal:${sourceSystemId}`,
+    ],
   );
-
-  return created.rows[0].id;
+  if (!rows.rows[0]?.id) {
+    throw new Error(
+      `${HOST_PORTAL_SOURCE_FEED_NAME} exists with configuration drift; use the reviewed source-authority workflow`,
+    );
+  }
+  return rows.rows[0].id;
 }
 
 export async function createHostPortalSourceAssertion(

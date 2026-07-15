@@ -1,12 +1,17 @@
 /**
  * Normalization Bridge — source_record → canonical entity.
  *
- * Takes a parsed source record (Zone A) and creates or updates the
- * corresponding canonical organization, service, and location(s)
- * (Zone B). Records field-level provenance for every mapped field.
+ * Takes a parsed source record (Zone A) and creates the corresponding
+ * canonical organization, service, and location(s) (Zone B). Records
+ * field-level provenance for every mapped field.
  *
- * Supports HSDS-compatible payloads and generic key/value payloads.
+ * Materialization is deliberately single-shot: the source assertion is locked
+ * and claimed in the same transaction as every canonical write. Canonical IDs
+ * are UUIDv5 values derived from the immutable source-record identity, so a
+ * rolled-back attempt and its retry target exactly the same rows.
  */
+
+import { createHash } from 'node:crypto';
 
 import type { IngestionStores } from './stores';
 import type {
@@ -15,6 +20,7 @@ import type {
   NewCanonicalServiceRow,
   NewCanonicalLocationRow,
   NewCanonicalProvenanceRow,
+  NewCanonicalServiceLocationRow,
 } from '@/db/schema';
 
 // ── Public types ──────────────────────────────────────────────
@@ -34,6 +40,44 @@ export interface NormalizeSourceRecordOptions {
   /** Optional overrides for trust tier → confidence mapping. */
   trustTierConfidence?: Record<string, number>;
 }
+
+interface SourceRecordNormalizationClaimKey {
+  id: string;
+  sourceFeedId: string;
+  sourceRecordType: string;
+  sourceRecordId: string;
+  payloadSha256: string;
+}
+
+interface NormalizationClaimStore {
+  claimPendingForNormalization(
+    expected: SourceRecordNormalizationClaimKey,
+  ): Promise<{ claimed: boolean; sourceRecord: SourceRecordRow }>;
+}
+
+interface PlannedEntity {
+  id: string;
+  ordinal: number;
+  mappedFields: Record<string, unknown>;
+}
+
+interface PlannedOrganization extends PlannedEntity {
+  name: string;
+}
+
+interface PlannedService extends PlannedEntity {
+  name: string;
+}
+
+interface NormalizationPlan {
+  organization: PlannedOrganization;
+  services: PlannedService[];
+  locations: PlannedEntity[];
+}
+
+// This stable namespace is owned by ORAN's source-record normalization bridge.
+// Changing it would change every materialized canonical ID.
+const NORMALIZATION_ID_NAMESPACE = 'e27f3f0c-1dc8-5c47-8c35-60c4f1861ae3';
 
 // ── Field mapping helpers ─────────────────────────────────────
 
@@ -109,7 +153,6 @@ function extractArray(
         item !== null && typeof item === 'object' && !Array.isArray(item),
     );
   }
-  // Single object → wrap in array
   const single = extractSection(payload, section);
   return single ? [single] : [];
 }
@@ -155,54 +198,45 @@ function mapFields(
   return result;
 }
 
-function buildProvenanceRows(
-  entityType: string,
-  entityId: string,
-  mappedFields: Record<string, unknown>,
-  sourceRecordId: string,
-  confidenceHint: number,
-): NewCanonicalProvenanceRow[] {
-  return Object.entries(mappedFields).map(([fieldName, value]) => ({
-    canonicalEntityType: entityType,
-    canonicalEntityId: entityId,
-    fieldName,
-    assertedValue: value as Record<string, unknown> | string | number | boolean,
-    sourceRecordId,
-    confidenceHint,
-    decisionStatus: 'accepted' as const,
-    decidedAt: new Date(),
-    decidedBy: 'normalization-bridge',
-  }));
+function uuidBytes(uuid: string): Uint8Array {
+  const hex = uuid.replaceAll('-', '');
+  if (!/^[0-9a-f]{32}$/i.test(hex)) {
+    throw new Error(`Invalid UUID namespace: ${uuid}`);
+  }
+  const bytes = new Uint8Array(16);
+  for (let i = 0; i < bytes.length; i += 1) {
+    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
 }
 
-// ── Main function ─────────────────────────────────────────────
+/** RFC 4122 UUIDv5 without adding a runtime dependency. */
+function deterministicUuid(name: string): string {
+  const digest = createHash('sha1')
+    .update(uuidBytes(NORMALIZATION_ID_NAMESPACE))
+    .update(name, 'utf8')
+    .digest();
 
-/**
- * Normalize a raw source record into canonical entities (org, services, locations).
- *
- * Note: It is valid for a source record to produce zero services (e.g. an
- * organization-only listing) or zero locations (e.g. a virtual/remote service).
- * Both cases emit a diagnostic `console.warn` but are **not** errors.
- */
-export async function normalizeSourceRecord(
-  options: NormalizeSourceRecordOptions,
-): Promise<NormalizationResult> {
-  const { stores, sourceRecord, trustTier } = options;
+  digest[6] = (digest[6] & 0x0f) | 0x50;
+  digest[8] = (digest[8] & 0x3f) | 0x80;
+
+  const hex = digest.subarray(0, 16).toString('hex');
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32),
+  ].join('-');
+}
+
+function entityId(sourceRecordId: string, entityType: string, ordinal: number): string {
+  return deterministicUuid(`source-record:${sourceRecordId}:${entityType}:${ordinal}`);
+}
+
+function buildNormalizationPlan(sourceRecord: SourceRecordRow): NormalizationPlan {
   const payload = getPayload(sourceRecord);
-  const confidenceHint = confidenceForTrustTier(trustTier, options.trustTierConfidence);
-  const sourceFeed = await stores.sourceFeeds.getById(sourceRecord.sourceFeedId);
-  if (!sourceFeed) {
-    throw new Error(
-      `Source record ${sourceRecord.id} references missing source feed ${sourceRecord.sourceFeedId}`,
-    );
-  }
-  const winningSourceSystemId = sourceFeed.sourceSystemId;
 
-  const provenanceRows: NewCanonicalProvenanceRow[] = [];
-  const canonicalServiceIds: string[] = [];
-  const canonicalLocationIds: string[] = [];
-
-  // ── 1. Organization ───────────────────────────────────────
   const orgPayload = extractSection(payload, 'organization') ?? payload;
   const rawOrgName = (orgPayload['name'] as string) ?? (payload['organization_name'] as string);
   const orgName = rawOrgName?.trim() || null;
@@ -213,138 +247,258 @@ export async function normalizeSourceRecord(
   }
 
   const orgMapped = mapFields(orgPayload, ORG_FIELDS, true);
-  const orgRow: NewCanonicalOrganizationRow = {
+  const organization: PlannedOrganization = {
+    id: entityId(sourceRecord.id, 'organization', 0),
+    ordinal: 0,
     name: orgName,
-    ...(orgMapped as Partial<NewCanonicalOrganizationRow>),
-    lifecycleStatus: 'active',
-    publicationStatus: 'unpublished',
-    winningSourceSystemId,
-    sourceCount: 1,
-    sourceConfidenceSummary: { overall: confidenceHint },
+    // Include normalized fallback names in provenance, not only source fields.
+    mappedFields: { ...orgMapped, name: orgName },
   };
 
-  const canonicalOrg = await stores.canonicalOrganizations.create(orgRow);
-
-  provenanceRows.push(
-    ...buildProvenanceRows(
-      'organization',
-      canonicalOrg.id,
-      orgMapped,
-      sourceRecord.id,
-      confidenceHint,
-    ),
-  );
-
-  // ── 2. Service(s) ────────────────────────────────────────
   const servicePayloads = extractArray(payload, 'services');
-  // Fallback: if top-level keys have service-like shape, treat as single service
   if (servicePayloads.length === 0) {
     const singleService = extractSection(payload, 'service') ?? payload;
-    const svcName = (singleService['name'] as string) ??
-      (payload['service_name'] as string) ?? orgName;
+    const svcName = (singleService['name'] as string)
+      ?? (payload['service_name'] as string)
+      ?? orgName;
     if (svcName) {
       servicePayloads.push({ name: svcName, ...singleService });
     }
   }
 
-  for (const svcPayload of servicePayloads) {
+  const services = servicePayloads.map((svcPayload, ordinal): PlannedService => {
     const svcMapped = mapFields(svcPayload, SERVICE_FIELDS, true);
     const rawSvcName = (svcMapped['name'] as string)?.trim() || null;
-    const svcName = rawSvcName ?? `[Service] ${orgName}`;
-
-    const svcRow: NewCanonicalServiceRow = {
-      canonicalOrganizationId: canonicalOrg.id,
-      name: svcName,
-      ...(svcMapped as Partial<NewCanonicalServiceRow>),
-      lifecycleStatus: 'active',
-      publicationStatus: 'unpublished',
-      winningSourceSystemId,
-      sourceCount: 1,
-      sourceConfidenceSummary: { overall: confidenceHint },
+    const name = rawSvcName ?? `[Service] ${orgName}`;
+    return {
+      id: entityId(sourceRecord.id, 'service', ordinal),
+      ordinal,
+      name,
+      mappedFields: { ...svcMapped, name },
     };
+  });
 
-    const canonicalSvc = await stores.canonicalServices.create(svcRow);
-    canonicalServiceIds.push(canonicalSvc.id);
-
-    provenanceRows.push(
-      ...buildProvenanceRows(
-        'service',
-        canonicalSvc.id,
-        svcMapped,
-        sourceRecord.id,
-        confidenceHint,
-      ),
-    );
-  }
-
-  // ── 3. Location(s) ───────────────────────────────────────
   const locationPayloads = extractArray(payload, 'locations');
   if (locationPayloads.length === 0) {
-    const singleLoc = extractSection(payload, 'location');
-    if (singleLoc) {
-      locationPayloads.push(singleLoc);
-    }
+    const singleLocation = extractSection(payload, 'location');
+    if (singleLocation) locationPayloads.push(singleLocation);
   }
 
-  for (const locPayload of locationPayloads) {
-    const locMapped = mapFields(locPayload, LOCATION_FIELDS, true);
+  const locations = locationPayloads.flatMap((locPayload, ordinal): PlannedEntity[] => {
+    const mappedFields = mapFields(locPayload, LOCATION_FIELDS, true);
+    const hasContent = mappedFields['name']
+      || mappedFields['addressLine1']
+      || mappedFields['latitude'];
+    if (!hasContent) return [];
+    return [{
+      id: entityId(sourceRecord.id, 'location', ordinal),
+      ordinal,
+      mappedFields,
+    }];
+  });
 
-    // Only create if we have at least a name or an address
-    const hasContent = locMapped['name'] || locMapped['addressLine1'] ||
-      locMapped['latitude'];
-    if (!hasContent) continue;
+  return { organization, services, locations };
+}
 
-    const locRow: NewCanonicalLocationRow = {
-      canonicalOrganizationId: canonicalOrg.id,
-      ...(locMapped as Partial<NewCanonicalLocationRow>),
+function buildProvenanceRows(
+  entityType: string,
+  entity: PlannedEntity,
+  sourceRecordId: string,
+  confidenceHint: number,
+): NewCanonicalProvenanceRow[] {
+  return Object.entries(entity.mappedFields).map(([fieldName, value]) => ({
+    id: deterministicUuid(
+      `source-record:${sourceRecordId}:provenance:${entityType}:${entity.ordinal}:${fieldName}`,
+    ),
+    canonicalEntityType: entityType,
+    canonicalEntityId: entity.id,
+    fieldName,
+    assertedValue: value as Record<string, unknown> | string | number | boolean,
+    sourceRecordId,
+    confidenceHint,
+    decisionStatus: 'accepted' as const,
+    decidedAt: new Date(),
+    decidedBy: 'normalization-bridge',
+  }));
+}
+
+function requireClaimStore(stores: IngestionStores): NormalizationClaimStore {
+  const sourceRecords = stores.sourceRecords as typeof stores.sourceRecords
+    & Partial<NormalizationClaimStore>;
+  if (typeof sourceRecords.claimPendingForNormalization !== 'function') {
+    throw new Error(
+      'Normalization requires a transaction-bound source-record store with row-lock claiming',
+    );
+  }
+  return sourceRecords as typeof stores.sourceRecords & NormalizationClaimStore;
+}
+
+function resultForPlan(plan: NormalizationPlan, provenanceRecordsCreated: number): NormalizationResult {
+  return {
+    canonicalOrganizationId: plan.organization.id,
+    canonicalServiceIds: plan.services.map(({ id }) => id),
+    canonicalLocationIds: plan.locations.map(({ id }) => id),
+    provenanceRecordsCreated,
+  };
+}
+
+function normalizationClaimKey(sourceRecord: SourceRecordRow): SourceRecordNormalizationClaimKey {
+  return {
+    id: sourceRecord.id,
+    sourceFeedId: sourceRecord.sourceFeedId,
+    sourceRecordType: sourceRecord.sourceRecordType,
+    sourceRecordId: sourceRecord.sourceRecordId,
+    payloadSha256: sourceRecord.payloadSha256,
+  };
+}
+
+function assertCreatedId(entityType: string, expectedId: string, actualId: string): void {
+  if (actualId !== expectedId) {
+    throw new Error(
+      `Canonical ${entityType} store did not preserve deterministic ID ${expectedId}`,
+    );
+  }
+}
+
+// ── Main function ─────────────────────────────────────────────
+
+/**
+ * Normalize a raw source record into canonical entities (org, services, locations).
+ *
+ * A normalized/published assertion is a successful idempotent replay and returns
+ * the same deterministic IDs without performing writes. All other non-pending
+ * states fail closed; callers must explicitly return failed assertions to pending
+ * before retrying them.
+ */
+export async function normalizeSourceRecord(
+  options: NormalizeSourceRecordOptions,
+): Promise<NormalizationResult> {
+  const { stores, sourceRecord, trustTier } = options;
+  if (typeof stores.runAtomically !== 'function') {
+    throw new Error('Normalization requires an atomic multi-store transaction');
+  }
+
+  // Build from the caller's view before locking. The 211 normalizer deliberately
+  // supplies a reshaped parsed payload while retaining the immutable DB identity.
+  const plan = buildNormalizationPlan(sourceRecord);
+  const confidenceHint = confidenceForTrustTier(trustTier, options.trustTierConfidence);
+  const provenanceRows = [
+    ...buildProvenanceRows(
+      'organization',
+      plan.organization,
+      sourceRecord.id,
+      confidenceHint,
+    ),
+    ...plan.services.flatMap((service) => buildProvenanceRows(
+      'service',
+      service,
+      sourceRecord.id,
+      confidenceHint,
+    )),
+    ...plan.locations.flatMap((location) => buildProvenanceRows(
+      'location',
+      location,
+      sourceRecord.id,
+      confidenceHint,
+    )),
+  ];
+  const plannedResult = resultForPlan(plan, provenanceRows.length);
+
+  const result = await stores.runAtomically(async (atomicStores) => {
+    const claim = await requireClaimStore(atomicStores)
+      .claimPendingForNormalization(normalizationClaimKey(sourceRecord));
+
+    if (!claim.claimed) {
+      if (
+        claim.sourceRecord.processingStatus === 'normalized'
+        || claim.sourceRecord.processingStatus === 'published'
+      ) {
+        return plannedResult;
+      }
+      throw new Error(
+        `Source record ${sourceRecord.id} cannot normalize from status `
+        + `${claim.sourceRecord.processingStatus}`,
+      );
+    }
+
+    const sourceFeed = await atomicStores.sourceFeeds.getById(claim.sourceRecord.sourceFeedId);
+    if (!sourceFeed) {
+      throw new Error(
+        `Source record ${sourceRecord.id} references missing source feed `
+        + `${claim.sourceRecord.sourceFeedId}`,
+      );
+    }
+    const winningSourceSystemId = sourceFeed.sourceSystemId;
+
+    const orgRow: NewCanonicalOrganizationRow = {
+      ...(plan.organization.mappedFields as Partial<NewCanonicalOrganizationRow>),
+      id: plan.organization.id,
+      name: plan.organization.name,
       lifecycleStatus: 'active',
       publicationStatus: 'unpublished',
       winningSourceSystemId,
       sourceCount: 1,
       sourceConfidenceSummary: { overall: confidenceHint },
     };
+    const canonicalOrg = await atomicStores.canonicalOrganizations.create(orgRow);
+    assertCreatedId('organization', plan.organization.id, canonicalOrg.id);
 
-    const canonicalLoc = await stores.canonicalLocations.create(locRow);
-    canonicalLocationIds.push(canonicalLoc.id);
-
-    provenanceRows.push(
-      ...buildProvenanceRows(
-        'location',
-        canonicalLoc.id,
-        locMapped,
-        sourceRecord.id,
-        confidenceHint,
-      ),
-    );
-
-    // Link each service to each location (batch)
-    const junctionRows = canonicalServiceIds.flatMap((svcId) =>
-      [{ canonicalServiceId: svcId, canonicalLocationId: canonicalLoc.id }],
-    );
-    if (junctionRows.length > 0) {
-      await stores.canonicalServiceLocations.bulkCreate(junctionRows);
+    for (const service of plan.services) {
+      const serviceRow: NewCanonicalServiceRow = {
+        ...(service.mappedFields as Partial<NewCanonicalServiceRow>),
+        id: service.id,
+        canonicalOrganizationId: plan.organization.id,
+        name: service.name,
+        lifecycleStatus: 'active',
+        publicationStatus: 'unpublished',
+        winningSourceSystemId,
+        sourceCount: 1,
+        sourceConfidenceSummary: { overall: confidenceHint },
+      };
+      const createdService = await atomicStores.canonicalServices.create(serviceRow);
+      assertCreatedId('service', service.id, createdService.id);
     }
-  }
 
-  // ── 4. Persist provenance ─────────────────────────────────
-  if (provenanceRows.length > 0) {
-    await stores.canonicalProvenance.bulkCreate(provenanceRows);
-  }
+    for (const location of plan.locations) {
+      const locationRow: NewCanonicalLocationRow = {
+        ...(location.mappedFields as Partial<NewCanonicalLocationRow>),
+        id: location.id,
+        canonicalOrganizationId: plan.organization.id,
+        lifecycleStatus: 'active',
+        publicationStatus: 'unpublished',
+        winningSourceSystemId,
+        sourceCount: 1,
+        sourceConfidenceSummary: { overall: confidenceHint },
+      };
+      const createdLocation = await atomicStores.canonicalLocations.create(locationRow);
+      assertCreatedId('location', location.id, createdLocation.id);
 
-  // ── 5. Warn if no locations were extracted ────────────────
-  if (canonicalLocationIds.length === 0) {
+      const junctionRows: NewCanonicalServiceLocationRow[] = plan.services.map((service) => ({
+        id: deterministicUuid(
+          `source-record:${sourceRecord.id}:service-location:`
+          + `${service.ordinal}:${location.ordinal}`,
+        ),
+        canonicalServiceId: service.id,
+        canonicalLocationId: location.id,
+      }));
+      if (junctionRows.length > 0) {
+        await atomicStores.canonicalServiceLocations.bulkCreate(junctionRows);
+      }
+    }
+
+    if (provenanceRows.length > 0) {
+      await atomicStores.canonicalProvenance.bulkCreate(provenanceRows);
+    }
+
+    await atomicStores.sourceRecords.updateStatus(sourceRecord.id, 'normalized');
+    return plannedResult;
+  });
+
+  if (result.canonicalLocationIds.length === 0) {
     console.warn(
       `[normalizeSourceRecord] Source record ${sourceRecord.id} produced zero locations`,
     );
   }
 
-  // ── 6. Mark source record as processed ────────────────────
-  await stores.sourceRecords.updateStatus(sourceRecord.id, 'normalized');
-
-  return {
-    canonicalOrganizationId: canonicalOrg.id,
-    canonicalServiceIds,
-    canonicalLocationIds,
-    provenanceRecordsCreated: provenanceRows.length,
-  };
+  return result;
 }

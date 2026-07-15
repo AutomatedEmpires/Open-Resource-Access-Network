@@ -11,7 +11,10 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { sourceSystems } from '@/db/schema';
 import {
   matchSourceForUrl,
+  registryTrustLevelToSourceSystemTrustTier,
   SourceRegistryEntrySchema,
+  SourceSystemTrustTierSchema,
+  sourceSystemTrustTierToRegistryTrustLevel,
   type SourceRegistryEntry,
 } from '../sourceRegistry';
 import type { SourceRegistryStore } from '../stores';
@@ -48,11 +51,13 @@ function rowToEntry(row: typeof sourceSystems.$inferSelect): SourceRegistryEntry
   const crawlPolicy = asRecord(row.crawlPolicy);
   const discovery = Array.isArray(crawlPolicy.discovery) ? crawlPolicy.discovery : [{ type: 'seeded_only' }];
   const jurisdictionScope = Array.isArray(row.jurisdictionScope) ? row.jurisdictionScope : [];
+  const publisherTrust = SourceSystemTrustTierSchema.safeParse(row.trustTier);
+  if (!publisherTrust.success) return null;
 
   const parsed = SourceRegistryEntrySchema.safeParse({
     id: row.id,
     displayName: row.name,
-    trustLevel: row.trustTier,
+    trustLevel: sourceSystemTrustTierToRegistryTrustLevel(publisherTrust.data),
     resourcePurpose: row.resourcePurpose,
     domainRules: Array.isArray(row.domainRules) ? row.domainRules : [],
     discovery,
@@ -89,7 +94,7 @@ function entryToRow(entry: SourceRegistryEntry) {
     name: entry.displayName,
     family: entry.discovery[0]?.type ?? 'seeded_only',
     homepageUrl,
-    trustTier: entry.trustLevel,
+    trustTier: registryTrustLevelToSourceSystemTrustTier(entry.trustLevel),
     resourcePurpose: entry.resourcePurpose,
     domainRules: entry.domainRules,
     crawlPolicy: {

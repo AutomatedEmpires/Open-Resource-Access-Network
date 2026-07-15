@@ -14,11 +14,12 @@ import {
   FEEDBACK_RATE_LIMIT_MAX_REQUESTS,
   RATE_LIMIT_WINDOW_MS,
 } from '@/domain/constants';
-import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
+import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { captureException } from '@/services/telemetry/sentry';
 import { flagService } from '@/services/flags/flags';
 import { triageFeedback } from '@/services/feedback/triage';
 import { getIp } from '@/services/security/ip';
+import { acquireLivePublicationGateShared } from '@/services/publication/liveEntityMerge';
 
 // ============================================================
 // REQUEST SCHEMA
@@ -47,10 +48,19 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rateLimit = await checkRateLimitShared(`feedback:ip:${ip}`, {
+  const rateLimit = await checkRateLimitShared(`feedback:write:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: FEEDBACK_RATE_LIMIT_MAX_REQUESTS,
   });
+  if (rateLimit.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      {
+        status: 503,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      },
+    );
+  }
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before submitting more feedback.' },
@@ -79,17 +89,36 @@ export async function POST(req: NextRequest) {
   const feedback: FeedbackRequest = parsed.data;
 
   try {
-    const insertResult = await executeQuery<{ id: string }>(
-      `INSERT INTO seeker_feedback (service_id, session_id, rating, comment, contact_success)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [
-        feedback.serviceId,
-        feedback.sessionId,
-        feedback.rating,
-        feedback.comment ?? null,
-        feedback.contactSuccess ?? null,
-      ],
-    );
+    const insertResult = await withTransaction(async (client) => {
+      await acquireLivePublicationGateShared(client);
+      const activeService = await client.query<{ id: string }>(
+        `SELECT id
+         FROM services
+         WHERE id = $1
+           AND status = 'active'
+         FOR UPDATE`,
+        [feedback.serviceId],
+      );
+      if (!activeService.rows[0]) return [];
+      const inserted = await client.query<{ id: string }>(
+        `INSERT INTO seeker_feedback (service_id, session_id, rating, comment, contact_success)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [
+          feedback.serviceId,
+          feedback.sessionId,
+          feedback.rating,
+          feedback.comment ?? null,
+          feedback.contactSuccess ?? null,
+        ],
+      );
+      return inserted.rows;
+    });
+    if (!insertResult[0]) {
+      return NextResponse.json(
+        { error: 'Service is unavailable or has been retired.' },
+        { status: 409 },
+      );
+    }
 
     // Idea 14: fire-and-forget triage — does not delay seeker response
     const rowId = insertResult[0]?.id;

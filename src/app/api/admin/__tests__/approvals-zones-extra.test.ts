@@ -14,8 +14,14 @@ const authMocks = vi.hoisted(() => ({
 const requireMinRoleMock = vi.hoisted(() => vi.fn());
 const engineMocks = vi.hoisted(() => ({
   advance: vi.fn(),
+  advanceInTransaction: vi.fn(),
   acquireLock: vi.fn(),
   releaseLock: vi.fn(),
+  sendTerminalStatusEmail: vi.fn(),
+}));
+const protectedMutationMocks = vi.hoisted(() => ({
+  acquireAuthoritativeMutationGatesShared: vi.fn(),
+  assertAuthoritativeEntitiesMutable: vi.fn(),
 }));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
@@ -31,6 +37,10 @@ vi.mock('@/services/auth/guards', () => ({
   requireMinRole: requireMinRoleMock,
 }));
 vi.mock('@/services/workflow/engine', () => engineMocks);
+vi.mock('@/services/publication/protectedAuthoritativeMutation', () => ({
+  ...protectedMutationMocks,
+  ProtectedAuthoritativeMutationConflict: class ProtectedAuthoritativeMutationConflict extends Error {},
+}));
 
 function createRequest(options: {
   search?: string;
@@ -74,6 +84,7 @@ const ZONE_ID = '22222222-2222-4222-8222-222222222222';
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  engineMocks.advanceInTransaction.mockReset();
 
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
   dbMocks.executeQuery.mockResolvedValue([]);
@@ -89,7 +100,18 @@ beforeEach(() => {
 
   engineMocks.acquireLock.mockResolvedValue(true);
   engineMocks.advance.mockResolvedValue({ success: true, fromStatus: 'submitted', toStatus: 'approved', transitionId: 'tx-1' });
+  engineMocks.advanceInTransaction.mockResolvedValue({
+    success: true,
+    submissionId: SUBMISSION_ID,
+    fromStatus: 'submitted',
+    toStatus: 'approved',
+    transitionId: 'tx-1',
+    gateResults: [],
+  });
   engineMocks.releaseLock.mockResolvedValue(undefined);
+  engineMocks.sendTerminalStatusEmail.mockResolvedValue(undefined);
+  protectedMutationMocks.acquireAuthoritativeMutationGatesShared.mockResolvedValue(undefined);
+  protectedMutationMocks.assertAuthoritativeEntitiesMutable.mockResolvedValue(undefined);
 });
 
 describe('admin approvals extra coverage', () => {
@@ -144,7 +166,21 @@ describe('admin approvals extra coverage', () => {
     const invalid = await POST(createRequest({ jsonBody: { submissionId: 'bad' } }));
     expect(invalid.status).toBe(400);
 
-    engineMocks.acquireLock.mockResolvedValueOnce(false);
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
+      const client = {
+        query: vi.fn()
+          .mockResolvedValueOnce({
+            rows: [{
+              service_id: null,
+              target_id: null,
+              submitted_by_user_id: 'user-1',
+              account_status: 'active',
+            }],
+          })
+          .mockResolvedValueOnce({ rows: [] }),
+      };
+      return callback(client);
+    });
     const lockFail = await POST(
       createRequest({
         jsonBody: { submissionId: SUBMISSION_ID, decision: 'approved' },
@@ -153,11 +189,27 @@ describe('admin approvals extra coverage', () => {
     expect(lockFail.status).toBe(409);
   });
 
-  it('releases lock when advance fails and returns 409', async () => {
+  it('releases the transaction-scoped lock when advance fails and returns 409', async () => {
     const { POST } = await loadApprovalsRoute();
 
-    engineMocks.acquireLock.mockResolvedValueOnce(true);
-    engineMocks.advance.mockResolvedValueOnce({ success: false, error: 'Invalid transition' });
+    const client = {
+      query: vi.fn()
+        .mockResolvedValueOnce({
+          rows: [{
+            service_id: null,
+            target_id: 'org-1',
+            submitted_by_user_id: 'user-1',
+            account_status: 'active',
+          }],
+        })
+        .mockResolvedValueOnce({ rows: [{ id: SUBMISSION_ID }] })
+        .mockResolvedValueOnce({ rows: [] }),
+    };
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (value: typeof client) => Promise<unknown>) => callback(client));
+    engineMocks.advanceInTransaction.mockResolvedValueOnce({
+      success: false,
+      error: 'Invalid transition',
+    });
 
     const response = await POST(
       createRequest({
@@ -166,14 +218,24 @@ describe('admin approvals extra coverage', () => {
     );
 
     expect(response.status).toBe(409);
-    expect(engineMocks.releaseLock).toHaveBeenCalledWith(SUBMISSION_ID, 'admin-1', false);
+    expect(client.query.mock.calls.some((call) =>
+      String(call[0]).includes('locked_by_user_id = NULL'),
+    )).toBe(true);
   });
 
   it('blocks approving claims for frozen submitters', async () => {
     const { POST } = await loadApprovalsRoute();
 
-    engineMocks.acquireLock.mockResolvedValueOnce(true);
-    dbMocks.executeQuery.mockResolvedValueOnce([{ account_status: 'frozen' }]);
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => callback({
+      query: vi.fn().mockResolvedValueOnce({
+        rows: [{
+          service_id: null,
+          target_id: 'org-1',
+          submitted_by_user_id: 'user-1',
+          account_status: 'frozen',
+        }],
+      }),
+    }));
 
     const response = await POST(
       createRequest({
@@ -183,22 +245,33 @@ describe('admin approvals extra coverage', () => {
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({ error: 'Cannot approve an organization claim for a frozen account' });
-    expect(engineMocks.releaseLock).toHaveBeenCalledWith(SUBMISSION_ID, 'admin-1', false);
-    expect(engineMocks.advance).not.toHaveBeenCalled();
+    expect(engineMocks.advanceInTransaction).not.toHaveBeenCalled();
   });
 
   it('updates reviewer notes and returns success payload', async () => {
     const { POST } = await loadApprovalsRoute();
 
-    dbMocks.executeQuery.mockResolvedValueOnce([]); // reviewer_notes update
-    engineMocks.acquireLock.mockResolvedValueOnce(true);
-    engineMocks.advance.mockResolvedValueOnce({ success: true, fromStatus: 'under_review', toStatus: 'denied', transitionId: 'tx-2' });
-
-    // withTransaction for 'approved' path runs first (no-op since decision is denied)
-    // then denial cleanup withTransaction runs — client.query for SELECT returns no rows
-    dbMocks.withTransaction.mockImplementation(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
-      const client = { query: vi.fn().mockResolvedValue({ rows: [] }) };
-      return callback(client);
+    const client = {
+      query: vi.fn()
+        .mockResolvedValueOnce({
+          rows: [{
+            service_id: null,
+            target_id: 'org-1',
+            submitted_by_user_id: 'user-1',
+            account_status: 'active',
+          }],
+        })
+        .mockResolvedValueOnce({ rows: [{ id: SUBMISSION_ID }] })
+        .mockResolvedValueOnce({ rows: [] }),
+    };
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (value: typeof client) => Promise<unknown>) => callback(client));
+    engineMocks.advanceInTransaction.mockResolvedValueOnce({
+      success: true,
+      submissionId: SUBMISSION_ID,
+      fromStatus: 'under_review',
+      toStatus: 'denied',
+      transitionId: 'tx-2',
+      gateResults: [],
     });
 
     const response = await POST(
@@ -212,8 +285,8 @@ describe('admin approvals extra coverage', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(dbMocks.executeQuery).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE submissions SET reviewer_notes'),
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('reviewer_notes = $1'),
       ['insufficient evidence', SUBMISSION_ID],
     );
     const body = await response.json();
@@ -224,9 +297,20 @@ describe('admin approvals extra coverage', () => {
   it('best-effort releases lock on unexpected failures and returns 500', async () => {
     const { POST } = await loadApprovalsRoute();
 
-    engineMocks.acquireLock.mockResolvedValueOnce(true);
-    engineMocks.advance.mockRejectedValueOnce(new Error('engine crash'));
-    engineMocks.releaseLock.mockRejectedValueOnce(new Error('release failed'));
+    const client = {
+      query: vi.fn()
+        .mockResolvedValueOnce({
+          rows: [{
+            service_id: null,
+            target_id: 'org-1',
+            submitted_by_user_id: 'user-1',
+            account_status: 'active',
+          }],
+        })
+        .mockResolvedValueOnce({ rows: [{ id: SUBMISSION_ID }] }),
+    };
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (value: typeof client) => Promise<unknown>) => callback(client));
+    engineMocks.advanceInTransaction.mockRejectedValueOnce(new Error('engine crash'));
 
     const response = await POST(
       createRequest({
@@ -241,6 +325,101 @@ describe('admin approvals extra coverage', () => {
     expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(Error), {
       feature: 'api_admin_approvals_decide',
     });
+  });
+
+  it('rejects a UUID from another submission lane before any mutation', async () => {
+    const { POST } = await loadApprovalsRoute();
+    const client = { query: vi.fn().mockResolvedValueOnce({ rows: [] }) };
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (value: typeof client) => Promise<unknown>) => callback(client));
+
+    const response = await POST(createRequest({
+      jsonBody: { submissionId: SUBMISSION_ID, decision: 'approved' },
+    }));
+
+    expect(response.status).toBe(404);
+    expect(client.query).toHaveBeenCalledTimes(1);
+    expect(String(client.query.mock.calls[0]?.[0])).toContain("submission_type = 'org_claim'");
+    expect(engineMocks.advanceInTransaction).not.toHaveBeenCalled();
+  });
+
+  it('grants an inactive service owner access without reactivating the listing', async () => {
+    const { POST } = await loadApprovalsRoute();
+    const client = {
+      query: vi.fn().mockImplementation(async (sql: string) => {
+        if (sql.includes('SELECT sub.service_id')) {
+          return {
+            rows: [{
+              service_id: 'service-1',
+              target_id: null,
+              submitted_by_user_id: 'user-1',
+              account_status: 'active',
+            }],
+          };
+        }
+        if (sql.includes('SELECT id, status, integrity_hold_at')) {
+          return { rows: [{ id: 'service-1', status: 'inactive', integrity_hold_at: null }] };
+        }
+        if (sql.includes('SET is_locked = true')) return { rows: [{ id: SUBMISSION_ID }] };
+        return { rows: [] };
+      }),
+    };
+    dbMocks.withTransaction.mockImplementationOnce(async (callback: (value: typeof client) => Promise<unknown>) => callback(client));
+
+    const response = await POST(createRequest({
+      jsonBody: { submissionId: SUBMISSION_ID, decision: 'approved' },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(dbMocks.withTransaction).toHaveBeenCalledTimes(1);
+    expect(engineMocks.advanceInTransaction).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({ submissionId: SUBMISSION_ID, toStatus: 'approved' }),
+    );
+    expect(client.query.mock.calls.some(([sql]) => (
+      String(sql).includes('UPDATE services')
+    ))).toBe(false);
+    expect(engineMocks.sendTerminalStatusEmail).toHaveBeenCalled();
+  });
+
+  it('blocks a claim approval while the linked service has an integrity hold', async () => {
+    const { POST } = await loadApprovalsRoute();
+    const client = {
+      query: vi.fn().mockImplementation(async (sql: string) => {
+        if (sql.includes('SELECT sub.service_id')) {
+          return {
+            rows: [{
+              service_id: 'service-1',
+              target_id: null,
+              submitted_by_user_id: 'user-1',
+              account_status: 'active',
+            }],
+          };
+        }
+        if (sql.includes('SELECT id, status, integrity_hold_at')) {
+          return {
+            rows: [{
+              id: 'service-1',
+              status: 'inactive',
+              integrity_hold_at: '2026-07-14T00:00:00.000Z',
+            }],
+          };
+        }
+        return { rows: [] };
+      }),
+    };
+    dbMocks.withTransaction.mockImplementationOnce(
+      async (callback: (value: typeof client) => Promise<unknown>) => callback(client),
+    );
+
+    const response = await POST(createRequest({
+      jsonBody: { submissionId: SUBMISSION_ID, decision: 'approved' },
+    }));
+
+    expect(response.status).toBe(409);
+    expect(engineMocks.advanceInTransaction).not.toHaveBeenCalled();
+    expect(client.query.mock.calls.some(([sql]) => (
+      String(sql).includes('UPDATE services')
+    ))).toBe(false);
   });
 });
 

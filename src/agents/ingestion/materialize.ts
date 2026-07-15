@@ -17,14 +17,15 @@ const REVIEW_BY_HOURS = {
   red: 12,
 } as const;
 
-const REVERIFY_BY_DAYS = {
-  green: 90,
-  yellow: 45,
-  orange: 14,
-  red: 7,
-} as const;
-
 const AUTO_APPROVE_TAG_CONFIDENCE = 80;
+const IMMUTABLE_REVIEW_STATUSES = new Set<ReviewStatus>([
+  'in_review',
+  'escalated',
+  'verified',
+  'rejected',
+  'published',
+  'archived',
+]);
 
 export interface MaterializePipelineArtifactsOptions {
   jobId?: string;
@@ -37,14 +38,13 @@ export interface MaterializePipelineArtifactsResult {
   deduped: boolean;
   assignedToRole?: 'community_admin' | 'oran_admin';
   reviewStatus?: ReviewStatus;
+  revisionOfCandidateId?: string;
+  lineageRootCandidateId?: string;
+  revisionNumber?: number;
 }
 
 function addHours(isoDate: string, hours: number): string {
   return new Date(Date.parse(isoDate) + hours * 60 * 60 * 1000).toISOString();
-}
-
-function addDays(isoDate: string, days: number): string {
-  return new Date(Date.parse(isoDate) + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function buildEvidenceProvenance(evidenceId?: string): ExtractedCandidate['provenance'] {
@@ -81,6 +81,9 @@ function determineReviewRole(
   if (hasCriticalFailure(candidate.verificationChecks)) {
     return 'oran_admin';
   }
+  if (hasDomainFailure(candidate.verificationChecks)) {
+    return 'oran_admin';
+  }
   if (candidate.score.overall < 60 || candidate.score.tier === 'red') {
     return 'oran_admin';
   }
@@ -114,12 +117,8 @@ function buildReviewTimers(
     ? undefined
     : addHours(candidate.extractedAt, REVIEW_BY_HOURS[baseTier]);
 
-  const reverifyTier = candidate.sourceTrustLevel === 'quarantine' ? 'orange' : candidate.score.tier;
-
   return {
     reviewBy,
-    lastVerifiedAt: candidate.extractedAt,
-    reverifyAt: addDays(candidate.extractedAt, REVERIFY_BY_DAYS[reverifyTier]),
   };
 }
 
@@ -155,6 +154,10 @@ function buildCandidateRecord(
     correlationId: string;
     assignedToRole: 'community_admin' | 'oran_admin';
     reviewStatus: ReviewStatus;
+    extractionId?: string;
+    revisionOfCandidateId?: string;
+    lineageRootCandidateId?: string;
+    revisionNumber?: number;
   },
 ): ExtractedCandidate & {
   jobId?: string;
@@ -168,10 +171,13 @@ function buildCandidateRecord(
   const jurisdiction = buildJurisdiction(candidate);
 
   return {
-    extractionId: candidate.extractionId,
+    extractionId: options.extractionId ?? candidate.extractionId,
     candidateId: options.candidateId,
     extractKeySha256: candidate.extractKeySha256,
     extractedAt: candidate.extractedAt,
+    revisionOfCandidateId: options.revisionOfCandidateId,
+    lineageRootCandidateId: options.lineageRootCandidateId ?? options.candidateId,
+    revisionNumber: options.revisionNumber ?? 1,
     review: {
       status: options.reviewStatus,
       jurisdiction,
@@ -429,48 +435,68 @@ async function recordVerificationChecks(
   }
 }
 
-export async function materializePipelineArtifacts(
+async function persistEvidenceArtifact(
+  stores: IngestionStores,
+  execution: DetailedPipelineExecution,
+  options: MaterializePipelineArtifactsOptions,
+): Promise<void> {
+  const { evidence } = execution.artifacts;
+  if (!evidence) return;
+
+  const existingEvidence = await stores.evidence.getById(evidence.evidenceId);
+  if (existingEvidence) return;
+
+  await stores.evidence.create({
+    evidenceId: evidence.evidenceId,
+    canonicalUrl: evidence.canonicalUrl,
+    fetchedAt: evidence.fetchedAt,
+    httpStatus: evidence.httpStatus,
+    contentHashSha256: evidence.contentHashSha256,
+    contentType: evidence.contentType,
+    blobUri: undefined,
+    jobId: options.jobId,
+    correlationId: options.correlationId,
+    htmlRaw: evidence.htmlRaw,
+    textExtracted: evidence.textExtracted,
+    title: evidence.title,
+    metaDescription: evidence.metaDescription,
+    language: evidence.language,
+    contentLength: evidence.contentLength,
+  });
+}
+
+async function materializePipelineArtifactsInTransaction(
   stores: IngestionStores,
   execution: DetailedPipelineExecution,
   options: MaterializePipelineArtifactsOptions,
 ): Promise<MaterializePipelineArtifactsResult> {
   const { evidence, candidate } = execution.artifacts;
 
-  if (evidence) {
-    const existingEvidence = await stores.evidence.getById(evidence.evidenceId);
-    if (!existingEvidence) {
-      await stores.evidence.create({
-        evidenceId: evidence.evidenceId,
-        canonicalUrl: evidence.canonicalUrl,
-        fetchedAt: evidence.fetchedAt,
-        httpStatus: evidence.httpStatus,
-        contentHashSha256: evidence.contentHashSha256,
-        contentType: evidence.contentType,
-        blobUri: undefined,
-        jobId: options.jobId,
-        correlationId: options.correlationId,
-        htmlRaw: evidence.htmlRaw,
-        textExtracted: evidence.textExtracted,
-        title: evidence.title,
-        metaDescription: evidence.metaDescription,
-        language: evidence.language,
-        contentLength: evidence.contentLength,
-      });
-    }
-  }
-
   if (!candidate) {
+    await persistEvidenceArtifact(stores, execution, options);
     return {
       evidenceId: evidence?.evidenceId,
       deduped: false,
     };
   }
 
-  const existingCandidate = await stores.candidates.getByExtractKey(candidate.extractKeySha256);
+  const hasLockedLineageLookup = typeof stores.candidates.lockMaterializationTarget === 'function';
+  const lockedTarget = hasLockedLineageLookup
+    ? await stores.candidates.lockMaterializationTarget({
+        extractKey: candidate.extractKeySha256,
+        orgName: candidate.organizationName,
+        serviceName: candidate.serviceName,
+        canonicalUrl: evidence?.canonicalUrl ?? candidate.websiteUrl,
+        address: candidate.address,
+      })
+    : null;
+  const existingCandidate = lockedTarget?.candidate
+    ?? await stores.candidates.getByExtractKey(candidate.extractKeySha256);
+  const exactExtractKeyMatch = lockedTarget?.exactExtractKey ?? Boolean(existingCandidate);
 
   // LB6: Cross-path dedup — if no exact extractKey match, try normalized name match
   // to catch duplicates from different intake paths (web scrape vs HSDS API vs CSV).
-  const crossPathMatch = existingCandidate
+  const crossPathMatch = existingCandidate || hasLockedLineageLookup
     ? null
     : await stores.candidates.findByNormalizedName(
         candidate.organizationName,
@@ -478,9 +504,52 @@ export async function materializePipelineArtifacts(
       );
 
   const deduplicatedCandidate = existingCandidate ?? crossPathMatch;
-  const candidateId = deduplicatedCandidate?.candidateId ?? candidate.candidateId;
+  if (
+    exactExtractKeyMatch
+    && deduplicatedCandidate
+    && IMMUTABLE_REVIEW_STATUSES.has(deduplicatedCandidate.review.status)
+  ) {
+    return {
+      candidateId: deduplicatedCandidate.candidateId,
+      evidenceId: evidence?.evidenceId,
+      deduped: true,
+      assignedToRole: deduplicatedCandidate.review.assignedToRole,
+      reviewStatus: deduplicatedCandidate.review.status,
+      revisionOfCandidateId: deduplicatedCandidate.revisionOfCandidateId,
+      lineageRootCandidateId:
+        deduplicatedCandidate.lineageRootCandidateId ?? deduplicatedCandidate.candidateId,
+      revisionNumber: deduplicatedCandidate.revisionNumber ?? 1,
+    };
+  }
+
+  await persistEvidenceArtifact(stores, execution, options);
+  const createsRevision = Boolean(
+    deduplicatedCandidate
+      && IMMUTABLE_REVIEW_STATUSES.has(deduplicatedCandidate.review.status),
+  );
+  // A terminal candidate is durable authorization evidence. Re-extraction
+  // appends a child revision with fresh identities and never edits that row.
+  const candidateId = createsRevision ? crypto.randomUUID() : deduplicatedCandidate?.candidateId ?? candidate.candidateId;
+  const extractionId = createsRevision ? crypto.randomUUID() : candidate.extractionId;
   const assignedToRole = determineReviewRole(candidate);
-  const reviewStatus = determineReviewStatus(candidate, assignedToRole, deduplicatedCandidate?.review.status);
+  const reviewStatus = determineReviewStatus(
+    candidate,
+    assignedToRole,
+    createsRevision ? undefined : deduplicatedCandidate?.review.status,
+  );
+  // Candidate inserts must always begin as pending. Escalation is a distinct,
+  // database-owned transition so callers cannot manufacture reviewed evidence
+  // in the same INSERT that creates the candidate identity.
+  const persistedReviewStatus = reviewStatus === 'escalated' ? 'pending' : reviewStatus;
+  const revisionOfCandidateId = createsRevision
+    ? deduplicatedCandidate?.candidateId
+    : deduplicatedCandidate?.revisionOfCandidateId;
+  const revisionNumber = createsRevision
+    ? (deduplicatedCandidate?.revisionNumber ?? 1) + 1
+    : deduplicatedCandidate?.revisionNumber ?? 1;
+  const lineageRootCandidateId = createsRevision
+    ? deduplicatedCandidate?.lineageRootCandidateId ?? deduplicatedCandidate?.candidateId
+    : deduplicatedCandidate?.lineageRootCandidateId ?? candidateId;
 
   const candidateRecord = buildCandidateRecord(candidate, {
     candidateId,
@@ -489,10 +558,14 @@ export async function materializePipelineArtifacts(
     jobId: options.jobId,
     correlationId: options.correlationId,
     assignedToRole,
-    reviewStatus,
+    reviewStatus: persistedReviewStatus,
+    extractionId,
+    revisionOfCandidateId,
+    lineageRootCandidateId,
+    revisionNumber,
   });
 
-  if (deduplicatedCandidate) {
+  if (deduplicatedCandidate && !createsRevision) {
     await stores.candidates.update(candidateId, {
       fields: candidateRecord.fields,
       review: candidateRecord.review,
@@ -570,11 +643,36 @@ export async function materializePipelineArtifacts(
     }),
   );
 
+  // Production routing is database-owned so concurrent candidates cannot
+  // over-allocate a reviewer and a candidate never self-asserts approval.
+  if (stores.assignments?.routeForReview) {
+    await stores.assignments.routeForReview(candidateId, 5);
+  }
+  if (reviewStatus === 'escalated') {
+    await stores.candidates.escalateForReview(candidateId);
+  }
+
   return {
     candidateId,
     evidenceId: evidence?.evidenceId,
     deduped: Boolean(deduplicatedCandidate),
     assignedToRole,
     reviewStatus,
+    ...(createsRevision
+      ? { revisionOfCandidateId, lineageRootCandidateId, revisionNumber }
+      : {}),
   };
+}
+
+export async function materializePipelineArtifacts(
+  stores: IngestionStores,
+  execution: DetailedPipelineExecution,
+  options: MaterializePipelineArtifactsOptions,
+): Promise<MaterializePipelineArtifactsResult> {
+  if (stores.runAtomically) {
+    return stores.runAtomically((transactionStores) => (
+      materializePipelineArtifactsInTransaction(transactionStores, execution, options)
+    ));
+  }
+  return materializePipelineArtifactsInTransaction(stores, execution, options);
 }

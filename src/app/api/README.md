@@ -36,7 +36,7 @@ These are separate contracts. Do not collapse them into one generic public data 
 | `/api/hsds/services/[id]` | GET | No | UUID validation | No | HSDS-compatible published service detail |
 | `/api/hsds/organizations` | GET | No | Query parsing only | No | HSDS-compatible published organizations list |
 | `/api/hsds/organizations/[id]` | GET | No | UUID validation | No | HSDS-compatible published organization detail |
-| `/api/maps/token` | GET | No | N/A | Yes (60/5min) | Azure Maps key broker |
+| `/api/maps/token` | GET | No | N/A | N/A | Retired token broker; always returns `410 Gone` |
 | `/api/internal/sla-check` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | N/A | No | Daily Vercel Cron SLA breach scanner |
 | `/api/internal/confidence-regression-scan` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | N/A | No | Daily Vercel Cron confidence-regression scanner |
 | `/api/internal/coverage-gaps` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | Yes | No | Daily Vercel Cron coverage-gap detection + admin alerting |

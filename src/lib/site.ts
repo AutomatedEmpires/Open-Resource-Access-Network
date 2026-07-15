@@ -1,10 +1,11 @@
 import type { MetadataRoute } from 'next';
+import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy';
 
 const DEFAULT_BASE_URL = 'https://openresourceaccessnetwork.com';
 
 function normalizeBaseUrl(value?: string): string {
-  if (!value) return DEFAULT_BASE_URL;
-  return value.replace(/\/$/, '');
+  const normalized = (value || DEFAULT_BASE_URL).replace(/\/$/, '');
+  return assertAllowedRuntimeEndpoint(normalized, 'NEXT_PUBLIC_SITE_URL');
 }
 
 function splitCsvEnv(value?: string): string[] {

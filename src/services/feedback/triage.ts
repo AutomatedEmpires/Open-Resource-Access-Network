@@ -18,6 +18,7 @@
 
 import { z } from 'zod';
 import { trackAiEvent } from '@/services/telemetry/events';
+import { isRetiredMicrosoftProviderRuntime } from '@/services/runtime/providerPolicy';
 
 // ============================================================
 // TYPES
@@ -69,6 +70,7 @@ RULES:
 // ============================================================
 
 function getConfig(): { endpoint: string; key: string; deployment: string } | null {
+  if (isRetiredMicrosoftProviderRuntime()) return null;
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const key = process.env.AZURE_OPENAI_KEY;
   const deployment = process.env.AZURE_OPENAI_DEPLOYMENT ?? 'gpt-4o-mini';

@@ -6,7 +6,16 @@ import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
-import { advance, acquireLock, releaseLock } from '@/services/workflow/engine';
+import {
+  acquireLock,
+  advanceInTransaction,
+  releaseLock,
+  sendTerminalStatusEmail,
+} from '@/services/workflow/engine';
+import {
+  acquireFreshnessSensitiveAuthoritativeMutationGates,
+  findProtectedAuthoritativeEntities,
+} from '@/services/publication/protectedAuthoritativeMutation';
 import {
   DEFAULT_PAGE_SIZE,
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -17,6 +26,8 @@ import type { SubmissionStatus } from '@/domain/types';
 import { getIp } from '@/services/security/ip';
 
 const HIGH_RISK_REASONS = new Set(['suspected_fraud', 'permanently_closed', 'wrong_location']);
+
+class ReportDecisionConflictError extends Error {}
 
 const ListParamsSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -54,7 +65,13 @@ export async function GET(req: NextRequest) {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } });
   }
 
@@ -171,7 +188,13 @@ export async function POST(req: NextRequest) {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } });
   }
 
@@ -203,61 +226,135 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Report is currently being reviewed by another admin' }, { status: 409 });
     }
 
-    const reportRows = await executeQuery<{
-      status: SubmissionStatus;
-      service_id: string | null;
-      reason: string | null;
-    }>(
-      `SELECT status, service_id, payload->>'reason' AS reason
-       FROM submissions
-       WHERE id = $1 AND submission_type = 'community_report'`,
-      [reportId],
-    );
+    const decisionResult = await withTransaction(async (client) => {
+      // A report decision that changes seeker visibility is one publication
+      // operation. Enter the shared side of the merge gate before taking any
+      // row lock, then re-read every identity used by the terminal decision.
+      await acquireFreshnessSensitiveAuthoritativeMutationGates(client);
 
-    const report = reportRows[0];
-    if (!report) {
-      await releaseLock(reportId, authCtx.userId, false);
-      return NextResponse.json({ error: 'Report not found' }, { status: 404 });
-    }
-
-    if (notes) {
-      await executeQuery(
-        `UPDATE submissions SET reviewer_notes = $1, updated_at = NOW() WHERE id = $2`,
-        [notes, reportId],
+      const reportRows = await client.query<{
+        status: SubmissionStatus;
+        assigned_to_user_id: string | null;
+        is_locked: boolean;
+        locked_by_user_id: string | null;
+        service_id: string | null;
+        reason: string | null;
+      }>(
+        `SELECT status, assigned_to_user_id, is_locked, locked_by_user_id,
+                service_id, payload->>'reason' AS reason
+         FROM submissions
+         WHERE id = $1
+           AND submission_type = 'community_report'
+         FOR UPDATE`,
+        [reportId],
       );
-    }
+      const report = reportRows.rows[0];
+      if (!report) {
+        return { found: false as const, integrityHoldApplied: false };
+      }
+      if (
+        !report.is_locked
+        || report.locked_by_user_id !== authCtx.userId
+        || (report.assigned_to_user_id && report.assigned_to_user_id !== authCtx.userId)
+      ) {
+        throw new ReportDecisionConflictError(
+          'Claim and lock this report before applying a decision.',
+        );
+      }
+      const protectedMatch = report.service_id
+        ? (await findProtectedAuthoritativeEntities(client, {
+            serviceIds: [report.service_id],
+          }))[0] ?? null
+        : null;
+      const authorityReviewRequired = Boolean(
+        protectedMatch
+        && decision === 'approved'
+        && report.reason
+        && HIGH_RISK_REASONS.has(report.reason),
+      );
+      const assigned = await client.query<{ id: string }>(
+        `UPDATE submissions
+         SET assigned_to_user_id = $1, updated_at = NOW()
+         WHERE id = $2
+           AND is_locked = true
+           AND locked_by_user_id = $1
+           AND (assigned_to_user_id IS NULL OR assigned_to_user_id = $1)
+         RETURNING id`,
+        [authCtx.userId, reportId],
+      );
+      if (!assigned.rows[0]) {
+        throw new ReportDecisionConflictError(
+          'Report ownership changed before the decision could begin.',
+        );
+      }
 
-    if (report.status === 'submitted') {
-      const reviewStart = await advance({
+      if (report.service_id) {
+        const currentService = await client.query<{ id: string }>(
+          `SELECT id
+           FROM services
+           WHERE id = $1
+             AND status IS DISTINCT FROM 'defunct'
+           FOR UPDATE`,
+          [report.service_id],
+        );
+        if (!currentService.rows[0]) {
+          throw new ReportDecisionConflictError(
+            'The report\'s linked service is retired or missing; refresh before deciding it.',
+          );
+        }
+      }
+
+      if (notes) {
+        await client.query(
+          `UPDATE submissions SET reviewer_notes = $1, updated_at = NOW() WHERE id = $2`,
+          [notes, reportId],
+        );
+      }
+
+      if (report.status === 'submitted') {
+        const reviewStart = await advanceInTransaction(client, {
+          submissionId: reportId,
+          toStatus: 'under_review',
+          actorUserId: authCtx.userId,
+          actorRole: authCtx.role,
+          reason: 'Claimed for report review',
+        });
+        if (!reviewStart.success) {
+          throw new ReportDecisionConflictError(reviewStart.error ?? 'Unable to start review');
+        }
+      }
+
+      const appliedDecision: SubmissionStatus = authorityReviewRequired
+        ? 'escalated'
+        : decision;
+      const terminalDecision = await advanceInTransaction(client, {
         submissionId: reportId,
-        toStatus: 'under_review',
+        toStatus: appliedDecision,
         actorUserId: authCtx.userId,
         actorRole: authCtx.role,
-        reason: 'Claimed for report review',
+        reason: authorityReviewRequired
+          ? 'Protected authority resource requires its owning workflow to review this evidence'
+          : notes ?? `Report ${decision}`,
+        metadata: {
+          requestedDecision: decision,
+          decision: appliedDecision,
+          protectedAuthority: protectedMatch ?? undefined,
+        },
       });
-      if (!reviewStart.success) {
-        await releaseLock(reportId, authCtx.userId, false);
-        return NextResponse.json({ error: reviewStart.error ?? 'Unable to start review' }, { status: 409 });
+      if (!terminalDecision.success) {
+        throw new ReportDecisionConflictError(
+          terminalDecision.error ?? 'Cannot apply this decision',
+        );
       }
-    }
 
-    const result = await advance({
-      submissionId: reportId,
-      toStatus: decision,
-      actorUserId: authCtx.userId,
-      actorRole: authCtx.role,
-      reason: notes ?? `Report ${decision}`,
-      metadata: { decision },
-    });
-
-    if (!result.success) {
-      await releaseLock(reportId, authCtx.userId, false);
-      return NextResponse.json({ error: result.error ?? 'Cannot apply this decision' }, { status: 409 });
-    }
-
-    let integrityHoldApplied = false;
-    if (decision === 'approved' && report.service_id && report.reason && HIGH_RISK_REASONS.has(report.reason)) {
-      const holdResult = await withTransaction(async (client) => {
+      let integrityHoldApplied = false;
+      if (
+        appliedDecision === 'approved'
+        && !protectedMatch
+        && report.service_id
+        && report.reason
+        && HIGH_RISK_REASONS.has(report.reason)
+      ) {
         const updated = await client.query<{ id: string }>(
           `UPDATE services
            SET integrity_hold_at = COALESCE(integrity_hold_at, NOW()),
@@ -266,6 +363,7 @@ export async function POST(req: NextRequest) {
                updated_at = NOW(),
                updated_by_user_id = $2
            WHERE id = $3
+             AND status IS DISTINCT FROM 'defunct'
            RETURNING id`,
           [
             `community_report:${report.reason}${notes ? `:${notes}` : ''}`,
@@ -273,8 +371,14 @@ export async function POST(req: NextRequest) {
             report.service_id,
           ],
         );
+        if (!updated.rows[0]) {
+          throw new ReportDecisionConflictError(
+            'The linked service changed before its integrity hold could be applied.',
+          );
+        }
 
-        if (updated.rows.length > 0) {
+        integrityHoldApplied = true;
+        if (integrityHoldApplied) {
           await client.query(
             `INSERT INTO notification_events
                (recipient_user_id, event_type, title, body, resource_type, resource_id, action_url, idempotency_key)
@@ -300,25 +404,45 @@ export async function POST(req: NextRequest) {
             ],
           );
         }
+      }
 
-        return updated.rows.length > 0;
-      });
-      integrityHoldApplied = holdResult;
+      return {
+        found: true as const,
+        integrityHoldApplied,
+        appliedDecision,
+        authorityReviewRequired,
+      };
+    });
+
+    if (!decisionResult.found) {
+      await releaseLock(reportId, authCtx.userId, false);
+      return NextResponse.json({ error: 'Report not found' }, { status: 404 });
     }
 
+    const integrityHoldApplied = decisionResult.integrityHoldApplied;
+    const appliedDecision = decisionResult.appliedDecision;
+
     await releaseLock(reportId, authCtx.userId, false).catch(() => undefined);
+    await sendTerminalStatusEmail(reportId, appliedDecision);
 
     return NextResponse.json({
       success: true,
       reportId,
-      decision,
+      decision: appliedDecision,
+      requestedDecision: decision,
       integrityHoldApplied,
-      message: integrityHoldApplied
+      authorityReviewRequired: decisionResult.authorityReviewRequired,
+      message: decisionResult.authorityReviewRequired
+        ? 'Report evidence was retained and escalated to the protected resource authority workflow.'
+        : integrityHoldApplied
         ? 'Report resolved and integrity hold applied.'
-        : `Report ${decision} successfully.`,
+        : `Report ${appliedDecision} successfully.`,
     });
   } catch (error) {
     await releaseLock(reportId, authCtx.userId, false).catch(() => undefined);
+    if (error instanceof ReportDecisionConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     await captureException(error, { feature: 'api_admin_reports_decide' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

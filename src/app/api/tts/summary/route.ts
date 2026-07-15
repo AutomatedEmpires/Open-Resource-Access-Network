@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { getAuthContext } from '@/services/auth/session';
 import { flagService } from '@/services/flags/flags';
 import { FEATURE_FLAGS, RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { synthesizeSpeech, isConfigured } from '@/services/tts/azureSpeech';
 import { captureException } from '@/services/telemetry/sentry';
 import { getIp } from '@/services/security/ip';
@@ -45,12 +45,18 @@ export async function POST(req: NextRequest) {
   }
 
   // Rate-limit per user (falls back to IP for anonymous edge cases).
-  const rlKey = `tts:${authCtx.userId ?? getIp(req)}`;
-  const rl = checkRateLimit(rlKey, {
+  const rlKey = `tts:summary:write:${authCtx.userId ?? getIp(req)}`;
+  const rl = await checkRateLimitShared(rlKey, {
     maxRequests: RATE_LIMIT_MAX_REQUESTS,
     windowMs: RATE_LIMIT_WINDOW_MS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },

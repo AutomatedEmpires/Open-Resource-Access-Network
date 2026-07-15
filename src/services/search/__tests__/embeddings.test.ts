@@ -104,25 +104,45 @@ describe('search embeddings service', () => {
 
   it('updates and retrieves embeddings through provided SQL executor functions', async () => {
     const executeQuery = vi.fn().mockResolvedValue([
-      { id: 'svc-1', name: 'Food Pantry', description: 'Emergency food' },
+      { id: 'svc-1', name: 'Food Pantry', description: 'Emergency food', source_updated_at: '2026-07-14T20:00:00.000Z' },
     ]);
 
-    await updateServiceEmbedding('svc-1', [0.1, 0.2, 0.3], executeQuery);
+    await updateServiceEmbedding(
+      'svc-1',
+      Array.from({ length: 1024 }, () => 0.1),
+      'Food Pantry Emergency food',
+      '2026-07-14T20:00:00.000Z',
+      executeQuery,
+    );
     expect(executeQuery).toHaveBeenNthCalledWith(
       1,
-      expect.stringContaining('UPDATE services SET embedding'),
-      ['[0.1,0.2,0.3]', 'svc-1'],
+      expect.stringContaining('INSERT INTO service_embeddings'),
+      [
+        expect.stringMatching(/^\[0\.1(?:,0\.1){1023}\]$/),
+        expect.any(String),
+        expect.stringMatching(/^[0-9a-f]{64}$/),
+        'svc-1',
+        '2026-07-14T20:00:00.000Z',
+      ],
     );
+    const updateSql = String(executeQuery.mock.calls[0][0]);
+    expect(updateSql).toContain("service.status = 'active'");
+    expect(updateSql).toContain('service.updated_at = $5::timestamptz');
+    expect(updateSql).toContain('source_updated_at = EXCLUDED.source_updated_at');
+    expect(updateSql).toContain('RETURNING service_id AS id');
+    expect(updateSql).not.toContain('UPDATE services');
 
     const rows = await getServicesNeedingEmbedding(25, executeQuery);
     expect(executeQuery).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining('WHERE s.embedding IS NULL'),
+      expect.stringContaining('LEFT JOIN service_embeddings'),
       [25],
     );
     const embeddingSelectionSql = String(executeQuery.mock.calls[1][0]);
+    expect(embeddingSelectionSql).toContain('service_embedding.content_sha256 IS DISTINCT FROM');
+    expect(embeddingSelectionSql).toContain('service_embedding.source_updated_at IS DISTINCT FROM s.updated_at');
     expect(embeddingSelectionSql).toContain('JOIN organizations o');
     expect(embeddingSelectionSql).toContain('source_systems publication_system');
-    expect(rows).toEqual([{ id: 'svc-1', name: 'Food Pantry', description: 'Emergency food' }]);
+    expect(rows).toEqual([{ id: 'svc-1', name: 'Food Pantry', description: 'Emergency food', source_updated_at: '2026-07-14T20:00:00.000Z' }]);
   });
 });

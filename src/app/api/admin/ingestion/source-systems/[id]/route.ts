@@ -21,7 +21,6 @@ import {
 } from '@/domain/constants';
 import { getIp } from '@/services/security/ip';
 import {
-	isHighRiskSourceSystemUpdate,
 	queueIngestionControlChange,
 } from '@/services/ingestion/controlChanges';
 
@@ -74,14 +73,28 @@ const UpdateSourceSystemSchema = z.object({
 	jurisdictionScope: JurisdictionScopeSchema.optional(),
 	contactInfo: ContactInfoSchema.optional(),
 	isActive: z.boolean().optional(),
-}).strict();
-async function requireAdmin(req: NextRequest, maxRequests: number) {
+}).strict().refine((value) => Object.keys(value).length > 0, {
+	message: 'At least one source-system field is required.',
+});
+async function requireAdmin(req: NextRequest, operation: 'read' | 'write') {
 	if (!isDatabaseConfigured()) {
 		return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
 	}
 
-	const rl = await checkRateLimitShared(getIp(req), { maxRequests, windowMs: RATE_LIMIT_WINDOW_MS });
-	if (rl.exceeded) {
+	const maxRequests = operation === 'read'
+		? ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS
+		: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS;
+	const rl = await checkRateLimitShared(
+		`admin:ingestion:source-systems:${operation}:${getIp(req)}`,
+		{ maxRequests, windowMs: RATE_LIMIT_WINDOW_MS },
+	);
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
 		return NextResponse.json(
 			{ error: 'Rate limit exceeded.' },
 			{ status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
@@ -109,7 +122,7 @@ export async function GET(
 	req: NextRequest,
 	{ params }: { params: Promise<{ id: string }> }
 ) {
-	const guard = await requireAdmin(req, ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS);
+	const guard = await requireAdmin(req, 'read');
 	if (guard) return guard;
 
 	try {
@@ -132,7 +145,7 @@ export async function PUT(
 	req: NextRequest,
 	{ params }: { params: Promise<{ id: string }> }
 ) {
-	const guard = await requireAdmin(req, ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS);
+	const guard = await requireAdmin(req, 'write');
 	if (guard) return guard;
 
 	try {
@@ -153,8 +166,7 @@ export async function PUT(
 			return NextResponse.json({ error: 'Source system not found.' }, { status: 404 });
 		}
 
-		if (isHighRiskSourceSystemUpdate(existing, parsed.data)) {
-			const { submissionId } = await queueIngestionControlChange({
+		const { submissionId } = await queueIngestionControlChange({
 				submittedByUserId: session?.userId ?? 'unknown',
 				actorRole: session?.role ?? 'oran_admin',
 				targetId: id,
@@ -171,14 +183,10 @@ export async function PUT(
 				},
 			});
 
-			return NextResponse.json(
-				{ queued: true, submissionId, status: 'pending_second_approval' },
-				{ status: 202 },
-			);
-		}
-
-		await stores.sourceSystems.update(id, parsed.data);
-		return NextResponse.json({ updated: true });
+		return NextResponse.json(
+			{ queued: true, submissionId, status: 'pending_second_approval' },
+			{ status: 202 },
+		);
 	} catch (error) {
 		captureException(error instanceof Error ? error : new Error(String(error)));
 		return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
@@ -189,7 +197,7 @@ export async function DELETE(
 	req: NextRequest,
 	{ params }: { params: Promise<{ id: string }> }
 ) {
-	const guard = await requireAdmin(req, ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS);
+	const guard = await requireAdmin(req, 'write');
 	if (guard) return guard;
 
 	try {

@@ -44,6 +44,7 @@ describe('OnboardingPageClient', () => {
     render(<OnboardingPageClient />);
 
     expect(screen.getByRole('heading', { name: 'What do you need help with right now?' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Broad age range (optional)')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Employment context (optional)')).not.toBeInTheDocument();
 
     reachOptionalChoice();
@@ -85,6 +86,7 @@ describe('OnboardingPageClient', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Today/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
     fireEvent.click(screen.getByRole('button', { name: /^My household/ }));
+    fireEvent.change(screen.getByLabelText('Broad age range (optional)'), { target: { value: '25_54' } });
     fireEvent.change(screen.getByLabelText('Number of people in the household (optional)'), { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
     fireEvent.click(screen.getByRole('button', { name: /Add optional matching details/ }));
@@ -112,6 +114,7 @@ describe('OnboardingPageClient', () => {
       accessibilityNeeds: ['wheelchair_access'],
       documentationBarriers: ['no_ssn'],
       urgencyWindow: 'same_day',
+      ageGroup: '25_54',
       householdSize: 3,
       employmentStatus: 'employed_part_time',
       incomeRange: '1500_2999_monthly',

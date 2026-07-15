@@ -48,6 +48,28 @@ function buildPublicationFingerprint(input: LivePublicationIdentityInput): strin
     .join('|') || 'unscoped';
 }
 
+/** Shared side of the publication/merge gate. Acquire before all row locks. */
+export async function acquireLivePublicationGateShared(
+  client: PoolClient,
+): Promise<void> {
+  await client.query(
+    `SELECT pg_catalog.pg_advisory_xact_lock_shared(
+       pg_catalog.hashtextextended('oran:live-publication-merge', 0)
+     )`,
+  );
+}
+
+/** Exclusive side of the publication/merge gate. Acquire before all row locks. */
+export async function acquireLivePublicationMergeLock(
+  client: PoolClient,
+): Promise<void> {
+  await client.query(
+    `SELECT pg_catalog.pg_advisory_xact_lock(
+       pg_catalog.hashtextextended('oran:live-publication-merge', 0)
+     )`,
+  );
+}
+
 export async function acquireLivePublicationAdvisoryLock(
   client: PoolClient,
   input: LivePublicationIdentityInput,
@@ -74,7 +96,8 @@ export async function resolveExistingLiveOrganizationId(
         WHERE status = 'active'
           AND lower(regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')) = $1
         ORDER BY updated_at DESC
-        LIMIT 1`,
+        LIMIT 1
+        FOR UPDATE OF organizations`,
       [organizationUrl],
     );
     if (urlMatch.rows[0]?.id) {
@@ -93,7 +116,8 @@ export async function resolveExistingLiveOrganizationId(
       WHERE status = 'active'
         AND lower(regexp_replace(name, '[^a-z0-9]+', ' ', 'gi')) = $1
       ORDER BY updated_at DESC
-      LIMIT 1`,
+      LIMIT 1
+      FOR UPDATE OF organizations`,
     [organizationName],
   );
 
@@ -118,7 +142,8 @@ export async function resolveExistingLiveServiceId(
           AND status = 'active'
           AND lower(regexp_replace(regexp_replace(coalesce(url, ''), '^https?://', ''), '/+$', '')) = $2
         ORDER BY updated_at DESC
-        LIMIT 1`,
+        LIMIT 1
+        FOR UPDATE OF services`,
       [organizationId, serviceUrl],
     );
     if (urlMatch.rows[0]?.id) {
@@ -138,7 +163,8 @@ export async function resolveExistingLiveServiceId(
         AND status = 'active'
         AND lower(regexp_replace(name, '[^a-z0-9]+', ' ', 'gi')) = $2
       ORDER BY updated_at DESC
-      LIMIT 1`,
+      LIMIT 1
+      FOR UPDATE OF services`,
     [organizationId, serviceName],
   );
 
@@ -165,7 +191,8 @@ export async function resolveExistingLiveLocationId(
           AND lower(regexp_replace(coalesce(a.city, ''), '[^a-z0-9]+', ' ', 'gi')) = $3
           AND coalesce(a.postal_code, '') = $4
         ORDER BY l.updated_at DESC
-        LIMIT 1`,
+        LIMIT 1
+        FOR UPDATE OF l`,
       [serviceId, normalizedAddress1, normalizedCity, postalCode],
     );
     if (addressMatch.rows[0]?.id) {
@@ -186,7 +213,8 @@ export async function resolveExistingLiveLocationId(
         AND l.status = 'active'
         AND lower(regexp_replace(coalesce(l.name, ''), '[^a-z0-9]+', ' ', 'gi')) = $2
       ORDER BY l.updated_at DESC
-      LIMIT 1`,
+      LIMIT 1
+      FOR UPDATE OF l`,
     [serviceId, locationName],
   );
 

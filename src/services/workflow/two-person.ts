@@ -19,6 +19,7 @@
 import { executeQuery, withTransaction } from '@/services/db/postgres';
 import { FEATURE_FLAGS } from '@/domain/constants';
 import type { PendingGrantStatus } from '@/domain/types';
+import { acquireLivePublicationGateShared } from '@/services/publication/liveEntityMerge';
 
 // ============================================================
 // TYPES
@@ -75,6 +76,21 @@ interface UserSecurityRow {
  */
 export async function requestGrant(req: GrantRequest): Promise<GrantResult> {
   return withTransaction(async (client) => {
+    if (req.organizationId) {
+      await acquireLivePublicationGateShared(client);
+      const organizationRows = await client.query<{ id: string }>(
+        `SELECT id
+         FROM organizations
+         WHERE id = $1
+           AND (status IS NULL OR status != 'defunct')
+         FOR UPDATE`,
+        [req.organizationId],
+      );
+      if (!organizationRows.rows[0]) {
+        return { success: false, grantId: '', error: 'Organization is retired or missing' };
+      }
+    }
+
     const userRows = await client.query<UserSecurityRow>(
       `SELECT user_id, account_status
        FROM user_profiles
@@ -225,6 +241,7 @@ export async function requestGrant(req: GrantRequest): Promise<GrantResult> {
  */
 export async function decideGrant(decision: GrantDecision): Promise<GrantResult> {
   return withTransaction(async (client) => {
+    await acquireLivePublicationGateShared(client);
     // Lock the pending grant row
     const pendingRows = await client.query<{
       id: string;
@@ -247,6 +264,24 @@ export async function decideGrant(decision: GrantDecision): Promise<GrantResult>
     }
 
     const pending = pendingRows.rows[0];
+
+    if (pending.organization_id) {
+      const organizationRows = await client.query<{ id: string }>(
+        `SELECT id
+         FROM organizations
+         WHERE id = $1
+           AND (status IS NULL OR status != 'defunct')
+         FOR UPDATE`,
+        [pending.organization_id],
+      );
+      if (!organizationRows.rows[0]) {
+        return {
+          success: false,
+          grantId: decision.grantId,
+          error: 'Organization is retired or missing',
+        };
+      }
+    }
 
     const userRows = await client.query<UserSecurityRow>(
       `SELECT user_id, account_status

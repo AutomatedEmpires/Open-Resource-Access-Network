@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "ORAN_LEGACY_AZURE_PROVISIONING_ARCHIVED: Azure Maps rotation is retired for ORAN." >&2
+exit 1
+
 usage() {
   cat <<'EOF'
 Usage:

@@ -15,8 +15,10 @@ const requireMinRoleMock = vi.hoisted(() => vi.fn());
 const clientQueryMock = vi.hoisted(() => vi.fn());
 const engineMocks = vi.hoisted(() => ({
   advance: vi.fn(),
+  advanceInTransaction: vi.fn(),
   acquireLock: vi.fn(),
   releaseLock: vi.fn(),
+  sendTerminalStatusEmail: vi.fn(),
 }));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
@@ -90,7 +92,24 @@ beforeEach(() => {
   requireMinRoleMock.mockReturnValue(true);
   captureExceptionMock.mockResolvedValue(undefined);
   clientQueryMock.mockReset();
+  clientQueryMock.mockImplementation(async (sql: string) => {
+    if (sql.includes("submission_type = 'appeal'") && sql.includes('FOR UPDATE')) {
+      return { rows: [{ payload: {}, status: 'under_review' }] };
+    }
+    if (sql.includes('SET is_locked = true')) {
+      return { rows: [{ id: '22222222-2222-4222-8222-222222222222' }] };
+    }
+    return { rows: [] };
+  });
   engineMocks.advance.mockResolvedValue({
+    success: true,
+    submissionId: '22222222-2222-4222-8222-222222222222',
+    fromStatus: 'submitted',
+    toStatus: 'approved',
+    transitionId: 'tr-1',
+    gateResults: [],
+  });
+  engineMocks.advanceInTransaction.mockResolvedValue({
     success: true,
     submissionId: '22222222-2222-4222-8222-222222222222',
     fromStatus: 'submitted',
@@ -100,6 +119,7 @@ beforeEach(() => {
   });
   engineMocks.acquireLock.mockResolvedValue(true);
   engineMocks.releaseLock.mockResolvedValue(undefined);
+  engineMocks.sendTerminalStatusEmail.mockResolvedValue(undefined);
 });
 
 describe('GET /api/admin/appeals', () => {
@@ -278,7 +298,12 @@ describe('POST /api/admin/appeals', () => {
   });
 
   it('returns 409 when lock cannot be acquired', async () => {
-    engineMocks.acquireLock.mockResolvedValueOnce(false);
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("submission_type = 'appeal'") && sql.includes('FOR UPDATE')) {
+        return { rows: [{ payload: {}, status: 'under_review' }] };
+      }
+      return { rows: [] };
+    });
     const { POST } = await loadRoute();
 
     const response = await POST(createPostRequest({ jsonBody: validBody }));
@@ -289,8 +314,8 @@ describe('POST /api/admin/appeals', () => {
     });
   });
 
-  it('returns 409 when advance fails and releases lock', async () => {
-    engineMocks.advance.mockResolvedValueOnce({
+  it('returns 409 when advance fails and releases the transaction-scoped lock', async () => {
+    engineMocks.advanceInTransaction.mockResolvedValueOnce({
       success: false,
       error: 'Invalid transition',
     });
@@ -299,21 +324,94 @@ describe('POST /api/admin/appeals', () => {
     const response = await POST(createPostRequest({ jsonBody: validBody }));
 
     expect(response.status).toBe(409);
-    expect(engineMocks.releaseLock).toHaveBeenCalledWith(
-      validBody.appealId,
-      '11111111-1111-4111-8111-111111111111',
-      false,
-    );
+    expect(clientQueryMock.mock.calls.some((call) =>
+      String(call[0]).includes('locked_by_user_id = NULL'),
+    )).toBe(true);
+  });
+
+  it('routes a newly submitted appeal through review before deciding it', async () => {
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("submission_type = 'appeal'") && sql.includes('FOR UPDATE')) {
+        return { rows: [{ payload: {}, status: 'submitted' }] };
+      }
+      if (sql.includes('SET is_locked = true')) {
+        return { rows: [{ id: validBody.appealId }] };
+      }
+      return { rows: [] };
+    });
+    engineMocks.advanceInTransaction.mockImplementation(async (
+      _client: unknown,
+      request: { toStatus: string },
+    ) => ({
+      success: true,
+      submissionId: validBody.appealId,
+      fromStatus: 'under_review',
+      toStatus: request.toStatus,
+      transitionId: `transition-${request.toStatus}`,
+      gateResults: [],
+    }));
+    const { POST } = await loadRoute();
+
+    const response = await POST(createPostRequest({
+      jsonBody: { ...validBody, decision: 'denied', notes: 'Insufficient evidence.' },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(engineMocks.advanceInTransaction.mock.calls.map((call) => call[1].toStatus)).toEqual([
+      'needs_review',
+      'under_review',
+      'denied',
+    ]);
+    expect(String(clientQueryMock.mock.calls.find(([sql]) => (
+      String(sql).includes('SET is_locked = true')
+    ))?.[0])).toContain('assigned_to_user_id = $1');
+  });
+
+  it('rejects an already completed appeal before taking a review lock', async () => {
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("submission_type = 'appeal'") && sql.includes('FOR UPDATE')) {
+        return { rows: [{ payload: {}, status: 'approved' }] };
+      }
+      return { rows: [] };
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createPostRequest({ jsonBody: validBody }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Appeal cannot be decided from status approved',
+    });
+    expect(clientQueryMock.mock.calls.some(([sql]) => (
+      String(sql).includes('SET is_locked = true')
+    ))).toBe(false);
   });
 
   it('approves appeal, re-opens original submission via transaction', async () => {
-    clientQueryMock
-      .mockResolvedValueOnce({
-        rows: [{
-          payload: { original_submission_id: '44444444-4444-4444-8444-444444444444' },
-        }],
-      })
-      .mockResolvedValue({ rows: [] });
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("submission_type = 'appeal'") && sql.includes('FOR UPDATE')) {
+        return {
+          rows: [{
+            payload: { original_submission_id: '44444444-4444-4444-8444-444444444444' },
+            status: 'under_review',
+          }],
+        };
+      }
+      if (sql.includes('FROM submissions original')) {
+        return {
+          rows: [{
+            status: 'denied',
+            has_resource_freshness_packet: false,
+            has_resource_freshness_finding: false,
+          }],
+        };
+      }
+      if (sql.includes('SET is_locked = true')) return { rows: [{ id: validBody.appealId }] };
+      if (sql.includes("SET status = 'needs_review'")) {
+        return { rows: [{ id: '44444444-4444-4444-8444-444444444444' }] };
+      }
+      return { rows: [] };
+    });
 
     const { POST } = await loadRoute();
     const response = await POST(createPostRequest({ jsonBody: validBody }));
@@ -322,18 +420,17 @@ describe('POST /api/admin/appeals', () => {
     const json = await response.json();
     expect(json.decision).toBe('approved');
     expect(json.message).toBe('Appeal approved successfully');
-    expect(engineMocks.acquireLock).toHaveBeenCalledWith(
-      validBody.appealId,
-      '11111111-1111-4111-8111-111111111111',
+    expect(engineMocks.advanceInTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ query: clientQueryMock }),
+      expect.objectContaining({ submissionId: validBody.appealId }),
     );
-    expect(engineMocks.advance).toHaveBeenCalledOnce();
     expect(clientQueryMock.mock.calls.some((args: unknown[]) =>
       String(args[0]).includes("SET status = 'needs_review'"),
     )).toBe(true);
   });
 
   it('denies appeal with notes', async () => {
-    engineMocks.advance.mockResolvedValueOnce({
+    engineMocks.advanceInTransaction.mockResolvedValueOnce({
       success: true,
       submissionId: validBody.appealId,
       fromStatus: 'submitted',
@@ -350,15 +447,14 @@ describe('POST /api/admin/appeals', () => {
     expect(response.status).toBe(200);
     const json = await response.json();
     expect(json.decision).toBe('denied');
-    // Should save reviewer_notes
-    expect(dbMocks.executeQuery).toHaveBeenCalledWith(
+    expect(clientQueryMock).toHaveBeenCalledWith(
       expect.stringContaining('reviewer_notes'),
       ['Insufficient evidence.', validBody.appealId],
     );
   });
 
   it('returns appeal with notes', async () => {
-    engineMocks.advance.mockResolvedValueOnce({
+    engineMocks.advanceInTransaction.mockResolvedValueOnce({
       success: true,
       submissionId: validBody.appealId,
       fromStatus: 'submitted',
@@ -378,12 +474,56 @@ describe('POST /api/admin/appeals', () => {
   });
 
   it('returns 500 and releases lock when unexpected error occurs', async () => {
-    engineMocks.acquireLock.mockRejectedValueOnce(new Error('db error'));
+    engineMocks.advanceInTransaction.mockRejectedValueOnce(new Error('db error'));
     const { POST } = await loadRoute();
 
     const response = await POST(createPostRequest({ jsonBody: validBody }));
 
     expect(response.status).toBe(500);
     expect(captureExceptionMock).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a UUID from a non-appeal lane before any mutation', async () => {
+    clientQueryMock.mockResolvedValueOnce({ rows: [] });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createPostRequest({ jsonBody: validBody }));
+
+    expect(response.status).toBe(404);
+    expect(clientQueryMock).toHaveBeenCalledTimes(1);
+    expect(String(clientQueryMock.mock.calls[0]?.[0])).toContain("submission_type = 'appeal'");
+    expect(engineMocks.advanceInTransaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses to approve an old appeal whose original has a freshness finding', async () => {
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("submission_type = 'appeal'") && sql.includes('FOR UPDATE')) {
+        return {
+          rows: [{
+            payload: { original_submission_id: '44444444-4444-4444-8444-444444444444' },
+            status: 'under_review',
+          }],
+        };
+      }
+      if (sql.includes('FROM submissions original')) {
+        return {
+          rows: [{
+            status: 'denied',
+            has_resource_freshness_packet: false,
+            has_resource_freshness_finding: true,
+          }],
+        };
+      }
+      return { rows: [] };
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createPostRequest({ jsonBody: validBody }));
+
+    expect(response.status).toBe(409);
+    expect(engineMocks.advanceInTransaction).not.toHaveBeenCalled();
+    expect(clientQueryMock.mock.calls.some((call) =>
+      String(call[0]).includes('SET is_locked = true'),
+    )).toBe(false);
   });
 });

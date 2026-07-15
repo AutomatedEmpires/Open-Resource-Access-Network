@@ -10,6 +10,8 @@ import type {
 } from '@/domain/forms';
 import { extractRoutingConfig } from '@/domain/forms';
 import type { SubmissionPriority, SubmissionTargetType, SubmissionType } from '@/domain/types';
+import { acquireLivePublicationGateShared } from '@/services/publication/liveEntityMerge';
+import type { PoolClient } from 'pg';
 
 export interface ListFormTemplatesOptions {
   visibleAudiences: FormTemplateAudience[];
@@ -379,6 +381,7 @@ export async function getAccessibleFormInstance(
 
 export async function createFormInstance(input: CreateFormInstanceInput): Promise<CreateFormInstanceResult> {
   return withTransaction(async (client) => {
+    await acquireLivePublicationGateShared(client);
     if (input.template.storage_scope === 'organization' && !input.ownerOrganizationId) {
       throw new Error('Organization-scoped templates require an owning organization');
     }
@@ -410,6 +413,46 @@ export async function createFormInstance(input: CreateFormInstanceInput): Promis
       ...readObject(input.payload),
     };
     const evidence = input.evidence ?? [];
+
+    const serviceIds = [...new Set([
+      input.serviceId ?? null,
+      targetType === 'service' ? targetId : null,
+    ].filter((value): value is string => Boolean(value)))].sort();
+    if (serviceIds.length > 0) {
+      const serviceRows = await client.query<{ id: string }>(
+        `SELECT id
+         FROM services
+         WHERE id = ANY($1::uuid[])
+           AND status IS DISTINCT FROM 'defunct'
+         ORDER BY id
+         FOR UPDATE`,
+        [serviceIds],
+      );
+      if (serviceRows.rows.length !== serviceIds.length) {
+        throw new Error('A linked service is retired or missing');
+      }
+    }
+
+    const organizationIds = [...new Set([
+      input.ownerOrganizationId ?? null,
+      input.recipientOrganizationId ?? null,
+      targetType === 'organization' ? targetId : null,
+    ].filter((value): value is string => Boolean(value)))].sort();
+    if (organizationIds.length > 0) {
+      const organizationRows = await client.query<{ id: string }>(
+        `SELECT id
+         FROM organizations
+         WHERE id = ANY($1::uuid[])
+           AND status IS DISTINCT FROM 'defunct'
+         ORDER BY id
+         FOR UPDATE`,
+        [organizationIds],
+      );
+      if (organizationRows.rows.length !== organizationIds.length) {
+        throw new Error('A linked organization is retired or missing');
+      }
+    }
+
     const createKey = JSON.stringify({
       submittedByUserId: input.submittedByUserId,
       templateId: input.template.id,
@@ -559,6 +602,39 @@ export async function updateFormInstanceDraft(
   input: UpdateFormInstanceDraftInput,
 ): Promise<void> {
   await withTransaction(async (client) => {
+    await acquireLivePublicationGateShared(client);
+    await updateFormInstanceDraftInTransaction(client, id, input);
+  });
+}
+
+export async function updateFormInstanceDraftInTransaction(
+  client: PoolClient,
+  id: string,
+  input: UpdateFormInstanceDraftInput,
+): Promise<void> {
+  const lockedForms = await client.query<{ id: string }>(
+      `SELECT id
+       FROM form_instances
+       WHERE id = $1
+       FOR UPDATE`,
+      [id],
+    );
+    if (!lockedForms.rows[0]) return;
+
+    if (input.recipientOrganizationId) {
+      const organizationRows = await client.query<{ id: string }>(
+        `SELECT id
+         FROM organizations
+         WHERE id = $1
+           AND status IS DISTINCT FROM 'defunct'
+         FOR UPDATE`,
+        [input.recipientOrganizationId],
+      );
+      if (!organizationRows.rows[0]) {
+        throw new Error('Recipient organization is retired or missing');
+      }
+    }
+
     const formSetClauses: string[] = ['last_saved_at = NOW()', 'updated_at = NOW()'];
     const formParams: unknown[] = [];
 
@@ -620,20 +696,29 @@ export async function updateFormInstanceDraft(
         WHERE id = (SELECT submission_id FROM form_instances WHERE id = $${submissionParams.length})`,
       submissionParams,
     );
-  });
 }
 
-export async function setFormSubmissionReviewerNotes(
+export async function setFormSubmissionReviewerNotesInTransaction(
+  client: PoolClient,
   submissionId: string,
   reviewerNotes: string | null,
 ): Promise<void> {
-  await executeQuery(
+  await client.query(
     `UPDATE submissions
         SET reviewer_notes = $1,
             updated_at = NOW()
       WHERE id = $2`,
     [reviewerNotes, submissionId],
   );
+}
+
+export async function setFormSubmissionReviewerNotes(
+  submissionId: string,
+  reviewerNotes: string | null,
+): Promise<void> {
+  await withTransaction((client) => (
+    setFormSubmissionReviewerNotesInTransaction(client, submissionId, reviewerNotes)
+  ));
 }
 
 export async function updateFormSubmissionOperationalMetadata(

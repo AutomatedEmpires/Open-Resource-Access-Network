@@ -21,11 +21,17 @@ async function requireAdmin(req: NextRequest) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }
 
-  const rl = await checkRateLimitShared(getIp(req), {
+  const rl = await checkRateLimitShared(`admin:ingestion:source-feeds:replay:write:${getIp(req)}`, {
     maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
     windowMs: RATE_LIMIT_WINDOW_MS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },

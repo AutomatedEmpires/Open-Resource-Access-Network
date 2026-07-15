@@ -14,11 +14,12 @@ const UpdateCollectionSchema = z.object({
   name: z.string().trim().min(1).max(60),
 }).strict();
 
-function checkSavedCollectionsRateLimit(ip: string) {
-  return checkRateLimitShared(`saved-collections:ip:${ip}`, {
+async function checkSavedCollectionsRateLimit(ip: string) {
+  const rateLimit = await checkRateLimitShared(`saved-collections:write:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: SAVED_COLLECTIONS_RATE_LIMIT_MAX,
   });
+  return rateLimit;
 }
 
 async function requireCollectionOwner(req: NextRequest, id: string) {
@@ -28,6 +29,12 @@ async function requireCollectionOwner(req: NextRequest, id: string) {
 
   const ip = getIp(req);
   const rateLimit = await checkSavedCollectionsRateLimit(ip);
+  if (rateLimit.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) } },
+    );
+  }
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },

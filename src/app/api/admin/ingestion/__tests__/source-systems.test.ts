@@ -11,6 +11,9 @@ const getDrizzleMock = vi.hoisted(() => vi.fn());
 const storeFactoryMocks = vi.hoisted(() => ({
   createIngestionStores: vi.fn(),
 }));
+const controlChangeMocks = vi.hoisted(() => ({
+  queueIngestionControlChange: vi.fn(),
+}));
 const sourceSystemsStore = vi.hoisted(() => ({
   listActive: vi.fn(),
   create: vi.fn(),
@@ -42,6 +45,7 @@ vi.mock('@/services/db/drizzle', () => ({
   getDrizzle: getDrizzleMock,
 }));
 vi.mock('@/agents/ingestion/persistence/storeFactory', () => storeFactoryMocks);
+vi.mock('@/services/ingestion/controlChanges', () => controlChangeMocks);
 
 function createRequest(options: {
   jsonBody?: unknown;
@@ -90,6 +94,7 @@ beforeEach(() => {
   sourceFeedsStore.create.mockResolvedValue({ id: 'feed-1', feedName: '211 Export' });
   sourceFeedStatesStore.getByFeedId.mockResolvedValue(null);
   sourceFeedStatesStore.upsert.mockResolvedValue({ sourceFeedId: 'feed-1' });
+  controlChangeMocks.queueIngestionControlChange.mockResolvedValue({ submissionId: 'sub-1' });
 });
 
 describe('admin ingestion source system routes', () => {
@@ -116,7 +121,7 @@ describe('admin ingestion source system routes', () => {
 
     const response = await GET(createRequest({ ip: '198.51.100.10' }));
 
-    expect(rateLimitMock).toHaveBeenCalledWith('198.51.100.10', expect.any(Object));
+    expect(rateLimitMock).toHaveBeenCalledWith('admin:ingestion:source-systems:read:198.51.100.10', expect.any(Object));
     expect(sourceSystemsStore.listActive).toHaveBeenCalledOnce();
     expect(sourceFeedsStore.listBySystem).toHaveBeenCalledWith('sys-1');
     expect(response.status).toBe(200);
@@ -153,8 +158,9 @@ describe('admin ingestion source system routes', () => {
 
   it('creates a source system and initial feed', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
-    sourceSystemsStore.create.mockResolvedValueOnce({ id: 'sys-211', name: '211 National' });
-    sourceFeedsStore.create.mockResolvedValueOnce({ id: 'feed-211', sourceSystemId: 'sys-211' });
+    const randomUuidSpy = vi.spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce('sys-211')
+      .mockReturnValueOnce('feed-211');
     const { POST } = await loadRoute();
 
     const response = await POST(
@@ -189,51 +195,61 @@ describe('admin ingestion source system routes', () => {
       }),
     );
 
-    expect(sourceSystemsStore.create).toHaveBeenCalledWith(
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: '211 National',
-        family: 'partner_api',
-        trustTier: 'trusted_partner',
-        resourcePurpose: 'service_catalog',
-        termsUrl: 'https://apiportal.211.org/terms',
-        hsdsProfileUri: 'https://api.211.org/hsds-profile',
-        isActive: false,
-        jurisdictionScope: { kind: 'national', country: 'US' },
-        domainRules: [{ type: 'suffix', value: '211.org' }],
+        submittedByUserId: 'oran-1',
+        targetId: 'sys-211',
+        payload: expect.objectContaining({
+          entityType: 'source_system',
+          action: 'create',
+          entityId: 'sys-211',
+          beforeState: null,
+          createState: expect.objectContaining({
+            id: 'sys-211',
+            name: '211 National',
+            family: 'partner_api',
+            trustTier: 'trusted_partner',
+            resourcePurpose: 'service_catalog',
+            termsUrl: 'https://apiportal.211.org/terms',
+            hsdsProfileUri: 'https://api.211.org/hsds-profile',
+            isActive: false,
+            jurisdictionScope: { kind: 'national', country: 'US' },
+            domainRules: [{ type: 'suffix', value: '211.org' }],
+          }),
+          initialFeed: expect.objectContaining({
+            id: 'feed-211',
+            sourceSystemId: 'sys-211',
+            feedName: '211 Export V2',
+            feedType: 'api',
+            feedHandler: 'ndp_211',
+            baseUrl: 'https://api.211.org/resources/v2',
+            healthcheckUrl: 'https://api.211.org/health',
+            authType: 'api_key',
+            profileUri: 'https://api.211.org/profile',
+            jurisdictionScope: { kind: 'national', country: 'US' },
+            refreshIntervalHours: 12,
+            isActive: false,
+          }),
+        }),
       }),
     );
-    expect(sourceFeedsStore.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sourceSystemId: 'sys-211',
-        feedName: '211 Export V2',
-        feedType: 'api',
-        feedHandler: 'ndp_211',
-        baseUrl: 'https://api.211.org/resources/v2',
-        healthcheckUrl: 'https://api.211.org/health',
-        authType: 'api_key',
-        profileUri: 'https://api.211.org/profile',
-        jurisdictionScope: { kind: 'national', country: 'US' },
-        refreshIntervalHours: 12,
-        isActive: false,
-      }),
-    );
-    expect(sourceFeedStatesStore.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sourceFeedId: 'feed-211',
-        publicationMode: 'review_required',
-        emergencyPause: false,
-      }),
-    );
-    expect(response.status).toBe(201);
+    expect(sourceSystemsStore.create).not.toHaveBeenCalled();
+    expect(sourceFeedsStore.create).not.toHaveBeenCalled();
+    expect(sourceFeedStatesStore.upsert).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({
       sourceSystemId: 'sys-211',
       initialFeedId: 'feed-211',
-      created: true,
+      submissionId: 'sub-1',
+      queued: true,
+      status: 'pending_second_approval',
     });
+    randomUuidSpy.mockRestore();
   });
 
   it('creates a source system without an initial feed', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
+    const randomUuidSpy = vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue('sys-manual');
     const { POST } = await loadRoute();
 
     const response = await POST(
@@ -247,9 +263,20 @@ describe('admin ingestion source system routes', () => {
       }),
     );
 
-    expect(sourceSystemsStore.create).toHaveBeenCalledOnce();
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetId: 'sys-manual',
+        payload: expect.objectContaining({
+          action: 'create',
+          entityId: 'sys-manual',
+          initialFeed: undefined,
+        }),
+      }),
+    );
+    expect(sourceSystemsStore.create).not.toHaveBeenCalled();
     expect(sourceFeedsStore.create).not.toHaveBeenCalled();
-    expect(response.status).toBe(201);
+    expect(response.status).toBe(202);
+    randomUuidSpy.mockRestore();
   });
 
   it('rejects a new source system whose initial feed uses the legacy Azure Function handler', async () => {

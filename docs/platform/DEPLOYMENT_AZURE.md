@@ -1,6 +1,6 @@
 # Legacy rollback: deploy ORAN to Azure App Service
 
-This path is retained only for rollback during the Vercel/Supabase migration. It is not the active production target. Set `AZURE_ROLLBACK_DEPLOY_ENABLED=true` only for an approved rollback. See [STACK_MIGRATION.md](STACK_MIGRATION.md).
+This document is retained as migration history only. Azure deployment, Functions packaging, infrastructure provisioning, and Maps token rotation are hard-disabled; the active production target is Vercel + Supabase. See [STACK_MIGRATION.md](STACK_MIGRATION.md).
 
 ## Overview
 

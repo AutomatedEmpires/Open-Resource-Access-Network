@@ -16,10 +16,16 @@ const authMocks = vi.hoisted(() => ({
   getAuthContext: vi.fn(),
 }));
 const requireMinRoleMock = vi.hoisted(() => vi.fn());
+const communityScopeMocks = vi.hoisted(() => ({
+  getCommunityAdminScope: vi.fn(),
+  buildCommunitySubmissionScope: vi.fn(),
+}));
 const engineMocks = vi.hoisted(() => ({
   advance: vi.fn(),
+  advanceInTransaction: vi.fn(),
   acquireLock: vi.fn(),
   releaseLock: vi.fn(),
+  sendTerminalStatusEmail: vi.fn(),
 }));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
@@ -34,6 +40,7 @@ vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/auth/guards', () => ({
   requireMinRole: requireMinRoleMock,
 }));
+vi.mock('@/services/community/scope', () => communityScopeMocks);
 vi.mock('@/services/workflow/engine', () => engineMocks);
 
 // ============================================================
@@ -78,8 +85,18 @@ function _mockTransaction(callback: (client: ReturnType<typeof createMockClient>
 }
 
 function createMockClient() {
+  const query = vi.fn();
+  query.mockImplementation(async (sql: string) => {
+    if (sql.includes("submission_type = 'appeal'") && sql.includes('FOR UPDATE')) {
+      return { rows: [{ payload: {}, status: 'under_review' }] };
+    }
+    if (sql.includes('SET is_locked = true')) {
+      return { rows: [{ id: '11111111-1111-4111-8111-111111111111' }] };
+    }
+    return { rows: [] };
+  });
   return {
-    query: vi.fn(),
+    query,
   };
 }
 
@@ -99,6 +116,24 @@ beforeEach(() => {
   rateLimitMock.mockReturnValue({ exceeded: false, retryAfterSeconds: 0 });
   authMocks.getAuthContext.mockResolvedValue(null);
   requireMinRoleMock.mockReturnValue(true);
+  communityScopeMocks.getCommunityAdminScope.mockImplementation(async (userId: string) => ({
+    userId,
+    coverageZoneId: null,
+    coverageZoneName: null,
+    coverageZoneDescription: null,
+    coverageStates: [],
+    coverageCounties: [],
+    hasGeometry: false,
+    hasExplicitScope: false,
+  }));
+  communityScopeMocks.buildCommunitySubmissionScope.mockImplementation((
+    alias: string,
+    scope: { userId: string },
+    params: unknown[],
+  ) => {
+    params.push(scope.userId);
+    return `(${alias}.assigned_to_user_id = $${params.length})`;
+  });
   captureExceptionMock.mockResolvedValue(undefined);
   engineMocks.advance.mockResolvedValue({
     success: true,
@@ -108,8 +143,17 @@ beforeEach(() => {
     transitionId: 'tr-1',
     gateResults: [],
   });
+  engineMocks.advanceInTransaction.mockResolvedValue({
+    success: true,
+    submissionId: '11111111-1111-4111-8111-111111111111',
+    fromStatus: 'submitted',
+    toStatus: 'approved',
+    transitionId: 'tr-1',
+    gateResults: [],
+  });
   engineMocks.acquireLock.mockResolvedValue(true);
   engineMocks.releaseLock.mockResolvedValue(undefined);
+  engineMocks.sendTerminalStatusEmail.mockResolvedValue(undefined);
 });
 
 // ============================================================
@@ -183,6 +227,23 @@ describe('GET /api/admin/appeals', () => {
     expect(body.results[0].original_submission_id).toBe('sub-1');
     expect(body.total).toBe(1);
     expect(body.hasMore).toBe(false);
+    const listSql = String(dbMocks.executeQuery.mock.calls[0]?.[0]);
+    expect(listSql).toContain('s.assigned_to_user_id = $1');
+    expect(dbMocks.executeQuery.mock.calls[0]?.[1]).toEqual(['admin-1', 20, 0]);
+  });
+
+  it('keeps ORAN-admin appeal reads global', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1', role: 'oran_admin' });
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ count: '0' }]);
+
+    const { GET } = await loadRoute();
+    const response = await GET(createRequest());
+
+    expect(response.status).toBe(200);
+    expect(communityScopeMocks.getCommunityAdminScope).not.toHaveBeenCalled();
+    expect(String(dbMocks.executeQuery.mock.calls[0]?.[0])).not.toContain('assigned_to_user_id =');
   });
 
   it('filters by status', async () => {
@@ -253,7 +314,14 @@ describe('POST /api/admin/appeals', () => {
 
   it('returns 409 when lock cannot be acquired', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'admin-1', role: 'community_admin' });
-    engineMocks.acquireLock.mockResolvedValueOnce(false);
+    const client = createMockClient();
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.includes("submission_type = 'appeal'") && sql.includes('FOR UPDATE')) {
+        return { rows: [{ payload: {}, status: 'under_review' }] };
+      }
+      return { rows: [] };
+    });
+    dbMocks.withTransaction.mockImplementationOnce(async (fn: (c: typeof client) => unknown) => fn(client));
 
     const { POST } = await loadRoute();
     const response = await POST(createRequest({
@@ -268,7 +336,7 @@ describe('POST /api/admin/appeals', () => {
 
   it('returns 409 when advance fails', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'admin-1', role: 'community_admin' });
-    engineMocks.advance.mockResolvedValueOnce({
+    engineMocks.advanceInTransaction.mockResolvedValueOnce({
       success: false,
       error: 'Invalid transition',
     });
@@ -282,22 +350,37 @@ describe('POST /api/admin/appeals', () => {
       },
     }));
     expect(response.status).toBe(409);
-    expect(engineMocks.releaseLock).toHaveBeenCalled();
   });
 
   it('approves an appeal and re-opens original submission', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'admin-1', role: 'community_admin' });
     const client = createMockClient();
-    // 1. SELECT appeal payload
-    client.query.mockResolvedValueOnce({
-      rows: [{
-        payload: { original_submission_id: 'sub-original' },
-      }],
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.includes("submission_type = 'appeal'") && sql.includes('FOR UPDATE')) {
+        return {
+          rows: [{
+            payload: { original_submission_id: 'sub-original' },
+            status: 'under_review',
+          }],
+        };
+      }
+      if (sql.includes('FROM submissions original')) {
+        return {
+          rows: [{
+            status: 'denied',
+            has_resource_freshness_packet: false,
+            has_resource_freshness_finding: false,
+          }],
+        };
+      }
+      if (sql.includes('SET is_locked = true')) {
+        return { rows: [{ id: '11111111-1111-4111-8111-111111111111' }] };
+      }
+      if (sql.includes("SET status = 'needs_review'")) {
+        return { rows: [{ id: 'sub-original' }] };
+      }
+      return { rows: [] };
     });
-    // 2. UPDATE original submission (re-open)
-    client.query.mockResolvedValueOnce({ rows: [] });
-    // 3. INSERT transition for original
-    client.query.mockResolvedValueOnce({ rows: [] });
 
     dbMocks.withTransaction.mockImplementation(async (fn: (c: typeof client) => unknown) => fn(client));
 
@@ -313,8 +396,7 @@ describe('POST /api/admin/appeals', () => {
 
     const body = await response.json();
     expect(body.decision).toBe('approved');
-    expect(engineMocks.acquireLock).toHaveBeenCalled();
-    expect(engineMocks.advance).toHaveBeenCalledOnce();
+    expect(engineMocks.advanceInTransaction).toHaveBeenCalledOnce();
 
     // Verify original submission was re-opened via transaction
     const reOpenCall = client.query.mock.calls.find((args: unknown[]) =>
@@ -325,7 +407,7 @@ describe('POST /api/admin/appeals', () => {
 
   it('denies an appeal without re-opening original', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'admin-1', role: 'community_admin' });
-    engineMocks.advance.mockResolvedValueOnce({
+    engineMocks.advanceInTransaction.mockResolvedValueOnce({
       success: true,
       submissionId: '11111111-1111-4111-8111-111111111111',
       fromStatus: 'under_review',
@@ -346,7 +428,32 @@ describe('POST /api/admin/appeals', () => {
 
     const body = await response.json();
     expect(body.decision).toBe('denied');
-    // No transaction for re-opening
-    expect(dbMocks.withTransaction).not.toHaveBeenCalled();
+    expect(dbMocks.withTransaction).toHaveBeenCalledOnce();
+  });
+
+  it('applies community scope to the appeal row before deciding it', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'admin-1', role: 'community_admin' });
+    const client = createMockClient();
+    dbMocks.withTransaction.mockImplementation(async (fn: (c: typeof client) => unknown) => fn(client));
+
+    const { POST } = await loadRoute();
+    const response = await POST(createRequest({
+      jsonBody: {
+        appealId: '11111111-1111-4111-8111-111111111111',
+        decision: 'denied',
+        notes: 'Insufficient evidence',
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    const typedLaneCall = client.query.mock.calls.find(([sql]) => (
+      String(sql).includes("appeal.submission_type = 'appeal'")
+      && String(sql).includes('FOR UPDATE OF appeal')
+    ));
+    expect(typedLaneCall?.[0]).toContain('appeal.assigned_to_user_id = $2');
+    expect(typedLaneCall?.[1]).toEqual([
+      '11111111-1111-4111-8111-111111111111',
+      'admin-1',
+    ]);
   });
 });

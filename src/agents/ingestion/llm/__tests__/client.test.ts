@@ -73,8 +73,8 @@ describe('llm client factory + env config', () => {
     delete process.env.LLM_API_VERSION;
 
     const defaults = getLLMConfigFromEnv();
-    expect(defaults.provider).toBe('azure_openai');
-    expect(defaults.model).toBe('gpt-4o');
+    expect(defaults.provider).toBe('disabled');
+    expect(defaults.model).toBe('unconfigured');
     expect(defaults.apiVersion).toBe('2024-08-01-preview');
 
     process.env.LLM_PROVIDER = 'openai';

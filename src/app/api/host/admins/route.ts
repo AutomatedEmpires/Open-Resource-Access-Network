@@ -13,10 +13,15 @@ import { z } from 'zod';
 import { OranRole } from '@/domain/types';
 import { getAuthContext, shouldEnforceAuth, requireOrgRole, isOranAdmin } from '@/services/auth';
 import { isDatabaseConfigured, executeQuery, withTransaction } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { getIp } from '@/services/security/ip';
 import { captureException } from '@/services/telemetry/sentry';
 import { send as sendNotification } from '@/services/notifications/service';
+import {
+  acquireAuthoritativeMutationGatesShared,
+  assertAuthoritativeEntitiesMutable,
+  ProtectedAuthoritativeMutationConflict,
+} from '@/services/publication/protectedAuthoritativeMutation';
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const HOST_READ_RATE_LIMIT_MAX_REQUESTS = 60;
@@ -65,11 +70,17 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:admins:read:${ip}`, {
+  const rl = await checkRateLimitShared(`host:admins:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
       return NextResponse.json(
         { error: 'Rate limit exceeded.' },
         {
@@ -146,11 +157,17 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:admins:write:${ip}`, {
+  const rl = await checkRateLimitShared(`host:admins:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
       return NextResponse.json(
         { error: 'Rate limit exceeded.' },
         {
@@ -214,9 +231,17 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await withTransaction(async (client) => {
+      await acquireAuthoritativeMutationGatesShared(client);
+      await assertAuthoritativeEntitiesMutable(client, {
+        organizationIds: [organizationId],
+      });
       // Verify organization exists
       const orgCheck = await client.query<{ id: string }>(
-        `SELECT id FROM organizations WHERE id = $1 AND (status IS NULL OR status != 'defunct')`,
+        `SELECT id
+         FROM organizations
+         WHERE id = $1
+           AND (status IS NULL OR status != 'defunct')
+         FOR UPDATE`,
         [organizationId],
       );
       if (orgCheck.rows.length === 0) {
@@ -293,6 +318,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(result.member, { status: 201 });
   } catch (error) {
+    if (error instanceof ProtectedAuthoritativeMutationConflict) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     await captureException(error, { feature: 'api_host_admins_invite' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -309,11 +337,17 @@ export async function PATCH(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:admins:write:${ip}`, {
+  const rl = await checkRateLimitShared(`host:admins:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
@@ -348,23 +382,64 @@ export async function PATCH(req: NextRequest) {
   try {
     // Only allow the invited user to accept/decline their own invite
     const newStatus = action === 'accept' ? null : 'declined';
-    const result = await executeQuery<OrganizationMember>(
-      `UPDATE organization_members
-       SET status = $1, updated_at = NOW()
-       WHERE id = $2 AND user_id = $3 AND status = 'pending_invite'
-       RETURNING id, user_id, organization_id, role, status, created_at, updated_at`,
-      [newStatus, membershipId, auth.userId],
-    );
+    const result = await withTransaction(async (client) => {
+      await acquireAuthoritativeMutationGatesShared(client);
+      const membershipTarget = await client.query<OrganizationMember>(
+        `SELECT id, user_id, organization_id, role, status, created_at, updated_at
+         FROM organization_members
+         WHERE id = $1
+           AND user_id = $2
+           AND status = 'pending_invite'`,
+        [membershipId, auth.userId],
+      );
+      if (!membershipTarget.rows[0]) return null;
+      await assertAuthoritativeEntitiesMutable(client, {
+        organizationIds: [membershipTarget.rows[0].organization_id],
+      });
+      const activeOrganization = await client.query<{ id: string }>(
+        `SELECT id
+         FROM organizations
+         WHERE id = $1
+           AND (status IS NULL OR status != 'defunct')
+         FOR UPDATE`,
+        [membershipTarget.rows[0].organization_id],
+      );
+      if (!activeOrganization.rows[0]) return null;
 
-    if (result.length === 0) {
+      const lockedMembership = await client.query<OrganizationMember>(
+        `SELECT id, user_id, organization_id, role, status, created_at, updated_at
+         FROM organization_members
+         WHERE id = $1
+           AND user_id = $2
+           AND organization_id = $3
+           AND status = 'pending_invite'
+         FOR UPDATE`,
+        [membershipId, auth.userId, membershipTarget.rows[0].organization_id],
+      );
+      if (!lockedMembership.rows[0]) return null;
+
+      const updated = await client.query<OrganizationMember>(
+        `UPDATE organization_members
+         SET status = $1, updated_at = NOW()
+         WHERE id = $2 AND user_id = $3 AND status = 'pending_invite'
+         RETURNING id, user_id, organization_id, role, status, created_at, updated_at`,
+        [newStatus, membershipId, auth.userId],
+      );
+      return updated.rows[0] ?? null;
+    });
+
+    if (!result) {
       return NextResponse.json(
         { error: 'Invite not found or already actioned' },
         { status: 404 },
       );
     }
 
-    return NextResponse.json(result[0]);
+    return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof ProtectedAuthoritativeMutationConflict) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     await captureException(error, { feature: 'api_host_admins_respond_invite' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

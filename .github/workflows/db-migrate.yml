@@ -22,7 +22,7 @@ jobs:
   migrate:
     if: ${{ vars.SUPABASE_MIGRATIONS_ENABLED == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 360
     environment: ${{ inputs.environment }}
     steps:
       - name: Checkout
@@ -40,12 +40,18 @@ jobs:
       - name: Load Supabase migration connection
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
         run: |
           if [ -z "$SUPABASE_DB_URL" ]; then
             echo "::error::SUPABASE_DB_URL is not configured in the selected GitHub Environment."
             exit 1
           fi
+          if [ -z "$SUPABASE_PROJECT_REF" ]; then
+            echo "::error::SUPABASE_PROJECT_REF is not configured in the selected GitHub Environment."
+            exit 1
+          fi
           echo "::add-mask::$SUPABASE_DB_URL"
+          node scripts/validate-runtime-endpoint.mjs SUPABASE_DB_URL SUPABASE_PROJECT_REF
           echo "DATABASE_URL=$SUPABASE_DB_URL" >> "$GITHUB_ENV"
 
       - name: Install PostgreSQL client
@@ -55,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          migration_table=$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 \
+          migration_table=$(psql "$DATABASE_URL" -XAt -v ON_ERROR_STOP=1 \
             -c "SELECT to_regclass('public.schema_migrations');")
           if [ "$migration_table" != "schema_migrations" ]; then
             echo "::error::Repository migration history is not baselined in this Supabase project."
@@ -65,16 +71,29 @@ jobs:
 
           while IFS= read -r file; do
             filename="$(basename "$file")"
-            applied=$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -c "SELECT 1 FROM schema_migrations WHERE filename = '$filename' LIMIT 1;")
+            if [[ ! "$filename" =~ ^[0-9]{4}_[a-z0-9_]+\.sql$ ]]; then
+              echo "::error::Refusing migration with an unexpected filename: $filename"
+              exit 1
+            fi
+
+            applied=$(psql "$DATABASE_URL" -XAt -v ON_ERROR_STOP=1 \
+              -c "SELECT 1 FROM public.schema_migrations WHERE filename = '$filename' LIMIT 1;")
 
             if [ "$applied" = "1" ]; then
               echo "Skipping already applied migration: $filename"
               continue
             fi
 
+            if [ "$filename" = "0073_account_erasure_index_gate.sql" ]; then
+              echo "Building and validating account-erasure indexes online before the tracked gate"
+              psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+                -f scripts/db/build-account-erasure-indexes.sql
+            fi
+
             echo "Applying migration: $filename"
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$file"
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (filename) VALUES ('$filename');"
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f "$file"
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+              -c "INSERT INTO public.schema_migrations (filename) VALUES ('$filename');"
           done < <(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort)
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
@@ -82,6 +101,9 @@ jobs:
       - name: Verify migration
         run: |
           echo "Migration completed for environment: ${{ inputs.environment }}"
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT filename, applied_at FROM schema_migrations ORDER BY filename;"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+            -f db/migrations/0073_account_erasure_index_gate.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+            -c "SELECT filename, applied_at FROM public.schema_migrations ORDER BY filename;"
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}

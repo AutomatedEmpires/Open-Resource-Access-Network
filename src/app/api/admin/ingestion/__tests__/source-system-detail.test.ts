@@ -77,7 +77,7 @@ beforeEach(() => {
   });
   sourceFeedStatesStore.upsert.mockResolvedValue({ sourceFeedId: 'feed-1', publicationMode: 'review_required' });
   controlChangeMocks.isHighRiskSourceSystemUpdate.mockReturnValue(false);
-  controlChangeMocks.isHighRiskSourceFeedUpdate.mockReturnValue(false);
+  controlChangeMocks.isHighRiskSourceFeedUpdate.mockReturnValue(true);
   controlChangeMocks.queueIngestionControlChange.mockResolvedValue({ submissionId: 'sub-1' });
 });
 
@@ -92,12 +92,28 @@ describe('source system and feed detail routes', () => {
     });
   });
 
-  it('updates a source system', async () => {
+  it('queues a complete source-system update for second approval', async () => {
+    sourceSystemsStore.getById.mockResolvedValueOnce({
+      id: 'sys-1',
+      name: '211 National',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
     const { PUT } = await import('../source-systems/[id]/route');
     const response = await PUT(createRequest({ name: 'Updated 211', isActive: false }), createRouteContext('sys-1'));
 
-    expect(sourceSystemsStore.update).toHaveBeenCalledWith('sys-1', { name: 'Updated 211', isActive: false });
-    expect(response.status).toBe(200);
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetId: 'sys-1',
+        payload: expect.objectContaining({
+          entityType: 'source_system',
+          action: 'update',
+          beforeState: expect.objectContaining({ updatedAt: '2026-01-01T00:00:00.000Z' }),
+          patch: { name: 'Updated 211', isActive: false },
+        }),
+      }),
+    );
+    expect(sourceSystemsStore.update).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
   });
 
   it('queues high-risk source system trust changes', async () => {
@@ -152,6 +168,12 @@ describe('source system and feed detail routes', () => {
 
   it('updates and deactivates a source feed', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1', role: 'oran_admin' });
+    sourceFeedsStore.getById.mockResolvedValue({
+      id: 'feed-1',
+      sourceSystemId: 'sys-1',
+      feedName: '211 feed',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
     const route = await import('../source-feeds/[id]/route');
     const updateResponse = await route.PUT(
       createRequest({
@@ -167,29 +189,32 @@ describe('source system and feed detail routes', () => {
     );
     const deleteResponse = await route.DELETE(createRequest(), createRouteContext('feed-1'));
 
-    expect(sourceFeedsStore.update).toHaveBeenCalledWith('feed-1', { feedName: 'Updated Feed', isActive: false });
-    expect(sourceFeedStatesStore.upsert).toHaveBeenCalledWith({
-      sourceFeedId: 'feed-1',
-      publicationMode: 'auto_publish',
-      autoPublishApprovedAt: expect.any(Date),
-      autoPublishApprovedBy: 'oran-1',
-      emergencyPause: true,
-      includedDataOwners: [],
-      excludedDataOwners: [],
-      maxOrganizationsPerPoll: null,
-      checkpointCursor: '12',
-      replayFromCursor: null,
-      lastAttemptStatus: 'succeeded',
-      lastAttemptStartedAt: null,
-      lastAttemptCompletedAt: null,
-      lastSuccessfulSyncStartedAt: null,
-      lastSuccessfulSyncCompletedAt: null,
-      lastAttemptSummary: {},
-      notes: null,
-    });
-    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenCalledOnce();
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        targetId: 'feed-1',
+        payload: expect.objectContaining({
+          action: 'update',
+          feedPatch: { feedName: 'Updated Feed', isActive: false },
+          nextState: expect.objectContaining({
+            publicationMode: 'auto_publish',
+            autoPublishApprovedBy: 'oran-1',
+            emergencyPause: true,
+          }),
+        }),
+      }),
+    );
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        targetId: 'feed-1',
+        payload: expect.objectContaining({ action: 'deactivate' }),
+      }),
+    );
+    expect(sourceFeedsStore.update).not.toHaveBeenCalled();
+    expect(sourceFeedStatesStore.upsert).not.toHaveBeenCalled();
     expect(sourceFeedsStore.deactivate).not.toHaveBeenCalled();
-    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.status).toBe(202);
     expect(deleteResponse.status).toBe(202);
   });
 
@@ -216,12 +241,13 @@ describe('source system and feed detail routes', () => {
     expect(sourceFeedStatesStore.upsert).not.toHaveBeenCalled();
   });
 
-  it('allows editing a legacy Azure feed and migrating it to a supported handler', async () => {
+  it('queues edits to a legacy Azure feed and migration to a supported handler', async () => {
     sourceFeedsStore.getById.mockResolvedValue({
       id: 'feed-legacy',
       sourceSystemId: 'sys-1',
       feedName: 'Legacy Azure Feed',
       feedHandler: 'azure_function',
+      updatedAt: '2026-01-01T00:00:00.000Z',
     });
     const { PUT } = await import('../source-feeds/[id]/route');
 
@@ -234,18 +260,25 @@ describe('source system and feed detail routes', () => {
       createRouteContext('feed-legacy'),
     );
 
-    expect(sourceFeedsStore.update).toHaveBeenNthCalledWith(
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenNthCalledWith(
       1,
-      'feed-legacy',
-      { feedName: 'Legacy Azure Feed (migration pending)' },
+      expect.objectContaining({
+        targetId: 'feed-legacy',
+        payload: expect.objectContaining({
+          feedPatch: { feedName: 'Legacy Azure Feed (migration pending)' },
+        }),
+      }),
     );
-    expect(sourceFeedsStore.update).toHaveBeenNthCalledWith(
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenNthCalledWith(
       2,
-      'feed-legacy',
-      { feedHandler: 'hsds_api' },
+      expect.objectContaining({
+        targetId: 'feed-legacy',
+        payload: expect.objectContaining({ feedPatch: { feedHandler: 'hsds_api' } }),
+      }),
     );
-    expect(editResponse.status).toBe(200);
-    expect(migrationResponse.status).toBe(200);
+    expect(sourceFeedsStore.update).not.toHaveBeenCalled();
+    expect(editResponse.status).toBe(202);
+    expect(migrationResponse.status).toBe(202);
   });
 
   it('queues high-risk feed rollout changes for second approval', async () => {
@@ -282,8 +315,13 @@ describe('source system and feed detail routes', () => {
     await expect(response.json()).resolves.toEqual({ queued: true, replayFromCursor: '12' });
   });
 
-  it('bulk updates feed rollout state and can queue replay from checkpoint', async () => {
-    sourceFeedsStore.getById.mockImplementation(async (id: string) => ({ id, sourceSystemId: 'sys-1' }));
+  it('queues bulk feed rollout state and checkpoint replay for second approval', async () => {
+    sourceFeedsStore.getById.mockImplementation(async (id: string) => ({
+      id,
+      sourceSystemId: 'sys-1',
+      feedName: `Feed ${id}`,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }));
     sourceFeedStatesStore.getByFeedId.mockImplementation(async (id: string) => ({
       sourceFeedId: id,
       publicationMode: 'review_required',
@@ -312,18 +350,34 @@ describe('source system and feed detail routes', () => {
       useCheckpointAsReplay: true,
     }));
 
-    expect(sourceFeedsStore.update).toHaveBeenNthCalledWith(1, 'feed-1', { isActive: false });
-    expect(sourceFeedsStore.update).toHaveBeenNthCalledWith(2, 'feed-2', { isActive: false });
-    expect(sourceFeedStatesStore.upsert).toHaveBeenNthCalledWith(
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ sourceFeedId: 'feed-1', emergencyPause: true, replayFromCursor: '12' }),
+      expect.objectContaining({
+        targetId: 'feed-1',
+        payload: expect.objectContaining({
+          feedPatch: { isActive: false },
+          nextState: expect.objectContaining({ emergencyPause: true, replayFromCursor: '12' }),
+        }),
+      }),
     );
-    expect(sourceFeedStatesStore.upsert).toHaveBeenNthCalledWith(
+    expect(controlChangeMocks.queueIngestionControlChange).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ sourceFeedId: 'feed-2', emergencyPause: true, replayFromCursor: '20' }),
+      expect.objectContaining({
+        targetId: 'feed-2',
+        payload: expect.objectContaining({
+          feedPatch: { isActive: false },
+          nextState: expect.objectContaining({ emergencyPause: true, replayFromCursor: '20' }),
+        }),
+      }),
     );
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ updated: 2 });
+    expect(sourceFeedsStore.update).not.toHaveBeenCalled();
+    expect(sourceFeedStatesStore.upsert).not.toHaveBeenCalled();
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({
+      queued: 2,
+      submissionIds: ['sub-1', 'sub-1'],
+      status: 'pending_second_approval',
+    });
   });
 
   it('queues high-risk bulk feed rollout changes instead of applying them directly', async () => {

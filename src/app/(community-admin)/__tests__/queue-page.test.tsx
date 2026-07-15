@@ -9,6 +9,9 @@ const replaceMock = vi.hoisted(() => vi.fn());
 const navigationState = vi.hoisted(() => ({
   searchParams: new URLSearchParams(),
 }));
+const authState = vi.hoisted(() => ({
+  role: 'community_admin' as 'community_admin' | 'oran_admin',
+}));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: replaceMock }),
@@ -20,6 +23,7 @@ vi.mock('@/services/auth/client', () => ({
     data: {
       user: {
         id: 'community-admin-1',
+        role: authState.role,
       },
     },
   }),
@@ -64,6 +68,9 @@ function makeQueueResponse(overrides: Record<string, unknown> = {}) {
         status: 'submitted',
         submitted_by_user_id: 'user-a',
         assigned_to_user_id: null,
+        assigned_to_display_name: null,
+        is_locked: false,
+        locked_by_user_id: null,
         notes: null,
         created_at: '2026-01-01T00:00:00.000Z',
         updated_at: '2026-01-01T00:00:00.000Z',
@@ -73,6 +80,7 @@ function makeQueueResponse(overrides: Record<string, unknown> = {}) {
         organization_name: 'Helping Hands',
         sla_deadline: null,
         sla_breached: false,
+        requires_structured_freshness_review: false,
       },
     ],
     total: 1,
@@ -88,6 +96,7 @@ beforeEach(() => {
   fetchMock.mockReset();
   replaceMock.mockReset();
   navigationState.searchParams = new URLSearchParams();
+  authState.role = 'community_admin';
   global.fetch = fetchMock as unknown as typeof fetch;
 });
 
@@ -117,7 +126,7 @@ describe('community admin queue page', () => {
     });
   });
 
-  it('filters by status tabs and renders empty state messaging', async () => {
+  it('exposes the needs-review status tab and renders filtered empty-state messaging', async () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
@@ -131,12 +140,15 @@ describe('community admin queue page', () => {
     render(<QueuePage />);
     expect(await screen.findAllByText('Food Pantry')).not.toHaveLength(0);
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Approved' }));
+    const needsReviewFilter = screen.getByRole('button', { name: 'Needs Review' });
+    expect(needsReviewFilter).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(needsReviewFilter);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenLastCalledWith('/api/community/queue?page=1&limit=20&status=approved');
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/community/queue?page=1&limit=20&status=needs_review');
       expect(screen.getByText('No entries found')).toBeInTheDocument();
-      expect(screen.getByText('No entries with status "Approved".')).toBeInTheDocument();
+      expect(screen.getByText('No entries with status "Needs Review".')).toBeInTheDocument();
+      expect(needsReviewFilter).toHaveAttribute('aria-pressed', 'true');
     });
   });
 
@@ -167,7 +179,7 @@ describe('community admin queue page', () => {
     render(<QueuePage />);
     expect(await screen.findAllByText('Food Pantry')).not.toHaveLength(0);
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Assigned to me' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Assigned to me' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenLastCalledWith('/api/community/queue?page=1&limit=20&assignedToMe=true');
@@ -181,11 +193,14 @@ describe('community admin queue page', () => {
     });
   });
 
-  it('claims pending entries and refreshes the current listing', async () => {
+  it('claims needs-review entries on mobile and desktop and refreshes the current listing', async () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => makeQueueResponse(),
+        json: async () =>
+          makeQueueResponse({
+            results: [{ ...makeQueueResponse().results[0], status: 'needs_review' }],
+          }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -198,8 +213,11 @@ describe('community admin queue page', () => {
             results: [
               {
                 ...makeQueueResponse().results[0],
+                status: 'under_review',
                 assigned_to_user_id: 'community-admin-1',
                 assigned_to_display_name: 'community-admin-1',
+                is_locked: true,
+                locked_by_user_id: 'community-admin-1',
               },
             ],
           }),
@@ -207,6 +225,8 @@ describe('community admin queue page', () => {
 
     render(<QueuePage />);
     expect(await screen.findAllByText('Food Pantry')).not.toHaveLength(0);
+    expect(screen.getAllByRole('button', { name: 'Claim' })).toHaveLength(2);
+    expect(screen.queryByRole('checkbox', { name: 'Select Food Pantry' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Claim' })[0]);
 
@@ -218,6 +238,36 @@ describe('community admin queue page', () => {
       });
       expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/community/queue?page=1&limit=20');
       expect(screen.getAllByText('community-admin-1')).not.toHaveLength(0);
+    });
+  });
+
+  it('reserves escalated claims for ORAN admins in mobile and desktop views', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => makeQueueResponse({
+        results: [{ ...makeQueueResponse().results[0], status: 'escalated' }],
+      }),
+    });
+
+    const communityView = render(<QueuePage />);
+    expect(await screen.findAllByText('Food Pantry')).not.toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Claim' })).not.toBeInTheDocument();
+
+    communityView.unmount();
+    fetchMock.mockClear();
+    authState.role = 'oran_admin';
+
+    render(<QueuePage />);
+    expect(await screen.findAllByText('Food Pantry')).not.toHaveLength(0);
+    expect(screen.getAllByRole('button', { name: 'Claim' })).toHaveLength(2);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Claim' })[0]);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/community/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId: 'q-1' }),
+      });
     });
   });
 
@@ -263,7 +313,11 @@ describe('community admin queue page', () => {
                 ...makeQueueResponse().results[0],
                 id: 'q-1',
                 service_name: 'Food Pantry',
-                status: 'submitted',
+                status: 'under_review',
+                assigned_to_user_id: 'community-admin-1',
+                assigned_to_display_name: 'community-admin-1',
+                is_locked: true,
+                locked_by_user_id: 'community-admin-1',
                 sla_breached: true,
               },
               {
@@ -273,6 +327,8 @@ describe('community admin queue page', () => {
                 status: 'under_review',
                 assigned_to_user_id: 'reviewer-2',
                 assigned_to_display_name: 'reviewer-2',
+                is_locked: true,
+                locked_by_user_id: 'reviewer-2',
                 sla_deadline: '2026-02-20T00:00:00.000Z',
               },
             ],
@@ -280,7 +336,7 @@ describe('community admin queue page', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ succeeded: ['q-1'], failed: [{ id: 'q-2', error: 'locked' }] }),
+        json: async () => ({ succeeded: ['q-1'], failed: [] }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -293,7 +349,11 @@ describe('community admin queue page', () => {
     expect(screen.getAllByText('reviewer-2')).not.toHaveLength(0);
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
-    expect(screen.getByText('2 selected')).toBeInTheDocument();
+    const selectedCount = screen.getByText('1 selected');
+    expect(selectedCount).toBeInTheDocument();
+    expect(selectedCount.parentElement).toHaveClass('flex-col', 'sm:flex-row');
+    expect(screen.getByRole('button', { name: 'Approve selected' }).parentElement).toHaveClass('flex-wrap');
+    expect(screen.queryByRole('checkbox', { name: 'Select Health Clinic' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve selected' }));
 
@@ -301,19 +361,135 @@ describe('community admin queue page', () => {
       expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/community/queue/bulk', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: ['q-1', 'q-2'], decision: 'approved' }),
+        body: JSON.stringify({ ids: ['q-1'], decision: 'approved' }),
       });
     });
 
     await screen.findByText('No entries found');
-    expect(screen.queryByText('2 selected')).not.toBeInTheDocument();
+    expect(screen.queryByText('1 selected')).not.toBeInTheDocument();
+  });
+
+  it('keeps under-review work read-only unless the current user owns its assignment and lock', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => makeQueueResponse({
+        total: 2,
+        results: [
+          {
+            ...makeQueueResponse().results[0],
+            id: 'q-unlocked',
+            service_name: 'Unlocked Review',
+            status: 'under_review',
+            assigned_to_user_id: 'community-admin-1',
+            is_locked: false,
+            locked_by_user_id: null,
+          },
+          {
+            ...makeQueueResponse().results[0],
+            id: 'q-other-lock',
+            service_name: 'Other Reviewer Lock',
+            status: 'under_review',
+            assigned_to_user_id: 'community-admin-1',
+            is_locked: true,
+            locked_by_user_id: 'reviewer-2',
+          },
+        ],
+      }),
+    });
+
+    render(<QueuePage />);
+
+    expect(await screen.findAllByText('Unlocked Review')).not.toHaveLength(0);
+    expect(screen.queryByRole('checkbox', { name: 'Select Unlocked Review' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Select Other Reviewer Lock' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Release' })).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Select all' })).toBeDisabled();
+  });
+
+  it('keeps valid and malformed freshness rows out of bulk selection', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueResponse({
+          total: 3,
+          results: [
+            {
+              ...makeQueueResponse().results[0],
+              id: 'q-normal',
+              service_name: 'Food Pantry',
+              status: 'under_review',
+              assigned_to_user_id: 'community-admin-1',
+              assigned_to_display_name: 'community-admin-1',
+              is_locked: true,
+              locked_by_user_id: 'community-admin-1',
+            },
+            {
+              ...makeQueueResponse().results[0],
+              id: 'q-fresh-valid',
+              service_name: 'Housing Hours',
+              status: 'under_review',
+              assigned_to_user_id: 'community-admin-1',
+              is_locked: true,
+              locked_by_user_id: 'community-admin-1',
+              requires_structured_freshness_review: true,
+            },
+            {
+              ...makeQueueResponse().results[0],
+              id: 'q-fresh-malformed',
+              service_name: 'Clinic Schedule',
+              status: 'under_review',
+              assigned_to_user_id: 'community-admin-1',
+              is_locked: true,
+              locked_by_user_id: 'community-admin-1',
+              requires_structured_freshness_review: true,
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ succeeded: ['q-normal'], failed: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueResponse({ results: [], total: 0 }),
+      });
+
+    render(<QueuePage />);
+
+    expect(await screen.findAllByText('Housing Hours')).not.toHaveLength(0);
+    expect(screen.getAllByText(/Individual evidence review required/i)).toHaveLength(4);
+    expect(screen.queryByRole('checkbox', { name: 'Select Housing Hours' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Select Clinic Schedule' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox', { name: 'Select Food Pantry' })).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve selected' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/community/queue/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: ['q-normal'], decision: 'approved' }),
+      });
+    });
   });
 
   it('surfaces bulk-action API errors and allows dismissing the alert', async () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => makeQueueResponse(),
+        json: async () =>
+          makeQueueResponse({
+            results: [{
+              ...makeQueueResponse().results[0],
+              status: 'under_review',
+              assigned_to_user_id: 'community-admin-1',
+              is_locked: true,
+              locked_by_user_id: 'community-admin-1',
+            }],
+          }),
       })
       .mockResolvedValueOnce({
         ok: false,

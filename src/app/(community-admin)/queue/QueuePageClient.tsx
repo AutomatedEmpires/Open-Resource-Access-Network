@@ -40,6 +40,8 @@ interface QueueRow {
   submitted_by_user_id: string;
   assigned_to_user_id: string | null;
   assigned_to_display_name: string | null;
+  is_locked: boolean;
+  locked_by_user_id: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -53,6 +55,7 @@ interface QueueRow {
   triage_priority: number;
   triage_tier: 'urgent' | 'high' | 'normal' | 'low';
   triage_explanations: string[];
+  requires_structured_freshness_review: boolean;
 }
 
 interface QueueResponse {
@@ -71,6 +74,7 @@ const LIMIT = 20;
 const STATUS_TABS: { value: '' | SubmissionStatus; label: string }[] = [
   { value: '',                      label: 'All' },
   { value: 'submitted',             label: 'Submitted' },
+  { value: 'needs_review',          label: 'Needs Review' },
   { value: 'under_review',          label: 'Under Review' },
   { value: 'pending_second_approval', label: 'Pending 2nd Approval' },
   { value: 'approved',              label: 'Approved' },
@@ -109,6 +113,16 @@ function TriageBadge({ tier, explanations }: { tier: 'urgent' | 'high' | 'normal
   );
 }
 
+function isReviewOwnedBy(entry: QueueRow, userId: string | undefined): boolean {
+  return Boolean(
+    userId
+    && entry.status === 'under_review'
+    && entry.assigned_to_user_id === userId
+    && entry.is_locked
+    && entry.locked_by_user_id === userId,
+  );
+}
+
 // ============================================================
 // MOBILE CARD — shown on xs/sm screens only
 // ============================================================
@@ -116,6 +130,7 @@ function TriageBadge({ tier, explanations }: { tier: 'urgent' | 'high' | 'normal
 function MobileQueueCard({
   entry,
   currentUserId,
+  isOranAdmin,
   onClaim,
   onUnclaim,
   claimingId,
@@ -125,6 +140,7 @@ function MobileQueueCard({
 }: {
   entry: QueueRow;
   currentUserId: string | undefined;
+  isOranAdmin: boolean;
   onClaim: (id: string) => void;
   onUnclaim: (id: string) => void;
   claimingId: string | null;
@@ -134,7 +150,14 @@ function MobileQueueCard({
 }) {
   const age = daysAgo(entry.created_at);
   const isStale = age > 14;
-  const isSelectable = entry.status === 'submitted' || entry.status === 'under_review';
+  const isOwnedReview = isReviewOwnedBy(entry, currentUserId);
+  // Checkboxes drive terminal bulk decisions, so only active review work is
+  // selectable. Submitted, unowned, and structured freshness work must use
+  // their individual claim/evidence paths first.
+  const isSelectable = isOwnedReview && !entry.requires_structured_freshness_review;
+  const isClaimable = entry.status === 'submitted'
+    || entry.status === 'needs_review'
+    || (entry.status === 'escalated' && isOranAdmin);
   return (
     <div
       className={`bg-white rounded-xl border p-4 space-y-3 transition-shadow hover:shadow-sm ${
@@ -176,6 +199,13 @@ function MobileQueueCard({
         </span>
       </div>
 
+      {entry.requires_structured_freshness_review && (
+        <p className="flex items-center gap-1.5 rounded-lg border border-action-soft bg-info-subtle px-3 py-2 text-xs font-medium text-action-deep">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          Individual evidence review required; bulk actions are unavailable.
+        </p>
+      )}
+
       {/* SLA / assignee strip */}
       {(entry.sla_breached || entry.assigned_to_user_id || entry.sla_deadline) && (
         <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs">
@@ -200,7 +230,7 @@ function MobileQueueCard({
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1">
-        {entry.status === 'submitted' && (
+        {isClaimable && (
           <Button
             size="sm"
             variant="outline"
@@ -212,7 +242,7 @@ function MobileQueueCard({
             {claimingId === entry.id ? 'Claiming…' : 'Claim'}
           </Button>
         )}
-        {entry.status === 'under_review' && entry.assigned_to_user_id === currentUserId && (
+        {isOwnedReview && (
           <Button
             size="sm"
             variant="outline"
@@ -237,6 +267,7 @@ export default function QueuePage() {
   const router = useRouter();
   const { data: session } = useSession();
   const currentUserId = session?.user?.id;
+  const isOranAdmin = session?.user?.role === 'oran_admin';
   const [data, setData] = useState<QueueResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -343,8 +374,13 @@ export default function QueuePage() {
 
   // ── Bulk actions ──
   const selectableIds = useMemo(
-    () => (data?.results ?? []).filter((r) => r.status === 'submitted' || r.status === 'under_review').map((r) => r.id),
-    [data],
+    () => (data?.results ?? [])
+      .filter((r) => (
+        isReviewOwnedBy(r, currentUserId)
+        && !r.requires_structured_freshness_review
+      ))
+      .map((r) => r.id),
+    [currentUserId, data],
   );
 
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
@@ -425,13 +461,12 @@ export default function QueuePage() {
       />
 
       {/* Status filter tabs */}
-      <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-1 scrollbar-none" role="tablist" aria-label="Filter by status">
+      <div className="flex items-center gap-1 mb-4 overflow-x-auto pb-1 scrollbar-none" role="group" aria-label="Filter by status">
         <Filter className="h-4 w-4 text-gray-400 mr-1 shrink-0" aria-hidden="true" />
         {STATUS_TABS.map(({ value, label }) => (
           <button
             key={value}
-            role="tab"
-            aria-selected={statusFilter === value}
+            aria-pressed={statusFilter === value}
             onClick={() => { setFilter(value); }}
             className={`inline-flex min-h-[44px] items-center px-3 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
               statusFilter === value
@@ -444,8 +479,7 @@ export default function QueuePage() {
         ))}
         <span className="mx-1 text-gray-300" aria-hidden="true">|</span>
         <button
-          role="tab"
-          aria-selected={statusFilter === SPECIAL_FILTER_ASSIGNED}
+          aria-pressed={statusFilter === SPECIAL_FILTER_ASSIGNED}
           onClick={() => { setFilter(SPECIAL_FILTER_ASSIGNED); }}
           className={`inline-flex min-h-[44px] items-center px-3 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
             statusFilter === SPECIAL_FILTER_ASSIGNED
@@ -459,13 +493,13 @@ export default function QueuePage() {
 
       {/* Bulk action toolbar */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 mb-4 rounded-lg border border-action-soft bg-info-subtle px-4 py-2">
+        <div className="mb-4 flex flex-col items-stretch gap-2 rounded-lg border border-action-soft bg-info-subtle px-4 py-3 sm:flex-row sm:items-center">
           <span className="text-sm font-medium text-action-deep">{selectedIds.size} selected</span>
-          <div className="flex gap-2 ml-auto">
+          <div className="flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto sm:justify-end">
             <Button
               size="sm"
               variant="outline"
-              className="gap-1 border-green-300 text-green-700 hover:bg-green-50"
+              className="min-h-[44px] flex-1 gap-1 border-green-300 text-green-700 hover:bg-green-50 sm:min-h-0 sm:flex-none"
               disabled={isBulkProcessing}
               onClick={() => void handleBulkDecision('approved')}
             >
@@ -474,7 +508,7 @@ export default function QueuePage() {
             <Button
               size="sm"
               variant="outline"
-              className="gap-1 border-error-accent text-error-strong hover:bg-error-subtle"
+              className="min-h-[44px] flex-1 gap-1 border-error-accent text-error-strong hover:bg-error-subtle sm:min-h-0 sm:flex-none"
               disabled={isBulkProcessing}
               onClick={() => void handleBulkDecision('denied')}
             >
@@ -483,6 +517,7 @@ export default function QueuePage() {
             <Button
               size="sm"
               variant="ghost"
+              className="min-h-[44px] flex-1 sm:min-h-0 sm:flex-none"
               onClick={() => setSelectedIds(new Set())}
               disabled={isBulkProcessing}
             >
@@ -531,6 +566,7 @@ export default function QueuePage() {
                 key={entry.id}
                 entry={entry}
                 currentUserId={currentUserId}
+                isOranAdmin={isOranAdmin}
                 onClaim={handleClaim}
                 onUnclaim={handleUnclaim}
                 claimingId={claimingId}
@@ -578,7 +614,7 @@ export default function QueuePage() {
                       className="hover:bg-gray-50 transition-colors"
                     >
                       <td className="px-4 py-3">
-                        {(entry.status === 'submitted' || entry.status === 'under_review') && (
+                        {isReviewOwnedBy(entry, currentUserId) && !entry.requires_structured_freshness_review && (
                           <input
                             type="checkbox"
                             aria-label={`Select ${entry.service_name}`}
@@ -607,6 +643,11 @@ export default function QueuePage() {
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={entry.status} />
+                        {entry.requires_structured_freshness_review && (
+                          <p className="mt-1 max-w-[180px] text-xs font-medium text-action-deep">
+                            Individual evidence review required
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-gray-500">
                         <span className="flex items-center gap-1">
@@ -650,7 +691,9 @@ export default function QueuePage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {entry.status === 'submitted' && (
+                          {(entry.status === 'submitted'
+                            || entry.status === 'needs_review'
+                            || (entry.status === 'escalated' && isOranAdmin)) && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -662,7 +705,7 @@ export default function QueuePage() {
                               {claimingId === entry.id ? 'Claiming…' : 'Claim'}
                             </Button>
                           )}
-                          {entry.status === 'under_review' && entry.assigned_to_user_id && entry.assigned_to_user_id === currentUserId && (
+                          {isReviewOwnedBy(entry, currentUserId) && (
                             <Button
                               size="sm"
                               variant="outline"

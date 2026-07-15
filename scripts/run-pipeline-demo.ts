@@ -6,15 +6,20 @@
  * Usage:  npx tsx scripts/run-pipeline-demo.ts [url]
  */
 import { PipelineOrchestrator } from '../src/agents/ingestion/pipeline/orchestrator';
+import { assertAllowedRuntimeEndpoint } from '../src/services/runtime/providerPolicy';
 
 const url = process.argv[2] ?? 'https://www.benefits.gov/benefit/361';
 
 async function main() {
+  assertAllowedRuntimeEndpoint(url, 'pipeline source URL');
+  if (process.env.LLM_ENDPOINT) {
+    assertAllowedRuntimeEndpoint(process.env.LLM_ENDPOINT, 'LLM_ENDPOINT');
+  }
   console.log('='.repeat(72));
   console.log('ORAN Ingestion Pipeline — Full 9-Stage Live Demo');
   console.log('='.repeat(72));
   console.log(`Target URL  : ${url}`);
-  console.log(`LLM Provider: ${process.env.LLM_PROVIDER ?? 'azure_openai (default)'}`);
+  console.log(`LLM Provider: ${process.env.LLM_PROVIDER ?? 'disabled (default)'}`);
   console.log(`LLM Model   : ${process.env.LLM_MODEL ?? '(default)'}`);
   console.log(`LLM Endpoint: ${process.env.LLM_ENDPOINT ? '✓ configured' : '✗ missing'}`);
   console.log(`LLM API Key : ${process.env.LLM_API_KEY ? '✓ configured' : '✗ missing'}`);

@@ -109,6 +109,24 @@ function setupTransaction(
       for (const [key, response] of queryResponses) {
         if (sql.includes(key)) return response;
       }
+      if (sql.includes('FROM services s')) {
+        return {
+          rows: [{
+            id: 'svc-001',
+            name: 'Test Service',
+            organization_id: null,
+            url: null,
+            status: 'active',
+            confidence_overall: 50,
+          }],
+        };
+      }
+      if (sql.includes('FROM services')) {
+        return { rows: [{ id: 'svc-001', status: 'active' }] };
+      }
+      if (sql.includes('FROM organizations')) {
+        return { rows: [{ id: 'org-001', status: 'active' }] };
+      }
       return { rows: [] };
     }),
   };
@@ -404,7 +422,7 @@ describe('Ownership Transfer Service', () => {
     it('transfers ownership, frees admin quota, notifies both parties', async () => {
       setupTransaction(new Map([
         ['FROM ownership_transfers', { rows: [makeTransferRow({ status: 'approved' })] }],
-        ['UPDATE services', { rows: [] }],
+        ['UPDATE services', { rows: [{ id: 'svc-001' }] }],
         ['UPDATE admin_review_profiles', { rows: [] }],
         ['UPDATE ownership_transfers', { rows: [] }],
       ]));
@@ -444,7 +462,7 @@ describe('Ownership Transfer Service', () => {
     it('handles transfer with no current admin (no quota to free)', async () => {
       setupTransaction(new Map([
         ['FROM ownership_transfers', { rows: [makeTransferRow({ status: 'approved', current_admin_user_id: null })] }],
-        ['UPDATE services', { rows: [] }],
+        ['UPDATE services', { rows: [{ id: 'svc-001' }] }],
         ['UPDATE ownership_transfers', { rows: [] }],
       ]));
 
@@ -601,7 +619,7 @@ describe('Ownership Transfer Service', () => {
       vi.clearAllMocks();
       setupTransaction(new Map([
         ['FROM ownership_transfers', { rows: [makeTransferRow({ id: 'transfer-lifecycle', status: 'approved', current_admin_user_id: 'admin-jane' })] }],
-        ['UPDATE services', { rows: [] }],
+        ['UPDATE services', { rows: [{ id: 'svc-crawled' }] }],
         ['UPDATE admin_review_profiles', { rows: [] }],
         ['UPDATE ownership_transfers', { rows: [] }],
       ]));

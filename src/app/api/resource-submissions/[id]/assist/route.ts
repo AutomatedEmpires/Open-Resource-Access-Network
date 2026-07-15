@@ -16,7 +16,7 @@ import {
   getResourceSubmissionDetailForPublic,
   type ResourceSubmissionDetail,
 } from '@/services/resourceSubmissions/service';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { getAuthContext } from '@/services/auth/session';
 import { captureException } from '@/services/telemetry/sentry';
 import { getIp } from '@/services/security/ip';
@@ -65,11 +65,17 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     return NextResponse.json({ error: 'Invalid resource submission ID' }, { status: 400 });
   }
 
-  const rl = checkRateLimit(`resource-submissions:item:assist:${getIp(req)}`, {
+  const rl = await checkRateLimitShared(`resource-submissions:item:assist:write:${getIp(req)}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },

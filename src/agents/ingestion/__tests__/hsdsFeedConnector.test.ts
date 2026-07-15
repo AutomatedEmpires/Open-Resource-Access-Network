@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { pollHsdsFeed } from '../hsdsFeedConnector';
 
@@ -65,6 +65,10 @@ function createMockStores() {
 }
 
 describe('pollHsdsFeed', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('fetches organizations and services from HSDS API', async () => {
     const stores = createMockStores();
     const fetchMock = vi.fn()
@@ -306,5 +310,67 @@ describe('pollHsdsFeed', () => {
     expect(result.recordsCreated).toBe(1);
     // fetchMock called 3 times: 1st fail + 1st retry + /services
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('rejects a prohibited redirect before requesting its target', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production');
+    const stores = createMockStores();
+    const prohibitedTarget = 'https://legacy.azure-mobile.net/tables/resources';
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/organizations')) {
+        return new Response(null, {
+          status: 302,
+          headers: { Location: prohibitedTarget },
+        });
+      }
+      return new Response('[]', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    const result = await pollHsdsFeed({
+      stores: stores as never,
+      sourceSystem: buildSourceSystem() as never,
+      feed: buildFeed() as never,
+      fetchFn: fetchMock as never,
+      maxRetries: 0,
+    });
+
+    expect(result.errors).toEqual([
+      expect.stringContaining('prohibited Microsoft endpoint'),
+    ]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url) === prohibitedTarget)).toBe(false);
+  });
+
+  it('caps redirect chains before the next network request', async () => {
+    const stores = createMockStores();
+    const neverRequested = 'https://api.example.org/hop-two';
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/organizations')) {
+        return new Response(null, { status: 302, headers: { Location: '/hop-one' } });
+      }
+      if (url === 'https://api.example.org/hop-one') {
+        return new Response(null, { status: 302, headers: { Location: neverRequested } });
+      }
+      return new Response('[]', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    const result = await pollHsdsFeed({
+      stores: stores as never,
+      sourceSystem: buildSourceSystem() as never,
+      feed: buildFeed() as never,
+      fetchFn: fetchMock as never,
+      maxRetries: 0,
+      maxRedirects: 1,
+    });
+
+    expect(result.errors).toEqual([expect.stringContaining('redirect limit exceeded (1)')]);
+    expect(fetchMock.mock.calls.some(([url]) => String(url) === neverRequested)).toBe(false);
   });
 });

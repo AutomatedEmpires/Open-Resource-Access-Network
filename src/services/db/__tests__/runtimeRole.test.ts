@@ -20,6 +20,13 @@ describe('backend database login identity', () => {
     })).toBe(DATABASE_URL);
   });
 
+  it('rejects a generic Microsoft database host before constructing a pool', () => {
+    expect(() => buildRuntimeDatabaseConnectionString(
+      'postgres://oran_backend_runtime:secret@oran.postgres.database.azure.com:5432/oran',
+      { NODE_ENV: 'development' },
+    )).toThrow('DATABASE_URL uses a prohibited Microsoft endpoint');
+  });
+
   it('requires the reviewed capability role in production', () => {
     expect(() => buildRuntimeDatabaseConnectionString(DATABASE_URL, {
       NODE_ENV: 'production',

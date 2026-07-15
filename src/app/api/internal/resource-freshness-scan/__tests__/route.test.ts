@@ -14,6 +14,7 @@ const freshnessMocks = vi.hoisted(() => ({
 }));
 
 const captureExceptionMock = vi.hoisted(() => vi.fn());
+const captureMessageMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/auth/internalRequest', () => authMocks);
 vi.mock('@/services/db/postgres', () => dbMocks);
@@ -26,6 +27,7 @@ vi.mock('@/services/freshness/resourceFreshness', async (importOriginal) => {
 });
 vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
+  captureMessage: captureMessageMock,
 }));
 
 const emptyResult = {
@@ -34,6 +36,10 @@ const emptyResult = {
   blockedCount: 0,
   expiredBlockedCount: 0,
   staleBlockedCount: 0,
+  reverificationDueBlockedCount: 0,
+  staleSourceBlockedCount: 0,
+  unknownSourceBlockedCount: 0,
+  protectedAuthoritySkippedCount: 0,
   enqueuedCount: 0,
   linkedToExistingCount: 0,
   resolvedCount: 0,
@@ -46,6 +52,7 @@ beforeEach(() => {
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
   freshnessMocks.scanResourceFreshness.mockResolvedValue(emptyResult);
   captureExceptionMock.mockResolvedValue(undefined);
+  captureMessageMock.mockResolvedValue(undefined);
 });
 
 describe('/api/internal/resource-freshness-scan', () => {
@@ -97,6 +104,27 @@ describe('/api/internal/resource-freshness-scan', () => {
 
     expect(response.status).toBe(200);
     expect(freshnessMocks.scanResourceFreshness).toHaveBeenCalledWith({ limit: 1 });
+  });
+
+  it('alerts without identifiers when protected authority work is skipped', async () => {
+    freshnessMocks.scanResourceFreshness.mockResolvedValue({
+      ...emptyResult,
+      protectedAuthoritySkippedCount: 2,
+    });
+    const { GET } = await import('../route');
+    const response = await GET(new NextRequest(
+      'https://oran.test/api/internal/resource-freshness-scan',
+    ));
+
+    expect(response.status).toBe(200);
+    expect(captureMessageMock).toHaveBeenCalledWith(
+      'Protected authority freshness review requires owner action',
+      'warning',
+      {
+        feature: 'resource_freshness_protected_authority',
+        extra: { protectedAuthoritySkippedCount: 2 },
+      },
+    );
   });
 
   it('captures scanner failures without exposing database details', async () => {

@@ -107,7 +107,7 @@ describe('api/saved route', () => {
     const response = await GET(createRequest({ ip: '203.0.113.42, 10.0.0.1' }));
 
     expect(rateLimitMock).toHaveBeenCalledWith(
-      'saved:ip:203.0.113.42',
+      'saved:read:ip:203.0.113.42',
       expect.any(Object),
     );
     expect(response.status).toBe(429);

@@ -17,6 +17,7 @@ import {
   RATE_LIMIT_WINDOW_MS,
   USER_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import { acquireLivePublicationGateShared } from '@/services/publication/liveEntityMerge';
 
 // ============================================================
 // SCHEMAS
@@ -49,6 +50,12 @@ export async function POST(req: NextRequest) {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: USER_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
@@ -80,6 +87,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await withTransaction(async (client) => {
+      // Global order: publication gate -> freshness gate -> submission/entity
+      // rows. A merge either includes this appeal or finishes before we read
+      // the canonical target from the original submission.
+      await acquireLivePublicationGateShared(client);
       // Verify the original submission exists, is denied, and belongs to this user
       const original = await client.query<{
         id: string;
@@ -90,12 +101,28 @@ export async function POST(req: NextRequest) {
         target_id: string | null;
         service_id: string | null;
         title: string | null;
+        has_resource_freshness_packet: boolean;
+        has_resource_freshness_finding: boolean;
       }>(
-        `SELECT id, status, submitted_by_user_id, submission_type,
-                target_type, target_id, service_id, title
-         FROM submissions
-         WHERE id = $1
-         FOR SHARE`,
+        `WITH freshness_guard AS MATERIALIZED (
+           SELECT pg_catalog.pg_advisory_xact_lock(
+             pg_catalog.hashtextextended('oran:resource-freshness-scan', 0)
+           )
+         )
+         SELECT original.id, original.status, original.submitted_by_user_id,
+                original.submission_type, original.target_type,
+                original.target_id, original.service_id, original.title,
+                coalesce(original.payload, '{}'::jsonb) ? 'resourceFreshness'
+                  AS has_resource_freshness_packet,
+                EXISTS (
+                  SELECT 1
+                  FROM oran_internal.resource_freshness_findings finding
+                  WHERE finding.submission_id = original.id
+                ) AS has_resource_freshness_finding
+         FROM freshness_guard
+         CROSS JOIN submissions original
+         WHERE original.id = $1
+         FOR UPDATE OF original`,
         [submissionId],
       );
 
@@ -111,6 +138,48 @@ export async function POST(req: NextRequest) {
 
       if (sub.status !== 'denied') {
         return { error: 'Only denied submissions may be appealed', status: 409 };
+      }
+
+      // Freshness reviews are a scanner-controlled integrity lane, not a user
+      // appeal lane. Treat both the payload key (even if malformed/null) and
+      // any historical finding as authoritative so a resolved or unavailable
+      // finding can never be re-opened through a generic appeal.
+      if (
+        sub.has_resource_freshness_packet
+        || sub.has_resource_freshness_finding
+      ) {
+        return {
+          error: 'Resource freshness decisions cannot be appealed through this route',
+          status: 409,
+        };
+      }
+
+      if (sub.service_id) {
+        const serviceRows = await client.query<{ id: string }>(
+          `SELECT id
+           FROM services
+           WHERE id = $1
+             AND status IS DISTINCT FROM 'defunct'
+           FOR UPDATE`,
+          [sub.service_id],
+        );
+        if (!serviceRows.rows[0]) {
+          return { error: 'The linked service has been retired', status: 409 };
+        }
+      }
+
+      if (sub.target_type === 'organization' && sub.target_id) {
+        const organizationRows = await client.query<{ id: string }>(
+          `SELECT id
+           FROM organizations
+           WHERE id = $1
+             AND status IS DISTINCT FROM 'defunct'
+           FOR UPDATE`,
+          [sub.target_id],
+        );
+        if (!organizationRows.rows[0]) {
+          return { error: 'The linked organization has been retired', status: 409 };
+        }
       }
 
       // Check for existing pending appeal on the same submission
@@ -251,6 +320,12 @@ export async function GET(req: NextRequest) {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: 60,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },

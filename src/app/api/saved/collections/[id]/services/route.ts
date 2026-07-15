@@ -3,10 +3,11 @@ import { z } from 'zod';
 
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { getAuthContext } from '@/services/auth/session';
-import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
+import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getIp } from '@/services/security/ip';
+import { acquireLivePublicationGateShared } from '@/services/publication/liveEntityMerge';
 
 const SAVED_COLLECTIONS_RATE_LIMIT_MAX = 50;
 const CollectionIdSchema = z.string().uuid('Collection id must be a valid UUID');
@@ -14,11 +15,12 @@ const CollectionServiceSchema = z.object({
   serviceId: z.string().uuid('serviceId must be a valid UUID'),
 }).strict();
 
-function checkSavedCollectionsRateLimit(ip: string) {
-  return checkRateLimitShared(`saved-collections:ip:${ip}`, {
+async function checkSavedCollectionsRateLimit(ip: string) {
+  const rateLimit = await checkRateLimitShared(`saved-collections:write:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: SAVED_COLLECTIONS_RATE_LIMIT_MAX,
   });
+  return rateLimit;
 }
 
 async function requireCollectionOwner(req: NextRequest, id: string) {
@@ -28,6 +30,12 @@ async function requireCollectionOwner(req: NextRequest, id: string) {
 
   const ip = getIp(req);
   const rateLimit = await checkSavedCollectionsRateLimit(ip);
+  if (rateLimit.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) } },
+    );
+  }
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
@@ -75,12 +83,31 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   }
 
   try {
-    await executeQuery(
-      `INSERT INTO saved_collection_services (collection_id, service_id)
-       VALUES ($1, $2)
-       ON CONFLICT (collection_id, service_id) DO NOTHING`,
-      [parsedId.data, parsed.data.serviceId],
-    );
+    const saved = await withTransaction(async (client) => {
+      await acquireLivePublicationGateShared(client);
+      const activeService = await client.query<{ id: string }>(
+        `SELECT id
+         FROM services
+         WHERE id = $1
+           AND status = 'active'
+         FOR UPDATE`,
+        [parsed.data.serviceId],
+      );
+      if (!activeService.rows[0]) return false;
+      await client.query(
+        `INSERT INTO saved_collection_services (collection_id, service_id)
+         VALUES ($1, $2)
+         ON CONFLICT (collection_id, service_id) DO NOTHING`,
+        [parsedId.data, parsed.data.serviceId],
+      );
+      return true;
+    });
+    if (!saved) {
+      return NextResponse.json(
+        { error: 'Service is unavailable or has been retired.' },
+        { status: 409 },
+      );
+    }
     return NextResponse.json({ saved: true, collectionId: parsedId.data, serviceId: parsed.data.serviceId });
   } catch (error) {
     await captureException(error, {
@@ -112,11 +139,14 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   }
 
   try {
-    await executeQuery(
-      `DELETE FROM saved_collection_services
-       WHERE collection_id = $1 AND service_id = $2`,
-      [parsedId.data, parsed.data.serviceId],
-    );
+    await withTransaction(async (client) => {
+      await acquireLivePublicationGateShared(client);
+      await client.query(
+        `DELETE FROM saved_collection_services
+         WHERE collection_id = $1 AND service_id = $2`,
+        [parsedId.data, parsed.data.serviceId],
+      );
+    });
     return NextResponse.json({ removed: true, collectionId: parsedId.data, serviceId: parsed.data.serviceId });
   } catch (error) {
     await captureException(error, {

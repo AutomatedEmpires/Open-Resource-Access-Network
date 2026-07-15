@@ -2,7 +2,8 @@
  * Chat LLM Summarizer
  *
  * Provides the `summarizeWithLLM` dependency for the chat orchestrator.
- * Uses Azure OpenAI gpt-4o-mini to narrate already-retrieved service records.
+ * The historical Azure implementation is retained for tests only. Production
+ * summarization remains unavailable until a reviewed non-Microsoft provider is wired.
  *
  * CRITICAL CONSTRAINTS (non-negotiable per SSOT):
  * - The LLM receives ONLY already-retrieved records — it NEVER retrieves or ranks.
@@ -17,6 +18,7 @@ import type { EnrichedService } from '@/domain/types';
 import type { Intent } from './types';
 import { ELIGIBILITY_DISCLAIMER, MAX_SERVICES_PER_RESPONSE } from '@/domain/constants';
 import { trackAiEvent } from '@/services/telemetry/events';
+import { isRetiredMicrosoftProviderRuntime } from '@/services/runtime/providerPolicy';
 
 // ---------------------------------------------------------------------------
 // Client (lazy singleton — created once per process)
@@ -25,6 +27,9 @@ import { trackAiEvent } from '@/services/telemetry/events';
 let _client: AzureOpenAI | null = null;
 
 function getClient(): AzureOpenAI {
+  if (isRetiredMicrosoftProviderRuntime()) {
+    throw new Error('LLM summarization provider is not configured.');
+  }
   if (_client) return _client;
 
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;

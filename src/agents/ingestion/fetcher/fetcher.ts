@@ -11,6 +11,7 @@ import {
   FetcherOptionsSchema,
   type FetchResult,
 } from './types';
+import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy';
 
 /**
  * PageFetcher handles fetching URLs with proper redirect handling,
@@ -53,6 +54,17 @@ export class PageFetcher {
     try {
       // Use manual redirect handling to capture the chain
       while (redirectCount <= this.options.maxRedirects) {
+        try {
+          assertAllowedRuntimeEndpoint(currentUrl, 'ingestion source URL');
+        } catch {
+          return this.createError(
+            'blocked',
+            'Microsoft-hosted source endpoints are prohibited',
+            requestedUrl,
+            false,
+          );
+        }
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.options.timeoutMs);
 

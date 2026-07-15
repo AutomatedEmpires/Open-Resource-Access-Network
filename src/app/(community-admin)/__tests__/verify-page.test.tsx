@@ -9,6 +9,9 @@ const resourceWorkspaceSpy = vi.hoisted(() => vi.fn());
 const navigationState = vi.hoisted(() => ({
   searchParams: new URLSearchParams('id=q-1'),
 }));
+const authState = vi.hoisted(() => ({
+  role: 'community_admin' as 'community_admin' | 'oran_admin',
+}));
 
 vi.mock('next/navigation', () => ({
   useSearchParams: () => navigationState.searchParams,
@@ -19,6 +22,7 @@ vi.mock('@/services/auth/client', () => ({
     data: {
       user: {
         id: 'current-user',
+        role: authState.role,
       },
     },
   }),
@@ -65,13 +69,20 @@ vi.mock('@/components/resource-submissions/ResourceSubmissionWorkspace', () => (
 
 import VerifyPage from '@/app/(community-admin)/verify/page';
 
+const FRESHNESS_FINDING_ID = '11111111-1111-4111-8111-111111111111';
+const FRESHNESS_SCHEDULE_ID = '22222222-2222-4222-8222-222222222222';
+const FRESHNESS_SERVICE_ID = '33333333-3333-4333-8333-333333333333';
+
 function makeQueueDetail(overrides: Record<string, unknown> = {}) {
   return {
     id: 'q-1',
     service_id: 'svc-1',
-    status: 'submitted',
+    status: 'under_review',
     submitted_by_user_id: 'submitter-1',
-    assigned_to_user_id: null,
+    assigned_to_user_id: 'current-user',
+    assigned_to_display_name: 'Current Reviewer',
+    is_locked: true,
+    locked_by_user_id: 'current-user',
     notes: 'Needs normal verification',
     created_at: '2026-02-01T10:00:00.000Z',
     updated_at: '2026-02-03T10:00:00.000Z',
@@ -143,7 +154,57 @@ function makeQueueDetail(overrides: Record<string, unknown> = {}) {
         details: 'Ramp entrance',
       },
     ],
+    payload: {},
+    schedules: [],
+    transitions: [],
     ...overrides,
+  };
+}
+
+function makeFreshnessPacket() {
+  return {
+    schemaVersion: 1,
+    findingId: FRESHNESS_FINDING_ID,
+    signal: 'explicit_expiry',
+    requiredAction: 'correct_expired_schedule',
+    hold: {
+      actor: 'system:resource-freshness-scan',
+      reason: `resource_freshness:explicit_expiry:${FRESHNESS_FINDING_ID}`,
+    },
+    observed: {
+      detectedAsOf: '2026-07-01T12:00:00.000Z',
+      signalObservedAt: '2026-07-01T12:00:00.000Z',
+      freshnessThresholdDays: null,
+      serviceUpdatedAt: '2026-01-01T12:00:00.000Z',
+      lastSourceRefreshAt: '2026-01-02T12:00:00.000Z',
+      lastCandidateVerifiedAt: null,
+      lastManualVerificationAt: null,
+      reverifyAt: null,
+      schedule: {
+        totalCount: 1,
+        datedCount: 1,
+        maxValidTo: '2026-06-30',
+      },
+    },
+    reviewRequirements: {
+      evidenceRequired: true,
+      scheduleCorrectionRequiredBeforeApproval: true,
+    },
+  };
+}
+
+function makeFreshnessSchedule() {
+  return {
+    id: FRESHNESS_SCHEDULE_ID,
+    service_id: FRESHNESS_SERVICE_ID,
+    location_id: null,
+    location_name: null,
+    valid_from: '2026-01-01',
+    valid_to: '2026-06-30',
+    days: ['monday'],
+    opens_at: '09:00',
+    closes_at: '17:00',
+    description: 'Direct service intake hours',
   };
 }
 
@@ -152,6 +213,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   fetchMock.mockReset();
   navigationState.searchParams = new URLSearchParams('id=q-1');
+  authState.role = 'community_admin';
   global.fetch = fetchMock as unknown as typeof fetch;
 });
 
@@ -225,6 +287,118 @@ describe('community admin verify page', () => {
     expect(screen.getByText('No confidence score yet')).toBeInTheDocument();
     expect(screen.getByText('This entry has already been reviewed (Approved).')).toBeInTheDocument();
     expect(screen.getByText('reviewer-1')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['submitted', 'Submitted', '/queue?status=submitted'],
+    ['needs_review', 'Needs Review', '/queue?status=needs_review'],
+  ])('locks terminal decisions for %s work until it is claimed', async (status, label, queueHref) => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail({ status }),
+      });
+
+    render(<VerifyPage />);
+
+    expect(await screen.findByRole('heading', { name: 'Claim required before decision' })).toBeInTheDocument();
+    expect(screen.getByText(`This item is currently ${label.toLowerCase()}.`)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit Decision' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Back to queue and claim' })).toHaveAttribute('href', queueHref);
+  });
+
+  it.each([
+    {
+      name: 'another reviewer owns the assignment and lock',
+      overrides: {
+        assigned_to_user_id: 'reviewer-2',
+        assigned_to_display_name: 'Reviewer Two',
+        is_locked: true,
+        locked_by_user_id: 'reviewer-2',
+      },
+    },
+    {
+      name: 'the assignment matches but the lock does not',
+      overrides: {
+        assigned_to_user_id: 'current-user',
+        assigned_to_display_name: 'Current Reviewer',
+        is_locked: true,
+        locked_by_user_id: 'reviewer-2',
+        payload: { resourceFreshness: makeFreshnessPacket() },
+        schedules: [makeFreshnessSchedule()],
+      },
+    },
+  ])('keeps decision controls read-only when $name', async ({ overrides }) => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail(overrides),
+      });
+
+    render(<VerifyPage />);
+
+    expect(await screen.findByRole('heading', { name: 'Review ownership required' })).toBeInTheDocument();
+    expect(screen.getByText(/Decision controls are read-only until you hold both/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit Decision' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit freshness review' })).not.toBeInTheDocument();
+  });
+
+  it('routes escalated freshness work to ORAN without presenting it as already reviewed', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail({
+          status: 'escalated',
+          payload: { resourceFreshness: makeFreshnessPacket() },
+          schedules: [makeFreshnessSchedule()],
+        }),
+      });
+
+    const communityView = render(<VerifyPage />);
+
+    expect(await screen.findByRole('heading', { name: 'Waiting for ORAN review' })).toBeInTheDocument();
+    expect(screen.getByText(/Only an ORAN admin can claim this escalation/i)).toBeInTheDocument();
+    expect(screen.queryByText(/already been reviewed/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit freshness review' })).not.toBeInTheDocument();
+
+    communityView.unmount();
+    fetchMock.mockReset();
+    authState.role = 'oran_admin';
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail({
+          status: 'escalated',
+          payload: { resourceFreshness: makeFreshnessPacket() },
+          schedules: [makeFreshnessSchedule()],
+        }),
+      });
+
+    render(<VerifyPage />);
+
+    expect(await screen.findByRole('heading', { name: 'ORAN claim required before decision' })).toBeInTheDocument();
+    expect(screen.getByText(/An ORAN admin must claim this escalation/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Back to queue and claim' })).toHaveAttribute(
+      'href',
+      '/queue?status=escalated',
+    );
+    expect(screen.queryByText(/already been reviewed/i)).not.toBeInTheDocument();
   });
 
   it('submits a rejection decision, trims notes, and refreshes entry data', async () => {
@@ -399,7 +573,7 @@ describe('community admin verify page', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => makeQueueDetail({ status: 'needs_review' }),
+        json: async () => makeQueueDetail({ status: 'under_review' }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -475,6 +649,190 @@ describe('community admin verify page', () => {
 
     await screen.findByRole('alert');
     expect(screen.getByText('Decision submission failed')).toBeInTheDocument();
+  });
+
+  it('submits valid scanner-created work through the structured freshness contract', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail({
+          service_id: FRESHNESS_SERVICE_ID,
+          status: 'under_review',
+          payload: { resourceFreshness: makeFreshnessPacket() },
+          schedules: [makeFreshnessSchedule()],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ message: 'Freshness review resolved' }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail({
+          service_id: FRESHNESS_SERVICE_ID,
+          status: 'approved',
+          payload: { resourceFreshness: makeFreshnessPacket() },
+          schedules: [{ ...makeFreshnessSchedule(), valid_to: '2026-12-31' }],
+        }),
+      });
+
+    render(<VerifyPage />);
+
+    await screen.findByRole('heading', { name: 'Resource freshness review' });
+    fireEvent.click(screen.getByRole('radio', { name: 'Corrected and reverified' }));
+    fireEvent.change(screen.getByLabelText('Corrected end date'), {
+      target: { value: '2026-12-31' },
+    });
+    fireEvent.change(screen.getByLabelText(/Verification method/i), {
+      target: { value: 'provider_website' },
+    });
+    fireEvent.change(screen.getByLabelText('Evidence URL'), {
+      target: { value: 'https://provider.example.org/current-hours' },
+    });
+    fireEvent.change(screen.getByLabelText(/Reviewer summary/i), {
+      target: { value: 'Corrected the direct schedule and verified the provider website.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit freshness review' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+    const request = fetchMock.mock.calls[2]?.[1] as RequestInit;
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/community/queue/q-1',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    expect(JSON.parse(String(request.body))).toEqual({
+      freshnessReview: {
+        schemaVersion: 1,
+        outcome: 'corrected',
+        verificationMethod: 'provider_website',
+        checkedAt: expect.any(String),
+        evidenceUrl: 'https://provider.example.org/current-hours',
+        scheduleCorrections: [{
+          scheduleId: FRESHNESS_SCHEDULE_ID,
+          validFrom: '2026-01-01',
+          validTo: '2026-12-31',
+        }],
+        reviewerSummary: 'Corrected the direct schedule and verified the provider website.',
+      },
+    });
+    expect(await screen.findByText('Freshness review resolved')).toBeInTheDocument();
+  });
+
+  it('fails closed when resourceFreshness is present but malformed', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail({
+          status: 'under_review',
+          payload: { resourceFreshness: { schemaVersion: 99 } },
+        }),
+      });
+
+    render(<VerifyPage />);
+
+    expect(await screen.findByRole('heading', { name: 'Freshness review packet is invalid' })).toBeInTheDocument();
+    expect(screen.getByText(/No decision can be recorded from this page/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit Decision' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit freshness review' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rebuild review packet' })).not.toBeInTheDocument();
+    expect(screen.getByText(/An ORAN administrator can rebuild only the packet/i)).toBeInTheDocument();
+  });
+
+  it('lets an ORAN admin rebuild an invalid packet from authoritative evidence', async () => {
+    authState.role = 'oran_admin';
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail({
+          payload: { keep: 'unrelated', resourceFreshness: { schemaVersion: 99 } },
+          requires_structured_freshness_review: true,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, id: 'q-1', findingId: FRESHNESS_FINDING_ID }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail({
+          payload: { keep: 'unrelated', resourceFreshness: makeFreshnessPacket() },
+          requires_structured_freshness_review: true,
+          schedules: [makeFreshnessSchedule()],
+        }),
+      });
+
+    render(<VerifyPage />);
+
+    expect(await screen.findByRole('heading', { name: 'Freshness review packet is invalid' })).toBeInTheDocument();
+    const repairButton = screen.getByRole('button', { name: 'Rebuild review packet' });
+    expect(repairButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/Repair reason/i), {
+      target: { value: '  Restore the packet after detecting a malformed scanner payload.  ' },
+    });
+    expect(repairButton).toBeEnabled();
+    fireEvent.click(repairButton);
+
+    await screen.findByRole('heading', { name: 'Resource freshness review' });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/admin/resource-freshness/q-1/repair',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason: 'Restore the packet after detecting a malformed scanner payload.',
+        }),
+      },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/resource-submissions/q-1');
+    expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/community/queue/q-1');
+    expect(screen.getByText(/rebuilt from the authoritative finding/i)).toBeInTheDocument();
+  });
+
+  it('fails closed when the database finding remains open but its packet key is missing', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'not found' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeQueueDetail({
+          status: 'under_review',
+          payload: {},
+          requires_structured_freshness_review: true,
+        }),
+      });
+
+    render(<VerifyPage />);
+
+    expect(await screen.findByRole('heading', { name: 'Freshness review packet is invalid' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit Decision' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit freshness review' })).not.toBeInTheDocument();
   });
 
   it('renders the shared resource workspace when the submission is form-backed', async () => {

@@ -68,6 +68,10 @@ function rowToCandidate(row: ExtractedCandidateRow): ExtractedCandidate {
     candidateId: row.candidateId,
     extractKeySha256: row.extractKeySha256 as `${string}`,
     extractedAt: row.extractedAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    revisionOfCandidateId: row.revisionOfCandidateId ?? undefined,
+    lineageRootCandidateId: row.lineageRootCandidateId,
+    revisionNumber: row.revisionNumber,
     review: {
       status: row.reviewStatus as ReviewStatus,
       jurisdiction: row.jurisdictionState
@@ -126,6 +130,9 @@ export function createDrizzleCandidateStore(
         extractionId: candidate.extractionId,
         extractKeySha256: candidate.extractKeySha256,
         extractedAt: new Date(candidate.extractedAt),
+        revisionOfCandidateId: candidate.revisionOfCandidateId,
+        lineageRootCandidateId: candidate.lineageRootCandidateId ?? candidate.candidateId,
+        revisionNumber: candidate.revisionNumber ?? 1,
         organizationName: candidate.fields.organizationName,
         serviceName: candidate.fields.serviceName,
         description: candidate.fields.description,
@@ -193,7 +200,12 @@ export function createDrizzleCandidateStore(
         .select()
         .from(extractedCandidates)
         .where(eq(extractedCandidates.extractKeySha256, extractKey))
-        .orderBy(desc(extractedCandidates.extractedAt))
+        .orderBy(
+          desc(extractedCandidates.revisionNumber),
+          desc(extractedCandidates.extractedAt),
+          desc(extractedCandidates.createdAt),
+          desc(extractedCandidates.candidateId),
+        )
         .limit(1);
 
       return rows.length > 0 ? rowToCandidate(rows[0]) : null;
@@ -216,10 +228,96 @@ export function createDrizzleCandidateStore(
             sql`lower(trim(${extractedCandidates.serviceName})) = ${normalizedServiceName}`,
           ),
         )
-        .orderBy(desc(extractedCandidates.extractedAt))
+        .orderBy(
+          desc(extractedCandidates.revisionNumber),
+          desc(extractedCandidates.extractedAt),
+          desc(extractedCandidates.createdAt),
+          desc(extractedCandidates.candidateId),
+        )
         .limit(1);
 
       return rows.length > 0 ? rowToCandidate(rows[0]) : null;
+    },
+
+    async lockMaterializationTarget(input) {
+      const normalizedOrgName = input.orgName.trim().toLowerCase();
+      const normalizedServiceName = input.serviceName.trim().toLowerCase();
+      const canonicalUrl = input.canonicalUrl?.trim() || null;
+      const normalizedAddress = input.address
+        ? {
+            line1: input.address.line1.trim().toLowerCase(),
+            city: input.address.city.trim().toLowerCase(),
+            region: input.address.region.trim().toLowerCase(),
+            postalCode: input.address.postalCode.trim().toLowerCase(),
+            country: input.address.country.trim().toLowerCase(),
+          }
+        : null;
+      const lineageLockKey = canonicalUrl
+        ? `url-service:${canonicalUrl}\u0000${normalizedOrgName}\u0000${normalizedServiceName}`
+        : normalizedAddress
+          ? `address:${normalizedOrgName}\u0000${normalizedServiceName}\u0000${Object.values(normalizedAddress).join('\u0000')}`
+          : `extract:${input.extractKey}`;
+
+      await db.execute(sql`
+        SELECT pg_catalog.pg_advisory_xact_lock(
+          pg_catalog.hashtextextended(${`oran:candidate-lineage:${lineageLockKey}`}, 0)
+        )
+      `);
+
+      const identityConditions = [
+        eq(extractedCandidates.extractKeySha256, input.extractKey),
+      ];
+      if (canonicalUrl) {
+        identityConditions.push(
+          and(
+            sql`${extractedCandidates.investigationPack} ->> 'canonicalUrl' = ${canonicalUrl}`,
+            sql`lower(trim(${extractedCandidates.organizationName})) = ${normalizedOrgName}`,
+            sql`lower(trim(${extractedCandidates.serviceName})) = ${normalizedServiceName}`,
+          )!,
+        );
+      }
+      if (normalizedAddress) {
+        const addressIdentity = and(
+          sql`lower(trim(${extractedCandidates.organizationName})) = ${normalizedOrgName}`,
+          sql`lower(trim(${extractedCandidates.serviceName})) = ${normalizedServiceName}`,
+          sql`lower(trim(coalesce(${extractedCandidates.addressLine1}, ''))) = ${normalizedAddress.line1}`,
+          sql`lower(trim(coalesce(${extractedCandidates.addressCity}, ''))) = ${normalizedAddress.city}`,
+          sql`lower(trim(coalesce(${extractedCandidates.addressRegion}, ''))) = ${normalizedAddress.region}`,
+          sql`lower(trim(coalesce(${extractedCandidates.addressPostalCode}, ''))) = ${normalizedAddress.postalCode}`,
+          sql`lower(trim(coalesce(${extractedCandidates.addressCountry}, 'US'))) = ${normalizedAddress.country}`,
+        );
+        if (addressIdentity) identityConditions.push(addressIdentity);
+      }
+
+      const rows = await db
+        .select()
+        .from(extractedCandidates)
+        .where(or(...identityConditions))
+        .orderBy(
+          sql`CASE
+                WHEN ${extractedCandidates.extractKeySha256} = ${input.extractKey} THEN 0
+                WHEN ${canonicalUrl}::text IS NOT NULL
+                  AND ${extractedCandidates.investigationPack} ->> 'canonicalUrl' = ${canonicalUrl}
+                  AND lower(trim(${extractedCandidates.organizationName})) = ${normalizedOrgName}
+                  AND lower(trim(${extractedCandidates.serviceName})) = ${normalizedServiceName}
+                  THEN 1
+                ELSE 2
+              END`,
+          desc(extractedCandidates.revisionNumber),
+          desc(extractedCandidates.extractedAt),
+          desc(extractedCandidates.createdAt),
+          desc(extractedCandidates.candidateId),
+        )
+        .limit(1)
+        .for('update');
+
+      const row = rows[0];
+      return row
+        ? {
+            candidate: rowToCandidate(row),
+            exactExtractKey: row.extractKeySha256 === input.extractKey,
+          }
+        : null;
     },
 
     async update(candidateId, updates) {
@@ -302,6 +400,12 @@ export function createDrizzleCandidateStore(
         actorId: byUserId,
         details: { newStatus: status },
       });
+    },
+
+    async escalateForReview(candidateId) {
+      await db.execute(
+        sql`SELECT oran_internal.escalate_candidate_for_review(${candidateId})`,
+      );
     },
 
     async updateConfidenceScore(candidateId, score) {

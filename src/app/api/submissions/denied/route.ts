@@ -22,6 +22,12 @@ export async function GET(req: NextRequest) {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: 60,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },

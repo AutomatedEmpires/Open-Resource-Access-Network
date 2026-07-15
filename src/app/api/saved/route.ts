@@ -10,11 +10,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getAuthContext } from '@/services/auth/session';
-import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
+import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
 import { captureException } from '@/services/telemetry/sentry';
 import { getIp } from '@/services/security/ip';
+import { acquireLivePublicationGateShared } from '@/services/publication/liveEntityMerge';
 
 // ============================================================
 // CONSTANTS
@@ -42,8 +43,8 @@ const ServiceIdSchema = z.object({
 // RATE LIMIT HELPER
 // ============================================================
 
-function checkSavedRateLimit(ip: string) {
-  const rateLimit = checkRateLimitShared(`saved:ip:${ip}`, {
+async function checkSavedRateLimit(ip: string, operation: 'read' | 'write') {
+  const rateLimit = await checkRateLimitShared(`saved:${operation}:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: SAVED_RATE_LIMIT_MAX,
   });
@@ -65,7 +66,16 @@ export async function GET(req: NextRequest) {
 
   // Rate limiting
   const ip = getIp(req);
-  const rateLimit = await checkSavedRateLimit(ip);
+  const rateLimit = await checkSavedRateLimit(ip, 'read');
+  if (rateLimit.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      {
+        status: 503,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      },
+    );
+  }
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
@@ -123,7 +133,16 @@ export async function POST(req: NextRequest) {
 
   // Rate limiting
   const ip = getIp(req);
-  const rateLimit = await checkSavedRateLimit(ip);
+  const rateLimit = await checkSavedRateLimit(ip, 'write');
+  if (rateLimit.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      {
+        status: 503,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      },
+    );
+  }
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
@@ -166,13 +185,33 @@ export async function POST(req: NextRequest) {
   const { serviceId } = parsed.data;
 
   try {
-    // Idempotent insert: ON CONFLICT DO NOTHING
-    await executeQuery(
-      `INSERT INTO saved_services (user_id, service_id)
-       VALUES ($1, $2)
-       ON CONFLICT (user_id, service_id) DO NOTHING`,
-      [authCtx.userId, serviceId]
-    );
+    const saved = await withTransaction(async (client) => {
+      await acquireLivePublicationGateShared(client);
+      const activeService = await client.query<{ id: string }>(
+        `SELECT id
+         FROM services
+         WHERE id = $1
+           AND status = 'active'
+         FOR UPDATE`,
+        [serviceId],
+      );
+      if (!activeService.rows[0]) return false;
+
+      // Idempotent insert: ON CONFLICT DO NOTHING
+      await client.query(
+        `INSERT INTO saved_services (user_id, service_id)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id, service_id) DO NOTHING`,
+        [authCtx.userId, serviceId],
+      );
+      return true;
+    });
+    if (!saved) {
+      return NextResponse.json(
+        { error: 'Service is unavailable or has been retired.' },
+        { status: 409 },
+      );
+    }
 
     return NextResponse.json({ saved: true, serviceId });
   } catch (error) {
@@ -202,7 +241,16 @@ export async function DELETE(req: NextRequest) {
 
   // Rate limiting
   const ip = getIp(req);
-  const rateLimit = await checkSavedRateLimit(ip);
+  const rateLimit = await checkSavedRateLimit(ip, 'write');
+  if (rateLimit.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      {
+        status: 503,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      },
+    );
+  }
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
@@ -246,11 +294,14 @@ export async function DELETE(req: NextRequest) {
 
   try {
     // Idempotent delete: no error if row doesn't exist
-    await executeQuery(
-      `DELETE FROM saved_services
-       WHERE user_id = $1 AND service_id = $2`,
-      [authCtx.userId, serviceId]
-    );
+    await withTransaction(async (client) => {
+      await acquireLivePublicationGateShared(client);
+      await client.query(
+        `DELETE FROM saved_services
+         WHERE user_id = $1 AND service_id = $2`,
+        [authCtx.userId, serviceId],
+      );
+    });
 
     return NextResponse.json({ removed: true, serviceId });
   } catch (error) {

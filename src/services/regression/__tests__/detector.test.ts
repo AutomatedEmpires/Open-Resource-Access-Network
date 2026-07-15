@@ -158,7 +158,7 @@ describe('detectFeedbackSeverity', () => {
       signalType: 'feedback_severity',
       currentScore: 55,
       currentBand: 'POSSIBLE',
-      recommendedAction: 'suppress',
+      recommendedAction: 'reverify',
     });
     expect(candidate!.reasons).toEqual(
       expect.arrayContaining([expect.stringContaining('5 negative feedback or community reports')]),
@@ -166,7 +166,8 @@ describe('detectFeedbackSeverity', () => {
     expect(candidate!.reasons).toEqual(
       expect.arrayContaining([expect.stringContaining('incorrect_hours, service_closed')]),
     );
-    expect(candidate!.actionReason).toContain('Repeated negative reports');
+    expect(candidate!.actionReason).toContain('human reverification');
+    expect(candidate!.notesText).not.toContain('visibility should be suspended');
   });
 
   it('passes limit and all report thresholds to the query', async () => {
@@ -175,7 +176,18 @@ describe('detectFeedbackSeverity', () => {
     expect(client.query).toHaveBeenCalledWith(expect.any(String), [20, 3, 1, 2]);
   });
 
-  it('escalates a suspected fraud report to immediate suppression', async () => {
+  it('never treats anonymous or unapproved reports as suppression-authorizing evidence', async () => {
+    const client = makeClient([[]]);
+    await detectFeedbackSeverity(client as never, 20);
+
+    const sql = String(client.query.mock.calls[0]?.[0]);
+    expect(sql).toContain("(sub.status = 'approved') AS suppression_eligible");
+    expect(sql).toContain('AND rs.suppression_eligible');
+    expect(sql).toContain("sub.payload->>'issueType'");
+    expect(sql).toContain('false AS suppression_eligible');
+  });
+
+  it('escalates a human-approved suspected fraud report to suppression', async () => {
     const client = makeClient([
       [
         {
@@ -197,7 +209,7 @@ describe('detectFeedbackSeverity', () => {
     expect(candidate!.reasons[0]).toContain('suspected fraud report');
   });
 
-  it('escalates repeated closure reports to suppression', async () => {
+  it('escalates repeated human-approved closure reports to suppression', async () => {
     const client = makeClient([
       [
         {

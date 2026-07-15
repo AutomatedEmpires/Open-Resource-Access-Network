@@ -16,6 +16,8 @@
  * @module functions/alertCoverageGaps
  */
 
+import { assertLegacyAzureFunctionsArchived } from '../archiveBoundary';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -42,6 +44,7 @@ export interface CoverageGapResult {
  * Runs daily at 8 AM UTC to give ORAN admins a daily digest of problem areas.
  */
 export async function alertCoverageGaps(timer: TimerInfo): Promise<void> {
+  assertLegacyAzureFunctionsArchived();
   const appUrl = process.env.ORAN_APP_URL;
   const apiKey = process.env.INTERNAL_API_KEY;
 

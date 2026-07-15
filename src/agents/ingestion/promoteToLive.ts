@@ -25,6 +25,10 @@ import {
   resolveExistingLiveOrganizationId,
   resolveExistingLiveServiceId,
 } from '@/services/publication/liveEntityMerge';
+import {
+  acquireFreshnessSensitiveAuthoritativeMutationGates,
+  assertAuthoritativeEntitiesMutable,
+} from '@/services/publication/protectedAuthoritativeMutation';
 
 import type { IngestionStores } from './stores';
 import { evaluateStandaloneResourceUse } from './sourcePurpose';
@@ -105,84 +109,218 @@ function buildHsdsPayloadFromCanonical(input: {
 export async function promoteToLive(
   options: PromoteToLiveOptions,
 ): Promise<PromoteToLiveResult> {
-  const { stores, canonicalServiceId, actorId } = options;
+  const { canonicalServiceId, actorId } = options;
 
-  // 1. Load canonical service
-  const canonicalService = await stores.canonicalServices.getById(canonicalServiceId);
-  if (!canonicalService) {
-    throw new Error(`Canonical service ${canonicalServiceId} not found`);
-  }
-  if (canonicalService.lifecycleStatus !== 'active') {
-    throw new Error(
-      `Canonical service ${canonicalServiceId} lifecycle is '${canonicalService.lifecycleStatus}', expected 'active'`,
-    );
-  }
-
-  // Promotion is a public-write boundary. Re-check source purpose here even
-  // when an upstream policy engine already evaluated it, so direct callers
-  // cannot bypass the standalone-resource rule.
-  const sourceSystem = canonicalService.winningSourceSystemId
-    ? await stores.sourceSystems.getById(canonicalService.winningSourceSystemId)
-    : null;
-  if (sourceSystem?.family === 'manual') {
-    throw new Error(
-      `Canonical service ${canonicalServiceId} cannot use canonical-feed promotion for a manual source; independent submission approval is required`,
-    );
-  }
-  const purposeDecision = evaluateStandaloneResourceUse(sourceSystem);
-  if (!purposeDecision.allowed) {
-    throw new Error(
-      `Canonical service ${canonicalServiceId} cannot be published: ${purposeDecision.reason}`,
-    );
-  }
-
-  // 2. Load canonical organization
-  const canonicalOrg = await stores.canonicalOrganizations.getById(
-    canonicalService.canonicalOrganizationId,
-  );
-  if (!canonicalOrg) {
-    throw new Error(
-      `Canonical organization ${canonicalService.canonicalOrganizationId} not found`,
-    );
-  }
-
-  // 3. Load canonical service–location links & locations (batch)
-  const serviceLocLinks = await stores.canonicalServiceLocations.listByService(
-    canonicalServiceId,
-  );
-  const locationIds = serviceLocLinks.map((l) => l.canonicalLocationId);
-  const canonicalLocations: CanonicalLocationRow[] =
-    locationIds.length > 0
-      ? await stores.canonicalLocations.getByIds(locationIds)
-      : [];
-
-  const confidenceSummary =
-    (canonicalService.sourceConfidenceSummary as Record<string, unknown>) ?? {};
-
-  // 5. Derive a usable confidence score for the live table
-  const rawScore =
-    typeof confidenceSummary['overall'] === 'number'
-      ? confidenceSummary['overall']
-      : canonicalService.sourceCount ?? 1;
-  const numericRaw = Number(rawScore);
-  if (!Number.isFinite(numericRaw)) {
-    console.warn(
-      `[promoteToLive] Non-numeric confidence score for canonical service ${canonicalServiceId}: ${String(rawScore)}`,
-    );
-  }
-  const confidenceScore = Number.isFinite(numericRaw)
-    ? Math.min(Math.max(numericRaw, 0), 100)
-    : 0;
-
-  let organizationId = canonicalOrg.publishedOrganizationId ?? '';
-  let serviceId = canonicalService.publishedServiceId ?? '';
+  let organizationId = '';
+  let serviceId = '';
   let liveLocations: Array<{ liveId: string; canonical: CanonicalLocationRow; existed: boolean }> = [];
-  let organizationExists = Boolean(canonicalOrg.publishedOrganizationId);
-  let serviceExists = Boolean(canonicalService.publishedServiceId);
-  let isUpdate = serviceExists;
+  let organizationExists = false;
+  let serviceExists = false;
+  let isUpdate = false;
 
-  // 6. Atomic transaction: write to live tables
+  // Every canonical input, source assertion, live identity, pointer, and audit
+  // write participates in this serializable transaction. Callers cannot hand
+  // us a stale store object that becomes seeker-visible after its authority
+  // changed.
   await withTransaction(async (client) => {
+    await client.query('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
+    await acquireFreshnessSensitiveAuthoritativeMutationGates(client);
+
+    const canonicalServiceRows = await client.query<CanonicalServiceRow>(
+      `SELECT id,
+              canonical_organization_id AS "canonicalOrganizationId",
+              name,
+              alternate_name AS "alternateName",
+              description,
+              url,
+              email,
+              status,
+              interpretation_services AS "interpretationServices",
+              application_process AS "applicationProcess",
+              wait_time AS "waitTime",
+              fees,
+              accreditations,
+              licenses,
+              lifecycle_status AS "lifecycleStatus",
+              publication_status AS "publicationStatus",
+              winning_source_system_id AS "winningSourceSystemId",
+              source_count AS "sourceCount",
+              source_confidence_summary AS "sourceConfidenceSummary",
+              published_service_id AS "publishedServiceId",
+              first_seen_at AS "firstSeenAt",
+              last_refreshed_at AS "lastRefreshedAt",
+              created_at AS "createdAt",
+              updated_at AS "updatedAt"
+       FROM public.canonical_services
+       WHERE id = $1
+       FOR UPDATE`,
+      [canonicalServiceId],
+    );
+    const canonicalService = canonicalServiceRows.rows[0];
+    if (!canonicalService) {
+      throw new Error(`Canonical service ${canonicalServiceId} not found`);
+    }
+    if (canonicalService.lifecycleStatus !== 'active') {
+      throw new Error(
+        `Canonical service ${canonicalServiceId} lifecycle is '${canonicalService.lifecycleStatus}', expected 'active'`,
+      );
+    }
+
+    const canonicalOrgRows = await client.query<CanonicalOrganizationRow>(
+      `SELECT id,
+              name,
+              alternate_name AS "alternateName",
+              description,
+              url,
+              email,
+              phone,
+              tax_status AS "taxStatus",
+              tax_id AS "taxId",
+              year_incorporated AS "yearIncorporated",
+              legal_status AS "legalStatus",
+              lifecycle_status AS "lifecycleStatus",
+              publication_status AS "publicationStatus",
+              winning_source_system_id AS "winningSourceSystemId",
+              source_count AS "sourceCount",
+              source_confidence_summary AS "sourceConfidenceSummary",
+              published_organization_id AS "publishedOrganizationId",
+              first_seen_at AS "firstSeenAt",
+              last_refreshed_at AS "lastRefreshedAt",
+              created_at AS "createdAt",
+              updated_at AS "updatedAt"
+       FROM public.canonical_organizations
+       WHERE id = $1
+       FOR UPDATE`,
+      [canonicalService.canonicalOrganizationId],
+    );
+    const canonicalOrg = canonicalOrgRows.rows[0];
+    if (!canonicalOrg) {
+      throw new Error(
+        `Canonical organization ${canonicalService.canonicalOrganizationId} not found`,
+      );
+    }
+    if (canonicalOrg.lifecycleStatus !== 'active') {
+      throw new Error(
+        `Canonical organization ${canonicalOrg.id} lifecycle is '${canonicalOrg.lifecycleStatus}', expected 'active'`,
+      );
+    }
+
+    const serviceLocationLinks = await client.query<{ canonicalLocationId: string }>(
+      `SELECT canonical_location_id AS "canonicalLocationId"
+       FROM public.canonical_service_locations
+       WHERE canonical_service_id = $1
+       ORDER BY canonical_location_id
+       FOR SHARE`,
+      [canonicalServiceId],
+    );
+    const canonicalLocationIds = serviceLocationLinks.rows.map((row) => row.canonicalLocationId);
+    const canonicalLocationRows = canonicalLocationIds.length > 0
+      ? await client.query<CanonicalLocationRow>(
+          `SELECT id,
+                  canonical_organization_id AS "canonicalOrganizationId",
+                  name,
+                  alternate_name AS "alternateName",
+                  description,
+                  transportation,
+                  latitude,
+                  longitude,
+                  geom,
+                  address_line1 AS "addressLine1",
+                  address_line2 AS "addressLine2",
+                  address_city AS "addressCity",
+                  address_region AS "addressRegion",
+                  address_postal_code AS "addressPostalCode",
+                  address_country AS "addressCountry",
+                  lifecycle_status AS "lifecycleStatus",
+                  publication_status AS "publicationStatus",
+                  winning_source_system_id AS "winningSourceSystemId",
+                  source_count AS "sourceCount",
+                  source_confidence_summary AS "sourceConfidenceSummary",
+                  published_location_id AS "publishedLocationId",
+                  first_seen_at AS "firstSeenAt",
+                  last_refreshed_at AS "lastRefreshedAt",
+                  created_at AS "createdAt",
+                  updated_at AS "updatedAt"
+           FROM public.canonical_locations
+           WHERE id = ANY($1::uuid[])
+           ORDER BY id
+           FOR UPDATE`,
+          [canonicalLocationIds],
+        )
+      : { rows: [] as CanonicalLocationRow[] };
+    const canonicalLocations = canonicalLocationRows.rows;
+    if (
+      canonicalLocations.length !== canonicalLocationIds.length
+      || canonicalLocations.some((location) => (
+        location.canonicalOrganizationId !== canonicalOrg.id
+        || location.lifecycleStatus !== 'active'
+      ))
+    ) {
+      throw new Error(`Canonical service ${canonicalServiceId} has invalid or stale location links`);
+    }
+
+    const sourceRows = canonicalService.winningSourceSystemId
+      ? await client.query<{
+          id: string;
+          family: string;
+          trust_tier: string;
+          resource_purpose: string | null;
+          is_active: boolean;
+        }>(
+          `SELECT id, family, trust_tier, resource_purpose, is_active
+           FROM public.source_systems
+           WHERE id = $1
+           FOR SHARE`,
+          [canonicalService.winningSourceSystemId],
+        )
+      : { rows: [] as Array<{
+          id: string;
+          family: string;
+          trust_tier: string;
+          resource_purpose: string | null;
+          is_active: boolean;
+        }> };
+    const sourceSystem = sourceRows.rows[0];
+    if (
+      !sourceSystem
+      || !sourceSystem.is_active
+      || sourceSystem.family === 'manual'
+      || !['verified_publisher', 'trusted_partner', 'curated', 'community'].includes(sourceSystem.trust_tier)
+    ) {
+      throw new Error(
+        `Canonical service ${canonicalServiceId} has no active non-manual winning source authority`,
+      );
+    }
+    const purposeDecision = evaluateStandaloneResourceUse({
+      resourcePurpose: sourceSystem.resource_purpose,
+    });
+    if (!purposeDecision.allowed) {
+      throw new Error(
+        `Canonical service ${canonicalServiceId} cannot be published: ${purposeDecision.reason}`,
+      );
+    }
+
+    const confidenceSummary =
+      (canonicalService.sourceConfidenceSummary as Record<string, unknown>) ?? {};
+    const rawScore = typeof confidenceSummary.overall === 'number'
+      ? confidenceSummary.overall
+      : canonicalService.sourceCount ?? 1;
+    const numericRaw = Number(rawScore);
+    if (!Number.isFinite(numericRaw)) {
+      console.warn(
+        `[promoteToLive] Non-numeric confidence score for canonical service ${canonicalServiceId}: ${String(rawScore)}`,
+      );
+    }
+    const confidenceScore = Number.isFinite(numericRaw)
+      ? Math.min(Math.max(numericRaw, 0), 100)
+      : 0;
+
+    organizationId = canonicalOrg.publishedOrganizationId ?? '';
+    serviceId = canonicalService.publishedServiceId ?? '';
+    organizationExists = Boolean(organizationId);
+    serviceExists = Boolean(serviceId);
+    isUpdate = serviceExists;
+
     await acquireLivePublicationAdvisoryLock(client, {
       ownerOrganizationId: canonicalOrg.publishedOrganizationId,
       existingServiceId: canonicalService.publishedServiceId,
@@ -192,10 +330,86 @@ export async function promoteToLive(
       serviceUrl: canonicalService.url,
     });
 
-    // Publication authority is not inferred from a canonical row alone. Move
-    // only accepted assertions from the active winning source to the published
-    // state in the same transaction as the live materialization. A missing or
-    // mismatched assertion rolls the promotion back before seeker data changes.
+    if (organizationId) {
+      const existingOrganization = await client.query<{ id: string; status: string }>(
+        `SELECT id, status
+         FROM public.organizations
+         WHERE id = $1
+         FOR UPDATE`,
+        [organizationId],
+      );
+      if (existingOrganization.rows[0]?.status !== 'active') {
+        throw new Error('Canonical organization points to a missing or retired live organization');
+      }
+    }
+    if (serviceId) {
+      const existingService = await client.query<{
+        id: string;
+        organization_id: string;
+        status: string;
+      }>(
+        `SELECT id, organization_id, status
+         FROM public.services
+         WHERE id = $1
+         FOR UPDATE`,
+        [serviceId],
+      );
+      if (
+        existingService.rows[0]?.status !== 'active'
+        || existingService.rows[0]?.organization_id !== organizationId
+      ) {
+        throw new Error('Canonical service points to a missing, retired, or differently owned live service');
+      }
+    }
+
+    const acceptedProvenance = await client.query<{ source_record_id: string }>(
+      `SELECT source_record_id
+       FROM public.canonical_provenance
+       WHERE canonical_entity_type = 'service'
+         AND canonical_entity_id = $1
+         AND decision_status = 'accepted'
+         AND source_record_id IS NOT NULL
+       ORDER BY id
+       FOR SHARE`,
+      [canonicalServiceId],
+    );
+    const acceptedProvenanceIds = [...new Set(
+      acceptedProvenance.rows.map((row) => row.source_record_id),
+    )].sort();
+    const acceptedAssertions = acceptedProvenanceIds.length > 0
+      ? await client.query<{ id: string; source_feed_id: string }>(
+          `SELECT publication_record.id, publication_record.source_feed_id
+           FROM public.source_records publication_record
+           JOIN public.source_feeds publication_feed
+             ON publication_feed.id = publication_record.source_feed_id
+           WHERE publication_record.id = ANY($1::uuid[])
+             AND publication_record.processing_status IN ('normalized', 'published')
+             AND publication_feed.source_system_id = $2
+             AND publication_feed.is_active IS TRUE
+           ORDER BY publication_record.id
+           FOR UPDATE OF publication_record
+           FOR SHARE OF publication_feed`,
+          [acceptedProvenanceIds, canonicalService.winningSourceSystemId],
+        )
+      : { rows: [] as Array<{ id: string; source_feed_id: string }> };
+    if (acceptedAssertions.rows.length === 0) {
+      throw new Error(
+        `Canonical service ${canonicalServiceId} has no accepted normalized assertion from its active winning source`,
+      );
+    }
+
+    await assertAuthoritativeEntitiesMutable(client, {
+      organizationIds: [canonicalOrg.publishedOrganizationId],
+      serviceIds: [canonicalService.publishedServiceId],
+      locationIds: canonicalLocations.map((location) => location.publishedLocationId),
+      sourceSystemIds: [canonicalService.winningSourceSystemId],
+      sourceFeedIds: acceptedAssertions.rows.map((row) => row.source_feed_id),
+      sourceRecordIds: acceptedAssertions.rows.map((row) => row.id),
+      canonicalOrganizationIds: [canonicalOrg.id],
+      canonicalServiceIds: [canonicalService.id],
+    });
+
+    const acceptedSourceRecordIds = acceptedAssertions.rows.map((row) => row.id);
     const publishedAssertions = await client.query<{ id: string }>(
       `UPDATE public.source_records publication_record
           SET processing_status = 'published',
@@ -218,20 +432,19 @@ export async function promoteToLive(
           )
         WHERE publication_record.source_feed_id = publication_feed.id
           AND publication_feed.is_active IS TRUE
-          AND publication_system.id = $2
+          AND publication_system.id = $1
           AND publication_record.processing_status IN ('normalized', 'published')
-          AND publication_record.id IN (
-            SELECT accepted_provenance.source_record_id
-            FROM public.canonical_provenance accepted_provenance
-            WHERE accepted_provenance.canonical_entity_type = 'service'
-              AND accepted_provenance.canonical_entity_id = $1
-              AND accepted_provenance.decision_status = 'accepted'
-              AND accepted_provenance.source_record_id IS NOT NULL
-          )
+          AND publication_record.id = ANY($2::uuid[])
       RETURNING publication_record.id`,
-      [canonicalServiceId, canonicalService.winningSourceSystemId],
+      [
+        canonicalService.winningSourceSystemId,
+        acceptedSourceRecordIds,
+      ],
     );
-    if ((publishedAssertions.rowCount ?? publishedAssertions.rows.length) === 0) {
+    if (
+      (publishedAssertions.rowCount ?? publishedAssertions.rows.length)
+      !== acceptedSourceRecordIds.length
+    ) {
       throw new Error(
         `Canonical service ${canonicalServiceId} has no accepted normalized assertion from its active winning source`,
       );
@@ -261,28 +474,49 @@ export async function promoteToLive(
       : null;
     const shouldOverwriteExisting = overwriteDecision?.shouldOverwrite ?? true;
 
-    liveLocations = await Promise.all(
-      canonicalLocations.map(async (loc) => {
-        if (loc.publishedLocationId) {
-          return { liveId: loc.publishedLocationId, canonical: loc, existed: true };
+    liveLocations = [];
+    for (const loc of canonicalLocations) {
+      if (loc.publishedLocationId) {
+        const existingLocation = await client.query<{ id: string; status: string }>(
+          `SELECT id, status
+           FROM public.locations
+           WHERE id = $1
+           FOR UPDATE`,
+          [loc.publishedLocationId],
+        );
+        if (existingLocation.rows[0]?.status !== 'active') {
+          throw new Error('Canonical location points to a missing or retired live location');
         }
-
-        const matchedLocationId = await resolveExistingLiveLocationId(client, serviceId, {
-          name: loc.name,
-          address1: loc.addressLine1,
-          city: loc.addressCity,
-          region: loc.addressRegion,
-          postalCode: loc.addressPostalCode,
-          country: loc.addressCountry,
-        });
-
-        return {
-          liveId: matchedLocationId ?? crypto.randomUUID(),
+        liveLocations.push({
+          liveId: loc.publishedLocationId,
           canonical: loc,
-          existed: Boolean(matchedLocationId),
-        };
-      }),
-    );
+          existed: true,
+        });
+        continue;
+      }
+
+      const matchedLocationId = await resolveExistingLiveLocationId(client, serviceId, {
+        name: loc.name,
+        address1: loc.addressLine1,
+        city: loc.addressCity,
+        region: loc.addressRegion,
+        postalCode: loc.addressPostalCode,
+        country: loc.addressCountry,
+      });
+      liveLocations.push({
+        liveId: matchedLocationId ?? crypto.randomUUID(),
+        canonical: loc,
+        existed: Boolean(matchedLocationId),
+      });
+    }
+
+    await assertAuthoritativeEntitiesMutable(client, {
+      organizationIds: organizationExists ? [organizationId] : [],
+      serviceIds: serviceExists ? [serviceId] : [],
+      locationIds: liveLocations
+        .filter((location) => location.existed)
+        .map((location) => location.liveId),
+    });
 
     const hsdsPayload = buildHsdsPayloadFromCanonical({
       organizationId,
@@ -295,7 +529,7 @@ export async function promoteToLive(
 
     // ── Organization ────────────────────────────────────────
     if (organizationExists && shouldOverwriteExisting) {
-      await client.query(
+      const updatedOrganization = await client.query<{ id: string }>(
         `UPDATE organizations
          SET name = COALESCE(NULLIF($2, ''), name),
              description = COALESCE(NULLIF($3, ''), description),
@@ -307,7 +541,9 @@ export async function promoteToLive(
              legal_status = COALESCE(NULLIF($9, ''), legal_status),
              phone = COALESCE(NULLIF($10, ''), phone),
              updated_at = NOW()
-         WHERE id = $1`,
+         WHERE id = $1
+           AND status = 'active'
+       RETURNING id`,
         [
           organizationId,
           canonicalOrg.name,
@@ -321,6 +557,9 @@ export async function promoteToLive(
           canonicalOrg.phone ?? null,
         ],
       );
+      if (!updatedOrganization.rows[0]) {
+        throw new Error('Matched organization was retired during publication');
+      }
     } else if (!organizationExists) {
       await client.query(
         `INSERT INTO organizations
@@ -344,7 +583,7 @@ export async function promoteToLive(
 
     // ── Service ─────────────────────────────────────────────
     if (serviceExists && shouldOverwriteExisting) {
-      await client.query(
+      const updatedService = await client.query<{ id: string }>(
         `UPDATE services
          SET organization_id = $2,
              name = COALESCE(NULLIF($3, ''), name),
@@ -359,7 +598,10 @@ export async function promoteToLive(
              accreditations = COALESCE(NULLIF($12, ''), accreditations),
              licenses = COALESCE(NULLIF($13, ''), licenses),
              updated_at = NOW()
-         WHERE id = $1`,
+         WHERE id = $1
+           AND status = 'active'
+           AND organization_id = $2
+       RETURNING id`,
         [
           serviceId,
           organizationId,
@@ -376,6 +618,9 @@ export async function promoteToLive(
           canonicalService.licenses ?? null,
         ],
       );
+      if (!updatedService.rows[0]) {
+        throw new Error('Matched service was retired during publication');
+      }
     } else if (!serviceExists) {
       await client.query(
         `INSERT INTO services
@@ -553,40 +798,102 @@ export async function promoteToLive(
       identifiersAffected: 1,
       snapshotsInvalidated: shouldOverwriteExisting && isUpdate ? 1 : 0,
     });
-  });
 
-  // 7. Update canonical entities with their live IDs and publication status
-  if (!canonicalOrg.publishedOrganizationId) {
-    await stores.canonicalOrganizations.update(canonicalOrg.id, {
-      publishedOrganizationId: organizationId,
-    });
-  }
-  await stores.canonicalOrganizations.updatePublicationStatus(
-    canonicalOrg.id,
-    'published',
-  );
-
-  if (!canonicalService.publishedServiceId) {
-    await stores.canonicalServices.update(canonicalService.id, {
-      publishedServiceId: serviceId,
-    });
-  }
-  await stores.canonicalServices.updatePublicationStatus(
-    canonicalService.id,
-    'published',
-  );
-
-  for (const { liveId, canonical } of liveLocations) {
-    if (!canonical.publishedLocationId) {
-      await stores.canonicalLocations.update(canonical.id, {
-        publishedLocationId: liveId,
-      });
-    }
-    await stores.canonicalLocations.updatePublicationStatus(
-      canonical.id,
-      'published',
+    // Canonical-to-live pointers are part of the same publication boundary.
+    // Writing them after this transaction would let a merge retire the live
+    // identity in the gap and then leave a new pointer to the defunct source.
+    const currentLinkRows = await client.query<{ canonicalLocationId: string }>(
+      `SELECT canonical_location_id AS "canonicalLocationId"
+       FROM public.canonical_service_locations
+       WHERE canonical_service_id = $1
+       ORDER BY canonical_location_id
+       FOR SHARE`,
+      [canonicalServiceId],
     );
-  }
+    if (
+      JSON.stringify(currentLinkRows.rows.map((row) => row.canonicalLocationId))
+      !== JSON.stringify(canonicalLocationIds)
+    ) {
+      throw new Error('Canonical service location links changed during publication');
+    }
+
+    const canonicalOrganizationUpdate = await client.query<{ id: string }>(
+      `UPDATE canonical_organizations
+       SET published_organization_id = coalesce(published_organization_id, $2),
+           publication_status = 'published',
+           updated_at = NOW()
+       WHERE id = $1
+         AND (published_organization_id IS NULL OR published_organization_id = $2)
+         AND updated_at = $3::timestamptz
+         AND lifecycle_status = $4
+         AND publication_status = $5
+         AND published_organization_id IS NOT DISTINCT FROM $6::uuid
+       RETURNING id`,
+      [
+        canonicalOrg.id,
+        organizationId,
+        canonicalOrg.updatedAt,
+        canonicalOrg.lifecycleStatus,
+        canonicalOrg.publicationStatus,
+        canonicalOrg.publishedOrganizationId,
+      ],
+    );
+    if (!canonicalOrganizationUpdate.rows[0]) {
+      throw new Error('Canonical organization publication pointer changed concurrently');
+    }
+
+    const canonicalServiceUpdate = await client.query<{ id: string }>(
+      `UPDATE canonical_services
+       SET published_service_id = coalesce(published_service_id, $2),
+           publication_status = 'published',
+           updated_at = NOW()
+       WHERE id = $1
+         AND (published_service_id IS NULL OR published_service_id = $2)
+         AND updated_at = $3::timestamptz
+         AND lifecycle_status = $4
+         AND publication_status = $5
+         AND published_service_id IS NOT DISTINCT FROM $6::uuid
+       RETURNING id`,
+      [
+        canonicalService.id,
+        serviceId,
+        canonicalService.updatedAt,
+        canonicalService.lifecycleStatus,
+        canonicalService.publicationStatus,
+        canonicalService.publishedServiceId,
+      ],
+    );
+    if (!canonicalServiceUpdate.rows[0]) {
+      throw new Error('Canonical service publication pointer changed concurrently');
+    }
+
+    for (const { liveId, canonical } of liveLocations) {
+      const canonicalLocationUpdate = await client.query<{ id: string }>(
+        `UPDATE canonical_locations
+         SET published_location_id = coalesce(published_location_id, $2),
+             publication_status = 'published',
+             updated_at = NOW()
+         WHERE id = $1
+           AND (published_location_id IS NULL OR published_location_id = $2)
+           AND updated_at = $3::timestamptz
+           AND lifecycle_status = $4
+           AND publication_status = $5
+           AND published_location_id IS NOT DISTINCT FROM $6::uuid
+         RETURNING id`,
+        [
+          canonical.id,
+          liveId,
+          canonical.updatedAt,
+          canonical.lifecycleStatus,
+          canonical.publicationStatus,
+          canonical.publishedLocationId,
+        ],
+      );
+      if (!canonicalLocationUpdate.rows[0]) {
+        throw new Error('Canonical location publication pointer changed concurrently');
+      }
+    }
+  });
 
   return {
     organizationId,

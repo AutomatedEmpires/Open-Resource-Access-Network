@@ -1,5 +1,5 @@
 /**
- * ORAN Azure Maps Geocoding Service
+ * Retired Azure Maps Geocoding Adapter
  *
  * Replaces OpenStreetMap Nominatim with Azure Maps for geocoding.
  * Uses the Azure Maps Search API (Get Geocoding endpoint).
@@ -7,9 +7,11 @@
  * Privacy: Only the query text (address/place name) is sent to Azure Maps.
  * No user PII (session IDs, user IDs) is included in geocoding requests.
  *
- * Requires env:
- *   AZURE_MAPS_KEY — subscription key (Key Vault reference in production)
+ * This adapter is test-only while a non-Microsoft server geocoder is selected.
+ * Production publication continues without inferred coordinates.
  */
+
+import { isRetiredMicrosoftProviderRuntime } from '@/services/runtime/providerPolicy';
 
 // ============================================================
 // TYPES
@@ -46,6 +48,7 @@ const API_VERSION = '2025-01-01';
 // ============================================================
 
 function getSubscriptionKey(): string | null {
+  if (isRetiredMicrosoftProviderRuntime()) return null;
   return process.env.AZURE_MAPS_KEY ?? null;
 }
 

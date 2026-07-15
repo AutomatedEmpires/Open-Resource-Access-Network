@@ -26,8 +26,14 @@ export async function POST(
   }
 
   const ip = getIp(req);
-  const rl = await checkRateLimitShared(ip, { maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
-  if (rl.exceeded) {
+  const rl = await checkRateLimitShared(`admin:ingestion:candidates:publish:write:${ip}`, { maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
@@ -82,25 +88,6 @@ export async function POST(
       candidateId: id,
       publishedByUserId: authCtx.userId,
       geocode: isGeocodingConfigured() ? geocode : undefined,
-    });
-
-    // Audit event
-    await stores.audit.append({
-      eventId: crypto.randomUUID(),
-      correlationId: crypto.randomUUID(),
-      eventType: 'publish.approved',
-      actorType: 'human',
-      actorId: authCtx.userId,
-      targetType: 'candidate',
-      targetId: id,
-      timestamp: new Date().toISOString(),
-      inputs: {},
-      outputs: {
-        serviceId: published.serviceId,
-        organizationId: published.organizationId,
-        locationId: published.locationId,
-      },
-      evidenceRefs: [],
     });
 
     return NextResponse.json({ success: true, serviceId: published.serviceId });

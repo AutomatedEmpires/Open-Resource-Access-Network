@@ -57,11 +57,20 @@ export async function GET(req: NextRequest) {
   }
 
   const limited = await checkRateLimitShared(
-    `triage:list:${authCtx.userId}`,
+    `admin:triage:read:${authCtx.userId}`,
     { maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS },
   );
+  if (limited.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(limited.retryAfterSeconds) } },
+    );
+  }
   if (limited.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      { status: 429, headers: { 'Retry-After': String(limited.retryAfterSeconds) } },
+    );
   }
 
   const parsed = GetTriageSchema.safeParse(
@@ -115,11 +124,20 @@ export async function POST(_req: NextRequest) {
   }
 
   const limited = await checkRateLimitShared(
-    `triage:score:${authCtx.userId}`,
+    `admin:triage:write:${authCtx.userId}`,
     { maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS },
   );
+  if (limited.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(limited.retryAfterSeconds) } },
+    );
+  }
   if (limited.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      { status: 429, headers: { 'Retry-After': String(limited.retryAfterSeconds) } },
+    );
   }
 
   try {

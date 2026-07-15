@@ -17,11 +17,15 @@ import { useSession } from '@/services/auth/client';
 import {
   ArrowLeft, ShieldCheck, ShieldX, AlertTriangle, ExternalLink,
   MapPin, Phone, Mail, Globe, Building2, FileText, Clock,
-  CheckCircle2, XCircle, ArrowUpCircle, Loader2, Unlock,
+  CheckCircle2, XCircle, ArrowUpCircle, Loader2, Unlock, UserCheck,
   Languages, ClipboardList, Accessibility, Tag,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  ResourceFreshnessReviewPanel,
+  type ResourceFreshnessSchedule,
+} from '@/components/community-admin/ResourceFreshnessReviewPanel';
 import { ResourceSubmissionWorkspace } from '@/components/resource-submissions/ResourceSubmissionWorkspace';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { FormAlert } from '@/components/ui/form-alert';
@@ -33,6 +37,10 @@ import { useToast } from '@/components/ui/toast';
 import { getConfidenceTier } from '@/domain/confidence';
 import type { ConfidenceTier } from '@/domain/confidence';
 import type { SubmissionStatus } from '@/domain/types';
+import {
+  resourceFreshnessReviewPacketSchema,
+  type ResourceFreshnessReview,
+} from '@/domain/resourceFreshnessReview';
 import {
   SUBMISSION_STATUS_STYLES,
   DEFAULT_STATUS_STYLE,
@@ -115,6 +123,8 @@ interface QueueDetail {
   submitted_by_display_name: string | null;
   assigned_to_user_id: string | null;
   assigned_to_display_name: string | null;
+  is_locked: boolean;
+  locked_by_user_id: string | null;
   notes: string | null;
   reviewer_notes: string | null;
   sla_deadline: string | null;
@@ -138,6 +148,9 @@ interface QueueDetail {
   required_documents: RequiredDocDetail[];
   languages: LanguageDetail[];
   accessibility: AccessibilityDetail[];
+  payload: Record<string, unknown>;
+  requires_structured_freshness_review?: boolean;
+  schedules: ResourceFreshnessSchedule[];
   transitions: Array<{
     id: string;
     from_status: string;
@@ -189,6 +202,133 @@ function ScoreMeter({ label, value }: { label: string; value: number }) {
   );
 }
 
+function ClaimRequiredPanel({ status, statusLabel }: { status: SubmissionStatus; statusLabel: string }) {
+  const isEscalated = status === 'escalated';
+  const queueHref = isEscalated
+    ? '/queue?status=escalated'
+    : status === 'needs_review'
+      ? '/queue?status=needs_review'
+      : '/queue?status=submitted';
+
+  return (
+    <section
+      aria-labelledby="claim-required-title"
+      className="overflow-hidden rounded-xl border border-action-soft bg-white shadow-lg"
+    >
+      <div className="bg-gradient-brand-deep px-5 py-5 text-white">
+        <ClipboardList className="h-6 w-6" aria-hidden="true" />
+        <h2 id="claim-required-title" className="mt-3 text-lg font-semibold">
+          {isEscalated ? 'ORAN claim required before decision' : 'Claim required before decision'}
+        </h2>
+        <p className="mt-1 text-sm text-slate-100">
+          This item is currently {statusLabel.toLowerCase()}.
+        </p>
+      </div>
+      <div className="space-y-4 p-5">
+        <FormAlert
+          variant="warning"
+          message={isEscalated
+            ? 'An ORAN admin must claim this escalation from the review queue before recording the final evidence-based decision.'
+            : 'Claim this item from the review queue to move it into Under Review. Decision controls stay locked until a reviewer owns the work.'}
+        />
+        <p className="text-sm text-slate-700">
+          {isEscalated
+            ? 'Claiming transfers the review lock and assignment to you while preserving the original community review in the audit history.'
+            : 'Returning to the matching queue view keeps the workflow auditable and prevents a terminal decision before review begins.'}
+        </p>
+        <Button variant="outline" size="sm" asChild>
+          <Link href={queueHref}>Back to queue and claim</Link>
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function WaitingForOranPanel({
+  submitResult,
+  onDismissResult,
+}: {
+  submitResult: { success: boolean; message: string } | null;
+  onDismissResult: () => void;
+}) {
+  return (
+    <section
+      aria-labelledby="waiting-for-oran-title"
+      className="overflow-hidden rounded-xl border border-action-soft bg-white shadow-lg"
+    >
+      <div className="bg-gradient-brand-deep px-5 py-5 text-white">
+        <Clock className="h-6 w-6" aria-hidden="true" />
+        <h2 id="waiting-for-oran-title" className="mt-3 text-lg font-semibold">
+          Waiting for ORAN review
+        </h2>
+        <p className="mt-1 text-sm text-slate-100">
+          This item has been escalated beyond the community review lane.
+        </p>
+      </div>
+      <div className="space-y-4 p-5">
+        {submitResult && (
+          <FormAlert
+            variant={submitResult.success ? 'success' : 'error'}
+            message={submitResult.message}
+            onDismiss={onDismissResult}
+          />
+        )}
+        <FormAlert
+          variant="warning"
+          message="Only an ORAN admin can claim this escalation and record the next decision. No further community-admin action is required."
+        />
+        <p className="text-sm text-slate-700">
+          The evidence packet and community review history remain available here while ORAN completes the escalation.
+        </p>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/queue?status=escalated">Back to escalated queue</Link>
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function ReviewOwnershipPanel({
+  assignedToDisplayName,
+  isAssignedToCurrentUser,
+}: {
+  assignedToDisplayName: string | null;
+  isAssignedToCurrentUser: boolean;
+}) {
+  return (
+    <section
+      aria-labelledby="review-ownership-title"
+      className="overflow-hidden rounded-xl border border-action-soft bg-white shadow-lg"
+    >
+      <div className="bg-gradient-brand-deep px-5 py-5 text-white">
+        <UserCheck className="h-6 w-6" aria-hidden="true" />
+        <h2 id="review-ownership-title" className="mt-3 text-lg font-semibold">
+          Review ownership required
+        </h2>
+        <p className="mt-1 text-sm text-slate-100">
+          Decision controls are read-only until you hold both the assignment and review lock.
+        </p>
+      </div>
+      <div className="space-y-4 p-5">
+        <FormAlert
+          variant="warning"
+          message={isAssignedToCurrentUser
+            ? 'Your account is assigned to this item, but it does not own the active review lock.'
+            : assignedToDisplayName
+              ? `This review is currently assigned to ${assignedToDisplayName}.`
+              : 'This item is under review, but your account does not own its active review lock.'}
+        />
+        <p className="text-sm text-slate-700">
+          Return to the queue instead of submitting a competing decision. This preserves one accountable reviewer and a reliable audit trail.
+        </p>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/queue?status=under_review">Back to under-review queue</Link>
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 // ============================================================
 // COMPONENT
 // ============================================================
@@ -197,6 +337,7 @@ export default function VerifyPage() {
   const searchParams = useSearchParams();
   const { data: session } = useSession();
   const currentUserId = session?.user?.id;
+  const isOranAdmin = session?.user?.role === 'oran_admin';
   const entryId = searchParams.get('id');
 
   const [entry, setEntry] = useState<QueueDetail | null>(null);
@@ -207,7 +348,9 @@ export default function VerifyPage() {
   // Decision form
   const [decision, setDecision] = useState<Decision | null>(null);
   const [notes, setNotes] = useState('');
+  const [repairReason, setRepairReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRepairingPacket, setIsRepairingPacket] = useState(false);
   const [isReleasing, setIsReleasing] = useState(false);
   const [submitResult, setSubmitResult] = useState<{ success: boolean; message: string } | null>(null);
   const { toast } = useToast();
@@ -277,9 +420,80 @@ export default function VerifyPage() {
     }
   }, [entryId, decision, notes, fetchDetail, toast]);
 
-  const canDecide = entry && ['submitted', 'needs_review', 'under_review'].includes(entry.status);
+  const handleFreshnessSubmit = useCallback(async (freshnessReview: ResourceFreshnessReview) => {
+    if (!entryId) return;
+    setIsSubmitting(true);
+    setSubmitResult(null);
+    try {
+      const res = await fetch(`/api/community/queue/${entryId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ freshnessReview }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Freshness review submission failed');
+      }
+      const body = (await res.json()) as { message: string };
+      setSubmitResult({ success: true, message: body.message });
+      toast('success', 'Freshness review recorded');
+      void fetchDetail(entryId);
+    } catch (e) {
+      setSubmitResult({
+        success: false,
+        message: e instanceof Error ? e.message : 'Freshness review submission failed',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [entryId, fetchDetail, toast]);
+
+  const handleFreshnessPacketRepair = useCallback(async () => {
+    const reason = repairReason.trim();
+    if (!entryId || !isOranAdmin || reason.length < 10) return;
+
+    setIsRepairingPacket(true);
+    setSubmitResult(null);
+    try {
+      const res = await fetch(`/api/admin/resource-freshness/${entryId}/repair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Freshness packet repair failed');
+      }
+
+      setRepairReason('');
+      setSubmitResult({
+        success: true,
+        message: 'Freshness review packet rebuilt from the authoritative finding.',
+      });
+      toast('success', 'Freshness review packet rebuilt');
+      await fetchDetail(entryId);
+    } catch (e) {
+      setSubmitResult({
+        success: false,
+        message: e instanceof Error ? e.message : 'Freshness packet repair failed',
+      });
+    } finally {
+      setIsRepairingPacket(false);
+    }
+  }, [entryId, fetchDetail, isOranAdmin, repairReason, toast]);
 
   const isAssignedToMe = entry?.assigned_to_user_id === currentUserId;
+  const hasReviewOwnership = Boolean(
+    entry
+    && currentUserId
+    && entry.status === 'under_review'
+    && isAssignedToMe
+    && entry.is_locked
+    && entry.locked_by_user_id === currentUserId,
+  );
+  // All decisions shown by this page require both the under-review workflow
+  // state and the current user's auditable assignment/lock ownership.
+  const canDecide = hasReviewOwnership;
 
   // ── Unclaim ──
   const handleUnclaim = useCallback(async () => {
@@ -375,6 +589,21 @@ export default function VerifyPage() {
   if (!entry) return null;
 
   const statusStyle = SUBMISSION_STATUS_STYLES[entry.status] ?? DEFAULT_STATUS_STYLE;
+  const payloadRecord = entry.payload && typeof entry.payload === 'object' && !Array.isArray(entry.payload)
+    ? entry.payload
+    : {};
+  const hasFreshnessPacket = Object.prototype.hasOwnProperty.call(
+    payloadRecord,
+    'resourceFreshness',
+  );
+  const freshnessPacketResult = resourceFreshnessReviewPacketSchema.safeParse(
+    payloadRecord.resourceFreshness,
+  );
+  const freshnessPacket = freshnessPacketResult.success ? freshnessPacketResult.data : null;
+  const hasInvalidFreshnessPacket = (
+    hasFreshnessPacket || entry.requires_structured_freshness_review === true
+  ) && !freshnessPacketResult.success;
+  const requiresClaim = entry.status === 'submitted' || entry.status === 'needs_review';
 
   return (
     <ErrorBoundary>
@@ -719,7 +948,7 @@ export default function VerifyPage() {
                   </dd>
                 </div>
               )}
-              {isAssignedToMe && entry.status === 'under_review' && (
+              {hasReviewOwnership && (
                 <div className="pt-1">
                   <Button
                     size="sm"
@@ -761,7 +990,122 @@ export default function VerifyPage() {
             </dl>
           </section>
 
-          {/* Decision form */}
+          {/* Freshness review packets use structured evidence; generic queue items keep the standard decision form. */}
+          {entry.status === 'escalated' ? (
+            isOranAdmin
+              ? <ClaimRequiredPanel status={entry.status} statusLabel={statusStyle.label} />
+              : (
+                <WaitingForOranPanel
+                  submitResult={submitResult}
+                  onDismissResult={() => setSubmitResult(null)}
+                />
+              )
+          ) : requiresClaim && !hasInvalidFreshnessPacket ? (
+            <ClaimRequiredPanel status={entry.status} statusLabel={statusStyle.label} />
+          ) : entry.status === 'under_review' && !hasReviewOwnership && !hasInvalidFreshnessPacket ? (
+            <ReviewOwnershipPanel
+              assignedToDisplayName={entry.assigned_to_display_name}
+              isAssignedToCurrentUser={isAssignedToMe}
+            />
+          ) : freshnessPacket ? (
+            <ResourceFreshnessReviewPanel
+              packet={freshnessPacket}
+              schedules={entry.schedules ?? []}
+              canReview={Boolean(canDecide)}
+              reviewedStatusLabel={statusStyle.label}
+              isSubmitting={isSubmitting}
+              submitResult={submitResult}
+              onDismissResult={() => setSubmitResult(null)}
+              onSubmit={handleFreshnessSubmit}
+            />
+          ) : hasInvalidFreshnessPacket ? (
+            <section
+              aria-labelledby="invalid-freshness-packet-title"
+              className="overflow-hidden rounded-xl border border-error-base bg-white shadow-lg"
+            >
+              <div className="bg-gradient-brand-deep px-5 py-5 text-white">
+                <AlertTriangle className="h-6 w-6" aria-hidden="true" />
+                <h2 id="invalid-freshness-packet-title" className="mt-3 text-lg font-semibold">
+                  Freshness review packet is invalid
+                </h2>
+                <p className="mt-1 text-sm text-slate-100">
+                  This scanner-created item cannot be safely interpreted.
+                </p>
+              </div>
+              <div className="space-y-4 p-5">
+                {submitResult && (
+                  <FormAlert
+                    variant={submitResult.success ? 'success' : 'error'}
+                    message={submitResult.message}
+                    onDismiss={() => setSubmitResult(null)}
+                  />
+                )}
+                <FormAlert
+                  variant="error"
+                  message={isOranAdmin
+                    ? 'No decision can be recorded until this packet is rebuilt from the private scanner finding.'
+                    : 'No decision can be recorded from this page. ORAN administration must repair and audit this packet.'}
+                />
+                <p className="text-sm text-slate-700">
+                  The generic verification form is intentionally unavailable so malformed lifecycle evidence cannot bypass the structured freshness contract.
+                </p>
+                {isOranAdmin ? (
+                  <form
+                    className="space-y-4 rounded-lg border border-slate-300 bg-slate-50 p-4"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void handleFreshnessPacketRepair();
+                    }}
+                  >
+                    <FormField
+                      label="Repair reason"
+                      htmlFor="freshness-packet-repair-reason"
+                      required
+                      hint="Explain why this administrative rebuild is required (10–500 characters). The reason is written to the audit log."
+                      charCount={repairReason.length}
+                      maxLength={500}
+                    >
+                      <textarea
+                        id="freshness-packet-repair-reason"
+                        rows={3}
+                        minLength={10}
+                        maxLength={500}
+                        required
+                        value={repairReason}
+                        onChange={(event) => setRepairReason(event.target.value)}
+                        placeholder="Describe the malformed or missing packet observed…"
+                        className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-action focus:outline-none focus:ring-2 focus:ring-action"
+                      />
+                    </FormField>
+                    <Button
+                      type="submit"
+                      className="min-h-[44px] w-full gap-2"
+                      disabled={isRepairingPacket || repairReason.trim().length < 10}
+                    >
+                      {isRepairingPacket ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                          Rebuilding review packet…
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                          Rebuild review packet
+                        </>
+                      )}
+                    </Button>
+                  </form>
+                ) : (
+                  <p className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-700">
+                    Keep this item in the review queue. An ORAN administrator can rebuild only the packet; its assignment, workflow status, publication hold, and finding remain unchanged.
+                  </p>
+                )}
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/queue">Back to review queue</Link>
+                </Button>
+              </div>
+            </section>
+          ) : (
           <section className="bg-white rounded-lg border border-gray-200 p-5">
             <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">Verification Decision</h2>
 
@@ -922,6 +1266,7 @@ export default function VerifyPage() {
               </div>
             )}
           </section>
+          )}
 
           {/* Transition history */}
           {entry.transitions && entry.transitions.length > 0 && (

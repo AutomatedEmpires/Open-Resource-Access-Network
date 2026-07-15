@@ -285,7 +285,7 @@ describe('ingestion service', () => {
     expect(result.pipeline).toEqual(expect.objectContaining({ candidateId: 'cand-1', evidenceId: 'ev-1' }));
   });
 
-  it('auto-publishes allowlisted high-readiness pipeline candidates', async () => {
+  it('keeps allowlisted high-readiness candidates in review without a bound human approval', async () => {
     const stores = createStores();
     stores.sourceRegistry.findForUrl.mockResolvedValue({
       id: 'src-1',
@@ -297,34 +297,23 @@ describe('ingestion service', () => {
     const { createIngestionService } = await loadServiceModule();
     const service = createIngestionService(stores as never);
 
-    await service.runPipeline({
+    const result = await service.runPipeline({
       sourceUrl: 'https://example.gov/feed',
       triggeredBy: 'oran-1',
     });
 
-    expect(publishCandidateToLiveServiceMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        stores,
-        candidateId: 'cand-1',
-        publishedByUserId: 'oran-1',
-      }),
+    expect(stores.publishReadiness.meetsThreshold).not.toHaveBeenCalled();
+    expect(publishCandidateToLiveServiceMock).not.toHaveBeenCalled();
+    expect(stores.audit.append).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'publish.approved' }),
     );
-    expect(stores.audit.append).toHaveBeenCalledWith(
-      expect.objectContaining({
-        eventType: 'publish.approved',
-        actorType: 'human',
-        actorId: 'oran-1',
-        targetType: 'service',
-        targetId: 'svc-live-1',
-        inputs: expect.objectContaining({
-          candidateId: 'cand-1',
-          publicationChannel: 'candidate_auto_publish',
-        }),
-      }),
-    );
+    expect(result.publication).toEqual({
+      published: false,
+      reason: 'candidate_human_approval_required',
+    });
   });
 
-  it('keeps candidates in review when readiness threshold is not met', async () => {
+  it('does not consult automated readiness as candidate publication authority', async () => {
     const stores = createStores();
     stores.sourceRegistry.findForUrl.mockResolvedValue({
       id: 'src-1',
@@ -338,6 +327,7 @@ describe('ingestion service', () => {
 
     await service.runPipeline({ sourceUrl: 'https://example.gov/feed' });
 
+    expect(stores.publishReadiness.meetsThreshold).not.toHaveBeenCalled();
     expect(publishCandidateToLiveServiceMock).not.toHaveBeenCalled();
   });
 

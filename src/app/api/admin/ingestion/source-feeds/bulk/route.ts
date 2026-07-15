@@ -22,17 +22,26 @@ const BulkUpdateSourceFeedsSchema = z.object({
   isActive: z.boolean().optional(),
   state: SourceFeedStatePatchSchema.optional(),
   useCheckpointAsReplay: z.boolean().optional(),
-}).strict();
+}).strict().refine(
+  (value) => value.isActive !== undefined || value.state !== undefined || value.useCheckpointAsReplay === true,
+  { message: 'At least one source-feed change is required.' },
+);
 async function requireAdmin(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
   }
 
-  const rl = await checkRateLimitShared(getIp(req), {
+  const rl = await checkRateLimitShared(`admin:ingestion:source-feeds:bulk:write:${getIp(req)}`, {
     maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
     windowMs: RATE_LIMIT_WINDOW_MS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
@@ -81,7 +90,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const shouldQueueHighRisk = parsed.data.state && isHighRiskSourceFeedUpdate({ state: parsed.data.state });
+    const shouldQueueHighRisk = isHighRiskSourceFeedUpdate({
+      isActive: parsed.data.isActive,
+      state: parsed.data.state,
+    }) || parsed.data.useCheckpointAsReplay === true;
+    if (!shouldQueueHighRisk) {
+      return NextResponse.json(
+        { error: 'Bulk source-feed change is not in the reviewed authority field set.' },
+        { status: 400 },
+      );
+    }
     const queuedSubmissionIds: string[] = [];
 
     for (const [index, feedId] of parsed.data.feedIds.entries()) {
@@ -101,8 +119,7 @@ export async function POST(req: NextRequest) {
         }, { actorId: session?.userId ?? null })
         : null;
 
-      if (shouldQueueHighRisk) {
-        const { submissionId } = await queueIngestionControlChange({
+      const { submissionId } = await queueIngestionControlChange({
           submittedByUserId: session?.userId ?? 'unknown',
           actorRole: session?.role ?? 'oran_admin',
           targetId: feedId,
@@ -122,28 +139,14 @@ export async function POST(req: NextRequest) {
             nextState,
           },
         });
-        queuedSubmissionIds.push(submissionId);
-        continue;
-      }
-
-      if (parsed.data.isActive !== undefined) {
-        await stores.sourceFeeds.update(feedId, { isActive: parsed.data.isActive });
-      }
-
-      if (parsed.data.state || parsed.data.useCheckpointAsReplay) {
-        await stores.sourceFeedStates.upsert(nextState!);
-      }
+      queuedSubmissionIds.push(submissionId);
     }
 
-    if (queuedSubmissionIds.length > 0) {
-      return NextResponse.json({
-        queued: queuedSubmissionIds.length,
-        submissionIds: queuedSubmissionIds,
-        status: 'pending_second_approval',
-      }, { status: 202 });
-    }
-
-    return NextResponse.json({ updated: parsed.data.feedIds.length });
+    return NextResponse.json({
+      queued: queuedSubmissionIds.length,
+      submissionIds: queuedSubmissionIds,
+      status: 'pending_second_approval',
+    }, { status: 202 });
   } catch (error) {
     captureException(error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });

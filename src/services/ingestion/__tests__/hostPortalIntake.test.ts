@@ -45,8 +45,20 @@ describe('host portal source assertions', () => {
     );
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining("'custom'"),
-      ['system-1', 'Host Portal Intake', 'manual_entry', 'oran://host-portal'],
+      [
+        'system-1',
+        'Host Portal Intake',
+        'manual_entry',
+        'oran://host-portal',
+        'oran:reserved-feed:host-portal:system-1',
+      ],
     );
+    const authoritySql = query.mock.calls
+      .filter(([sql]) => sql.includes('INSERT INTO source_systems') || sql.includes('INSERT INTO source_feeds'))
+      .map(([sql]) => sql)
+      .join('\n');
+    expect(authoritySql).not.toContain('DO UPDATE');
+    expect(authoritySql).toContain('configuration_matches');
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining("'normalized'"),
       expect.arrayContaining([

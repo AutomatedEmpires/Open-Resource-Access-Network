@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { markAllRead } from '@/services/notifications/service';
@@ -29,11 +29,17 @@ export async function PUT(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`user:notifications:read-all:${ip}`, {
+  const rl = await checkRateLimitShared(`user:notifications:read-all:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: USER_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },

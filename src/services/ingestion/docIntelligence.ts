@@ -17,6 +17,8 @@
  * Azure Document Intelligence REST API version: 2024-11-30
  */
 
+import { isRetiredMicrosoftProviderRuntime } from '@/services/runtime/providerPolicy';
+
 // ============================================================
 // TYPES
 // ============================================================
@@ -49,6 +51,7 @@ const SUBSCRIPTION_KEY_HEADER = 'Ocp-Apim-Subscription-Key';
 // ============================================================
 
 function getConfig(): { endpoint: string; key: string } | null {
+  if (isRetiredMicrosoftProviderRuntime()) return null;
   const endpoint = process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT;
   const key = process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY;
   if (!endpoint || !key) return null;

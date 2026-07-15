@@ -14,13 +14,19 @@ const authMocks = vi.hoisted(() => ({
 const requireMinRoleMock = vi.hoisted(() => vi.fn());
 const engineMocks = vi.hoisted(() => ({
   advance: vi.fn(),
+  advanceInTransaction: vi.fn(),
   acquireLock: vi.fn(),
   releaseLock: vi.fn(),
+  sendTerminalStatusEmail: vi.fn(),
 }));
 const flagServiceMocks = vi.hoisted(() => ({
   getAllFlags: vi.fn(),
   getFlag: vi.fn(),
   setFlag: vi.fn(),
+}));
+const protectedMutationMocks = vi.hoisted(() => ({
+  acquireAuthoritativeMutationGatesShared: vi.fn(),
+  assertAuthoritativeEntitiesMutable: vi.fn(),
 }));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
@@ -36,6 +42,10 @@ vi.mock('@/services/auth/guards', () => ({
   requireMinRole: requireMinRoleMock,
 }));
 vi.mock('@/services/workflow/engine', () => engineMocks);
+vi.mock('@/services/publication/protectedAuthoritativeMutation', () => ({
+  ...protectedMutationMocks,
+  ProtectedAuthoritativeMutationConflict: class ProtectedAuthoritativeMutationConflict extends Error {},
+}));
 vi.mock('@/services/flags/flags', () => ({
   flagService: flagServiceMocks,
   getFlagServiceImplementation: vi.fn().mockResolvedValue('in_memory'),
@@ -92,6 +102,7 @@ async function loadZoneDetailRoute() {
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  engineMocks.advanceInTransaction.mockReset();
 
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
   dbMocks.executeQuery.mockResolvedValue([]);
@@ -112,8 +123,19 @@ beforeEach(() => {
   flagServiceMocks.setFlag.mockResolvedValue(undefined);
   captureExceptionMock.mockResolvedValue(undefined);
   engineMocks.advance.mockResolvedValue({ success: true, fromStatus: 'submitted', toStatus: 'approved', transitionId: 'tx-1' });
+  engineMocks.advanceInTransaction.mockResolvedValue({
+    success: true,
+    submissionId: '11111111-1111-4111-8111-111111111111',
+    fromStatus: 'submitted',
+    toStatus: 'approved',
+    transitionId: 'tx-1',
+    gateResults: [],
+  });
+  protectedMutationMocks.acquireAuthoritativeMutationGatesShared.mockResolvedValue(undefined);
+  protectedMutationMocks.assertAuthoritativeEntitiesMutable.mockResolvedValue(undefined);
   engineMocks.acquireLock.mockResolvedValue(true);
   engineMocks.releaseLock.mockResolvedValue(undefined);
+  engineMocks.sendTerminalStatusEmail.mockResolvedValue(undefined);
 });
 
 describe('admin api routes', () => {
@@ -152,14 +174,27 @@ describe('admin api routes', () => {
 
   it('approves an org claim via the workflow engine', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'admin-1', role: 'oran_admin' });
-    engineMocks.acquireLock.mockResolvedValueOnce(true);
-    engineMocks.advance.mockResolvedValueOnce({ success: true, fromStatus: 'submitted', toStatus: 'approved', transitionId: 'tx-1' });
     dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
       const client = {
-        query: vi
-          .fn()
-          .mockResolvedValueOnce({ rows: [{ service_id: 'svc-1' }] })
-          .mockResolvedValueOnce({ rows: [] }),
+        query: vi.fn(async (sql: string) => {
+          if (sql.includes('SELECT sub.service_id')) {
+            return {
+            rows: [{
+              service_id: 'svc-1',
+              target_id: null,
+              submitted_by_user_id: 'user-1',
+              account_status: 'active',
+            }],
+            };
+          }
+          if (sql.includes('SELECT id, status, integrity_hold_at')) {
+            return { rows: [{ id: 'svc-1', status: 'active', integrity_hold_at: null }] };
+          }
+          if (sql.includes('SET is_locked = true')) {
+            return { rows: [{ id: '11111111-1111-4111-8111-111111111111' }] };
+          }
+          return { rows: [] };
+        }),
       };
       return callback(client);
     });
@@ -178,7 +213,7 @@ describe('admin api routes', () => {
     const body = await response.json();
     expect(body.success).toBe(true);
     expect(body.id).toBe('11111111-1111-4111-8111-111111111111');
-    expect(body.message).toBe('Claim approved. Organization is now active.');
+    expect(body.message).toBe('Claim approved. Ownership access was granted without changing listing status.');
   });
 
   it('validates audit log query parameters', async () => {

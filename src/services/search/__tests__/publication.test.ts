@@ -64,7 +64,9 @@ describe('seeker publication predicates', () => {
     expect(predicate).toContain('SELECT publication_snapshot.entity_id AS service_id');
     expect(predicate).toContain('public.hsds_export_snapshots publication_snapshot');
     expect(predicate).toContain('public.submissions publication_submission');
-    expect(predicate).toContain("publication_submission.status = 'approved'");
+    expect(predicate).toContain(
+      "publication_submission.status IN ('approved', 'archived')",
+    );
     expect(predicate).toContain("payload ->> 'projectionSourceRecordId'");
     expect(predicate).toContain("publication_record.source_record_type = 'mixed_bundle'");
     expect(predicate).toContain('publication_submission.service_id = publication_snapshot.entity_id');
@@ -82,6 +84,17 @@ describe('seeker publication predicates', () => {
     expect(predicate).toContain('publication_approval.gates_passed IS TRUE');
     expect(predicate).toContain("publication_approval.actor_role IN ('community_admin', 'oran_admin')");
     expect(predicate).toContain('publication_approval.actor_user_id <> publication_submission.submitted_by_user_id');
+  });
+
+  it('requires the recognized two-person candidate authority with immutable decision identities', () => {
+    const predicate = buildPublishableSourcePredicate('resource', 'positive_authority');
+
+    expect(predicate).toContain("= 'candidate_two_person_authoritative'");
+    expect(predicate).toContain("#> '{meta,approvalCount}'");
+    expect(predicate).toContain('candidate_approval.decision_reviewer_user_id');
+    expect(predicate).toContain("candidate_approval.outcome = 'verified'");
+    expect(predicate).not.toContain("= 'candidate_allowlisted'");
+    expect(predicate).not.toContain('candidate_reviewer.user_id');
   });
 
   it('builds the publication lanes once as an uncorrelated authoritative-ID union', () => {

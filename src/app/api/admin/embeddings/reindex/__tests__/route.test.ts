@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const dbMocks = vi.hoisted(() => ({
   executeQuery: vi.fn(),
   isDatabaseConfigured: vi.fn(),
+  withTransaction: vi.fn(),
 }));
 const rateLimitMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
@@ -15,6 +16,10 @@ const embeddingMocks = vi.hoisted(() => ({
   embedForIndexing: vi.fn(),
   getServicesNeedingEmbedding: vi.fn(),
   updateServiceEmbedding: vi.fn(),
+}));
+const protectionMocks = vi.hoisted(() => ({
+  acquireAuthoritativeMutationGatesShared: vi.fn(),
+  assertAuthoritativeEntitiesMutable: vi.fn(),
 }));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
@@ -30,6 +35,7 @@ vi.mock('@/services/auth/guards', () => ({
   requireMinRole: requireMinRoleMock,
 }));
 vi.mock('@/services/search/embeddings', () => embeddingMocks);
+vi.mock('@/services/publication/protectedAuthoritativeMutation', () => protectionMocks);
 
 function createRequest(options: {
   body?: unknown;
@@ -53,6 +59,9 @@ beforeEach(() => {
 
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
   dbMocks.executeQuery.mockResolvedValue([]);
+  dbMocks.withTransaction.mockImplementation(async (callback) => callback({
+    query: vi.fn().mockResolvedValue({ rows: [{ id: 'svc-1' }], rowCount: 1 }),
+  }));
   rateLimitMock.mockReturnValue({ exceeded: false, retryAfterSeconds: 0 });
   authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1', role: 'oran_admin' });
   requireMinRoleMock.mockReturnValue(true);
@@ -104,8 +113,8 @@ describe('POST /api/admin/embeddings/reindex', () => {
 
   it('reindexes services and tracks failed embedding attempts', async () => {
     embeddingMocks.getServicesNeedingEmbedding.mockResolvedValueOnce([
-      { id: 'svc-1', name: 'Shelter' },
-      { id: 'svc-2', name: 'Pantry' },
+      { id: 'svc-1', name: 'Shelter', source_updated_at: '2026-07-14T20:00:00.000Z' },
+      { id: 'svc-2', name: 'Pantry', source_updated_at: '2026-07-14T20:01:00.000Z' },
     ]);
     embeddingMocks.embedForIndexing
       .mockResolvedValueOnce([0.1, 0.2, 0.3])
@@ -121,9 +130,16 @@ describe('POST /api/admin/embeddings/reindex', () => {
     expect(embeddingMocks.updateServiceEmbedding).toHaveBeenCalledWith(
       'svc-1',
       [0.1, 0.2, 0.3],
-      dbMocks.executeQuery,
+      'text:svc-1',
+      '2026-07-14T20:00:00.000Z',
+      expect.any(Function),
     );
     expect(embeddingMocks.updateServiceEmbedding).toHaveBeenCalledTimes(1);
+    expect(protectionMocks.acquireAuthoritativeMutationGatesShared).toHaveBeenCalledOnce();
+    expect(protectionMocks.assertAuthoritativeEntitiesMutable).toHaveBeenCalledWith(
+      expect.anything(),
+      { serviceIds: ['svc-1'] },
+    );
   });
 
   it('returns 500 when dependency calls throw', async () => {

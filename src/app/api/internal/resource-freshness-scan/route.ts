@@ -13,7 +13,7 @@ import {
   MAX_FRESHNESS_SCAN_LIMIT,
   scanResourceFreshness,
 } from '@/services/freshness/resourceFreshness';
-import { captureException } from '@/services/telemetry/sentry';
+import { captureException, captureMessage } from '@/services/telemetry/sentry';
 
 function clampLimit(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -32,6 +32,18 @@ async function runAuthorizedScan(limit: number) {
 
   try {
     const result = await scanResourceFreshness({ limit });
+    if (result.protectedAuthoritySkippedCount > 0) {
+      await captureMessage(
+        'Protected authority freshness review requires owner action',
+        'warning',
+        {
+          feature: 'resource_freshness_protected_authority',
+          extra: {
+            protectedAuthoritySkippedCount: result.protectedAuthoritySkippedCount,
+          },
+        },
+      );
+    }
     return NextResponse.json(
       {
         success: true,

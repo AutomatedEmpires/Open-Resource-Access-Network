@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, isOranAdmin } from '@/services/auth';
 import { getIp } from '@/services/security/ip';
@@ -62,9 +62,18 @@ function toCsv(
 export async function GET(req: NextRequest): Promise<NextResponse> {
   // --- rate limit ---
   const ip = getIp(req);
-  const rl = checkRateLimit(`export-services:${ip}`, { maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
-  if (rl.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
+  const rl = await checkRateLimitShared(`host:services:export:read:${ip}`, { maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
   }
 
   // --- auth ---

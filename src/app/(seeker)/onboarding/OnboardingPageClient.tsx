@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { DISCOVERY_NEEDS, getDiscoveryNeed, type DiscoveryNeedId } from '@/domain/discoveryNeeds';
 import {
   type AccessibilityNeedId,
+  type AgeGroupId,
   type EmploymentStatusId,
   type IncomeRangeId,
 } from '@/services/profile/contracts';
@@ -59,6 +60,15 @@ const AUDIENCE_OPTIONS: ReadonlyArray<{ value: OnboardingAudience; label: string
   { value: 'child', label: 'A child' },
   { value: 'household', label: 'My household' },
   { value: 'someone_else', label: 'Someone else' },
+  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
+];
+
+const AGE_GROUP_OPTIONS: ReadonlyArray<{ value: AgeGroupId; label: string }> = [
+  { value: 'under18', label: 'Under 18' },
+  { value: '18_24', label: '18–24' },
+  { value: '25_54', label: '25–54' },
+  { value: '55_64', label: '55–64' },
+  { value: '65plus', label: '65 or older' },
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
 
@@ -220,6 +230,7 @@ export default function OnboardingPageClient() {
   const selectedNeed = draft.needId ? getDiscoveryNeed(draft.needId) : undefined;
   const urgencyLabel = URGENCY_OPTIONS.find((option) => option.value === draft.urgency)?.label;
   const audienceLabel = AUDIENCE_OPTIONS.find((option) => option.value === draft.audience)?.label;
+  const ageGroupLabel = AGE_GROUP_OPTIONS.find((option) => option.value === draft.ageGroup)?.label;
   const optionalSummary = useMemo(() => {
     const values: string[] = [];
     const employment = EMPLOYMENT_OPTIONS.find((option) => option.value === draft.employmentStatus)?.label;
@@ -457,6 +468,22 @@ export default function OnboardingPageClient() {
                 </div>
               </fieldset>
 
+              <label className="mt-7 block text-sm font-semibold text-slate-800" htmlFor="onboarding-age-group">
+                Broad age range <span className="font-normal text-slate-500">(optional)</span>
+              </label>
+              <select
+                id="onboarding-age-group"
+                value={draft.ageGroup}
+                onChange={(event) => updateDraft('ageGroup', event.target.value as OnboardingDraft['ageGroup'])}
+                className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[var(--brand-azure)] focus:ring-2 focus:ring-[var(--brand-azure)]/20"
+              >
+                <option value="">Choose a broad age range</option>
+                {AGE_GROUP_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <WhyThisHelps>Some programs are age-specific. ORAN asks for a broad range, never a birth date.</WhyThisHelps>
+
               <label className="mt-7 block text-sm font-semibold text-slate-800" htmlFor="onboarding-household-size">
                 Number of people in the household <span className="font-normal text-slate-500">(optional)</span>
               </label>
@@ -621,7 +648,11 @@ export default function OnboardingPageClient() {
                 </div>
                 <div className="grid gap-1 px-4 py-3 sm:grid-cols-3">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Household</dt>
-                  <dd className="text-sm text-slate-800 sm:col-span-2">{[audienceLabel, draft.householdSize ? `${draft.householdSize} people` : undefined].filter(Boolean).join(' · ') || 'Not shared'}</dd>
+                  <dd className="text-sm text-slate-800 sm:col-span-2">{[
+                    audienceLabel,
+                    draft.ageGroup && draft.ageGroup !== 'prefer_not_to_say' ? ageGroupLabel : undefined,
+                    draft.householdSize ? `${draft.householdSize} people` : undefined,
+                  ].filter(Boolean).join(' · ') || 'Not shared'}</dd>
                 </div>
                 <div className="grid gap-1 px-4 py-3 sm:grid-cols-3">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Optional context</dt>

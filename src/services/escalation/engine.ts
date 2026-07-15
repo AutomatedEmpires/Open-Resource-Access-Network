@@ -13,7 +13,8 @@
  * @module services/escalation/engine
  */
 
-import { executeQuery } from '@/services/db/postgres';
+import { executeQuery, withTransaction } from '@/services/db/postgres';
+import { acquireLivePublicationGateShared } from '@/services/publication/liveEntityMerge';
 import {
   ESCALATION_TIERS,
   SLA_WARNING_THRESHOLD,
@@ -313,86 +314,201 @@ async function alertSilentOwnerOrganizations(): Promise<{ alerts: number; integr
 
   if (organizations.length === 0) return { alerts: 0, integrityHoldsApplied: 0 };
 
-  const oranAdmins = await findOranAdmins();
   let alerted = 0;
   let integrityHoldsApplied = 0;
 
   for (const org of organizations) {
-    const idempotencyBase = `silent_owner_org_${org.organization_id}`;
-    const existing = await executeQuery<{ id: string }>(
-      `SELECT id FROM notification_events WHERE idempotency_key = $1`,
-      [`${idempotencyBase}_marker`],
-    );
-    if (existing.length > 0) continue;
+    const action = await withTransaction(async (client) => {
+      // Discovery is intentionally outside the transaction, but it is never
+      // authority to write. Re-enter through the shared merge gate and resolve
+      // the current organization, service set, and recipients under lock.
+      await acquireLivePublicationGateShared(client);
 
-    for (const userId of org.host_admin_user_ids) {
-      await executeQuery(
-        `INSERT INTO notification_events
-           (recipient_user_id, event_type, title, body,
-            resource_type, resource_id, action_url, idempotency_key)
-         VALUES ($1, 'system_alert',
-                 'Owner continuity check required',
-                 $2,
-                 'organization', $3, '/resource-studio', $4)
-         ON CONFLICT (idempotency_key) DO NOTHING`,
-        [
-          userId,
-          `Your organization still has ${org.active_service_count} active listing${org.active_service_count === 1 ? '' : 's'}, but ORAN detected no recent host-admin activity. Confirm stewardship or update the listings.`,
-          org.organization_id,
-          `${idempotencyBase}_host_${userId}`,
-        ],
+      const organizationRows = await client.query<{
+        id: string;
+        name: string | null;
+      }>(
+        `SELECT id, name
+         FROM organizations
+         WHERE id = $1
+           AND status IS DISTINCT FROM 'defunct'
+         FOR UPDATE`,
+        [org.organization_id],
       );
-    }
+      const currentOrganization = organizationRows.rows[0];
+      if (!currentOrganization) return null;
 
-    for (const admin of oranAdmins) {
-      await executeQuery(
-        `INSERT INTO notification_events
-           (recipient_user_id, event_type, title, body,
-            resource_type, resource_id, action_url, idempotency_key)
-         VALUES ($1, 'system_alert',
-                 'Silent owner organization with active listings',
-                 $2,
-                 'organization', $3, '/ingestion', $4)
-         ON CONFLICT (idempotency_key) DO NOTHING`,
-        [
-          admin.user_id,
-          `${org.organization_name ?? 'An organization'} has ${org.active_service_count} active listing${org.active_service_count === 1 ? '' : 's'} but no recently active host admin. Prioritize outreach before relying on those records for automation.`,
-          org.organization_id,
-          `${idempotencyBase}_oran_${admin.user_id}`,
-        ],
+      const activeServiceRows = await client.query<{ id: string }>(
+        `SELECT id
+         FROM services
+         WHERE organization_id = $1
+           AND status = 'active'
+         ORDER BY id
+         FOR UPDATE`,
+        [currentOrganization.id],
       );
-    }
+      if (activeServiceRows.rows.length === 0) return null;
 
-    const heldServices = await executeQuery<{ id: string }>(
-      `UPDATE services
-       SET integrity_hold_at = NOW(),
-           integrity_hold_reason = $1,
-           integrity_held_by_user_id = 'system',
-           updated_at = NOW()
-       WHERE organization_id = $2
-         AND status = 'active'
-         AND integrity_hold_at IS NULL
-       RETURNING id`,
-      [
-        'silent_owner_continuity',
-        org.organization_id,
-      ],
-    );
-    integrityHoldsApplied += heldServices.length;
+      const lockedHostAdmins = await client.query<{ id: string; user_id: string }>(
+        `SELECT id, user_id
+         FROM organization_members
+         WHERE organization_id = $1
+           AND role = 'host_admin'
+           AND status = 'active'
+         ORDER BY id
+         FOR UPDATE`,
+        [currentOrganization.id],
+      );
+      if (lockedHostAdmins.rows.length === 0) return null;
 
-    await executeQuery(
-      `INSERT INTO notification_events
-         (recipient_user_id, event_type, title, body,
-          resource_type, resource_id, idempotency_key)
-       VALUES ($1, 'system_alert',
-               'Silent owner organization marker',
-               'Organization ' || $2 || ' triggered owner continuity outreach.',
-               'organization', $2, $3)
-       ON CONFLICT (idempotency_key) DO NOTHING`,
-      [org.host_admin_user_ids[0] ?? oranAdmins[0]?.user_id ?? 'system', org.organization_id, `${idempotencyBase}_marker`],
-    );
+      const ownerActivityRows = await client.query<{
+        host_admin_user_ids: string[];
+        all_silent: boolean;
+      }>(
+        `WITH current_host_admin_activity AS (
+           SELECT
+             om.user_id,
+             GREATEST(
+               COALESCE(om.updated_at, om.created_at),
+               COALESCE(up.updated_at, up.created_at),
+               COALESCE(MAX(host_sub.created_at), TIMESTAMPTZ 'epoch')
+             ) AS last_owner_activity
+           FROM organization_members om
+           LEFT JOIN user_profiles up ON up.user_id = om.user_id
+           LEFT JOIN submissions host_sub
+             ON host_sub.submitted_by_user_id = om.user_id
+            AND host_sub.submission_type IN ('service_verification', 'new_service', 'org_claim')
+           WHERE om.organization_id = $1
+             AND om.role = 'host_admin'
+             AND om.status = 'active'
+           GROUP BY om.user_id, om.updated_at, om.created_at, up.updated_at, up.created_at
+         )
+         SELECT
+           COALESCE(ARRAY_AGG(user_id ORDER BY user_id), ARRAY[]::text[]) AS host_admin_user_ids,
+           COUNT(*) > 0
+             AND BOOL_AND(last_owner_activity < NOW() - INTERVAL '30 days') AS all_silent
+         FROM current_host_admin_activity`,
+        [currentOrganization.id],
+      );
+      const ownerActivity = ownerActivityRows.rows[0];
+      if (!ownerActivity?.all_silent) return null;
+      const hostAdminUserIds = ownerActivity.host_admin_user_ids;
+      const lockedHostAdminUserIds = lockedHostAdmins.rows
+        .map((row) => row.user_id)
+        .sort();
+      if (
+        hostAdminUserIds.length !== lockedHostAdminUserIds.length
+        || hostAdminUserIds.some((userId, index) => userId !== lockedHostAdminUserIds[index])
+      ) return null;
 
-    alerted += 1;
+      const oranAdminRows = await client.query<{ user_id: string }>(
+        `SELECT up.user_id
+         FROM user_profiles up
+         JOIN admin_review_profiles profile ON profile.user_id = up.user_id
+         WHERE up.role = 'oran_admin'
+           AND up.account_status = 'active'
+           AND profile.is_active = true
+         ORDER BY profile.pending_count ASC, up.user_id
+         LIMIT 10
+         FOR SHARE OF up`,
+      );
+      const oranAdminUserIds = oranAdminRows.rows.map((row) => row.user_id);
+      const idempotencyBase = `silent_owner_org_${currentOrganization.id}`;
+      const existingMarker = await client.query<{ id: string }>(
+        `SELECT id
+         FROM notification_events
+         WHERE idempotency_key = $1`,
+        [`${idempotencyBase}_marker`],
+      );
+
+      let heldServiceIds: string[] = [];
+      const newlyProcessed = existingMarker.rows.length === 0;
+      if (newlyProcessed) {
+        const heldServices = await client.query<{ id: string }>(
+          `UPDATE services
+           SET integrity_hold_at = NOW(),
+               integrity_hold_reason = $1,
+               integrity_held_by_user_id = 'system',
+               updated_at = NOW()
+           WHERE organization_id = $2
+             AND status = 'active'
+             AND integrity_hold_at IS NULL
+           RETURNING id`,
+          ['silent_owner_continuity', currentOrganization.id],
+        );
+        heldServiceIds = heldServices.rows.map((row) => row.id);
+
+        await client.query(
+          `INSERT INTO notification_events
+             (recipient_user_id, event_type, title, body,
+              resource_type, resource_id, idempotency_key)
+           VALUES ($1, 'system_alert',
+                   'Silent owner organization marker',
+                   'Organization ' || $2 || ' triggered owner continuity outreach.',
+                   'organization', $2, $3)
+          ON CONFLICT (idempotency_key) DO NOTHING`,
+          [
+            hostAdminUserIds[0] ?? oranAdminUserIds[0] ?? 'system',
+            currentOrganization.id,
+            `${idempotencyBase}_marker`,
+          ],
+        );
+      }
+
+      for (const userId of hostAdminUserIds) {
+        await client.query(
+          `INSERT INTO notification_events
+             (recipient_user_id, event_type, title, body,
+              resource_type, resource_id, action_url, idempotency_key)
+           VALUES ($1, 'system_alert',
+                   'Owner continuity check required',
+                   $2,
+                   'organization', $3, '/resource-studio', $4)
+           ON CONFLICT (idempotency_key) DO NOTHING`,
+          [
+            userId,
+            `Your organization still has ${activeServiceRows.rows.length} active listing${activeServiceRows.rows.length === 1 ? '' : 's'}, but ORAN detected no recent host-admin activity. Confirm stewardship or update the listings.`,
+            currentOrganization.id,
+            `${idempotencyBase}_host_${userId}`,
+          ],
+        );
+      }
+
+      for (const adminUserId of oranAdminUserIds) {
+        await client.query(
+          `INSERT INTO notification_events
+             (recipient_user_id, event_type, title, body,
+              resource_type, resource_id, action_url, idempotency_key)
+           VALUES ($1, 'system_alert',
+                   'Silent owner organization with active listings',
+                   $2,
+                   'organization', $3, '/ingestion', $4)
+           ON CONFLICT (idempotency_key) DO NOTHING`,
+          [
+            adminUserId,
+            `${currentOrganization.name ?? 'An organization'} has ${activeServiceRows.rows.length} active listing${activeServiceRows.rows.length === 1 ? '' : 's'} but no recently active host admin. Prioritize outreach before relying on those records for automation.`,
+            currentOrganization.id,
+            `${idempotencyBase}_oran_${adminUserId}`,
+          ],
+        );
+      }
+
+      return {
+        organizationId: currentOrganization.id,
+        organizationName: currentOrganization.name,
+        activeServiceCount: activeServiceRows.rows.length,
+        hostAdminUserIds,
+        oranAdminUserIds,
+        heldServiceIds,
+        idempotencyBase,
+        newlyProcessed,
+      };
+    });
+
+    if (!action) continue;
+
+    integrityHoldsApplied += action.heldServiceIds.length;
+    if (action.newlyProcessed) alerted += 1;
   }
 
   return { alerts: alerted, integrityHoldsApplied };

@@ -15,6 +15,10 @@ const policyMocks = vi.hoisted(() => ({
 }));
 
 const captureExceptionMock = vi.hoisted(() => vi.fn());
+const protectedMutationMocks = vi.hoisted(() => ({
+  acquireFreshnessSensitiveAuthoritativeMutationGates: vi.fn(),
+  findProtectedAuthoritativeEntities: vi.fn(),
+}));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/regression/detector', () => detectorMocks);
@@ -22,6 +26,7 @@ vi.mock('@/services/regression/policy', () => policyMocks);
 vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
 }));
+vi.mock('@/services/publication/protectedAuthoritativeMutation', () => protectedMutationMocks);
 
 function createRequest(
   options: { apiKey?: string; body?: unknown; jsonError?: boolean } = {},
@@ -48,25 +53,25 @@ function createRequest(
  * to know the randomly-generated UUIDs upfront.
  */
 function makeClientForNewRegressions() {
-  return vi
-    .fn()
-    // 1. Dedup check: no existing keys in window
-    .mockResolvedValueOnce({ rows: [] })
-    // 2. Regression batch INSERT: echo back the passed regressionIds as RETURNING rows
-    .mockImplementationOnce(async (_sql: string, params: unknown[]) => ({
-      rows: (params[0] as string[]).map((id) => ({ id })),
-    }))
-    // 3. Submissions batch INSERT
-    .mockResolvedValueOnce({ rows: [] })
-    // 4. Transitions batch INSERT
-    .mockResolvedValueOnce({ rows: [] })
-    // 5. Notifications batch INSERT
-    .mockResolvedValueOnce({ rows: [] });
+  return vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes('FROM services') && sql.includes('FOR UPDATE')) {
+      return { rows: ((params?.[0] ?? []) as string[]).map((id) => ({ id })) };
+    }
+    if (sql.includes('SELECT dedupe_key FROM confidence_regressions')) {
+      return { rows: [] };
+    }
+    if (sql.includes('INSERT INTO confidence_regressions')) {
+      return { rows: ((params?.[0] ?? []) as string[]).map((id) => ({ id })) };
+    }
+    return { rows: [] };
+  });
 }
 
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
+  protectedMutationMocks.acquireFreshnessSensitiveAuthoritativeMutationGates.mockReset();
+  protectedMutationMocks.findProtectedAuthoritativeEntities.mockReset();
   vi.stubEnv('CRON_SECRET', 'cron-secret');
   vi.stubEnv('INTERNAL_API_KEY', 'secret-key');
 
@@ -74,6 +79,8 @@ beforeEach(() => {
   // getPgPool returns a stub pool object; detectRegressions is mocked so pool.query is never called
   dbMocks.getPgPool.mockReturnValue({ query: vi.fn() });
   captureExceptionMock.mockResolvedValue(undefined);
+  protectedMutationMocks.acquireFreshnessSensitiveAuthoritativeMutationGates.mockResolvedValue(undefined);
+  protectedMutationMocks.findProtectedAuthoritativeEntities.mockResolvedValue([]);
 
   // Default: no regressions detected
   detectorMocks.detectRegressions.mockResolvedValue([]);
@@ -240,6 +247,45 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
     );
   });
 
+  it('persists protected regressions for review but never auto-suppresses their service', async () => {
+    const candidate = {
+      serviceId: 'svc-hotline',
+      serviceName: 'National Crisis Line',
+      signalType: 'feedback_severity',
+      currentScore: 90,
+      currentBand: 'HIGH',
+      reasons: ['Approved risk evidence'],
+      recommendedAction: 'suppress',
+      actionReason: 'Human-approved risk evidence',
+      dedupeKey: 'svc-hotline:feedback_severity:12345',
+      notesText: 'Route for authority review.',
+    };
+    detectorMocks.detectRegressions.mockResolvedValue([candidate]);
+    protectedMutationMocks.findProtectedAuthoritativeEntities.mockResolvedValue([{
+      workflow: 'verified_hotline',
+      entityType: 'service',
+      entityId: 'svc-hotline',
+    }]);
+    dbMocks.withTransaction.mockImplementation(
+      async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => (
+        callback({ query: makeClientForNewRegressions() })
+      ),
+    );
+
+    const { POST } = await import('../route');
+    const response = await POST(createRequest({ apiKey: 'secret-key' }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expect.objectContaining({
+      createdCount: 1,
+      suppressedCount: 0,
+    }));
+    expect(policyMocks.applyRegressionVisibilityPolicies).toHaveBeenCalledWith(
+      expect.anything(),
+      [],
+    );
+  });
+
   it('uses a pool (not a transaction client) for detection', async () => {
     const { POST } = await import('../route');
     await POST(createRequest({ apiKey: 'secret-key' }));
@@ -272,8 +318,15 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
       async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
         // dedup check returns the key as already existing
         const queryMock = vi
-          .fn()
-          .mockResolvedValueOnce({ rows: [{ dedupe_key: existingKey }] });
+          .fn(async (sql: string, params?: unknown[]) => {
+            if (sql.includes('FROM services') && sql.includes('FOR UPDATE')) {
+              return { rows: ((params?.[0] ?? []) as string[]).map((id) => ({ id })) };
+            }
+            if (sql.includes('SELECT dedupe_key FROM confidence_regressions')) {
+              return { rows: [{ dedupe_key: existingKey }] };
+            }
+            return { rows: [] };
+          });
         return callback({ query: queryMock });
       },
     );
@@ -305,9 +358,12 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
     dbMocks.withTransaction.mockImplementation(
       async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
         const queryMock = vi
-          .fn()
-          .mockResolvedValueOnce({ rows: [] })  // dedup check: none existing
-          .mockResolvedValueOnce({ rows: [] }); // regression batch INSERT: all conflicted
+          .fn(async (sql: string, params?: unknown[]) => {
+            if (sql.includes('FROM services') && sql.includes('FOR UPDATE')) {
+              return { rows: ((params?.[0] ?? []) as string[]).map((id) => ({ id })) };
+            }
+            return { rows: [] };
+          });
         return callback({ query: queryMock });
       },
     );

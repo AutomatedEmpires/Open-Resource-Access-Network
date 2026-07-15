@@ -137,7 +137,7 @@ describe('llmSuggestionStore', () => {
         llmConfidence: 74,
         suggestionStatus: 'pending',
         sourceEvidenceRefs: ['ev-1'],
-        llmProvider: 'azure',
+        llmProvider: 'unknown',
       }),
     );
 

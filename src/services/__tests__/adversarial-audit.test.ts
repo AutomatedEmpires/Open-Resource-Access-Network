@@ -172,22 +172,17 @@ describe('LB1 — merge authorization', () => {
 
   it('allows merge for oran_admin role', async () => {
     dbMocks.executeQuery.mockResolvedValueOnce([{ role: 'oran_admin' }]);
-    // Transaction: first inner query verifies orgs exist
-    clientQueryMock.mockResolvedValueOnce({
-      rows: [
-        { id: 'org-1', status: 'active' },
-        { id: 'org-2', status: 'active' },
-      ],
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM organizations') && sql.includes('id = ANY')) {
+        return {
+          rows: [
+            { id: 'org-1', status: 'active' },
+            { id: 'org-2', status: 'active' },
+          ],
+        };
+      }
+      return { rows: [], rowCount: 0 };
     });
-    // LB11 snapshot: services, members, submissions (parallel), then insert
-    clientQueryMock.mockResolvedValueOnce({ rows: [] });
-    clientQueryMock.mockResolvedValueOnce({ rows: [] });
-    clientQueryMock.mockResolvedValueOnce({ rows: [] });
-    clientQueryMock.mockResolvedValueOnce({ rowCount: 1 });
-    // Remaining merge operations (services, members, delete members, submissions, confidence, delete confidence, archive, audit)
-    for (let i = 0; i < 8; i++) {
-      clientQueryMock.mockResolvedValueOnce({ rowCount: 0 });
-    }
 
     const result = await mergeOrganizations('org-1', 'org-2', 'oran-admin-user');
     expect(result.success).toBe(true);
@@ -591,24 +586,32 @@ describe('LB11 — merge undo snapshot', () => {
 
   it('org merge records pre-merge snapshot in audit_logs', async () => {
     dbMocks.executeQuery.mockResolvedValueOnce([{ role: 'oran_admin' }]);
-    clientQueryMock
-      // both orgs exist
-      .mockResolvedValueOnce({
-        rows: [
-          { id: 'org-1', status: 'active' },
-          { id: 'org-2', status: 'active' },
-        ],
-      })
-      // snapshot: services, members, submissions
-      .mockResolvedValueOnce({ rows: [{ id: 'svc-a' }] })
-      .mockResolvedValueOnce({ rows: [{ user_id: 'u-1' }] })
-      .mockResolvedValueOnce({ rows: [{ id: 'sub-x' }] })
-      // snapshot insert
-      .mockResolvedValueOnce({ rowCount: 1 });
-    // remaining org merge ops (services, members, delete members, submissions, confidence, delete confidence, archive, audit)
-    for (let i = 0; i < 8; i++) {
-      clientQueryMock.mockResolvedValueOnce({ rowCount: 0 });
-    }
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM organizations') && sql.includes('id = ANY')) {
+        return {
+          rows: [
+            { id: 'org-1', status: 'active' },
+            { id: 'org-2', status: 'active' },
+          ],
+        };
+      }
+      if (sql.includes('FROM public.organizations') && sql.includes('WHERE id = $1')) {
+        return { rows: [{ id: 'org-2', status: 'active' }] };
+      }
+      if (sql.includes('FROM public."services" source_row')) {
+        return { rows: [{ id: 'svc-a', original_value: 'org-2' }] };
+      }
+      if (sql.includes('FROM public."organization_members" source_row')) {
+        return { rows: [{ id: 'member-a', original_value: 'org-2' }] };
+      }
+      if (
+        sql.includes('FROM public."submissions" source_row')
+        && sql.includes('target_type = $2')
+      ) {
+        return { rows: [{ id: 'sub-x', original_value: 'org-2' }] };
+      }
+      return { rows: [], rowCount: 0 };
+    });
 
     const result = await mergeOrganizations('org-1', 'org-2', 'admin-1');
     expect(result.success).toBe(true);
@@ -623,28 +626,66 @@ describe('LB11 — merge undo snapshot', () => {
     expect(snapshotCall).toBeDefined();
     const params = snapshotCall![1] as unknown[];
     const snapshot = JSON.parse(params[3] as string);
-    expect(snapshot.serviceIds).toEqual(['svc-a']);
-    expect(snapshot.memberUserIds).toEqual(['u-1']);
-    expect(snapshot.submissionIds).toEqual(['sub-x']);
+    expect(snapshot.schemaVersion).toBe(2);
+    expect(snapshot.references).toEqual(expect.arrayContaining([
+      {
+        table: 'public.services',
+        column: 'organization_id',
+        rows: [{ id: 'svc-a', originalValue: 'org-2' }],
+      },
+      {
+        table: 'public.organization_members',
+        column: 'organization_id',
+        rows: [{ id: 'member-a', originalValue: 'org-2' }],
+      },
+      {
+        table: 'public.submissions',
+        column: 'target_id',
+        rows: [{ id: 'sub-x', originalValue: 'org-2' }],
+      },
+    ]));
   });
 
   it('service merge records pre-merge snapshot', async () => {
     dbMocks.executeQuery.mockResolvedValueOnce([{ role: 'oran_admin' }]);
-    clientQueryMock
-      .mockResolvedValueOnce({
-        rows: [
-          { id: 'svc-1', status: 'active' },
-          { id: 'svc-2', status: 'active' },
-        ],
-      })
-      // snapshot: locations, phones, submissions
-      .mockResolvedValueOnce({ rows: [{ id: 'loc-1' }] })
-      .mockResolvedValueOnce({ rows: [{ id: 'ph-1' }] })
-      .mockResolvedValueOnce({ rows: [{ id: 'sub-1' }] })
-      .mockResolvedValueOnce({ rowCount: 1 });
-    for (let i = 0; i < 8; i++) {
-      clientQueryMock.mockResolvedValueOnce({ rowCount: 0 });
-    }
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM services') && sql.includes('id = ANY')) {
+        return {
+          rows: [
+            { id: 'svc-1', status: 'active' },
+            { id: 'svc-2', status: 'active' },
+          ],
+        };
+      }
+      if (sql.includes('FROM public.services') && sql.includes('integrity_hold_at')) {
+        return {
+          rows: [{
+            id: 'svc-2',
+            status: 'active',
+            integrity_hold_at: null,
+            integrity_hold_reason: null,
+            integrity_held_by_user_id: null,
+            updated_by_user_id: null,
+          }],
+        };
+      }
+      if (
+        sql.includes('FROM public."service_at_location" source_row')
+        && sql.includes('original_value')
+      ) {
+        return { rows: [{ id: 'loc-1', original_value: 'svc-2' }] };
+      }
+      if (sql.includes('FROM public."phones" source_row')) {
+        return { rows: [{ id: 'ph-1', original_value: 'svc-2' }] };
+      }
+      if (
+        sql.includes('FROM public."submissions" source_row')
+        && sql.includes('source_row."service_id"')
+      ) {
+        return { rows: [{ id: 'sub-1', original_value: 'svc-2' }] };
+      }
+      return { rows: [], rowCount: 0 };
+    });
 
     const result = await mergeServices('svc-1', 'svc-2', 'admin-1');
     expect(result.success).toBe(true);
@@ -658,8 +699,24 @@ describe('LB11 — merge undo snapshot', () => {
     expect(snapshotCall).toBeDefined();
     const params = snapshotCall![1] as unknown[];
     const snapshot = JSON.parse(params[3] as string);
-    expect(snapshot.locationIds).toEqual(['loc-1']);
-    expect(snapshot.phoneIds).toEqual(['ph-1']);
+    expect(snapshot.schemaVersion).toBe(2);
+    expect(snapshot.references).toEqual(expect.arrayContaining([
+      {
+        table: 'public.service_at_location',
+        column: 'service_id',
+        rows: [{ id: 'loc-1', originalValue: 'svc-2' }],
+      },
+      {
+        table: 'public.phones',
+        column: 'service_id',
+        rows: [{ id: 'ph-1', originalValue: 'svc-2' }],
+      },
+      {
+        table: 'public.submissions',
+        column: 'service_id',
+        rows: [{ id: 'sub-1', originalValue: 'svc-2' }],
+      },
+    ]));
   });
 });
 

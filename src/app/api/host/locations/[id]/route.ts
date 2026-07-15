@@ -7,10 +7,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, requireOrgAccess } from '@/services/auth';
 import { createHostPortalSourceAssertion } from '@/services/ingestion/hostPortalIntake';
+import {
+  acquireFreshnessSensitiveAuthoritativeMutationGates,
+  assertAuthoritativeEntitiesMutable,
+  ProtectedAuthoritativeMutationConflict,
+} from '@/services/publication/protectedAuthoritativeMutation';
+import type { PoolClient } from 'pg';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -59,6 +65,71 @@ const UpdateLocationSchema = z.object({
 // ============================================================
 type RouteContext = { params: Promise<{ id: string }> };
 
+async function lockLocationMutationTargets(client: PoolClient, locationId: string) {
+  const preliminaryRows = await client.query<{
+    organization_id: string;
+    service_ids: string[] | null;
+  }>(
+    `SELECT location.organization_id,
+            array_agg(sal.service_id ORDER BY sal.service_id)
+              FILTER (WHERE sal.service_id IS NOT NULL) AS service_ids
+     FROM locations location
+     LEFT JOIN service_at_location sal ON sal.location_id = location.id
+     WHERE location.id = $1
+     GROUP BY location.organization_id`,
+    [locationId],
+  );
+  const preliminary = preliminaryRows.rows[0];
+  if (!preliminary) return null;
+  const serviceIds = preliminary.service_ids ?? [];
+
+  await assertAuthoritativeEntitiesMutable(client, {
+    organizationIds: [preliminary.organization_id],
+    serviceIds,
+  });
+
+  const organizationRows = await client.query<{ id: string }>(
+    `SELECT id
+     FROM organizations
+     WHERE id = $1
+       AND status IS DISTINCT FROM 'defunct'
+     FOR UPDATE`,
+    [preliminary.organization_id],
+  );
+  if (!organizationRows.rows[0]) {
+    throw Object.assign(new Error('state_changed'), { code: 'state_changed' });
+  }
+
+  if (serviceIds.length > 0) {
+    const serviceRows = await client.query<{ id: string }>(
+      `SELECT id
+       FROM services
+       WHERE id = ANY($1::uuid[])
+         AND status IS DISTINCT FROM 'defunct'
+       ORDER BY id
+       FOR UPDATE`,
+      [serviceIds],
+    );
+    if (serviceRows.rows.length !== serviceIds.length) {
+      throw Object.assign(new Error('state_changed'), { code: 'state_changed' });
+    }
+  }
+
+  const locationRows = await client.query<{ id: string; organization_id: string }>(
+    `SELECT id, organization_id
+     FROM locations
+     WHERE id = $1
+     FOR UPDATE`,
+    [locationId],
+  );
+  const location = locationRows.rows[0];
+  if (!location || location.organization_id !== preliminary.organization_id) {
+    throw Object.assign(new Error('state_changed'), { code: 'state_changed' });
+  }
+
+  return { ...location, serviceIds };
+}
+
 // ============================================================
 // HANDLERS
 // ============================================================
@@ -80,11 +151,17 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:loc:read:${ip}`, {
+  const rl = await checkRateLimitShared(`host:locations:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       {
@@ -147,11 +224,17 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:loc:write:${ip}`, {
+  const rl = await checkRateLimitShared(`host:locations:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       {
@@ -187,17 +270,14 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
   try {
     // All updates in a transaction to ensure consistency
     const result = await withTransaction(async (client) => {
-      // Verify location exists and get org for auth check
-      const existsResult = await client.query<{ id: string; organization_id: string }>(
-        'SELECT id, organization_id FROM locations WHERE id = $1',
-        [id],
-      );
-      if (existsResult.rows.length === 0) {
+      await acquireFreshnessSensitiveAuthoritativeMutationGates(client);
+      const lockedTarget = await lockLocationMutationTargets(client, id);
+      if (!lockedTarget) {
         return null; // signal 404
       }
 
       // Verify user has access to this location's org
-      const orgId = existsResult.rows[0].organization_id;
+      const orgId = lockedTarget.organization_id;
       if (auth && !requireOrgAccess(auth, orgId)) {
         return { forbidden: true };
       }
@@ -343,6 +423,15 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof ProtectedAuthoritativeMutationConflict) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (
+      error instanceof Error
+      && (error as NodeJS.ErrnoException & { code?: string }).code === 'state_changed'
+    ) {
+      return NextResponse.json({ error: 'Location changed. Refresh and try again.' }, { status: 409 });
+    }
     await captureException(error, { feature: 'api_host_loc_update' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -359,11 +448,17 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:loc:write:${ip}`, {
+  const rl = await checkRateLimitShared(`host:locations:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       {
@@ -380,22 +475,14 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
   }
 
   try {
-    // Get location to verify org access
-    const locResult = await executeQuery<{ id: string; organization_id: string }>(
-      'SELECT id, organization_id FROM locations WHERE id = $1',
-      [id],
-    );
-
-    if (locResult.length === 0) {
-      return NextResponse.json({ error: 'Location not found' }, { status: 404 });
-    }
-
-    // Verify user has access to this location's org
-    if (auth && !requireOrgAccess(auth, locResult[0].organization_id)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
     const deletionResult = await withTransaction(async (client) => {
+      await acquireFreshnessSensitiveAuthoritativeMutationGates(client);
+      const lockedLocation = await lockLocationMutationTargets(client, id);
+      if (!lockedLocation) return null;
+      if (auth && !requireOrgAccess(auth, lockedLocation.organization_id)) {
+        return { forbidden: true } as const;
+      }
+
       try {
         const softDeleteResult = await client.query<{ id: string }>(
           `UPDATE locations SET status = 'defunct' WHERE id = $1 RETURNING id`,
@@ -413,7 +500,7 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
           recordId: id,
           canonicalSourceUrl: `oran://host-portal/locations/${id}`,
           payload: {
-            organizationId: locResult[0].organization_id,
+            organizationId: lockedLocation.organization_id,
             locationId: id,
             status: 'defunct',
             archiveMode: 'soft_delete',
@@ -442,7 +529,7 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
           recordId: id,
           canonicalSourceUrl: `oran://host-portal/locations/${id}`,
           payload: {
-            organizationId: locResult[0].organization_id,
+            organizationId: lockedLocation.organization_id,
             locationId: id,
             status: 'defunct',
             archiveMode: 'hard_delete',
@@ -456,9 +543,21 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
     if (!deletionResult) {
       return NextResponse.json({ error: 'Location not found' }, { status: 404 });
     }
+    if ('forbidden' in deletionResult) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     return NextResponse.json({ deleted: true, id: deletionResult.id });
   } catch (error) {
+    if (error instanceof ProtectedAuthoritativeMutationConflict) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (
+      error instanceof Error
+      && (error as NodeJS.ErrnoException & { code?: string }).code === 'state_changed'
+    ) {
+      return NextResponse.json({ error: 'Location changed. Refresh and try again.' }, { status: 409 });
+    }
     await captureException(error, { feature: 'api_host_loc_delete' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

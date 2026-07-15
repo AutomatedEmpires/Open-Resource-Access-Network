@@ -177,10 +177,6 @@ describe('admin ingestion candidate action routes', () => {
 
   it('publishes a ready candidate and writes side effects', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
-    const uuidSpy = vi
-      .spyOn(globalThis.crypto, 'randomUUID')
-      .mockReturnValueOnce('event-id')
-      .mockReturnValueOnce('corr-id');
     const { POST } = await loadPublishRoute();
 
     const response = await POST(
@@ -188,7 +184,7 @@ describe('admin ingestion candidate action routes', () => {
       createRouteContext('11111111-1111-4111-8111-111111111111'),
     );
 
-    expect(rateLimitMock).toHaveBeenCalledWith('198.51.100.33', expect.any(Object));
+    expect(rateLimitMock).toHaveBeenCalledWith('admin:ingestion:candidates:publish:write:198.51.100.33', expect.any(Object));
     expect(requireMinRoleMock).toHaveBeenCalledWith({ userId: 'oran-1' }, 'oran_admin');
     expect(livePublishMocks.publishCandidateToLiveService).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -197,25 +193,12 @@ describe('admin ingestion candidate action routes', () => {
         geocode: undefined,
       }),
     );
-    expect(stores.audit.append).toHaveBeenCalledWith(
-      expect.objectContaining({
-        eventId: 'event-id',
-        correlationId: 'corr-id',
-        outputs: {
-          serviceId: 'service-id',
-          organizationId: 'org-id',
-          locationId: 'loc-id',
-        },
-      }),
-    );
-    expect(stores.audit.append).toHaveBeenCalledTimes(1);
+    expect(stores.audit.append).not.toHaveBeenCalled();
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       success: true,
       serviceId: 'service-id',
     });
-
-    uuidSpy.mockRestore();
   });
 
   it('enforces publish route infra/auth/rate-limit/input guards', async () => {

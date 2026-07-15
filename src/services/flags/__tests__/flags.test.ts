@@ -51,7 +51,17 @@ describe('InMemoryFlagService', () => {
     const service = new InMemoryFlagService();
 
     await expect(service.isEnabled(FEATURE_FLAGS.LLM_SUMMARIZE)).resolves.toBe(false);
+    await expect(service.isEnabled(FEATURE_FLAGS.CONTENT_SAFETY_CRISIS)).resolves.toBe(false);
     await expect(service.isEnabled(FEATURE_FLAGS.MAP_ENABLED)).resolves.toBe(true);
+  });
+
+  it('cannot reactivate a retired provider-backed flag from stored state', async () => {
+    const service = new InMemoryFlagService([]);
+
+    await service.setFlag(FEATURE_FLAGS.TTS_SUMMARIES, true, 100);
+
+    expect((await service.getFlag(FEATURE_FLAGS.TTS_SUMMARIES))?.enabled).toBe(false);
+    await expect(service.isEnabled(FEATURE_FLAGS.TTS_SUMMARIES)).resolves.toBe(false);
   });
 
   it('supports deterministic partial rollout only when a subject key is provided', async () => {
@@ -204,8 +214,8 @@ describe('HybridFlagService', () => {
       expect.stringContaining('INSERT INTO feature_flags'),
       [
         FEATURE_FLAGS.LLM_SUMMARIZE,
-        true,
-        25,
+        false,
+        0,
         expect.any(String),
         'admin-1',
       ],
@@ -223,8 +233,8 @@ describe('HybridFlagService', () => {
     );
 
     const fallbackFlag = await fallback.getFlag(FEATURE_FLAGS.LLM_SUMMARIZE);
-    expect(fallbackFlag?.enabled).toBe(true);
-    expect(fallbackFlag?.rolloutPct).toBe(25);
+    expect(fallbackFlag?.enabled).toBe(false);
+    expect(fallbackFlag?.rolloutPct).toBe(0);
     expect(fallbackFlag?.updatedByUserId).toBe('admin-1');
   });
 });

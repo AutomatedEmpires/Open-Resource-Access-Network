@@ -5,6 +5,54 @@ import { SourceResourcePurposeSchema } from './sourcePurpose';
 export const SourceTrustLevelSchema = z.enum(['allowlisted', 'quarantine', 'blocked']);
 export type SourceTrustLevel = z.infer<typeof SourceTrustLevelSchema>;
 
+/**
+ * Publisher/source-system trust is intentionally distinct from crawler
+ * admission. Keep this schema aligned with source_systems_trust_tier_check.
+ */
+export const SourceSystemTrustTierSchema = z.enum([
+  'verified_publisher',
+  'trusted_partner',
+  'curated',
+  'community',
+  'quarantine',
+  'blocked',
+]);
+export type SourceSystemTrustTier = z.infer<typeof SourceSystemTrustTierSchema>;
+
+/** Map publisher trust to the coarser crawler-admission boundary. */
+export function sourceSystemTrustTierToRegistryTrustLevel(
+  trustTier: SourceSystemTrustTier,
+): SourceTrustLevel {
+  switch (trustTier) {
+    case 'verified_publisher':
+    case 'trusted_partner':
+    case 'curated':
+      return 'allowlisted';
+    case 'community':
+    case 'quarantine':
+      return 'quarantine';
+    case 'blocked':
+      return 'blocked';
+  }
+}
+
+/**
+ * Legacy crawler writes use the least-privileged positive publisher tier.
+ * Higher publisher trust can only be granted through the source-system flow.
+ */
+export function registryTrustLevelToSourceSystemTrustTier(
+  trustLevel: SourceTrustLevel,
+): SourceSystemTrustTier {
+  switch (trustLevel) {
+    case 'allowlisted':
+      return 'curated';
+    case 'quarantine':
+      return 'quarantine';
+    case 'blocked':
+      return 'blocked';
+  }
+}
+
 export const DomainRuleSchema = z
   .object({
     type: z.enum(['exact_host', 'suffix']),

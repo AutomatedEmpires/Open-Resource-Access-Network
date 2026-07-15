@@ -21,6 +21,7 @@
 
 import { INTENT_CATEGORIES } from '@/services/chat/types';
 import type { Intent, IntentCategory } from '@/services/chat/types';
+import { isRetiredMicrosoftProviderRuntime } from '@/services/runtime/providerPolicy';
 
 // ============================================================
 // CONSTANTS
@@ -35,6 +36,7 @@ const API_VERSION = '2024-02-15-preview';
 // ============================================================
 
 function getConfig(): { endpoint: string; key: string; deployment: string } | null {
+  if (isRetiredMicrosoftProviderRuntime()) return null;
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const key = process.env.AZURE_OPENAI_KEY;
   const deployment = process.env.AZURE_OPENAI_DEPLOYMENT ?? 'gpt-4o-mini';

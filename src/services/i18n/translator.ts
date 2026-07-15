@@ -17,6 +17,7 @@
  */
 
 import type { LocaleCode } from './i18n';
+import { isRetiredMicrosoftProviderRuntime } from '@/services/runtime/providerPolicy';
 
 // ============================================================
 // TYPES
@@ -53,6 +54,7 @@ const MAX_CACHE_SIZE = 500;
 // ============================================================
 
 function getConfig(): { key: string; endpoint: string; region: string } | null {
+  if (isRetiredMicrosoftProviderRuntime()) return null;
   const key = process.env.AZURE_TRANSLATOR_KEY;
   const endpoint = process.env.AZURE_TRANSLATOR_ENDPOINT;
   const region = process.env.AZURE_TRANSLATOR_REGION;

@@ -9,7 +9,12 @@ const authMocks = vi.hoisted(() => ({ getAuthContext: vi.fn() }));
 const requireMinRoleMock = vi.hoisted(() => vi.fn());
 const rateLimitMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
-const engineMocks = vi.hoisted(() => ({ advance: vi.fn(), acquireLock: vi.fn(), releaseLock: vi.fn() }));
+const engineMocks = vi.hoisted(() => ({
+  advanceInTransaction: vi.fn(),
+  acquireLock: vi.fn(),
+  releaseLock: vi.fn(),
+  sendTerminalStatusEmail: vi.fn(),
+}));
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/auth/session', () => authMocks);
@@ -28,7 +33,7 @@ function createRequest(options: { search?: string; jsonBody?: unknown; jsonError
 }
 
 function createClient() {
-  return { query: vi.fn() };
+  return { query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }) };
 }
 
 async function loadRoute() {
@@ -47,7 +52,8 @@ beforeEach(() => {
   captureExceptionMock.mockResolvedValue(undefined);
   engineMocks.acquireLock.mockResolvedValue(true);
   engineMocks.releaseLock.mockResolvedValue(true);
-  engineMocks.advance.mockResolvedValue({ success: true, fromStatus: 'under_review', toStatus: 'approved', transitionId: 'tr-1', submissionId: 'rep-1', gateResults: [] });
+  engineMocks.sendTerminalStatusEmail.mockResolvedValue(undefined);
+  engineMocks.advanceInTransaction.mockResolvedValue({ success: true, fromStatus: 'under_review', toStatus: 'approved', transitionId: 'tr-1', submissionId: 'rep-1', gateResults: [] });
 });
 
 describe('GET /api/admin/reports', () => {
@@ -83,24 +89,41 @@ describe('GET /api/admin/reports', () => {
 
 describe('POST /api/admin/reports', () => {
   it('returns 404 when the report does not exist', async () => {
-    dbMocks.executeQuery.mockResolvedValueOnce([]);
     const { POST } = await loadRoute();
     const response = await POST(createRequest({ jsonBody: { reportId: '11111111-1111-4111-8111-111111111111', decision: 'approved' } }));
     expect(response.status).toBe(404);
   });
 
   it('applies an integrity hold for approved high-risk reports', async () => {
-    dbMocks.executeQuery
-      .mockResolvedValueOnce([{ status: 'submitted', service_id: 'svc-1', reason: 'suspected_fraud' }])
-      .mockResolvedValueOnce([]);
-    engineMocks.advance
+    engineMocks.advanceInTransaction
       .mockResolvedValueOnce({ success: true, fromStatus: 'submitted', toStatus: 'under_review', transitionId: 'tr-1', submissionId: 'rep-1', gateResults: [] })
       .mockResolvedValueOnce({ success: true, fromStatus: 'under_review', toStatus: 'approved', transitionId: 'tr-2', submissionId: 'rep-1', gateResults: [] });
 
     const client = createClient();
-    client.query
-      .mockResolvedValueOnce({ rows: [{ id: 'svc-1' }] })
-      .mockResolvedValueOnce({ rows: [] });
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM submissions') && sql.includes("submission_type = 'community_report'")) {
+        return {
+          rows: [{
+            status: 'submitted',
+            assigned_to_user_id: null,
+            is_locked: true,
+            locked_by_user_id: 'admin-1',
+            service_id: 'svc-1',
+            reason: 'suspected_fraud',
+          }],
+        };
+      }
+      if (sql.includes('UPDATE submissions') && sql.includes('assigned_to_user_id')) {
+        return { rows: [{ id: '11111111-1111-4111-8111-111111111111' }] };
+      }
+      if (sql.includes('FROM services') && sql.includes('FOR UPDATE')) {
+        return { rows: [{ id: 'svc-1' }] };
+      }
+      if (sql.includes('UPDATE services')) {
+        return { rows: [{ id: 'svc-1' }] };
+      }
+      return { rows: [], rowCount: 0 };
+    });
     dbMocks.withTransaction.mockImplementation(async (fn: (c: typeof client) => unknown) => fn(client));
 
     const { POST } = await loadRoute();
@@ -108,5 +131,83 @@ describe('POST /api/admin/reports', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.integrityHoldApplied).toBe(true);
+    expect(engineMocks.sendTerminalStatusEmail).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      'approved',
+    );
+    expect(dbMocks.withTransaction).toHaveBeenCalledTimes(1);
+    expect(engineMocks.advanceInTransaction).toHaveBeenCalledTimes(2);
+    expect(engineMocks.advanceInTransaction.mock.calls.every(([txClient]) => txClient === client)).toBe(true);
+    const sqlCalls = client.query.mock.calls.map(([sql]) => String(sql));
+    expect(sqlCalls[0]).toContain('pg_advisory_xact_lock_shared');
+    expect(sqlCalls.findIndex((sql) => sql.includes('FROM submissions'))).toBeLessThan(
+      sqlCalls.findIndex((sql) => sql.includes('FROM services') && sql.includes('FOR UPDATE')),
+    );
+    expect(sqlCalls.findIndex((sql) => sql.includes('UPDATE services'))).toBeGreaterThan(
+      sqlCalls.findIndex((sql) => sql.includes('FROM services') && sql.includes('FOR UPDATE')),
+    );
+  });
+
+  it('retains and escalates protected-resource evidence without applying a hold', async () => {
+    engineMocks.advanceInTransaction
+      .mockResolvedValueOnce({ success: true, fromStatus: 'submitted', toStatus: 'under_review', transitionId: 'tr-1', submissionId: 'rep-1', gateResults: [] })
+      .mockResolvedValueOnce({ success: true, fromStatus: 'under_review', toStatus: 'escalated', transitionId: 'tr-2', submissionId: 'rep-1', gateResults: [] });
+    const client = createClient();
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM submissions') && sql.includes("submission_type = 'community_report'")) {
+        return {
+          rows: [{
+            status: 'submitted',
+            assigned_to_user_id: null,
+            is_locked: true,
+            locked_by_user_id: 'admin-1',
+            service_id: 'svc-hotline',
+            reason: 'suspected_fraud',
+          }],
+        };
+      }
+      if (sql.includes('FROM oran_internal.hotline_authority_members')) {
+        return {
+          rows: [{
+            workflow: 'verified_hotline',
+            entity_type: 'service',
+            entity_id: 'svc-hotline',
+          }],
+        };
+      }
+      if (sql.includes('UPDATE submissions') && sql.includes('assigned_to_user_id')) {
+        return { rows: [{ id: '11111111-1111-4111-8111-111111111111' }] };
+      }
+      if (sql.includes('FROM services') && sql.includes('FOR UPDATE')) {
+        return { rows: [{ id: 'svc-hotline' }] };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    dbMocks.withTransaction.mockImplementation(async (fn: (c: typeof client) => unknown) => fn(client));
+
+    const { POST } = await loadRoute();
+    const response = await POST(createRequest({
+      jsonBody: {
+        reportId: '11111111-1111-4111-8111-111111111111',
+        decision: 'approved',
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      decision: 'escalated',
+      requestedDecision: 'approved',
+      integrityHoldApplied: false,
+      authorityReviewRequired: true,
+    }));
+    expect(engineMocks.advanceInTransaction).toHaveBeenLastCalledWith(
+      client,
+      expect.objectContaining({ toStatus: 'escalated' }),
+    );
+    expect(client.query.mock.calls.some(([sql]) => String(sql).includes('UPDATE services'))).toBe(false);
+    expect(engineMocks.sendTerminalStatusEmail).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      'escalated',
+    );
   });
 });

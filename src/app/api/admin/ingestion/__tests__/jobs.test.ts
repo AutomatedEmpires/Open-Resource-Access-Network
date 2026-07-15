@@ -121,7 +121,7 @@ describe('admin ingestion job routes', () => {
       createRequest({ search: '?status=running&limit=25', ip: '198.51.100.8' })
     );
 
-    expect(rateLimitMock).toHaveBeenCalledWith('198.51.100.8', expect.any(Object));
+    expect(rateLimitMock).toHaveBeenCalledWith('admin:ingestion:jobs:read:198.51.100.8', expect.any(Object));
     expect(requireMinRoleMock).toHaveBeenCalledWith({ userId: 'oran-1' }, 'oran_admin');
     expect(jobsStore.listByStatus).toHaveBeenCalledWith('running', 25);
     expect(response.status).toBe(200);

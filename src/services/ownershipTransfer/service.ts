@@ -18,6 +18,10 @@ import crypto from 'node:crypto';
 import { executeQuery, withTransaction } from '@/services/db/postgres';
 import { send as sendNotification } from '@/services/notifications/service';
 import { advance } from '@/services/workflow/engine';
+import {
+  acquireAuthoritativeMutationGatesShared,
+  assertAuthoritativeEntitiesMutable,
+} from '@/services/publication/protectedAuthoritativeMutation';
 import type {
   OwnershipVerificationMethod,
   SubmissionStatus,
@@ -158,29 +162,56 @@ export async function initiateTransfer(
   input: InitiateTransferInput,
 ): Promise<TransferRow> {
   return withTransaction(async (client) => {
-    // 1. Check for active transfer on this service
-    const existing = await client.query<{ id: string }>(
-      `SELECT id FROM ownership_transfers
-       WHERE service_id = $1 AND status IN ('pending', 'verified', 'approved')`,
-      [input.serviceId],
+    await acquireAuthoritativeMutationGatesShared(client);
+    await assertAuthoritativeEntitiesMutable(client, {
+      organizationIds: [input.organizationId],
+      serviceIds: [input.serviceId],
+    });
+
+    // Lock and revalidate both live parents after entering the publication
+    // gate. A stale pre-merge claim must never recreate transfer/submission
+    // children on a retired source identity.
+    const organizationRows = await client.query<{ id: string; status: string | null }>(
+      `SELECT id, status
+       FROM organizations
+       WHERE id = $1
+       FOR UPDATE`,
+      [input.organizationId],
     );
-    if (existing.rows.length > 0) {
-      throw new Error('An active transfer already exists for this service');
+    if (!organizationRows.rows[0]) {
+      throw new Error('Organization not found');
+    }
+    if (organizationRows.rows[0].status === 'defunct') {
+      throw new Error('Cannot transfer a service to a retired organization');
     }
 
-    // 2. Get service snapshot + current admin
     const serviceRows = await client.query<ServiceSnapshot>(
       `SELECT s.id, s.name, s.organization_id, s.url, s.status,
               cs.overall_confidence AS confidence_overall
        FROM services s
        LEFT JOIN confidence_scores cs ON cs.service_id = s.id
-       WHERE s.id = $1`,
+       WHERE s.id = $1
+       FOR UPDATE OF s`,
       [input.serviceId],
     );
     if (serviceRows.rows.length === 0) {
       throw new Error('Service not found');
     }
     const svc = serviceRows.rows[0];
+    if (svc.status !== 'active') {
+      throw new Error('Only an active service can be transferred');
+    }
+
+    // 1. Check for active transfer on this service
+    const existing = await client.query<{ id: string }>(
+      `SELECT id FROM ownership_transfers
+       WHERE service_id = $1 AND status IN ('pending', 'verified', 'approved')
+       FOR UPDATE`,
+      [input.serviceId],
+    );
+    if (existing.rows.length > 0) {
+      throw new Error('An active transfer already exists for this service');
+    }
 
     // Find the admin who currently manages this service
     const adminRows = await client.query<{ assigned_to_user_id: string }>(
@@ -457,26 +488,75 @@ export async function executeTransfer(
   transferId: string,
 ): Promise<{ success: boolean; error?: string }> {
   return withTransaction(async (client) => {
-    const rows = await client.query<TransferRow>(
-      `SELECT * FROM ownership_transfers WHERE id = $1 FOR UPDATE`,
+    await acquireAuthoritativeMutationGatesShared(client);
+    const preliminaryRows = await client.query<TransferRow>(
+      `SELECT * FROM ownership_transfers WHERE id = $1`,
       [transferId],
     );
-    if (rows.rows.length === 0) {
+    if (preliminaryRows.rows.length === 0) {
       return { success: false, error: 'Transfer not found' };
     }
 
-    const transfer = rows.rows[0];
-    if (transfer.status !== 'approved') {
-      return { success: false, error: `Cannot execute transfer in '${transfer.status}' status` };
+    const preliminary = preliminaryRows.rows[0];
+    if (preliminary.status !== 'approved') {
+      return { success: false, error: `Cannot execute transfer in '${preliminary.status}' status` };
+    }
+
+    await assertAuthoritativeEntitiesMutable(client, {
+      organizationIds: [preliminary.organization_id],
+      serviceIds: [preliminary.service_id],
+    });
+
+    // Standard live-entity order is organization -> service. The transfer row
+    // is locked last, then revalidated against the preliminary identity read.
+    const organizationRows = await client.query<{ id: string; status: string | null }>(
+      `SELECT id, status
+       FROM organizations
+       WHERE id = $1
+       FOR UPDATE`,
+      [preliminary.organization_id],
+    );
+    if (!organizationRows.rows[0] || organizationRows.rows[0].status === 'defunct') {
+      return { success: false, error: 'The destination organization is retired or missing' };
+    }
+
+    const serviceRows = await client.query<{ id: string; status: string | null }>(
+      `SELECT id, status
+       FROM services
+       WHERE id = $1
+       FOR UPDATE`,
+      [preliminary.service_id],
+    );
+    if (!serviceRows.rows[0] || serviceRows.rows[0].status !== 'active') {
+      return { success: false, error: 'The service is retired or no longer transferable' };
+    }
+
+    const lockedRows = await client.query<TransferRow>(
+      `SELECT * FROM ownership_transfers WHERE id = $1 FOR UPDATE`,
+      [transferId],
+    );
+    const transfer = lockedRows.rows[0];
+    if (
+      !transfer
+      || transfer.status !== 'approved'
+      || transfer.organization_id !== preliminary.organization_id
+      || transfer.service_id !== preliminary.service_id
+    ) {
+      return { success: false, error: 'The transfer changed before execution' };
     }
 
     // 1. Update service ownership
-    await client.query(
+    const transferred = await client.query<{ id: string }>(
       `UPDATE services
        SET organization_id = $1, updated_at = NOW()
-       WHERE id = $2`,
+       WHERE id = $2
+         AND status = 'active'
+       RETURNING id`,
       [transfer.organization_id, transfer.service_id],
     );
+    if (!transferred.rows[0]) {
+      return { success: false, error: 'The service changed before transfer completion' };
+    }
 
     // 2. Free admin quota
     if (transfer.current_admin_user_id) {

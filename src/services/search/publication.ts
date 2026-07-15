@@ -47,12 +47,19 @@ export function buildLegacyRetailerExclusionPredicate(serviceAlias = 's'): strin
   )`;
 }
 
-function buildCanonicalAuthoritativeServiceIdsQuery(): string {
+/**
+ * Exact positive-authority canonical rows used by seeker publication and
+ * lifecycle monitoring. Keep this as the single canonical-source policy so a
+ * stale or unrelated canonical row cannot suppress freshness review.
+ */
+export function buildCanonicalAuthoritativeServiceRowsQuery(): string {
   const purposes = SEEKER_PUBLISHABLE_RESOURCE_PURPOSES
     .map((purpose) => `'${purpose}'`)
     .join(', ');
 
-  return `SELECT publication_source.published_service_id AS service_id
+  return `SELECT publication_source.published_service_id AS service_id,
+           publication_source.id AS canonical_service_id,
+           publication_source.last_refreshed_at
     FROM public.canonical_services publication_source
     JOIN public.canonical_provenance publication_provenance
       ON publication_provenance.canonical_entity_type = 'service'
@@ -83,13 +90,20 @@ function buildCanonicalAuthoritativeServiceIdsQuery(): string {
       AND publication_system.resource_purpose IN (${purposes})`;
 }
 
+function buildCanonicalAuthoritativeServiceIdsQuery(): string {
+  return `SELECT canonical_authority.service_id
+    FROM (
+      ${buildCanonicalAuthoritativeServiceRowsQuery()}
+    ) canonical_authority`;
+}
+
 function buildApprovedManualAuthoritativeServiceIdsQuery(): string {
   return `SELECT publication_snapshot.entity_id AS service_id
     FROM public.hsds_export_snapshots publication_snapshot
     JOIN public.submissions publication_submission
       ON publication_submission.id::text = (publication_snapshot.hsds_payload #>> '{meta,sourceSubmissionId}')
      AND publication_submission.service_id = publication_snapshot.entity_id
-     AND publication_submission.status = 'approved'
+     AND publication_submission.status IN ('approved', 'archived')
      AND publication_submission.submission_type IN (
        'new_service',
        'service_verification',
@@ -133,6 +147,44 @@ function buildApprovedManualAuthoritativeServiceIdsQuery(): string {
       )`;
 }
 
+function buildTwoPersonCandidateAuthoritativeServiceIdsQuery(): string {
+  const purposes = SEEKER_PUBLISHABLE_RESOURCE_PURPOSES
+    .map((purpose) => `'${purpose}'`)
+    .join(', ');
+
+  return `SELECT candidate_snapshot.entity_id AS service_id
+    FROM public.hsds_export_snapshots candidate_snapshot
+    JOIN public.extracted_candidates published_candidate
+      ON published_candidate.candidate_id = (candidate_snapshot.hsds_payload #>> '{meta,sourceCandidateId}')
+     AND published_candidate.published_service_id = candidate_snapshot.entity_id
+     AND published_candidate.review_status = 'published'
+    JOIN public.source_systems candidate_system
+      ON candidate_system.id::text = (candidate_snapshot.hsds_payload #>> '{meta,sourceSystemId}')
+     AND candidate_system.is_active IS TRUE
+    WHERE candidate_snapshot.entity_type = 'service'
+      AND candidate_snapshot.status = 'current'
+      AND (candidate_snapshot.hsds_payload #>> '{meta,publicationSourceKind}') = 'candidate_two_person_authoritative'
+      AND CASE
+        WHEN jsonb_typeof(candidate_snapshot.hsds_payload #> '{meta,approvalCount}') = 'number'
+          THEN (candidate_snapshot.hsds_payload #>> '{meta,approvalCount}')::integer
+        ELSE 0
+      END >= 2
+      AND candidate_system.trust_tier IN (
+        'verified_publisher',
+        'trusted_partner',
+        'curated',
+        'community'
+      )
+      AND candidate_system.resource_purpose IN (${purposes})
+      AND (
+        SELECT count(DISTINCT candidate_approval.decision_reviewer_user_id)
+        FROM public.candidate_admin_assignments candidate_approval
+        WHERE candidate_approval.candidate_id = published_candidate.candidate_id
+          AND candidate_approval.status = 'completed'
+          AND candidate_approval.outcome = 'verified'
+      ) >= 2`;
+}
+
 /**
  * Requires affirmative publication authority. A live row is not seeker-visible
  * merely because canonical provenance is absent: it must prove either the
@@ -150,6 +202,8 @@ export function buildPublishableSourcePredicate(
     ${buildCanonicalAuthoritativeServiceIdsQuery()}
     UNION
     ${buildApprovedManualAuthoritativeServiceIdsQuery()}
+    UNION
+    ${buildTwoPersonCandidateAuthoritativeServiceIdsQuery()}
   )`;
 }
 

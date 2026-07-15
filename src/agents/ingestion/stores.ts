@@ -181,6 +181,9 @@ export interface CandidateStore {
     jurisdictionCounty?: string;
     jurisdictionCity?: string;
     jurisdictionKind?: string;
+    revisionOfCandidateId?: string;
+    lineageRootCandidateId?: string;
+    revisionNumber?: number;
   }): Promise<void>;
 
   /** Get by ID. */
@@ -192,6 +195,21 @@ export interface CandidateStore {
   /** Find by normalized org+service name (cross-path dedup). */
   findByNormalizedName(orgName: string, serviceName: string): Promise<ExtractedCandidate | null>;
 
+  /** Serialize and lock the current lineage before multi-store materialization. */
+  lockMaterializationTarget(input: {
+    extractKey: string,
+    orgName: string,
+    serviceName: string,
+    canonicalUrl?: string,
+    address?: {
+      line1: string;
+      city: string;
+      region: string;
+      postalCode: string;
+      country: string;
+    },
+  }): Promise<{ candidate: ExtractedCandidate; exactExtractKey: boolean } | null>;
+
   /** Update a candidate. */
   update(candidateId: string, updates: Partial<ExtractedCandidate>): Promise<void>;
 
@@ -201,6 +219,9 @@ export interface CandidateStore {
     status: CandidateReviewStatus,
     byUserId?: string
   ): Promise<void>;
+
+  /** Move a newly materialized pending candidate into controlled admin escalation. */
+  escalateForReview(candidateId: string): Promise<void>;
 
   /** Update confidence score (triggers tier recalc). */
   updateConfidenceScore(candidateId: string, score: number): Promise<void>;
@@ -507,6 +528,9 @@ export interface AdminAssignmentFilters {
 }
 
 export interface AdminAssignmentStore {
+  /** Route a candidate to active reviewers with database-enforced capacity. */
+  routeForReview?(candidateId: string, limit?: number): Promise<void>;
+
   /** Create an assignment. */
   create(assignment: AdminAssignment): Promise<void>;
 
@@ -1175,6 +1199,8 @@ export interface ResolutionDecisionStore {
 // ============================================================
 
 export interface IngestionStores {
+  /** Run one multi-store materialization callback on a single DB transaction. */
+  runAtomically?<T>(callback: (stores: IngestionStores) => Promise<T>): Promise<T>;
   sourceRegistry: SourceRegistryStore;
   jobs: JobStore;
   evidence: EvidenceStore;

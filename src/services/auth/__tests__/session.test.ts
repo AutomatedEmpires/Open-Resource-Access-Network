@@ -41,6 +41,7 @@ describe('Clerk auth session helpers', () => {
     clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_new' });
     dbMocks.isDatabaseConfigured.mockReturnValue(true);
     dbMocks.executeQuery
+      .mockResolvedValueOnce([{ erased: false }])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ exists: true }])
       .mockResolvedValueOnce([]);
@@ -60,6 +61,7 @@ describe('Clerk auth session helpers', () => {
     clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_migrated' });
     dbMocks.isDatabaseConfigured.mockReturnValue(true);
     dbMocks.executeQuery
+      .mockResolvedValueOnce([{ erased: false }])
       .mockResolvedValueOnce([{
         user_id: 'legacy-oran-user',
         role: 'oran_admin',
@@ -75,7 +77,7 @@ describe('Clerk auth session helpers', () => {
       orgIds: [],
       orgRoles: new Map(),
     });
-    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(1);
+    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(2);
   });
 
   it('takes community admin authority from the ORAN profile, not Clerk claims', async () => {
@@ -84,11 +86,13 @@ describe('Clerk auth session helpers', () => {
       sessionClaims: { role: 'oran_admin' },
     });
     dbMocks.isDatabaseConfigured.mockReturnValue(true);
-    dbMocks.executeQuery.mockResolvedValueOnce([{
-      user_id: 'oran-admin-record',
-      role: 'community_admin',
-      account_status: 'active',
-    }]);
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([{ erased: false }])
+      .mockResolvedValueOnce([{
+        user_id: 'oran-admin-record',
+        role: 'community_admin',
+        account_status: 'active',
+      }]);
     const { getAuthContext } = await loadSessionModule();
 
     await expect(getAuthContext()).resolves.toMatchObject({
@@ -103,6 +107,7 @@ describe('Clerk auth session helpers', () => {
     clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_host' });
     dbMocks.isDatabaseConfigured.mockReturnValue(true);
     dbMocks.executeQuery
+      .mockResolvedValueOnce([{ erased: false }])
       .mockResolvedValueOnce([{
         user_id: 'oran-host-record',
         role: 'host_member',
@@ -142,6 +147,7 @@ describe('Clerk auth session helpers', () => {
     clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_host' });
     dbMocks.isDatabaseConfigured.mockReturnValue(true);
     dbMocks.executeQuery
+      .mockResolvedValueOnce([{ erased: false }])
       .mockResolvedValueOnce([{
         user_id: 'oran-host-record',
         role: 'host_member',
@@ -156,11 +162,13 @@ describe('Clerk auth session helpers', () => {
   it('denies a frozen ORAN account even with an active Clerk session', async () => {
     clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_frozen' });
     dbMocks.isDatabaseConfigured.mockReturnValue(true);
-    dbMocks.executeQuery.mockResolvedValueOnce([{
-      user_id: 'oran-frozen-record',
-      role: 'oran_admin',
-      account_status: 'frozen',
-    }]);
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([{ erased: false }])
+      .mockResolvedValueOnce([{
+        user_id: 'oran-frozen-record',
+        role: 'oran_admin',
+        account_status: 'frozen',
+      }]);
     const { getAuthContext } = await loadSessionModule();
 
     await expect(getAuthContext()).resolves.toBeNull();
@@ -177,6 +185,19 @@ describe('Clerk auth session helpers', () => {
       role: 'seeker',
       accountStatus: 'active',
     });
+  });
+
+  it('blocks a queued or completed erasure before profile fallback', async () => {
+    clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_erased' });
+    dbMocks.isDatabaseConfigured.mockReturnValue(true);
+    dbMocks.executeQuery.mockResolvedValueOnce([{ erased: true }]);
+    const { getAuthContext } = await loadSessionModule();
+
+    await expect(getAuthContext()).resolves.toBeNull();
+    expect(dbMocks.executeQuery).toHaveBeenCalledOnce();
+    expect(String(dbMocks.executeQuery.mock.calls[0]?.[0])).toContain(
+      'is_account_erased',
+    );
   });
 
   it('fails closed in production when the authorization database is missing', async () => {

@@ -12,7 +12,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from '@/services/auth/client';
 import {
-  LayoutDashboard, ClipboardList, ShieldCheck, FileText, Globe2, ArrowRight,
+  LayoutDashboard, ClipboardList, ShieldCheck, FileText, Globe2, ArrowRight, FileSearch,
 } from 'lucide-react';
 import { isRoleAtLeast } from '@/services/auth/roles';
 import { AccessDenied } from '@/components/ui/access-denied';
@@ -33,6 +33,7 @@ const NAV_SECTIONS: {
     items: [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'Shift overview and triage priorities.' },
       { href: '/queue', label: 'Queue', icon: ClipboardList, description: 'Claim, route, and resolve reviewer work.' },
+      { href: '/candidate-reviews', label: 'Candidates', icon: FileSearch, description: 'Verify assigned resource candidates independently.' },
       { href: '/verify', label: 'Verify', icon: ShieldCheck, description: 'Open the active verification workspace.' },
       { href: '/community-forms', label: 'Forms', icon: FileText, description: 'Track incoming community form intake.' },
     ],
@@ -51,7 +52,7 @@ export default function CommunityAdminLayoutShell({ children }: { children: Reac
   const { data: session, status } = useSession();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
   const primaryLinks = NAV_SECTIONS.flatMap((section) => section.items).filter((item) => (
-    item.href === '/dashboard' || item.href === '/queue' || item.href === '/verify' || item.href === '/coverage'
+    item.href === '/dashboard' || item.href === '/queue' || item.href === '/candidate-reviews' || item.href === '/verify' || item.href === '/coverage'
   ));
 
   if (status === 'loading') {

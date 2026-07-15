@@ -30,6 +30,7 @@ const submissionExecutionMocks = vi.hoisted(() => ({
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimit: rateLimitMock,
+  checkRateLimitShared: rateLimitMock,
 }));
 vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
@@ -126,11 +127,26 @@ describe('host locations collection route coverage', () => {
     const response = await GET(createRequest({ ip: '203.0.113.10, 10.0.0.1' }));
 
     expect(rateLimitMock).toHaveBeenCalledWith(
-      'host:loc:read:203.0.113.10',
+      'host:locations:read:203.0.113.10',
       expect.any(Object),
     );
     expect(response.status).toBe(429);
     expect(response.headers.get('Retry-After')).toBe('17');
+  });
+
+  it('fails closed when the shared limiter is unavailable', async () => {
+    rateLimitMock.mockReturnValueOnce({
+      backendUnavailable: true,
+      exceeded: true,
+      retryAfterSeconds: 23,
+    });
+    const { GET } = await loadLocationsCollectionRoute();
+
+    const response = await GET(createRequest());
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Retry-After')).toBe('23');
+    expect(dbMocks.executeQuery).not.toHaveBeenCalled();
   });
 
   it('returns empty results for scoped users with no organization memberships', async () => {

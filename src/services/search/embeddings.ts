@@ -24,10 +24,23 @@
  * @module src/services/search/embeddings
  */
 
+import crypto from 'node:crypto';
+
 import { trackAiEvent } from '@/services/telemetry/events';
+import { isRetiredMicrosoftProviderRuntime } from '@/services/runtime/providerPolicy';
 import { buildPublishedServicePredicate } from './publication';
 
 export const EMBEDDING_DIMENSIONS = 1024;
+
+export function computeEmbeddingContentSha256(text: string): string {
+  return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+function resolveEmbeddingModelName(): string {
+  return process.env.EMBEDDINGS_MODEL
+    ?? (isRetiredMicrosoftProviderRuntime() ? undefined : process.env.FOUNDRY_EMBED_DEPLOYMENT)
+    ?? 'unconfigured';
+}
 
 /**
  * Builds the text to embed for a service record.
@@ -67,6 +80,8 @@ async function callEmbeddingsApi(
   text: string,
   inputType: CohereInputType
 ): Promise<number[] | null> {
+  if (isRetiredMicrosoftProviderRuntime()) return null;
+
   const endpoint = process.env.FOUNDRY_ENDPOINT;
   const apiKey = process.env.FOUNDRY_KEY;
   const deployment =
@@ -192,14 +207,52 @@ export async function embedForQuery(text: string): Promise<number[] | null> {
 export async function updateServiceEmbedding(
   serviceId: string,
   embedding: number[],
+  embeddedText: string,
+  sourceUpdatedAt: string,
   executeQuery: (sql: string, params: unknown[]) => Promise<unknown[]>
 ): Promise<void> {
+  if (embedding.length !== EMBEDDING_DIMENSIONS || embedding.some((value) => !Number.isFinite(value))) {
+    throw new Error(`Embedding for service ${serviceId} must contain ${EMBEDDING_DIMENSIONS} finite values`);
+  }
   // pgvector expects the array in the form '[0.1,0.2,...]'
   const vectorLiteral = `[${embedding.join(',')}]`;
-  await executeQuery(
-    `UPDATE services SET embedding = $1::vector WHERE id = $2`,
-    [vectorLiteral, serviceId]
+  const contentSha256 = computeEmbeddingContentSha256(embeddedText);
+  const updated = await executeQuery(
+    `INSERT INTO service_embeddings
+       (service_id, embedding, model, content_sha256, source_updated_at, embedded_at)
+     SELECT service.id, $1::vector, $2, $3, service.updated_at, NOW()
+     FROM services service
+     WHERE service.id = $4
+       AND service.status = 'active'
+       AND service.updated_at = $5::timestamptz
+       AND pg_catalog.encode(
+         pg_catalog.sha256(
+           pg_catalog.convert_to(
+             pg_catalog.left(
+               pg_catalog.concat_ws(
+                 ' ',
+                 pg_catalog.nullif(service.name, ''),
+                 pg_catalog.nullif(service.description, '')
+               ),
+               2048
+             ),
+             'UTF8'
+           )
+         ),
+         'hex'
+       ) = $3
+     ON CONFLICT (service_id) DO UPDATE
+       SET embedding = EXCLUDED.embedding,
+           model = EXCLUDED.model,
+           content_sha256 = EXCLUDED.content_sha256,
+           source_updated_at = EXCLUDED.source_updated_at,
+           embedded_at = EXCLUDED.embedded_at
+     RETURNING service_id AS id`,
+    [vectorLiteral, resolveEmbeddingModelName(), contentSha256, serviceId, sourceUpdatedAt]
   );
+  if (updated.length !== 1) {
+    throw new Error(`Service ${serviceId} is no longer an active or content-matched embedding target`);
+  }
 }
 
 /**
@@ -208,14 +261,35 @@ export async function updateServiceEmbedding(
  */
 export async function getServicesNeedingEmbedding(
   limit: number,
-  executeQuery: (sql: string, params: unknown[]) => Promise<{ id: string; name: string; description: string | null }[]>
-): Promise<{ id: string; name: string; description: string | null }[]> {
+  executeQuery: (sql: string, params: unknown[]) => Promise<{ id: string; name: string; description: string | null; source_updated_at: string }[]>
+): Promise<{ id: string; name: string; description: string | null; source_updated_at: string }[]> {
   return executeQuery(
-    `SELECT s.id, s.name, s.description
+    `SELECT s.id, s.name, s.description, s.updated_at AS source_updated_at
      FROM services s
      JOIN organizations o ON o.id = s.organization_id
-     WHERE s.embedding IS NULL
-       AND ${buildPublishedServicePredicate('s', 'o')}
+     LEFT JOIN service_embeddings service_embedding
+       ON service_embedding.service_id = s.id
+     WHERE ${buildPublishedServicePredicate('s', 'o')}
+       AND (
+         service_embedding.service_id IS NULL
+         OR service_embedding.source_updated_at IS DISTINCT FROM s.updated_at
+         OR service_embedding.content_sha256 IS DISTINCT FROM pg_catalog.encode(
+           pg_catalog.sha256(
+             pg_catalog.convert_to(
+               pg_catalog.left(
+                 pg_catalog.concat_ws(
+                   ' ',
+                   pg_catalog.nullif(s.name, ''),
+                   pg_catalog.nullif(s.description, '')
+                 ),
+                 2048
+               ),
+               'UTF8'
+             )
+           ),
+           'hex'
+         )
+       )
      ORDER BY s.updated_at DESC
      LIMIT $1`,
     [limit]

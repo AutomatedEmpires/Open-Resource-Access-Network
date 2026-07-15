@@ -22,7 +22,10 @@ const resourceSubmissionMocks = vi.hoisted(() => ({
 vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/auth/guards', () => guardMocks);
 vi.mock('@/services/db/postgres', () => dbMocks);
-vi.mock('@/services/security/rateLimit', () => ({ checkRateLimit: rateLimitMock }));
+vi.mock('@/services/security/rateLimit', () => ({
+  checkRateLimit: rateLimitMock,
+  checkRateLimitShared: rateLimitMock,
+}));
 vi.mock('@/services/telemetry/sentry', () => ({ captureException: captureExceptionMock }));
 vi.mock('@/services/resourceSubmissions/service', () => resourceSubmissionMocks);
 
@@ -64,6 +67,21 @@ beforeEach(() => {
 });
 
 describe('resource submissions collection route', () => {
+  it('fails closed before reading submissions when the shared limiter is unavailable', async () => {
+    rateLimitMock.mockReturnValueOnce({
+      backendUnavailable: true,
+      exceeded: true,
+      retryAfterSeconds: 18,
+    });
+    const { GET } = await loadCollectionRoute();
+
+    const response = await GET(createRequest());
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Retry-After')).toBe('18');
+    expect(resourceSubmissionMocks.listAccessibleResourceSubmissions).not.toHaveBeenCalled();
+  });
+
   it('returns persisted review metadata when listing submissions', async () => {
     authMocks.getAuthContext.mockResolvedValue({
       userId: 'host-1',

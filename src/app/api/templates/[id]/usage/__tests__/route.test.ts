@@ -7,7 +7,10 @@ const templatesMocks = vi.hoisted(() => ({ recordTemplateUsage: vi.fn() }));
 
 vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/auth/guards', () => guardMocks);
-vi.mock('@/services/security/rateLimit', () => ({ checkRateLimit: rateLimitMock }));
+vi.mock('@/services/security/rateLimit', () => ({
+  checkRateLimit: rateLimitMock,
+  checkRateLimitShared: rateLimitMock,
+}));
 vi.mock('@/services/templates/templates', () => templatesMocks);
 
 function createContext(id = 'template-1') {
@@ -82,5 +85,20 @@ describe('POST /api/templates/[id]/usage', () => {
 
     expect(res.status).toBe(429);
     expect(res.headers.get('Retry-After')).toBe('60');
+  });
+
+  it('fails closed when the shared limiter is unavailable', async () => {
+    rateLimitMock.mockReturnValueOnce({
+      backendUnavailable: true,
+      exceeded: true,
+      retryAfterSeconds: 24,
+    });
+    const { POST } = await import('../route');
+
+    const res = await POST(createRequest({ action: 'view' }), createContext());
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Retry-After')).toBe('24');
+    expect(templatesMocks.recordTemplateUsage).not.toHaveBeenCalled();
   });
 });

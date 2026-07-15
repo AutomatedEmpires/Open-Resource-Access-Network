@@ -18,6 +18,9 @@
  * @module functions/verifyCandidate
  */
 
+import { isRetiredMicrosoftProviderRuntime } from '@/services/runtime/providerPolicy';
+import { assertLegacyAzureFunctionsArchived } from '../archiveBoundary';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -87,6 +90,8 @@ async function runPhi4DiscrepancyCheck(
   },
   livePageText: string
 ): Promise<number> {
+  if (isRetiredMicrosoftProviderRuntime()) return 0;
+
   const { AzureOpenAI } = await import('openai');
 
   const endpoint = process.env.FOUNDRY_ENDPOINT;
@@ -163,6 +168,9 @@ async function runPhi4DiscrepancyCheck(
 export async function verifyCandidate(
   message: VerifyQueueMessage
 ): Promise<RouteQueueMessage | null> {
+  assertLegacyAzureFunctionsArchived();
+  if (isRetiredMicrosoftProviderRuntime()) return null;
+
   const { getDrizzle } = await import('@/services/db/drizzle');
   const { createIngestionStores } = await import(
     '@/agents/ingestion/persistence/storeFactory'

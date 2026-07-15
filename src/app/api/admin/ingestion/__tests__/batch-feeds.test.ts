@@ -124,7 +124,7 @@ describe('admin ingestion batch and feeds routes', () => {
       }),
     );
 
-    expect(rateLimitMock).toHaveBeenCalledWith('203.0.113.10', expect.any(Object));
+    expect(rateLimitMock).toHaveBeenCalledWith('admin:ingestion:batch:write:203.0.113.10', expect.any(Object));
     expect(requireMinRoleMock).toHaveBeenCalledWith({ userId: 'oran-1' }, 'oran_admin');
     expect(runBatchMock).toHaveBeenCalledWith(
       ['https://example.org/a', 'https://example.org/b'],

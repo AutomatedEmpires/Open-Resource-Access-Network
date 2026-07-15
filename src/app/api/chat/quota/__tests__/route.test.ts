@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const cookiesMock = vi.hoisted(() => vi.fn());
 const getAuthContextMock = vi.hoisted(() => vi.fn());
 const checkQuotaByIdentityMock = vi.hoisted(() => vi.fn());
-const checkRateLimitMock = vi.hoisted(() => vi.fn());
+const checkRateLimitSharedMock = vi.hoisted(() => vi.fn());
 const getIpMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/headers', () => ({ cookies: cookiesMock }));
@@ -11,7 +11,9 @@ vi.mock('@/services/auth/session', () => ({ getAuthContext: getAuthContextMock }
 vi.mock('@/services/chat/quota', () => ({
   checkQuotaByIdentity: checkQuotaByIdentityMock,
 }));
-vi.mock('@/services/security/rateLimit', () => ({ checkRateLimit: checkRateLimitMock }));
+vi.mock('@/services/security/rateLimit', () => ({
+  checkRateLimitShared: checkRateLimitSharedMock,
+}));
 vi.mock('@/services/security/ip', () => ({ getIp: getIpMock }));
 
 async function loadRoute() {
@@ -23,7 +25,8 @@ describe('api/chat/quota route', () => {
     vi.resetModules();
     vi.clearAllMocks();
     getIpMock.mockReturnValue('203.0.113.10');
-    checkRateLimitMock.mockReturnValue({
+    checkRateLimitSharedMock.mockResolvedValue({
+      backendUnavailable: false,
       exceeded: false,
       retryAfterSeconds: 60,
     });
@@ -67,12 +70,29 @@ describe('api/chat/quota route', () => {
   });
 
   it('rate-limits abusive quota polling', async () => {
-    checkRateLimitMock.mockReturnValue({ exceeded: true, retryAfterSeconds: 30 });
+    checkRateLimitSharedMock.mockResolvedValue({
+      backendUnavailable: false,
+      exceeded: true,
+      retryAfterSeconds: 30,
+    });
     const { GET } = await loadRoute();
     const response = await GET({} as never);
 
     expect(response.status).toBe(429);
     expect(response.headers.get('Retry-After')).toBe('30');
+  });
+
+  it('fails closed when the shared limiter is unavailable', async () => {
+    checkRateLimitSharedMock.mockResolvedValue({
+      backendUnavailable: true,
+      exceeded: false,
+      retryAfterSeconds: 12,
+    });
+    const { GET } = await loadRoute();
+    const response = await GET({} as never);
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Retry-After')).toBe('12');
   });
 
   it('rejects POST', async () => {

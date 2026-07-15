@@ -34,6 +34,7 @@
 // ---------------------------------------------------------------------------
 
 import { trackAiEvent } from '@/services/telemetry/events';
+import { isRetiredMicrosoftProviderRuntime } from '@/services/runtime/providerPolicy';
 
 export const CRISIS_DISTRESS_SIGNALS: readonly string[] = [
   // Hopelessness / no future
@@ -149,6 +150,8 @@ export function hasDistressSignals(message: string): boolean {
  *   }
  */
 export async function checkCrisisContentSafety(message: string): Promise<boolean> {
+  if (isRetiredMicrosoftProviderRuntime()) return false;
+
   const endpoint = process.env.AZURE_CONTENT_SAFETY_ENDPOINT?.trim();
   const key = process.env.AZURE_CONTENT_SAFETY_KEY?.trim();
 

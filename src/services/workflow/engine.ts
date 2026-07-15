@@ -25,6 +25,13 @@ import type {
   SubmissionType,
   GateCheckResult,
 } from '@/domain/types';
+import {
+  decisionForResourceFreshnessOutcome,
+  resourceFreshnessOutcomeError,
+  resourceFreshnessReviewPacketSchema,
+  resourceFreshnessReviewSchema,
+  resourceFreshnessReviewTimingError,
+} from '@/domain/resourceFreshnessReview';
 import type { PoolClient } from 'pg';
 
 // ============================================================
@@ -76,6 +83,16 @@ interface SubmissionRow {
   submitted_by_user_id: string;
   target_type: string;
   target_id: string | null;
+  payload?: unknown;
+  has_open_freshness_finding?: boolean;
+}
+
+interface AdvanceProjectionHooks {
+  /**
+   * A control-change approval is not a valid terminal state until its exact
+   * reviewed target mutation has succeeded in this same transaction.
+   */
+  applyIngestionControlChange?: () => Promise<void>;
 }
 
 interface SlaRow {
@@ -203,6 +220,38 @@ function checkTransitionGate(
 }
 
 /**
+ * Human review decisions are valid only for the reviewer who currently owns
+ * both the assignment and the active row lock. This gate is intentionally not
+ * part of skipGates: an expired, released, or second-approver handoff cannot be
+ * decided from a stale browser tab, including by an ORAN admin.
+ */
+function checkReviewOwnershipGate(
+  submission: SubmissionRow,
+  actorUserId: string,
+): GateCheckResult {
+  const gate = 'review_ownership';
+  if (!['under_review', 'pending_second_approval'].includes(submission.status)) {
+    return { gate, passed: true, message: 'Submission is not in a reviewer-owned lane' };
+  }
+
+  if (submission.assigned_to_user_id !== actorUserId) {
+    return {
+      gate,
+      passed: false,
+      message: 'Submission is not assigned to the acting reviewer',
+    };
+  }
+  if (!submission.is_locked || submission.locked_by_user_id !== actorUserId) {
+    return {
+      gate,
+      passed: false,
+      message: 'Acting reviewer does not hold the active submission lock',
+    };
+  }
+  return { gate, passed: true, message: 'Acting reviewer owns assignment and lock' };
+}
+
+/**
  * Automated actors may collect signals and route work, but they may never
  * issue a human approval. This gate is deliberately not skippable.
  */
@@ -227,6 +276,150 @@ function checkHumanApprovalGate(
   return { gate, passed: true, message: 'Approval actor is human' };
 }
 
+function checkIngestionControlProjectionGate(
+  submission: SubmissionRow,
+  toStatus: SubmissionStatus,
+  hooks: AdvanceProjectionHooks | undefined,
+): GateCheckResult {
+  const gate = 'ingestion_control_projection';
+  if (submission.submission_type !== 'ingestion_control_change' || toStatus !== 'approved') {
+    return { gate, passed: true, message: 'Not an ingestion control approval' };
+  }
+  if (!hooks?.applyIngestionControlChange) {
+    return {
+      gate,
+      passed: false,
+      message: 'Ingestion control approval requires its reviewed target mutation in the same transaction',
+    };
+  }
+  return { gate, passed: true, message: 'Atomic ingestion control projection is bound' };
+}
+
+/**
+ * Escalated work has left the community-review lane. Only an ORAN admin may
+ * move it again, including taking it back under review. This authority check
+ * is deliberately enforced in the workflow engine so direct and bulk callers
+ * cannot bypass the escalation boundary.
+ */
+function checkEscalationAuthorityGate(
+  fromStatus: SubmissionStatus,
+  actorRole: string,
+): GateCheckResult {
+  const gate = 'escalation_authority';
+
+  if (fromStatus !== 'escalated') {
+    return { gate, passed: true, message: 'Submission is not escalated' };
+  }
+
+  if (actorRole.trim().toLowerCase() === 'oran_admin') {
+    return { gate, passed: true, message: 'ORAN admin may act on escalated work' };
+  }
+
+  return {
+    gate,
+    passed: false,
+    message: 'Only an ORAN admin may transition an escalated submission',
+  };
+}
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+/**
+ * Scanner-created lifecycle work can be routed and claimed normally, but a
+ * decision must carry the exact structured evidence packet. The open-finding
+ * flag is authoritative even if a malformed write removed the payload key.
+ */
+function checkResourceFreshnessEvidenceGate(
+  submission: SubmissionRow,
+  fromStatus: SubmissionStatus,
+  toStatus: SubmissionStatus,
+  actorUserId: string,
+  metadata: Record<string, unknown> | undefined,
+): GateCheckResult {
+  const gate = 'resource_freshness_evidence';
+  const payload = asObject(submission.payload);
+  const hasPacketKey = payload !== null
+    && Object.prototype.hasOwnProperty.call(payload, 'resourceFreshness');
+  if (!hasPacketKey && !submission.has_open_freshness_finding) {
+    return { gate, passed: true, message: 'Not resource freshness work' };
+  }
+
+  // Queue routing and claims are not lifecycle decisions.
+  if (toStatus === 'needs_review' || toStatus === 'under_review') {
+    return { gate, passed: true, message: 'Freshness work is being routed for review' };
+  }
+  if (
+    toStatus === 'archived'
+    && (fromStatus === 'approved' || fromStatus === 'denied')
+  ) {
+    return { gate, passed: true, message: 'Completed freshness work may be archived' };
+  }
+  if (
+    toStatus === 'escalated'
+    && metadata?.resourceFreshnessEscalationRelease === true
+  ) {
+    return { gate, passed: true, message: 'Escalated freshness work is being released' };
+  }
+
+  const packet = resourceFreshnessReviewPacketSchema.safeParse(payload?.resourceFreshness);
+  if (fromStatus === 'under_review' && toStatus === 'pending_second_approval') {
+    const firstReviewRecord = asObject(metadata?.resourceFreshnessFirstReview);
+    const firstReview = resourceFreshnessReviewSchema.safeParse(firstReviewRecord?.review);
+    if (
+      packet.success
+      && firstReview.success
+      && firstReview.data.outcome === 'confirmed_unavailable'
+      && firstReviewRecord?.reviewerUserId === actorUserId
+      && metadata?.resourceFreshnessFindingId === packet.data.findingId
+      && !resourceFreshnessReviewTimingError(firstReview.data.checkedAt)
+      && !resourceFreshnessOutcomeError(packet.data, firstReview.data)
+    ) {
+      return {
+        gate,
+        passed: true,
+        message: 'First destructive freshness review validated for independent approval',
+      };
+    }
+    return {
+      gate,
+      passed: false,
+      message: 'A valid first destructive freshness review is required',
+    };
+  }
+
+  const review = resourceFreshnessReviewSchema.safeParse(metadata?.resourceFreshnessReview);
+  if (!packet.success || !review.success) {
+    return {
+      gate,
+      passed: false,
+      message: 'Structured freshness evidence is required for this transition',
+    };
+  }
+  if (
+    metadata?.resourceFreshnessFindingId !== packet.data.findingId
+    || resourceFreshnessReviewTimingError(review.data.checkedAt)
+    || resourceFreshnessOutcomeError(packet.data, review.data)
+    || decisionForResourceFreshnessOutcome(review.data.outcome) !== toStatus
+    || (
+      fromStatus === 'pending_second_approval'
+      && review.data.outcome === 'confirmed_unavailable'
+      && asObject(payload?.resourceFreshnessFirstReview)?.reviewerUserId === actorUserId
+    )
+  ) {
+    return {
+      gate,
+      passed: false,
+      message: 'Structured freshness evidence does not authorize this transition',
+    };
+  }
+
+  return { gate, passed: true, message: 'Structured freshness evidence validated' };
+}
+
 // ============================================================
 // CORE ENGINE
 // ============================================================
@@ -236,12 +429,35 @@ function checkHumanApprovalGate(
  * This is the single entry point for all workflow state changes.
  */
 export async function advance(req: AdvanceRequest): Promise<AdvanceResult> {
-  return withTransaction(async (client) => {
+  const result = await withTransaction((client) => advanceInTransaction(client, req));
+  if (result.success) {
+    await sendTerminalStatusEmail(result.submissionId, result.toStatus);
+  }
+  return result;
+}
+
+/**
+ * Advance a submission using an existing database transaction. Routes that
+ * project an approved decision into live resource state use this entry point
+ * so evidence, workflow audit, projections, and publication reconciliation
+ * either commit together or all roll back.
+ */
+export async function advanceInTransaction(
+  client: PoolClient,
+  req: AdvanceRequest,
+  hooks?: AdvanceProjectionHooks,
+): Promise<AdvanceResult> {
     // 1. Lock and fetch the submission row
     const rows = await client.query<SubmissionRow>(
       `SELECT id, submission_type, status, is_locked, locked_by_user_id,
               assigned_to_user_id, service_id, submitted_by_user_id,
-              target_type, target_id
+              target_type, target_id, payload,
+              EXISTS (
+                SELECT 1
+                FROM oran_internal.resource_freshness_findings finding
+                WHERE finding.submission_id = submissions.id
+                  AND finding.status = 'open'
+              ) AS has_open_freshness_finding
        FROM submissions
        WHERE id = $1
        FOR UPDATE`,
@@ -279,6 +495,26 @@ export async function advance(req: AdvanceRequest): Promise<AdvanceResult> {
 
     // System/automated approval is never permitted and cannot be skipped.
     gateResults.push(checkHumanApprovalGate(req.toStatus, req.actorRole));
+
+    // Generic workflow callers cannot approve a control change without also
+    // applying the exact reviewed mutation before this transaction commits.
+    gateResults.push(checkIngestionControlProjectionGate(submission, req.toStatus, hooks));
+
+    // Escalated work is ORAN-admin-only and this authority gate cannot be skipped.
+    gateResults.push(checkEscalationAuthorityGate(fromStatus, req.actorRole));
+
+    // Structured freshness decisions are evidence-bound and cannot be skipped.
+    gateResults.push(checkResourceFreshnessEvidenceGate(
+      submission,
+      fromStatus,
+      req.toStatus,
+      req.actorUserId,
+      req.metadata,
+    ));
+
+    // Reviewer ownership is never skippable. System repair paths use their
+    // dedicated SQL operations and do not masquerade as a human decision.
+    gateResults.push(checkReviewOwnershipGate(submission, req.actorUserId));
 
     // Check lock (skippable)
     if (!skipOpts.lockCheck) {
@@ -328,7 +564,16 @@ export async function advance(req: AdvanceRequest): Promise<AdvanceResult> {
       };
     }
 
-    // 3. Update submission status
+    // 3. Apply a bound high-risk projection before recording approval. Any
+    // projection error aborts the transaction, including the workflow audit.
+    if (
+      submission.submission_type === 'ingestion_control_change'
+      && req.toStatus === 'approved'
+    ) {
+      await hooks?.applyIngestionControlChange?.();
+    }
+
+    // 4. Update submission status
     const now = new Date().toISOString();
     const statusFields = buildStatusTimestamps(req.toStatus, now);
 
@@ -341,7 +586,9 @@ export async function advance(req: AdvanceRequest): Promise<AdvanceResult> {
       [req.toStatus, ...statusFields.params, now, req.submissionId],
     );
 
-    // 4. Release lock if transitioning to a terminal state
+    // 5. Release locks when work leaves the current reviewer. Returned work,
+    // queue releases, escalations, and second-approval handoffs are not
+    // terminal, but must be claimable by the next authorized human.
     if (isTerminalStatus(req.toStatus)) {
       await client.query(
         `UPDATE submissions
@@ -349,9 +596,26 @@ export async function advance(req: AdvanceRequest): Promise<AdvanceResult> {
          WHERE id = $1`,
         [req.submissionId],
       );
+    } else if (
+      req.toStatus === 'returned'
+      || req.toStatus === 'pending_second_approval'
+      || (
+        fromStatus === 'under_review'
+        && (req.toStatus === 'needs_review' || req.toStatus === 'escalated')
+      )
+    ) {
+      await client.query(
+        `UPDATE submissions
+         SET is_locked = false,
+             locked_at = NULL,
+             locked_by_user_id = NULL,
+             assigned_to_user_id = NULL
+         WHERE id = $1`,
+        [req.submissionId],
+      );
     }
 
-    // 5. Record the successful transition
+    // 6. Record the successful transition
     const transition = await client.query<{ id: string }>(
       `INSERT INTO submission_transitions
          (submission_id, from_status, to_status, actor_user_id, actor_role,
@@ -370,7 +634,7 @@ export async function advance(req: AdvanceRequest): Promise<AdvanceResult> {
       ],
     );
 
-    // 6. Fire notification for status change
+    // 7. Fire notification for status change
     await fireStatusChangeNotification(
       client,
       req.submissionId,
@@ -380,15 +644,14 @@ export async function advance(req: AdvanceRequest): Promise<AdvanceResult> {
       req.actorUserId,
     );
 
-    return {
-      success: true,
-      submissionId: req.submissionId,
-      fromStatus,
-      toStatus: req.toStatus,
-      transitionId: transition.rows[0]?.id ?? '',
-      gateResults,
-    };
-  });
+  return {
+    success: true,
+    submissionId: req.submissionId,
+    fromStatus,
+    toStatus: req.toStatus,
+    transitionId: transition.rows[0]?.id ?? '',
+    gateResults,
+  };
 }
 
 // ============================================================
@@ -448,11 +711,57 @@ export async function expireStaleLocks(
   timeoutMinutes: number = LOCK_TIMEOUT_MINUTES,
 ): Promise<number> {
   const result = await executeQuery<{ id: string }>(
-    `UPDATE submissions
-     SET is_locked = false, locked_at = NULL, locked_by_user_id = NULL, updated_at = NOW()
-     WHERE is_locked = true
-       AND locked_at < NOW() - INTERVAL '1 minute' * $1
-     RETURNING id`,
+    `WITH expired AS (
+       SELECT sub.id,
+              sub.status AS from_status,
+              sub.locked_by_user_id,
+              CASE
+                WHEN sub.status = 'under_review' THEN
+                  CASE WHEN review_origin.from_status = 'escalated' THEN 'escalated' ELSE 'needs_review' END
+                ELSE sub.status
+              END AS to_status
+       FROM submissions sub
+       LEFT JOIN LATERAL (
+         SELECT transition.from_status
+         FROM submission_transitions transition
+         WHERE transition.submission_id = sub.id
+           AND transition.to_status = 'under_review'
+           AND transition.gates_passed = true
+         ORDER BY transition.created_at DESC, transition.id DESC
+         LIMIT 1
+       ) review_origin ON true
+       WHERE sub.is_locked = true
+         AND sub.locked_at < NOW() - INTERVAL '1 minute' * $1
+       FOR UPDATE OF sub
+     ), unlocked AS (
+       UPDATE submissions sub
+       SET status = expired.to_status,
+           is_locked = false,
+           locked_at = NULL,
+           locked_by_user_id = NULL,
+           assigned_to_user_id = NULL,
+           updated_at = NOW()
+       FROM expired
+       WHERE sub.id = expired.id
+       RETURNING sub.id, expired.from_status, expired.to_status, expired.locked_by_user_id
+     ), audit AS (
+       INSERT INTO submission_transitions
+         (submission_id, from_status, to_status, actor_user_id, actor_role,
+          reason, gates_checked, gates_passed, metadata)
+       SELECT unlocked.id,
+              unlocked.from_status,
+              unlocked.to_status,
+              'system:lock-expiry',
+              'system',
+              'Review lock expired and work was returned to a claimable queue',
+              '[{"gate":"stale_lock_expiry","passed":true}]'::jsonb,
+              true,
+              jsonb_build_object('priorLockedByUserId', unlocked.locked_by_user_id)
+       FROM unlocked
+       WHERE unlocked.from_status IS DISTINCT FROM unlocked.to_status
+       RETURNING submission_id
+     )
+     SELECT id FROM unlocked`,
     [timeoutMinutes],
   );
   return result.length;
@@ -473,20 +782,30 @@ export async function assignSubmission(
 ): Promise<boolean> {
   return withTransaction(async (client) => {
     // LB8: Enforce admin capacity limits before assigning
-    const capacityRows = await client.query<{ pending_count: string; max_capacity: string }>(
+    const capacityRows = await client.query<{
+      pending_count: string;
+      max_pending: string;
+      is_active: boolean;
+      is_accepting_new: boolean;
+    }>(
       `SELECT
          COALESCE(p.pending_count, 0)::text AS pending_count,
-         COALESCE(p.max_capacity, 50)::text AS max_capacity
+         COALESCE(p.max_pending, 50)::text AS max_pending,
+         p.is_active,
+         p.is_accepting_new
        FROM admin_review_profiles p
-       WHERE p.user_id = $1`,
+       WHERE p.user_id = $1
+       FOR UPDATE`,
       [assigneeUserId],
     );
-    if (capacityRows.rows.length > 0) {
-      const pending = parseInt(capacityRows.rows[0].pending_count, 10);
-      const maxCap = parseInt(capacityRows.rows[0].max_capacity, 10);
-      if (pending >= maxCap) {
-        throw new Error(`Assignee has reached capacity (${pending}/${maxCap})`);
-      }
+    const capacity = capacityRows.rows[0];
+    if (!capacity || !capacity.is_active || !capacity.is_accepting_new) {
+      throw new Error('Assignee is not active and accepting new review work');
+    }
+    const pending = parseInt(capacity.pending_count, 10);
+    const maxCap = parseInt(capacity.max_pending, 10);
+    if (pending >= maxCap) {
+      throw new Error(`Assignee has reached capacity (${pending}/${maxCap})`);
     }
 
     const result = await client.query<{ id: string }>(
@@ -829,28 +1148,44 @@ async function fireStatusChangeNotification(
       [submissionId, actorUserId],
     );
   }
+}
 
-  // For terminal statuses, email the contact_email from payload (if present).
-  // This handles anonymous reporters who provided an email for follow-up.
-  if (isTerminalStatus(toStatus) && isEmailConfigured()) {
-    const payloadRows = await client.query<{ payload: string | null; title: string | null }>(
+/**
+ * Deliver the optional anonymous-submitter email only after the caller's
+ * transaction has committed. Database notification events stay transactional;
+ * this external side effect is intentionally best-effort and never makes a
+ * committed workflow decision appear to have failed.
+ */
+export async function sendTerminalStatusEmail(
+  submissionId: string,
+  toStatus: SubmissionStatus,
+): Promise<void> {
+  if (!isTerminalStatus(toStatus) || !isEmailConfigured()) return;
+
+  try {
+    const payloadRows = await executeQuery<{
+      payload: unknown;
+      title: string | null;
+    }>(
       `SELECT payload, title FROM submissions WHERE id = $1`,
       [submissionId],
     );
-    const payload = payloadRows.rows[0]?.payload;
-    if (payload) {
-      try {
-        const parsed = JSON.parse(payload);
-        const contactEmail = parsed?.contact_email;
-        if (contactEmail && typeof contactEmail === 'string') {
-          const subjectTitle = payloadRows.rows[0]?.title ?? 'Your submission';
-          await sendEmail({
-            to: contactEmail,
-            subject: `Update: ${subjectTitle} — ${toStatus}`,
-            text: `Your submission has been updated to "${toStatus}". Thank you for your report.`,
-          }).catch(() => { /* best-effort */ });
-        }
-      } catch { /* malformed payload — skip */ }
-    }
+    const rawPayload = payloadRows[0]?.payload;
+    const payload = typeof rawPayload === 'string'
+      ? JSON.parse(rawPayload) as unknown
+      : rawPayload;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
+
+    const contactEmail = (payload as Record<string, unknown>).contact_email;
+    if (typeof contactEmail !== 'string' || contactEmail.trim().length === 0) return;
+
+    const subjectTitle = payloadRows[0]?.title ?? 'Your submission';
+    await sendEmail({
+      to: contactEmail,
+      subject: `Update: ${subjectTitle} — ${toStatus}`,
+      text: `Your submission has been updated to "${toStatus}". Thank you for your report.`,
+    }).catch(() => { /* best-effort */ });
+  } catch {
+    // Payload lookup, parsing, and delivery are best-effort after commit.
   }
 }

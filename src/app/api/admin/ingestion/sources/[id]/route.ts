@@ -21,7 +21,6 @@ import {
 } from '@/domain/constants';
 import { getIp } from '@/services/security/ip';
 import {
-  isHighRiskSourceUpdate,
   queueIngestionControlChange,
 } from '@/services/ingestion/controlChanges';
 
@@ -49,7 +48,9 @@ const UpdateSourceSchema = z.object({
     stateProvince: z.string().min(1).optional(),
     countyOrRegion: z.string().min(1).optional(),
   })).optional(),
-}).strict();
+}).strict().refine((value) => Object.keys(value).length > 0, {
+  message: 'At least one source field is required.',
+});
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -59,8 +60,14 @@ export async function GET(
   }
 
   const ip = getIp(req);
-  const rl = await checkRateLimitShared(ip, { maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
-  if (rl.exceeded) {
+  const rl = await checkRateLimitShared(`admin:ingestion:sources:read:${ip}`, { maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
@@ -110,8 +117,14 @@ export async function PUT(
   }
 
   const ip = getIp(req);
-  const rl = await checkRateLimitShared(ip, { maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
-  if (rl.exceeded) {
+  const rl = await checkRateLimitShared(`admin:ingestion:sources:write:${ip}`, { maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
@@ -162,8 +175,7 @@ export async function PUT(
       updatedAt: new Date().toISOString(),
     };
 
-    if (isHighRiskSourceUpdate(existing, parsed.data)) {
-      const { submissionId } = await queueIngestionControlChange({
+    const { submissionId } = await queueIngestionControlChange({
         submittedByUserId: session.userId,
         actorRole: session.role ?? 'oran_admin',
         targetId: id,
@@ -180,15 +192,10 @@ export async function PUT(
         },
       });
 
-      return NextResponse.json(
-        { queued: true, submissionId, status: 'pending_second_approval' },
-        { status: 202 },
-      );
-    }
-
-    await stores.sourceRegistry.upsert(merged);
-
-    return NextResponse.json({ updated: true });
+    return NextResponse.json(
+      { queued: true, submissionId, status: 'pending_second_approval' },
+      { status: 202 },
+    );
   } catch (error) {
     captureException(error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
@@ -204,8 +211,14 @@ export async function DELETE(
   }
 
   const ip = getIp(req);
-  const rl = await checkRateLimitShared(ip, { maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
-  if (rl.exceeded) {
+  const rl = await checkRateLimitShared(`admin:ingestion:sources:write:${ip}`, { maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }

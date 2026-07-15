@@ -33,11 +33,20 @@ export async function GET(_req: NextRequest) {
   }
 
   const limited = await checkRateLimitShared(
-    `triage:summary:${authCtx.userId}`,
+    `admin:triage:read:${authCtx.userId}`,
     { maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS },
   );
+  if (limited.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(limited.retryAfterSeconds) } },
+    );
+  }
   if (limited.exceeded) {
-    return NextResponse.json({ error: 'Rate limit exceeded.' }, { status: 429 });
+    return NextResponse.json(
+      { error: 'Rate limit exceeded.' },
+      { status: 429, headers: { 'Retry-After': String(limited.retryAfterSeconds) } },
+    );
   }
 
   try {

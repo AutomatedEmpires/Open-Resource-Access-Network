@@ -8,6 +8,7 @@ import {
 
 import {
   ACCESSIBILITY_NEED_VALUES,
+  AGE_GROUP_VALUES,
   EMPLOYMENT_STATUS_VALUES,
   INCOME_RANGE_VALUES,
   normalizeSeekerProfile,
@@ -48,6 +49,7 @@ export const OnboardingDraftSchema = z.object({
   approximateLocation: z.string().max(100).default(''),
   urgency: z.enum(ONBOARDING_URGENCY_VALUES).or(z.literal('')).default(''),
   audience: z.enum(ONBOARDING_AUDIENCE_VALUES).or(z.literal('')).default(''),
+  ageGroup: z.enum(AGE_GROUP_VALUES).or(z.literal('')).default(''),
   householdSize: z.number().int().min(1).max(20).nullable().default(null),
   employmentStatus: z.enum(EMPLOYMENT_STATUS_VALUES).or(z.literal('')).default(''),
   incomeRange: z.enum(INCOME_RANGE_VALUES).or(z.literal('')).default(''),
@@ -72,6 +74,14 @@ const AUDIENCE_PROMPTS: Partial<Record<OnboardingAudience, string>> = {
   child: 'This help is for a child.',
   household: 'This help is for my household.',
   someone_else: 'This help is for someone else.',
+};
+
+const AGE_GROUP_PROMPTS: Partial<Record<OnboardingDraft['ageGroup'], string>> = {
+  under18: 'The person who needs help is under 18.',
+  '18_24': 'The person who needs help is age 18 to 24.',
+  '25_54': 'The person who needs help is age 25 to 54.',
+  '55_64': 'The person who needs help is age 55 to 64.',
+  '65plus': 'The person who needs help is age 65 or older.',
 };
 
 const EMPLOYMENT_PROMPTS: Partial<Record<OnboardingDraft['employmentStatus'], string>> = {
@@ -126,6 +136,8 @@ export function buildOnboardingChatPrompt(draft: Partial<OnboardingDraft>): stri
 
   const audience = normalized.audience ? AUDIENCE_PROMPTS[normalized.audience] : undefined;
   if (audience) parts.push(audience);
+  const ageGroup = normalized.ageGroup ? AGE_GROUP_PROMPTS[normalized.ageGroup] : undefined;
+  if (ageGroup) parts.push(ageGroup);
   if (normalized.householdSize !== null) {
     parts.push(`My household has ${normalized.householdSize} ${normalized.householdSize === 1 ? 'person' : 'people'}.`);
   }
@@ -198,6 +210,7 @@ export function mergeOnboardingIntoProfile(
         : normalized.urgency === 'this_week' || normalized.urgency === 'planning'
           ? 'flexible'
           : existing.urgencyWindow,
+    ageGroup: normalized.ageGroup || existing.ageGroup,
     employmentStatus: normalized.employmentStatus || existing.employmentStatus,
     incomeRange: normalized.incomeRange || existing.incomeRange,
     householdSize: normalized.householdSize ?? existing.householdSize,

@@ -35,7 +35,14 @@ import {
   type Ndp211ServiceAtLocation,
   type Ndp211Taxonomy,
 } from './ndp211Types';
-import { sha256, stableStringify, isTransient, buildUrl } from './connectorUtils';
+import {
+  buildUrl,
+  fetchWithValidatedRedirects,
+  isTransient,
+  sha256,
+  stableStringify,
+} from './connectorUtils';
+import type { OutboundDnsResolver } from '@/services/security/outboundHttpPolicy';
 
 // ── Public types ──────────────────────────────────────────────
 
@@ -51,6 +58,10 @@ export interface Ndp211ConnectorOptions {
   timeoutMs?: number;
   /** Max retry attempts on transient failures (default 3). */
   maxRetries?: number;
+  /** Max manually validated redirects per request (default 5, hard cap 10). */
+  maxRedirects?: number;
+  /** Override DNS resolution for deterministic tests. */
+  resolver?: OutboundDnsResolver;
   /** 211 API subscription key (Ocp-Apim-Subscription-Key header). */
   subscriptionKey?: string;
   /**
@@ -101,13 +112,18 @@ async function fetchWithRetry(
   fetchFn: typeof fetch,
   timeoutMs: number,
   maxRetries: number,
+  maxRedirects: number,
+  resolver?: OutboundDnsResolver,
 ): Promise<unknown> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const response = await fetchFn(url, {
-        headers,
-        signal: AbortSignal.timeout(timeoutMs),
+      const response = await fetchWithValidatedRedirects(url, fetchFn, {
+        endpointLabel: '211 feed URL',
+        timeoutMs,
+        maxRedirects,
+        resolver,
+        requestInit: { headers },
       });
 
       if (!response.ok) {
@@ -306,6 +322,8 @@ export async function poll211NdpFeed(
   const fetchFn = options.fetchFn ?? globalThis.fetch;
   const timeoutMs = options.timeoutMs ?? 30_000;
   const maxRetries = options.maxRetries ?? 3;
+  const maxRedirects = options.maxRedirects ?? 5;
+  const resolver = options.resolver;
   const maxOrgs = options.maxOrganizations ?? 100;
   const subscriptionKey = options.subscriptionKey ?? process.env.NDP_211_SUBSCRIPTION_KEY;
 
@@ -335,7 +353,13 @@ export async function poll211NdpFeed(
     try {
       const searchUrl = buildUrl(baseUrl, '/search');
       const searchBody = await fetchWithRetry(
-        searchUrl, headers, fetchFn, timeoutMs, maxRetries,
+        searchUrl,
+        headers,
+        fetchFn,
+        timeoutMs,
+        maxRetries,
+        maxRedirects,
+        resolver,
       );
 
       // Search V2 returns array of result items with id fields
@@ -375,7 +399,13 @@ export async function poll211NdpFeed(
     try {
       const exportUrl = buildUrl(baseUrl, `/export/organizations/${encodeURIComponent(orgId)}`);
       const rawBody = await fetchWithRetry(
-        exportUrl, headers, fetchFn, timeoutMs, maxRetries,
+        exportUrl,
+        headers,
+        fetchFn,
+        timeoutMs,
+        maxRetries,
+        maxRedirects,
+        resolver,
       );
 
       // Export V2 returns an array with one organization

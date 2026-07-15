@@ -155,7 +155,7 @@ describe('validateRuntimeEnv', () => {
     expect(result.missingCritical).toEqual([]);
   });
 
-  it('validates legacy Functions contracts from names-only sources', () => {
+  it('rejects the retired Functions runtime even when legacy settings are present', () => {
     const result = validateRuntimeEnv(
       'functions',
       [
@@ -168,8 +168,66 @@ describe('validateRuntimeEnv', () => {
       { nodeEnv: 'production' },
     );
 
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
     expect(result.missingCritical).toEqual([]);
     expect(result.warnings).toEqual([]);
+    expect(result.prohibitedSettings).toEqual([
+      'AzureWebJobsStorage',
+      'FUNCTIONS_WORKER_RUNTIME',
+      'runtime-target:functions',
+    ]);
+  });
+
+  it('fails production closed when Azure or Foundry env names return', () => {
+    const result = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
+      CRON_SECRET: 'vercel-cron-secret',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
+      AZURE_MAPS_KEY: 'retired',
+      FOUNDRY_ENDPOINT: 'disabled',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.missingCritical).toEqual([]);
+    expect(result.prohibitedSettings).toEqual(['AZURE_MAPS_KEY', 'FOUNDRY_ENDPOINT']);
+  });
+
+  it('fails production closed when a generic setting points to a Microsoft host', () => {
+    const result = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
+      CRON_SECRET: 'vercel-cron-secret',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
+      LLM_ENDPOINT: 'https://oran.openai.azure.com',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.prohibitedSettings).toEqual(['LLM_ENDPOINT']);
+  });
+
+  it('checks prohibited names in production settings manifests', () => {
+    const result = validateRuntimeEnv(
+      'webapp',
+      [
+        'DATABASE_URL',
+        'ORAN_DATABASE_ROLE',
+        'ORAN_SUPABASE_PROJECT_REF',
+        'CRON_SECRET',
+        'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY',
+        'CLERK_SECRET_KEY',
+        'APPLICATIONINSIGHTS_CONNECTION_STRING',
+      ],
+      { nodeEnv: 'production' },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.prohibitedSettings).toEqual(['APPLICATIONINSIGHTS_CONNECTION_STRING']);
   });
 });

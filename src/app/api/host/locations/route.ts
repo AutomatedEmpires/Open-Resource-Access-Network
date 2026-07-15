@@ -8,10 +8,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { executeQuery, isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext, shouldEnforceAuth, isOranAdmin, requireOrgAccess } from '@/services/auth';
 import { createHostPortalSourceAssertion } from '@/services/ingestion/hostPortalIntake';
+import {
+  acquireFreshnessSensitiveAuthoritativeMutationGates,
+  assertAuthoritativeEntitiesMutable,
+  ProtectedAuthoritativeMutationConflict,
+} from '@/services/publication/protectedAuthoritativeMutation';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -83,11 +88,17 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:loc:read:${ip}`, {
+  const rl = await checkRateLimitShared(`host:locations:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       {
@@ -198,11 +209,17 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`host:loc:write:${ip}`, {
+  const rl = await checkRateLimitShared(`host:locations:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (rl.exceeded) {
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
+  if (rl.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       {
@@ -249,6 +266,25 @@ export async function POST(req: NextRequest) {
 
     // Insert location + optional address in a transaction
     const location = await withTransaction(async (client) => {
+      await acquireFreshnessSensitiveAuthoritativeMutationGates(client);
+      await assertAuthoritativeEntitiesMutable(client, {
+        organizationIds: [d.organizationId],
+      });
+      const lockedOrganizations = await client.query<{ id: string; status: string | null }>(
+        `SELECT id, status
+         FROM organizations
+         WHERE id = $1
+         FOR UPDATE`,
+        [d.organizationId],
+      );
+      const lockedOrganization = lockedOrganizations.rows[0];
+      if (!lockedOrganization) {
+        throw Object.assign(new Error('not_found'), { code: 'not_found' });
+      }
+      if (lockedOrganization.status === 'defunct') {
+        throw Object.assign(new Error('retired'), { code: 'retired' });
+      }
+
       const locResult = await client.query<Location>(
         `INSERT INTO locations
            (organization_id, name, alternate_name, description, transportation, latitude, longitude, created_by_user_id)
@@ -343,6 +379,21 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(location, { status: 201 });
   } catch (error) {
+    const code = error instanceof Error
+      ? (error as NodeJS.ErrnoException & { code?: string }).code
+      : undefined;
+    if (code === 'not_found') {
+      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    }
+    if (code === 'retired') {
+      return NextResponse.json(
+        { error: 'Cannot add locations to a retired organization' },
+        { status: 409 },
+      );
+    }
+    if (error instanceof ProtectedAuthoritativeMutationConflict) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     await captureException(error, { feature: 'api_host_locations_create' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

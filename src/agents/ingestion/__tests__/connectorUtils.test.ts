@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { buildUrl, isTransient, sha256, stableStringify } from '../connectorUtils';
+import {
+  buildUrl,
+  fetchWithValidatedRedirects,
+  isTransient,
+  sha256,
+  stableStringify,
+} from '../connectorUtils';
 
 describe('connectorUtils', () => {
   describe('sha256', () => {
@@ -97,6 +103,69 @@ describe('connectorUtils', () => {
       expect(buildUrl('https://api.example.com///', '/search')).toBe(
         'https://api.example.com/search',
       );
+    });
+  });
+
+  describe('fetchWithValidatedRedirects', () => {
+    it('follows relative redirects only through manual, validated requests', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(new Response(null, {
+          status: 302,
+          headers: { Location: '/feed/final' },
+        }))
+        .mockResolvedValueOnce(new Response('[]', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+
+      const response = await fetchWithValidatedRedirects(
+        'https://api.example.org/feed/start',
+        fetchMock as never,
+        { endpointLabel: 'test feed URL', maxRedirects: 1 },
+      );
+
+      expect(response.status).toBe(200);
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        'https://api.example.org/feed/start',
+        expect.objectContaining({ redirect: 'manual' }),
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        'https://api.example.org/feed/final',
+        expect.objectContaining({ redirect: 'manual' }),
+      );
+    });
+
+    it('rejects an invalid redirect budget before issuing a request', async () => {
+      const fetchMock = vi.fn();
+
+      await expect(fetchWithValidatedRedirects(
+        'https://api.example.org/feed',
+        fetchMock as never,
+        { endpointLabel: 'test feed URL', maxRedirects: 11 },
+      )).rejects.toThrow('integer between 0 and 10');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('uses one total deadline across the entire redirect chain', async () => {
+      const now = vi.spyOn(Date, 'now')
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(1_001);
+      const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, {
+        status: 302,
+        headers: { Location: '/feed/final' },
+      }));
+
+      await expect(fetchWithValidatedRedirects(
+        'https://api.example.org/feed/start',
+        fetchMock as never,
+        { endpointLabel: 'test feed URL', timeoutMs: 1_000 },
+      )).rejects.toThrow('Feed total timeout exceeded');
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      now.mockRestore();
     });
   });
 });

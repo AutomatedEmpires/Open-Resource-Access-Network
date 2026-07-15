@@ -22,20 +22,27 @@ interface SavedCollectionJoinRow {
   service_id: string | null;
 }
 
-function checkSavedCollectionsRateLimit(ip: string) {
-  return checkRateLimitShared(`saved-collections:ip:${ip}`, {
+async function checkSavedCollectionsRateLimit(ip: string, operation: 'read' | 'write') {
+  const rateLimit = await checkRateLimitShared(`saved-collections:${operation}:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: SAVED_COLLECTIONS_RATE_LIMIT_MAX,
   });
+  return rateLimit;
 }
 
-async function requireAuthAndCapacity(req: NextRequest) {
+async function requireAuthAndCapacity(req: NextRequest, operation: 'read' | 'write') {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Saved collections unavailable.' }, { status: 503 });
   }
 
   const ip = getIp(req);
-  const rateLimit = await checkSavedCollectionsRateLimit(ip);
+  const rateLimit = await checkSavedCollectionsRateLimit(ip, operation);
+  if (rateLimit.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) } },
+    );
+  }
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
@@ -52,7 +59,7 @@ async function requireAuthAndCapacity(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const authCtxOrResponse = await requireAuthAndCapacity(req);
+  const authCtxOrResponse = await requireAuthAndCapacity(req, 'read');
   if (authCtxOrResponse instanceof NextResponse) return authCtxOrResponse;
 
   try {
@@ -102,7 +109,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const authCtxOrResponse = await requireAuthAndCapacity(req);
+  const authCtxOrResponse = await requireAuthAndCapacity(req, 'write');
   if (authCtxOrResponse instanceof NextResponse) return authCtxOrResponse;
 
   let body: unknown;

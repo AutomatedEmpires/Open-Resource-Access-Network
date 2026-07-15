@@ -23,7 +23,8 @@ describe('search vector utilities', () => {
     expect(built.sql).toContain('s.id = ANY($2::uuid[])');
     expect(built.sql).toContain('JOIN organizations o');
     expect(built.sql).toContain('source_systems publication_system');
-    expect(built.sql).toContain('ORDER BY s.embedding <=> $1::vector');
+    expect(built.sql).toContain('JOIN service_embeddings service_embedding');
+    expect(built.sql).toContain('ORDER BY service_embedding.embedding <=> $1::vector');
     expect(built.params).toEqual([
       '[0.5,0.6]',
       ['11111111-1111-4111-8111-111111111111'],
@@ -34,8 +35,8 @@ describe('search vector utilities', () => {
   it('builds a top-k vector query for supplemental retrieval', () => {
     const built = buildVectorTopKQuery([0.7, 0.8], 8, 'active');
 
-    expect(built.sql).toContain('WHERE s.embedding IS NOT NULL');
-    expect(built.sql).toContain('AND s.status = $2');
+    expect(built.sql).toContain('JOIN service_embeddings service_embedding');
+    expect(built.sql).toContain('WHERE s.status = $2');
     expect(built.sql).toContain('JOIN organizations o');
     expect(built.sql).toContain('source_systems publication_system');
     expect(built.params).toEqual(['[0.7,0.8]', 'active', 8]);

@@ -181,6 +181,9 @@ export const extractedCandidates = pgTable(
     extractionId: text('extraction_id').notNull().unique(),
     extractKeySha256: text('extract_key_sha256').notNull(),
     extractedAt: timestamp('extracted_at', { withTimezone: true }).notNull(),
+    revisionOfCandidateId: text('revision_of_candidate_id'),
+    lineageRootCandidateId: text('lineage_root_candidate_id').notNull(),
+    revisionNumber: integer('revision_number').notNull().default(1),
 
     // Extracted fields
     organizationName: text('organization_name').notNull(),
@@ -249,6 +252,14 @@ export const extractedCandidates = pgTable(
     index('idx_candidates_tier').on(table.confidenceTier),
     index('idx_candidates_jurisdiction').on(table.jurisdictionState, table.jurisdictionCounty),
     index('idx_candidates_job').on(table.jobId),
+    index('idx_extracted_candidates_revision_parent').on(
+      table.revisionOfCandidateId,
+      table.revisionNumber,
+    ),
+    uniqueIndex('idx_extracted_candidates_lineage_revision').on(
+      table.lineageRootCandidateId,
+      table.revisionNumber,
+    ),
   ]
 );
 
@@ -483,6 +494,7 @@ export const candidateAdminAssignments = pgTable(
 
     outcome: text('outcome'),
     outcomeNotes: text('outcome_notes'),
+    decisionReviewerUserId: text('decision_reviewer_user_id'),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -2109,6 +2121,22 @@ export const services = pgTable(
 
 export type ServiceRow = typeof services.$inferSelect;
 export type NewServiceRow = typeof services.$inferInsert;
+
+/** Derived search artifacts, isolated from authoritative service clocks. */
+export const serviceEmbeddings = pgTable(
+  'service_embeddings',
+  {
+    serviceId: uuid('service_id').primaryKey().references(() => services.id, { onDelete: 'cascade' }),
+    embedding: vector1024('embedding').notNull(),
+    model: text('model').notNull(),
+    contentSha256: text('content_sha256').notNull(),
+    sourceUpdatedAt: timestamp('source_updated_at', { withTimezone: true }).notNull(),
+    embeddedAt: timestamp('embedded_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export type ServiceEmbeddingRow = typeof serviceEmbeddings.$inferSelect;
+export type NewServiceEmbeddingRow = typeof serviceEmbeddings.$inferInsert;
 
 export const serviceAtLocation = pgTable(
   'service_at_location',

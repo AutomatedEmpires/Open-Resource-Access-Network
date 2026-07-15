@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   extractExpandableLinks,
+  registerHostsIfRequested,
 } from '../../../scripts/run-ingestion-campaign';
 
 describe('run-ingestion-campaign helpers', () => {
@@ -39,5 +40,18 @@ describe('run-ingestion-campaign helpers', () => {
       'https://agency.gov/eligibility',
       'https://agency.gov/contact',
     ]);
+  });
+
+  it('prohibits campaign source-authority writes and requires reviewed registration', async () => {
+    const upsert = vi.fn();
+    const stores = { sourceRegistry: { upsert } };
+
+    await expect(registerHostsIfRequested(
+      stores as never,
+      ['https://example.gov/services'],
+      'allowlisted',
+      'service_catalog',
+    )).rejects.toThrow('two-person source-authority workflow');
+    expect(upsert).not.toHaveBeenCalled();
   });
 });

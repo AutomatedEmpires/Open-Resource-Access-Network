@@ -27,6 +27,7 @@ import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
+import { CandidateApprovalPanel } from '@/components/admin/CandidateApprovalPanel';
 import { formatDateSafe } from '@/lib/format';
 
 // ============================================================
@@ -121,12 +122,15 @@ interface Job {
 }
 
 interface Candidate {
-  id: string;
-  sourceUrl: string;
-  reviewStatus: string;
+  id?: string;
+  candidateId?: string;
+  sourceUrl?: string;
+  reviewStatus?: string;
   confidenceTier?: string;
   confidenceScore?: number;
   fields: Record<string, unknown>;
+  investigation?: { canonicalUrl?: string };
+  review?: { status?: string };
 }
 
 interface SourceDraft {
@@ -1751,6 +1755,7 @@ function CandidatesTab() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [tierFilter, setTierFilter] = useState<string>('');
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
 
   const fetchCandidates = useCallback(async () => {
     setIsLoading(true);
@@ -1840,16 +1845,21 @@ function CandidatesTab() {
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Tier</th>
                   <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Score</th>
+                  <th scope="col" className="px-4 py-3 text-left font-medium text-gray-600">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
-                {candidates.map((c) => (
-                  <tr key={c.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-gray-900 max-w-sm truncate" title={c.sourceUrl}>
-                      {c.sourceUrl}
+                {candidates.map((c) => {
+                  const candidateId = c.id ?? c.candidateId;
+                  const sourceUrl = c.sourceUrl ?? c.investigation?.canonicalUrl ?? 'Source unavailable';
+                  const status = c.reviewStatus ?? c.review?.status ?? 'unknown';
+                  return (
+                  <tr key={candidateId ?? sourceUrl} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-gray-900 max-w-sm truncate" title={sourceUrl}>
+                      {sourceUrl}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={c.reviewStatus} styles={CANDIDATE_STATUS_STYLES} />
+                      <StatusBadge status={status} styles={CANDIDATE_STATUS_STYLES} />
                     </td>
                     <td className="px-4 py-3">
                       {c.confidenceTier && <StatusBadge status={c.confidenceTier} styles={TIER_STYLES} />}
@@ -1857,11 +1867,30 @@ function CandidatesTab() {
                     <td className="px-4 py-3 text-gray-600 font-mono text-xs">
                       {c.confidenceScore !== undefined ? c.confidenceScore.toFixed(2) : '—'}
                     </td>
+                    <td className="px-4 py-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!candidateId}
+                        onClick={() => candidateId && setSelectedCandidateId(candidateId)}
+                        aria-label={`Review ${String(c.fields?.serviceName ?? 'candidate')}`}
+                      >
+                        Review
+                      </Button>
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
+          {selectedCandidateId && (
+            <CandidateApprovalPanel
+              candidateId={selectedCandidateId}
+              onClose={() => setSelectedCandidateId(null)}
+              onChanged={fetchCandidates}
+            />
+          )}
           <div className="flex items-center justify-between">
             <p className="text-sm text-gray-500">Page {page}</p>
             <div className="flex items-center gap-2">

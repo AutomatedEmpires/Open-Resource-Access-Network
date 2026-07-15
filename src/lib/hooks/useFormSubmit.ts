@@ -9,6 +9,7 @@
 
 import { useCallback, useState, useRef } from 'react';
 import type { ZodSchema, ZodError } from 'zod';
+import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy';
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -104,12 +105,13 @@ export function useFormSubmit<TPayload, TResult = unknown>(
           typeof options.url === 'function'
             ? options.url(payload)
             : options.url;
+        const allowedUrl = assertAllowedRuntimeEndpoint(url, 'form submission URL');
 
         const body = options.transform
           ? options.transform(payload)
           : (payload as Record<string, unknown>);
 
-        const res = await fetch(url, {
+        const res = await fetch(allowedUrl, {
           method: options.method ?? 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),

@@ -8,32 +8,60 @@ const guardMocks = vi.hoisted(() => ({
 }));
 const dbMocks = vi.hoisted(() => ({
   isDatabaseConfigured: vi.fn(),
+  withTransaction: vi.fn(),
 }));
 const rateLimitMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
 const workflowMocks = vi.hoisted(() => ({
   acquireLock: vi.fn(),
   advance: vi.fn(),
+  advanceInTransaction: vi.fn(),
   applySla: vi.fn(),
   assignSubmission: vi.fn(),
+  sendTerminalStatusEmail: vi.fn(),
 }));
 const resourceSubmissionMocks = vi.hoisted(() => ({
   getResourceSubmissionDetailForActor: vi.fn(),
   getResourceSubmissionDetailForPublic: vi.fn(),
   isResourceSubmissionStatusEditable: vi.fn(),
   projectApprovedResourceSubmission: vi.fn(),
+  projectApprovedResourceSubmissionInTransaction: vi.fn(),
   saveResourceSubmissionDraft: vi.fn(),
+  saveResourceSubmissionDraftInTransaction: vi.fn(),
   setResourceSubmissionReviewerNotes: vi.fn(),
+  setResourceSubmissionReviewerNotesInTransaction: vi.fn(),
   submitResourceSubmission: vi.fn(),
+}));
+const communityScopeMocks = vi.hoisted(() => ({
+  buildCommunitySubmissionScope: vi.fn(() => ''),
+  getCommunityAdminScope: vi.fn(),
+}));
+const conflictClasses = vi.hoisted(() => ({
+  ResourceProjectionRefreshConflict: class ResourceProjectionRefreshConflict extends Error {},
+  ProtectedAuthoritativeMutationConflict: class ProtectedAuthoritativeMutationConflict extends Error {},
+}));
+const protectedMutationMocks = vi.hoisted(() => ({
+  acquireFreshnessSensitiveAuthoritativeMutationGates: vi.fn(),
 }));
 
 vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/auth/guards', () => guardMocks);
 vi.mock('@/services/db/postgres', () => dbMocks);
-vi.mock('@/services/security/rateLimit', () => ({ checkRateLimit: rateLimitMock }));
+vi.mock('@/services/security/rateLimit', () => ({
+  checkRateLimit: rateLimitMock,
+  checkRateLimitShared: rateLimitMock,
+}));
 vi.mock('@/services/telemetry/sentry', () => ({ captureException: captureExceptionMock }));
 vi.mock('@/services/workflow/engine', () => workflowMocks);
-vi.mock('@/services/resourceSubmissions/service', () => resourceSubmissionMocks);
+vi.mock('@/services/resourceSubmissions/service', () => ({
+  ...resourceSubmissionMocks,
+  ResourceProjectionRefreshConflict: conflictClasses.ResourceProjectionRefreshConflict,
+}));
+vi.mock('@/services/community/scope', () => communityScopeMocks);
+vi.mock('@/services/publication/protectedAuthoritativeMutation', () => ({
+  ...protectedMutationMocks,
+  ProtectedAuthoritativeMutationConflict: conflictClasses.ProtectedAuthoritativeMutationConflict,
+}));
 
 function createRequest(options: {
   method?: string;
@@ -68,7 +96,9 @@ function makeDetail(status: string) {
       submission_type: 'new_service',
       status,
       submitted_by_user_id: 'submitter-1',
-      assigned_to_user_id: null,
+      assigned_to_user_id: null as string | null,
+      is_locked: false,
+      locked_by_user_id: null as string | null,
       reviewed_at: null,
       resolved_at: null,
       submitted_at: null,
@@ -102,6 +132,9 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
+  dbMocks.withTransaction.mockImplementation(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => (
+    callback({ query: vi.fn().mockResolvedValue({ rows: [] }) })
+  ));
   rateLimitMock.mockReturnValue({ exceeded: false, retryAfterSeconds: 0 });
   authMocks.getAuthContext.mockResolvedValue({
     userId: 'reviewer-1',
@@ -116,8 +149,28 @@ beforeEach(() => {
   workflowMocks.acquireLock.mockResolvedValue(true);
   workflowMocks.assignSubmission.mockResolvedValue(true);
   workflowMocks.advance.mockResolvedValue({ success: true, transitionId: 'transition-1' });
+  workflowMocks.advanceInTransaction.mockImplementation(
+    async (_client: unknown, input: { submissionId: string; toStatus: string }) => ({
+      success: true,
+      submissionId: input.submissionId,
+      fromStatus: 'under_review',
+      toStatus: input.toStatus,
+      transitionId: 'transition-1',
+    }),
+  );
   workflowMocks.applySla.mockResolvedValue(undefined);
+  workflowMocks.sendTerminalStatusEmail.mockResolvedValue(undefined);
   resourceSubmissionMocks.projectApprovedResourceSubmission.mockResolvedValue({ organizationId: 'org-1', serviceId: 'svc-1' });
+  resourceSubmissionMocks.projectApprovedResourceSubmissionInTransaction.mockResolvedValue({ organizationId: 'org-1', serviceId: 'svc-1' });
+  protectedMutationMocks.acquireFreshnessSensitiveAuthoritativeMutationGates.mockResolvedValue(undefined);
+  communityScopeMocks.getCommunityAdminScope.mockResolvedValue({
+    profileExists: true,
+    isActive: true,
+    isAcceptingNew: true,
+    coverageZoneIds: [],
+    coverageStates: [],
+    coverageCounties: [],
+  });
 });
 
 describe('resource submissions item route', () => {
@@ -176,9 +229,33 @@ describe('resource submissions item route', () => {
   });
 
   it('approves a reviewed resource and projects it into live tables', async () => {
+    const reviewing = makeDetail('under_review');
+    reviewing.instance.assigned_to_user_id = 'reviewer-1';
+    reviewing.instance.is_locked = true;
+    reviewing.instance.locked_by_user_id = 'reviewer-1';
     resourceSubmissionMocks.getResourceSubmissionDetailForActor
-      .mockResolvedValueOnce(makeDetail('submitted'))
+      .mockResolvedValueOnce(reviewing)
       .mockResolvedValueOnce(makeDetail('approved'));
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes('FOR UPDATE OF fi, sub')) {
+          return {
+            rows: [{
+              form_instance_id: 'form-1',
+              submission_id: 'submission-1',
+              status: 'under_review',
+              assigned_to_user_id: 'reviewer-1',
+              is_locked: true,
+              locked_by_user_id: 'reviewer-1',
+            }],
+          };
+        }
+        return { rows: [] };
+      }),
+    };
+    dbMocks.withTransaction.mockImplementationOnce(
+      async (callback: (transactionClient: typeof client) => Promise<unknown>) => callback(client),
+    );
 
     const { PUT } = await loadItemRoute();
     const response = await PUT(
@@ -193,11 +270,65 @@ describe('resource submissions item route', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(workflowMocks.assignSubmission).toHaveBeenCalledWith('submission-1', 'reviewer-1', 'reviewer-1', 'community_admin');
-    expect(workflowMocks.acquireLock).toHaveBeenCalledWith('submission-1', 'reviewer-1');
-    expect(workflowMocks.advance).toHaveBeenNthCalledWith(1, expect.objectContaining({ toStatus: 'under_review' }));
-    expect(workflowMocks.advance).toHaveBeenNthCalledWith(2, expect.objectContaining({ toStatus: 'approved' }));
-    expect(resourceSubmissionMocks.projectApprovedResourceSubmission).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'reviewer-1');
+    expect(workflowMocks.advanceInTransaction).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({ toStatus: 'approved' }),
+    );
+    expect(resourceSubmissionMocks.setResourceSubmissionReviewerNotesInTransaction).toHaveBeenCalledWith(
+      client,
+      'submission-1',
+      'All required evidence verified.',
+    );
+    expect(resourceSubmissionMocks.projectApprovedResourceSubmissionInTransaction).toHaveBeenCalledWith(
+      client,
+      '11111111-1111-4111-8111-111111111111',
+      'reviewer-1',
+    );
+    expect(resourceSubmissionMocks.projectApprovedResourceSubmission).not.toHaveBeenCalled();
+    expect(protectedMutationMocks.acquireFreshnessSensitiveAuthoritativeMutationGates).toHaveBeenCalledWith(client);
+    expect(
+      protectedMutationMocks.acquireFreshnessSensitiveAuthoritativeMutationGates.mock.invocationCallOrder[0],
+    ).toBeLessThan(client.query.mock.invocationCallOrder[0]!);
+  });
+
+  it('returns a conflict when projection targets a protected authoritative entity', async () => {
+    const reviewing = makeDetail('under_review');
+    reviewing.instance.assigned_to_user_id = 'reviewer-1';
+    reviewing.instance.is_locked = true;
+    reviewing.instance.locked_by_user_id = 'reviewer-1';
+    resourceSubmissionMocks.getResourceSubmissionDetailForActor.mockResolvedValueOnce(reviewing);
+    const client = {
+      query: vi.fn(async (sql: string) => (
+        sql.includes('FOR UPDATE OF fi, sub')
+          ? {
+              rows: [{
+                form_instance_id: 'form-1',
+                submission_id: 'submission-1',
+                status: 'under_review',
+                assigned_to_user_id: 'reviewer-1',
+                is_locked: true,
+                locked_by_user_id: 'reviewer-1',
+              }],
+            }
+          : { rows: [] }
+      )),
+    };
+    dbMocks.withTransaction.mockImplementationOnce(
+      async (callback: (transactionClient: typeof client) => Promise<unknown>) => callback(client),
+    );
+    resourceSubmissionMocks.projectApprovedResourceSubmissionInTransaction.mockRejectedValueOnce(
+      new conflictClasses.ProtectedAuthoritativeMutationConflict('protected'),
+    );
+
+    const { PUT } = await loadItemRoute();
+    const response = await PUT(
+      createRequest({ method: 'PUT', jsonBody: { action: 'approve' } }),
+      createContext(),
+    );
+
+    expect(response.status).toBe(409);
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+    expect(workflowMocks.sendTerminalStatusEmail).not.toHaveBeenCalled();
   });
 
   it('repairs an approved resource projection without replaying workflow transitions', async () => {

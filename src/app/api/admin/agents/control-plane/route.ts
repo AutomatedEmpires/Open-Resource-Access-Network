@@ -27,11 +27,17 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
   }
 
-  const limited = await checkRateLimitShared(`agent-control-plane:${authCtx.userId}`, {
+  const limited = await checkRateLimitShared(`admin:agents:control-plane:read:${authCtx.userId}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   });
-  if (limited.exceeded) {
+  if (limited.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(limited.retryAfterSeconds) } },
+    );
+  }
+  if (limited.exceeded === true) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
       { status: 429, headers: { 'Retry-After': String(limited.retryAfterSeconds) } },

@@ -16,16 +16,22 @@ import {
 } from '@/services/publication/liveAuthority';
 import {
   acquireLivePublicationAdvisoryLock,
+  acquireLivePublicationGateShared,
   resolveExistingLiveOrganizationId,
   resolveExistingLiveServiceId,
 } from '@/services/publication/liveEntityMerge';
+import {
+  acquireFreshnessSensitiveAuthoritativeMutationGates,
+  assertAuthoritativeEntitiesMutable,
+} from '@/services/publication/protectedAuthoritativeMutation';
 import {
   createFormInstance,
   createFormTemplate,
   getAccessibleFormInstance,
   listAccessibleFormInstances,
   setFormSubmissionReviewerNotes,
-  updateFormInstanceDraft,
+  setFormSubmissionReviewerNotesInTransaction as setVaultFormSubmissionReviewerNotesInTransaction,
+  updateFormInstanceDraftInTransaction,
 } from '@/services/forms/vault';
 import type { FormInstance, FormTemplate } from '@/domain/forms';
 import type { SubmissionStatus } from '@/domain/types';
@@ -41,6 +47,13 @@ import {
 } from '@/domain/resourceSubmission';
 
 type ResourceTemplateKey = 'host_listing' | 'public_listing' | 'host_claim';
+
+/**
+ * The reviewed draft points at a live entity that was retired, moved, or
+ * replaced before projection. Callers should surface this as a refresh
+ * conflict instead of silently publishing against a different entity.
+ */
+export class ResourceProjectionRefreshConflict extends Error {}
 
 const RESOURCE_TEMPLATE_SPECS: Record<
   ResourceTemplateKey,
@@ -166,23 +179,93 @@ async function resolveExistingEntitiesForDraft(
   client: PoolClient,
   draft: ResourceSubmissionDraft,
 ): Promise<ResourceSubmissionDraft> {
-  const ownerOrganizationId = await resolveExistingLiveOrganizationId(client, {
-    ownerOrganizationId: draft.ownerOrganizationId,
-    organizationName: draft.organization.name,
-    organizationUrl: draft.organization.url,
-  });
-  const existingServiceId = draft.variant === 'listing' && ownerOrganizationId
-    ? await resolveExistingLiveServiceId(client, ownerOrganizationId, {
-        existingServiceId: draft.existingServiceId,
-        serviceName: draft.service.name,
-        serviceUrl: draft.service.url,
-      })
-    : null;
+  let ownerOrganizationId: string | null;
+  if (draft.ownerOrganizationId) {
+    const organizationRows = await client.query<{ id: string }>(
+      `SELECT id
+         FROM organizations
+        WHERE id = $1
+          AND status = 'active'
+        FOR UPDATE`,
+      [draft.ownerOrganizationId],
+    );
+    ownerOrganizationId = organizationRows.rows[0]?.id ?? null;
+    if (!ownerOrganizationId) {
+      throw new ResourceProjectionRefreshConflict(
+        'The selected organization is no longer active. Refresh the submission before approving it.',
+      );
+    }
+  } else {
+    ownerOrganizationId = await resolveExistingLiveOrganizationId(client, {
+      organizationName: draft.organization.name,
+      organizationUrl: draft.organization.url,
+    });
+    if (ownerOrganizationId) {
+      const lockedOrganization = await client.query<{ id: string }>(
+        `SELECT id
+         FROM organizations
+         WHERE id = $1
+           AND status = 'active'
+         FOR UPDATE`,
+        [ownerOrganizationId],
+      );
+      if (!lockedOrganization.rows[0]) {
+        throw new ResourceProjectionRefreshConflict(
+          'The matched organization changed during review. Refresh the submission before approving it.',
+        );
+      }
+    }
+  }
+
+  let existingServiceId: string | null = null;
+  if (draft.variant === 'listing' && draft.existingServiceId) {
+    if (!ownerOrganizationId) {
+      throw new ResourceProjectionRefreshConflict(
+        'The selected service is no longer attached to an active organization. Refresh the submission before approving it.',
+      );
+    }
+    const serviceRows = await client.query<{ id: string; organization_id: string }>(
+      `SELECT id, organization_id
+         FROM services
+        WHERE id = $1
+          AND status = 'active'
+        FOR UPDATE`,
+      [draft.existingServiceId],
+    );
+    const service = serviceRows.rows[0];
+    if (!service || service.organization_id !== ownerOrganizationId) {
+      throw new ResourceProjectionRefreshConflict(
+        'The selected service is no longer active for this organization. Refresh the submission before approving it.',
+      );
+    }
+    existingServiceId = service.id;
+  } else if (draft.variant === 'listing' && ownerOrganizationId) {
+    existingServiceId = await resolveExistingLiveServiceId(client, ownerOrganizationId, {
+      serviceName: draft.service.name,
+      serviceUrl: draft.service.url,
+    });
+    if (existingServiceId) {
+      const lockedService = await client.query<{ id: string }>(
+        `SELECT id
+         FROM services
+         WHERE id = $1
+           AND organization_id = $2
+           AND status = 'active'
+         FOR UPDATE`,
+        [existingServiceId, ownerOrganizationId],
+      );
+      if (!lockedService.rows[0]) {
+        throw new ResourceProjectionRefreshConflict(
+          'The matched service changed ownership or status during review. Refresh the submission before approving it.',
+        );
+      }
+    }
+  }
 
   return {
     ...draft,
-    ownerOrganizationId: ownerOrganizationId ?? draft.ownerOrganizationId ?? null,
-    existingServiceId: existingServiceId ?? draft.existingServiceId ?? null,
+    ownerOrganizationId,
+    existingServiceId,
   };
 }
 
@@ -504,66 +587,120 @@ async function ensureManualSubmissionSourceSystem(
   const family = 'manual';
   const baseUrl = channel === 'host' ? 'oran://resource-studio' : 'oran://community-resource-submissions';
   const trustTier = channel === 'host' ? 'trusted_partner' : 'community';
+  const crawlPolicy = JSON.stringify({
+    origin: channel,
+    discovery: [{ type: channel === 'host' ? 'manual_portal' : 'manual_public_submission' }],
+  });
+  const notes = channel === 'host'
+    ? 'Structured resource submissions from authenticated host operators.'
+    : 'Structured resource submissions from public and community contributors.';
 
   const systemRows = await client.query<{ id: string }>(
-    `INSERT INTO source_systems
+    `WITH authority_lock AS MATERIALIZED (
+       SELECT pg_advisory_xact_lock(lock_key)
+       FROM (SELECT hashtextextended($7, 0) AS lock_key) lock_keys
+     ), existing AS MATERIALIZED (
+       SELECT source.id,
+              source.family = $2
+                AND source.homepage_url IS NOT DISTINCT FROM $3
+                AND source.trust_tier = $4
+                AND source.resource_purpose = 'service_catalog'
+                AND source.domain_rules = '[]'::jsonb
+                AND source.crawl_policy = $5::jsonb
+                AND source.jurisdiction_scope = '{}'::jsonb
+                AND source.contact_info = '{}'::jsonb
+                AND source.notes IS NOT DISTINCT FROM $6
+                AND source.is_active = true AS configuration_matches
+       FROM public.source_systems source
+       CROSS JOIN authority_lock
+       WHERE source.name = $1
+     ), inserted AS (
+       INSERT INTO source_systems
        (name, family, homepage_url, trust_tier, resource_purpose, domain_rules, crawl_policy, jurisdiction_scope, contact_info, notes)
-     VALUES ($1, $2, $3, $4, 'service_catalog', '[]'::jsonb, $5::jsonb, '{}'::jsonb, '{}'::jsonb, $6)
-     ON CONFLICT (name)
-     DO UPDATE SET
-       family = EXCLUDED.family,
-       homepage_url = EXCLUDED.homepage_url,
-       trust_tier = EXCLUDED.trust_tier,
-       resource_purpose = EXCLUDED.resource_purpose,
-       crawl_policy = EXCLUDED.crawl_policy,
-       updated_at = NOW()
-     RETURNING id`,
+       SELECT $1, $2, $3, $4, 'service_catalog', '[]'::jsonb, $5::jsonb,
+              '{}'::jsonb, '{}'::jsonb, $6
+       FROM authority_lock
+       WHERE NOT EXISTS (SELECT 1 FROM existing)
+       ON CONFLICT (name) DO NOTHING
+       RETURNING id
+     )
+     SELECT id
+     FROM existing
+     WHERE configuration_matches
+       AND (SELECT COUNT(*) FROM existing) = 1
+     UNION ALL
+     SELECT id FROM inserted
+     LIMIT 1`,
     [
       sourceName,
       family,
       baseUrl,
       trustTier,
-      JSON.stringify({
-        origin: channel,
-        discovery: [{ type: channel === 'host' ? 'manual_portal' : 'manual_public_submission' }],
-      }),
-      channel === 'host'
-        ? 'Structured resource submissions from authenticated host operators.'
-        : 'Structured resource submissions from public and community contributors.',
+      crawlPolicy,
+      notes,
+      `oran:reserved-source:resource-submission:${channel}`,
     ],
   );
-  const sourceSystemId = systemRows.rows[0].id;
-
-  const feedName = channel === 'host' ? 'Resource Studio Intake' : 'Community Resource Intake';
-  const feedRows = await client.query<{ id: string }>(
-    `SELECT id
-       FROM source_feeds
-      WHERE source_system_id = $1
-        AND feed_name = $2
-      LIMIT 1`,
-    [sourceSystemId, feedName],
-  );
-
-  if (feedRows.rows[0]?.id) {
-    return { sourceSystemId, sourceFeedId: feedRows.rows[0].id };
+  const sourceSystemId = systemRows.rows[0]?.id;
+  if (!sourceSystemId) {
+    throw new Error(
+      `${sourceName} exists with configuration drift; use the reviewed source-authority workflow`,
+    );
   }
 
-  const createdFeed = await client.query<{ id: string }>(
-    `INSERT INTO source_feeds
+  const feedName = channel === 'host' ? 'Resource Studio Intake' : 'Community Resource Intake';
+  const authType = channel === 'host' ? 'custom' : 'none';
+  const feedRows = await client.query<{ id: string }>(
+    `WITH authority_lock AS MATERIALIZED (
+       SELECT pg_advisory_xact_lock(lock_key)
+       FROM (SELECT hashtextextended($7, 0) AS lock_key) lock_keys
+     ), existing AS MATERIALIZED (
+       SELECT feed.id,
+              feed.feed_type = $3
+                AND feed.feed_handler = $4
+                AND feed.base_url IS NOT DISTINCT FROM $5
+                AND feed.healthcheck_url IS NULL
+                AND feed.auth_type = $6
+                AND feed.profile_uri IS NULL
+                AND feed.jurisdiction_scope = '{}'::jsonb
+                AND feed.refresh_interval_hours = 24
+                AND feed.is_active = true AS configuration_matches
+       FROM public.source_feeds feed
+       CROSS JOIN authority_lock
+       WHERE feed.source_system_id = $1
+         AND feed.feed_name = $2
+     ), inserted AS (
+       INSERT INTO source_feeds
        (source_system_id, feed_name, feed_type, feed_handler, base_url, auth_type, jurisdiction_scope, refresh_interval_hours)
-     VALUES ($1, $2, $3, $4, $5, $6, '{}'::jsonb, 24)
-     RETURNING id`,
+       SELECT $1, $2, $3, $4, $5, $6, '{}'::jsonb, 24
+       FROM authority_lock
+       WHERE NOT EXISTS (SELECT 1 FROM existing)
+       RETURNING id
+     )
+     SELECT id
+     FROM existing
+     WHERE configuration_matches
+       AND (SELECT COUNT(*) FROM existing) = 1
+     UNION ALL
+     SELECT id FROM inserted
+     LIMIT 1`,
     [
       sourceSystemId,
       feedName,
       'manual_entry',
       'none',
       baseUrl,
-      channel === 'host' ? 'custom' : 'none',
+      authType,
+      `oran:reserved-feed:resource-submission:${channel}:${sourceSystemId}`,
     ],
   );
-
-  return { sourceSystemId, sourceFeedId: createdFeed.rows[0].id };
+  const sourceFeedId = feedRows.rows[0]?.id;
+  if (!sourceFeedId) {
+    throw new Error(
+      `${feedName} exists with configuration drift; use the reviewed source-authority workflow`,
+    );
+  }
+  return { sourceSystemId, sourceFeedId };
 }
 
 async function attachSourceAssertion(
@@ -1174,16 +1311,27 @@ export async function saveResourceSubmissionDraft(
   instanceId: string,
   input: UpdateResourceSubmissionDraftInput,
 ): Promise<void> {
-  const current = await executeQuery<{ form_data: Record<string, unknown> }>(
+  await withTransaction(async (client) => {
+    await acquireLivePublicationGateShared(client);
+    await saveResourceSubmissionDraftInTransaction(client, instanceId, input);
+  });
+}
+
+export async function saveResourceSubmissionDraftInTransaction(
+  client: PoolClient,
+  instanceId: string,
+  input: UpdateResourceSubmissionDraftInput,
+): Promise<void> {
+  const current = await client.query<{ form_data: Record<string, unknown> }>(
     `SELECT form_data FROM form_instances WHERE id = $1`,
     [instanceId],
   );
-  const currentDraft = normalizeResourceSubmissionDraft(current[0]?.form_data ? readObject(current[0].form_data).draft : undefined, 'listing', 'host');
+  const currentDraft = normalizeResourceSubmissionDraft(current.rows[0]?.form_data ? readObject(current.rows[0].form_data).draft : undefined, 'listing', 'host');
   const nextDraft = input.draft === undefined
     ? currentDraft
     : normalizeResourceSubmissionDraft(input.draft, currentDraft.variant, currentDraft.channel);
 
-  await updateFormInstanceDraft(instanceId, {
+  await updateFormInstanceDraftInTransaction(client, instanceId, {
     title: input.title,
     notes: input.notes ?? nextDraft.evidence.notes,
     formData: {
@@ -1271,7 +1419,7 @@ async function upsertOrganizationFromDraft(
   actorUserId: string,
 ): Promise<string> {
   if (draft.ownerOrganizationId) {
-    await client.query(
+    const updatedOrganization = await client.query<{ id: string }>(
       `UPDATE organizations
           SET name = COALESCE(NULLIF($2, ''), name),
               description = COALESCE(NULLIF($3, ''), description),
@@ -1284,7 +1432,9 @@ async function upsertOrganizationFromDraft(
               legal_status = COALESCE(NULLIF($10, ''), legal_status),
               updated_by_user_id = $1,
               updated_at = NOW()
-        WHERE id = $11`,
+        WHERE id = $11
+          AND status = 'active'
+      RETURNING id`,
       [
         actorUserId,
         draft.organization.name,
@@ -1299,6 +1449,9 @@ async function upsertOrganizationFromDraft(
         draft.ownerOrganizationId,
       ],
     );
+    if (!updatedOrganization.rows[0]) {
+      throw new Error('Selected organization was retired during publication');
+    }
     return draft.ownerOrganizationId;
   }
 
@@ -1333,7 +1486,7 @@ async function replaceServiceBundleFromDraft(
   let serviceId = draft.existingServiceId;
 
   if (serviceId) {
-    await client.query(
+    const updatedService = await client.query<{ id: string }>(
       `UPDATE services
           SET organization_id = $1,
               name = COALESCE(NULLIF($2, ''), name),
@@ -1349,7 +1502,9 @@ async function replaceServiceBundleFromDraft(
               status = 'active',
               updated_by_user_id = $12,
               updated_at = NOW()
-        WHERE id = $13`,
+        WHERE id = $13
+          AND status = 'active'
+      RETURNING id`,
       [
         organizationId,
         draft.service.name || 'Untitled service',
@@ -1366,6 +1521,9 @@ async function replaceServiceBundleFromDraft(
         serviceId,
       ],
     );
+    if (!updatedService.rows[0]) {
+      throw new Error('Selected service was retired during publication');
+    }
   } else {
     const created = await client.query<{ id: string }>(
       `INSERT INTO services
@@ -1641,7 +1799,17 @@ export async function projectApprovedResourceSubmission(
   identifier: string,
   actorUserId: string,
 ): Promise<ResourceProjectionResult> {
-  return withTransaction(async (client) => {
+  return withTransaction((client) => (
+    projectApprovedResourceSubmissionInTransaction(client, identifier, actorUserId)
+  ));
+}
+
+export async function projectApprovedResourceSubmissionInTransaction(
+  client: PoolClient,
+  identifier: string,
+  actorUserId: string,
+): Promise<ResourceProjectionResult> {
+    await acquireFreshnessSensitiveAuthoritativeMutationGates(client);
     const rows = await client.query<{
       submission_id: string;
       submission_type: string;
@@ -1810,6 +1978,10 @@ export async function projectApprovedResourceSubmission(
     });
 
     const draft = await resolveExistingEntitiesForDraft(client, rawDraft);
+    await assertAuthoritativeEntitiesMutable(client, {
+      organizationIds: [draft.ownerOrganizationId],
+      serviceIds: [draft.existingServiceId],
+    });
 
     if (draft.variant === 'claim' || row.submission_type === 'org_claim') {
       const organizationId = await upsertOrganizationFromDraft(client, draft, actorUserId);
@@ -2000,7 +2172,6 @@ export async function projectApprovedResourceSubmission(
     });
 
     return { organizationId, serviceId: resolvedServiceId };
-  });
 }
 
 export async function getAccessibleResourceSubmission(
@@ -2053,6 +2224,14 @@ export async function setResourceSubmissionReviewerNotes(
   reviewerNotes: string | null,
 ): Promise<void> {
   await setFormSubmissionReviewerNotes(submissionId, reviewerNotes);
+}
+
+export async function setResourceSubmissionReviewerNotesInTransaction(
+  client: PoolClient,
+  submissionId: string,
+  reviewerNotes: string | null,
+): Promise<void> {
+  await setVaultFormSubmissionReviewerNotesInTransaction(client, submissionId, reviewerNotes);
 }
 
 export function isResourceSubmissionStatusEditable(status: SubmissionStatus): boolean {

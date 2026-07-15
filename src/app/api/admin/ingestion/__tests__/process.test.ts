@@ -146,7 +146,7 @@ describe('admin ingestion process route', () => {
       })
     );
 
-    expect(rateLimitMock).toHaveBeenCalledWith('203.0.113.99', expect.any(Object));
+    expect(rateLimitMock).toHaveBeenCalledWith('admin:ingestion:process:write:203.0.113.99', expect.any(Object));
     expect(requireMinRoleMock).toHaveBeenCalledWith({ userId: 'oran-1' }, 'oran_admin');
     expect(createIngestionServiceMock).toHaveBeenCalledWith({ stores: true });
     expect(runPipelineMock).toHaveBeenCalledWith({

@@ -14,6 +14,8 @@
  * @module functions/checkSlaBreaches
  */
 
+import { assertLegacyAzureFunctionsArchived } from '../archiveBoundary';
+
 // ---------------------------------------------------------------------------
 // Types for Azure Functions v4 programming model
 // ---------------------------------------------------------------------------
@@ -38,6 +40,7 @@ export interface SlaCheckResult {
  * Runs every hour to catch SLA breaches in a timely manner.
  */
 export async function checkSlaBreaches(timer: TimerInfo): Promise<void> {
+  assertLegacyAzureFunctionsArchived();
   const appUrl = process.env.ORAN_APP_URL;
   const apiKey = process.env.INTERNAL_API_KEY;
 

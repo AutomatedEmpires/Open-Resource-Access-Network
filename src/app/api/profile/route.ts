@@ -85,8 +85,8 @@ interface ProfileResponse {
 // RATE LIMIT HELPER
 // ============================================================
 
-function checkProfileRateLimit(ip: string) {
-  const rateLimit = checkRateLimitShared(`profile:ip:${ip}`, {
+async function checkProfileRateLimit(ip: string, operation: 'read' | 'write') {
+  const rateLimit = await checkRateLimitShared(`profile:${operation}:ip:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: PROFILE_RATE_LIMIT_MAX,
   });
@@ -149,7 +149,16 @@ export async function GET(req: NextRequest) {
 
   // Rate limiting
   const ip = getIp(req);
-  const rateLimit = await checkProfileRateLimit(ip);
+  const rateLimit = await checkProfileRateLimit(ip, 'read');
+  if (rateLimit.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      {
+        status: 503,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      },
+    );
+  }
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },
@@ -236,7 +245,16 @@ export async function PUT(req: NextRequest) {
 
   // Rate limiting
   const ip = getIp(req);
-  const rateLimit = await checkProfileRateLimit(ip);
+  const rateLimit = await checkProfileRateLimit(ip, 'write');
+  if (rateLimit.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      {
+        status: 503,
+        headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+      },
+    );
+  }
   if (rateLimit.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before making more requests.' },

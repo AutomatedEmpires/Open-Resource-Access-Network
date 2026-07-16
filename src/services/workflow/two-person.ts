@@ -131,12 +131,14 @@ export async function requestGrant(req: GrantRequest): Promise<GrantResult> {
       return { success: false, grantId: pendingRows.rows[0].id, error: 'A pending grant request already exists' };
     }
 
-    // Check if two-person approval is required
+    // Check if two-person approval is required. A missing flag row fails
+    // closed (approval required); disabling needs an explicit enabled=false
+    // row, so an unseeded environment can never hand out direct grants.
     const flagRows = await client.query<{ enabled: boolean }>(
       `SELECT enabled FROM feature_flags WHERE name = $1`,
       [FEATURE_FLAGS.TWO_PERSON_APPROVAL],
     );
-    const twoPersonEnabled = flagRows.rows[0]?.enabled ?? false;
+    const twoPersonEnabled = flagRows.rows[0]?.enabled ?? true;
 
     const requiresApproval = scope.requires_approval && twoPersonEnabled;
     const expiresAt = new Date();

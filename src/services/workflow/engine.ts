@@ -115,12 +115,15 @@ async function checkTwoPersonGate(
     return { gate, passed: true, message: 'Type does not require two-person approval' };
   }
 
-  // Check feature flag
+  // Check feature flag. A MISSING row fails closed (gate enforced): an
+  // unseeded flag table must never mean a single admin can approve
+  // high-risk types. Disabling requires an explicit enabled=false row
+  // (seeded by 0035 — flipping it on in production is a founder decision).
   const flagRows = await client.query<FlagRow>(
     `SELECT enabled FROM feature_flags WHERE name = $1`,
     [FEATURE_FLAGS.TWO_PERSON_APPROVAL],
   );
-  const flagEnabled = flagRows.rows[0]?.enabled ?? false;
+  const flagEnabled = flagRows.rows[0]?.enabled ?? true;
   if (!flagEnabled) {
     return { gate, passed: true, message: 'Two-person approval feature disabled' };
   }

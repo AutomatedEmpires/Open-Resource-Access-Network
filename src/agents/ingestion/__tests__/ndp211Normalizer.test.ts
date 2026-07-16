@@ -39,14 +39,26 @@ function createMockNormalizerStores() {
         getById: vi.fn().mockResolvedValue({ id: 'feed-211', sourceSystemId: 'source-system-211' }),
         updateAfterPoll: vi.fn().mockResolvedValue(undefined),
       },
+      entityIdentifiers: {
+        findByScheme: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue(undefined),
+        deleteByEntity: vi.fn().mockResolvedValue(undefined),
+      },
       canonicalOrganizations: {
         create: vi.fn().mockImplementation((row) => ({ id: `org-${Math.random().toString(36).slice(2, 6)}`, ...row })),
+        getById: vi.fn().mockResolvedValue(null),
+        update: vi.fn().mockResolvedValue(undefined),
       },
       canonicalServices: {
         create: vi.fn().mockImplementation((row) => ({ id: `svc-${Math.random().toString(36).slice(2, 6)}`, ...row })),
+        getById: vi.fn().mockResolvedValue(null),
+        update: vi.fn().mockResolvedValue(undefined),
+        listByOrganization: vi.fn().mockResolvedValue([]),
       },
       canonicalLocations: {
         create: vi.fn().mockImplementation((row) => ({ id: `loc-${Math.random().toString(36).slice(2, 6)}`, ...row })),
+        update: vi.fn().mockResolvedValue(undefined),
+        listByOrganization: vi.fn().mockResolvedValue([]),
       },
       canonicalServiceLocations: {
         bulkCreate: vi.fn().mockResolvedValue(undefined),

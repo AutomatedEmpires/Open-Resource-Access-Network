@@ -446,13 +446,19 @@ export function extractExpandableLinks(
   const $ = cheerio.load(html);
   $('a[href]').each((_, element) => {
     const href = $(element).attr('href');
-    if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) {
+    if (!href || href.startsWith('#')) {
       return;
     }
 
     let resolvedUrl: string;
     try {
-      resolvedUrl = canonicalizeUrl(new URL(href, baseUrl).href);
+      const parsed = new URL(href, baseUrl);
+      // Only web schemes are crawlable; drops javascript:, data:, vbscript:,
+      // mailto:, tel:, and friends in any casing.
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return;
+      }
+      resolvedUrl = canonicalizeUrl(parsed.href);
     } catch {
       return;
     }

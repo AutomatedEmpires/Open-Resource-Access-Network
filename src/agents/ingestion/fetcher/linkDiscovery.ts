@@ -115,15 +115,20 @@ export class LinkDiscovery {
       const href = $el.attr('href');
       if (!href) return;
 
-      // Skip anchors and javascript
-      if (href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) {
+      // Skip in-page anchors
+      if (href.startsWith('#')) {
         return;
       }
 
-      // Resolve relative URLs
+      // Resolve relative URLs and reject every non-web scheme
+      // (javascript:, data:, vbscript:, mailto:, tel:, ...) in any casing.
       let resolvedUrl: string;
       try {
-        resolvedUrl = this.options.resolveRelative ? new URL(href, baseUrl).href : href;
+        const parsed = new URL(href, baseUrl);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          return;
+        }
+        resolvedUrl = this.options.resolveRelative ? parsed.href : href;
       } catch {
         return; // Skip invalid URLs
       }

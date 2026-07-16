@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { loginAs } from './helpers/auth';
 import { isDbConfigured } from './helpers/db';
 
 function runId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
 }
 
 async function postJsonWithRetry(

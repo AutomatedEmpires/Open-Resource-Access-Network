@@ -7,6 +7,7 @@
  * Creates a 'community_report' submission in the universal pipeline.
  */
 
+import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { isDatabaseConfigured, executeQuery, withTransaction } from '@/services/db/postgres';
@@ -44,6 +45,11 @@ const ReportSchema = z.object({
 // ============================================================
 // HELPERS
 // ============================================================
+
+function buildAnonymousUserId(ip: string): string {
+  return `anon_${createHash('sha256').update(ip).digest('hex').slice(0, 24)}`;
+}
+
 // ============================================================
 // POST — Submit a listing report
 // ============================================================
@@ -65,9 +71,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Auth is optional — anonymous users can report, but authenticated reports are prioritized
+  // Auth is optional — anonymous users can report, but authenticated reports are prioritized.
+  // Anonymous identity is a hash of the IP, never the raw IP (see services/security/ip.ts).
   const authCtx = await getAuthContext();
-  const userId = authCtx?.userId ?? `anon_${ip}`;
+  const userId = authCtx?.userId ?? buildAnonymousUserId(ip);
 
   let body: unknown;
   try {

@@ -21,6 +21,48 @@ permissions:
   contents: read
 
 jobs:
+  migrations:
+    name: Migration Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    # Mirrors production: the same Supabase image ORAN runs on, so PostGIS and
+    # pgvector are the versions the live project actually has and the conditional
+    # pgvector branch in 0026 is exercised rather than skipped.
+    services:
+      postgres:
+        image: public.ecr.aws/supabase/postgres:17.6.1.131
+        env:
+          # Throwaway credential for an ephemeral, network-isolated CI container.
+          POSTGRES_PASSWORD: pw
+          POSTGRES_DB: oran_ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d oran_ci_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify migrations against a fresh database
+        run: npm run verify:migrations
+        env:
+          MIGRATION_DATABASE_URL: postgresql://supabase_admin:pw@127.0.0.1:5432/oran_ci_test
+
   runtime-readiness:
     name: Runtime Readiness Contract
     runs-on: ubuntu-latest

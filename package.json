@@ -30,6 +30,7 @@
     "provision:owner-access": "node scripts/provision-owner-access.mjs",
     "report:211-canary": "node scripts/run-211-canary-report.mjs",
     "report:211-feed-status": "node scripts/run-211-feed-status-report.mjs",
+    "verify:migrations": "node scripts/db/verify-migrations.mjs",
     "check:bundle": "node scripts/check-bundle-sizes.js",
     "audit:ui": "node scripts/audit-ui-consistency.mjs",
     "build:functions": "node scripts/build-functions.mjs"

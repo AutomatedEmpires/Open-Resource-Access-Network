@@ -7,7 +7,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import type { PublicProvenanceSummary } from '@/domain/types';
 import { ServiceSearchEngine } from '@/services/search/engine';
+import { getPublicProvenanceSummaries } from '@/services/provenance/publicProvenance';
 import { executeCount, executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { RATE_LIMIT_WINDOW_MS } from '@/domain/constants';
@@ -97,8 +99,27 @@ export async function GET(req: NextRequest) {
 
   try {
     const results = await engine.searchByIds(ids);
+
+    // Attribution is best-effort: if the lookup fails, records still render
+    // (without a provenance section) rather than the whole request failing or
+    // a transient error being presented as "source not recorded".
+    let provenanceById = new Map<string, PublicProvenanceSummary>();
+    try {
+      provenanceById = await getPublicProvenanceSummaries(
+        { executeQuery },
+        results.map((r) => r.service.service.id),
+      );
+    } catch (provenanceError) {
+      await captureException(provenanceError, { feature: 'api_services_provenance' });
+    }
+
     return NextResponse.json(
-      { results: results.map((r) => r.service) },
+      {
+        results: results.map((r) => ({
+          ...r.service,
+          provenance: provenanceById.get(r.service.service.id) ?? null,
+        })),
+      },
       { headers: { 'Cache-Control': 'private, no-store' } }
     );
   } catch (error) {

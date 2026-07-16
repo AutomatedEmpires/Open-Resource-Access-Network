@@ -218,6 +218,96 @@ describe('ServiceDetailClient', () => {
     expect(screen.getByText('Directory')).toBeInTheDocument();
   });
 
+  it('renders provenance with source, corroboration, and honest review state', async () => {
+    const service = {
+      ...makeService(),
+      provenance: {
+        serviceId: 'svc-1',
+        origin: 'official_feed',
+        sourceName: '211 National Data Platform',
+        sourceCount: 2,
+        firstSeenAt: '2026-01-05T00:00:00.000Z',
+        informationUpdatedAt: '2026-07-01T00:00:00.000Z',
+        lastHumanReviewAt: null,
+      },
+    };
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ results: [service] }),
+    });
+
+    render(<ServiceDetailPage serviceId="svc-1" />);
+
+    await screen.findByTestId('service-card');
+    expect(screen.getByText('Where this information comes from')).toBeInTheDocument();
+    expect(screen.getByText('An official publisher feed — 211 National Data Platform')).toBeInTheDocument();
+    expect(screen.getByText('Combined from 2 independent sources')).toBeInTheDocument();
+    expect(screen.getByText('Jul 1, 2026')).toBeInTheDocument();
+    expect(screen.getByText('Jan 5, 2026')).toBeInTheDocument();
+    // No review evidence => no review claim.
+    expect(screen.getByText('No independent review date is recorded for this record')).toBeInTheDocument();
+  });
+
+  it('renders provider-submission provenance with the reviewer approval date', async () => {
+    const service = {
+      ...makeService(),
+      provenance: {
+        serviceId: 'svc-1',
+        origin: 'provider_submission',
+        sourceName: 'The provider organization, through the ORAN host portal',
+        sourceCount: null,
+        firstSeenAt: null,
+        informationUpdatedAt: '2026-06-20T00:00:00.000Z',
+        lastHumanReviewAt: '2026-06-20T00:00:00.000Z',
+      },
+    };
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ results: [service] }),
+    });
+
+    render(<ServiceDetailPage serviceId="svc-1" />);
+
+    await screen.findByTestId('service-card');
+    expect(screen.getByText(/Submitted by the provider organization/)).toBeInTheDocument();
+    expect(screen.getByText('Approved by an ORAN reviewer on Jun 20, 2026')).toBeInTheDocument();
+  });
+
+  it('states unknown origin honestly and omits the section when attribution is unavailable', async () => {
+    const unknownService = {
+      ...makeService(),
+      provenance: {
+        serviceId: 'svc-1',
+        origin: 'unknown',
+        sourceName: null,
+        sourceCount: null,
+        firstSeenAt: null,
+        informationUpdatedAt: null,
+        lastHumanReviewAt: null,
+      },
+    };
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ results: [unknownService] }),
+    });
+
+    render(<ServiceDetailPage serviceId="svc-1" />);
+    await screen.findByTestId('service-card');
+    expect(screen.getByText('Not recorded for this record')).toBeInTheDocument();
+    expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
+
+    cleanup();
+
+    // provenance null (lookup unavailable) => section absent, nothing implied.
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ results: [{ ...makeService(), provenance: null }] }),
+    });
+    render(<ServiceDetailPage serviceId="svc-1" />);
+    await screen.findByTestId('service-card');
+    expect(screen.queryByText('Where this information comes from')).not.toBeInTheDocument();
+  });
+
   it('preserves incoming canonical discovery state in browse links', async () => {
     const taxonomyId = 'a1000000-4000-4000-8000-000000000001';
     navigationState.searchParams = new URLSearchParams(

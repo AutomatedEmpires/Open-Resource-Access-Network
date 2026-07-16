@@ -227,7 +227,9 @@ describe('chat types + conversion', () => {
       serviceAreaSummary: 'Kootenai County',
       requiredDocuments: ['Current utility bill'],
       nextStep: 'Call before 3 p.m. to complete intake.',
-      verificationStatus: 'provider_verified',
+      // Org-level verified_at only supports source verification, never a
+      // provider-verified claim about the service record itself.
+      verificationStatus: 'source_verified',
       verificationLastCheckedAt: '2026-02-20T12:00:00.000Z',
       sourceLabel: 'Helping Org provider page',
       sourceUrl: 'https://example.org/utility-intake',

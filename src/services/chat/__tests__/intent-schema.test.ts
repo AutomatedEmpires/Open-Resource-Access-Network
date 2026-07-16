@@ -138,6 +138,18 @@ describe('chat orchestration primitives', () => {
     });
   });
 
+  it('detects substance-use, domestic-violence, and education needs', () => {
+    expect(detectIntent('I need help with addiction and want a detox program').category).toBe('substance_use');
+    expect(detectIntent('my partner is abusive and I need a restraining order').category).toBe('domestic_violence');
+    expect(detectIntent('where can I study for my ged near me').category).toBe('education');
+  });
+
+  it('never routes explicit crisis language through intent-only handling', () => {
+    // Crisis detection runs before intent in the orchestrator; these messages
+    // must trip the crisis gate regardless of any overlapping need keywords.
+    expect(detectCrisis('I want to hurt myself after drinking')).toBe(true);
+  });
+
   it('assembles responses with the disclaimer, capped cards, and qualifying language', () => {
     const response = assembleResponse(
       Array.from({ length: 8 }, (_, index) => makeMockService(`svc-${index}`)),

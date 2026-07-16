@@ -9,13 +9,15 @@
 
 import type { MetadataRoute } from 'next';
 import { PUBLIC_SITEMAP_ENTRIES, SITE } from '@/lib/site';
+import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy';
 
 /** Fetch all public service IDs for sitemap inclusion. */
 async function fetchPublicServiceIds(): Promise<string[]> {
   try {
+    const baseUrl = assertAllowedRuntimeEndpoint(SITE.baseUrl, 'sitemap base URL');
     // Use internal API to fetch active service IDs.
     // In production this runs server-side and has direct DB access.
-    const res = await fetch(`${SITE.baseUrl}/api/search?status=active&limit=500&page=1`, {
+    const res = await fetch(`${baseUrl}/api/search?status=active&limit=500&page=1`, {
       next: { revalidate: 3600 }, // Revalidate every hour
     });
     if (!res.ok) return [];
@@ -28,10 +30,11 @@ async function fetchPublicServiceIds(): Promise<string[]> {
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
+  const baseUrl = assertAllowedRuntimeEndpoint(SITE.baseUrl, 'sitemap base URL');
 
   // Static public pages
   const staticPages: MetadataRoute.Sitemap = PUBLIC_SITEMAP_ENTRIES.map((entry) => ({
-    url: `${SITE.baseUrl}${entry.path}`,
+    url: `${baseUrl}${entry.path}`,
     lastModified: now,
     changeFrequency: entry.changeFrequency,
     priority: entry.priority,
@@ -40,7 +43,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Dynamic service detail pages
   const serviceIds = await fetchPublicServiceIds();
   const servicePages: MetadataRoute.Sitemap = serviceIds.map((id) => ({
-    url: `${SITE.baseUrl}/service/${id}`,
+    url: `${baseUrl}/service/${id}`,
     lastModified: now,
     changeFrequency: 'weekly' as const,
     priority: 0.7,

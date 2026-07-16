@@ -10,6 +10,8 @@
  *   INTERNAL_API_KEY   — Shared secret for internal API authentication
  */
 
+import { assertLegacyAzureFunctionsArchived } from '../archiveBoundary';
+
 export interface TimerInfo {
   schedule: { isRunning: boolean };
   isPastDue: boolean;
@@ -23,6 +25,7 @@ export interface RegressionScanResult {
 }
 
 export async function scanConfidenceRegressions(timer: TimerInfo): Promise<void> {
+  assertLegacyAzureFunctionsArchived();
   const appUrl = process.env.ORAN_APP_URL;
   const apiKey = process.env.INTERNAL_API_KEY;
 

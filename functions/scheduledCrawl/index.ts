@@ -11,6 +11,7 @@
  * @module functions/scheduledCrawl
  */
 import crypto from 'node:crypto';
+import { assertLegacyAzureFunctionsArchived } from '../archiveBoundary';
 
 // ---------------------------------------------------------------------------
 // Types for Azure Functions v4 programming model
@@ -46,6 +47,7 @@ export interface QueueMessage {
 export async function scheduledCrawl(
   _timer: TimerInfo
 ): Promise<QueueMessage[]> {
+  assertLegacyAzureFunctionsArchived();
   const { getDrizzle } = await import('@/services/db/drizzle');
   const { createIngestionStores } = await import(
     '@/agents/ingestion/persistence/storeFactory'

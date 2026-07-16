@@ -11,6 +11,7 @@
  * @module functions/routeToAdmin
  */
 import crypto from 'node:crypto';
+import { assertLegacyAzureFunctionsArchived } from '../archiveBoundary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,6 +45,7 @@ export interface RouteQueueMessage {
  * written with `assignmentsCreated: 0` so the gap is visible in telemetry.
  */
 export async function routeToAdmin(message: RouteQueueMessage): Promise<void> {
+  assertLegacyAzureFunctionsArchived();
   const { getDrizzle } = await import('@/services/db/drizzle');
   const { createIngestionStores } = await import(
     '@/agents/ingestion/persistence/storeFactory'

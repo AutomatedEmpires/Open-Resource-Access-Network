@@ -85,11 +85,20 @@ const requiredWarnings = options.requireWarnings
 const missingRequiredWarnings = result.warnings.filter((name) => requiredWarnings.includes(name));
 
 if (!result.ok) {
-  emit(
-    options.format,
-    'error',
-    `Missing critical ${result.target} settings: ${result.missingCritical.join(', ')}`,
-  );
+  if (result.missingCritical.length > 0) {
+    emit(
+      options.format,
+      'error',
+      `Missing critical ${result.target} settings: ${result.missingCritical.join(', ')}`,
+    );
+  }
+  if (result.prohibitedSettings.length > 0) {
+    emit(
+      options.format,
+      'error',
+      `Retired Microsoft runtime settings are prohibited: ${result.prohibitedSettings.join(', ')}`,
+    );
+  }
 }
 
 if (result.warnings.length > 0) {

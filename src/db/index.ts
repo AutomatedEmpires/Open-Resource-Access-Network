@@ -1,8 +1,9 @@
 /**
  * Database Connection for ORAN
  *
- * Provides a Drizzle ORM client connected to PostgreSQL.
- * Uses pg for local dev, @neondatabase/serverless for production edge.
+ * Provides a Drizzle ORM client connected to PostgreSQL via pg in every
+ * environment. Production connects through the Supabase Supavisor pooler
+ * (see services/db/runtimeRole.ts for the fail-closed URL validation).
  */
 import { drizzle as drizzlePg, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';

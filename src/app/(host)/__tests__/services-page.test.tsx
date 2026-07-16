@@ -55,7 +55,7 @@ import ServicesPage from '@/app/(host)/services/page';
 
 function orgsResponse() {
   return {
-    results: [{ id: 'org-1', name: 'Helping Hands' }],
+    results: [{ id: '11111111-1111-4111-8111-111111111111', name: 'Helping Hands' }],
   };
 }
 
@@ -64,7 +64,7 @@ function servicesResponse(overrides: Record<string, unknown> = {}) {
     results: [
       {
         id: 'svc-1',
-        organization_id: 'org-1',
+        organization_id: '11111111-1111-4111-8111-111111111111',
         organization_name: 'Helping Hands',
         name: 'Food Pantry',
         description: 'Weekly groceries',
@@ -101,7 +101,7 @@ describe('host services page', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/host/services?page=1&limit=12');
     expect(screen.getByRole('link', { name: 'Add Service' })).toHaveAttribute(
       'href',
-      '/resource-studio?compose=listing&organizationId=org-1',
+      '/resource-studio?compose=listing&organizationId=11111111-1111-4111-8111-111111111111',
     );
     expect(screen.getByRole('link', { name: 'Open in Studio' })).toHaveAttribute(
       'href',
@@ -119,7 +119,7 @@ describe('host services page', () => {
     await screen.findByText('No services found');
     expect(screen.getByRole('link', { name: 'Resource Studio' })).toHaveAttribute(
       'href',
-      '/resource-studio?compose=listing&organizationId=org-1',
+      '/resource-studio?compose=listing&organizationId=11111111-1111-4111-8111-111111111111',
     );
   });
 
@@ -166,10 +166,10 @@ describe('host services page', () => {
     await screen.findByText('Food Pantry');
 
     fireEvent.change(screen.getByLabelText('Filter by organization'), {
-      target: { value: 'org-1' },
+      target: { value: '11111111-1111-4111-8111-111111111111' },
     });
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/host/services?page=1&limit=12&organizationId=org-1');
+      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/host/services?page=1&limit=12&organizationId=11111111-1111-4111-8111-111111111111');
     });
 
     fireEvent.change(screen.getByLabelText('Search services'), {
@@ -178,12 +178,12 @@ describe('host services page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/host/services?page=1&limit=12&q=pantry&organizationId=org-1');
+      expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/host/services?page=1&limit=12&q=pantry&organizationId=11111111-1111-4111-8111-111111111111');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/host/services?page=2&limit=12&q=pantry&organizationId=org-1');
+      expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/host/services?page=2&limit=12&q=pantry&organizationId=11111111-1111-4111-8111-111111111111');
     });
   });
 });

@@ -12,6 +12,7 @@
  * No PII collected — anonymous reporting by default.
  */
 
+import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
@@ -105,7 +106,8 @@ export async function POST(req: NextRequest) {
         [
           serviceId,
           JSON.stringify({ issueType, comment: comment ?? null }),
-          `anon_${ip}`,
+          // Hash of the IP, never the raw IP (see services/security/ip.ts).
+          `anon_${createHash('sha256').update(ip).digest('hex').slice(0, 24)}`,
         ],
       );
 

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
 
 const BOOTSTRAP_ACTOR = 'bootstrap:provision-owner-access';
@@ -30,7 +31,7 @@ function deriveUsername(email, fallback) {
 
   const localPart = normalizeEmail(email).split('@')[0] ?? '';
   const collapsed = localPart.replace(/[^a-z0-9._-]/g, '.').replace(/\.{2,}/g, '.').replace(/^\.|\.$/g, '');
-  return collapsed || `owner.${Math.random().toString(36).slice(2, 8)}`;
+  return collapsed || `owner.${randomBytes(4).toString('hex')}`;
 }
 
 function domainToUrl(domainOrUrl) {

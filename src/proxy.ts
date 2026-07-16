@@ -27,6 +27,7 @@ const CSRF_PROTECTED_API_PREFIXES = [
   '/api/forms',
   '/api/templates',
   '/api/submissions',
+  '/api/resource-submissions',
   '/api/feedback',
   '/api/chat',
   '/api/tts',

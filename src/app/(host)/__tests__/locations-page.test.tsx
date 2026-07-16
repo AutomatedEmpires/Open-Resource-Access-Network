@@ -45,7 +45,7 @@ import LocationsPage from '@/app/(host)/locations/page';
 
 function orgsResponse() {
   return {
-    results: [{ id: 'org-1', name: 'Helping Hands' }],
+    results: [{ id: '11111111-1111-4111-8111-111111111111', name: 'Helping Hands' }],
   };
 }
 
@@ -54,7 +54,7 @@ function locationsResponse(overrides: Record<string, unknown> = {}) {
     results: [
       {
         id: 'loc-1',
-        organization_id: 'org-1',
+        organization_id: '11111111-1111-4111-8111-111111111111',
         organization_name: 'Helping Hands',
         name: 'Downtown Office',
         address_1: '123 Main St',
@@ -97,7 +97,7 @@ describe('host locations page', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/host/locations?page=1&limit=12');
     expect(screen.getByRole('link', { name: 'Add Location' })).toHaveAttribute(
       'href',
-      '/resource-studio?compose=listing&organizationId=org-1',
+      '/resource-studio?compose=listing&organizationId=11111111-1111-4111-8111-111111111111',
     );
     expect(screen.getByRole('link', { name: 'Open in Studio' })).toHaveAttribute(
       'href',
@@ -114,7 +114,7 @@ describe('host locations page', () => {
           results: [
             {
               id: 'loc-2',
-              organization_id: 'org-1',
+              organization_id: '11111111-1111-4111-8111-111111111111',
               organization_name: 'Helping Hands',
               name: 'North Office',
               address_1: null,
@@ -137,7 +137,7 @@ describe('host locations page', () => {
     await screen.findByText('North Office');
     expect(screen.getByRole('link', { name: 'Open in Studio' })).toHaveAttribute(
       'href',
-      '/resource-studio?compose=listing&organizationId=org-1',
+      '/resource-studio?compose=listing&organizationId=11111111-1111-4111-8111-111111111111',
     );
   });
 
@@ -151,7 +151,7 @@ describe('host locations page', () => {
     await screen.findByText('No locations found');
     expect(screen.getByRole('link', { name: 'Resource Studio' })).toHaveAttribute(
       'href',
-      '/resource-studio?compose=listing&organizationId=org-1',
+      '/resource-studio?compose=listing&organizationId=11111111-1111-4111-8111-111111111111',
     );
   });
 
@@ -179,15 +179,15 @@ describe('host locations page', () => {
     await screen.findByText('Downtown Office');
 
     fireEvent.change(screen.getByLabelText('Filter by organization'), {
-      target: { value: 'org-1' },
+      target: { value: '11111111-1111-4111-8111-111111111111' },
     });
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/host/locations?page=1&limit=12&organizationId=org-1');
+      expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/host/locations?page=1&limit=12&organizationId=11111111-1111-4111-8111-111111111111');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/host/locations?page=2&limit=12&organizationId=org-1');
+      expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/host/locations?page=2&limit=12&organizationId=11111111-1111-4111-8111-111111111111');
     });
   });
 

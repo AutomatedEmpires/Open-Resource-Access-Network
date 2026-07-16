@@ -60,6 +60,8 @@ interface OrgOption {
 
 const LIMIT = 12;
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const STATUS_LABELS: Record<ServiceStatus, { label: string; color: string }> = {
   active: { label: 'Active', color: 'border-[var(--text-primary)] bg-[var(--text-primary)] text-white' },
   inactive: { label: 'Inactive', color: 'border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]' },
@@ -131,8 +133,10 @@ export default function ServicesPage() {
 
   const composeHref = useMemo(() => {
     const organizationId = orgFilter || orgs[0]?.id;
-    return organizationId
-      ? `/resource-studio?compose=listing&organizationId=${organizationId}`
+    // Organization ids are UUIDs; anything else is dropped rather than
+    // interpolated into the link target.
+    return organizationId && UUID_PATTERN.test(organizationId)
+      ? `/resource-studio?compose=listing&organizationId=${encodeURIComponent(organizationId)}`
       : '/resource-studio?compose=listing';
   }, [orgFilter, orgs]);
 

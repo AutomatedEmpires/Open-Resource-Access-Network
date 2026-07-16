@@ -11,11 +11,14 @@
 import type { IngestionStores } from './stores';
 import type {
   SourceRecordRow,
+  CanonicalLocationRow,
+  CanonicalServiceRow,
   NewCanonicalOrganizationRow,
   NewCanonicalServiceRow,
   NewCanonicalLocationRow,
   NewCanonicalProvenanceRow,
 } from '@/db/schema';
+import { normalizeName, resolveEntity } from './entityResolution';
 
 // ── Public types ──────────────────────────────────────────────
 
@@ -24,6 +27,14 @@ export interface NormalizationResult {
   canonicalServiceIds: string[];
   canonicalLocationIds: string[];
   provenanceRecordsCreated: number;
+  /** Whether the canonical organization was created or refreshed in place. */
+  organizationOutcome: 'created' | 'updated';
+  servicesCreated: number;
+  servicesUpdated: number;
+  locationsCreated: number;
+  locationsReused: number;
+  /** How the record was matched to existing canonical data ('none' = new). */
+  resolutionStrategy: 'identifier' | 'url_phone' | 'name_address' | 'none';
 }
 
 export interface NormalizeSourceRecordOptions {
@@ -202,7 +213,24 @@ export async function normalizeSourceRecord(
   const canonicalServiceIds: string[] = [];
   const canonicalLocationIds: string[] = [];
 
-  // ── 1. Organization ───────────────────────────────────────
+  // ── 1. Resolve against existing canonical entities ────────
+  // Same-source identifier idempotency: a record re-observed from the same
+  // source system (replay, re-poll with a changed payload) refreshes its
+  // canonical entities in place instead of minting duplicates. Only the
+  // exact-identifier strategy is enabled here; cross-source merging by
+  // URL/name similarity stays in the resolution/clustering review layer so
+  // distinct services sharing a generic name are never silently merged.
+  const externalRecordId = sourceRecord.sourceRecordId ?? undefined;
+  const resolution = await resolveEntity(
+    { sourceSystemId: winningSourceSystemId, sourceRecordId: externalRecordId },
+    {
+      entityIdentifiers: stores.entityIdentifiers,
+      canonicalOrganizations: stores.canonicalOrganizations,
+      canonicalServices: stores.canonicalServices,
+    },
+  );
+
+  // ── 2. Organization ───────────────────────────────────────
   const orgPayload = extractSection(payload, 'organization') ?? payload;
   const rawOrgName = (orgPayload['name'] as string) ?? (payload['organization_name'] as string);
   const orgName = rawOrgName?.trim() || null;
@@ -213,29 +241,45 @@ export async function normalizeSourceRecord(
   }
 
   const orgMapped = mapFields(orgPayload, ORG_FIELDS, true);
-  const orgRow: NewCanonicalOrganizationRow = {
-    name: orgName,
-    ...(orgMapped as Partial<NewCanonicalOrganizationRow>),
-    lifecycleStatus: 'active',
-    publicationStatus: 'unpublished',
-    winningSourceSystemId,
-    sourceCount: 1,
-    sourceConfidenceSummary: { overall: confidenceHint },
-  };
 
-  const canonicalOrg = await stores.canonicalOrganizations.create(orgRow);
+  let canonicalOrgId: string;
+  let organizationOutcome: 'created' | 'updated';
+  if (resolution.canonicalOrganizationId) {
+    canonicalOrgId = resolution.canonicalOrganizationId;
+    organizationOutcome = 'updated';
+    // Refresh content fields and the freshness marker only — publication
+    // and lifecycle state belong to the review/publication layers.
+    await stores.canonicalOrganizations.update(canonicalOrgId, {
+      name: orgName,
+      ...(orgMapped as Partial<NewCanonicalOrganizationRow>),
+      lastRefreshedAt: new Date(),
+    });
+  } else {
+    const orgRow: NewCanonicalOrganizationRow = {
+      name: orgName,
+      ...(orgMapped as Partial<NewCanonicalOrganizationRow>),
+      lifecycleStatus: 'active',
+      publicationStatus: 'unpublished',
+      winningSourceSystemId,
+      sourceCount: 1,
+      sourceConfidenceSummary: { overall: confidenceHint },
+    };
+    const created = await stores.canonicalOrganizations.create(orgRow);
+    canonicalOrgId = created.id;
+    organizationOutcome = 'created';
+  }
 
   provenanceRows.push(
     ...buildProvenanceRows(
       'organization',
-      canonicalOrg.id,
+      canonicalOrgId,
       orgMapped,
       sourceRecord.id,
       confidenceHint,
     ),
   );
 
-  // ── 2. Service(s) ────────────────────────────────────────
+  // ── 3. Service(s) ────────────────────────────────────────
   const servicePayloads = extractArray(payload, 'services');
   // Fallback: if top-level keys have service-like shape, treat as single service
   if (servicePayloads.length === 0) {
@@ -247,29 +291,61 @@ export async function normalizeSourceRecord(
     }
   }
 
+  // Existing services under a resolved organization can be refreshed by
+  // org-scoped normalized-name match — same org + same source + same
+  // normalized name is an explainable identity, unlike a global name match.
+  const existingServices: CanonicalServiceRow[] = organizationOutcome === 'updated'
+    ? await stores.canonicalServices.listByOrganization(canonicalOrgId)
+    : [];
+  const existingServiceByName = new Map(
+    existingServices.map((svc) => [normalizeName(svc.name ?? ''), svc]),
+  );
+
+  let servicesCreated = 0;
+  let servicesUpdated = 0;
+  const newServiceIds = new Set<string>();
+
   for (const svcPayload of servicePayloads) {
     const svcMapped = mapFields(svcPayload, SERVICE_FIELDS, true);
     const rawSvcName = (svcMapped['name'] as string)?.trim() || null;
     const svcName = rawSvcName ?? `[Service] ${orgName}`;
 
-    const svcRow: NewCanonicalServiceRow = {
-      canonicalOrganizationId: canonicalOrg.id,
-      name: svcName,
-      ...(svcMapped as Partial<NewCanonicalServiceRow>),
-      lifecycleStatus: 'active',
-      publicationStatus: 'unpublished',
-      winningSourceSystemId,
-      sourceCount: 1,
-      sourceConfidenceSummary: { overall: confidenceHint },
-    };
+    const identifierMatch = resolution.canonicalServiceId && servicePayloads.length === 1
+      ? existingServices.find((svc) => svc.id === resolution.canonicalServiceId)
+      : undefined;
+    const matched = identifierMatch ?? existingServiceByName.get(normalizeName(svcName));
 
-    const canonicalSvc = await stores.canonicalServices.create(svcRow);
-    canonicalServiceIds.push(canonicalSvc.id);
+    let canonicalSvcId: string;
+    if (matched) {
+      canonicalSvcId = matched.id;
+      servicesUpdated += 1;
+      await stores.canonicalServices.update(canonicalSvcId, {
+        name: svcName,
+        ...(svcMapped as Partial<NewCanonicalServiceRow>),
+        lastRefreshedAt: new Date(),
+      });
+    } else {
+      const svcRow: NewCanonicalServiceRow = {
+        canonicalOrganizationId: canonicalOrgId,
+        name: svcName,
+        ...(svcMapped as Partial<NewCanonicalServiceRow>),
+        lifecycleStatus: 'active',
+        publicationStatus: 'unpublished',
+        winningSourceSystemId,
+        sourceCount: 1,
+        sourceConfidenceSummary: { overall: confidenceHint },
+      };
+      const canonicalSvc = await stores.canonicalServices.create(svcRow);
+      canonicalSvcId = canonicalSvc.id;
+      servicesCreated += 1;
+      newServiceIds.add(canonicalSvcId);
+    }
+    canonicalServiceIds.push(canonicalSvcId);
 
     provenanceRows.push(
       ...buildProvenanceRows(
         'service',
-        canonicalSvc.id,
+        canonicalSvcId,
         svcMapped,
         sourceRecord.id,
         confidenceHint,
@@ -277,7 +353,7 @@ export async function normalizeSourceRecord(
     );
   }
 
-  // ── 3. Location(s) ───────────────────────────────────────
+  // ── 4. Location(s) ───────────────────────────────────────
   const locationPayloads = extractArray(payload, 'locations');
   if (locationPayloads.length === 0) {
     const singleLoc = extractSection(payload, 'location');
@@ -285,6 +361,20 @@ export async function normalizeSourceRecord(
       locationPayloads.push(singleLoc);
     }
   }
+
+  const existingLocations: CanonicalLocationRow[] = organizationOutcome === 'updated'
+    ? await stores.canonicalLocations.listByOrganization(canonicalOrgId)
+    : [];
+  const locationMatchKey = (name: unknown, addressLine1: unknown): string =>
+    normalizeName(`${typeof name === 'string' ? name : ''} ${typeof addressLine1 === 'string' ? addressLine1 : ''}`);
+  const existingLocationByKey = new Map(
+    existingLocations
+      .map((loc) => [locationMatchKey(loc.name, loc.addressLine1), loc] as const)
+      .filter(([key]) => key.length > 0),
+  );
+
+  let locationsCreated = 0;
+  let locationsReused = 0;
 
   for (const locPayload of locationPayloads) {
     const locMapped = mapFields(locPayload, LOCATION_FIELDS, true);
@@ -294,57 +384,110 @@ export async function normalizeSourceRecord(
       locMapped['latitude'];
     if (!hasContent) continue;
 
-    const locRow: NewCanonicalLocationRow = {
-      canonicalOrganizationId: canonicalOrg.id,
-      ...(locMapped as Partial<NewCanonicalLocationRow>),
-      lifecycleStatus: 'active',
-      publicationStatus: 'unpublished',
-      winningSourceSystemId,
-      sourceCount: 1,
-      sourceConfidenceSummary: { overall: confidenceHint },
-    };
+    const matchKey = locationMatchKey(locMapped['name'], locMapped['addressLine1']);
+    const matchedLocation = matchKey.length > 0 ? existingLocationByKey.get(matchKey) : undefined;
 
-    const canonicalLoc = await stores.canonicalLocations.create(locRow);
-    canonicalLocationIds.push(canonicalLoc.id);
+    let canonicalLocId: string;
+    let locationIsNew: boolean;
+    if (matchedLocation) {
+      canonicalLocId = matchedLocation.id;
+      locationIsNew = false;
+      locationsReused += 1;
+      await stores.canonicalLocations.update(canonicalLocId, {
+        ...(locMapped as Partial<NewCanonicalLocationRow>),
+        lastRefreshedAt: new Date(),
+      });
+    } else {
+      const locRow: NewCanonicalLocationRow = {
+        canonicalOrganizationId: canonicalOrgId,
+        ...(locMapped as Partial<NewCanonicalLocationRow>),
+        lifecycleStatus: 'active',
+        publicationStatus: 'unpublished',
+        winningSourceSystemId,
+        sourceCount: 1,
+        sourceConfidenceSummary: { overall: confidenceHint },
+      };
+      const canonicalLoc = await stores.canonicalLocations.create(locRow);
+      canonicalLocId = canonicalLoc.id;
+      locationIsNew = true;
+      locationsCreated += 1;
+    }
+    canonicalLocationIds.push(canonicalLocId);
 
     provenanceRows.push(
       ...buildProvenanceRows(
         'location',
-        canonicalLoc.id,
+        canonicalLocId,
         locMapped,
         sourceRecord.id,
         confidenceHint,
       ),
     );
 
-    // Link each service to each location (batch)
-    const junctionRows = canonicalServiceIds.flatMap((svcId) =>
-      [{ canonicalServiceId: svcId, canonicalLocationId: canonicalLoc.id }],
-    );
+    // Link services to this location. Pairs where both sides already
+    // existed were linked when they were first normalized; recreating them
+    // would violate the junction uniqueness.
+    const junctionRows = canonicalServiceIds
+      .filter((svcId) => locationIsNew || newServiceIds.has(svcId))
+      .map((svcId) => ({ canonicalServiceId: svcId, canonicalLocationId: canonicalLocId }));
     if (junctionRows.length > 0) {
       await stores.canonicalServiceLocations.bulkCreate(junctionRows);
     }
   }
 
-  // ── 4. Persist provenance ─────────────────────────────────
+  // ── 5. Register the source identifier for future resolution ─
+  // Without this, the identifier strategy can never match and every
+  // re-observation would duplicate. Registered on the most specific new
+  // entity: the single created service, else the created organization.
+  if (externalRecordId && resolution.strategy === 'none') {
+    const identifierTarget = servicesCreated === 1 && canonicalServiceIds.length === 1
+      ? { entityType: 'canonical_service', entityId: canonicalServiceIds[0] }
+      : { entityType: 'canonical_organization', entityId: canonicalOrgId };
+    try {
+      await stores.entityIdentifiers.create({
+        ...identifierTarget,
+        identifierScheme: `source_system:${winningSourceSystemId}`,
+        identifierValue: externalRecordId,
+        sourceSystemId: winningSourceSystemId,
+        isPrimary: false,
+        confidence: 100,
+        status: 'active',
+      });
+    } catch (identifierError) {
+      // Unique-index collision under concurrent polls: resolution will
+      // succeed on the next observation, so this is non-fatal.
+      console.warn(
+        `[normalizeSourceRecord] Could not register identifier for record ${sourceRecord.id}:`,
+        identifierError,
+      );
+    }
+  }
+
+  // ── 6. Persist provenance ─────────────────────────────────
   if (provenanceRows.length > 0) {
     await stores.canonicalProvenance.bulkCreate(provenanceRows);
   }
 
-  // ── 5. Warn if no locations were extracted ────────────────
+  // ── 7. Warn if no locations were extracted ────────────────
   if (canonicalLocationIds.length === 0) {
     console.warn(
       `[normalizeSourceRecord] Source record ${sourceRecord.id} produced zero locations`,
     );
   }
 
-  // ── 6. Mark source record as processed ────────────────────
+  // ── 8. Mark source record as processed ────────────────────
   await stores.sourceRecords.updateStatus(sourceRecord.id, 'normalized');
 
   return {
-    canonicalOrganizationId: canonicalOrg.id,
+    canonicalOrganizationId: canonicalOrgId,
     canonicalServiceIds,
     canonicalLocationIds,
     provenanceRecordsCreated: provenanceRows.length,
+    organizationOutcome,
+    servicesCreated,
+    servicesUpdated,
+    locationsCreated,
+    locationsReused,
+    resolutionStrategy: resolution.strategy,
   };
 }

@@ -53,6 +53,11 @@ function createMockStores() {
     sourceFeeds: {
       getById: vi.fn().mockResolvedValue({ id: 'feed-1', sourceSystemId: 'src-sys-1' }),
     },
+    entityIdentifiers: {
+      findByScheme: vi.fn().mockResolvedValue(null),
+      create: vi.fn(),
+      deleteByEntity: vi.fn(),
+    },
     canonicalOrganizations: {
       create: vi.fn().mockImplementation((row) => ({
         id: `org-${++orgIdCounter}`,
@@ -60,6 +65,8 @@ function createMockStores() {
         createdAt: new Date(),
         updatedAt: new Date(),
       })),
+      getById: vi.fn().mockResolvedValue(null),
+      update: vi.fn(),
     },
     canonicalServices: {
       create: vi.fn().mockImplementation((row) => ({
@@ -68,6 +75,9 @@ function createMockStores() {
         createdAt: new Date(),
         updatedAt: new Date(),
       })),
+      getById: vi.fn().mockResolvedValue(null),
+      update: vi.fn(),
+      listByOrganization: vi.fn().mockResolvedValue([]),
     },
     canonicalLocations: {
       create: vi.fn().mockImplementation((row) => ({
@@ -76,6 +86,8 @@ function createMockStores() {
         createdAt: new Date(),
         updatedAt: new Date(),
       })),
+      update: vi.fn(),
+      listByOrganization: vi.fn().mockResolvedValue([]),
     },
     canonicalServiceLocations: {
       bulkCreate: vi.fn().mockImplementation((rows) =>
@@ -328,5 +340,145 @@ describe('normalizeSourceRecord', () => {
 
     expect(result.canonicalLocationIds).toHaveLength(0);
     expect(stores.canonicalLocations.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('normalizeSourceRecord idempotency', () => {
+  it('registers a source-scoped identifier for the created entity', async () => {
+    const stores = createMockStores();
+
+    const result = await normalizeSourceRecord({
+      stores: stores as never,
+      sourceRecord: buildSourceRecord() as never,
+      trustTier: 'curated',
+    });
+
+    expect(result.organizationOutcome).toBe('created');
+    expect(result.resolutionStrategy).toBe('none');
+    expect(result.servicesCreated).toBe(1);
+    // Single created service => identifier registered on the service.
+    expect(stores.entityIdentifiers.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: 'canonical_service',
+        entityId: 'svc-1',
+        identifierScheme: 'source_system:src-sys-1',
+        identifierValue: 'ext-001',
+        sourceSystemId: 'src-sys-1',
+      }),
+    );
+  });
+
+  it('updates canonical entities in place when the identifier resolves', async () => {
+    const stores = createMockStores();
+    stores.entityIdentifiers.findByScheme.mockResolvedValue({
+      entityType: 'canonical_service',
+      entityId: 'svc-existing',
+    });
+    stores.canonicalServices.getById.mockResolvedValue({
+      id: 'svc-existing',
+      canonicalOrganizationId: 'org-existing',
+      name: 'Food Bank',
+    });
+    stores.canonicalServices.listByOrganization.mockResolvedValue([
+      { id: 'svc-existing', canonicalOrganizationId: 'org-existing', name: 'Food Bank' },
+    ]);
+
+    const result = await normalizeSourceRecord({
+      stores: stores as never,
+      sourceRecord: buildSourceRecord() as never,
+      trustTier: 'curated',
+    });
+
+    expect(result.organizationOutcome).toBe('updated');
+    expect(result.resolutionStrategy).toBe('identifier');
+    expect(result.canonicalOrganizationId).toBe('org-existing');
+    expect(result.canonicalServiceIds).toEqual(['svc-existing']);
+    expect(result.servicesUpdated).toBe(1);
+    expect(result.servicesCreated).toBe(0);
+
+    // Refreshed in place — no duplicates minted, no identifier re-registered.
+    expect(stores.canonicalOrganizations.create).not.toHaveBeenCalled();
+    expect(stores.canonicalServices.create).not.toHaveBeenCalled();
+    expect(stores.entityIdentifiers.create).not.toHaveBeenCalled();
+    expect(stores.canonicalOrganizations.update).toHaveBeenCalledWith(
+      'org-existing',
+      expect.objectContaining({ name: 'Community Aid', lastRefreshedAt: expect.any(Date) }),
+    );
+    expect(stores.canonicalServices.update).toHaveBeenCalledWith(
+      'svc-existing',
+      expect.objectContaining({ name: 'Food Bank', lastRefreshedAt: expect.any(Date) }),
+    );
+
+    // Publication/lifecycle state is never touched by a refresh.
+    const orgUpdate = stores.canonicalOrganizations.update.mock.calls[0][1];
+    expect(orgUpdate).not.toHaveProperty('publicationStatus');
+    expect(orgUpdate).not.toHaveProperty('lifecycleStatus');
+  });
+
+  it('reuses locations matched by normalized name and address under a resolved org', async () => {
+    const stores = createMockStores();
+    stores.entityIdentifiers.findByScheme.mockResolvedValue({
+      entityType: 'canonical_organization',
+      entityId: 'org-existing',
+    });
+    stores.canonicalOrganizations.getById.mockResolvedValue({ id: 'org-existing', name: 'Community Aid' });
+    stores.canonicalServices.listByOrganization.mockResolvedValue([
+      { id: 'svc-existing', canonicalOrganizationId: 'org-existing', name: 'Food Bank' },
+    ]);
+    stores.canonicalLocations.listByOrganization.mockResolvedValue([
+      { id: 'loc-existing', name: 'Downtown Office', addressLine1: '100 Pine St' },
+    ]);
+
+    const result = await normalizeSourceRecord({
+      stores: stores as never,
+      sourceRecord: buildSourceRecord() as never,
+      trustTier: 'curated',
+    });
+
+    expect(result.locationsReused).toBe(1);
+    expect(result.locationsCreated).toBe(0);
+    expect(result.canonicalLocationIds).toEqual(['loc-existing']);
+    expect(stores.canonicalLocations.create).not.toHaveBeenCalled();
+    expect(stores.canonicalLocations.update).toHaveBeenCalledWith(
+      'loc-existing',
+      expect.objectContaining({ lastRefreshedAt: expect.any(Date) }),
+    );
+    // Both sides pre-existed, so no junction rows are recreated.
+    expect(stores.canonicalServiceLocations.bulkCreate).not.toHaveBeenCalled();
+  });
+
+  it('creates genuinely new services under a resolved org and links only new pairs', async () => {
+    const stores = createMockStores();
+    stores.entityIdentifiers.findByScheme.mockResolvedValue({
+      entityType: 'canonical_organization',
+      entityId: 'org-existing',
+    });
+    stores.canonicalOrganizations.getById.mockResolvedValue({ id: 'org-existing', name: 'Community Aid' });
+    stores.canonicalServices.listByOrganization.mockResolvedValue([
+      { id: 'svc-existing', canonicalOrganizationId: 'org-existing', name: 'Food Bank' },
+    ]);
+    stores.canonicalLocations.listByOrganization.mockResolvedValue([
+      { id: 'loc-existing', name: 'Downtown Office', addressLine1: '100 Pine St' },
+    ]);
+
+    const result = await normalizeSourceRecord({
+      stores: stores as never,
+      sourceRecord: buildSourceRecord({
+        services: [
+          { name: 'Food Bank', description: 'Free groceries.' },
+          { name: 'Job Coaching', description: 'Employment help.' },
+        ],
+      }) as never,
+      trustTier: 'curated',
+    });
+
+    expect(result.servicesUpdated).toBe(1);
+    expect(result.servicesCreated).toBe(1);
+    expect(stores.canonicalServices.create).toHaveBeenCalledTimes(1);
+    // Junction created only for the (new service, existing location) pair.
+    expect(stores.canonicalServiceLocations.bulkCreate).toHaveBeenCalledTimes(1);
+    const junctionRows = stores.canonicalServiceLocations.bulkCreate.mock.calls[0][0];
+    expect(junctionRows).toHaveLength(1);
+    expect(junctionRows[0]).toMatchObject({ canonicalLocationId: 'loc-existing' });
   });
 });

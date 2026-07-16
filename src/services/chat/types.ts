@@ -445,7 +445,10 @@ export function enrichedServiceToCard(
     requiredDocuments: requiredDocuments.length > 0 ? requiredDocuments : undefined,
     nextStep,
     whatToAsk: `Ask whether ${service.name} is currently available, what you need to bring, and how to start.`,
-    verificationStatus: verificationLastCheckedAt ? 'provider_verified' : undefined,
+    // Organization-level verified_at is evidence the ORGANIZATION was
+    // verified, not that this service's details were checked — present it as
+    // source verification, never provider verification of the record.
+    verificationStatus: verificationLastCheckedAt ? 'source_verified' : undefined,
     verificationLastCheckedAt,
     sourceLabel: providerLink ? `${organization.name} provider page` : undefined,
     sourceUrl: providerLink?.url,

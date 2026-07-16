@@ -40,6 +40,28 @@ function formatAddress(service: EnrichedService): string | null {
   return [address.address1, address.city, address.stateProvince, address.postalCode].filter(Boolean).join(', ');
 }
 
+const PROVENANCE_ORIGIN_LABELS: Record<NonNullable<EnrichedService['provenance']>['origin'], string> = {
+  official_feed: 'An official publisher feed',
+  partner_feed: 'A trusted partner feed',
+  curated_feed: 'A curated data feed',
+  community_feed: 'A community data feed',
+  provider_submission: 'Submitted by the provider organization',
+  community_submission: 'A community contribution, approved through review',
+  curated_import: 'Imported from a public dataset',
+  unknown: 'Not recorded for this record',
+};
+
+function formatProvenanceDate(isoDate: string): string {
+  // UTC keeps the rendered date identical to the stored evidence date
+  // regardless of the viewer's timezone.
+  return new Date(isoDate).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
 function computeMatchScore(confidence?: EnrichedService['confidenceScore']): number | null {
   if (!confidence) return null;
   return Math.round((confidence.eligibilityMatch + confidence.constraintFit) / 2);
@@ -524,6 +546,52 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                 </div>
               </div>
             </FormSection>
+
+            {service.provenance ? (
+              <section
+                aria-label="Where this information comes from"
+                className="mt-4 rounded-[20px] border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm"
+              >
+                <p className="flex items-center gap-2 font-semibold text-slate-900">
+                  <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                  Where this information comes from
+                </p>
+                <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-3">
+                  <dt className="font-medium text-slate-500">Source</dt>
+                  <dd className="sm:col-span-2">
+                    {PROVENANCE_ORIGIN_LABELS[service.provenance.origin]}
+                    {service.provenance.sourceName ? ` — ${service.provenance.sourceName}` : ''}
+                  </dd>
+                  {typeof service.provenance.sourceCount === 'number' && service.provenance.sourceCount > 1 ? (
+                    <>
+                      <dt className="font-medium text-slate-500">Corroboration</dt>
+                      <dd className="sm:col-span-2">Combined from {service.provenance.sourceCount} independent sources</dd>
+                    </>
+                  ) : null}
+                  <dt className="font-medium text-slate-500">Information updated</dt>
+                  <dd className="sm:col-span-2">
+                    {service.provenance.informationUpdatedAt
+                      ? formatProvenanceDate(service.provenance.informationUpdatedAt)
+                      : 'Not recorded'}
+                  </dd>
+                  {service.provenance.firstSeenAt ? (
+                    <>
+                      <dt className="font-medium text-slate-500">First seen by ORAN</dt>
+                      <dd className="sm:col-span-2">{formatProvenanceDate(service.provenance.firstSeenAt)}</dd>
+                    </>
+                  ) : null}
+                  <dt className="font-medium text-slate-500">Human review</dt>
+                  <dd className="sm:col-span-2">
+                    {service.provenance.lastHumanReviewAt
+                      ? `Approved by an ORAN reviewer on ${formatProvenanceDate(service.provenance.lastHumanReviewAt)}`
+                      : 'No independent review date is recorded for this record'}
+                  </dd>
+                </dl>
+                <p className="mt-2 text-xs text-slate-600">
+                  See something wrong? Use “Flag issue” on this page to report a correction.
+                </p>
+              </section>
+            ) : null}
 
             <div className="mt-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-sm">
               <p className="font-medium">Confirm details with the provider before visiting.</p>

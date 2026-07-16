@@ -888,6 +888,36 @@ export interface DietaryOption {
 // COMPOSITE / VIEW TYPES
 // ============================================================
 
+/** How a published record entered ORAN, stated from stored evidence only. */
+export type PublicRecordOrigin =
+  | 'official_feed'
+  | 'partner_feed'
+  | 'curated_feed'
+  | 'community_feed'
+  | 'provider_submission'
+  | 'community_submission'
+  | 'curated_import'
+  | 'unknown';
+
+/**
+ * Public-safe provenance summary for a published service. Every field states
+ * stored evidence only; absent evidence stays null rather than being inferred.
+ */
+export interface PublicProvenanceSummary {
+  serviceId: string;
+  origin: PublicRecordOrigin;
+  /** Public-safe source label (source system or dataset name). Never a contributor identity. */
+  sourceName: string | null;
+  /** Independent sources merged into this record (canonical feed path only). */
+  sourceCount: number | null;
+  /** When ORAN first observed this record (canonical feed path only). */
+  firstSeenAt: string | null;
+  /** When the stored information last changed (source refresh or record update). */
+  informationUpdatedAt: string | null;
+  /** Latest gate-passed human approval decision (manual submission path only). */
+  lastHumanReviewAt: string | null;
+}
+
 /** A service enriched with its organization, location, phones, address, and confidence score */
 export interface EnrichedService {
   service: Service;
@@ -912,6 +942,12 @@ export interface EnrichedService {
   adaptations?: ServiceAdaptation[] | null;
   /** Dietary options for food services (halal, kosher, vegan, etc.) */
   dietaryOptions?: DietaryOption[] | null;
+  /**
+   * Where this record came from. Null/undefined when the attribution lookup
+   * was unavailable (render nothing); origin 'unknown' when no evidence
+   * exists (render "not recorded").
+   */
+  provenance?: PublicProvenanceSummary | null;
 }
 
 export type OranRole =

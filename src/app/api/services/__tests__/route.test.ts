@@ -9,6 +9,7 @@ const dbMocks = vi.hoisted(() => ({
 const rateLimitMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
 const searchByIdsMock = vi.hoisted(() => vi.fn());
+const provenanceMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
@@ -21,6 +22,9 @@ vi.mock('@/services/search/engine', () => ({
   ServiceSearchEngine: class {
     searchByIds = searchByIdsMock;
   },
+}));
+vi.mock('@/services/provenance/publicProvenance', () => ({
+  getPublicProvenanceSummaries: provenanceMock,
 }));
 
 function createRequest(options: {
@@ -54,6 +58,7 @@ beforeEach(() => {
   });
   searchByIdsMock.mockResolvedValue([]);
   captureExceptionMock.mockResolvedValue(undefined);
+  provenanceMock.mockResolvedValue(new Map());
 });
 
 describe('api/services route', () => {
@@ -102,11 +107,21 @@ describe('api/services route', () => {
     expect(Array.isArray(body.details)).toBe(true);
   });
 
-  it('returns services matching the requested ids', async () => {
+  it('returns services matching the requested ids with provenance attached', async () => {
+    const provenanceSummary = {
+      serviceId: 'svc-1',
+      origin: 'official_feed',
+      sourceName: '211 National Data Platform',
+      sourceCount: 2,
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      informationUpdatedAt: '2026-07-01T00:00:00.000Z',
+      lastHumanReviewAt: null,
+    };
     searchByIdsMock.mockResolvedValueOnce([
-      { service: { id: 'svc-1', name: 'Food Pantry' } },
-      { service: { id: 'svc-2', name: 'Housing Desk' } },
+      { service: { service: { id: 'svc-1', name: 'Food Pantry' } } },
+      { service: { service: { id: 'svc-2', name: 'Housing Desk' } } },
     ]);
+    provenanceMock.mockResolvedValueOnce(new Map([['svc-1', provenanceSummary]]));
     const { GET } = await loadRoute();
 
     const response = await GET(
@@ -121,12 +136,36 @@ describe('api/services route', () => {
       '11111111-1111-4111-8111-111111111111',
       '22222222-2222-4222-8222-222222222222',
     ]);
+    expect(provenanceMock).toHaveBeenCalledWith(
+      expect.objectContaining({ executeQuery: expect.any(Function) }),
+      ['svc-1', 'svc-2'],
+    );
     await expect(response.json()).resolves.toEqual({
       results: [
-        { id: 'svc-1', name: 'Food Pantry' },
-        { id: 'svc-2', name: 'Housing Desk' },
+        { service: { id: 'svc-1', name: 'Food Pantry' }, provenance: provenanceSummary },
+        { service: { id: 'svc-2', name: 'Housing Desk' }, provenance: null },
       ],
     });
+  });
+
+  it('still returns records when the provenance lookup fails', async () => {
+    searchByIdsMock.mockResolvedValueOnce([
+      { service: { service: { id: 'svc-1', name: 'Food Pantry' } } },
+    ]);
+    provenanceMock.mockRejectedValueOnce(new Error('attribution unavailable'));
+    const { GET } = await loadRoute();
+
+    const response = await GET(
+      createRequest({ search: '?ids=11111111-1111-4111-8111-111111111111' }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      results: [
+        { service: { id: 'svc-1', name: 'Food Pantry' }, provenance: null },
+      ],
+    });
+    expect(captureExceptionMock).toHaveBeenCalledOnce();
   });
 
   it('returns 500 when the search engine throws', async () => {

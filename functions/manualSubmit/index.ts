@@ -16,6 +16,7 @@
  */
 
 import crypto from 'node:crypto';
+import { assertLegacyAzureFunctionsArchived } from '../archiveBoundary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,6 +67,7 @@ export interface FetchQueueMessage {
 export async function manualSubmit(
   _req: HttpRequest
 ): Promise<{ response: HttpResponse; queueMessage: FetchQueueMessage | null }> {
+  assertLegacyAzureFunctionsArchived();
   // TODO: Wire to actual pipeline
   //
   // Implementation outline:

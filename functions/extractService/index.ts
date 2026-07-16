@@ -16,6 +16,8 @@
  *
  * @module functions/extractService
  */
+
+import { assertLegacyAzureFunctionsArchived } from '../archiveBoundary';
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -66,6 +68,7 @@ export interface VerifyQueueMessage {
 export async function extractService(
   message: ExtractQueueMessage
 ): Promise<VerifyQueueMessage | null> {
+  assertLegacyAzureFunctionsArchived();
   const { getDrizzle } = await import('@/services/db/drizzle');
   const { createIngestionStores } = await import(
     '@/agents/ingestion/persistence/storeFactory'

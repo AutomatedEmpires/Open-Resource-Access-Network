@@ -2,6 +2,7 @@
   "name": "oran-app",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "engines": {
     "node": "24.x"
   },
@@ -22,7 +23,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "validate:runtime": "node scripts/validate-runtime-env.mjs --target webapp",
-    "validate:runtime:functions": "node scripts/validate-runtime-env.mjs --target functions",
+    "validate:runtime:functions": "node scripts/build-functions.mjs",
+    "check:off-azure-runtime": "node scripts/check-off-azure-runtime.mjs",
     "ingest:campaign": "npx tsx scripts/run-ingestion-campaign.ts",
     "bootstrap:source-feed": "node scripts/bootstrap-source-feed.mjs",
     "provision:owner-access": "node scripts/provision-owner-access.mjs",
@@ -34,11 +36,6 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.17",
-    "@neondatabase/serverless": "^1.0.2",
-    "@opentelemetry/core": "^2.9.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.220.0",
-    "@opentelemetry/instrumentation": "^0.220.0",
-    "@opentelemetry/sdk-trace-base": "^2.9.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-select": "^2.2.6",

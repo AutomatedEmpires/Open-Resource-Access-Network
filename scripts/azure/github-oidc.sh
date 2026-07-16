@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "ORAN_LEGACY_AZURE_PROVISIONING_ARCHIVED: Azure identity provisioning is retired for ORAN." >&2
+exit 1
+
 # ORAN GitHub Actions -> Azure OIDC setup helper
 #
 # Creates:

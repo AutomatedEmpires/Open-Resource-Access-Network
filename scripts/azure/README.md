@@ -1,6 +1,8 @@
-# Azure Scripts
+# Archived Azure Scripts
 
-Operational scripts for Azure provisioning and GitHub OIDC setup.
+These files are retained only as migration history. Every script exits before
+calling Azure CLI; ORAN production is provisioned on the Clerk, Supabase,
+Vercel, Sentry, Resend, and Upstash-aligned stack.
 
 ## Scripts
 

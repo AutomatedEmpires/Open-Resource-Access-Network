@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "ORAN_LEGACY_AZURE_PROVISIONING_ARCHIVED: Azure provisioning is retired for ORAN." >&2
+exit 1
+
 # ORAN Azure bootstrap (App Service + PostgreSQL Flexible Server + Key Vault)
 #
 # This script provisions resource groups + core resources for dev/staging/prod.

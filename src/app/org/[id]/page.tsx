@@ -7,6 +7,7 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import OrgProfileClient from './OrgProfileClient';
+import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy';
 
 async function getBaseUrlFromHeaders(): Promise<string> {
   const defaultBaseUrl = 'https://openresourceaccessnetwork.com';
@@ -36,7 +37,8 @@ interface OrgMeta {
 
 async function fetchOrgMeta(id: string, baseUrl: string): Promise<OrgMeta | null> {
   try {
-    const res = await fetch(`${baseUrl}/api/organizations/${encodeURIComponent(id)}`, {
+    const allowedBaseUrl = assertAllowedRuntimeEndpoint(baseUrl, 'organization metadata base URL');
+    const res = await fetch(`${allowedBaseUrl}/api/organizations/${encodeURIComponent(id)}`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return null;

@@ -10,6 +10,8 @@
  *
  * @module functions/fetchPage
  */
+
+import { assertLegacyAzureFunctionsArchived } from '../archiveBoundary';
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -50,6 +52,7 @@ export interface ExtractQueueMessage {
 export async function fetchPage(
   message: FetchQueueMessage
 ): Promise<ExtractQueueMessage | null> {
+  assertLegacyAzureFunctionsArchived();
   const { getDrizzle } = await import('@/services/db/drizzle');
   const { createIngestionStores } = await import(
     '@/agents/ingestion/persistence/storeFactory'

@@ -3,7 +3,9 @@
 ## Prerequisites
 
 - Docker and Docker Compose (for local development)
-- OR an Azure Database for PostgreSQL Flexible Server instance (production / staging)
+- A dedicated Supabase project for production or staging
+- A direct PostgreSQL connection for migrations and a Supavisor transaction-pooler
+  connection for the Vercel runtime
 
 ---
 
@@ -24,13 +26,13 @@ This starts:
 ### Connection string (local)
 
 ```
-DATABASE_URL=postgresql://oran:oran_local_password@localhost:5432/oran_db?sslmode=disable
+DATABASE_URL=postgresql://oran:pw@localhost:5432/oran_db?sslmode=disable
 ```
 
 Add to your `.env.local` file:
 
 ```bash
-echo 'DATABASE_URL=postgresql://oran:oran_local_password@localhost:5432/oran_db?sslmode=disable' >> ../.env.local
+echo 'DATABASE_URL=postgresql://oran:pw@localhost:5432/oran_db?sslmode=disable' >> ../.env.local
 ```
 
 ### pgAdmin (optional)
@@ -50,23 +52,30 @@ Then add a server with:
 
 ---
 
-## Azure Database for PostgreSQL (Production / Staging)
+## Supabase PostgreSQL (Production / Staging)
 
-ORAN uses **Azure Database for PostgreSQL Flexible Server** in production. See `docs/platform/PLATFORM_AZURE.md` for provisioning details.
+ORAN uses a dedicated **Supabase PostgreSQL** project. Keep the project, credentials,
+backups, and billing isolated from every other business in the portfolio. The active
+stack and cutover contract are documented in
+[`docs/platform/STACK_MIGRATION.md`](../docs/platform/STACK_MIGRATION.md); database
+incidents use
+[`docs/ops/services/RUNBOOK_DATABASE_INCIDENT.md`](../docs/ops/services/RUNBOOK_DATABASE_INCIDENT.md).
 
-1. Provision a Flexible Server instance with PostGIS enabled:
+1. Create a dedicated Supabase project and enable the extensions required by the
+   checked-in migrations, including PostGIS and pgvector.
+2. Store the direct database URL as the migration-only `SUPABASE_DB_URL` secret.
+3. Store the Supavisor transaction-pooler URL as the server-only Vercel
+   `DATABASE_URL` secret. Never expose database credentials through `NEXT_PUBLIC_*`.
+4. Keep Supabase's Data API deny-by-default. The application accesses PostgreSQL
+   through the reviewed `oran_backend_runtime` capability role; do not add browser policies
+   or service-role keys without a separate RLS review.
 
-   ```sql
-   CREATE EXTENSION IF NOT EXISTS postgis;
-   CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-   ```
-
-2. Copy the connection string from the Azure Portal
-3. Add to your environment:
-
-   ```
-   DATABASE_URL=postgresql://user:password@your-server.postgres.database.azure.com/oran_db?sslmode=require
-   ```
+The repository's Supabase migration workflow requires an existing, reviewed
+`schema_migrations` baseline before it can apply schema changes. The imported ORAN
+production database does not currently have that repository ledger, so the workflow
+fails closed rather than replaying historical SQL over live data. Supabase-managed
+migrations are tracked separately in Supabase's own migration history. Do not
+conflate the two ledgers or create a production baseline without a schema review.
 
 ---
 
@@ -74,14 +83,40 @@ ORAN uses **Azure Database for PostgreSQL Flexible Server** in production. See `
 
 ORAN uses plain SQL migrations under `db/migrations/`. They are the canonical schema history.
 
-The current repository contains migrations from `0000_initial_schema.sql` through `0041_org_profile_extensions.sql`.
+The current repository contains migrations from `0000_initial_schema.sql` through
+`0073_account_erasure_index_gate.sql`.
 
 Production workflow behavior:
 
-- `.github/workflows/db-migrate.yml` installs `psql`, creates a lightweight `schema_migrations` ledger table if needed, and applies each SQL file in lexical order exactly once.
+- `.github/workflows/db-migrate.yml` installs `psql`, requires a pre-existing
+  reviewed `schema_migrations` ledger, and applies each SQL file in lexical order
+  exactly once. It never creates or guesses an imported production baseline.
 - The workflow is intentionally SQL-first. Drizzle remains available for schema typing and future tooling, but it is not the production migration orchestrator in the current repository state.
 
+Account-erasure index release order:
+
+1. Apply `0071_account_erasure_workflow.sql` and `0072_service_embeddings.sql`.
+2. From a controlled operator session, prevalidate that `SUPABASE_DB_URL` is the
+   dedicated ORAN Supabase direct or session connection. Do not use the
+   transaction pooler and do not print the URL.
+3. Run the online, restart-safe build with
+   `psql "$SUPABASE_DB_URL" -X -v ON_ERROR_STOP=1 -f scripts/db/build-account-erasure-indexes.sql`.
+   The script fails fast on the wrong schema/read-only target, drops only invalid
+   same-name artifacts from an interrupted prior build, and verifies every fixed
+   manifest index before returning success. Each build has a five-second lock
+   budget and a 30-minute statement budget; monitor database disk, WAL, replica
+   lag, and Supabase health throughout this maintenance operation.
+4. Apply `0073_account_erasure_index_gate.sql`. It contains no psql meta-commands
+   and is safe for the migration API; it refuses to advance migration history
+   unless every online index is live, ready, and valid.
+
+Do not deploy the account-erasure worker between steps 1 and 4. If an online
+build times out, rerun step 3 before retrying the tracked gate.
+
 ### Run migrations via psql
+
+The bootstrap example below is for a new, empty local or staging database only. Do
+not run it against the imported production database.
 
 ```bash
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
@@ -108,7 +143,9 @@ done
 
 ### Migration ledger
 
-The `schema_migrations` table is the deployment ledger used by the current GitHub Actions migration workflow.
+The `schema_migrations` table is the deployment ledger expected by the current
+GitHub Actions migration workflow. Supabase-managed migrations use Supabase's own
+separate history.
 
 ### Drizzle status
 

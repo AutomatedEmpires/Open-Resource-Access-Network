@@ -211,6 +211,38 @@ describe('workflow/engine', () => {
     expect(result.transitionId).toBe('transition-ok-flag-off');
   });
 
+  it('advance enforces the two-person gate when the flag row is missing (fail closed)', async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-4d',
+          submission_type: 'org_claim',
+          status: 'pending_second_approval',
+          is_locked: false,
+          locked_by_user_id: null,
+          assigned_to_user_id: null,
+          service_id: null,
+          submitted_by_user_id: 'user-self',
+          target_type: 'organization',
+          target_id: null,
+        }],
+      })
+      // No feature_flags row at all — an unseeded environment must still
+      // enforce the gate rather than silently allowing single-admin approval.
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-failed-missing-flag' }] });
+
+    const result = await advance({
+      submissionId: 'sub-4d',
+      toStatus: 'approved',
+      actorUserId: 'user-self',
+      actorRole: 'community_admin',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('two-person rule');
+  });
+
   it('advance blocks second approver when actor already reviewed', async () => {
     clientQueryMock
       .mockResolvedValueOnce({

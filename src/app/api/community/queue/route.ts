@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
@@ -59,10 +59,16 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`community:queue:read:${ip}`, {
+  const rl = await checkRateLimitShared(`community:queue:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: COMMUNITY_READ_RATE_LIMIT_MAX_REQUESTS,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
@@ -199,10 +205,16 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`community:queue:write:${ip}`, {
+  const rl = await checkRateLimitShared(`community:queue:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
@@ -291,10 +303,16 @@ export async function DELETE(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`community:queue:write:${ip}`, {
+  const rl = await checkRateLimitShared(`community:queue:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: COMMUNITY_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },

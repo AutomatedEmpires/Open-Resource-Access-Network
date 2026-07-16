@@ -36,6 +36,7 @@ const workflowMocks = vi.hoisted(() => ({
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimit: rateLimitMock,
+  checkRateLimitShared: rateLimitMock,
 }));
 vi.mock('@/services/security/ip', () => ({
   getIp: getIpMock,

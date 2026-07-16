@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole, requireOrgAccess } from '@/services/auth/guards';
-import { checkRateLimit } from '@/services/security/rateLimit';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { isDatabaseConfigured } from '@/services/db/postgres';
 import {
@@ -79,10 +79,16 @@ export async function GET(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`resource-submissions:read:${ip}`, {
+  const rl = await checkRateLimitShared(`resource-submissions:read:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_READ_RATE_LIMIT_MAX_REQUESTS,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
@@ -124,10 +130,16 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = getIp(req);
-  const rl = checkRateLimit(`resource-submissions:write:${ip}`, {
+  const rl = await checkRateLimitShared(`resource-submissions:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     maxRequests: HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },

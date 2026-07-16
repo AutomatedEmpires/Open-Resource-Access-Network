@@ -22,7 +22,7 @@ const resourceSubmissionMocks = vi.hoisted(() => ({
 vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/auth/guards', () => guardMocks);
 vi.mock('@/services/db/postgres', () => dbMocks);
-vi.mock('@/services/security/rateLimit', () => ({ checkRateLimit: rateLimitMock }));
+vi.mock('@/services/security/rateLimit', () => ({ checkRateLimitShared: rateLimitMock }));
 vi.mock('@/services/telemetry/sentry', () => ({ captureException: captureExceptionMock }));
 vi.mock('@/services/resourceSubmissions/service', () => resourceSubmissionMocks);
 
@@ -118,6 +118,25 @@ describe('resource submissions collection route', () => {
         }),
       ],
     });
+  });
+
+  it('fails closed with 503 when the shared rate-limit backend is unavailable', async () => {
+    rateLimitMock.mockReturnValue({
+      exceeded: true,
+      backendUnavailable: true,
+      retryAfterSeconds: 60,
+    });
+    const { POST } = await loadCollectionRoute();
+
+    const response = await POST(createRequest({
+      method: 'POST',
+      ip: '203.0.113.9',
+      jsonBody: { variant: 'listing', channel: 'public' },
+    }));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Retry-After')).toBe('60');
+    expect(resourceSubmissionMocks.createResourceSubmission).not.toHaveBeenCalled();
   });
 
   it('creates an anonymous public draft and returns a public access token', async () => {

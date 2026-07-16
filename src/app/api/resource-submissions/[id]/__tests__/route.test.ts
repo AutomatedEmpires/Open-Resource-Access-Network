@@ -30,7 +30,7 @@ const resourceSubmissionMocks = vi.hoisted(() => ({
 vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/auth/guards', () => guardMocks);
 vi.mock('@/services/db/postgres', () => dbMocks);
-vi.mock('@/services/security/rateLimit', () => ({ checkRateLimit: rateLimitMock }));
+vi.mock('@/services/security/rateLimit', () => ({ checkRateLimitShared: rateLimitMock }));
 vi.mock('@/services/telemetry/sentry', () => ({ captureException: captureExceptionMock }));
 vi.mock('@/services/workflow/engine', () => workflowMocks);
 vi.mock('@/services/resourceSubmissions/service', () => resourceSubmissionMocks);

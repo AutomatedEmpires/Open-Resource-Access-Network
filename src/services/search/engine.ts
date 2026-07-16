@@ -21,6 +21,7 @@ import type {
 import type { SearchFilters } from './types';
 import { CONFIDENCE_BANDS } from '@/domain/constants';
 import { buildPublishedServicePredicate } from './publication';
+import { hydrateEnrichedServices } from './hydrateRelations';
 
 // ============================================================
 // WHERE CLAUSE BUILDERS
@@ -507,7 +508,26 @@ export class ServiceSearchEngine {
     `;
 
     const rows = await this.deps.executeQuery<Record<string, unknown>>(sql, [ids]);
-    return rows.map((row) => this.mapRowToResult(row));
+
+    // The location LEFT JOIN fans out one row per active location; keep the
+    // first (highest-confidence-ordered) row per service so callers receive
+    // at most one result per requested id.
+    const seen = new Set<string>();
+    const results: SearchResult[] = [];
+    for (const row of rows) {
+      const id = row.id as string;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      results.push(this.mapRowToResult(row));
+    }
+
+    // Detail-style consumers need full relation collections; the bounded
+    // batch size (<= 50 ids) keeps this cheap over indexed foreign keys.
+    const hydrated = await hydrateEnrichedServices(
+      { executeQuery: this.deps.executeQuery },
+      results.map((result) => result.service),
+    );
+    return results.map((result, index) => ({ ...result, service: hydrated[index] }));
   }
 
   /**

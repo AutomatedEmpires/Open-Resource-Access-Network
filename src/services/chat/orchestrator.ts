@@ -169,6 +169,9 @@ const INTENT_KEYWORD_MAP: Record<string, string[]> = {
   transportation:     ['bus', 'ride', 'transit', 'car', 'transportation', 'driving', 'vehicle'],
   legal_aid:          ['legal', 'lawyer', 'attorney', 'court', 'evict', 'civil', 'rights', 'immigration'],
   utility_assistance: ['electric', 'gas', 'water', 'utility', 'bill', 'power', 'heat', 'lights'],
+  substance_use:      ['addiction', 'substance', 'detox', 'rehab', 'recovery', 'sober', 'alcohol', 'opioid', 'overdose', 'methadone', 'suboxone', 'narcotics'],
+  domestic_violence:  ['domestic violence', 'abusive', 'abuser', 'restraining order', 'protective order', 'safe house', 'stalking', 'partner violence', 'unsafe at home', 'batterer'],
+  education:          ['ged', 'school', 'education', 'tutoring', 'literacy', 'esl', 'english class', 'diploma', 'adult education', 'college'],
 };
 
 /**

@@ -160,6 +160,51 @@ describe('ServiceSearchEngine.searchByIds', () => {
     expect(row.distanceMeters).toBe(0);
   });
 
+  it('collapses location fanout to one result per service and hydrates relations', async () => {
+    const now = new Date('2026-01-01T00:00:00.000Z');
+    const serviceId = '00000000-0000-0000-0000-000000000005';
+    const baseRow = {
+      id: serviceId,
+      organization_id: 'org-1',
+      name: 'Multi Location Service',
+      description: null,
+      organization_name: 'Org Name',
+      organization_description: null,
+      organization_created_at: now,
+      organization_updated_at: now,
+      address_id: null,
+      confidence_score: null,
+      created_at: now,
+      updated_at: now,
+      distance_meters: null,
+    };
+
+    mockExecuteQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('WHERE s.id = ANY($1::uuid[])') && sql.includes('organization_verified_at')) {
+        // Two active locations => two joined rows for the same service.
+        return [
+          { ...baseRow, location_id: 'loc-1', location_organization_id: 'org-1', location_created_at: now, location_updated_at: now },
+          { ...baseRow, location_id: 'loc-2', location_organization_id: 'org-1', location_created_at: now, location_updated_at: now },
+        ];
+      }
+      if (sql.includes('FROM phones')) {
+        return [{ id: 'p1', service_id: serviceId, number: '555-0100', type: 'voice' }];
+      }
+      if (sql.includes('FROM schedules')) {
+        return [{ id: 's1', service_id: serviceId, description: 'Mon-Fri 9-5' }];
+      }
+      return [];
+    });
+
+    const results = await engine.searchByIds([serviceId]);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].service.location?.id).toBe('loc-1');
+    expect(results[0].service.phones).toHaveLength(1);
+    expect(results[0].service.phones[0].number).toBe('555-0100');
+    expect(results[0].service.schedules[0].description).toBe('Mon-Fri 9-5');
+  });
+
   it('maps missing joins to nulls and keeps distance undefined', async () => {
     const now = new Date('2026-01-01T00:00:00.000Z');
     mockExecuteQuery.mockResolvedValue([

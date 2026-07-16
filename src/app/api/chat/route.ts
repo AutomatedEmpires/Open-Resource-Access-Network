@@ -37,6 +37,7 @@ import { translateBatch, isConfigured as isTranslatorConfigured } from '@/servic
 import { hydrateChatContext } from '@/services/profile/chatHydration';
 import { cachedSearch } from '@/services/search/cache';
 import { ServiceSearchEngine } from '@/services/search/engine';
+import { hydrateEnrichedServices } from '@/services/search/hydrateRelations';
 import type { SearchFilters } from '@/services/search/types';
 import { captureException } from '@/services/telemetry/sentry';
 import { getIp } from '@/services/security/ip';
@@ -243,8 +244,27 @@ export async function POST(req: NextRequest) {
       });
 
       const response = await cachedSearch(engine, query);
-      const services = response.results.map((result) => result.service);
-      if (services.length > 0) {
+      // The paged search rows are lean; dedupe location fanout and hydrate
+      // relations so cards can show phones, schedules, and match evidence.
+      const seenServiceIds = new Set<string>();
+      const leanServices = response.results
+        .map((result) => result.service)
+        .filter((service) => {
+          const serviceId = service.service?.id;
+          if (!serviceId) return true;
+          if (seenServiceIds.has(serviceId)) return false;
+          seenServiceIds.add(serviceId);
+          return true;
+        });
+      if (leanServices.length > 0) {
+        // Hydration is enrichment, not retrieval: if it fails, degrade to
+        // lean cards (no phones/schedules) rather than reporting no results.
+        let services = leanServices;
+        try {
+          services = await hydrateEnrichedServices({ executeQuery }, leanServices);
+        } catch (hydrationError) {
+          await captureException(hydrationError, { feature: 'api_chat_hydration' });
+        }
         return {
           services,
           retrievalStatus: 'results',

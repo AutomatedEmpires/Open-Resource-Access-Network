@@ -31,38 +31,60 @@ const MIGRATION_FILENAME = /^[0-9]{4}_[a-z0-9_]+\.sql$/;
 // of every provisioned database. New duplicates are still rejected below.
 const HISTORICAL_DUPLICATE_NUMBERS = new Set(['0002']);
 
-// Migrations that assert on data loaded OUTSIDE the migration chain (the bulk
-// open-data import). A greenfield database cannot satisfy them, so they are
-// reported as skipped rather than pretending the chain is bootstrappable.
-// Every skip is printed; none of them are silent.
-const DATA_DEPENDENT_MIGRATIONS = new Map([
-  [
-    '0065_verified_hotline_authority.sql',
-    'aborts unless exactly 13 import:hotline services already exist — they are loaded by '
-      + 'scripts/import/sources/hotlines.mjs, not by any migration',
-  ],
-]);
+// Migrations that assert on data loaded OUTSIDE the migration chain. Empty:
+// 0065 previously belonged here and now no-ops on a greenfield database instead
+// of aborting, so the whole committed chain replays. Every skip is printed;
+// none of them are silent.
+const DATA_DEPENDENT_MIGRATIONS = new Map();
 
-// Tables the backend role is not expected to read directly.
+// Tables the backend role is deliberately unable to touch. Each entry is a
+// decision, not an oversight: a table only belongs here when no backend code
+// path reads or writes it. When a feature first needs one, this check fails and
+// forces the grant to land with the code -- which is the point.
 const UNGRANTED_TABLE_EXCEPTIONS = new Set([
   // PostGIS-owned metadata; ORAN never reads it through the backend role.
   'public.spatial_ref_sys',
+
   // Private counters reached only through their SECURITY DEFINER functions
-  // (0062 atomic chat usage controls, 0068 shared rate limiting). Direct grants
-  // here would defeat the definer boundary.
+  // (0062 atomic chat usage controls, 0068 shared rate limiting). 0066 states
+  // this directly: "Chat tables remain wholly private and are reachable only
+  // through the three named functions". Direct grants would defeat that boundary.
   'oran_internal.chat_inflight_leases',
   'oran_internal.chat_rate_limit_windows',
   'oran_internal.chat_usage_events',
   'oran_internal.shared_rate_limit_windows',
   'public.chat_quota_windows',
+
+  // Quarantine batching (0056/0057) is operated through SQL runbooks, not the
+  // application; no backend code path references either table.
+  'oran_internal.resource_quarantine_batches',
+  'oran_internal.resource_quarantine_members',
+
+  // Verified-hotline authority (0065) is applied and asserted entirely through
+  // its SECURITY DEFINER functions; no backend code path reads these tables.
+  'oran_internal.hotline_authority_added_contacts',
+  'oran_internal.hotline_authority_batches',
+  'oran_internal.hotline_authority_members',
+  'oran_internal.hotline_quarantined_contacts',
+
+  // Declared in the Drizzle schema but queried by nothing. Granting them now
+  // would be a dead privilege; the check will demand a grant the day a real
+  // read or write path appears.
+  'public.dietary_options',      // EnrichedService.dietaryOptions is never populated
+  'public.import_batches',       // CSV importer is validation-only (audit D7)
+  'public.ingestion_sources',    // superseded by source_systems (0032)
+  'public.org_service_scope',    // 0041; zero references anywhere in src
+  'public.programs',             // EnrichedService.program is never populated
+  'public.service_adaptations',  // vocabulary only (domain/taxonomy.ts)
+  'public.staging_locations',    // CSV import staging; never read by the app
+  'public.staging_organizations',
+  'public.staging_services',
+  'public.verification_evidence',       // legacy verification lane
+  'public.verification_queue_archive',  // legacy archive
 ]);
 
-// Grant coverage is REPORTED, not yet enforced: a fresh database currently shows
-// application tables the backend cannot read. The repair is the 0066/0069 grant
-// reconciliation preserved on the WIP checkpoint, which is a separate change --
-// so this run prints the finding rather than failing and blocking its own fix.
-// Flip to true in the same PR that lands the grant repair.
-const ENFORCE_GRANT_COVERAGE = false;
+// Enforced: a new table with no grant and no justified exception fails the build.
+const ENFORCE_GRANT_COVERAGE = true;
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -177,8 +199,13 @@ async function inspectBackendRole(client) {
 
 /**
  * Every application table must be reachable by the backend role. A table created
- * without a matching grant passes the existing drift gate but fails at runtime in
- * production with a permission error -- the exact defect 0069 was written to fix.
+ * without any matching grant passes the existing drift gate but fails at runtime
+ * in production with a permission error -- the defect 0069 was written to fix.
+ *
+ * "Reachable" means ANY privilege, not SELECT: several tables are legitimately
+ * write-only (source_record_taxonomy is insert-only by the 211 connector), and
+ * demanding SELECT on those would report a gap that does not exist and invite an
+ * over-grant that breaks least privilege.
  */
 async function inspectGrantCoverage(client) {
   const { rows } = await client.query(
@@ -187,14 +214,19 @@ async function inspectGrantCoverage(client) {
        JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
       WHERE namespace.nspname IN ('public', 'oran_internal')
         AND relation.relkind IN ('r', 'p')
-        AND NOT has_table_privilege($1, relation.oid, 'SELECT')
+        AND NOT (
+          has_table_privilege($1, relation.oid, 'SELECT')
+          OR has_table_privilege($1, relation.oid, 'INSERT')
+          OR has_table_privilege($1, relation.oid, 'UPDATE')
+          OR has_table_privilege($1, relation.oid, 'DELETE')
+        )
       ORDER BY 1`,
     [BACKEND_ROLE],
   );
   return rows
     .map((row) => row.qualified_name)
     .filter((name) => !UNGRANTED_TABLE_EXCEPTIONS.has(name))
-    .map((name) => `${name} has no backend-runtime grant (feature would fail closed in production)`);
+    .map((name) => `${name} is unreachable by the backend role (no privilege of any kind)`);
 }
 
 async function reportSurface(client) {

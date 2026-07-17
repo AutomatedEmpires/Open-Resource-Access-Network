@@ -52,31 +52,44 @@ migration. It refuses non-local hosts and non-disposable database names.
 Artifact 2 — **satisfied**. The Supabase image the verifier uses supplies the
 same extension versions the live project reports (PostGIS 3.3.7, vector 0.8.2).
 
-Artifact 3 — **not satisfied, and not currently satisfiable**. A clean replay of
-*all* committed migrations is impossible today:
+Artifact 3 — **satisfied**. Every committed migration (0000–0069) replays into an
+empty database, proven on every pull request by the CI job. Reaching that took
+one fix:
 
-- `0065_verified_hotline_authority.sql` aborts on any greenfield database with
-  `hotline import count drift: expected exactly 13 total import:hotline services,
-  found 0`. The 13 rows it asserts on are loaded by
-  `scripts/import/sources/hotlines.mjs` — no migration creates them. A fresh
-  ORAN database therefore cannot be built from the migration chain alone; the
-  bulk import is an undocumented step in the middle of the sequence.
-- Every other committed migration (0000–0064, 0066–0068) replays cleanly, which
-  the CI job now proves on every pull request.
+- `0065_verified_hotline_authority.sql` previously aborted on any greenfield
+  database with `hotline import count drift: expected exactly 13 total
+  import:hotline services, found 0`. Those 13 rows are loaded by
+  `scripts/import/sources/hotlines.mjs` — no migration creates them — so the
+  chain could not rebuild an empty database at all. It now returns
+  `skipped_no_hotline_import` when **zero** hotline services exist, because there
+  is nothing to grant authority to. A **partial** set (any count other than 13)
+  is still drift and still aborts, and an absent batch alongside real hotline
+  rows now raises rather than passing quietly. Verified both directions against a
+  disposable database: 0 rows skips, 1 row aborts with the original error.
 
-The verifier also reports 15 application tables that the backend runtime role
-cannot read on a greenfield database (for example `public.contacts`,
-`public.programs`, `public.source_record_taxonomy`). These would fail closed at
-runtime with permission errors. The repair is the 0066/0069 grant reconciliation
-preserved on the WIP checkpoint; grant coverage becomes an enforced gate in the
-pull request that lands it.
+Bootstrap ordering for a rebuilt database is therefore:
 
-Resolving artifact 3 requires a founder decision on one of:
+1. Replay `db/migrations` (hotline authority self-skips).
+2. Run the bulk open-data import, including `scripts/import/sources/hotlines.mjs`.
+3. `SELECT oran_internal.apply_verified_hotline_authority();` to grant hotline
+   publication authority over the imported rows.
 
-1. Make `0065` tolerate an empty hotline set (it is idempotent and
-   advisory-locked; a no-op on zero rows is the honest greenfield behaviour), or
-2. Accept that bootstrap is "migrations + seed import + migrations" and commit
-   that ordering to this document and to any disaster-recovery drill.
+Step 3 is safe to run at any later point and is idempotent; until it runs, the
+hotline records simply hold no publication authority.
 
-Until one is chosen, ORAN has no demonstrated path to rebuild its database from
-source — which is the actual risk this gate exists to surface.
+### Grant coverage
+
+The verifier also asserts that every table is reachable by `oran_backend_runtime`
+or carries a justified exception, and this is now an **enforced** gate. It found
+one real defect: `public.contacts` appeared in no 0066 grant list, so the service
+detail hydration (`src/services/search/hydrateRelations.ts`) failed closed with a
+permission error on every provisioned database. Repaired by adding it to the 0066
+canonical manifest (greenfield) and `0069_backend_contact_read_capability.sql`
+(already-provisioned environments).
+
+The remaining unreachable tables are deliberate and enumerated in
+`scripts/db/verify-migrations.mjs`: private counters behind their SECURITY
+DEFINER functions, runbook-operated quarantine and hotline authority tables, and
+tables declared in the Drizzle schema that no code path queries. Granting those
+would be dead privilege. When a feature first needs one, the gate fails and
+forces the grant to land with the code.

@@ -137,6 +137,7 @@ GRANT SELECT ON TABLE
   public.confidence_regressions,
   public.confidence_scores,
   public.concept_tag_derivations,
+  public.contacts,
   public.content_templates,
   public.coverage_zones,
   public.discovered_links,

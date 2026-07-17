@@ -161,6 +161,25 @@ BEGIN
       v_status;
   END IF;
 
+  -- Greenfield guard. The 13 target services are loaded by the bulk open-data
+  -- import (scripts/import/sources/hotlines.mjs), not by any migration, so a
+  -- database that has never run that import has nothing to grant authority to.
+  -- Aborting there would make the migration chain unable to rebuild an empty
+  -- database at all. Zero rows is "nothing to do"; a PARTIAL set is still drift
+  -- and still aborts on the exact-count guard further below.
+  SELECT count(*) INTO v_count
+  FROM public.services s
+  WHERE s.created_by_user_id = 'import:hotline';
+
+  IF v_count = 0 THEN
+    RETURN pg_catalog.jsonb_build_object(
+      'slug', v_slug,
+      'status', 'skipped_no_hotline_import',
+      'detail', 'no import:hotline services present; nothing to grant authority to',
+      'checked_at', v_now
+    );
+  END IF;
+
   CREATE TEMP TABLE hotline_expected (
     hotline_slug text PRIMARY KEY,
     service_id uuid NOT NULL UNIQUE,
@@ -2264,6 +2283,41 @@ BEGIN
 END
 $do$;
 
-SELECT oran_internal.assert_verified_hotline_authority('applied');
+-- Assert the applied state only where the batch actually ran. On a greenfield
+-- database the apply above is a no-op (no hotline import), so there is no batch
+-- to assert and demanding one would abort the migration. Where a batch exists
+-- the original full assertion runs unchanged.
+DO $do$
+DECLARE
+  v_slug constant text := 'verified-national-hotlines-2026-07-13';
+  v_batch_exists boolean;
+  v_hotline_services bigint;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM oran_internal.hotline_authority_batches b WHERE b.slug = v_slug
+  ) INTO v_batch_exists;
+
+  IF v_batch_exists THEN
+    PERFORM oran_internal.assert_verified_hotline_authority('applied');
+    RETURN;
+  END IF;
+
+  -- No batch. That is only legitimate when the hotline import has never run;
+  -- any other cause is real drift and must not pass silently.
+  SELECT count(*) INTO v_hotline_services
+  FROM public.services s
+  WHERE s.created_by_user_id = 'import:hotline';
+
+  IF v_hotline_services <> 0 THEN
+    RAISE EXCEPTION
+      'hotline authority batch % is absent while % import:hotline services exist',
+      v_slug,
+      v_hotline_services;
+  END IF;
+
+  RAISE NOTICE
+    'verified hotline authority skipped: no import:hotline services present. Run the hotline import, then re-run oran_internal.apply_verified_hotline_authority().';
+END
+$do$;
 
 COMMIT;

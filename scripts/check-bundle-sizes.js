@@ -2,116 +2,179 @@
 /**
  * ORAN Performance Budget Check
  *
- * Parses the Next.js build manifest to check First Load JS sizes for
- * seeker-facing routes. Fails with exit code 1 if any route exceeds its budget.
+ * Measures First Load JS for seeker-facing routes and fails on regression.
  *
  * Usage:
- *   node scripts/check-bundle-sizes.js [--manifest <path>] [--json]
+ *   node scripts/check-bundle-sizes.js [--stats <path>] [--json]
  *
  * Run after: npm run build
+ *
+ * ── Why this reads route-bundle-stats.json ────────────────────────────────
+ * This script previously parsed `.next/build-manifest.json` and looked up
+ * `manifest.pages['/chat']`. That is the Pages Router shape. ORAN is an App
+ * Router app, so those lookups always returned nothing, every route measured
+ * 0 bytes, 0 bytes was treated as "skip", and the job exited 0. The budget
+ * reported green while measuring nothing at all.
+ *
+ * Next.js 16 emits `.next/diagnostics/route-bundle-stats.json`, which lists the
+ * first-load chunk set per route. That is the authoritative source and is what
+ * this script now uses. If it is missing or a tracked route is absent from it,
+ * this check FAILS rather than skipping -- an unmeasurable budget is a broken
+ * budget, not a passing one.
+ *
+ * ── Ratchets vs targets ───────────────────────────────────────────────────
+ * TARGETS are the product goal. RATCHETS are today's measured ceiling. Every
+ * tracked route currently exceeds its target by 3.4x-4.5x, which the broken
+ * check hid. Enforcing the targets today would fail every build without making
+ * a single page smaller, so the gate enforces the ratchet (no regression) and
+ * reports the distance to target on every run. Ratchets only ever move down:
+ * when a route improves, lower its ratchet in the same pull request.
+ *
+ * Sizes are gzipped, which is what a seeker on a slow connection actually
+ * downloads (Vercel serves compressed).
  */
 
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 // ── Budget configuration ───────────────────────────────────────────────────
-// Units: bytes. Budgets are conservative starting points based on Next.js
-// best practices after TASK-03 (lazy Azure Maps) and TASK-07 (Command Palette).
-// Adjust downward once actual measurements are recorded in STATUS_OMEGA.md.
-const BUDGETS = {
-  '/chat':      160 * 1024,   // 160 kB — chat window + service cards
-  '/directory': 160 * 1024,   // 160 kB — directory + filters + infinite scroll
-  '/map':       120 * 1024,   // 120 kB — slimmer; Azure Maps lazy-loaded (TASK-03)
-  '/':          100 * 1024,   // 100 kB — landing page
-  '/profile':   100 * 1024,   // 100 kB — profile / settings
-  '/saved':     100 * 1024,   // 100 kB — saved services
+// Units: kilobytes of gzipped First Load JS.
+const ROUTES = {
+  //            target  ratchet (measured 2026-07-17)
+  '/':          { target: 100, ratchet: 340 },
+  '/chat':      { target: 160, ratchet: 565 },
+  '/directory': { target: 160, ratchet: 560 },
+  '/map':       { target: 120, ratchet: 455 },
+  '/profile':   { target: 100, ratchet: 440 },
+  '/saved':     { target: 100, ratchet: 450 },
 };
 
-// ── Manifest discovery ─────────────────────────────────────────────────────
-const manifestPath = process.argv.includes('--manifest')
-  ? process.argv[process.argv.indexOf('--manifest') + 1]
-  : resolve('.next', 'build-manifest.json');
+const KB = 1024;
+
+const statsPath = process.argv.includes('--stats')
+  ? process.argv[process.argv.indexOf('--stats') + 1]
+  : resolve('.next', 'diagnostics', 'route-bundle-stats.json');
 
 const emitJson = process.argv.includes('--json');
 
-if (!existsSync(manifestPath)) {
-  console.error(`[budget] Build manifest not found at: ${manifestPath}`);
-  console.error('[budget] Run "npm run build" first.');
+function fail(message) {
+  console.error(`[budget] ${message}`);
   process.exit(1);
 }
 
-const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-
-// ── Parse page bundle sizes from next-build-manifest ──────────────────────
-// The manifest structure: { pages: { '/path': ['_app', 'chunk1', ...] }, ... }
-// We sum the sizes of all referenced chunks for each tracked route.
-
-const chunksDir = resolve('.next', 'static', 'chunks');
-const pagesDir = resolve('.next', 'static', 'chunks', 'pages');
-
-/** Best-effort size lookup for a chunk filename */
-function chunkSize(filename) {
-  // Filenames in the manifest may be bare names or paths; try several locations
-  const candidates = [
-    resolve('.next', filename.startsWith('/') ? filename.slice(1) : filename),
-    resolve(chunksDir, filename),
-    resolve(pagesDir, filename),
-  ];
-  for (const p of candidates) {
-    if (existsSync(p)) {
-      try { return readFileSync(p).length; } catch { /* skip */ }
-    }
-  }
-  return 0;
+if (!existsSync(statsPath)) {
+  fail(
+    `Route bundle stats not found at ${statsPath}.\n`
+      + '[budget] Run "npm run build" first. If this path changed with a Next.js upgrade, '
+      + 'repoint this script — do not let the budget silently stop measuring.',
+  );
 }
 
-// ── Evaluate budgets ───────────────────────────────────────────────────────
+/** @type {Array<{route: string, firstLoadUncompressedJsBytes: number, firstLoadChunkPaths: string[]}>} */
+const stats = JSON.parse(readFileSync(statsPath, 'utf8'));
+
+// Routes share most of their first-load chunks (152 chunk references across the
+// six tracked routes resolve to 37 distinct files), so compress each file once.
+const gzipSizeCache = new Map();
+
+/** Gzipped size of a single chunk file, memoized across routes. */
+function gzipSizeOf(absolutePath) {
+  const cached = gzipSizeCache.get(absolutePath);
+  if (cached !== undefined) return cached;
+  const size = gzipSync(readFileSync(absolutePath)).length;
+  gzipSizeCache.set(absolutePath, size);
+  return size;
+}
+
+/** Gzipped size of a route's first-load chunk set. */
+function measureRoute(entry) {
+  let gzipBytes = 0;
+  const missing = [];
+  // A chunk listed twice for one route must not be counted twice.
+  for (const chunkPath of new Set(entry.firstLoadChunkPaths ?? [])) {
+    const absolute = resolve(chunkPath);
+    if (!existsSync(absolute)) {
+      missing.push(chunkPath);
+      continue;
+    }
+    gzipBytes += gzipSizeOf(absolute);
+  }
+  return { gzipBytes, missing };
+}
+
 const results = [];
-let violations = 0;
+let regressions = 0;
 
-for (const [route, budget] of Object.entries(BUDGETS)) {
-  const chunks = manifest.pages?.[route] ?? [];
-  const totalBytes = chunks.reduce((sum, chunk) => sum + chunkSize(chunk), 0);
-  const pass = totalBytes === 0 || totalBytes <= budget; // 0 = chunk not found → skip
-  const skipped = totalBytes === 0;
+for (const [route, { target, ratchet }] of Object.entries(ROUTES)) {
+  const entry = stats.find((candidate) => candidate.route === route);
+  if (!entry) {
+    // Never "skip". A tracked route that cannot be measured is a failure.
+    results.push({ route, target, ratchet, actualKb: null, status: 'UNMEASURABLE' });
+    regressions++;
+    continue;
+  }
 
-  if (!pass) violations++;
+  const { gzipBytes, missing } = measureRoute(entry);
+  if (missing.length > 0 || gzipBytes === 0) {
+    results.push({ route, target, ratchet, actualKb: null, status: 'UNMEASURABLE' });
+    regressions++;
+    continue;
+  }
 
-  results.push({
-    route,
-    budgetKb: Math.round(budget / 1024),
-    actualKb: skipped ? null : Math.round(totalBytes / 1024),
-    status: skipped ? 'SKIP' : pass ? 'PASS' : 'FAIL',
-  });
+  const actualKb = Math.round(gzipBytes / KB);
+  const status = actualKb > ratchet ? 'REGRESSED' : 'OK';
+  if (status === 'REGRESSED') regressions++;
+  results.push({ route, target, ratchet, actualKb, status });
 }
 
-// ── Output ─────────────────────────────────────────────────────────────────
-if (emitJson) {
-  console.log(JSON.stringify({ violations, results }, null, 2));
-} else {
-  const pad = (s, n) => String(s).padEnd(n);
-  console.log('');
-  console.log('  ORAN Performance Budget Report');
-  console.log('  ─────────────────────────────────────────────────────────');
-  console.log(`  ${pad('Route', 20)} ${pad('Budget', 10)} ${pad('Actual', 10)} Status`);
-  console.log('  ─────────────────────────────────────────────────────────');
-  for (const r of results) {
-    const actual = r.actualKb !== null ? `${r.actualKb} kB` : '(n/a)';
-    const icon = r.status === 'PASS' ? '✓' : r.status === 'SKIP' ? '–' : '✗';
-    console.log(`  ${icon} ${pad(r.route, 19)} ${pad(r.budgetKb + ' kB', 10)} ${pad(actual, 10)} ${r.status}`);
-  }
-  console.log('  ─────────────────────────────────────────────────────────');
+const overTarget = results.filter((r) => r.actualKb !== null && r.actualKb > r.target);
+const slack = results.filter((r) => r.actualKb !== null && r.actualKb < r.ratchet - 5);
 
-  if (violations > 0) {
-    console.log(`\n  ✗ ${violations} route(s) exceed their First Load JS budget.\n`);
-  } else {
-    const measurable = results.filter(r => r.status !== 'SKIP');
-    if (measurable.length === 0) {
-      console.log('\n  – No chunks measured (run "npm run build" first).\n');
-    } else {
-      console.log(`\n  ✓ All ${measurable.length} measured routes within budget.\n`);
+if (emitJson) {
+  console.log(JSON.stringify({ regressions, results }, null, 2));
+} else {
+  const pad = (value, width) => String(value).padEnd(width);
+  console.log('');
+  console.log('  ORAN First Load JS (gzipped)');
+  console.log('  ──────────────────────────────────────────────────────────────');
+  console.log(`  ${pad('Route', 14)} ${pad('Target', 9)} ${pad('Ratchet', 9)} ${pad('Actual', 9)} Status`);
+  console.log('  ──────────────────────────────────────────────────────────────');
+  for (const result of results) {
+    const icon = result.status === 'OK' ? '✓' : '✗';
+    const actual = result.actualKb === null ? '(none)' : `${result.actualKb} kB`;
+    console.log(
+      `  ${icon} ${pad(result.route, 12)} ${pad(result.target + ' kB', 9)} `
+        + `${pad(result.ratchet + ' kB', 9)} ${pad(actual, 9)} ${result.status}`,
+    );
+  }
+  console.log('  ──────────────────────────────────────────────────────────────');
+
+  if (overTarget.length > 0) {
+    console.log(
+      `\n  ${overTarget.length} route(s) are over the product target. This is existing debt,`,
+    );
+    console.log('  not a regression — the gate holds the ratchet so it cannot grow:');
+    for (const result of overTarget) {
+      const factor = (result.actualKb / result.target).toFixed(1);
+      console.log(
+        `    ${result.route}: ${result.actualKb} kB vs ${result.target} kB target (${factor}x)`,
+      );
     }
   }
+
+  if (slack.length > 0) {
+    console.log('\n  Ratchets with slack — lower them in this pull request:');
+    for (const result of slack) {
+      console.log(`    ${result.route}: ratchet ${result.ratchet} kB, actual ${result.actualKb} kB`);
+    }
+  }
+
+  if (regressions > 0) {
+    console.log(`\n  ✗ ${regressions} route(s) regressed or could not be measured.\n`);
+  } else {
+    console.log(`\n  ✓ All ${results.length} routes measured and within ratchet.\n`);
+  }
 }
 
-process.exit(violations > 0 ? 1 : 0);
+process.exit(regressions > 0 ? 1 : 0);

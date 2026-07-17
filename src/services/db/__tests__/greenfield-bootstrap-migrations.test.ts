@@ -52,6 +52,41 @@ describe('0065 greenfield bootstrap', () => {
   });
 });
 
+describe('0070 seeker full-text index', () => {
+  const fulltextIndex = readFileSync(
+    resolve(process.cwd(), 'db/migrations/0070_services_fulltext_index.sql'),
+    'utf8',
+  );
+
+  it('indexes the exact expression the seeker query uses', () => {
+    // An expression index is only usable when it matches the query expression
+    // exactly; 0000's separate name/description indexes never could.
+    const engine = readFileSync(
+      resolve(process.cwd(), 'src/services/search/engine.ts'),
+      'utf8',
+    );
+    expect(engine).toContain("to_tsvector('english', s.name || ' ' || coalesce(s.description, ''))");
+    expect(fulltextIndex).toContain(
+      "to_tsvector('english', name || ' ' || coalesce(description, ''))",
+    );
+  });
+
+  it('builds concurrently and stays a single statement', () => {
+    // ~290k rows in production: a plain CREATE INDEX would hold ACCESS EXCLUSIVE
+    // and stop every seeker read. CONCURRENTLY cannot run inside a transaction,
+    // which only holds while this file has one statement and no BEGIN/COMMIT.
+    expect(fulltextIndex).toContain('CREATE INDEX CONCURRENTLY IF NOT EXISTS');
+    expect(fulltextIndex).not.toMatch(/\b(BEGIN|COMMIT)\s*;/i);
+    const statements = fulltextIndex
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('--'))
+      .join('\n')
+      .split(';')
+      .filter((part) => part.trim().length > 0);
+    expect(statements).toHaveLength(1);
+  });
+});
+
 describe('backend contact read capability', () => {
   it('grants the canonical manifest in 0066 for greenfield installs', () => {
     const selectManifest = backendCapability.match(

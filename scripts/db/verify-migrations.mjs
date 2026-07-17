@@ -113,6 +113,33 @@ function validateTarget(rawUrl) {
   return database;
 }
 
+/**
+ * CREATE INDEX CONCURRENTLY cannot run inside a transaction block, and both the
+ * production runner (psql -f, no --single-transaction) and this verifier only
+ * keep it out of one while the file holds a single statement. Adding a second
+ * statement -- or an explicit BEGIN -- silently converts the build into a
+ * blocking one or fails outright, so the invariant is enforced here instead of
+ * living in a comment nobody reads.
+ */
+function assertConcurrentlyIsolated(name, source) {
+  const executable = source
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n');
+  if (!/\bCONCURRENTLY\b/i.test(executable)) return;
+
+  invariant(
+    !/\b(BEGIN|COMMIT)\s*;/i.test(executable),
+    `Migration ${name} uses CONCURRENTLY inside an explicit transaction block`,
+  );
+  const statements = executable.split(';').filter((part) => part.trim().length > 0);
+  invariant(
+    statements.length === 1,
+    `Migration ${name} uses CONCURRENTLY and must contain exactly one statement `
+      + `(found ${statements.length}); split the rest into their own migration`,
+  );
+}
+
 async function loadMigrations() {
   const directory = resolve(dirname(fileURLToPath(import.meta.url)), '../../db/migrations');
   const entries = await readdir(directory);
@@ -144,6 +171,7 @@ async function loadMigrations() {
   return Promise.all(names.map(async (name) => {
     const source = (await readFile(resolve(directory, name), 'utf8')).replaceAll('\r\n', '\n');
     invariant(source.trim().length > 0, `Migration ${name} is empty`);
+    assertConcurrentlyIsolated(name, source);
     return { name, source };
   }));
 }

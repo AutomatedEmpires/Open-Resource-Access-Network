@@ -12,6 +12,7 @@ const expectedCrons = [
   { path: '/api/internal/coverage-gaps', schedule: '30 8 * * *' },
   { path: '/api/internal/confidence-regression-scan', schedule: '45 9 * * *' },
   { path: '/api/internal/resource-freshness-scan', schedule: '0 11 * * *' },
+  { path: '/api/internal/account-erasure', schedule: '30 11 * * *' },
 ];
 
 describe('Vercel Cron configuration', () => {
@@ -19,7 +20,7 @@ describe('Vercel Cron configuration', () => {
     readFileSync(resolve(process.cwd(), 'vercel.json'), 'utf8'),
   ) as CronConfig;
 
-  it('registers only the reviewed ORAN internal health routes', () => {
+  it('registers only the reviewed ORAN internal routes', () => {
     expect(config.crons).toEqual(expectedCrons);
   });
 

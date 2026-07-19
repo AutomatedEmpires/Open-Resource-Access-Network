@@ -83,6 +83,16 @@ Can approve host claims (organization ownership). Only oran_admin can approve ne
 
 Can read full audit trails including IP-stamped change history. Only oran_admin has unrestricted audit access; community_admin can view within their zone.
 
+### `account_erasure`
+
+Any authenticated user may request erasure only for the identity resolved from
+their current Clerk session; no role can nominate another user through the
+self-service route. Queue commit immediately freezes all ORAN roles and
+memberships for authorization purposes. The internal retry route is available
+only to `CRON_SECRET` authentication. Private erasure ledgers are not directly
+readable or writable by seeker, host, community, or ORAN administrator roles;
+operators use reviewed SQL/runbook procedures for blocked-request diagnosis.
+
 ### `scope_grant`
 
 Can request, approve, deny, or revoke scope grants. Scope grant decisions enforce two-person approval: the same user who requested a grant cannot approve it. Only `oran_admin` can manage platform scopes and decide on grants.
@@ -104,4 +114,7 @@ Can request, approve, deny, or revoke scope grants. Scope grant decisions enforc
 - **Proxy** (`src/proxy.ts`): Clerk identity gating plus same-origin protection for authenticated writes. Production fails closed when Clerk is not configured.
 - **Auth guards** (`src/services/auth/guards.ts`): Pure functions for role comparison (`isRoleAtLeast`, `requireMinRole`, `requireOrgAccess`, `requireOrgRole`).
 - **API handlers** (`src/app/api/*/route.ts`): Clerk-to-ORAN authorization resolution via `getAuthContext()` plus resource-level permission checks. Returns 401/403 as appropriate. Production fails closed via `shouldEnforceAuth()`.
+- **Erased identity guard** (`src/services/auth/session.ts` and
+  `oran_internal.is_account_erased`): a missing profile cannot fall through to
+  new-user access when its Clerk digest has a durable erasure block.
 - **Drizzle RLS policies** (future): Row-level security in PostgreSQL for defense in depth.

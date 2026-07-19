@@ -1,27 +1,25 @@
 /**
- * DELETE /api/user/data-delete — Full server-side user data deletion (GDPR).
+ * DELETE /api/user/data-delete — durable account and personal-data erasure.
  *
- * Removes all personal data for the authenticated user:
- * - user_profiles
- * - seeker_profiles
- * - saved_services
- * - notification_events
- * - notification_preferences
- * - chat_sessions (user_id nullified)
- * - seeker_feedback (created_by_user_id nullified)
- * - organization_members (status → deactivated)
- * - Nullifies user references in submissions (assigned_to, locked_by; replaces submitter with sentinel),
- *   submission_transitions, and audit_logs.
- *
- * Irreversible. The user should be encouraged to export their data first.
+ * The database first queues the request and revokes ORAN authorization. Clerk
+ * deletion is then attempted synchronously, followed by at most one bounded
+ * database page. A private worker advances the durable scrub without allowing
+ * the identity to regain access.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { isDatabaseConfigured, withTransaction } from '@/services/db/postgres';
-import { checkRateLimitShared } from '@/services/security/rateLimit';
+
 import { getAuthContext } from '@/services/auth/session';
-import { captureException } from '@/services/telemetry/sentry';
+import { isDatabaseConfigured } from '@/services/db/postgres';
+import {
+  isAccountErasureUnavailable,
+  processAccountErasure,
+  queueAccountErasure,
+} from '@/services/privacy/accountErasure';
+import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { getIp } from '@/services/security/ip';
+import { captureException } from '@/services/telemetry/sentry';
+
 export async function DELETE(req: NextRequest) {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
@@ -32,12 +30,17 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
-  const userId = authCtx.userId;
   const ip = getIp(req);
-  const rl = await checkRateLimitShared(`user:data-delete:${userId}:${ip}`, {
+  const rl = await checkRateLimitShared(`user:data-delete:${authCtx.userId}:${ip}`, {
     windowMs: 600_000,
     maxRequests: 1,
   });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait before requesting again.' },
@@ -51,85 +54,87 @@ export async function DELETE(req: NextRequest) {
     );
   }
 
+  let queued: Awaited<ReturnType<typeof queueAccountErasure>>;
   try {
-    await withTransaction(async (client) => {
-      // 1. Delete saved services
-      await client.query('DELETE FROM saved_services WHERE user_id = $1', [userId]);
-
-      // 1.5. Delete seeker profile context
-      await client.query('DELETE FROM seeker_profiles WHERE user_id = $1', [userId]);
-
-      // 2. Delete notification preferences
-      await client.query('DELETE FROM notification_preferences WHERE user_id = $1', [userId]);
-
-      // 3. Delete notification events
-      await client.query('DELETE FROM notification_events WHERE recipient_user_id = $1', [userId]);
-
-      // 3.5. Nullify user references in chat sessions
-      await client.query(
-        'UPDATE chat_sessions SET user_id = NULL WHERE user_id = $1',
-        [userId],
+    queued = await queueAccountErasure(authCtx.userId, authCtx.clerkUserId);
+  } catch (error) {
+    if (isAccountErasureUnavailable(error)) {
+      return NextResponse.json(
+        { error: 'Account deletion is temporarily unavailable. Please try again later.' },
+        { status: 503, headers: { 'Retry-After': '3600', 'Cache-Control': 'private, no-store' } },
       );
+    }
+    await captureException(error, { feature: 'account_erasure_queue' });
+    return NextResponse.json({ error: 'Failed to queue account deletion.' }, { status: 500 });
+  }
 
-      // 3.6. Nullify user references in seeker feedback
-      await client.query(
-        'UPDATE seeker_feedback SET created_by_user_id = NULL WHERE created_by_user_id = $1',
-        [userId],
-      );
+  if (queued.status === 'completed') {
+    return NextResponse.json(
+      {
+        message: 'Your account and personal data have been deleted.',
+        status: 'completed',
+        accessRevoked: true,
+        identityProviderDeleted: true,
+        erasureStatus: 'completed',
+        nextStep: null,
+      },
+      { status: 200, headers: { 'Cache-Control': 'private, no-store' } },
+    );
+  }
 
-      // 4. Deactivate organization memberships (preserve org integrity)
-      await client.query(
-        `UPDATE organization_members SET status = 'deactivated', updated_at = NOW()
-         WHERE user_id = $1 AND (status IS NULL OR status != 'deactivated')`,
-        [userId],
-      );
+  if (!queued.leaseAcquired) {
+    return NextResponse.json(
+      {
+        message: 'Account access has been revoked. Secure deletion is in progress.',
+        status: 'pending',
+        accessRevoked: true,
+        identityProviderDeleted: null,
+        erasureStatus: queued.status === 'blocked' ? 'operator_review' : 'in_progress',
+        nextStep: queued.status === 'blocked' ? 'operator_review' : null,
+      },
+      { status: 202, headers: { 'Cache-Control': 'private, no-store' } },
+    );
+  }
 
-      // 5. Replace user references in submissions (submitted_by_user_id is NOT NULL — use sentinel)
-      await client.query(
-        `UPDATE submissions SET submitted_by_user_id = 'deleted_user' WHERE submitted_by_user_id = $1`,
-        [userId],
+  try {
+    const result = await processAccountErasure(queued);
+    if (result.completed) {
+      return NextResponse.json(
+        {
+          message: 'Your account and personal data have been deleted.',
+          status: 'completed',
+          accessRevoked: true,
+          identityProviderDeleted: true,
+          erasureStatus: 'completed',
+          nextStep: null,
+        },
+        { status: 200, headers: { 'Cache-Control': 'private, no-store' } },
       );
-      await client.query(
-        'UPDATE submissions SET assigned_to_user_id = NULL WHERE assigned_to_user_id = $1',
-        [userId],
-      );
-      await client.query(
-        'UPDATE submissions SET locked_by_user_id = NULL WHERE locked_by_user_id = $1',
-        [userId],
-      );
-
-      // 6. Nullify user references in submission_transitions
-      await client.query(
-        'UPDATE submission_transitions SET actor_user_id = NULL WHERE actor_user_id = $1',
-        [userId],
-      );
-
-      // 7. Nullify user references in audit_logs
-      await client.query(
-        'UPDATE audit_logs SET actor_user_id = NULL WHERE actor_user_id = $1',
-        [userId],
-      );
-
-      // 8. Delete user profile
-      await client.query('DELETE FROM user_profiles WHERE user_id = $1', [userId]);
-
-      // 9. Record the deletion in audit_logs (for compliance tracking)
-      await client.query(
-        `INSERT INTO audit_logs (action, resource_type, resource_id, after, actor_user_id)
-         VALUES ('user_data_deleted', 'user', NULL, $1::jsonb, NULL)`,
-        [JSON.stringify({ gdpr: true, deletedUserId: userId })],
-      );
-    });
+    }
 
     return NextResponse.json(
-      { message: 'All personal data has been deleted.' },
       {
-        status: 200,
-        headers: { 'Cache-Control': 'private, no-store' },
+        message: 'Account access has been revoked. Secure deletion is in progress.',
+        status: 'pending',
+        accessRevoked: true,
+        identityProviderDeleted: result.identityProviderDeleted,
+        erasureStatus: result.status === 'blocked' ? 'operator_review' : 'in_progress',
+        nextStep: result.nextStep,
       },
+      { status: 202, headers: { 'Cache-Control': 'private, no-store' } },
     );
-  } catch (err) {
-    captureException(err);
-    return NextResponse.json({ error: 'Failed to delete user data.' }, { status: 500 });
+  } catch (error) {
+    await captureException(error, { feature: 'account_erasure_processing' });
+    return NextResponse.json(
+      {
+        message: 'Account access has been revoked. Secure deletion is queued.',
+        status: 'pending',
+        accessRevoked: true,
+        identityProviderDeleted: null,
+        erasureStatus: 'queued',
+        nextStep: null,
+      },
+      { status: 202, headers: { 'Cache-Control': 'private, no-store' } },
+    );
   }
 }

@@ -65,6 +65,7 @@ deadline. An expired rollback deadline fails the freshness check.
 | [Database incident](services/RUNBOOK_DATABASE_INCIDENT.md) | Supabase/PostgreSQL/pool/migration incidents |
 | [Authentication outage](services/RUNBOOK_AUTH_OUTAGE.md) | Clerk identity and database-owned authorization |
 | [Account and form resilience](services/RUNBOOK_ACCOUNT_AND_FORM_RESILIENCE.md) | Account, onboarding, profile, and managed forms |
+| [Durable account erasure](services/RUNBOOK_ACCOUNT_ERASURE.md) | Release gate, bounded deletion worker, retries, blocked requests, and rollback |
 | [Membership and reviewer governance](services/RUNBOOK_MEMBERSHIP_SCOPE_AND_REVIEWER_GOVERNANCE.md) | Membership, scope grants, freezes, reviewer dormancy |
 | [Web degradation](services/RUNBOOK_WEB_APP_DEGRADATION.md) | Vercel application and critical journeys |
 | [Rate limit and chat usage](services/RUNBOOK_RATE_LIMIT_INCIDENT.md) | Atomic daily quota, minute rate, and in-flight controls |

@@ -30,6 +30,7 @@ Create an ADR before implementing changes to:
 | ADR-0011 | [Ingestion Integrity and Resilience Controls](ADR-0011-ingestion-integrity-and-resilience-controls.md) | Accepted |
 | ADR-0012 | [Accept Username Enumeration Risk](ADR-0012-accept-username-enumeration-risk.md) | Accepted |
 | ADR-0013 | [Seeker Execution Local-First Plan Foundation](ADR-0013-seeker-execution-local-first-plan-foundation.md) | Accepted |
+| ADR-0014 | [Durable Fail-Closed Account Erasure](ADR-0014-durable-fail-closed-account-erasure.md) | Accepted |
 
 ## File naming
 

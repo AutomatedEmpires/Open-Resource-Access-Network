@@ -491,9 +491,88 @@ describe('ProfilePageClient', () => {
     await waitFor(() => {
       const deleteCall = fetchMock.mock.calls.find(([url]) => String(url) === '/api/user/data-delete');
       expect(deleteCall).toEqual(['/api/user/data-delete', { method: 'DELETE' }]);
-      expect(toastMock).toHaveBeenCalledWith('error', 'Failed to delete server data. Please try again.');
+      expect(toastMock).toHaveBeenCalledWith(
+        'error',
+        'Failed to start secure account deletion. Please try again.',
+      );
       expect(localStorage.getItem(PREFS_KEY)).not.toBeNull();
       expect(localStorage.getItem(SAVED_KEY)).not.toBeNull();
+    });
+  }, 30_000);
+
+  it('clears local data after a durable 202 erasure acceptance', async () => {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ approximateCity: 'Dallas', language: 'en' }));
+    localStorage.setItem(SAVED_KEY, JSON.stringify(['svc-1']));
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/profile') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            profile: { userId: 'user-1', preferredLocale: 'en', approximateCity: 'Dallas' },
+          }),
+        } as Response;
+      }
+      if (url === '/api/user/notifications/preferences') {
+        return { ok: true, status: 200, json: async () => ({ preferences: [] }) } as Response;
+      }
+      if (url === '/api/user/data-delete') {
+        return { ok: true, status: 202 } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    render(<ProfilePage />);
+    await screen.findByText('You are signed in. Your preferences are syncing across devices.');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete my data' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
+
+    await waitFor(() => {
+      expect(localStorage.getItem(PREFS_KEY)).toBeNull();
+      expect(localStorage.getItem(SAVED_KEY)).toBe('[]');
+      expect(toastMock).toHaveBeenCalledWith(
+        'success',
+        'Account access revoked. Secure deletion is continuing in the background.',
+      );
+    });
+  }, 30_000);
+
+  it('preserves local data while the erasure release gate is unavailable', async () => {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ approximateCity: 'Dallas', language: 'en' }));
+    localStorage.setItem(SAVED_KEY, JSON.stringify(['svc-1']));
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/profile') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            profile: { userId: 'user-1', preferredLocale: 'en', approximateCity: 'Dallas' },
+          }),
+        } as Response;
+      }
+      if (url === '/api/user/notifications/preferences') {
+        return { ok: true, status: 200, json: async () => ({ preferences: [] }) } as Response;
+      }
+      if (url === '/api/user/data-delete') {
+        return { ok: false, status: 503 } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    render(<ProfilePage />);
+    await screen.findByText('You are signed in. Your preferences are syncing across devices.');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete my data' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
+
+    await waitFor(() => {
+      expect(localStorage.getItem(PREFS_KEY)).not.toBeNull();
+      expect(localStorage.getItem(SAVED_KEY)).not.toBeNull();
+      expect(toastMock).toHaveBeenCalledWith(
+        'error',
+        'Secure account deletion is temporarily unavailable. Please try again later.',
+      );
     });
   }, 30_000);
 

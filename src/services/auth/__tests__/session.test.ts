@@ -42,6 +42,7 @@ describe('Clerk auth session helpers', () => {
     dbMocks.isDatabaseConfigured.mockReturnValue(true);
     dbMocks.executeQuery
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ exists: false }])
       .mockResolvedValueOnce([{ exists: true }])
       .mockResolvedValueOnce([]);
     const { getAuthContext } = await loadSessionModule();
@@ -133,6 +134,32 @@ describe('Clerk auth session helpers', () => {
     clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_db_error' });
     dbMocks.isDatabaseConfigured.mockReturnValue(true);
     dbMocks.executeQuery.mockRejectedValueOnce(new Error('connection refused'));
+    const { getAuthContext } = await loadSessionModule();
+
+    await expect(getAuthContext()).resolves.toBeNull();
+  });
+
+  it('denies a Clerk subject retained in the durable erasure block ledger', async () => {
+    clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_erased' });
+    dbMocks.isDatabaseConfigured.mockReturnValue(true);
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ exists: true }])
+      .mockResolvedValueOnce([{ erased: true }]);
+    const { getAuthContext } = await loadSessionModule();
+
+    await expect(getAuthContext()).resolves.toBeNull();
+    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(3);
+    expect(dbMocks.executeQuery.mock.calls[2]?.[0]).toContain('is_account_erased');
+  });
+
+  it('fails closed when the erasure capability exists but cannot be read', async () => {
+    clerkAuthMock.mockResolvedValue({ userId: 'user_clerk_erasure_error' });
+    dbMocks.isDatabaseConfigured.mockReturnValue(true);
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ exists: true }])
+      .mockRejectedValueOnce(new Error('erasure ledger unavailable'));
     const { getAuthContext } = await loadSessionModule();
 
     await expect(getAuthContext()).resolves.toBeNull();

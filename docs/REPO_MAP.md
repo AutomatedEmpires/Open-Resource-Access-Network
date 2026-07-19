@@ -8,7 +8,7 @@ A task-oriented map of the platform as it exists today.
 | --- | --- | --- |
 | Product surfaces | `src/app/**` | Seeker, host, community-admin, ORAN-admin, and public pages |
 | API boundaries | `src/app/api/**` | Seeker retrieval APIs, operator control APIs, HSDS distribution, internal jobs |
-| Business services | `src/services/**` | Search, chat, scoring, workflow, auth, notifications, forms, queueing, telemetry |
+| Business services | `src/services/**` | Search, chat, scoring, workflow, auth, privacy/erasure, notifications, forms, queueing, telemetry |
 | Ingestion and federation | `src/agents/ingestion/**`, `src/services/ingestion/**`, `functions/**` | Connectors, normalization, crosswalks, crawl/extract/verify timers, ingestion controls |
 | Data model and persistence | `src/db/**`, `db/migrations/**`, `src/domain/**` | Schema, queries, domain types, constants, canonical entity contracts |
 | Platform operations | `infra/**`, `.github/workflows/**`, `scripts/**`, `docs/ops/**` | Azure infrastructure, deploy/runtime contracts, CI/CD, runbooks |
@@ -35,6 +35,7 @@ A task-oriented map of the platform as it exists today.
 | Change workflow/governance | `src/services/workflow/**`, `src/services/community/**`, `src/services/triage/**`, `src/app/api/admin/**`, `src/app/api/community/**` | `docs/platform/PLATFORM_ARCHITECTURE.md`, `docs/SECURITY_PRIVACY.md` |
 | Change host/operator participation | `src/app/(host)/**`, `src/services/forms/**`, `src/services/organizations/**`, `src/services/resourceSubmissions/**` | `docs/platform/PLATFORM_ARCHITECTURE.md` |
 | Change auth/roles/security | `src/services/auth/**`, `src/services/security/**`, `src/proxy.ts` | `docs/SECURITY_PRIVACY.md`, `docs/governance/ROLES_PERMISSIONS.md` |
+| Change account erasure | `src/services/privacy/**`, `src/app/api/user/data-delete/**`, `src/app/api/internal/account-erasure/**`, `db/migrations/0071*`, `db/migrations/0072*` | `docs/SECURITY_PRIVACY.md`, `docs/ops/services/RUNBOOK_ACCOUNT_ERASURE.md` |
 | Change deploy/ops | `.github/workflows/**`, `infra/**`, `scripts/**`, `docs/ops/**` | `docs/platform/PLATFORM_AZURE.md`, `docs/platform/DEPLOYMENT_AZURE.md` |
 
 ## Architectural Notes

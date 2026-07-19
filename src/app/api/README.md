@@ -42,6 +42,7 @@ These are separate contracts. Do not collapse them into one generic public data 
 | `/api/internal/coverage-gaps` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | Yes | No | Daily Vercel Cron coverage-gap detection + admin alerting |
 | `/api/internal/ingestion/feed-poll` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | Yes | No | Daily Vercel Cron source-feed poller for active HSDS / 211 feeds |
 | `/api/internal/resource-freshness-scan` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | Yes | No | Daily Vercel Cron expiry, reverification, and community-review sweep |
+| `/api/internal/account-erasure` | GET/POST | Internal (`CRON_SECRET`) | N/A | No | Daily; bounded durable account-erasure retries under a fixed wall-clock deadline |
 | `/api/profile` | GET/PUT | Auth required | Yes | Yes | Seeker profile CRUD |
 | `/api/saved` | GET/POST/DELETE | Auth required | Yes | Yes | Saved services CRUD |
 | `/api/admin/audit` | GET | `oran_admin` | Yes | Yes (60/min) | Audit log read |
@@ -74,6 +75,8 @@ These are separate contracts. Do not collapse them into one generic public data 
 | `/api/user/notifications/[id]/read` | PUT | Auth required | Yes (UUID) | Yes (30/min) | Mark notification read |
 | `/api/user/notifications/read-all` | PUT | Auth required | N/A | Yes (30/min) | Mark all notifications read |
 | `/api/user/notifications/preferences` | GET/PUT | Auth required | Yes | Yes (60/30 min) | Notification preferences |
+| `/api/user/data-export` | GET | Auth required | N/A | Yes | Typed, bounded personal-data export |
+| `/api/user/data-delete` | DELETE | Auth required | N/A | Yes (1/10 min) | Atomically revokes access, deletes Clerk identity, and advances durable bounded erasure; may return 202 while work continues |
 | `/api/admin/appeals` | GET/POST | `community_admin` | Yes | Yes (60/30 min) | Appeal review queue + decisions |
 | `/api/submissions/appeal` | POST/GET | Auth required | Yes | Yes (30/60 min) | Submit appeal + list own appeals |
 | `/api/submissions/report` | POST/GET | Optional/Auth | Yes | Yes (10/60 min) | Report listing issue + list own reports |

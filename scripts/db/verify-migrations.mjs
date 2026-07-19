@@ -25,6 +25,7 @@ const BACKEND_ROLE = 'oran_backend_runtime';
 const SAFE_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const SAFE_DATABASE_NAME = /(ci|test|proof|probe|disposable)/i;
 const MIGRATION_FILENAME = /^[0-9]{4}_[a-z0-9_]+\.sql$/;
+const ACCOUNT_ERASURE_GATE = '0072_account_erasure_index_gate.sql';
 
 // The ledger in db-migrate.yml keys on FILENAME, so these two historical files
 // both applied cleanly and renaming either one would corrupt the applied-state
@@ -53,6 +54,13 @@ const UNGRANTED_TABLE_EXCEPTIONS = new Set([
   'oran_internal.chat_rate_limit_windows',
   'oran_internal.chat_usage_events',
   'oran_internal.shared_rate_limit_windows',
+  // Durable account erasure is reachable only through the fixed SECURITY
+  // DEFINER API in 0071. Direct table access would expose live identifiers and
+  // worker state to the application role.
+  'oran_internal.account_erasure_identity_blocks',
+  'oran_internal.account_erasure_requests',
+  'oran_internal.account_erasure_release_gate',
+  'oran_internal.account_erasure_steps',
   'public.chat_quota_windows',
 
   // Quarantine batching (0056/0057) is operated through SQL runbooks, not the
@@ -176,7 +184,25 @@ async function loadMigrations() {
   }));
 }
 
-async function applyMigrations(client, migrations) {
+async function loadDisposableAccountErasureIndexes() {
+  const source = await readFile(
+    resolve(dirname(fileURLToPath(import.meta.url)), 'build-account-erasure-indexes.sql'),
+    'utf8',
+  );
+  const statements = source.match(
+    /CREATE INDEX CONCURRENTLY IF NOT EXISTS[\s\S]*?;\s*/gu,
+  ) ?? [];
+  invariant(
+    statements.length === 128,
+    `Expected 128 fixed account-erasure index definitions, found ${statements.length}`,
+  );
+  // Production uses the committed online builder. The verifier owns an empty,
+  // disposable database, where a regular build is both faster and avoids
+  // putting CONCURRENTLY into a multi-statement migration transaction.
+  return statements.map((statement) => statement.replace('CONCURRENTLY ', ''));
+}
+
+async function applyMigrations(client, migrations, accountErasureIndexes) {
   const skipped = [];
   for (const migration of migrations) {
     const dataDependency = DATA_DEPENDENT_MIGRATIONS.get(migration.name);
@@ -184,6 +210,25 @@ async function applyMigrations(client, migrations) {
       skipped.push({ name: migration.name, reason: dataDependency });
       console.log(`  SKIPPED ${migration.name} (data-dependent)`);
       continue;
+    }
+    if (migration.name === ACCOUNT_ERASURE_GATE) {
+      let gateFailedClosed = false;
+      try {
+        await client.query(migration.source);
+      } catch (error) {
+        gateFailedClosed = error.code === '55000'
+          && error.message === 'account-erasure online index phase is incomplete';
+        await client.query('ROLLBACK');
+      }
+      invariant(
+        gateFailedClosed,
+        `${ACCOUNT_ERASURE_GATE} must fail closed before its fixed indexes exist`,
+      );
+      console.log('  proved account-erasure gate fails before index preparation');
+      console.log('  preparing fixed account-erasure indexes on disposable database');
+      for (const statement of accountErasureIndexes) {
+        await client.query(statement);
+      }
     }
     try {
       await client.query(migration.source);
@@ -273,7 +318,10 @@ async function reportSurface(client) {
 async function main() {
   const rawUrl = process.env.MIGRATION_DATABASE_URL;
   const database = validateTarget(rawUrl);
-  const migrations = await loadMigrations();
+  const [migrations, accountErasureIndexes] = await Promise.all([
+    loadMigrations(),
+    loadDisposableAccountErasureIndexes(),
+  ]);
 
   console.log(`verifying ${migrations.length} migrations against disposable database ${database}\n`);
 
@@ -292,7 +340,7 @@ async function main() {
         END LOOP;
       END $$;`);
 
-    const skipped = await applyMigrations(client, migrations);
+    const skipped = await applyMigrations(client, migrations, accountErasureIndexes);
 
     const grantGaps = await inspectGrantCoverage(client);
     const failures = [

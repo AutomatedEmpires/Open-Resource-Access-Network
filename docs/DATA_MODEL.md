@@ -495,7 +495,7 @@ Shared user profile data used across seeker, host, community-admin, and ORAN adm
 | role        | TEXT NOT NULL | Platform role (`seeker`, `host_member`, `host_admin`, `community_admin`, `oran_admin`) |
 | email       | TEXT       | Optional email for non-Entra auth providers |
 | phone       | TEXT       | Optional phone for auth flows |
-| auth_provider | TEXT NOT NULL | Identity provider (`azure-ad`, `google`, `credentials`) |
+| auth_provider | TEXT NOT NULL | Identity provider (`clerk` for current accounts; legacy `azure-ad`, `google`, or `credentials` values remain schema-compatible) |
 | created_at  | TIMESTAMPTZ | Record creation |
 | updated_at  | TIMESTAMPTZ | Last update |
 
@@ -877,6 +877,35 @@ Per-user opt-in/opt-out preferences by event type and channel.
 ### `verification_queue` (Compatibility View)
 
 Backward-compatible view over `submissions` for code that references the old table.
+
+---
+
+## Durable Account Erasure
+
+Migration `0071_account_erasure_workflow.sql` introduces a private
+`oran_internal` erasure domain. None of these tables has direct application-role
+table grants; the backend uses fixed `SECURITY DEFINER` functions with empty
+`search_path` settings.
+
+| Table | Purpose |
+|-------|---------|
+| `account_erasure_requests` | One durable request per identity digest, with status, retry/backoff, lease, provider-deletion state, tombstones, and aggregate progress. Raw user and Clerk IDs are cleared at completion. |
+| `account_erasure_steps` | Immutable 72-step manifest with per-step status, captured high-water marks, cursors, verification pass, and row counts. |
+| `account_erasure_identity_blocks` | Hashed identity revocation records used by auth and write-reintroduction guards after source rows are gone. |
+| `account_erasure_release_gate` | Singleton dark-launch gate. It is opened only by migration `0072` after the exact fixed index manifest is live, ready, and valid. |
+
+Request states are `pending`, `processing`, `blocked`, and `completed`; step
+states are `pending`, `running`, `done`, and `blocked`. Each worker transaction
+touches one 500–2,000 primary-key page and captures a high-water boundary.
+Completion requires a later no-change verification pass. A third pass that still
+finds reintroduced identity data blocks the request rather than declaring
+success.
+
+Erasure preserves non-personal governance/resource records where deletion would
+damage referential or public-data integrity. Identity columns and embedded JSON
+or text fragments are replaced with per-request tombstones; user-owned records
+whose value is only personal state are deleted. The complete fixed dispatcher is
+the schema-level source of truth.
 
 ---
 

@@ -782,10 +782,19 @@ export default function ProfilePage() {
 
   // ── Delete all data ─────────────────────────────────────────
   const deleteAllData = useCallback(async () => {
+    let serverDeletionPending = false;
     if (isAuthenticated) {
       try {
         const res = await fetch('/api/user/data-delete', { method: 'DELETE' });
-        if (!res.ok) { toast('error', 'Failed to delete server data. Please try again.'); return; }
+        if (res.status === 503) {
+          toast('error', 'Secure account deletion is temporarily unavailable. Please try again later.');
+          return;
+        }
+        if (res.status !== 200 && res.status !== 202) {
+          toast('error', 'Failed to start secure account deletion. Please try again.');
+          return;
+        }
+        serverDeletionPending = res.status === 202;
       } catch { toast('error', 'Failed to delete server data. Please try again.'); return; }
     }
     clearStoredProfilePreferences();
@@ -797,7 +806,14 @@ export default function ProfilePage() {
     setSavedCount(0);
     setSeeker({ ...DEFAULT_SEEKER_CONTEXT });
     setShowDeleteConfirm(false);
-    toast('success', isAuthenticated ? 'All profile data deleted from this device and your account' : 'All profile data deleted from this device');
+    toast(
+      'success',
+      isAuthenticated
+        ? (serverDeletionPending
+          ? 'Account access revoked. Secure deletion is continuing in the background.'
+          : 'Your account and personal data have been deleted.')
+        : 'All profile data deleted from this device',
+    );
   }, [toast, isAuthenticated]);
 
   // ── Export data (authenticated) ─────────────────────────────
@@ -1634,7 +1650,7 @@ export default function ProfilePage() {
                 <p className="flex items-start gap-2"><CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-none text-slate-700" aria-hidden="true" /><span>{isAuthenticated ? (isServerSyncEnabled ? 'You explicitly enabled cross-device sync, so profile data can be reused across ORAN surfaces.' : 'Signed-in profile data still stays local until you explicitly enable cross-device sync.') : 'Signed-out profile data lives in your browser only.'}</span></p>
                 <p className="flex items-start gap-2"><CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-none text-slate-700" aria-hidden="true" /><span>Location is city-level approximate — ORAN <strong>never</strong> requests GPS or precise location.</span></p>
                 <p className="flex items-start gap-2"><CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-none text-slate-700" aria-hidden="true" /><span>Your data is <strong>never sold or shared</strong> with third parties.</span></p>
-                <p className="flex items-start gap-2"><CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-none text-slate-700" aria-hidden="true" /><span>One-tap delete removes everything — no waiting period.</span></p>
+                <p className="flex items-start gap-2"><CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-none text-slate-700" aria-hidden="true" /><span>Account access is revoked immediately; secure deletion may continue safely in the background.</span></p>
               </div>
 
               {isAuthenticated ? (
@@ -1678,7 +1694,7 @@ export default function ProfilePage() {
                   </div>
                   <p className="text-xs text-red-700 mb-3">
                     This will permanently delete your location, preferences, seeker context, and saved services
-                    {isAuthenticated ? ' — including server-side data' : ' from this device'}.
+                    {isAuthenticated ? ' — and start revocation-first deletion of your account data' : ' from this device'}.
                   </p>
                   <div className="flex gap-2">
                     <button

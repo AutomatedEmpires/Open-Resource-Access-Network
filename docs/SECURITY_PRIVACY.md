@@ -21,6 +21,12 @@ Implemented today:
 - Feature flags with typed constants, fail-closed semantics (unknown flag → off).
 - PII redaction in Sentry/telemetry—verified by automated tests.
 - Shared production route rate limiting uses an atomic private Supabase/PostgreSQL function as its single authority. It fails closed if that authority is unavailable; Redis or in-memory counters are limited to database-less local/test resilience.
+- Account deletion is a durable, fail-closed workflow: queue commit immediately
+  freezes ORAN access and records hashed revocation evidence; a bounded worker
+  deletes the dedicated Clerk identity and scrubs or tombstones all enumerated
+  relational and semi-structured identity surfaces. Completion requires a clean
+  verification pass. Raw identity values are removed from the request ledger on
+  completion and are never written to the public audit event.
 - DB schema exists in db/migrations/** (including feature flags, submissions/workflow tables, and the legacy `verification_queue` compatibility view).
 
 Planned / not yet enforced end-to-end:
@@ -116,7 +122,33 @@ ORAN explicitly prohibits:
 - Enabling sync performs a best-effort save of current city, locale, and seeker profile context to the authenticated account
 - Disabling sync stops future `/api/profile` writes from the current device without silently deleting existing account data
 - Saved-service bookmarks follow the same device consent boundary: local by default, optional `/api/saved` sync only after cross-device sync is enabled
-- User can delete saved profile at any time via `/profile` → "Delete My Data"
+- A signed-in user can request full account and personal-data deletion from
+  `/profile` → "Delete My Data". A successful queue response means access has
+  already been revoked; HTTP 202 means the bounded deletion worker is still
+  progressing, not that the request was deferred without effect.
+
+### Account Erasure
+
+- `DELETE /api/user/data-delete` requires the current Clerk session and the
+  database-owned ORAN identity mapping. It is rate-limited by authenticated
+  identity and IP digest.
+- The database queue is the authorization boundary. It atomically freezes the
+  profile, creates the 72-step private work ledger, blocks identity
+  reintroduction, and grants at most one worker lease.
+- The endpoint attempts Clerk deletion and one bounded database page. The
+  `CRON_SECRET`-authenticated `/api/internal/account-erasure` worker retries
+  remaining work with bounded claims, pages, leases, backoff, and a wall-clock
+  deadline.
+- A Clerk 404 is idempotent success. Repeated provider or database failures are
+  retried; writer reintroduction after repeated verification passes moves the
+  request to `blocked` for operator review.
+- Authentication checks consult the durable erased-identity digest when no
+  profile remains, preventing the ordinary new-user path from resurrecting an
+  erased account.
+- The feature stays unavailable until the fixed online-index manifest passes
+  migration `0072_account_erasure_index_gate.sql`. The public route returns 503
+  with `Retry-After` while that gate is closed.
+- Operational procedure: `docs/ops/services/RUNBOOK_ACCOUNT_ERASURE.md`.
 
 ### Cookie Consent
 

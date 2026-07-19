@@ -84,7 +84,7 @@ conflate the two ledgers or create a production baseline without a schema review
 ORAN uses plain SQL migrations under `db/migrations/`. They are the canonical schema history.
 
 The current repository contains migrations from `0000_initial_schema.sql` through
-`0073_account_erasure_index_gate.sql`.
+`0072_account_erasure_index_gate.sql`.
 
 Production workflow behavior:
 
@@ -95,7 +95,9 @@ Production workflow behavior:
 
 Account-erasure index release order:
 
-1. Apply `0071_account_erasure_workflow.sql` and `0072_service_embeddings.sql`.
+1. Apply `0071_account_erasure_workflow.sql`. This installs the private durable
+   request/step ledgers and revocation controls, but its release gate keeps new
+   erasure requests dark.
 2. From a controlled operator session, prevalidate that `SUPABASE_DB_URL` is the
    dedicated ORAN Supabase direct or session connection. Do not use the
    transaction pooler and do not print the URL.
@@ -106,12 +108,15 @@ Account-erasure index release order:
    manifest index before returning success. Each build has a five-second lock
    budget and a 30-minute statement budget; monitor database disk, WAL, replica
    lag, and Supabase health throughout this maintenance operation.
-4. Apply `0073_account_erasure_index_gate.sql`. It contains no psql meta-commands
+4. Apply `0072_account_erasure_index_gate.sql`. It contains no psql meta-commands
    and is safe for the migration API; it refuses to advance migration history
-   unless every online index is live, ready, and valid.
+   unless every online index exists on its exact expected schema/table and is
+   live, ready, and valid. Success opens the release gate.
 
 Do not deploy the account-erasure worker between steps 1 and 4. If an online
-build times out, rerun step 3 before retrying the tracked gate.
+build times out, rerun step 3 before retrying the tracked gate. See
+[`RUNBOOK_ACCOUNT_ERASURE.md`](../docs/ops/services/RUNBOOK_ACCOUNT_ERASURE.md)
+for rollout, retry, blocked-request, and monitoring procedures.
 
 ### Run migrations via psql
 

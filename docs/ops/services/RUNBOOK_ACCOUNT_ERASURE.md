@@ -4,7 +4,7 @@
 
 - Owner role: Identity and Access Lead
 - Reviewers: Data Platform Lead, Platform On-Call Lead
-- Operational status: release-gated
+- Operational status: active
 - Last reviewed (UTC): 2026-07-19
 - Next review due (UTC): 2026-10-19
 - Severity scope: SEV-1 to SEV-3

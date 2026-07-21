@@ -1,6 +1,157 @@
 import { expect, test, type Page } from '@playwright/test';
 import { loginAs } from './helpers/auth';
 
+const SAVED_COMPARISON_SERVICE_IDS = [
+  '11111111-1111-4111-8111-111111111111',
+  '22222222-2222-4222-8222-222222222222',
+];
+
+// These records exist only inside the intercepted browser response. They are
+// deliberately never inserted into a database or exposed through a production
+// data path; the acceptance test exercises the real saved-comparison UI using
+// the same JSON contract as GET /api/services.
+const SAVED_COMPARISON_SERVICES = [
+  {
+    service: {
+      id: SAVED_COMPARISON_SERVICE_IDS[0],
+      organizationId: '31111111-1111-4111-8111-111111111111',
+      name: 'E2E Intake and Navigation',
+      description: 'Protected acceptance fixture with recorded next-step details.',
+      status: 'active',
+      capacityStatus: 'limited',
+      applicationProcess: 'Call to request an intake appointment',
+      waitTime: 'Two business days recorded',
+      fees: 'No fee recorded',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-20T12:00:00.000Z',
+    },
+    organization: {
+      id: '31111111-1111-4111-8111-111111111111',
+      name: 'E2E Reviewed Provider',
+      status: 'active',
+      verifiedAt: '2026-07-19T12:00:00.000Z',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-20T12:00:00.000Z',
+    },
+    address: {
+      id: '41111111-1111-4111-8111-111111111111',
+      locationId: '51111111-1111-4111-8111-111111111111',
+      address1: '100 Test Avenue',
+      city: 'Spokane',
+      stateProvince: 'WA',
+      postalCode: '99201',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-20T12:00:00.000Z',
+    },
+    phones: [],
+    schedules: [],
+    taxonomyTerms: [{
+      id: '61111111-1111-4111-8111-111111111111',
+      term: 'Resource Navigation',
+    }],
+    eligibility: [{
+      id: '71111111-1111-4111-8111-111111111111',
+      serviceId: SAVED_COMPARISON_SERVICE_IDS[0],
+      description: 'Recorded for residents of the test service area',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-20T12:00:00.000Z',
+    }],
+    requiredDocuments: [{
+      id: '81111111-1111-4111-8111-111111111111',
+      serviceId: SAVED_COMPARISON_SERVICE_IDS[0],
+      document: 'Photo ID if available',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-20T12:00:00.000Z',
+    }],
+    confidenceScore: {
+      id: '91111111-1111-4111-8111-111111111111',
+      serviceId: SAVED_COMPARISON_SERVICE_IDS[0],
+      score: 88,
+      verificationConfidence: 92,
+      eligibilityMatch: 70,
+      constraintFit: 80,
+      computedAt: '2026-07-20T12:00:00.000Z',
+      createdAt: '2026-07-20T12:00:00.000Z',
+      updatedAt: '2026-07-20T12:00:00.000Z',
+    },
+    provenance: {
+      serviceId: SAVED_COMPARISON_SERVICE_IDS[0],
+      origin: 'provider_submission',
+      sourceName: 'E2E reviewed fixture',
+      sourceCount: 1,
+      firstSeenAt: '2026-07-01T12:00:00.000Z',
+      informationUpdatedAt: '2026-07-20T12:00:00.000Z',
+      lastHumanReviewAt: '2026-07-19T12:00:00.000Z',
+    },
+    attributes: [{
+      id: 'a1111111-1111-4111-8111-111111111111',
+      serviceId: SAVED_COMPARISON_SERVICE_IDS[0],
+      taxonomy: 'access',
+      tag: 'appointment_required',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-20T12:00:00.000Z',
+    }],
+    serviceAreas: [{
+      id: 'b1111111-1111-4111-8111-111111111111',
+      serviceId: SAVED_COMPARISON_SERVICE_IDS[0],
+      name: 'E2E test service area',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-20T12:00:00.000Z',
+    }],
+  },
+  {
+    service: {
+      id: SAVED_COMPARISON_SERVICE_IDS[1],
+      organizationId: '32222222-2222-4222-8222-222222222222',
+      name: 'E2E Information Referral',
+      description: 'Protected acceptance fixture with deliberately incomplete evidence.',
+      status: 'active',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-02T12:00:00.000Z',
+    },
+    organization: {
+      id: '32222222-2222-4222-8222-222222222222',
+      name: 'E2E Unreviewed Provider',
+      status: 'active',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-02T12:00:00.000Z',
+    },
+    address: null,
+    phones: [],
+    schedules: [],
+    taxonomyTerms: [{
+      id: '62222222-2222-4222-8222-222222222222',
+      term: 'Information and Referral',
+    }],
+    eligibility: [],
+    requiredDocuments: [],
+    confidenceScore: null,
+    provenance: null,
+    attributes: [],
+    serviceAreas: [],
+  },
+];
+
+function requireHostedSavedComparisonAuth(): void {
+  if (!process.env.PLAYWRIGHT_BASE_URL?.trim()) return;
+
+  const publishableKey = (
+    process.env.CLERK_PUBLISHABLE_KEY
+    ?? process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  )?.trim();
+  const missing = [
+    !publishableKey ? 'CLERK_PUBLISHABLE_KEY or NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY' : null,
+    !process.env.CLERK_SECRET_KEY?.trim() ? 'CLERK_SECRET_KEY' : null,
+    !process.env.ORAN_E2E_SEEKER_EMAIL?.trim() ? 'ORAN_E2E_SEEKER_EMAIL' : null,
+  ].filter((name): name is string => Boolean(name));
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Hosted saved-comparison acceptance requires an active ORAN-only Clerk seeker fixture. Missing: ${missing.join(', ')}.`,
+    );
+  }
+}
+
 async function expectSuccessOrAlert(page: Page, successPattern: RegExp): Promise<void> {
   await expect(async () => {
     const successVisible = await page.getByText(successPattern).first().isVisible().catch(() => false);
@@ -102,30 +253,86 @@ test.describe('Seeker account & submission workflows', () => {
     await expectSuccessOrAlert(page, /Appeal submitted/i);
   });
 
-  test('saved services page shows actionable state for authenticated users', async ({ page }) => {
-    await loginAs(page, 'seeker');
-    await page.addInitScript(() => {
-      localStorage.setItem('oran:saved-service-ids', JSON.stringify(['11111111-1111-4111-8111-111111111111']));
+  test('saved services compare recorded next steps and uncertainty on mobile', async ({ page }) => {
+    requireHostedSavedComparisonAuth();
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    let requestedIds: string[] = [];
+    const blockedSavedApiRequests: string[] = [];
+    await page.route(/\/api\/saved(?:\/|$)/, async (route) => {
+      blockedSavedApiRequests.push(route.request().url());
+      await route.abort('blockedbyclient');
     });
+    await page.route('**/api/services?**', async (route) => {
+      const requestUrl = new URL(route.request().url());
+      requestedIds = requestUrl.searchParams.get('ids')?.split(',').filter(Boolean) ?? [];
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          results: SAVED_COMPARISON_SERVICES,
+          notFound: [],
+        }),
+      });
+    });
+
+    await loginAs(page, 'seeker');
+    await page.addInitScript((serviceIds) => {
+      localStorage.setItem('oran:saved-service-ids', JSON.stringify(serviceIds));
+
+      const existingPreferences = JSON.parse(localStorage.getItem('oran:preferences') ?? '{}') as Record<string, unknown>;
+      localStorage.setItem('oran:preferences', JSON.stringify({
+        ...existingPreferences,
+        serverSyncEnabled: false,
+      }));
+    }, SAVED_COMPARISON_SERVICE_IDS);
     await page.goto('/saved');
 
     await expect(page.getByRole('heading', { name: 'Saved Services' })).toBeVisible();
+    await expect(page.locator('article[aria-label^="Service:"]')).toHaveCount(2);
+    expect(requestedIds).toEqual(SAVED_COMPARISON_SERVICE_IDS);
+    expect(blockedSavedApiRequests).toEqual([]);
+    await expect(page.getByText('Sync off on this device')).toBeVisible();
 
-    const clearAll = page.getByRole('button', { name: 'Clear all' });
-    if (await clearAll.isVisible().catch(() => false)) {
-      await clearAll.click();
-      await page.getByRole('button', { name: 'Confirm' }).click();
-    }
+    const firstSelection = page.getByRole('checkbox', { name: 'Add E2E Intake and Navigation to comparison' });
+    const secondSelection = page.getByRole('checkbox', { name: 'Add E2E Information Referral to comparison' });
+    await expect(firstSelection).toBeVisible();
+    await expect(secondSelection).toBeVisible();
+    await firstSelection.check();
+    await expect(page.getByRole('status').filter({ hasText: 'One selected' })).toBeVisible();
+    await secondSelection.check();
 
-    await expect(async () => {
-      const emptyVisible = await page.getByText('No saved services yet').isVisible().catch(() => false);
-      const serviceCards = await page.locator('article[aria-label^="Service:"]').count();
-      const clearVisible = await page.getByRole('button', { name: 'Clear all' }).isVisible().catch(() => false);
-      expect(emptyVisible || serviceCards > 0 || clearVisible).toBe(true);
-    }).toPass({ timeout: 30_000 });
+    const comparison = page.getByRole('table', {
+      name: 'Comparison of selected saved services using stored ORAN information',
+    });
+    await expect(comparison).toBeVisible();
+    await expect(comparison.getByRole('rowheader', { name: 'Trust and freshness' })).toBeVisible();
+    await expect(comparison.getByRole('rowheader', { name: 'Eligibility on record' })).toBeVisible();
+    await expect(comparison.getByRole('rowheader', { name: 'Documents to prepare' })).toBeVisible();
+    await expect(comparison.getByRole('rowheader', { name: 'Access and next step' })).toBeVisible();
 
-    if (await page.getByText('No saved services yet').isVisible().catch(() => false)) {
-      await expect(page.getByRole('button', { name: /Find services via Chat/i })).toBeVisible();
-    }
+    await expect(comparison.getByText('Record verification confidence: 92/100')).toBeVisible();
+    await expect(comparison.getByText('Latest recorded ORAN review: Jul 19, 2026')).toBeVisible();
+    await expect(comparison.getByText('Recorded for residents of the test service area')).toBeVisible();
+    await expect(comparison.getByText('Photo ID if available')).toBeVisible();
+    await expect(comparison.getByText('Stored capacity: Limited — confirm with the provider')).toBeVisible();
+
+    await expect(comparison.getByText('No recent human review is recorded')).toBeVisible();
+    await expect(comparison.getByText('Eligibility criteria are not recorded; ask the provider')).toBeVisible();
+    await expect(comparison.getByText('No document requirements are recorded; confirm before applying')).toBeVisible();
+    await expect(comparison.getByText('Current availability is not recorded; confirm with the provider')).toBeVisible();
+    await expect(page.getByText(/not an eligibility or availability decision/i)).toBeVisible();
+
+    const horizontalScroller = comparison.locator('xpath=..');
+    const comparisonWidths = await horizontalScroller.evaluate((element) => ({
+      client: element.clientWidth,
+      scroll: element.scrollWidth,
+    }));
+    expect(comparisonWidths.scroll).toBeGreaterThan(comparisonWidths.client);
+    await horizontalScroller.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+    });
+    await expect.poll(() => horizontalScroller.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   });
 });

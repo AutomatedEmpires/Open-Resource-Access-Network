@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
- * ORAN authoritative-source resource loader.
+ * ORAN legacy resource-file validator (writes disabled).
  *
- * Bulk-imports REAL resources from authoritative open datasets into ORAN's HSDS
- * schema, idempotently, with provenance. This is the actual persistence the
- * older db/import/hsds-csv-importer.ts left as a TODO.
+ * This script previously wrote normalized records directly into ORAN's live
+ * HSDS tables. That bypasses the canonical source registration, rights,
+ * provenance, staging, review, and publication controls, so direct persistence
+ * is deliberately quarantined. Keep this script only for local NDJSON and SQL
+ * generation validation while legacy source adapters are migrated.
  *
  * Input: NDJSON (one normalized resource per line). Each record:
  *   {
@@ -17,24 +19,17 @@
  *     verification: number   // 0-100, per source authority (imported, not human-verified)
  *   }
  *
- * Every fact must come from the source dataset — this loader never invents data.
- * IDs are deterministic (UUIDv5 of source:sourceId), so re-runs upsert instead of
- * duplicating. Records carry provenance: organizations.uri = "source:sourceId",
- * created_by_user_id = "import:source".
+ * Dry-run validation makes no credential, network, or database access.
  *
- * Persistence:
- *   - If DATABASE_URL is set → uses pg (direct).
- *   - Else → Supabase Management API query endpoint with the token at
- *     ~/.supabase/access-token and --project <ref> (no DB password needed).
+ * Usage (validation only):
+ *   node seed-resources.mjs --dry-run --file resources.ndjson [--batch 500]
  *
- * Usage:
- *   node seed-resources.mjs --project <ref> --file resources.ndjson [--batch 500] [--dry-run]
+ * For governed ingestion, use `npm run ingest:campaign` and the normal
+ * import -> stage -> review -> publish workflow.
  */
 
-import { readFileSync, createReadStream, appendFileSync } from 'node:fs';
+import { createReadStream, appendFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { homedir } from 'node:os';
-import path from 'node:path';
 import crypto from 'node:crypto';
 
 // ── args ─────────────────────────────────────────────────────
@@ -43,13 +38,24 @@ const getArg = (name, def) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 && args[i + 1] ? args[i + 1] : def;
 };
-const PROJECT = getArg('project', process.env.SUPABASE_PROJECT_ID);
 const FILE = getArg('file');
 const BATCH = parseInt(getArg('batch', '500'), 10);
 const CONC = Math.max(1, parseInt(getArg('concurrency', '1'), 10));
 const CONTINUE = args.includes('--continue-on-error');
 const DEADLETTER = getArg('deadletter', FILE ? `${FILE}.deadletter` : '/tmp/loader.deadletter');
 const DRY = args.includes('--dry-run');
+const WRITE_DISABLED_MESSAGE = [
+  'Write mode is disabled: this legacy loader bypasses ORAN provenance, rights, review, and publication controls.',
+  'Use --dry-run only for local NDJSON validation.',
+  'For governed ingestion, use `npm run ingest:campaign` and the canonical import -> stage -> review -> publish workflow.',
+].join('\n');
+
+// Fail before checking the input path, reading credentials, or reaching any
+// database code. This is the primary quarantine for every legacy write mode.
+if (!DRY) {
+  console.error(WRITE_DISABLED_MESSAGE);
+  process.exit(3);
+}
 if (!FILE) { console.error('Missing --file <ndjson>'); process.exit(2); }
 
 // ── deterministic UUIDv5 ─────────────────────────────────────
@@ -153,27 +159,16 @@ function taxonomySeedSql() {
   return `INSERT INTO taxonomy_terms (id,term,taxonomy) VALUES ${rows.join(',')} ON CONFLICT (id) DO NOTHING;`;
 }
 
-// ── apply via Supabase Management API ────────────────────────
-async function applySql(sql) {
-  if (DRY) return { ok: true, dry: true };
-  const token = (process.env.SUPABASE_ACCESS_TOKEN || readFileSync(path.join(homedir(), '.supabase/access-token'), 'utf8')).trim();
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 180000); // 3-min hard cap so a stuck connection can't hang the load
-  try {
-    const res = await fetch(`https://api.supabase.com/v1/projects/${PROJECT}/database/query`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: sql }),
-      signal: ctrl.signal,
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 800)}`);
-    return { ok: true };
-  } finally {
-    clearTimeout(timer);
-  }
+// Validation-only SQL sink; no credentials, network, or database access.
+async function applySql(_sql) {
+  // Defense in depth: even if the CLI guard is moved during later refactoring,
+  // this legacy script contains no credential, network, or database write path.
+  if (!DRY) throw new Error(WRITE_DISABLED_MESSAGE);
+  return { ok: true, dry: true };
 }
 
-// retry transient failures (rate limit, 5xx, network); surface real SQL errors
+// Retained for compatibility with the existing batching flow. The validation
+// sink above cannot perform or retry network/database operations.
 async function applyWithRetry(sql) {
   let lastErr;
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -190,9 +185,9 @@ async function applyWithRetry(sql) {
 }
 
 // ── main (streaming; bounded concurrency; scales to millions) ─
-console.log(`Streaming ${FILE} → project ${PROJECT} (batch ${BATCH}, concurrency ${CONC}${CONTINUE ? ', continue-on-error' : ''}${DRY ? ', DRY-RUN' : ''})`);
+console.log(`Validating ${FILE} locally (batch ${BATCH}, concurrency ${CONC}${CONTINUE ? ', continue-on-error' : ''}, DRY-RUN)`);
 await applyWithRetry(taxonomySeedSql());
-console.log('Seeded taxonomy terms.');
+console.log('Validated taxonomy SQL generation.');
 
 let done = 0, failed = 0, batchNo = 0;
 const inflight = new Set();
@@ -233,4 +228,4 @@ for await (const line of rl) {
 }
 if (batch.length) await schedule(batch);
 await Promise.all(inflight);
-console.log(`Done. Applied ${done} resources${failed ? `, ${failed} failed (see ${DEADLETTER})` : ''}.`);
+console.log(`Done. Validated ${done} resources${failed ? `, ${failed} failed (see ${DEADLETTER})` : ''}. No data was written.`);

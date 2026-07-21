@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import { Pool } from 'pg';
+import { assertAllowedRuntimeEndpoint } from '../src/services/runtime/providerPolicyCore.js';
 
 function toInt(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -427,7 +428,8 @@ async function querySampleReconciliations(pool, feedId, hours, sampleSize) {
 }
 
 export async function generateCanaryReport(options) {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const databaseUrl = assertAllowedRuntimeEndpoint(process.env.DATABASE_URL, 'DATABASE_URL');
+  const pool = new Pool({ connectionString: databaseUrl });
 
   try {
     const feed = await queryFeedMetadata(pool, options.feedId);

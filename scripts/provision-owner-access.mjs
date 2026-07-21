@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
+import { assertAllowedRuntimeEndpoint } from '../src/services/runtime/providerPolicyCore.js';
 
 const BOOTSTRAP_ACTOR = 'bootstrap:provision-owner-access';
 const ORAN_ADMIN_CAPACITY = { maxPending: 50, maxInReview: 20 };
@@ -325,7 +326,8 @@ if (
   usage(1);
 }
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const databaseUrl = assertAllowedRuntimeEndpoint(process.env.DATABASE_URL, 'DATABASE_URL');
+const pool = new Pool({ connectionString: databaseUrl });
 
 try {
   const client = await pool.connect();

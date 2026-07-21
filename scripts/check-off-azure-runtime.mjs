@@ -116,12 +116,10 @@ if (/Azure Functions|build:functions/iu.test(read('.github/workflows/ci.yml'))) 
 
 const guardedEndpointConsumers = [
   { path: 'src/services/cache/redis.ts', guardCall: guardProbeName },
-  { path: 'src/lib/site.ts', guardCall: guardProbeName },
   { path: 'src/app/sitemap.ts', guardCall: guardProbeName },
   { path: 'src/instrumentation-client.ts', guardCall: guardProbeName },
   { path: 'src/sentry.server.config.ts', guardCall: guardProbeName },
   { path: 'src/sentry.edge.config.ts', guardCall: guardProbeName },
-  { path: 'src/services/telemetry/sentry.ts', guardCall: guardProbeName },
   { path: 'src/services/db/runtimeRole.ts', guardCall: guardProbeName },
   { path: 'src/agents/ingestion/fetcher/fetcher.ts', guardCall: guardProbeName },
   {
@@ -321,6 +319,35 @@ if (!/^\s+SUPABASE_PROJECT_REF:\s*\$\{\{\s*vars\.SUPABASE_PROJECT_REF\s*\}\}\s*$
   migrationWorkflowSource,
 )) {
   violations.push(`${migrationWorkflowPath}: SUPABASE_PROJECT_REF must come from the selected GitHub Environment`);
+}
+
+const controlledMigrationNames = [
+  '0071_account_erasure_workflow.sql',
+  '0072_account_erasure_index_gate.sql',
+];
+for (const filename of controlledMigrationNames) {
+  if (!migrationWorkflowSource.includes(`"${filename}"`)) {
+    violations.push(`${migrationWorkflowPath}: ${filename} must be refused by the generic runner`);
+  }
+}
+const controlledGate = migrationCommands.find(
+  (command) => command.text.includes('ACCOUNT_ERASURE_MANUAL_RUNBOOK_ONLY'),
+);
+const genericMigrationLoop = migrationCommands.find(
+  (command) => command.text === 'while IFS= read -r file; do',
+);
+if (
+  !controlledGate
+  || !genericMigrationLoop
+  || controlledGate.lineNumber >= genericMigrationLoop.lineNumber
+  || !migrationCommands.some(
+    (command) => command.blockStartLine === controlledGate.blockStartLine
+      && command.lineNumber > controlledGate.lineNumber
+      && command.lineNumber < genericMigrationLoop.lineNumber
+      && command.text === 'exit 1',
+  )
+) {
+  violations.push(`${migrationWorkflowPath}: controlled account-erasure migrations must fail before the generic loop`);
 }
 
 if (violations.length > 0) {

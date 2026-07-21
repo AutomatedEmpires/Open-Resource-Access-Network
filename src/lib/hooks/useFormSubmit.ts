@@ -10,6 +10,25 @@
 import { useCallback, useState, useRef } from 'react';
 import type { ZodSchema, ZodError } from 'zod';
 
+function assertAllowedRuntimeEndpoint(value: string): string {
+  const normalized = value.trim();
+  if (!normalized) throw new Error('Form submission URL is required');
+
+  let target: URL;
+  try {
+    target = new URL(normalized, window.location.origin);
+  } catch {
+    throw new Error('Form submission URL is invalid');
+  }
+  if (target.origin !== window.location.origin) {
+    throw new Error('Form submissions must use an ORAN same-origin endpoint');
+  }
+  if (target.username || target.password) {
+    throw new Error('Form submission URLs must not contain credentials');
+  }
+  return normalized;
+}
+
 /* ── Types ─────────────────────────────────────────────────────── */
 
 export interface FieldError {
@@ -104,12 +123,13 @@ export function useFormSubmit<TPayload, TResult = unknown>(
           typeof options.url === 'function'
             ? options.url(payload)
             : options.url;
+        const allowedUrl = assertAllowedRuntimeEndpoint(url);
 
         const body = options.transform
           ? options.transform(payload)
           : (payload as Record<string, unknown>);
 
-        const res = await fetch(url, {
+        const res = await fetch(allowedUrl, {
           method: options.method ?? 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),

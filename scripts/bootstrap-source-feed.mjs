@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { assertAllowedRuntimeEndpoint } from '../src/services/runtime/providerPolicyCore.js';
 
 function parseArgs(argv) {
   const parsed = {
@@ -72,7 +73,12 @@ if (!process.env.DATABASE_URL || !options.name || !options.feedName || !options.
   usageAndExit();
 }
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const databaseUrl = assertAllowedRuntimeEndpoint(process.env.DATABASE_URL, 'DATABASE_URL');
+assertAllowedRuntimeEndpoint(options.baseUrl, 'source feed base URL');
+if (options.healthcheckUrl) {
+  assertAllowedRuntimeEndpoint(options.healthcheckUrl, 'source feed healthcheck URL');
+}
+const pool = new Pool({ connectionString: databaseUrl });
 
 const jurisdictionScope = {
   kind: options.jurisdictionKind || undefined,

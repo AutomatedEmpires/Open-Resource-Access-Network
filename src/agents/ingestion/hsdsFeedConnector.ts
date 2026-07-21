@@ -16,7 +16,13 @@ import type {
   SourceSystemRow,
   NewSourceRecordRow,
 } from '@/db/schema';
-import { sha256, stableStringify, isTransient } from './connectorUtils';
+import {
+  fetchWithValidatedRedirects,
+  isTransient,
+  sha256,
+  stableStringify,
+} from './connectorUtils';
+import type { OutboundDnsResolver } from '@/services/security/outboundHttpPolicy';
 
 // ── Public types ──────────────────────────────────────────────
 
@@ -32,6 +38,10 @@ export interface HsdsFeedConnectorOptions {
   timeoutMs?: number;
   /** Max retry attempts per endpoint on transient failures (default 3). */
   maxRetries?: number;
+  /** Max manually validated redirects per request (default 5, hard cap 10). */
+  maxRedirects?: number;
+  /** Override DNS resolution for deterministic tests. */
+  resolver?: OutboundDnsResolver;
 }
 
 export interface HsdsFeedConnectorResult {
@@ -51,10 +61,15 @@ async function fetchHsdsPage(
   url: string,
   fetchFn: typeof fetch,
   timeoutMs: number = 30_000,
+  maxRedirects: number = 5,
+  resolver?: OutboundDnsResolver,
 ): Promise<unknown[]> {
-  const response = await fetchFn(url, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(timeoutMs),
+  const response = await fetchWithValidatedRedirects(url, fetchFn, {
+    endpointLabel: 'HSDS feed URL',
+    timeoutMs,
+    maxRedirects,
+    resolver,
+    requestInit: { headers: { Accept: 'application/json' } },
   });
 
   if (!response.ok) {
@@ -90,11 +105,13 @@ async function fetchWithRetry(
   fetchFn: typeof fetch,
   timeoutMs: number,
   maxRetries: number,
+  maxRedirects: number,
+  resolver?: OutboundDnsResolver,
 ): Promise<unknown[]> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await fetchHsdsPage(url, fetchFn, timeoutMs);
+      return await fetchHsdsPage(url, fetchFn, timeoutMs, maxRedirects, resolver);
     } catch (err) {
       lastError = err;
       if (attempt < maxRetries && isTransient(err)) {
@@ -117,6 +134,8 @@ export async function pollHsdsFeed(
   const fetchFn = options.fetchFn ?? globalThis.fetch;
   const timeoutMs = options.timeoutMs ?? 30_000;
   const maxRetries = options.maxRetries ?? 3;
+  const maxRedirects = options.maxRedirects ?? 5;
+  const resolver = options.resolver;
 
   const result: HsdsFeedConnectorResult = {
     recordsCreated: 0,
@@ -133,7 +152,14 @@ export async function pollHsdsFeed(
     const url = buildFeedUrl(feed, endpoint.path);
     let items: unknown[];
     try {
-      items = await fetchWithRetry(url, fetchFn, timeoutMs, maxRetries);
+      items = await fetchWithRetry(
+        url,
+        fetchFn,
+        timeoutMs,
+        maxRetries,
+        maxRedirects,
+        resolver,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       result.errors.push(`${endpoint.path}: ${msg}`);

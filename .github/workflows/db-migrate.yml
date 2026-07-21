@@ -40,12 +40,18 @@ jobs:
       - name: Load Supabase migration connection
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
         run: |
           if [ -z "$SUPABASE_DB_URL" ]; then
             echo "::error::SUPABASE_DB_URL is not configured in the selected GitHub Environment."
             exit 1
           fi
+          if [ -z "$SUPABASE_PROJECT_REF" ]; then
+            echo "::error::SUPABASE_PROJECT_REF is not configured in the selected GitHub Environment."
+            exit 1
+          fi
           echo "::add-mask::$SUPABASE_DB_URL"
+          node scripts/validate-runtime-endpoint.mjs SUPABASE_DB_URL SUPABASE_PROJECT_REF
           echo "DATABASE_URL=$SUPABASE_DB_URL" >> "$GITHUB_ENV"
 
       - name: Install PostgreSQL client
@@ -62,6 +68,19 @@ jobs:
             echo "::error::Do not replay every historical migration over an imported schema. Reconcile the baseline first."
             exit 1
           fi
+
+          manual_runbook_migrations=(
+            "0071_account_erasure_workflow.sql"
+            "0072_account_erasure_index_gate.sql"
+          )
+          for filename in "${manual_runbook_migrations[@]}"; do
+            applied=$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -c "SELECT 1 FROM schema_migrations WHERE filename = '$filename' LIMIT 1;")
+            if [ "$applied" != "1" ]; then
+              echo "::error::ACCOUNT_ERASURE_MANUAL_RUNBOOK_ONLY: $filename is pending."
+              echo "::error::Use docs/ops/services/RUNBOOK_ACCOUNT_ERASURE.md; the generic runner cannot pause for the required online index phase."
+              exit 1
+            fi
+          done
 
           while IFS= read -r file; do
             filename="$(basename "$file")"

@@ -73,8 +73,8 @@ describe('llm client factory + env config', () => {
     delete process.env.LLM_API_VERSION;
 
     const defaults = getLLMConfigFromEnv();
-    expect(defaults.provider).toBe('azure_openai');
-    expect(defaults.model).toBe('gpt-4o');
+    expect(defaults.provider).toBe('disabled');
+    expect(defaults.model).toBe('unconfigured');
     expect(defaults.apiVersion).toBe('2024-08-01-preview');
 
     process.env.LLM_PROVIDER = 'openai';
@@ -95,5 +95,18 @@ describe('llm client factory + env config', () => {
       temperature: 0.75,
       timeoutMs: 45000,
     });
+  });
+
+  it('rejects a retired Microsoft endpoint before provider construction', async () => {
+    process.env.VERCEL_ENV = 'production';
+    const constructor = vi.fn(async (config: LLMClientConfig) => makeClient(config.provider, config.model));
+    registerLLMClientProvider('azure_openai', constructor);
+
+    await expect(createLLMClient({
+      provider: 'azure_openai',
+      model: 'legacy',
+      endpoint: 'https://oran.openai.azure.com',
+    })).rejects.toThrow('prohibited Microsoft endpoint');
+    expect(constructor).not.toHaveBeenCalled();
   });
 });

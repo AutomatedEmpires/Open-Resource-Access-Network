@@ -11,6 +11,7 @@ import type {
   ExtractedService,
   LLMError,
 } from './types';
+import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -21,7 +22,7 @@ import type {
  */
 export interface LLMClientConfig {
   /** Provider identifier */
-  provider: 'azure_openai' | 'openai' | 'anthropic';
+  provider: 'disabled' | 'azure_openai' | 'openai' | 'anthropic';
   /** Model name/deployment ID */
   model: string;
   /** API endpoint (for Azure, the resource endpoint) */
@@ -153,6 +154,10 @@ export async function createLLMClient(config: LLMClientConfig): Promise<LLMClien
     ...config,
   };
 
+  if (fullConfig.endpoint) {
+    assertAllowedRuntimeEndpoint(fullConfig.endpoint, 'LLM endpoint');
+  }
+
   const constructor = clientRegistry.get(fullConfig.provider);
   if (!constructor) {
     throw new Error(
@@ -180,7 +185,7 @@ export function getRegisteredLLMProviders(): string[] {
  * Falls back to defaults if not set.
  *
  * Environment variables:
- * - LLM_PROVIDER: 'azure_openai' | 'openai' | 'anthropic'
+ * - LLM_PROVIDER: 'disabled' | 'azure_openai' | 'openai' | 'anthropic'
  * - LLM_MODEL: Model name/deployment ID
  * - LLM_ENDPOINT: API endpoint (required for Azure)
  * - LLM_API_KEY: API key
@@ -189,11 +194,11 @@ export function getRegisteredLLMProviders(): string[] {
  * - LLM_TIMEOUT_MS: Request timeout
  */
 export function getLLMConfigFromEnv(): LLMClientConfig {
-  const provider = (process.env.LLM_PROVIDER || 'azure_openai') as LLMClientConfig['provider'];
+  const provider = (process.env.LLM_PROVIDER || 'disabled') as LLMClientConfig['provider'];
 
   return {
     provider,
-    model: process.env.LLM_MODEL || 'gpt-4o',
+    model: process.env.LLM_MODEL || 'unconfigured',
     endpoint: process.env.LLM_ENDPOINT,
     apiKey: process.env.LLM_API_KEY,
     apiVersion: process.env.LLM_API_VERSION || '2024-08-01-preview',

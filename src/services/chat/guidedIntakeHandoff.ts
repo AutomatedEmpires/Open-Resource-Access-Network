@@ -1,35 +1,50 @@
 'use client';
 
-import { z } from 'zod';
-
 import {
   guidedIntakePromptMatchesDraft,
   type GuidedIntakeSubmission,
 } from '@/domain/resourceNavigator';
-import { GuidedIntakeRequestSchema } from '@/services/chat/guidedIntakeContract';
+import { parseGuidedIntakeRequest } from '@/services/chat/guidedIntakeValidation';
 
 export const GUIDED_INTAKE_HANDOFF_KEY = 'oran:guided-intake-handoff';
 const GUIDED_INTAKE_RETRY_KEY_PREFIX = 'oran:guided-intake-retry:';
 
-const GuidedIntakeHandoffSchema = GuidedIntakeRequestSchema.extend({
-  prompt: z.string().trim().min(1).max(1200),
-}).strict().refine((submission) => guidedIntakePromptMatchesDraft(submission.prompt, {
-  need: submission.searchText,
-  location: submission.location,
-  urgency: submission.urgency,
-  audience: submission.audience,
-  accessMode: submission.accessMode,
-}), {
-  message: 'Guided intake fields must match the visible prompt.',
-});
+const HANDOFF_KEYS = new Set(['prompt', 'searchText', 'location', 'urgency', 'audience', 'accessMode']);
+
+function parseGuidedIntakeHandoff(value: unknown): GuidedIntakeSubmission | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).some((key) => !HANDOFF_KEYS.has(key))) return null;
+  if (typeof record.prompt !== 'string') return null;
+  const prompt = record.prompt.trim();
+  if (prompt.length < 1 || prompt.length > 1200) return null;
+
+  const parsed = parseGuidedIntakeRequest({
+    searchText: record.searchText,
+    location: record.location,
+    urgency: record.urgency,
+    audience: record.audience,
+    accessMode: record.accessMode,
+  });
+  if (!parsed.success) return null;
+
+  const submission = { prompt, ...parsed.data };
+  return guidedIntakePromptMatchesDraft(prompt, {
+    need: submission.searchText,
+    location: submission.location,
+    urgency: submission.urgency,
+    audience: submission.audience,
+    accessMode: submission.accessMode,
+  }) ? submission : null;
+}
 
 export function writeGuidedIntakeHandoff(submission: GuidedIntakeSubmission): boolean {
   if (typeof window === 'undefined') return false;
-  const parsed = GuidedIntakeHandoffSchema.safeParse(submission);
-  if (!parsed.success) return false;
+  const parsed = parseGuidedIntakeHandoff(submission);
+  if (!parsed) return false;
 
   try {
-    sessionStorage.setItem(GUIDED_INTAKE_HANDOFF_KEY, JSON.stringify(parsed.data));
+    sessionStorage.setItem(GUIDED_INTAKE_HANDOFF_KEY, JSON.stringify(parsed));
     return true;
   } catch {
     return false;
@@ -44,8 +59,7 @@ export function consumeGuidedIntakeHandoff(): GuidedIntakeSubmission | null {
     sessionStorage.removeItem(GUIDED_INTAKE_HANDOFF_KEY);
     if (!raw) return null;
 
-    const parsed = GuidedIntakeHandoffSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
+    return parseGuidedIntakeHandoff(JSON.parse(raw));
   } catch {
     try {
       sessionStorage.removeItem(GUIDED_INTAKE_HANDOFF_KEY);
@@ -65,11 +79,11 @@ export function writeGuidedIntakeRetry(
   submission: GuidedIntakeSubmission,
 ): boolean {
   if (typeof window === 'undefined') return false;
-  const parsed = GuidedIntakeHandoffSchema.safeParse(submission);
-  if (!parsed.success) return false;
+  const parsed = parseGuidedIntakeHandoff(submission);
+  if (!parsed) return false;
 
   try {
-    sessionStorage.setItem(getGuidedIntakeRetryKey(sessionId), JSON.stringify(parsed.data));
+    sessionStorage.setItem(getGuidedIntakeRetryKey(sessionId), JSON.stringify(parsed));
     return true;
   } catch {
     return false;
@@ -84,8 +98,8 @@ export function readGuidedIntakeRetry(sessionId: string): GuidedIntakeSubmission
     const raw = sessionStorage.getItem(key);
     if (!raw) return null;
 
-    const parsed = GuidedIntakeHandoffSchema.safeParse(JSON.parse(raw));
-    if (parsed.success) return parsed.data;
+    const parsed = parseGuidedIntakeHandoff(JSON.parse(raw));
+    if (parsed) return parsed;
     sessionStorage.removeItem(key);
     return null;
   } catch {

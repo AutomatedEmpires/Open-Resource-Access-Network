@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ChatWindow } from '@/components/chat/ChatWindow';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { Button } from '@/components/ui/button';
 import { PageHeaderBadge } from '@/components/ui/PageHeader';
@@ -21,6 +21,21 @@ import {
   parseDiscoveryUrlState,
   resolveDiscoverySearchText,
 } from '@/services/search/discovery';
+
+function ChatLoadingState() {
+  return (
+    <div className="rounded-[24px] border border-slate-200 bg-white p-5" role="status" aria-busy="true" aria-label="Loading chat">
+      <SkeletonLine className="h-5 w-40" />
+      <SkeletonLine className="mt-3 h-4 w-full" />
+      <SkeletonLine className="mt-2 h-4 w-2/3" />
+    </div>
+  );
+}
+
+const ChatWindow = dynamic(
+  () => import('@/components/chat/ChatWindow').then((module) => module.ChatWindow),
+  { ssr: false, loading: ChatLoadingState },
+);
 
 function generateSessionId(forceNew = false): string {
   const key = 'oran_chat_session_id';
@@ -100,11 +115,7 @@ export default function ChatPage() {
                 </div>
               </div>
             </div>
-            <div className="rounded-[24px] border border-slate-200 bg-white p-5" role="status" aria-busy="true" aria-label="Loading chat">
-              <SkeletonLine className="h-5 w-40" />
-              <SkeletonLine className="mt-3 h-4 w-full" />
-              <SkeletonLine className="mt-2 h-4 w-2/3" />
-            </div>
+            <ChatLoadingState />
           </div>
         </div>
       </main>

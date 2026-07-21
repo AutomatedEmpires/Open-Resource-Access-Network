@@ -7,7 +7,6 @@ import { List, MapPin, ShieldCheck } from 'lucide-react';
 
 import { GuidedIntake } from '@/components/chat/GuidedIntake';
 import { SITE } from '@/lib/site';
-import { writeGuidedIntakeHandoff } from '@/services/chat/guidedIntakeHandoff';
 
 export function ChatFirstIntakeHero() {
   const router = useRouter();
@@ -55,7 +54,8 @@ export function ChatFirstIntakeHero() {
             <p className="mt-1 text-sm leading-6 text-slate-600">ORAN will ask for more only when it can change the match.</p>
             <GuidedIntake
               className="mt-5"
-              onSubmit={(submission) => {
+              onSubmit={async (submission) => {
+                const { writeGuidedIntakeHandoff } = await import('@/services/chat/guidedIntakeHandoff');
                 const stored = writeGuidedIntakeHandoff(submission);
                 if (!stored) {
                   setHandoffError('Chat could not be opened safely on this device. Your answers are still here—please try again.');

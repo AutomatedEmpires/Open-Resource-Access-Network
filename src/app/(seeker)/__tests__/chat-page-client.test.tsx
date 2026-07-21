@@ -46,21 +46,23 @@ describe('ChatPageClient', () => {
     sessionStorage.clear();
   });
 
-  it('reuses an existing chat session id from sessionStorage', () => {
+  it('reuses an existing chat session id from sessionStorage', async () => {
     sessionStorage.setItem('oran_chat_session_id', 'existing-session-id');
     const randomSpy = vi.spyOn(globalThis.crypto, 'randomUUID');
 
     render(<ChatPage />);
 
     expect(randomSpy).not.toHaveBeenCalled();
-    expect(chatWindowMock).toHaveBeenCalledWith({
-      sessionId: 'existing-session-id',
-      initialPrompt: '',
-      initialNeedId: null,
-      initialTrustFilter: undefined,
-      initialSortBy: undefined,
-      initialPage: 1,
-      initialAttributeFilters: undefined,
+    await waitFor(() => {
+      expect(chatWindowMock).toHaveBeenCalledWith({
+        sessionId: 'existing-session-id',
+        initialPrompt: '',
+        initialNeedId: null,
+        initialTrustFilter: undefined,
+        initialSortBy: undefined,
+        initialPage: 1,
+        initialAttributeFilters: undefined,
+      });
     });
     expect(screen.getByTestId('chat-window')).toHaveTextContent('session:existing-session-id');
     expect(screen.getByRole('heading', { name: 'Chat' })).toBeInTheDocument();
@@ -68,7 +70,7 @@ describe('ChatPageClient', () => {
     randomSpy.mockRestore();
   });
 
-  it('preserves canonical discovery intent in directory and map links', () => {
+  it('preserves canonical discovery intent in directory and map links', async () => {
     navigationState.searchParams = new URLSearchParams(
       'category=food&confidence=HIGH&sort=name_desc&taxonomyIds=a1000000-0000-4000-8000-000000000001&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D&page=3',
     );
@@ -76,18 +78,20 @@ describe('ChatPageClient', () => {
 
     render(<ChatPage />);
 
-    expect(chatWindowMock).toHaveBeenCalledWith({
-      sessionId: 'existing-session-id',
-      initialPrompt: 'food',
-      initialNeedId: 'food_assistance',
-      initialTrustFilter: 'HIGH',
-      initialSortBy: 'name_desc',
-      initialPage: 3,
-      initialAttributeFilters: { delivery: ['virtual'] },
+    await waitFor(() => {
+      expect(chatWindowMock).toHaveBeenCalledWith({
+        sessionId: 'existing-session-id',
+        initialPrompt: 'food',
+        initialNeedId: 'food_assistance',
+        initialTrustFilter: 'HIGH',
+        initialSortBy: 'name_desc',
+        initialPage: 3,
+        initialAttributeFilters: { delivery: ['virtual'] },
+      });
     });
   });
 
-  it('creates and persists a new chat session id when one is missing', () => {
+  it('creates and persists a new chat session id when one is missing', async () => {
     const randomSpy = vi
       .spyOn(globalThis.crypto, 'randomUUID')
       .mockReturnValue('generated-session-id');
@@ -96,14 +100,16 @@ describe('ChatPageClient', () => {
 
     expect(randomSpy).toHaveBeenCalledTimes(1);
     expect(sessionStorage.getItem('oran_chat_session_id')).toBe('generated-session-id');
-    expect(chatWindowMock).toHaveBeenCalledWith({
-      sessionId: 'generated-session-id',
-      initialPrompt: '',
-      initialNeedId: null,
-      initialTrustFilter: undefined,
-      initialSortBy: undefined,
-      initialPage: 1,
-      initialAttributeFilters: undefined,
+    await waitFor(() => {
+      expect(chatWindowMock).toHaveBeenCalledWith({
+        sessionId: 'generated-session-id',
+        initialPrompt: '',
+        initialNeedId: null,
+        initialTrustFilter: undefined,
+        initialSortBy: undefined,
+        initialPage: 1,
+        initialAttributeFilters: undefined,
+      });
     });
     expect(screen.getAllByRole('heading', { name: 'Chat' }).length).toBeGreaterThan(0);
 

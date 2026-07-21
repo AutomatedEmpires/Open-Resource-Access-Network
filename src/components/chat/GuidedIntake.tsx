@@ -10,8 +10,8 @@ import {
   type GuidedIntakeDraft,
   type GuidedIntakeSubmission,
 } from '@/domain/resourceNavigator';
-import { GuidedIntakeRequestSchema } from '@/services/chat/guidedIntakeContract';
-import { hasDistressSignals, normalizeSafetyText } from '@/services/security/contentSafety';
+import { parseGuidedIntakeRequest } from '@/services/chat/guidedIntakeValidation';
+import { hasDistressSignals, normalizeSafetyText } from '@/services/security/crisisSignals';
 
 interface GuidedIntakeProps {
   onSubmit: (submission: GuidedIntakeSubmission) => void | Promise<void>;
@@ -48,7 +48,7 @@ export function GuidedIntake({
     const submission = buildGuidedIntakeSubmission(draft);
     if (!submission || isSubmitting) return;
     const { prompt: _prompt, ...request } = submission;
-    const parsed = GuidedIntakeRequestSchema.safeParse(request);
+    const parsed = parseGuidedIntakeRequest(request);
     let submissionToSend = submission;
     if (!parsed.success) {
       const normalizedNeed = normalizeSafetyText(draft.need);
@@ -59,8 +59,7 @@ export function GuidedIntake({
         : null;
       if (!safetySubmission) {
         setValidationError(
-          parsed.error.issues[0]?.message
-            ?? 'Check the optional details and try again.',
+          parsed.message ?? 'Check the optional details and try again.',
         );
         return;
       }

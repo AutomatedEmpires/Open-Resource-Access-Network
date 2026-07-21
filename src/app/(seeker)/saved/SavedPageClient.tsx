@@ -18,6 +18,7 @@ import { Bookmark, Search, Trash2, MessageCircle, MapPin, AlertTriangle } from '
 import { Button } from '@/components/ui/button';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
 import { useSeekerFeatureFlags } from '@/components/seeker/SeekerFeatureFlags';
+import { SavedServiceComparison } from '@/components/seeker/SavedServiceComparison';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { ServiceCard } from '@/components/directory/ServiceCard';
@@ -812,6 +813,11 @@ export default function SavedPage() {
         {/* Results */}
         {!isLoading && services.length > 0 && (
           <div className="space-y-4">
+            <SavedServiceComparison
+              key={services.map((service) => service.service.id).join(':')}
+              services={services}
+              buildServiceHref={buildSavedServiceHref}
+            />
             <p className="rounded-[20px] border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-sm font-medium text-[var(--text-secondary)] shadow-[0_10px_30px_rgba(15,23,42,0.04)]" role="status" aria-live="polite">
               {savedGroups.reduce((count, group) => count + group.services.length, 0)} saved service{savedGroups.reduce((count, group) => count + group.services.length, 0) !== 1 ? 's' : ''}
             </p>

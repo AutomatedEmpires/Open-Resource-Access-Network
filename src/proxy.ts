@@ -44,6 +44,40 @@ const CLERK_AUTHORIZED_PARTIES = [
   'https://www.openresourceaccessnetwork.com',
 ] as const;
 
+function getClerkAuthorizedParties(): string[] {
+  const parties = new Set<string>(CLERK_AUTHORIZED_PARTIES);
+
+  if (process.env.VERCEL_ENV !== 'preview') {
+    return [...parties];
+  }
+
+  for (const host of [process.env.VERCEL_URL, process.env.VERCEL_BRANCH_URL]) {
+    const trimmedHost = host?.trim();
+    if (!trimmedHost) continue;
+
+    try {
+      const candidate = new URL(`https://${trimmedHost}`);
+      const isExactVercelHostname = candidate.hostname.endsWith('.vercel.app');
+      const isBareOrigin = candidate.username === ''
+        && candidate.password === ''
+        && candidate.port === ''
+        && candidate.pathname === '/'
+        && candidate.search === ''
+        && candidate.hash === ''
+        && candidate.host === trimmedHost.toLowerCase();
+
+      if (isExactVercelHostname && isBareOrigin) {
+        parties.add(candidate.origin);
+      }
+    } catch {
+      // Ignore malformed provider metadata; the canonical production origins
+      // remain authorized and protected routes continue to fail closed.
+    }
+  }
+
+  return [...parties];
+}
+
 function runEarlyRouteBoundary(request: NextRequest): NextResponse | null {
   const { pathname } = request.nextUrl;
 
@@ -162,7 +196,7 @@ const clerkProxy = clerkMiddleware(async (clerkAuth, request) => {
   return runRequestBoundary(request, userId);
 }, {
   authorizedParties: process.env.NODE_ENV === 'production'
-    ? [...CLERK_AUTHORIZED_PARTIES]
+    ? getClerkAuthorizedParties()
     : undefined,
 });
 

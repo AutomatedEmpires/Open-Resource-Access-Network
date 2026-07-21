@@ -26,6 +26,9 @@ const originalEnv = {
   nodeEnv: process.env.NODE_ENV,
   publishableKey: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   secretKey: process.env.CLERK_SECRET_KEY,
+  vercelEnv: process.env.VERCEL_ENV,
+  vercelUrl: process.env.VERCEL_URL,
+  vercelBranchUrl: process.env.VERCEL_BRANCH_URL,
 };
 
 async function loadMiddlewareModule() {
@@ -84,6 +87,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   delete mutableEnv.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   delete mutableEnv.CLERK_SECRET_KEY;
+  delete mutableEnv.VERCEL_ENV;
+  delete mutableEnv.VERCEL_URL;
+  delete mutableEnv.VERCEL_BRANCH_URL;
   mutableEnv.NODE_ENV = 'test';
   clerkMocks.userId.mockResolvedValue(null);
 });
@@ -103,6 +109,21 @@ afterEach(() => {
     delete mutableEnv.NODE_ENV;
   } else {
     mutableEnv.NODE_ENV = originalEnv.nodeEnv;
+  }
+  if (originalEnv.vercelEnv === undefined) {
+    delete mutableEnv.VERCEL_ENV;
+  } else {
+    mutableEnv.VERCEL_ENV = originalEnv.vercelEnv;
+  }
+  if (originalEnv.vercelUrl === undefined) {
+    delete mutableEnv.VERCEL_URL;
+  } else {
+    mutableEnv.VERCEL_URL = originalEnv.vercelUrl;
+  }
+  if (originalEnv.vercelBranchUrl === undefined) {
+    delete mutableEnv.VERCEL_BRANCH_URL;
+  } else {
+    mutableEnv.VERCEL_BRANCH_URL = originalEnv.vercelBranchUrl;
   }
 });
 
@@ -185,6 +206,46 @@ describe('Clerk request boundary', () => {
 
   it('restricts production Clerk session tokens to ORAN-owned origins', async () => {
     mutableEnv.NODE_ENV = 'production';
+    configureClerk();
+    await loadMiddlewareModule();
+
+    expect(clerkMocks.middleware).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        authorizedParties: [
+          'https://openresourceaccessnetwork.com',
+          'https://www.openresourceaccessnetwork.com',
+        ],
+      }),
+    );
+  });
+
+  it('authorizes only exact provider-owned origins for a Vercel preview', async () => {
+    mutableEnv.NODE_ENV = 'production';
+    mutableEnv.VERCEL_ENV = 'preview';
+    mutableEnv.VERCEL_URL = 'oran-release-candidate.vercel.app';
+    mutableEnv.VERCEL_BRANCH_URL = 'oran-git-release-candidate.vercel.app';
+    configureClerk();
+    await loadMiddlewareModule();
+
+    expect(clerkMocks.middleware).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        authorizedParties: [
+          'https://openresourceaccessnetwork.com',
+          'https://www.openresourceaccessnetwork.com',
+          'https://oran-release-candidate.vercel.app',
+          'https://oran-git-release-candidate.vercel.app',
+        ],
+      }),
+    );
+  });
+
+  it('ignores malformed or non-Vercel preview origin metadata', async () => {
+    mutableEnv.NODE_ENV = 'production';
+    mutableEnv.VERCEL_ENV = 'preview';
+    mutableEnv.VERCEL_URL = 'evil.test/path';
+    mutableEnv.VERCEL_BRANCH_URL = 'oran.vercel.app@evil.test';
     configureClerk();
     await loadMiddlewareModule();
 

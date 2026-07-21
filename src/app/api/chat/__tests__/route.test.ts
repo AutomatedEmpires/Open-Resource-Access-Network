@@ -192,6 +192,28 @@ describe('api/chat route', () => {
     expect(orchestrateChatMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['urgency', ['today']],
+    ['audience', ['self']],
+    ['accessMode', ['online']],
+  ])('rejects non-string guided %s values without throwing', async (field, invalidValue) => {
+    const { POST } = await loadRoute();
+    const req = createRequest({
+      jsonBody: {
+        message: 'Food help.',
+        sessionId: '00000000-0000-4000-8000-000000000140',
+        guidedIntake: {
+          searchText: 'Food help',
+          [field]: invalidValue,
+        },
+      },
+    });
+
+    const response = await POST(req);
+
+    expect(response.status).toBe(400);
+  });
+
   it('rejects guided fields that contradict the visible chat turn', async () => {
     const { POST } = await loadRoute();
 

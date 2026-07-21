@@ -43,7 +43,7 @@ import { gzipSync } from 'node:zlib';
 const ROUTES = {
   //            target  ratchet (measured 2026-07-17)
   '/':          { target: 100, ratchet: 340 },
-  '/chat':      { target: 160, ratchet: 565 },
+  '/chat':      { target: 160, ratchet: 430 }, // lowered after deferred chat loading (2026-07-21)
   '/directory': { target: 160, ratchet: 560 },
   '/map':       { target: 120, ratchet: 455 },
   '/profile':   { target: 100, ratchet: 440 },

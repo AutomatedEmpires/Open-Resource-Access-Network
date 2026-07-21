@@ -14,6 +14,7 @@ import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
 import { advance, acquireLock, releaseLock } from '@/services/workflow/engine';
+import { projectApprovedResourceSubmission } from '@/services/resourceSubmissions/service';
 import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
@@ -29,7 +30,15 @@ import { getIp } from '@/services/security/ip';
 
 const ListParamsSchema = z.object({
   status: z
-    .enum(['submitted', 'under_review', 'approved', 'denied', 'escalated', 'pending_second_approval'])
+    .enum([
+      'submitted',
+      'needs_review',
+      'under_review',
+      'approved',
+      'denied',
+      'escalated',
+      'pending_second_approval',
+    ])
     .optional(),
   page:  z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(DEFAULT_PAGE_SIZE),
@@ -43,9 +52,84 @@ const DecisionSchema = z.object({
   notes:        z.string().max(5000).optional(),
 }).strict();
 
+interface ClaimProjectionIds {
+  organizationId: string | null;
+  serviceId: string | null;
+}
+
 // ============================================================
 // HELPERS
 // ============================================================
+
+async function activateLegacyApprovedClaim(
+  submissionId: string,
+): Promise<ClaimProjectionIds> {
+  return withTransaction(async (client) => {
+    const subRows = await client.query<{
+      service_id: string | null;
+      target_id: string | null;
+      submitted_by_user_id: string;
+    }>(
+      `SELECT service_id, target_id, submitted_by_user_id
+       FROM submissions
+       WHERE id = $1 AND submission_type = 'org_claim'`,
+      [submissionId],
+    );
+    const sub = subRows.rows[0];
+    if (!sub) {
+      return { organizationId: null, serviceId: null };
+    }
+
+    if (sub.service_id) {
+      await client.query(
+        `UPDATE services SET status = 'active', updated_at = NOW()
+         WHERE id = $1`,
+        [sub.service_id],
+      );
+    }
+
+    if (sub.target_id && sub.submitted_by_user_id) {
+      await client.query(
+        `INSERT INTO organization_members (organization_id, user_id, role, status)
+         VALUES ($1, $2, 'host_admin', 'active')
+         ON CONFLICT (organization_id, user_id) DO UPDATE
+           SET role = 'host_admin', status = 'active', updated_at = NOW()`,
+        [sub.target_id, sub.submitted_by_user_id],
+      );
+      await client.query(
+        `UPDATE user_profiles
+         SET role = 'host_admin', updated_at = NOW()
+         WHERE user_id = $1
+           AND role IN ('seeker', 'host_member')`,
+        [sub.submitted_by_user_id],
+      );
+      await client.query(
+        `INSERT INTO user_profiles (user_id, role)
+         VALUES ($1, 'host_admin')
+         ON CONFLICT (user_id) DO NOTHING`,
+        [sub.submitted_by_user_id],
+      );
+    }
+
+    return {
+      organizationId: sub.target_id,
+      serviceId: sub.service_id,
+    };
+  });
+}
+
+async function projectApprovedClaim(
+  submissionId: string,
+  actorUserId: string,
+): Promise<ClaimProjectionIds> {
+  const projection = await projectApprovedResourceSubmission(submissionId, actorUserId);
+  if (projection.organizationId !== null || projection.serviceId !== null) {
+    return projection;
+  }
+
+  return activateLegacyApprovedClaim(submissionId);
+}
+
 // ============================================================
 // HANDLERS
 // ============================================================
@@ -93,22 +177,22 @@ export async function GET(req: NextRequest) {
 
   try {
     const conditions: string[] = [`sub.submission_type = 'org_claim'`];
-    const params: unknown[] = [];
+    const filterParams: unknown[] = [];
 
     if (status) {
-      params.push(status);
-      conditions.push(`sub.status = $${params.length}`);
+      filterParams.push(status);
+      conditions.push(`sub.status = $${filterParams.length}`);
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
 
     const countRows = await executeQuery<{ count: number }>(
       `SELECT count(*)::int AS count FROM submissions sub ${where}`,
-      params,
+      filterParams,
     );
     const total = countRows[0]?.count ?? 0;
 
-    params.push(limit, offset);
+    const listParams = [...filterParams, limit, offset];
     const rows = await executeQuery<{
       id: string;
       service_id: string | null;
@@ -146,8 +230,8 @@ export async function GET(req: NextRequest) {
        LEFT JOIN organizations o ON o.id = s.organization_id
        ${where}
        ORDER BY sub.priority DESC, sub.created_at ASC
-       LIMIT $${params.length - 1} OFFSET $${params.length}`,
-      params,
+       LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
+      listParams,
     );
 
     return NextResponse.json(
@@ -215,17 +299,43 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (decision === 'approved') {
-      const submitterRows = await executeQuery<{ account_status: 'active' | 'frozen' | null }>(
-        `SELECT up.account_status
-         FROM submissions sub
-         LEFT JOIN user_profiles up ON up.user_id = sub.submitted_by_user_id
-         WHERE sub.id = $1 AND sub.submission_type = 'org_claim'
-         LIMIT 1`,
-        [submissionId],
-      );
+    const claimRows = await executeQuery<{
+      status: SubmissionStatus;
+      account_status: 'active' | 'frozen' | null;
+      final_approver_user_id: string | null;
+      final_approval_transition_id: string | null;
+    }>(
+      `SELECT sub.status,
+              up.account_status,
+              final_approval.actor_user_id AS final_approver_user_id,
+              final_approval.id AS final_approval_transition_id
+       FROM submissions sub
+       LEFT JOIN user_profiles up ON up.user_id = sub.submitted_by_user_id
+       LEFT JOIN LATERAL (
+         SELECT st.id, st.actor_user_id
+         FROM submission_transitions st
+         WHERE st.submission_id = sub.id
+           AND st.to_status = 'approved'
+           AND st.gates_passed IS TRUE
+         ORDER BY st.created_at DESC, st.id DESC
+         LIMIT 1
+       ) final_approval ON TRUE
+       WHERE sub.id = $1 AND sub.submission_type = 'org_claim'
+       LIMIT 1`,
+      [submissionId],
+    );
+    const claim = claimRows[0];
 
-      if ((submitterRows[0]?.account_status ?? 'active') !== 'active') {
+    if (!claim) {
+      await releaseLock(submissionId, authCtx.userId, false);
+      return NextResponse.json(
+        { error: 'Organization claim not found' },
+        { status: 404 },
+      );
+    }
+
+    if (decision === 'approved' && claim.status !== 'approved') {
+      if ((claim.account_status ?? 'active') !== 'active') {
         await releaseLock(submissionId, authCtx.userId, false);
         return NextResponse.json(
           { error: 'Cannot approve an organization claim for a frozen account' },
@@ -234,11 +344,147 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (decision === 'approved' && claim.status === 'approved') {
+      if (!claim.final_approver_user_id) {
+        await releaseLock(submissionId, authCtx.userId, false);
+        return NextResponse.json(
+          { error: 'Approved claim is missing its recorded final approver' },
+          { status: 409 },
+        );
+      }
+      if (claim.final_approver_user_id !== authCtx.userId) {
+        await releaseLock(submissionId, authCtx.userId, false);
+        return NextResponse.json(
+          { error: 'Projection repair must be performed by the recorded final approver' },
+          { status: 403 },
+        );
+      }
+
+      const projection = await projectApprovedClaim(submissionId, authCtx.userId);
+      const released = await releaseLock(submissionId, authCtx.userId, false);
+      if (!released) {
+        throw new Error('Unable to release repaired organization claim');
+      }
+
+      return NextResponse.json({
+        success: true,
+        id: submissionId,
+        fromStatus: 'approved',
+        toStatus: 'approved',
+        transitionId: claim.final_approval_transition_id,
+        projection,
+        projectionRepair: true,
+        message: 'Approved claim projection verified.',
+      });
+    }
+
     // Save reviewer notes before advancing
     if (notes) {
       await executeQuery(
         `UPDATE submissions SET reviewer_notes = $1, updated_at = NOW() WHERE id = $2`,
         [notes, submissionId],
+      );
+    }
+
+    let currentStatus = claim.status;
+    const originalStatus = currentStatus;
+
+    // Claims enter this queue in needs_review. Normalize any still-submitted
+    // legacy claim into the review workflow before recording a decision.
+    if (currentStatus === 'submitted') {
+      const queued = await advance({
+        submissionId,
+        toStatus: 'needs_review',
+        actorUserId: authCtx.userId,
+        actorRole: authCtx.role,
+        reason: 'Organization claim queued for administrative review',
+      });
+      if (!queued.success) {
+        await releaseLock(submissionId, authCtx.userId, false);
+        return NextResponse.json(
+          { error: queued.error ?? 'Cannot queue this claim for review' },
+          { status: 409 },
+        );
+      }
+      currentStatus = 'needs_review';
+    }
+
+    if (currentStatus === 'needs_review') {
+      const started = await advance({
+        submissionId,
+        toStatus: 'under_review',
+        actorUserId: authCtx.userId,
+        actorRole: authCtx.role,
+        reason: notes ?? 'Organization claim opened for administrative review',
+      });
+      if (!started.success) {
+        await releaseLock(submissionId, authCtx.userId, false);
+        return NextResponse.json(
+          { error: started.error ?? 'Cannot start review for this claim' },
+          { status: 409 },
+        );
+      }
+      currentStatus = 'under_review';
+    }
+
+    if (decision === 'approved' && currentStatus === 'escalated') {
+      const resumed = await advance({
+        submissionId,
+        toStatus: 'under_review',
+        actorUserId: authCtx.userId,
+        actorRole: authCtx.role,
+        reason: notes ?? 'Escalated organization claim returned to administrative review',
+      });
+      if (!resumed.success) {
+        await releaseLock(submissionId, authCtx.userId, false);
+        return NextResponse.json(
+          { error: resumed.error ?? 'Cannot resume review for this claim' },
+          { status: 409 },
+        );
+      }
+      currentStatus = 'under_review';
+    }
+
+    // The first approval is a recommendation, never final activation. A
+    // different administrator finalizes from pending_second_approval, where
+    // the workflow engine enforces the distinct-reviewer gate.
+    if (decision === 'approved' && currentStatus === 'under_review') {
+      const pending = await advance({
+        submissionId,
+        toStatus: 'pending_second_approval',
+        actorUserId: authCtx.userId,
+        actorRole: authCtx.role,
+        reason: notes ?? 'Organization claim recommended for approval',
+      });
+      if (!pending.success) {
+        await releaseLock(submissionId, authCtx.userId, false);
+        return NextResponse.json(
+          { error: pending.error ?? 'Cannot request second approval for this claim' },
+          { status: 409 },
+        );
+      }
+
+      const released = await releaseLock(submissionId, authCtx.userId, false);
+      if (!released) {
+        throw new Error('Unable to release organization claim for second approval');
+      }
+
+      return NextResponse.json({
+        success: true,
+        id: submissionId,
+        fromStatus: originalStatus,
+        toStatus: pending.toStatus,
+        transitionId: pending.transitionId,
+        pendingSecondApproval: true,
+        message: 'First review recorded. A different ORAN administrator must provide final approval.',
+      });
+    }
+
+    if (decision === 'approved' && currentStatus !== 'pending_second_approval') {
+      await releaseLock(submissionId, authCtx.userId, false);
+      return NextResponse.json(
+        { error: 'Claim must complete first review before final approval' },
+        { status: 409 },
       );
     }
 
@@ -260,60 +506,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // If approved, activate the service + promote user + create org membership
+    let projection: ClaimProjectionIds | null = null;
     if (decision === 'approved') {
-      await withTransaction(async (client) => {
-        // Look up both the service and the submitter for this claim
-        const subRows = await client.query<{
-          service_id: string | null;
-          target_id: string | null;
-          submitted_by_user_id: string;
-        }>(
-          `SELECT service_id, target_id, submitted_by_user_id
-           FROM submissions WHERE id = $1`,
-          [submissionId],
-        );
-        const sub = subRows.rows[0];
-        if (!sub) return;
-
-        // Activate the placeholder service
-        if (sub.service_id) {
-          await client.query(
-            `UPDATE services SET status = 'active', updated_at = NOW()
-             WHERE id = $1`,
-            [sub.service_id],
-          );
-        }
-
-        // Create org membership for the submitter (host_admin of the claimed org)
-        if (sub.target_id && sub.submitted_by_user_id) {
-          await client.query(
-            `INSERT INTO organization_members (organization_id, user_id, role, status)
-             VALUES ($1, $2, 'host_admin', 'active')
-             ON CONFLICT (organization_id, user_id) DO UPDATE
-               SET role = 'host_admin', status = 'active', updated_at = NOW()`,
-            [sub.target_id, sub.submitted_by_user_id],
-          );
-
-          // Promote user role to host_admin if currently lower
-          // Role hierarchy: seeker(0) < host_member(1) < host_admin(2)
-          await client.query(
-            `UPDATE user_profiles
-             SET role = 'host_admin', updated_at = NOW()
-             WHERE user_id = $1
-               AND role IN ('seeker', 'host_member')`,
-            [sub.submitted_by_user_id],
-          );
-
-          // Ensure user_profiles row exists (upsert for OAuth users who haven't visited /profile yet)
-          await client.query(
-            `INSERT INTO user_profiles (user_id, role)
-             VALUES ($1, 'host_admin')
-             ON CONFLICT (user_id) DO NOTHING`,
-            [sub.submitted_by_user_id],
-          );
-        }
-      });
+      projection = await projectApprovedClaim(submissionId, authCtx.userId);
     }
 
     // If denied, clean up the orphaned org + placeholder service
@@ -348,6 +543,7 @@ export async function POST(req: NextRequest) {
       fromStatus: result.fromStatus,
       toStatus: result.toStatus,
       transitionId: result.transitionId,
+      projection,
       message: decision === 'approved'
         ? 'Claim approved. Organization is now active.'
         : 'Claim denied.',

@@ -265,6 +265,8 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
     }
 
+    const isOrganizationClaim = detail.instance.submission_type === 'org_claim';
+
     if (parsed.data.action === 'approve' && detail.instance.status === 'approved') {
       if (saveRequested) {
         return NextResponse.json(
@@ -281,6 +283,17 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
         projection,
         projectionRepair: true,
       });
+    }
+
+    if (
+      isOrganizationClaim
+      && parsed.data.action === 'start_review'
+      && detail.instance.status === 'pending_second_approval'
+    ) {
+      return NextResponse.json(
+        { error: 'Claim is awaiting final approval from a different administrator.' },
+        { status: 409 },
+      );
     }
 
     if (saveRequested) {
@@ -317,7 +330,10 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ detail: refreshed, transition: reviewTransition });
     }
 
-    if (detail.instance.status !== 'under_review') {
+    const isPendingOrganizationClaim = isOrganizationClaim
+      && detail.instance.status === 'pending_second_approval';
+
+    if (detail.instance.status !== 'under_review' && !isPendingOrganizationClaim) {
       const startReview = await advance({
         submissionId: detail.instance.submission_id,
         toStatus: 'under_review',
@@ -337,10 +353,16 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
       return: 'returned',
       escalate: 'escalated',
     };
+    const action = parsed.data.action as 'approve' | 'deny' | 'return' | 'escalate';
+    const nextStatus = isOrganizationClaim
+      && action === 'approve'
+      && !isPendingOrganizationClaim
+      ? 'pending_second_approval'
+      : targetStatus[action];
 
     const transition = await advance({
       submissionId: detail.instance.submission_id,
-      toStatus: targetStatus[parsed.data.action as 'approve' | 'deny' | 'return' | 'escalate'],
+      toStatus: nextStatus,
       actorUserId: authCtx.userId,
       actorRole: authCtx.role,
       reason: parsed.data.reviewerNotes ?? `Resource submission ${parsed.data.action}`,
@@ -350,12 +372,18 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: transition.error ?? 'Unable to update resource status.' }, { status: 409 });
     }
 
-    if (parsed.data.action === 'approve') {
-      await projectApprovedResourceSubmission(id, authCtx.userId);
+    let projection: { organizationId: string | null; serviceId: string | null } | null = null;
+    if (action === 'approve' && nextStatus === 'approved') {
+      projection = await projectApprovedResourceSubmission(id, authCtx.userId);
     }
 
     const refreshed = await getResourceSubmissionDetailForActor(authCtx, id);
-    return NextResponse.json({ detail: refreshed, transition });
+    return NextResponse.json({
+      detail: refreshed,
+      transition,
+      projection,
+      pendingSecondApproval: nextStatus === 'pending_second_approval',
+    });
   } catch (error) {
     await captureException(error, { feature: 'api_resource_submissions_update' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

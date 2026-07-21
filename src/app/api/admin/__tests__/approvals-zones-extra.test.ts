@@ -157,6 +157,10 @@ describe('admin approvals extra coverage', () => {
     const { POST } = await loadApprovalsRoute();
 
     engineMocks.acquireLock.mockResolvedValueOnce(true);
+    dbMocks.executeQuery.mockResolvedValueOnce([{
+      status: 'under_review',
+      account_status: 'active',
+    }]);
     engineMocks.advance.mockResolvedValueOnce({ success: false, error: 'Invalid transition' });
 
     const response = await POST(
@@ -173,7 +177,10 @@ describe('admin approvals extra coverage', () => {
     const { POST } = await loadApprovalsRoute();
 
     engineMocks.acquireLock.mockResolvedValueOnce(true);
-    dbMocks.executeQuery.mockResolvedValueOnce([{ account_status: 'frozen' }]);
+    dbMocks.executeQuery.mockResolvedValueOnce([{
+      status: 'needs_review',
+      account_status: 'frozen',
+    }]);
 
     const response = await POST(
       createRequest({
@@ -190,7 +197,9 @@ describe('admin approvals extra coverage', () => {
   it('updates reviewer notes and returns success payload', async () => {
     const { POST } = await loadApprovalsRoute();
 
-    dbMocks.executeQuery.mockResolvedValueOnce([]); // reviewer_notes update
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([{ status: 'under_review', account_status: 'active' }])
+      .mockResolvedValueOnce([]); // reviewer_notes update
     engineMocks.acquireLock.mockResolvedValueOnce(true);
     engineMocks.advance.mockResolvedValueOnce({ success: true, fromStatus: 'under_review', toStatus: 'denied', transitionId: 'tx-2' });
 
@@ -225,6 +234,10 @@ describe('admin approvals extra coverage', () => {
     const { POST } = await loadApprovalsRoute();
 
     engineMocks.acquireLock.mockResolvedValueOnce(true);
+    dbMocks.executeQuery.mockResolvedValueOnce([{
+      status: 'pending_second_approval',
+      account_status: 'active',
+    }]);
     engineMocks.advance.mockRejectedValueOnce(new Error('engine crash'));
     engineMocks.releaseLock.mockRejectedValueOnce(new Error('release failed'));
 

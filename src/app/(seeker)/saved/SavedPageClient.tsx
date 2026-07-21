@@ -13,12 +13,12 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { Bookmark, Search, Trash2, MessageCircle, MapPin, AlertTriangle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
 import { useSeekerFeatureFlags } from '@/components/seeker/SeekerFeatureFlags';
-import { SavedServiceComparison } from '@/components/seeker/SavedServiceComparison';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { ServiceCard } from '@/components/directory/ServiceCard';
@@ -57,6 +57,24 @@ import {
   writeStoredSavedServiceIds,
 } from '@/services/saved/client';
 import { getSavedTogglePresentation } from '@/services/saved/presentation';
+
+function SavedComparisonLoadingState() {
+  return (
+    <div
+      className="rounded-[24px] border border-[var(--border)] bg-[var(--bg-surface)] px-5 py-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]"
+      role="status"
+      aria-busy="true"
+      aria-label="Loading saved service comparison"
+    >
+      <p className="text-sm font-medium text-[var(--text-secondary)]">Preparing your private comparison…</p>
+    </div>
+  );
+}
+
+const SavedServiceComparison = dynamic(
+  () => import('@/components/seeker/SavedServiceComparison').then((module) => module.SavedServiceComparison),
+  { ssr: false, loading: SavedComparisonLoadingState },
+);
 
 // ============================================================
 // SERVER-SIDE HELPERS (graceful fallback to localStorage)

@@ -145,6 +145,7 @@ describe('SavedPageClient', () => {
     render(<SavedPage />);
 
     await screen.findByTestId('saved-service-card-svc-local');
+    expect(await screen.findByRole('heading', { name: 'Compare next steps' })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/services?ids=svc-local',

@@ -3,6 +3,7 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import type { GuidedIntakeSubmission } from '@/domain/resourceNavigator';
 
 const chatWindowMock = vi.hoisted(() => vi.fn());
 const navigationState = vi.hoisted(() => ({
@@ -17,6 +18,7 @@ vi.mock('@/components/chat/ChatWindow', () => ({
   ChatWindow: (props: {
     sessionId: string;
     initialPrompt?: string;
+    initialGuidedIntake?: GuidedIntakeSubmission;
     initialNeedId?: string | null;
     initialTrustFilter?: string;
     initialSortBy?: string;
@@ -33,6 +35,7 @@ vi.mock('@/components/ui/error-boundary', () => ({
 }));
 
 import ChatPage from '@/app/(seeker)/chat/ChatPageClient';
+import { GUIDED_INTAKE_HANDOFF_KEY } from '@/services/chat/guidedIntakeHandoff';
 import { ONBOARDING_CHAT_HANDOFF_KEY } from '@/services/profile/onboardingHandoff';
 
 describe('ChatPageClient', () => {
@@ -154,5 +157,50 @@ describe('ChatPageClient', () => {
     });
     expect(navigationState.searchParams.toString()).toBe('from=onboarding');
     expect(sessionStorage.getItem(ONBOARDING_CHAT_HANDOFF_KEY)).toBeNull();
+  });
+
+  it('opens a valid guided intake in a fresh chat without putting answers in the URL', async () => {
+    navigationState.searchParams = new URLSearchParams('from=guided');
+    sessionStorage.setItem('oran_chat_session_id', 'existing-session-id');
+    const guidedIntake: GuidedIntakeSubmission = {
+      prompt: 'Utility bill help. Near 48201. I need help today. I need help I can reach by phone.',
+      searchText: 'Utility bill help',
+      location: '48201',
+      urgency: 'today',
+      accessMode: 'phone',
+    };
+    sessionStorage.setItem(GUIDED_INTAKE_HANDOFF_KEY, JSON.stringify(guidedIntake));
+    const randomSpy = vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue('fresh-guided-session-id');
+
+    render(<React.StrictMode><ChatPage /></React.StrictMode>);
+
+    await waitFor(() => {
+      expect(chatWindowMock).toHaveBeenLastCalledWith(expect.objectContaining({
+        sessionId: 'fresh-guided-session-id',
+        initialPrompt: guidedIntake.prompt,
+        initialGuidedIntake: guidedIntake,
+        initialNeedId: undefined,
+      }));
+    });
+    expect(sessionStorage.getItem('oran_chat_session_id')).toBe('fresh-guided-session-id');
+    expect(sessionStorage.getItem(GUIDED_INTAKE_HANDOFF_KEY)).toBeNull();
+    expect(navigationState.searchParams.toString()).toBe('from=guided');
+    randomSpy.mockRestore();
+  });
+
+  it('preserves the active chat when a guided handoff is missing or already consumed', async () => {
+    navigationState.searchParams = new URLSearchParams('from=guided');
+    sessionStorage.setItem('oran_chat_session_id', 'existing-session-id');
+    const randomSpy = vi.spyOn(globalThis.crypto, 'randomUUID');
+
+    render(<ChatPage />);
+
+    await waitFor(() => {
+      expect(chatWindowMock).toHaveBeenLastCalledWith(expect.objectContaining({
+        sessionId: 'existing-session-id',
+      }));
+    });
+    expect(randomSpy).not.toHaveBeenCalled();
+    randomSpy.mockRestore();
   });
 });

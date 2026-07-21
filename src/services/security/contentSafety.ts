@@ -76,6 +76,7 @@ export const CRISIS_DISTRESS_SIGNALS: readonly string[] = [
   'can\'t keep going',
   'can\'t take it anymore',
   'don\'t see a way out',
+  'do not see a way out',
   'no way out',
   'no way forward',
 
@@ -88,6 +89,10 @@ export const CRISIS_DISTRESS_SIGNALS: readonly string[] = [
   'completely lost',
   'lost the will',
 ] as const;
+
+export function normalizeSafetyText(message: string): string {
+  return message.toLowerCase().replace(/[‘’‛]/g, "'");
+}
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -130,7 +135,7 @@ const CONTENT_SAFETY_TIMEOUT_MS = 5_000;
  * A false result means skip the API entirely (cost saving).
  */
 export function hasDistressSignals(message: string): boolean {
-  const normalized = message.toLowerCase();
+  const normalized = normalizeSafetyText(message);
   return CRISIS_DISTRESS_SIGNALS.some((signal) => normalized.includes(signal));
 }
 

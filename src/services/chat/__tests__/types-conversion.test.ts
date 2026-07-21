@@ -296,4 +296,61 @@ describe('chat types + conversion', () => {
       'Tagged with Housing Navigation',
     ]);
   });
+
+  it('explains guided urgency and audience ranking with stored service attributes only', () => {
+    const card = enrichedServiceToCard(
+      makeEnrichedService({
+        attributes: [
+          { id: 'attr-guided-1', serviceId: 'svc-1', taxonomy: 'access', tag: 'same_day', createdAt: new Date(), updatedAt: new Date() },
+          { id: 'attr-guided-2', serviceId: 'svc-1', taxonomy: 'culture', tag: 'youth_focused', createdAt: new Date(), updatedAt: new Date() },
+        ],
+      }),
+      {
+        context: {
+          sessionId: '00000000-0000-4000-8000-000000000126',
+          locale: 'en',
+          messageCount: 1,
+          sessionContext: {
+            urgency: 'urgent',
+            urgencyWindow: 'today',
+            audience: 'child',
+            preferredDeliveryModes: [],
+            profileShapingEnabled: true,
+          },
+        },
+      },
+    );
+
+    expect(card.matchReasons).toEqual([
+      'Marked for same-day help',
+      'Offers youth-focused services',
+    ]);
+  });
+
+  it('does not resurrect a saved delivery reason after can-travel clears it', () => {
+    const card = enrichedServiceToCard(
+      makeEnrichedService({
+        attributes: [
+          { id: 'attr-phone', serviceId: 'svc-1', taxonomy: 'delivery', tag: 'phone', createdAt: new Date(), updatedAt: new Date() },
+        ],
+      }),
+      {
+        context: {
+          sessionId: '00000000-0000-4000-8000-000000000131',
+          locale: 'en',
+          messageCount: 2,
+          userProfile: {
+            userId: 'user-1',
+            browsePreference: { attributeFilters: { delivery: ['phone'] } },
+          },
+          sessionContext: {
+            preferredDeliveryModes: [],
+            profileShapingEnabled: true,
+          },
+        },
+      },
+    );
+
+    expect(card.matchReasons).toBeUndefined();
+  });
 });

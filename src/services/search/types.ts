@@ -140,6 +140,8 @@ export interface SearchResponse {
   page: number;
   limit: number;
   hasMore: boolean;
+  /** True only when a soft city/ZIP preference resolved to catalog coordinates. */
+  locationBiasApplied?: boolean;
 }
 
 // ============================================================

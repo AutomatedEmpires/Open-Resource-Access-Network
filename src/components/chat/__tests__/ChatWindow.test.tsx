@@ -161,6 +161,7 @@ vi.mock('@/components/ui/dialog', () => {
 });
 
 import { ChatWindow } from '../ChatWindow';
+import { readGuidedIntakeRetry } from '@/services/chat/guidedIntakeHandoff';
 
 function getChatCalls() {
   return fetchMock.mock.calls.filter((call) => String(call[0]) === '/api/chat');
@@ -193,6 +194,14 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
     configurable: true,
     value: vi.fn(),
+  });
+  Object.defineProperty(navigator, 'permissions', {
+    configurable: true,
+    value: { query: vi.fn().mockResolvedValue({ state: 'prompt' }) },
+  });
+  Object.defineProperty(navigator, 'geolocation', {
+    configurable: true,
+    value: { getCurrentPosition: vi.fn() },
   });
   fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -251,6 +260,7 @@ describe('ChatWindow', () => {
     const body = JSON.parse(String((chatCall?.[1] as { body: string }).body));
     expect(body.message).toBe('Need food support');
     expect(body.sessionContext.activeNeedId).toBe('food_assistance');
+    expect(body.sessionContext).not.toHaveProperty('preferredDeliveryModes');
     expect(body.profileMode).toBe('use');
   });
 
@@ -285,6 +295,586 @@ describe('ChatWindow', () => {
           access: ['walk_in'],
         },
       },
+    });
+  });
+
+  it('sends structured retrieval context once while preserving the full safety message', async () => {
+    const prompt = 'Utility bill help. Near 48201. I need help today. I need help I can reach by phone.';
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return { ok: true, json: async () => ({ remaining: 50, resetAt: null }) } as Response;
+      }
+      if (url === '/api/chat') {
+        return {
+          ok: true,
+          json: async () => makeChatResponse({
+            quotaRemaining: 5,
+            effectiveSearchText: 'utility assistance',
+            intent: {
+              category: 'utility_assistance',
+              rawQuery: prompt,
+              urgencyQualifier: 'urgent',
+            },
+            sessionContext: {
+              activeNeedId: 'utility_assistance',
+              activeLocation: { postalCode: '48201' },
+              urgency: 'urgent',
+              urgencyWindow: 'today',
+              preferredDeliveryModes: ['phone'],
+              attributeFilters: { delivery: ['phone'] },
+              profileShapingEnabled: true,
+            },
+          }),
+        } as Response;
+      }
+      return { ok: true, json: async () => ({ terms: [] }) } as Response;
+    });
+    render(
+      <ChatWindow
+        sessionId="11111111-1111-4111-8111-111111111111"
+        initialPrompt={prompt}
+        initialGuidedIntake={{
+          prompt,
+          searchText: 'Utility bill help',
+          location: '48201',
+          urgency: 'today',
+          accessMode: 'phone',
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(getChatCalls()).toHaveLength(1));
+
+    const firstBody = JSON.parse(String((getChatCalls()[0]?.[1] as { body: string }).body));
+    expect(firstBody.message).toBe(prompt);
+    expect(firstBody.guidedIntake).toEqual({
+      searchText: 'Utility bill help',
+      location: '48201',
+      urgency: 'today',
+      accessMode: 'phone',
+    });
+    expect(firstBody.guidedIntake).not.toHaveProperty('prompt');
+    await waitFor(() => {
+      const transcript = JSON.parse(sessionStorage.getItem('oran:chat-transcript:11111111-1111-4111-8111-111111111111') ?? '[]');
+      expect(transcript[1]?.discoveryContext).toMatchObject({
+        text: 'utility assistance',
+        needId: 'utility_assistance',
+        attributeFilters: { delivery: ['phone'] },
+      });
+    });
+    const directoryHref = screen.getByRole('link', { name: 'Open Directory' }).getAttribute('href');
+    const mapHref = screen.getByRole('link', { name: 'Open Map' }).getAttribute('href');
+    expect(new URL(directoryHref ?? '', 'https://oran.test').searchParams.get('q')).toBeNull();
+    expect(new URL(mapHref ?? '', 'https://oran.test').searchParams.get('q')).toBeNull();
+    expect(new URL(directoryHref ?? '', 'https://oran.test').searchParams.get('category')).toBe('utility_assistance');
+    expect(new URL(mapHref ?? '', 'https://oran.test').searchParams.get('category')).toBe('utility_assistance');
+    expect(directoryHref).not.toContain('48201');
+    expect(mapHref).not.toContain('48201');
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'Show me another option' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(getChatCalls()).toHaveLength(2));
+
+    const secondBody = JSON.parse(String((getChatCalls()[1]?.[1] as { body: string }).body));
+    expect(secondBody.message).toBe('Show me another option');
+    expect(secondBody).not.toHaveProperty('guidedIntake');
+  });
+
+  it('never places typed chat text in low-budget handoff URLs while a safety response is pending', async () => {
+    let resolveChat: (response: Response) => void = () => {};
+    const pendingChatResponse = new Promise<Response>((resolve) => {
+      resolveChat = resolve;
+    });
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return { ok: true, json: async () => ({ remaining: 5, resetAt: null }) } as Response;
+      }
+      if (url === '/api/chat') return pendingChatResponse;
+      return { ok: true, json: async () => ({ terms: [] }) } as Response;
+    });
+
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
+    await screen.findByText('Low message budget');
+
+    const sensitiveMessage = 'I don’t see a way out and my case number is 12345';
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: sensitiveMessage },
+    });
+
+    for (const name of ['Open Directory', 'Open Map']) {
+      const href = screen.getByRole('link', { name }).getAttribute('href') ?? '';
+      expect(new URL(href, 'https://oran.test').searchParams.get('q')).toBeNull();
+      expect(decodeURIComponent(href)).not.toContain(sensitiveMessage);
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(getChatCalls()).toHaveLength(1));
+    expect(screen.getByRole('button', { name: 'Clear conversation' })).toBeDisabled();
+    for (const name of ['Open Directory', 'Open Map']) {
+      const href = screen.getByRole('link', { name }).getAttribute('href') ?? '';
+      expect(new URL(href, 'https://oran.test').searchParams.get('q')).toBeNull();
+    }
+
+    resolveChat({
+      ok: true,
+      json: async () => makeChatResponse({
+        message: 'Please use emergency resources now.',
+        isCrisis: true,
+        quotaRemaining: 5,
+      }),
+    } as Response);
+    await screen.findByText('Immediate Help Available');
+    expect(screen.queryByRole('link', { name: 'Open Directory' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Open Map' })).not.toBeInTheDocument();
+  });
+
+  it('makes restored chat discovery links private and removes the legacy persistent index', async () => {
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    const sensitiveText = 'Shelter after leaving an abusive partner';
+    localStorage.setItem('oran:chat-session-index', JSON.stringify([{
+      sessionId,
+      title: sensitiveText,
+      preview: sensitiveText,
+      updatedAt: '2026-07-21T12:00:00.000Z',
+      messageCount: 1,
+      saved: false,
+      seeded: false,
+    }]));
+    sessionStorage.setItem(`oran:chat-transcript:${sessionId}`, JSON.stringify([{
+      role: 'assistant',
+      content: 'Here is an option.',
+      timestamp: '2026-07-21T12:00:00.000Z',
+      services: [{ serviceId: 'svc-1', serviceName: 'Safe Shelter' }],
+      discoveryContext: { text: sensitiveText, needId: 'housing' },
+    }]));
+
+    render(<ChatWindow sessionId={sessionId} />);
+    await screen.findByTestId('chat-card-svc-1');
+
+    expect(localStorage.getItem('oran:chat-session-index')).toBeNull();
+    expect(chatServiceCardMock).toHaveBeenCalledWith(expect.objectContaining({
+      discoveryContext: expect.objectContaining({
+        text: sensitiveText,
+        needId: 'housing',
+        omitTextFromUrl: true,
+      }),
+    }));
+  });
+
+  it('does not send device location or prior seeker constraints for embedded non-self intake', async () => {
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    sessionStorage.setItem(`oran:chat-session-context:${sessionId}`, JSON.stringify({
+      activeNeedId: 'housing',
+      activeRetrievalText: 'private housing need',
+      activeGeo: { lat: 47.61, lng: -122.33, radiusMiles: 10 },
+      urgency: 'urgent',
+      urgencyWindow: 'today',
+      accessMode: 'phone',
+      preferredDeliveryModes: ['phone'],
+      taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
+      attributeFilters: { delivery: ['phone'], population: ['pregnant'] },
+      profileShapingEnabled: true,
+    }));
+
+    render(<ChatWindow sessionId={sessionId} />);
+    fireEvent.change(screen.getByLabelText('What do you need help with right now?'), {
+      target: { value: 'Food help' },
+    });
+    fireEvent.change(screen.getByLabelText('Who is this for?'), {
+      target: { value: 'someone_else' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search stored provider records' }));
+
+    await waitFor(() => expect(getChatCalls()).toHaveLength(1));
+    const body = JSON.parse(String((getChatCalls()[0]?.[1] as { body: string }).body));
+    expect(body.guidedIntake).toMatchObject({ searchText: 'Food help', audience: 'someone_else' });
+    for (const key of [
+      'activeNeedId',
+      'activeRetrievalText',
+      'activeCity',
+      'activeLocation',
+      'activeGeo',
+      'urgency',
+      'urgencyWindow',
+      'accessMode',
+      'taxonomyTermIds',
+      'attributeFilters',
+    ]) {
+      expect(body.sessionContext?.[key]).toBeUndefined();
+    }
+    expect(body.sessionContext?.preferredDeliveryModes).toEqual([]);
+    expect(body.filters).toBeUndefined();
+  });
+
+  it('ignores automatic geolocation that completes after a non-self guided submit', async () => {
+    let positionSuccess: PositionCallback | undefined;
+    const getCurrentPosition = vi.fn((success: PositionCallback) => {
+      positionSuccess = success;
+    });
+    Object.defineProperty(navigator, 'permissions', {
+      configurable: true,
+      value: { query: vi.fn().mockResolvedValue({ state: 'granted' }) },
+    });
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
+    await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText('What do you need help with right now?'), {
+      target: { value: 'Food help' },
+    });
+    fireEvent.change(screen.getByLabelText('Who is this for?'), {
+      target: { value: 'someone_else' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search stored provider records' }));
+    await waitFor(() => expect(getChatCalls()).toHaveLength(1));
+
+    positionSuccess?.({
+      coords: {
+        latitude: 47.61,
+        longitude: -122.33,
+        accuracy: 100,
+        altitude: null,
+        altitudeAccuracy: null,
+        heading: null,
+        speed: null,
+        toJSON: () => ({}),
+      },
+      timestamp: Date.now(),
+      toJSON: () => ({}),
+    });
+
+    expect(screen.queryByText(/Nearby:/)).not.toBeInTheDocument();
+    const storedContext = JSON.parse(
+      sessionStorage.getItem('oran:chat-session-context:11111111-1111-4111-8111-111111111111') ?? '{}',
+    );
+    expect(storedContext.activeGeo).toBeUndefined();
+  });
+
+  it('clears exact retrieval text on category changes and clears text location with all filters', async () => {
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    sessionStorage.setItem(`oran:chat-session-context:${sessionId}`, JSON.stringify({
+      activeNeedId: 'food_assistance',
+      activeRetrievalText: 'food help for a private circumstance',
+      activeCity: 'Detroit',
+      activeLocation: { city: 'Detroit', stateProvince: 'MI' },
+      profileShapingEnabled: true,
+    }));
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return { ok: true, json: async () => ({ remaining: 50, resetAt: null }) } as Response;
+      }
+      if (url === '/api/chat') {
+        const requestBody = JSON.parse(String(init?.body ?? '{}'));
+        return {
+          ok: true,
+          json: async () => makeChatResponse({ sessionContext: requestBody.sessionContext }),
+        } as Response;
+      }
+      return { ok: true, json: async () => ({ terms: [] }) } as Response;
+    });
+
+    render(<ChatWindow sessionId={sessionId} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Housing' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'Show options' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await waitFor(() => expect(getChatCalls()).toHaveLength(1));
+    const firstBody = JSON.parse(String((getChatCalls()[0]?.[1] as { body: string }).body));
+    expect(firstBody.sessionContext.activeNeedId).toBe('housing');
+    expect(firstBody.sessionContext.activeRetrievalText).toBeUndefined();
+    expect(firstBody.sessionContext.activeLocation).toEqual({ city: 'Detroit', stateProvince: 'MI' });
+
+    await screen.findByText('Here are options');
+    fireEvent.click(screen.getByRole('button', { name: 'Open chat filters' }));
+    expect(screen.getByText(/Using Detroit, MI from this chat/)).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Clear all' })[0]!);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Done' })[0]!);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'Start a broader search' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(getChatCalls()).toHaveLength(2));
+    const secondBody = JSON.parse(String((getChatCalls()[1]?.[1] as { body: string }).body));
+    expect(secondBody.sessionContext).toBeUndefined();
+  });
+
+  it('persists location opt-out and ignores a late automatic geolocation result', async () => {
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    let positionSuccess: PositionCallback | undefined;
+    const getCurrentPosition = vi.fn((success: PositionCallback) => {
+      positionSuccess = success;
+    });
+    Object.defineProperty(navigator, 'permissions', {
+      configurable: true,
+      value: { query: vi.fn().mockResolvedValue({ state: 'granted' }) },
+    });
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+
+    render(<ChatWindow sessionId={sessionId} />);
+    await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+
+    positionSuccess?.({
+      coords: {
+        latitude: 47.61,
+        longitude: -122.33,
+        accuracy: 100,
+        altitude: null,
+        altitudeAccuracy: null,
+        heading: null,
+        speed: null,
+        toJSON: () => ({}),
+      },
+      timestamp: Date.now(),
+      toJSON: () => ({}),
+    });
+    expect(sessionStorage.getItem(`oran:chat-location-dismissed:${sessionId}`)).toBe('true');
+    expect(screen.queryByText(/Nearby:/)).not.toBeInTheDocument();
+
+    cleanup();
+    render(<ChatWindow sessionId={sessionId} />);
+    await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Use location for nearby results')).not.toBeInTheDocument();
+  });
+
+  it('keeps a fresh guided handoff structured across a reload before the first send', async () => {
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    const prompt = 'Food help. Near Tacoma, WA.';
+    render(
+      <ChatWindow
+        sessionId={sessionId}
+        initialPrompt={prompt}
+        initialGuidedIntake={{
+          prompt,
+          searchText: 'Food help',
+          location: 'Tacoma, WA',
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(readGuidedIntakeRetry(sessionId)).toMatchObject({ searchText: 'Food help' });
+    });
+    cleanup();
+
+    render(<ChatWindow sessionId={sessionId} />);
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveValue(prompt);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(getChatCalls()).toHaveLength(1));
+
+    const body = JSON.parse(String((getChatCalls()[0]?.[1] as { body: string }).body));
+    expect(body.guidedIntake).toEqual({
+      searchText: 'Food help',
+      location: 'Tacoma, WA',
+    });
+  });
+
+  it('keeps a guided can-travel answer cleared across the next chat turn', async () => {
+    const prompt = 'Food help. I can travel to a provider.';
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return { ok: true, json: async () => ({ remaining: 50, resetAt: null }) } as Response;
+      }
+      if (url === '/api/chat') {
+        return {
+          ok: true,
+          json: async () => makeChatResponse({
+            sessionContext: {
+              activeNeedId: 'food_assistance',
+              preferredDeliveryModes: [],
+              profileShapingEnabled: true,
+            },
+          }),
+        } as Response;
+      }
+      return { ok: true, json: async () => ({ terms: [] }) } as Response;
+    });
+
+    render(
+      <ChatWindow
+        sessionId="11111111-1111-4111-8111-111111111111"
+        initialPrompt={prompt}
+        initialAttributeFilters={{ delivery: ['in_person'] }}
+        initialGuidedIntake={{
+          prompt,
+          searchText: 'Food help',
+          accessMode: 'can_travel',
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(getChatCalls()).toHaveLength(1));
+    await waitFor(() => {
+      const transcript = JSON.parse(sessionStorage.getItem('oran:chat-transcript:11111111-1111-4111-8111-111111111111') ?? '[]');
+      expect(transcript[1]?.discoveryContext?.attributeFilters).toBeUndefined();
+      expect(transcript[1]?.discoveryContext?.needId).toBe('food_assistance');
+    });
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'Show me another option' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(getChatCalls()).toHaveLength(2));
+
+    const secondBody = JSON.parse(String((getChatCalls()[1]?.[1] as { body: string }).body));
+    expect(secondBody).not.toHaveProperty('guidedIntake');
+    expect(secondBody.filters?.attributeFilters).toBeUndefined();
+    expect(secondBody.sessionContext).toMatchObject({
+      activeNeedId: 'food_assistance',
+      preferredDeliveryModes: [],
+    });
+    expect(secondBody.sessionContext.attributeFilters).toBeUndefined();
+  });
+
+  it('drops structured intake when the seeker edits the handed-off prompt', async () => {
+    const prompt = 'Food help. Near Tacoma, WA.';
+    render(
+      <ChatWindow
+        sessionId="11111111-1111-4111-8111-111111111111"
+        initialPrompt={prompt}
+        initialGuidedIntake={{
+          prompt,
+          searchText: 'Food help',
+          location: 'Tacoma, WA',
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'I need housing help instead' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(getChatCalls()).toHaveLength(1));
+
+    const body = JSON.parse(String((getChatCalls()[0]?.[1] as { body: string }).body));
+    expect(body.message).toBe('I need housing help instead');
+    expect(body).not.toHaveProperty('guidedIntake');
+  });
+
+  it('restores structured intake for a safe retry after a request failure', async () => {
+    const prompt = 'Food help. Near Tacoma, WA.';
+    let chatAttempts = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return { ok: true, json: async () => ({ remaining: 50, resetAt: null }) } as Response;
+      }
+      if (url === '/api/chat') {
+        chatAttempts += 1;
+        if (chatAttempts === 1) {
+          return {
+            ok: false,
+            json: async () => ({ error: 'Search is temporarily unavailable.' }),
+          } as Response;
+        }
+        return { ok: true, json: async () => makeChatResponse() } as Response;
+      }
+      return { ok: true, json: async () => ({ terms: [] }) } as Response;
+    });
+
+    render(
+      <ChatWindow
+        sessionId="11111111-1111-4111-8111-111111111111"
+        initialPrompt={prompt}
+        initialGuidedIntake={{
+          prompt,
+          searchText: 'Food help',
+          location: 'Tacoma, WA',
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await screen.findByText('Search is temporarily unavailable.');
+    expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveValue(prompt);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(getChatCalls()).toHaveLength(2));
+    const retryBody = JSON.parse(String((getChatCalls()[1]?.[1] as { body: string }).body));
+    expect(retryBody.guidedIntake).toEqual({
+      searchText: 'Food help',
+      location: 'Tacoma, WA',
+    });
+  });
+
+  it('restores structured intake when retrieval returns a temporary-unavailability response', async () => {
+    const prompt = 'Food help. Near Tacoma, WA.';
+    let chatAttempts = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return { ok: true, json: async () => ({ remaining: 50, resetAt: null }) } as Response;
+      }
+      if (url === '/api/chat') {
+        chatAttempts += 1;
+        return {
+          ok: true,
+          json: async () => chatAttempts === 1
+            ? makeChatResponse({
+                message: 'Search is temporarily unavailable. Try again.',
+                retrievalStatus: 'temporarily_unavailable',
+              })
+            : makeChatResponse(),
+        } as Response;
+      }
+      return { ok: true, json: async () => ({ terms: [] }) } as Response;
+    });
+
+    render(
+      <ChatWindow
+        sessionId="11111111-1111-4111-8111-111111111111"
+        initialPrompt={prompt}
+        initialGuidedIntake={{
+          prompt,
+          searchText: 'Food help',
+          location: 'Tacoma, WA',
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await screen.findByText('Search is temporarily unavailable. Try again.');
+    expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveValue(prompt);
+    expect(readGuidedIntakeRetry('11111111-1111-4111-8111-111111111111')).toMatchObject({
+      prompt,
+      searchText: 'Food help',
+      location: 'Tacoma, WA',
+    });
+
+    cleanup();
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveValue(prompt);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(getChatCalls()).toHaveLength(2));
+    const retryBody = JSON.parse(String((getChatCalls()[1]?.[1] as { body: string }).body));
+    expect(retryBody.guidedIntake).toEqual({
+      searchText: 'Food help',
+      location: 'Tacoma, WA',
+    });
+    await waitFor(() => {
+      expect(readGuidedIntakeRetry('11111111-1111-4111-8111-111111111111')).toBeNull();
     });
   });
 
@@ -346,6 +936,7 @@ describe('ChatWindow', () => {
       card: expect.objectContaining({ serviceId: 'svc-1' }),
       discoveryContext: {
         text: 'food',
+        omitTextFromUrl: true,
         needId: 'food_assistance',
         confidenceFilter: 'HIGH',
         sortBy: 'name_desc',
@@ -490,11 +1081,9 @@ describe('ChatWindow', () => {
     });
 
     await screen.findByText('Immediate Help Available');
-    expect(
-      screen.getAllByRole('alert').some((el: HTMLElement) =>
-        String(el.textContent).includes('Daily discovery limit reached.'),
-      ),
-    ).toBe(true);
+    expect(screen.getByText(/Daily discovery limit reached/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Open Directory' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Open Map' })).not.toBeInTheDocument();
 
     const [card] = await screen.findAllByTestId('chat-card-svc-1');
     fireEvent.click(within(card).getByRole('button', { name: 'Save' }));

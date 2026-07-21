@@ -172,6 +172,71 @@ describe('api/chat route', () => {
     expect(Array.isArray(body.details)).toBe(true);
   });
 
+  it('rejects malformed structured intake before usage controls or orchestration', async () => {
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'I need utility help.',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        guidedIntake: {
+          searchText: '',
+          accessMode: 'telepathy',
+          unexpected: 'private data',
+        },
+      },
+    }));
+
+    expect(response.status).toBe(400);
+    expect(chatQuotaMocks.reserveChatRequest).not.toHaveBeenCalled();
+    expect(orchestrateChatMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects guided fields that contradict the visible chat turn', async () => {
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'I need legal aid.',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        guidedIntake: {
+          searchText: 'Food help',
+          location: '48201',
+          accessMode: 'phone',
+        },
+      },
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Guided intake does not match the visible chat message.',
+    });
+    expect(chatQuotaMocks.reserveChatRequest).not.toHaveBeenCalled();
+    expect(orchestrateChatMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['Main Street', 'Main Street, WA', 'Detroit MI', 'Detroit mi'])(
+    'rejects invalid guided location input before it can enter chat state: %s',
+    async (location) => {
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: `Food help. Near ${location}.`,
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        guidedIntake: {
+          searchText: 'Food help',
+          location,
+        },
+      },
+    }));
+
+    expect(response.status).toBe(400);
+    expect(chatQuotaMocks.reserveChatRequest).not.toHaveBeenCalled();
+    expect(orchestrateChatMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('builds an IP-based rate-limit key for anonymous users', async () => {
     dbMocks.isDatabaseConfigured.mockReturnValue(false);
     orchestrateChatMock.mockImplementationOnce(async (_message, _sessionId, userId, _locale, rateLimitKey, deps) => {
@@ -319,6 +384,341 @@ describe('api/chat route', () => {
       ],
       retrievalStatus: 'results',
       quotaRemaining: 50,
+    });
+  });
+
+  it('keeps the full guided message for safety while retrieving with structured need and constraints', async () => {
+    const searchText = 'My power may be shut off this week and I need help with the bill';
+    const message = `${searchText}. Near 48201. I need help today. I need help I can reach by phone.`;
+    searchMock
+      .mockResolvedValueOnce({ results: [], total: 0 })
+      .mockResolvedValueOnce({
+        results: [{ service: { id: 'svc-utility', name: 'Utility Assistance' } }],
+        total: 1,
+      });
+    orchestrateChatMock.mockImplementationOnce(async (actualMessage, sessionId, userId, locale, _rateLimitKey, deps) => {
+      expect(actualMessage).toBe(message);
+      const context = await deps.hydrateContext?.({
+        sessionId,
+        userId,
+        locale,
+        messageCount: 0,
+      });
+      const retrieval = await deps.retrieveServices(
+        { category: 'utility_assistance', rawQuery: message, urgencyQualifier: 'urgent' },
+        context,
+      );
+      return {
+        context,
+        retrievalStatus: retrieval.retrievalStatus,
+        effectiveSearchText: retrieval.effectiveSearchText,
+        searchBroadened: retrieval.searchBroadened,
+      };
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message,
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        locale: 'en',
+        sessionContext: {
+          preferredDeliveryModes: ['in_person'],
+          attributeFilters: {
+            delivery: ['in_person'],
+            cost: ['free'],
+          },
+          profileShapingEnabled: true,
+        },
+        filters: {
+          attributeFilters: {
+            delivery: ['in_person'],
+            access: ['walk_in'],
+          },
+        },
+        guidedIntake: {
+          searchText,
+          location: '48201',
+          urgency: 'today',
+          accessMode: 'phone',
+        },
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(searchMock).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      text: searchText,
+      cityBias: '48201',
+      filters: expect.objectContaining({
+        attributeFilters: {
+          access: ['walk_in'],
+          cost: ['free'],
+          delivery: ['phone'],
+        },
+      }),
+    }));
+    expect(searchMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      text: 'utility assistance',
+      cityBias: '48201',
+    }));
+    const body = await response.json();
+    expect(body.context).toMatchObject({
+      retrievalText: searchText,
+      approximateLocation: { postalCode: '48201' },
+      sessionContext: {
+        activeLocation: { postalCode: '48201' },
+        urgency: 'urgent',
+        preferredDeliveryModes: ['phone'],
+        attributeFilters: {
+          cost: ['free'],
+          delivery: ['phone'],
+        },
+      },
+    });
+    expect(body.context.sessionContext.activeCity).toBeUndefined();
+    expect(body.retrievalStatus).toBe('results');
+    expect(body.effectiveSearchText).toBe('utility assistance');
+    expect(body.searchBroadened).toBe(true);
+  });
+
+  it.each([
+    ['phone', 'I need help I can reach by phone.', ['phone']],
+    ['online', 'I need online help.', ['virtual']],
+    ['cannot_travel', 'I cannot travel and need remote or nearby help.', ['phone', 'virtual', 'mobile_outreach', 'home_delivery', 'delivery_available']],
+    ['can_travel', 'I can travel to a provider.', []],
+  ] as const)('replaces stale delivery constraints for guided access mode %s', async (accessMode, accessPrompt, expectedDelivery) => {
+    orchestrateChatMock.mockImplementationOnce(async (_message, sessionId, userId, locale, _rateLimitKey, deps) => ({
+      context: await deps.hydrateContext?.({ sessionId, userId, locale, messageCount: 0 }),
+    }));
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: `Food help. ${accessPrompt}`,
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        sessionContext: {
+          preferredDeliveryModes: ['in_person'],
+          attributeFilters: {
+            delivery: ['in_person'],
+            cost: ['free'],
+          },
+          profileShapingEnabled: true,
+        },
+        guidedIntake: {
+          searchText: 'Food help',
+          accessMode,
+        },
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.context.sessionContext.preferredDeliveryModes).toEqual(expectedDelivery);
+    expect(body.context.sessionContext.attributeFilters).toEqual({
+      cost: ['free'],
+      ...(expectedDelivery.length > 0 ? { delivery: expectedDelivery } : {}),
+    });
+  });
+
+  it('keeps can-travel cleared on a later turn with saved delivery context', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'user-1' });
+    hydrateChatContextMock.mockResolvedValueOnce({
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      userId: 'user-1',
+      locale: 'en',
+      messageCount: 1,
+      userProfile: {
+        userId: 'user-1',
+        preferredDeliveryModes: ['phone'],
+        browsePreference: { attributeFilters: { delivery: ['phone'] } },
+      },
+    });
+    orchestrateChatMock.mockImplementationOnce(async (_message, sessionId, userId, locale, _rateLimitKey, deps) => ({
+      context: await deps.hydrateContext?.({ sessionId, userId, locale, messageCount: 1 }),
+    }));
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'Show me another option',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        sessionContext: {
+          activeNeedId: 'food_assistance',
+          preferredDeliveryModes: [],
+          profileShapingEnabled: true,
+        },
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.context.sessionContext.preferredDeliveryModes).toEqual([]);
+    expect(body.context.userProfile.browsePreference.attributeFilters).toBeUndefined();
+  });
+
+  it('does not borrow saved location for a guided someone-else search', async () => {
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'user-1' });
+    hydrateChatContextMock.mockResolvedValueOnce({
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      userId: 'user-1',
+      locale: 'en',
+      messageCount: 0,
+      approximateLocation: { city: 'Denver', stateProvince: 'CO' },
+      userProfile: {
+        userId: 'user-1',
+        locationCity: 'Denver',
+        selfIdentifiers: ['pregnant'],
+      },
+    });
+    orchestrateChatMock.mockImplementationOnce(async (_message, sessionId, userId, locale, _rateLimitKey, deps) => ({
+      context: await deps.hydrateContext?.({ sessionId, userId, locale, messageCount: 0 }),
+    }));
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'Food help. This is for someone else.',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        sessionContext: {
+          activeNeedId: 'housing',
+          activeRetrievalText: 'private housing need',
+          activeLocation: { city: 'Denver', stateProvince: 'CO' },
+          activeCity: 'Denver',
+          activeGeo: { lat: 39.7392, lng: -104.9903, radiusMiles: 10 },
+          urgency: 'urgent',
+          urgencyWindow: 'today',
+          accessMode: 'phone',
+          preferredDeliveryModes: ['phone'],
+          taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
+          attributeFilters: { delivery: ['phone'], population: ['pregnant'] },
+          profileShapingEnabled: true,
+        },
+        filters: {
+          taxonomyTermIds: ['a1000000-4000-4000-8000-000000000001'],
+          attributeFilters: { delivery: ['phone'], population: ['pregnant'] },
+        },
+        guidedIntake: {
+          searchText: 'Food help',
+          audience: 'someone_else',
+        },
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.context.approximateLocation).toBeUndefined();
+    expect(body.context.sessionContext.audience).toBe('someone_else');
+    expect(body.context.retrievalText).toBe('Food help');
+    for (const key of [
+      'activeNeedId',
+      'activeRetrievalText',
+      'activeLocation',
+      'activeCity',
+      'activeGeo',
+      'urgency',
+      'urgencyWindow',
+      'accessMode',
+      'preferredDeliveryModes',
+      'taxonomyTermIds',
+      'attributeFilters',
+    ]) {
+      expect(body.context.sessionContext[key]).toBeUndefined();
+    }
+    expect(body.context.userProfile.browsePreference.attributeFilters).toBeUndefined();
+  });
+
+  it('lets a guided city replace an older device-radius context', async () => {
+    orchestrateChatMock.mockImplementationOnce(async (_message, sessionId, userId, locale, _rateLimitKey, deps) => ({
+      context: await deps.hydrateContext?.({ sessionId, userId, locale, messageCount: 0 }),
+    }));
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'Food help. Near Detroit, MI.',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        sessionContext: {
+          activeGeo: { lat: 47.6062, lng: -122.3321, radiusMiles: 10 },
+          profileShapingEnabled: true,
+        },
+        guidedIntake: {
+          searchText: 'Food help',
+          location: 'Detroit, MI',
+        },
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.context.approximateLocation).toEqual({ city: 'Detroit', stateProvince: 'MI' });
+    expect(body.context.sessionContext.activeGeo).toBeUndefined();
+  });
+
+  it.each([
+    [{ postalCode: '48201' }, '48201'],
+    [{ city: 'St. Louis', stateProvince: 'MO' }, 'St. Louis, MO'],
+  ] as const)('round-trips active location %j into the search bias', async (activeLocation, expectedBias) => {
+    orchestrateChatMock.mockImplementationOnce(async (_message, sessionId, userId, locale, _rateLimitKey, deps) => {
+      const context = await deps.hydrateContext?.({ sessionId, userId, locale, messageCount: 0 });
+      const retrieval = await deps.retrieveServices(
+        { category: 'food_assistance', rawQuery: 'Food help', urgencyQualifier: 'standard' },
+        context,
+      );
+      return { context, retrievalStatus: retrieval.retrievalStatus };
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'Food help',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        sessionContext: {
+          activeLocation,
+          profileShapingEnabled: true,
+        },
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(searchMock).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      cityBias: expectedBias,
+    }));
+  });
+
+  it('uses the final category fallback to distinguish no match from an empty filtered catalog', async () => {
+    orchestrateChatMock.mockImplementationOnce(async (_message, sessionId, userId, locale, _rateLimitKey, deps) => {
+      const context = await deps.hydrateContext?.({ sessionId, userId, locale, messageCount: 0 });
+      return deps.retrieveServices(
+        {
+          category: 'housing',
+          rawQuery: 'My landlord says I have to leave next week',
+          urgencyQualifier: 'standard',
+        },
+        context,
+      );
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'My landlord says I have to leave next week.',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        guidedIntake: {
+          searchText: 'My landlord says I have to leave next week',
+        },
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(searchMock).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      text: 'My landlord says I have to leave next week',
+    }));
+    expect(searchMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ text: 'housing' }));
+    expect(searchMock).toHaveBeenNthCalledWith(3, expect.objectContaining({ text: undefined }));
+    await expect(response.json()).resolves.toMatchObject({
+      services: [],
+      retrievalStatus: 'catalog_empty_for_scope',
+      effectiveSearchText: 'housing',
     });
   });
 
@@ -727,11 +1127,16 @@ describe('api/chat route', () => {
       exceeded: false,
       resetAt: undefined,
     });
-    orchestrateChatMock.mockResolvedValueOnce({
-      message: 'Call or text 988 now.',
-      services: [],
-      isCrisis: true,
-      quotaRemaining: 20,
+    orchestrateChatMock.mockImplementationOnce(async (message, sessionId, userId, locale, _rateLimitKey, deps) => {
+      expect(message).toBe('I want to kill myself');
+      const context = await deps.hydrateContext?.({ sessionId, userId, locale, messageCount: 0 });
+      expect(context?.retrievalText).toBeUndefined();
+      return {
+        message: 'Call or text 988 now.',
+        services: [],
+        isCrisis: true,
+        quotaRemaining: 20,
+      };
     });
     const { POST } = await loadRoute();
 
@@ -740,6 +1145,12 @@ describe('api/chat route', () => {
         message: 'I want to kill myself',
         sessionId: '11111111-1111-4111-8111-111111111111',
         locale: 'en',
+        guidedIntake: {
+          searchText: 'Food help',
+          location: '48201',
+          accessMode: 'telepathy',
+          unexpected: 'stale-client-field',
+        },
       },
     }));
 
@@ -754,6 +1165,36 @@ describe('api/chat route', () => {
       isCrisis: true,
       quotaRemaining: 3,
     });
+  });
+
+  it('lets distress language reach semantic safety routing despite malformed optional metadata', async () => {
+    orchestrateChatMock.mockImplementationOnce(async (message, sessionId, userId, locale, _rateLimitKey, deps) => {
+      expect(message).toBe('I feel hopeless');
+      const context = await deps.hydrateContext?.({ sessionId, userId, locale, messageCount: 0 });
+      expect(context?.retrievalText).toBeUndefined();
+      return {
+        message: 'You deserve immediate support.',
+        services: [],
+        isCrisis: true,
+        quotaRemaining: 20,
+      };
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'I feel hopeless',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        guidedIntake: {
+          searchText: 'Food help',
+          accessMode: 'telepathy',
+        },
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(chatQuotaMocks.reserveChatRequest).not.toHaveBeenCalled();
+    expect(orchestrateChatMock).toHaveBeenCalledOnce();
   });
 
   it('bypasses quota for deterministic crisis-scope clarification', async () => {

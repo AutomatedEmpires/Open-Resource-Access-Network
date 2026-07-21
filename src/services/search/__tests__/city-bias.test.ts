@@ -153,6 +153,7 @@ describe('ServiceSearchEngine.lookupCityCoords', () => {
     expect(sql).toContain('JOIN organizations o');
     expect(sql).toContain("l.status = 'active'");
     expect(sql).toContain('source_systems publication_system');
+    expect(sql).toContain("HAVING COUNT(DISTINCT COALESCE(public_location.state_province, '')) = 1");
     expect(params).toEqual(['Portland']);
   });
 
@@ -187,6 +188,28 @@ describe('ServiceSearchEngine.lookupCityCoords', () => {
 
     const [sql] = mockExecuteQuery.mock.calls[0];
     expect(sql).toContain('LOWER(a.city) = LOWER($1)');
+  });
+
+  it('uses state to disambiguate cities with the same name', async () => {
+    mockExecuteQuery.mockResolvedValue([{ lat: 45.5231, lng: -122.6765 }]);
+
+    await engine.lookupCityCoords('Portland, OR');
+
+    const [sql, params] = mockExecuteQuery.mock.calls[0];
+    expect(sql).toContain('LOWER(a.state_province) = LOWER($2)');
+    expect(sql).not.toContain('HAVING COUNT(DISTINCT');
+    expect(params).toEqual(['Portland', 'OR']);
+  });
+
+  it('resolves ZIP input without treating it as a city', async () => {
+    mockExecuteQuery.mockResolvedValue([{ lat: 42.3314, lng: -83.0458 }]);
+
+    await engine.lookupCityCoords('48201-1234');
+
+    const [sql, params] = mockExecuteQuery.mock.calls[0];
+    expect(sql).toContain('LEFT(a.postal_code, 5) = $1');
+    expect(sql).not.toContain('LOWER(a.city) = LOWER($1)');
+    expect(params).toEqual(['48201']);
   });
 });
 
@@ -237,6 +260,7 @@ describe('ServiceSearchEngine.search with cityBias', () => {
 
     expect(result.results).toEqual([]);
     expect(result.total).toBe(0);
+    expect(result.locationBiasApplied).toBe(true);
   });
 
   it('skips cityBias when lookup returns null (unknown city)', async () => {
@@ -252,7 +276,7 @@ describe('ServiceSearchEngine.search with cityBias', () => {
       cityBias: 'FakeCity12345',
     };
 
-    await engine.search(query);
+    const result = await engine.search(query);
 
     // lookupCityCoords called but returned null
     expect(mockExecuteQuery).toHaveBeenCalledTimes(2);
@@ -262,6 +286,7 @@ describe('ServiceSearchEngine.search with cityBias', () => {
     const sql = searchCall[0] as string;
     // Should have NULL sort_distance since no cityCoords resolved
     expect(sql).toContain('NULL::float AS sort_distance');
+    expect(result.locationBiasApplied).toBe(false);
   });
 
   it('does not call lookupCityCoords when no cityBias provided', async () => {
@@ -301,5 +326,31 @@ describe('ServiceSearchEngine.search with cityBias', () => {
 
     // Should skip lookupCityCoords since geo query is explicit
     expect(mockExecuteQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses a resolved city bias across fallback searches', async () => {
+    const executeQuery = vi.fn()
+      .mockResolvedValueOnce([{ lat: 38.5816, lng: -121.4944 }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const executeCount = vi.fn().mockResolvedValue(0);
+    const localEngine = new ServiceSearchEngine({ executeQuery, executeCount });
+    const query: SearchQuery = {
+      text: 'food assistance',
+      filters: { status: 'active' },
+      pagination: { page: 1, limit: 10 },
+      cityBias: 'Cacheville, CA',
+    };
+
+    await localEngine.search(query);
+    await localEngine.search({ ...query, text: 'food' });
+
+    expect(executeQuery).toHaveBeenCalledTimes(3);
+    const lookupCalls = executeQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes('AVG(public_location.latitude)'),
+    );
+    expect(lookupCalls).toHaveLength(1);
+    expect(lookupCalls[0]?.[1]).toEqual(['Cacheville', 'CA']);
+    expect(executeCount).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,8 +1,14 @@
 import type { Intent, ChatContext } from './types';
-import type { SearchFilters, SearchQuery, SearchPreferenceSignals } from '@/services/search/types';
+import type { SearchFilters, SearchQuery } from '@/services/search/types';
 import { buildSeekerDiscoveryProfile } from '@/services/profile/discoveryProfile';
 import { buildSearchQueryFromDiscovery } from '@/services/search/discovery';
 import { milesToMeters } from '@/services/search/radius';
+import {
+  buildChatSearchProfileSignals,
+  shouldUseSavedSeekerProfile,
+} from '@/services/chat/profileSignals';
+
+export { buildChatSearchProfileSignals } from '@/services/chat/profileSignals';
 
 interface BuildChatSearchQueryOptions {
   taxonomyTermIds?: string[];
@@ -12,12 +18,18 @@ interface BuildChatSearchQueryOptions {
 }
 
 function buildHydratedSearchText(intent: Intent, context: ChatContext): string {
+  const retrievalText = context.retrievalText?.trim();
+  if (retrievalText) {
+    return retrievalText;
+  }
+
   if (intent.category !== 'general') {
     return intent.rawQuery;
   }
 
-  const preferenceTerms = buildSeekerDiscoveryProfile(context.userProfile, { locale: context.locale })
-    .interestSearchText
+  const preferenceTerms = (shouldUseSavedSeekerProfile(context)
+    ? buildSeekerDiscoveryProfile(context.userProfile, { locale: context.locale }).interestSearchText
+    : [])
     .slice(0, 3);
 
   if (preferenceTerms.length === 0) {
@@ -27,13 +39,14 @@ function buildHydratedSearchText(intent: Intent, context: ChatContext): string {
   return `${intent.rawQuery} ${preferenceTerms.join(' ')}`.trim();
 }
 
-export function buildChatSearchProfileSignals(context: ChatContext): SearchPreferenceSignals | undefined {
-  const userProfile = context.userProfile;
-  if (!userProfile) {
-    return undefined;
+function buildApproximateLocationBias(context: ChatContext): string | undefined {
+  const location = context.approximateLocation;
+  if (location?.postalCode) return location.postalCode;
+  if (location?.city && location.stateProvince) {
+    return `${location.city}, ${location.stateProvince}`;
   }
-
-  return buildSeekerDiscoveryProfile(userProfile, { locale: context.locale }).profileSignals;
+  return location?.city
+    ?? (shouldUseSavedSeekerProfile(context) ? context.userProfile?.locationCity : undefined);
 }
 
 export function buildChatSearchQuery(
@@ -64,7 +77,7 @@ export function buildChatSearchQuery(
       publishedOnly: true,
     },
     cachePolicy: 'skip',
-    cityBias: context.approximateLocation?.city ?? context.userProfile?.locationCity,
+    cityBias: buildApproximateLocationBias(context),
     profileSignals: buildChatSearchProfileSignals(context),
   };
 }

@@ -62,6 +62,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
+  dbMocks.executeQuery.mockReset();
   dbMocks.executeQuery.mockResolvedValue([]);
   dbMocks.withTransaction.mockImplementation(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
     const client = { query: vi.fn().mockResolvedValue({ rows: [] }) };
@@ -250,10 +251,40 @@ describe('api/community/queue/[id] route', () => {
     );
   });
 
+  it.each(['approved', 'denied'] as const)(
+    'returns 403 before mutation when a community administrator submits an organization claim %s decision',
+    async (decision) => {
+      requireMinRoleMock.mockImplementation((_authContext, minimumRole) => (
+        minimumRole === 'community_admin'
+      ));
+      dbMocks.executeQuery
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: VALID_ID, submission_type: 'org_claim' }]);
+
+      const { PUT } = await loadRoute();
+      const response = await PUT(
+        createRequest({
+          jsonBody: { decision, notes: 'Community reviewer notes only.' },
+        }),
+        ctx(VALID_ID),
+      );
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toEqual({
+        error: 'ORAN administrator permissions required for organization claim decisions.',
+      });
+      expect(advanceMock).not.toHaveBeenCalled();
+      expect(
+        dbMocks.executeQuery.mock.calls.some(([sql]) => String(sql).startsWith('UPDATE submissions')),
+      ).toBe(false);
+    },
+  );
+
   it('updates confidence score for approved decisions when service exists', async () => {
     const { PUT } = await loadRoute();
     dbMocks.executeQuery
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: VALID_ID, submission_type: 'service_verification' }])
       .mockResolvedValueOnce([{ service_id: 'svc-1' }])
       .mockResolvedValueOnce([]);
 
@@ -289,6 +320,7 @@ describe('api/community/queue/[id] route', () => {
     });
     dbMocks.executeQuery
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: VALID_ID, submission_type: 'service_verification' }])
       .mockResolvedValueOnce([]);
 
     const response = await PUT(
@@ -303,15 +335,16 @@ describe('api/community/queue/[id] route', () => {
     expect(response.status).toBe(200);
     expect(clientQuery.mock.calls[1]?.[0]).toContain("UPDATE services");
     expect(clientQuery.mock.calls[1]?.[1]).toEqual(['active', 'community-1', 'svc-1']);
-    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(2);
-    expect(dbMocks.executeQuery.mock.calls[1]?.[0]).toContain('INSERT INTO confidence_scores');
-    expect(dbMocks.executeQuery.mock.calls[1]?.[1]).toEqual(['svc-1']);
+    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(3);
+    expect(dbMocks.executeQuery.mock.calls[2]?.[0]).toContain('INSERT INTO confidence_scores');
+    expect(dbMocks.executeQuery.mock.calls[2]?.[1]).toEqual(['svc-1']);
   });
 
   it('skips confidence score update when approved decision has no linked service', async () => {
     const { PUT } = await loadRoute();
     dbMocks.executeQuery
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: VALID_ID, submission_type: 'service_verification' }])
       .mockResolvedValueOnce([]);
 
     const response = await PUT(
@@ -324,7 +357,7 @@ describe('api/community/queue/[id] route', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(2);
+    expect(dbMocks.executeQuery).toHaveBeenCalledTimes(3);
   });
 
   it('returns 500 on PUT exceptions and captures telemetry', async () => {

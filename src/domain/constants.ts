@@ -527,10 +527,8 @@ export const FEATURE_FLAGS = {
   AUTO_CHECK_GATE:       'auto_check_gate',
   NOTIFICATIONS_IN_APP:  'notifications_in_app',
   /**
-   * Enables Azure AI Content Safety as a second crisis detection gate.
-   * Runs AFTER keyword matching, ONLY when local distress signals are found.
-   * Requires AZURE_CONTENT_SAFETY_ENDPOINT + AZURE_CONTENT_SAFETY_KEY env vars.
-   * Azure AI Content Safety F0 free tier: 5,000 text records/month.
+   * Legacy catalog key retained for migration compatibility. Runtime crisis
+   * routing is deterministic and provider-independent; this flag is inert.
    */
   CONTENT_SAFETY_CRISIS: 'content_safety_crisis',
   /**

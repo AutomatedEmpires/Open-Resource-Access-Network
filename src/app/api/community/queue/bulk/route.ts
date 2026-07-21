@@ -86,30 +86,32 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const scope = await getCommunityAdminScope(authCtx.userId);
-    const accessibleIds = new Set<string>();
-
-    if (scope.hasExplicitScope) {
-      const accessParams: unknown[] = [ids];
-      const scopeCondition = buildCommunitySubmissionScope('sub', scope, accessParams);
-      const accessibleRows = await executeQuery<{ id: string }>(
-        `SELECT sub.id
-         FROM submissions sub
-         WHERE sub.id = ANY($1::uuid[])${scopeCondition ? ` AND ${scopeCondition}` : ''}`,
-        accessParams,
-      );
-
-      for (const row of accessibleRows) {
-        accessibleIds.add(row.id);
-      }
-    } else {
-      for (const id of ids) {
-        accessibleIds.add(id);
-      }
-    }
+    const accessParams: unknown[] = [ids];
+    const scopeCondition = scope.hasExplicitScope
+      ? buildCommunitySubmissionScope('sub', scope, accessParams)
+      : '';
+    const accessibleRows = await executeQuery<{ id: string; submission_type: string }>(
+      `SELECT sub.id, sub.submission_type
+       FROM submissions sub
+       WHERE sub.id = ANY($1::uuid[])${scopeCondition ? ` AND ${scopeCondition}` : ''}`,
+      accessParams,
+    );
+    const accessibleSubmissions = new Map(
+      accessibleRows.map((row) => [row.id, row.submission_type]),
+    );
 
     for (const id of ids) {
-      if (!accessibleIds.has(id)) {
+      const submissionType = accessibleSubmissions.get(id);
+      if (!submissionType) {
         failed.push({ id, error: 'Submission is outside your assigned community scope' });
+        continue;
+      }
+
+      if (submissionType === 'org_claim' && !requireMinRole(authCtx, 'oran_admin')) {
+        failed.push({
+          id,
+          error: 'ORAN administrator permissions required for organization claim decisions.',
+        });
         continue;
       }
 

@@ -54,6 +54,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   dbMocks.isDatabaseConfigured.mockReturnValue(true);
+  dbMocks.executeQuery.mockReset();
   dbMocks.executeQuery.mockResolvedValue([]);
   rateLimitMock.mockReturnValue({ exceeded: false, retryAfterSeconds: 0 });
   authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1', role: 'community_admin' });
@@ -110,6 +111,10 @@ describe('PATCH /api/community/queue/bulk', () => {
   it('applies approved decisions and updates confidence scores when service ids exist', async () => {
     dbMocks.executeQuery
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: ID_ONE, submission_type: 'service_verification' },
+        { id: ID_TWO, submission_type: 'service_verification' },
+      ])
       .mockResolvedValueOnce([]) // notes update id 1
       .mockResolvedValueOnce([{ service_id: 'svc-1' }]) // service lookup id 1
       .mockResolvedValueOnce([]) // confidence upsert id 1
@@ -141,7 +146,10 @@ describe('PATCH /api/community/queue/bulk', () => {
   it('collects per-item failures without failing the whole request', async () => {
     dbMocks.executeQuery
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: ID_ONE }, { id: ID_TWO }]);
+      .mockResolvedValueOnce([
+        { id: ID_ONE, submission_type: 'service_verification' },
+        { id: ID_TWO, submission_type: 'service_verification' },
+      ]);
 
     advanceMock
       .mockResolvedValueOnce({ success: false, error: 'Transition denied' })
@@ -167,5 +175,39 @@ describe('PATCH /api/community/queue/bulk', () => {
       ],
     });
     expect(captureExceptionMock).not.toHaveBeenCalled();
+  });
+
+  it('fails organization-claim decisions before mutation while continuing safe bulk items', async () => {
+    requireMinRoleMock.mockImplementation((_authContext, minimumRole) => (
+      minimumRole === 'community_admin'
+    ));
+    dbMocks.executeQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: ID_ONE, submission_type: 'org_claim' },
+        { id: ID_TWO, submission_type: 'service_verification' },
+      ]);
+    advanceMock.mockResolvedValueOnce({ success: true });
+
+    const { PATCH } = await loadRoute();
+    const res = await PATCH(
+      createRequest({
+        jsonBody: {
+          ids: [ID_ONE, ID_TWO],
+          decision: 'denied',
+        },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      succeeded: [ID_TWO],
+      failed: [{
+        id: ID_ONE,
+        error: 'ORAN administrator permissions required for organization claim decisions.',
+      }],
+    });
+    expect(advanceMock).toHaveBeenCalledTimes(1);
+    expect(advanceMock).toHaveBeenCalledWith(expect.objectContaining({ submissionId: ID_TWO }));
   });
 });

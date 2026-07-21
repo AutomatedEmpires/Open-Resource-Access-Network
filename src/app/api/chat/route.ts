@@ -50,7 +50,7 @@ import { hydrateEnrichedServices } from '@/services/search/hydrateRelations';
 import type { SearchFilters } from '@/services/search/types';
 import { captureException } from '@/services/telemetry/sentry';
 import { getIp } from '@/services/security/ip';
-import { hasDistressSignals, normalizeSafetyText } from '@/services/security/contentSafety';
+import { hasDistressSignals, normalizeSafetyText } from '@/services/security/crisisSignals';
 
 const RequestSchema = ChatRequestSchema;
 const SafetyEnvelopeSchema = ChatRequestSchema.pick({

@@ -243,7 +243,7 @@ describe('orchestrateChat', () => {
 
     expect(response.isCrisis).toBe(true);
     expect(retrieveServices).not.toHaveBeenCalled();
-    expect(isFlagEnabled).not.toHaveBeenCalled();
+    expect(isFlagEnabled).not.toHaveBeenCalledWith(FEATURE_FLAGS.CONTENT_SAFETY_CRISIS);
   });
 
   it('uses LLM summarization only when enabled and services exist', async () => {
@@ -516,49 +516,50 @@ describe('orchestrateChat', () => {
     expect(retrieveServices).not.toHaveBeenCalled();
   });
 
-  it('routes first-person distress through semantic safety when the safety flag is enabled', async () => {
+  it.each([
+    'I feel hopeless',
+    'Nobody would miss me',
+  ])('routes first-person distress deterministically with providers disabled: %s', async (message) => {
     const retrieveServices = vi.fn();
-    const checkSemanticCrisis = vi.fn().mockResolvedValue(true);
+    const isFlagEnabled = vi.fn().mockResolvedValue(false);
 
     const response = await orchestrateChat(
-      'I feel hopeless',
+      message,
       '00000000-0000-4000-8000-000000000135',
       undefined,
       'en',
-      'chat:test:semantic-crisis',
+      'chat:test:deterministic-distress-crisis',
       {
         retrieveServices,
-        isFlagEnabled: async (flagName) => flagName === FEATURE_FLAGS.CONTENT_SAFETY_CRISIS,
-        checkSemanticCrisis,
+        isFlagEnabled,
       },
     );
 
-    expect(checkSemanticCrisis).toHaveBeenCalledWith('I feel hopeless');
     expect(response.isCrisis).toBe(true);
     expect(response.crisisResources?.crisisLine).toBe('988');
+    expect(isFlagEnabled).not.toHaveBeenCalled();
     expect(retrieveServices).not.toHaveBeenCalled();
   });
 
   it('keeps third-party distress out of self-crisis classification', async () => {
     const retrieveServices = vi.fn();
-    const checkSemanticCrisis = vi.fn().mockResolvedValue(true);
+    const isFlagEnabled = vi.fn().mockResolvedValue(false);
 
     const response = await orchestrateChat(
       'My friend feels hopeless and I need help for them',
       '00000000-0000-4000-8000-000000000136',
       undefined,
       'en',
-      'chat:test:semantic-third-party',
+      'chat:test:deterministic-third-party',
       {
         retrieveServices,
-        isFlagEnabled: async (flagName) => flagName === FEATURE_FLAGS.CONTENT_SAFETY_CRISIS,
-        checkSemanticCrisis,
+        isFlagEnabled,
       },
     );
 
-    expect(checkSemanticCrisis).not.toHaveBeenCalled();
     expect(response.isCrisis).toBe(false);
     expect(response.clarification?.reason).toBe('crisis_scope');
+    expect(isFlagEnabled).not.toHaveBeenCalledWith(FEATURE_FLAGS.CONTENT_SAFETY_CRISIS);
     expect(retrieveServices).not.toHaveBeenCalled();
   });
 

@@ -200,6 +200,45 @@ describe('resource submissions item route', () => {
     expect(resourceSubmissionMocks.projectApprovedResourceSubmission).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'reviewer-1');
   });
 
+  it.each([
+    ['approve', 'needs_review'],
+    ['deny', 'under_review'],
+    ['approve', 'approved'],
+  ] as const)(
+    'prevents a community administrator from using %s on an organization claim in %s',
+    async (action, status) => {
+      guardMocks.requireMinRole.mockImplementation((_authContext, minimumRole) => (
+        minimumRole === 'community_admin'
+      ));
+      resourceSubmissionMocks.getResourceSubmissionDetailForActor.mockResolvedValueOnce(
+        makeDetail(status, 'org_claim'),
+      );
+
+      const { PUT } = await loadItemRoute();
+      const response = await PUT(
+        createRequest({
+          method: 'PUT',
+          jsonBody: { action, reviewerNotes: 'Community review cannot decide this claim.' },
+        }),
+        createContext(),
+      );
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toEqual({
+        error: 'ORAN administrator permissions required for organization claim decisions.',
+      });
+      expect(guardMocks.requireMinRole).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'reviewer-1', role: 'community_admin' }),
+        'oran_admin',
+      );
+      expect(workflowMocks.advance).not.toHaveBeenCalled();
+      expect(workflowMocks.assignSubmission).not.toHaveBeenCalled();
+      expect(workflowMocks.acquireLock).not.toHaveBeenCalled();
+      expect(resourceSubmissionMocks.setResourceSubmissionReviewerNotes).not.toHaveBeenCalled();
+      expect(resourceSubmissionMocks.projectApprovedResourceSubmission).not.toHaveBeenCalled();
+    },
+  );
+
   it('records the first organization-claim approval without projecting', async () => {
     authMocks.getAuthContext.mockResolvedValue({
       userId: 'oran-reviewer-1',

@@ -28,9 +28,8 @@ import {
 } from '@/services/security/rateLimit';
 import {
   hasDistressSignals,
-  checkCrisisContentSafety,
   normalizeSafetyText,
-} from '@/services/security/contentSafety';
+} from '@/services/security/crisisSignals';
 import type { EnrichedService } from '@/domain/types';
 import type {
   Intent,
@@ -1190,8 +1189,6 @@ export interface OrchestratorDeps {
   summarizeWithLLM?: (services: EnrichedService[], intent: Intent) => Promise<string>;
   /** Optional: LLM intent enrichment — only called for 'general' fallback queries, if flag enabled */
   enrichIntent?: (message: string, intent: Intent) => Promise<Intent>;
-  /** Optional semantic safety override for deterministic tests. */
-  checkSemanticCrisis?: (message: string) => Promise<boolean>;
 }
 
 /**
@@ -1207,24 +1204,12 @@ export async function orchestrateChat(
 ): Promise<ChatResponse> {
   const crisisScope = classifyCrisisScope(message);
 
-  // Stage 1a: Crisis detection (keyword gate) — always first, always takes priority
-  if (crisisScope === 'self' && detectCrisis(message)) {
+  // Stage 1: deterministic conservative crisis routing. Explicit crisis
+  // keywords and indirect first-person distress signals both route locally;
+  // no external classifier or provider credential can weaken this boundary.
+  if (crisisScope === 'self' && (detectCrisis(message) || hasDistressSignals(message))) {
     const intent = detectIntent(message);
     return assembleCrisisResponse(intent, sessionId);
-  }
-
-  // Stage 1b: Content Safety semantic crisis gate (second layer, async)
-  // Runs only when: (a) flag enabled AND (b) local distress signals found in the message.
-  // Uses Azure AI Content Safety SelfHarm severity classification.
-  // FAIL-OPEN: any API error is swallowed and pipeline continues normally.
-  // Cost: calls the API only when hasDistressSignals() → true (<5% of messages).
-  const contentSafetyEnabled = await deps.isFlagEnabled(FEATURE_FLAGS.CONTENT_SAFETY_CRISIS);
-  if (crisisScope === 'self' && contentSafetyEnabled && hasDistressSignals(message)) {
-    const isCrisisBySemantic = await (deps.checkSemanticCrisis ?? checkCrisisContentSafety)(message);
-    if (isCrisisBySemantic) {
-      const intent = detectIntent(message);
-      return assembleCrisisResponse(intent, sessionId);
-    }
   }
 
   // Stage 2: Quota check (DB-backed when configured, in-memory fallback)

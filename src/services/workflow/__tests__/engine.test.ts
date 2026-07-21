@@ -119,6 +119,47 @@ describe('workflow/engine', () => {
     ).toBe(false);
   });
 
+  it.each(['approved', 'denied'] as const)(
+    'advance never lets a community administrator move an organization claim to %s, even when gates are skipped',
+    async (toStatus) => {
+      clientQueryMock
+        .mockResolvedValueOnce({
+          rows: [{
+            id: `sub-org-claim-${toStatus}`,
+            submission_type: 'org_claim',
+            status: toStatus === 'approved' ? 'pending_second_approval' : 'under_review',
+            is_locked: false,
+            locked_by_user_id: null,
+            assigned_to_user_id: null,
+            service_id: null,
+            submitted_by_user_id: 'claimant-1',
+            target_type: 'organization',
+            target_id: 'org-1',
+          }],
+        })
+        .mockResolvedValueOnce({ rows: [{ id: `transition-org-claim-${toStatus}-rejected` }] });
+
+      const result = await advance({
+        submissionId: `sub-org-claim-${toStatus}`,
+        toStatus,
+        actorUserId: 'community-reviewer-1',
+        actorRole: 'community_admin',
+        skipGates: true,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Only ORAN administrators');
+      expect(result.transitionId).toBe(`transition-org-claim-${toStatus}-rejected`);
+      expect(result.gateResults).toContainEqual(expect.objectContaining({
+        gate: 'organization_claim_decision_role',
+        passed: false,
+      }));
+      expect(
+        clientQueryMock.mock.calls.some(([sql]) => String(sql).startsWith('UPDATE submissions')),
+      ).toBe(false);
+    },
+  );
+
   it('advance enforces lock gate for different lock holder', async () => {
     clientQueryMock
       .mockResolvedValueOnce({
@@ -204,7 +245,7 @@ describe('workflow/engine', () => {
       submissionId: 'sub-4b',
       toStatus: 'approved',
       actorUserId: 'reviewer-other',
-      actorRole: 'community_admin',
+      actorRole: 'oran_admin',
     });
 
     expect(result.success).toBe(true);
@@ -267,7 +308,7 @@ describe('workflow/engine', () => {
       submissionId: 'sub-4c',
       toStatus: 'approved',
       actorUserId: 'reviewer-1',
-      actorRole: 'community_admin',
+      actorRole: 'oran_admin',
     });
 
     expect(result.success).toBe(false);

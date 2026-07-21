@@ -1719,6 +1719,10 @@ export async function projectApprovedResourceSubmission(
       throw new Error('Resource projection requires approval by a community or ORAN administrator');
     }
 
+    if (row.submission_type === 'org_claim' && row.approval_actor_role !== 'oran_admin') {
+      throw new Error('Organization claim projection requires approval by an ORAN administrator');
+    }
+
     if (row.approval_actor_user_id === row.submitted_by_user_id) {
       throw new Error('Resource projection requires an approver distinct from the submitter');
     }

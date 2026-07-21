@@ -1,39 +1,12 @@
 /**
- * Azure AI Content Safety — Crisis Detection Second Layer
+ * Provider-independent crisis-signal compatibility surface.
  *
- * Provides semantic crisis detection as a second gate after keyword matching.
- * Catches indirect, metaphorical, and culturally varied self-harm language that
- * a keyword list cannot — e.g., "I don't see a way out" or "nobody would miss me".
- *
- * Design constraints (all must hold):
- *  1. FAIL-OPEN: any API error returns false — never blocks legitimate crisis routing.
- *  2. KEYWORD GATE IS STILL FIRST: this module only runs after the keyword check misses.
- *  3. PRE-FILTER: a free local distress-signal check gates the API call to minimize cost.
- *  4. NO PII LOGGED: message content is never written to logs/telemetry.
- *  5. FEATURE FLAG: caller is responsible for checking FEATURE_FLAGS.CONTENT_SAFETY_CRISIS.
- *
- * Cost model:
- *  Azure AI Content Safety F0 free tier: 5,000 text records/month.
- *  With the pre-filter, expected API calls are <5% of total chat messages.
- *  At S0 pricing ($1.00/1K records) the cost is negligible until significant traffic.
- *
- * Configuration (environment variables):
- *  AZURE_CONTENT_SAFETY_ENDPOINT — required; e.g. https://my-resource.cognitiveservices.azure.com
- *  AZURE_CONTENT_SAFETY_KEY      — required; subscription key for the resource
+ * ORAN no longer sends distress language to an external content-safety
+ * provider. Runtime chat routing imports the synchronous helpers directly
+ * from crisisSignals; this module remains only for older internal imports.
  */
 
-// ---------------------------------------------------------------------------
-// Pre-filter: distress signals NOT covered by CRISIS_KEYWORDS
-//
-// These are indirect, first-person, or metaphorical phrases that suggest a
-// person may be in crisis without matching the explicit keyword list.
-// Their presence alone does NOT trigger crisis routing — only gates a Content
-// Safety API call, which makes the final determination.
-//
-// Expand this list conservatively. Every addition increases API call rate.
-// ---------------------------------------------------------------------------
-
-import { trackAiEvent } from '@/services/telemetry/events';
+import { hasDistressSignals } from '@/services/security/crisisSignals';
 
 export {
   CRISIS_DISTRESS_SIGNALS,
@@ -41,130 +14,7 @@ export {
   normalizeSafetyText,
 } from '@/services/security/crisisSignals';
 
-// ---------------------------------------------------------------------------
-// Internal types
-// ---------------------------------------------------------------------------
-
-interface ContentSafetyAnalysisItem {
-  category: string;
-  severity: number; // 0 | 2 | 4 | 6
-}
-
-interface ContentSafetyResponseBody {
-  categoriesAnalysis: ContentSafetyAnalysisItem[];
-}
-
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-
-const CONTENT_SAFETY_API_VERSION = '2023-10-01';
-
-/**
- * Minimum SelfHarm severity score to trigger crisis routing.
- * Azure severity levels: 0 = safe, 2 = low, 4 = medium, 6 = high.
- * We route at medium+ (4) to minimize false negatives.
- */
-const SELF_HARM_CRISIS_THRESHOLD = 4;
-
-/** Hard timeout for Content Safety API calls — must not block chat responses. */
-const CONTENT_SAFETY_TIMEOUT_MS = 5_000;
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/**
- * Fast synchronous pre-check for indirect distress signals.
- *
- * Returns true if the message contains ANY phrase from CRISIS_DISTRESS_SIGNALS.
- * A true result does NOT mean crisis — it gates the async API call.
- * A false result means skip the API entirely (cost saving).
- */
-/**
- * Calls Azure AI Content Safety to detect SelfHarm severity in a message.
- *
- * Returns true if SelfHarm severity >= SELF_HARM_CRISIS_THRESHOLD (medium+).
- * Returns false on ANY error — FAIL-OPEN by design (see module docstring).
- * Returns false immediately if AZURE_CONTENT_SAFETY_ENDPOINT is not configured.
- *
- * Usage — always pre-filter with hasDistressSignals() to minimize API cost:
- *
- *   if (hasDistressSignals(message)) {
- *     const isCrisis = await checkCrisisContentSafety(message);
- *     if (isCrisis) { ... }
- *   }
- */
+/** @deprecated Use hasDistressSignals synchronously. */
 export async function checkCrisisContentSafety(message: string): Promise<boolean> {
-  const endpoint = process.env.AZURE_CONTENT_SAFETY_ENDPOINT?.trim();
-  const key = process.env.AZURE_CONTENT_SAFETY_KEY?.trim();
-
-  // Not configured — no-op, do not warn (expected in dev without the resource)
-  if (!endpoint || !key) {
-    return false;
-  }
-
-  const url = `${endpoint.replace(/\/+$/, '')}/contentsafety/text:analyze?api-version=${CONTENT_SAFETY_API_VERSION}`;
-  const t0 = Date.now();
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Ocp-Apim-Subscription-Key': key,
-      },
-      body: JSON.stringify({
-        text: message,
-        outputType: 'FourSeverityLevels',
-        categories: ['SelfHarm'],
-      }),
-      signal: AbortSignal.timeout(CONTENT_SAFETY_TIMEOUT_MS),
-    });
-
-    if (!response.ok) {
-      // Non-2xx: log the status code but NOT the message content (PII rule)
-      console.warn(`[contentSafety] API returned HTTP ${response.status} — failing open`);
-      void trackAiEvent('content_safety_check', {
-        duration_ms: Date.now() - t0,
-        http_status: response.status,
-        error_type: 'http_error',
-        triggered_crisis: false,
-        success: false,
-      });
-      return false;
-    }
-
-    const data = (await response.json()) as ContentSafetyResponseBody;
-
-    const selfHarm = data.categoriesAnalysis.find((c) => c.category === 'SelfHarm');
-    if (!selfHarm) {
-      void trackAiEvent('content_safety_check', {
-        duration_ms: Date.now() - t0,
-        severity: 0,
-        triggered_crisis: false,
-        success: true,
-      });
-      return false;
-    }
-
-    const triggered = selfHarm.severity >= SELF_HARM_CRISIS_THRESHOLD;
-    void trackAiEvent('content_safety_check', {
-      duration_ms: Date.now() - t0,
-      severity: selfHarm.severity,
-      triggered_crisis: triggered,
-      success: true,
-    });
-    return triggered;
-  } catch {
-    // Network error, timeout, JSON parse failure — fail-open
-    // Intentionally not logging message content
-    void trackAiEvent('content_safety_check', {
-      duration_ms: Date.now() - t0,
-      error_type: 'network_error',
-      triggered_crisis: false,
-      success: false,
-    });
-    return false;
-  }
+  return hasDistressSignals(message);
 }

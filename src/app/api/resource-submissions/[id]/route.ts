@@ -165,11 +165,21 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json({ error: 'Resource submission not found.' }, { status: 404 });
     }
 
+    const isOrganizationClaim = detail.instance.submission_type === 'org_claim';
     const isReviewerAction = ['start_review', 'approve', 'deny', 'return', 'escalate'].includes(parsed.data.action);
     if (isReviewerAction) {
       if (!authCtx || !requireMinRole(authCtx, 'community_admin')) {
         return NextResponse.json({ error: 'Reviewer permissions required.' }, { status: 403 });
       }
+    }
+
+    const isOrganizationClaimDecision = isOrganizationClaim
+      && ['approve', 'deny'].includes(parsed.data.action);
+    if (isOrganizationClaimDecision && (!authCtx || !requireMinRole(authCtx, 'oran_admin'))) {
+      return NextResponse.json(
+        { error: 'ORAN administrator permissions required for organization claim decisions.' },
+        { status: 403 },
+      );
     }
 
     if (!isReviewerAction && !authCtx && !getPublicAccessToken(req)) {
@@ -264,8 +274,6 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
     if (!authCtx) {
       return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
     }
-
-    const isOrganizationClaim = detail.instance.submission_type === 'org_claim';
 
     if (parsed.data.action === 'approve' && detail.instance.status === 'approved') {
       if (saveRequested) {

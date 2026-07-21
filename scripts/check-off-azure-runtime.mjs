@@ -257,6 +257,21 @@ if (/process\.env\.(?:AZURE_|FOUNDRY_)/u.test(read('src/app/api/maps/token/route
   violations.push('maps token route: retired provider credential access');
 }
 
+const crisisAdapterSource = stripJsCommentsAndStrings(read('src/services/security/contentSafety.ts'));
+if (
+  /process\.env\.(?:AZURE_|FOUNDRY_)/u.test(crisisAdapterSource)
+  || /\bfetch\s*\(/u.test(crisisAdapterSource)
+) {
+  violations.push('content safety adapter: crisis routing must remain provider-independent');
+}
+
+const chatOrchestratorSource = stripJsCommentsAndStrings(read('src/services/chat/orchestrator.ts'));
+if (
+  /checkCrisisContentSafety|checkSemanticCrisis|CONTENT_SAFETY_CRISIS/u.test(chatOrchestratorSource)
+) {
+  violations.push('chat orchestrator: crisis routing depends on a retired external safety provider');
+}
+
 const retiredWorkflows = [
   '.github/workflows/deploy-azure-appservice.yml',
   '.github/workflows/deploy-azure-functions.yml',

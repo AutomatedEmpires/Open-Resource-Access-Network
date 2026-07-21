@@ -225,7 +225,15 @@ describe('portal page shells', () => {
     expect(wrapper.type).toBe('error-boundary');
     expect(alerts.length).toBeLessThanOrEqual(1);
     expect(tables).toHaveLength(1);
-    expect(tabs).toHaveLength(5);
+    expect(tabs.map((tab) => tab.props.children)).toEqual([
+      'All',
+      'Submitted',
+      'Needs Review',
+      'Under Review',
+      'Second Approval',
+      'Approved',
+      'Denied',
+    ]);
     expect(buttons.length).toBeGreaterThan(8);
   });
 

@@ -54,12 +54,16 @@ export async function loginAs(
   }
 
   const context = (await response.json()) as {
-    authenticated?: boolean;
-    user?: { role?: string } | null;
+    userId?: unknown;
+    role?: unknown;
+    accountStatus?: unknown;
   };
-  if (!context.authenticated || context.user?.role !== role) {
+  const hasUserId = typeof context.userId === 'string' && context.userId.trim().length > 0;
+  if (!hasUserId || context.role !== role || context.accountStatus !== 'active') {
     throw new Error(
-      `Expected ORAN role ${role} for ${emailEnvName}; received ${context.user?.role ?? 'none'}.`,
+      `Expected active ORAN role ${role} for ${emailEnvName}; received ${
+        typeof context.role === 'string' ? context.role : 'none'
+      } (${typeof context.accountStatus === 'string' ? context.accountStatus : 'status unavailable'}).`,
     );
   }
 }

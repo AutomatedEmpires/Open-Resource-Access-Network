@@ -4,13 +4,17 @@ import React, { useId, useState } from 'react';
 import { ArrowRight, SlidersHorizontal } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { CRISIS_KEYWORDS } from '@/domain/constants';
 import {
-  buildGuidedIntakePrompt,
+  buildGuidedIntakeSubmission,
   type GuidedIntakeDraft,
+  type GuidedIntakeSubmission,
 } from '@/domain/resourceNavigator';
+import { GuidedIntakeRequestSchema } from '@/services/chat/guidedIntakeContract';
+import { hasDistressSignals, normalizeSafetyText } from '@/services/security/contentSafety';
 
 interface GuidedIntakeProps {
-  onSubmit: (prompt: string) => void | Promise<void>;
+  onSubmit: (submission: GuidedIntakeSubmission) => void | Promise<void>;
   submitLabel?: string;
   initialNeed?: string;
   className?: string;
@@ -25,20 +29,47 @@ export function GuidedIntake({
   const id = useId();
   const [draft, setDraft] = useState<GuidedIntakeDraft>({ need: initialNeed });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const hasMeaningfulNeed = Boolean(buildGuidedIntakeSubmission({ need: draft.need }));
 
   const updateDraft = <K extends keyof GuidedIntakeDraft>(
     key: K,
     value: GuidedIntakeDraft[K],
-  ) => setDraft((current) => ({ ...current, [key]: value || undefined }));
+  ) => {
+    setValidationError(null);
+    setDraft((current) => ({
+      ...current,
+      [key]: key === 'need' ? value : value || undefined,
+    }));
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const prompt = buildGuidedIntakePrompt(draft);
-    if (!prompt || isSubmitting) return;
+    const submission = buildGuidedIntakeSubmission(draft);
+    if (!submission || isSubmitting) return;
+    const { prompt: _prompt, ...request } = submission;
+    const parsed = GuidedIntakeRequestSchema.safeParse(request);
+    let submissionToSend = submission;
+    if (!parsed.success) {
+      const normalizedNeed = normalizeSafetyText(draft.need);
+      const hasSafetyLanguage = CRISIS_KEYWORDS.some((keyword) => normalizedNeed.includes(keyword))
+        || hasDistressSignals(draft.need);
+      const safetySubmission = hasSafetyLanguage
+        ? buildGuidedIntakeSubmission({ ...draft, location: undefined })
+        : null;
+      if (!safetySubmission) {
+        setValidationError(
+          parsed.error.issues[0]?.message
+            ?? 'Check the optional details and try again.',
+        );
+        return;
+      }
+      submissionToSend = safetySubmission;
+    }
 
     setIsSubmitting(true);
     try {
-      await onSubmit(prompt);
+      await onSubmit(submissionToSend);
     } finally {
       setIsSubmitting(false);
     }
@@ -68,13 +99,15 @@ export function GuidedIntake({
         </summary>
         <div className="grid gap-4 border-t border-slate-200 px-4 py-4 sm:grid-cols-2">
           <label htmlFor={`${id}-location`} className="text-xs font-medium text-slate-700">
-            City, state, or ZIP
+            City, 2-letter state, or ZIP
             <input
               id={`${id}-location`}
               value={draft.location ?? ''}
               onChange={(event) => updateDraft('location', event.target.value)}
               maxLength={80}
               placeholder="Example: Detroit, MI or 48201"
+              aria-invalid={Boolean(validationError)}
+              aria-describedby={validationError ? `${id}-validation` : undefined}
               className="mt-1.5 min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
             />
           </label>
@@ -128,11 +161,17 @@ export function GuidedIntake({
         </div>
       </details>
 
+      {validationError ? (
+        <p id={`${id}-validation`} className="mt-3 text-sm font-medium text-red-700" role="alert">
+          {validationError}
+        </p>
+      ) : null}
+
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <Button
           type="submit"
           size="lg"
-          disabled={!draft.need.trim() || isSubmitting}
+          disabled={!hasMeaningfulNeed || isSubmitting}
           className="min-h-[48px] gap-2 rounded-full px-6"
         >
           {isSubmitting ? 'Opening chat…' : submitLabel}

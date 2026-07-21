@@ -230,6 +230,9 @@ describe('buildTextSearchWhereClause', () => {
     const clause = buildTextSearchWhereClause('food bank', 1);
     expect(clause.sql).toContain('to_tsvector');
     expect(clause.sql).toContain('plainto_tsquery');
+    expect(clause.sql).toContain('service_taxonomy');
+    expect(clause.sql).toContain('taxonomy_terms');
+    expect(clause.sql).toContain('search_tt.term');
     expect(clause.params).toContain('food bank');
   });
 });

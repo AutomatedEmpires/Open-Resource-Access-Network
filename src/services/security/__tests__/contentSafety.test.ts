@@ -42,6 +42,8 @@ describe('hasDistressSignals (pre-filter)', () => {
       "nobody would miss me if I was gone",
       "I can't do this anymore",
       "I don't see a way out",
+      'I do not see a way out',
+      'I don’t see a way out',
       "I've given up on life",
       "I'm at my breaking point",
       "I just want to disappear",

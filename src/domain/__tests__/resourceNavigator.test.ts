@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildGuidedIntakePrompt,
+  buildGuidedIntakeSubmission,
   formatVerificationStatus,
   needsVerificationWarning,
   ORAN_USER_TYPES,
@@ -25,6 +26,26 @@ describe('resource navigator contracts', () => {
   it('does not invent optional intake context', () => {
     expect(buildGuidedIntakePrompt({ need: 'Food assistance' })).toBe('Food assistance.');
     expect(buildGuidedIntakePrompt({ need: '   ' })).toBe('');
+    expect(buildGuidedIntakePrompt({ need: '!!!' })).toBe('');
+    expect(buildGuidedIntakeSubmission({ need: '???' })).toBeNull();
+    expect(buildGuidedIntakePrompt({ need: '住房帮助' })).toBe('住房帮助.');
+  });
+
+  it('keeps readable intake context separate from deterministic retrieval text', () => {
+    expect(buildGuidedIntakeSubmission({
+      need: '  utility   bill help ',
+      location: ' 48201 ',
+      urgency: 'today',
+      audience: 'self',
+      accessMode: 'phone',
+    })).toEqual({
+      prompt: 'utility bill help. Near 48201. I need help today. This is for me. I need help I can reach by phone.',
+      searchText: 'utility bill help',
+      location: '48201',
+      urgency: 'today',
+      audience: 'self',
+      accessMode: 'phone',
+    });
   });
 
   it('formats and identifies warning verification states', () => {

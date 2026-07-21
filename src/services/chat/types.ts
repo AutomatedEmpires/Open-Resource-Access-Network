@@ -7,11 +7,17 @@ import type { EnrichedService } from '@/domain/types';
 import { CRISIS_RESOURCES, ELIGIBILITY_DISCLAIMER } from '@/domain/constants';
 import { DISCOVERY_NEED_IDS, type DiscoveryNeedId } from '@/domain/discoveryNeeds';
 import type { ResourceVerificationStatus } from '@/domain/resourceNavigator';
-import { buildSeekerDiscoveryProfile } from '@/services/profile/discoveryProfile';
 import { selectServiceLinks, type ServiceLink } from '@/services/chat/links';
 import { formatDiscoveryAttributeLabel } from '@/services/search/discoveryPresentation';
 import type { SearchFilters } from '@/services/search/types';
 import { SearchFiltersSchema } from '@/services/search/types';
+import { GuidedIntakeRequestSchema } from '@/services/chat/guidedIntakeContract';
+import {
+  buildChatSearchProfileSignals,
+  shouldUseSavedSeekerProfile,
+} from '@/services/chat/profileSignals';
+export { GuidedIntakeRequestSchema } from '@/services/chat/guidedIntakeContract';
+export type { GuidedIntakeRequest } from '@/services/chat/guidedIntakeContract';
 
 // ============================================================
 // INTENT
@@ -52,16 +58,27 @@ export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 // CHAT REQUEST
 // ============================================================
 
+export const ApproximateLocationSchema = z.object({
+  city: z.string().trim().min(1).max(120).optional(),
+  postalCode: z.string().regex(/^\d{5}$/).optional(),
+  stateProvince: z.string().trim().min(1).max(60).optional(),
+}).strict().refine((location) => Boolean(location.city || location.postalCode), {
+  message: 'City or postal code is required',
+});
+
 export const ChatRequestSchema = z.object({
   message: z.string().min(1).max(2000),
   sessionId: z.string().uuid(),
   userId: z.string().optional(),
   locale: z.string().default('en'),
   profileMode: z.enum(['use', 'ignore']).default('use'),
+  guidedIntake: GuidedIntakeRequestSchema.optional(),
   sessionContext: z
     .object({
       activeNeedId: z.enum(DISCOVERY_NEED_IDS).optional(),
+      activeRetrievalText: z.string().trim().min(1).max(500).optional(),
       activeCity: z.string().trim().min(1).max(120).optional(),
+      activeLocation: ApproximateLocationSchema.optional(),
       activeGeo: z
         .object({
           lat: z.number().min(-90).max(90),
@@ -70,6 +87,9 @@ export const ChatRequestSchema = z.object({
         })
         .optional(),
       urgency: z.enum(['urgent', 'standard']).optional(),
+      urgencyWindow: z.enum(['today', 'within_days', 'planning']).optional(),
+      audience: z.enum(['self', 'child', 'family', 'someone_else']).optional(),
+      accessMode: z.enum(['can_travel', 'cannot_travel', 'phone', 'online']).optional(),
       preferredDeliveryModes: z.array(z.string().min(1).max(40)).max(10).optional(),
       trustFilter: z.enum(['all', 'LIKELY', 'HIGH']).optional(),
       taxonomyTermIds: z.array(z.string().uuid()).max(20).optional(),
@@ -130,14 +150,12 @@ export interface ChatContext {
   locale: string;
   messageCount: number;
   profileShapingDisabled?: boolean;
+  /** Explicit need text used only for deterministic catalog retrieval. */
+  retrievalText?: string;
   sessionContext?: ChatSessionContext;
   userProfile?: UserProfile;
-  /** Approximate location — city or postal code only */
-  approximateLocation?: {
-    city?: string;
-    postalCode?: string;
-    stateProvince?: string;
-  };
+  /** Approximate location — city/state or ZIP only; never a street address. */
+  approximateLocation?: z.infer<typeof ApproximateLocationSchema>;
 }
 
 // ============================================================
@@ -209,6 +227,12 @@ export interface SearchInterpretation {
 export interface ChatRetrievalResult {
   services: EnrichedService[];
   retrievalStatus: Exclude<ChatRetrievalStatus, 'out_of_scope' | 'clarification_required'>;
+  /** Exact text used by the successful or final deterministic catalog query. */
+  effectiveSearchText?: string;
+  /** True only when a soft city/ZIP preference changed deterministic ordering. */
+  locationBiasApplied?: boolean;
+  /** True when exact need text missed and results came from a broader category query. */
+  searchBroadened?: boolean;
 }
 
 export interface ChatClarification {
@@ -231,6 +255,9 @@ export interface ChatResponse {
   eligibilityDisclaimer: typeof ELIGIBILITY_DISCLAIMER;
   llmSummarized: boolean;
   retrievalStatus?: ChatRetrievalStatus;
+  effectiveSearchText?: string;
+  locationBiasApplied?: boolean;
+  searchBroadened?: boolean;
   activeContextUsed?: boolean;
   sessionContext?: ChatSessionContext;
   searchInterpretation?: SearchInterpretation;
@@ -273,8 +300,12 @@ const ATTRIBUTE_MATCH_REASON_LABELS: Record<string, string> = {
   evening_hours: 'Offers evening hours',
   same_day: 'Marked for same-day help',
   next_day: 'Marked for next-day help',
+  '24_7': 'Marked as available 24/7',
+  after_hours: 'Offers after-hours access',
   transportation_provided: 'Helps with transportation',
   bilingual_services: 'Offers bilingual services',
+  youth_focused: 'Offers youth-focused services',
+  family_centered: 'Offers family-centered services',
   lgbtq_affirming: 'Marked LGBTQ+ affirming',
   child_friendly: 'Marked child friendly',
   pregnant: 'Tagged for pregnancy support',
@@ -306,9 +337,36 @@ export function deriveChatMatchReasons(
   const reasons: string[] = [];
   const seen = new Set<string>();
   const serviceAttributes = enriched.attributes ?? [];
-  const browsePreference = options?.context?.userProfile?.browsePreference;
-  const browseAttributeFilters = browsePreference?.attributeFilters ?? {};
-  const browseTaxonomyIds = new Set(browsePreference?.taxonomyTermIds ?? []);
+  const useSavedProfile = options?.context
+    ? shouldUseSavedSeekerProfile(options.context)
+    : false;
+  const browsePreference = useSavedProfile
+    ? options?.context?.userProfile?.browsePreference
+    : undefined;
+  const hasExplicitDeliveryPreference = Boolean(
+    options?.context?.sessionContext
+    && Object.prototype.hasOwnProperty.call(
+      options.context.sessionContext,
+      'preferredDeliveryModes',
+    ),
+  );
+  const browseAttributeFilters: NonNullable<SearchFilters['attributeFilters']> = {
+    ...(browsePreference?.attributeFilters ?? {}),
+    ...(options?.context?.sessionContext?.attributeFilters ?? {}),
+  };
+  if (hasExplicitDeliveryPreference) {
+    const deliveryModes = options?.context?.sessionContext?.preferredDeliveryModes ?? [];
+    if (deliveryModes.length > 0) {
+      browseAttributeFilters.delivery = deliveryModes;
+    } else {
+      delete browseAttributeFilters.delivery;
+    }
+  }
+  const browseTaxonomyIds = new Set(
+    options?.context?.sessionContext?.taxonomyTermIds
+    ?? browsePreference?.taxonomyTermIds
+    ?? [],
+  );
 
   for (const [taxonomy, tags] of Object.entries(browseAttributeFilters)) {
     tags.forEach((tag) => {
@@ -327,11 +385,8 @@ export function deriveChatMatchReasons(
     });
   }
 
-  if (options?.context?.userProfile) {
-    const discoveryProfile = buildSeekerDiscoveryProfile(options.context.userProfile, {
-      locale: options.context.locale,
-    });
-    const signalGroups = discoveryProfile.profileSignals;
+  if (options?.context) {
+    const signalGroups = buildChatSearchProfileSignals(options.context);
 
     signalGroups?.deliveryTags?.forEach((tag) => {
       const matched = serviceAttributes.some((attribute) => attribute.taxonomy === 'delivery' && attribute.tag === tag);
@@ -392,7 +447,9 @@ export function enrichedServiceToCard(
     intentCategory: options?.intent?.category ?? 'general',
     intentAction: options?.intent?.actionQualifier,
     locale: options?.context?.locale ?? 'en',
-    audienceTags: options?.context?.userProfile?.audienceTags,
+    audienceTags: options?.context && shouldUseSavedSeekerProfile(options.context)
+      ? options.context.userProfile?.audienceTags
+      : undefined,
   });
 
   const trustScore = confidenceScore?.verificationConfidence ?? 0;

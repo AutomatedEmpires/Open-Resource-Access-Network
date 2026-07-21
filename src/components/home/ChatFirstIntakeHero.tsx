@@ -2,13 +2,16 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { List, MapPin, ShieldCheck } from 'lucide-react';
 
 import { GuidedIntake } from '@/components/chat/GuidedIntake';
 import { SITE } from '@/lib/site';
+import { writeGuidedIntakeHandoff } from '@/services/chat/guidedIntakeHandoff';
 
 export function ChatFirstIntakeHero() {
   const router = useRouter();
+  const [handoffError, setHandoffError] = useState<string | null>(null);
 
   return (
     <section className="relative isolate overflow-hidden border-b border-blue-950 bg-gradient-brand-deep px-4 py-12 text-white sm:py-20">
@@ -52,10 +55,20 @@ export function ChatFirstIntakeHero() {
             <p className="mt-1 text-sm leading-6 text-slate-600">ORAN will ask for more only when it can change the match.</p>
             <GuidedIntake
               className="mt-5"
-              onSubmit={(prompt) => {
-                router.push(`/chat?q=${encodeURIComponent(prompt)}`);
+              onSubmit={(submission) => {
+                const stored = writeGuidedIntakeHandoff(submission);
+                if (!stored) {
+                  setHandoffError('Chat could not be opened safely on this device. Your answers are still here—please try again.');
+                  return;
+                }
+
+                setHandoffError(null);
+                router.push('/chat?from=guided');
               }}
             />
+            {handoffError ? (
+              <p className="mt-3 text-sm font-medium text-red-700" role="alert">{handoffError}</p>
+            ) : null}
           </div>
         </div>
       </div>

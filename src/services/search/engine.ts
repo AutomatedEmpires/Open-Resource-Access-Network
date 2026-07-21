@@ -136,6 +136,14 @@ export function buildTextSearchWhereClause(q: string, paramOffset = 1): WhereCla
     sql: `(
       to_tsvector('english', s.name || ' ' || coalesce(s.description, ''))
       @@ plainto_tsquery('english', $${paramOffset})
+      OR EXISTS (
+        SELECT 1
+        FROM service_taxonomy search_st
+        JOIN taxonomy_terms search_tt ON search_tt.id = search_st.taxonomy_term_id
+        WHERE search_st.service_id = s.id
+          AND to_tsvector('english', coalesce(search_tt.term, ''))
+            @@ plainto_tsquery('english', $${paramOffset})
+      )
     )`,
     params: [q],
   };
@@ -381,6 +389,9 @@ export interface SearchEngineDeps {
   executeCount: (sql: string, params: unknown[]) => Promise<number>;
 }
 
+const CITY_BIAS_CACHE_TTL_MS = 5 * 60 * 1000;
+const CITY_BIAS_CACHE_MAX_ENTRIES = 100;
+
 /**
  * ServiceSearchEngine
  *
@@ -389,33 +400,79 @@ export interface SearchEngineDeps {
  * helpers are exposed separately and must not replace the canonical path.
  */
 export class ServiceSearchEngine {
+  private readonly cityBiasCache = new Map<string, {
+    expiresAt: number;
+    value: Promise<CityCoords | null>;
+  }>();
+
   constructor(private readonly deps: SearchEngineDeps) {}
 
+  private resolveCityBias(location: string): Promise<CityCoords | null> {
+    const key = location.trim().replace(/\s+/g, ' ').toLowerCase();
+    const now = Date.now();
+    const cached = this.cityBiasCache.get(key);
+    if (cached && cached.expiresAt > now) {
+      return cached.value;
+    }
+
+    if (this.cityBiasCache.size >= CITY_BIAS_CACHE_MAX_ENTRIES) {
+      const oldestKey = this.cityBiasCache.keys().next().value;
+      if (oldestKey) this.cityBiasCache.delete(oldestKey);
+    }
+
+    const value = this.lookupCityCoords(location);
+    this.cityBiasCache.set(key, {
+      expiresAt: now + CITY_BIAS_CACHE_TTL_MS,
+      value,
+    });
+    return value;
+  }
+
   /**
-   * Look up approximate coordinates for a city by querying the addresses table.
-   * Returns null if city is not found.
+   * Look up approximate coordinates for a city, city/state pair, or ZIP using
+   * publication-gated service locations. The bias only affects ordering.
    */
-  async lookupCityCoords(cityName: string): Promise<CityCoords | null> {
+  async lookupCityCoords(location: string): Promise<CityCoords | null> {
     try {
+      const normalized = location.trim().replace(/\s+/g, ' ');
+      if (!normalized) return null;
+
+      const postalCode = normalized.match(/^(\d{5})(?:-\d{4})?$/)?.[1];
+      const [city, stateProvince] = normalized.split(',', 2).map((part) => part.trim());
+      const locationPredicate = postalCode
+        ? 'LEFT(a.postal_code, 5) = $1'
+        : stateProvince
+          ? 'LOWER(a.city) = LOWER($1) AND LOWER(a.state_province) = LOWER($2)'
+          : 'LOWER(a.city) = LOWER($1)';
+      const ambiguityGuard = !postalCode && !stateProvince
+        ? "HAVING COUNT(DISTINCT COALESCE(public_location.state_province, '')) = 1"
+        : '';
+      const locationParams = postalCode
+        ? [postalCode]
+        : stateProvince
+          ? [city, stateProvince]
+          : [city];
+
       const result = await this.deps.executeQuery<{ lat: number; lng: number }>(
         `SELECT
            AVG(public_location.latitude)::float AS lat,
            AVG(public_location.longitude)::float AS lng
          FROM (
-           SELECT DISTINCT l.id, l.latitude, l.longitude
+           SELECT DISTINCT l.id, l.latitude, l.longitude, a.state_province
            FROM addresses a
            JOIN locations l ON l.id = a.location_id
            JOIN service_at_location sal ON sal.location_id = l.id
            JOIN services s ON s.id = sal.service_id
            JOIN organizations o ON o.id = s.organization_id
-           WHERE LOWER(a.city) = LOWER($1)
+           WHERE ${locationPredicate}
              AND l.status = 'active'
              AND l.latitude IS NOT NULL
              AND l.longitude IS NOT NULL
              AND ${buildPublishedServicePredicate('s', 'o')}
          ) public_location
+         ${ambiguityGuard}
          LIMIT 1`,
-        [cityName]
+        locationParams
       );
       if (result.length === 0 || result[0].lat == null || result[0].lng == null) {
         return null;
@@ -431,7 +488,7 @@ export class ServiceSearchEngine {
     // If cityBias is provided, look up coordinates for distance-based sorting
     let cityCoords: CityCoords | undefined;
     if (query.cityBias && !query.geo) {
-      const coords = await this.lookupCityCoords(query.cityBias);
+      const coords = await this.resolveCityBias(query.cityBias);
       if (coords) {
         cityCoords = coords;
       }
@@ -452,6 +509,7 @@ export class ServiceSearchEngine {
       page: query.pagination.page,
       limit: query.pagination.limit,
       hasMore: total > query.pagination.page * query.pagination.limit,
+      locationBiasApplied: Boolean(cityCoords),
     };
   }
 

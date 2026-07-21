@@ -198,6 +198,20 @@ export interface GuidedIntakeDraft {
   accessMode?: 'can_travel' | 'cannot_travel' | 'phone' | 'online';
 }
 
+/**
+ * A guided intake keeps the seeker's readable chat turn separate from the
+ * minimum text used for catalog retrieval. Optional answers remain explicit
+ * fields so they cannot accidentally become required full-text terms.
+ */
+export interface GuidedIntakeSubmission {
+  prompt: string;
+  searchText: string;
+  location?: string;
+  urgency?: Exclude<UrgencyLevel, 'immediate'>;
+  audience?: UserNeed['audience'];
+  accessMode?: GuidedIntakeDraft['accessMode'];
+}
+
 const URGENCY_PROMPTS: Record<Exclude<UrgencyLevel, 'immediate'>, string> = {
   today: 'I need help today.',
   within_days: 'I need help within the next few days.',
@@ -223,16 +237,49 @@ const ACCESS_PROMPTS: Record<NonNullable<GuidedIntakeDraft['accessMode']>, strin
  * It never adds eligibility, location, or urgency facts the seeker did not give.
  */
 export function buildGuidedIntakePrompt(draft: GuidedIntakeDraft): string {
-  const need = draft.need.trim().replace(/\s+/g, ' ');
-  if (!need) return '';
+  return buildGuidedIntakeSubmission(draft)?.prompt ?? '';
+}
 
-  const parts = [need.replace(/[.!?]+$/, '') + '.'];
+export function buildGuidedIntakeSubmission(
+  draft: GuidedIntakeDraft,
+): GuidedIntakeSubmission | null {
+  const searchText = draft.need.trim().replace(/\s+/g, ' ');
+  if (!searchText || !/[\p{L}\p{N}]/u.test(searchText)) return null;
+
+  const parts = [searchText.replace(/[.!?]+$/, '') + '.'];
   const location = draft.location?.trim().replace(/\s+/g, ' ');
   if (location) parts.push(`Near ${location.replace(/[.!?]+$/, '')}.`);
   if (draft.urgency) parts.push(URGENCY_PROMPTS[draft.urgency]);
   if (draft.audience) parts.push(AUDIENCE_PROMPTS[draft.audience]);
   if (draft.accessMode) parts.push(ACCESS_PROMPTS[draft.accessMode]);
-  return parts.join(' ');
+
+  return {
+    prompt: parts.join(' '),
+    searchText,
+    location,
+    urgency: draft.urgency,
+    audience: draft.audience,
+    accessMode: draft.accessMode,
+  };
+}
+
+function normalizeGuidedIntakePrompt(value: string): string {
+  return value
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/[.!?]+$/, '.');
+}
+
+/**
+ * Confirms that structured intake fields describe the same visible chat turn.
+ * This prevents hidden fields from silently changing what the catalog searches.
+ */
+export function guidedIntakePromptMatchesDraft(
+  prompt: string,
+  draft: GuidedIntakeDraft,
+): boolean {
+  return normalizeGuidedIntakePrompt(prompt)
+    === normalizeGuidedIntakePrompt(buildGuidedIntakePrompt(draft));
 }
 
 export function formatVerificationStatus(status: ResourceVerificationStatus): string {

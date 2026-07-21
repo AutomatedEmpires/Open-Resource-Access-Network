@@ -49,18 +49,19 @@ export async function findUnroutedCandidates(
 ): Promise<UnroutedCandidate[]> {
   return executeQuery<UnroutedCandidate>(
     `SELECT
-       ec.id AS "candidateId",
-       ec.fields->>'stateProvince' AS "stateProvince",
-       ec.fields->>'countyOrRegion' AS "countyOrRegion",
+       ec.candidate_id AS "candidateId",
+       ec.jurisdiction_state AS "stateProvince",
+       ec.jurisdiction_county AS "countyOrRegion",
        ec.created_at AS "enqueuedAt",
        EXTRACT(EPOCH FROM (NOW() - ec.created_at)) / 3600 AS "hoursWaiting"
      FROM extracted_candidates ec
-     WHERE ec.review_status IN ('pending', 'needs_review')
+     WHERE ec.review_status IN ('pending', 'in_review')
+       AND ec.assigned_to_user_id IS NULL
        AND ec.created_at < NOW() - INTERVAL '1 hour' * $1
        AND NOT EXISTS (
          SELECT 1 FROM candidate_admin_assignments caa
-         WHERE caa.candidate_id = ec.id
-           AND caa.assignment_status NOT IN ('expired', 'declined')
+         WHERE caa.candidate_id = ec.candidate_id
+           AND caa.status IN ('pending', 'claimed')
        )
      ORDER BY ec.created_at ASC
      LIMIT 200`,
@@ -76,17 +77,18 @@ export async function getCoverageGapSummaries(
 ): Promise<CoverageGapSummary[]> {
   return executeQuery<CoverageGapSummary>(
     `SELECT
-       COALESCE(ec.fields->>'stateProvince', 'Unknown') AS state,
-       ec.fields->>'countyOrRegion' AS county,
+       COALESCE(ec.jurisdiction_state, 'Unknown') AS state,
+       ec.jurisdiction_county AS county,
        COUNT(*)::int AS "unroutedCount",
        MAX(EXTRACT(EPOCH FROM (NOW() - ec.created_at)) / 3600) AS "oldestHoursWaiting"
      FROM extracted_candidates ec
-     WHERE ec.review_status IN ('pending', 'needs_review')
+     WHERE ec.review_status IN ('pending', 'in_review')
+       AND ec.assigned_to_user_id IS NULL
        AND ec.created_at < NOW() - INTERVAL '1 hour' * $1
        AND NOT EXISTS (
          SELECT 1 FROM candidate_admin_assignments caa
-         WHERE caa.candidate_id = ec.id
-           AND caa.assignment_status NOT IN ('expired', 'declined')
+         WHERE caa.candidate_id = ec.candidate_id
+           AND caa.status IN ('pending', 'claimed')
        )
      GROUP BY state, county
      ORDER BY "unroutedCount" DESC`,

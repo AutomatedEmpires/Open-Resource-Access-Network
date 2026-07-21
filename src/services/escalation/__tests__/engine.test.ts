@@ -33,6 +33,7 @@ describe('checkSlaWarnings', () => {
 
     expect(count).toBe(0);
     expect(dbMocks.executeQuery).toHaveBeenCalledTimes(1);
+    expect(dbMocks.executeQuery.mock.calls[0]?.[0]).toContain('ne.resource_id = s.id::text');
   });
 
   it('fires warning notifications for approaching submissions', async () => {

@@ -117,17 +117,19 @@ export async function POST(req: NextRequest) {
 // ============================================================
 
 /**
- * Persist newly detected regression candidates in three batched steps.
+ * Persist newly detected regression candidates in six bounded queries.
  *
- * Query budget: exactly 5 insert/dedup queries regardless of candidate count.
+ * Query budget: exactly 6 insert/dedup queries regardless of candidate count.
  *   1. Dedup check — filter keys already in the 72-hour window
  *   2. Batch INSERT confidence_regressions (ON CONFLICT handles concurrent races)
  *   3. Batch INSERT submissions (admin tasks)
- *   4. Batch INSERT submission_transitions
- *   5. Batch INSERT notification_events (fan-out via CROSS JOIN)
+ *   4. Batch UPDATE confidence_regressions with their now-existing submissions
+ *   5. Batch INSERT submission_transitions
+ *   6. Batch INSERT notification_events (fan-out via CROSS JOIN)
  *
- * Pre-generated UUIDs eliminate the UPDATE round-trip that would otherwise
- * be needed to back-link regression ↔ submission.
+ * Submission UUIDs are pre-generated, but the regression row is inserted with
+ * a NULL back-link first because the foreign key is immediate. The back-link
+ * is filled only after the referenced submission exists in this transaction.
  */
 async function persistRegressions(
   client: PoolClient,
@@ -143,8 +145,8 @@ async function persistRegressions(
   );
   const existingKeys = new Set(existing.rows.map((r) => r.dedupe_key));
 
-  // Pre-generate UUIDs so regression and submission IDs are known before any INSERT.
-  // This avoids a two-step INSERT+UPDATE back-link pattern.
+  // Pre-generate UUIDs so regression and submission IDs are stable throughout
+  // the transaction, including the required post-insert back-link update.
   const pairs = candidates
     .filter((c) => !existingKeys.has(c.dedupeKey))
     .map((candidate) => ({
@@ -161,14 +163,14 @@ async function persistRegressions(
   const regResult = await client.query<{ id: string }>(
     `INSERT INTO confidence_regressions
        (id, entity_type, entity_id, signal_type, current_score, current_band,
-        reasons_json, status, dedupe_key, submission_id)
+        reasons_json, status, dedupe_key)
      SELECT
        t.regression_id, 'service', t.service_id, t.signal_type,
-       t.score::numeric, t.band, t.reasons::jsonb, 'open', t.dedupe_key, t.submission_id
+       t.score::numeric, t.band, t.reasons::jsonb, 'open', t.dedupe_key
      FROM unnest($1::uuid[], $2::uuid[], $3::text[], $4::numeric[], $5::text[],
-                 $6::text[], $7::text[], $8::uuid[])
+                 $6::text[], $7::text[])
        AS t(regression_id, service_id, signal_type, score, band,
-            reasons, dedupe_key, submission_id)
+            reasons, dedupe_key)
      ON CONFLICT (dedupe_key) DO NOTHING
      RETURNING id`,
     [
@@ -179,7 +181,6 @@ async function persistRegressions(
       pairs.map((p) => p.candidate.currentBand),
       pairs.map((p) => JSON.stringify(p.candidate.reasons)),
       pairs.map((p) => p.candidate.dedupeKey),
-      pairs.map((p) => p.submissionId),
     ],
   );
 
@@ -214,7 +215,20 @@ async function persistRegressions(
     ],
   );
 
-  // 4. Batch INSERT submission transitions.
+  // 4. Back-link each regression only after its referenced submission exists.
+  await client.query(
+    `UPDATE confidence_regressions cr
+     SET submission_id = t.submission_id
+     FROM unnest($1::uuid[], $2::uuid[]) AS t(regression_id, submission_id)
+     WHERE cr.id = t.regression_id
+       AND cr.submission_id IS NULL`,
+    [
+      actualPairs.map((p) => p.regressionId),
+      actualPairs.map((p) => p.submissionId),
+    ],
+  );
+
+  // 5. Batch INSERT submission transitions.
   await client.query(
     `INSERT INTO submission_transitions
        (submission_id, from_status, to_status, actor_user_id, actor_role,
@@ -229,7 +243,7 @@ async function persistRegressions(
     ],
   );
 
-  // 5. Batch INSERT in-app notifications — fan-out to all admin users in one query.
+  // 6. Batch INSERT in-app notifications — fan-out to all admin users in one query.
   await client.query(
     `INSERT INTO notification_events
        (recipient_user_id, event_type, title, body, resource_type,

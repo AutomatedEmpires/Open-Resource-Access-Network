@@ -85,8 +85,9 @@ filename-keyed ledger or remove them during reconciliation.
 
 ORAN uses plain SQL migrations under `db/migrations/`. They are the canonical schema history.
 
-The current release contains exactly 74 migration files, from
-`0000_initial_schema.sql` through `0075_data_api_acl_lockdown.sql`.
+The current release contains exactly 75 migration files, from
+`0000_initial_schema.sql` through
+`0076_account_erasure_highwater_planner_fix.sql`.
 
 Production workflow behavior:
 
@@ -123,7 +124,8 @@ Account-erasure index release order:
    live, ready, and valid. Insert its ledger row only after that gate succeeds.
    A `55000` failure is a safe stop and must leave `0072` unrecorded.
 
-Do not deploy the account-erasure worker between steps 1 and 4. If an online
+Do not deploy the account-erasure worker between steps 1 and 4 or before the
+post-gate `0076` planner fix is applied and recorded. If an online
 build times out, rerun step 3 before retrying the tracked gate. See
 [`RUNBOOK_ACCOUNT_ERASURE.md`](../docs/ops/services/RUNBOOK_ACCOUNT_ERASURE.md)
 for rollout, retry, blocked-request, and monitoring procedures.
@@ -137,7 +139,10 @@ Post-gate release order:
 3. Apply and then record `0075_data_api_acl_lockdown.sql`, which removes inherited
    browser-role access to `public` and enables RLS as defense in depth on ORAN
    application tables.
-4. Configure Supabase PostgREST to expose only `oran_api`, then prove that a
+4. Apply and then record `0076_account_erasure_highwater_planner_fix.sql`, which
+   preserves the indexed actor match before choosing a service UUID high-water
+   mark and prevents nationwide zero-match erasures from walking the primary key.
+5. Configure Supabase PostgREST to expose only `oran_api`, then prove that a
    publishable/anon request cannot resolve either `public.services` or
    `public.spatial_ref_sys`. SQL migration `0074` does not change this provider
    setting by itself.
@@ -174,7 +179,8 @@ VERIFY_DATA_API_ISOLATION=true \
 scripts/db/configure-supabase-data-api.sh <branch-project-ref> oran_api
 ```
 
-The rehearsal must finish with `74|0075_data_api_acl_lockdown.sql`, all 128
+The rehearsal must finish with
+`75|0076_account_erasure_highwater_planner_fix.sql`, all 128
 account-erasure indexes live/ready/valid, the release gate open, and Data API
 isolation verified. A partial ledger is not acceptance evidence.
 
@@ -193,7 +199,8 @@ bash scripts/db/disposable-postgres.sh
 
 The `public.schema_migrations` table is the deployment ledger expected by the
 current GitHub Actions migration workflow. For this release its exact repository
-state is 74 rows with `0075_data_api_acl_lockdown.sql` as the maximum filename.
+state is 75 rows with `0076_account_erasure_highwater_planner_fix.sql` as the
+maximum filename.
 Supabase-managed migrations use Supabase's own separate history.
 
 ### Drizzle status

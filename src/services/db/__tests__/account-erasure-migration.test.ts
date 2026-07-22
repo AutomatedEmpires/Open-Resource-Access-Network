@@ -11,6 +11,13 @@ const indexGate = readFileSync(
   resolve(process.cwd(), 'db/migrations/0072_account_erasure_index_gate.sql'),
   'utf8',
 );
+const highwaterPlannerFix = readFileSync(
+  resolve(
+    process.cwd(),
+    'db/migrations/0076_account_erasure_highwater_planner_fix.sql',
+  ),
+  'utf8',
+);
 const onlineIndexBuild = readFileSync(
   resolve(process.cwd(), 'scripts/db/build-account-erasure-indexes.sql'),
   'utf8',
@@ -192,6 +199,45 @@ describe('0071 bounded durable account erasure migration', () => {
     expect(onlineIndexBuild).toContain('idx_ae_services_human_actors');
     expect(onlineIndexBuild).toContain('USING gin ((ARRAY[created_by_user_id');
     expect(onlineIndexBuild).toContain("updated_by_user_id !~ '^import:'");
+  });
+
+  it('materializes nationwide service matches before choosing the UUID high-water mark', () => {
+    const oldSelector = highwaterPlannerFix.match(
+      /v_old_fragment constant text := \$old\$\n([\s\S]*?)\n\$old\$;/,
+    )?.[1];
+    const newSelector = highwaterPlannerFix.match(
+      /v_new_fragment constant text := \$new\$\n([\s\S]*?)\n\$new\$;/,
+    )?.[1];
+
+    expect(oldSelector).toBeDefined();
+    expect(newSelector).toBeDefined();
+    expect(migration.split(oldSelector!)).toHaveLength(2);
+
+    const effectiveMigration = migration.replace(oldSelector!, newSelector!);
+    const effectiveDispatcher = effectiveMigration.slice(
+      effectiveMigration.indexOf(
+        'CREATE OR REPLACE FUNCTION oran_internal.process_account_erasure_page',
+      ),
+      effectiveMigration.indexOf(
+        'CREATE OR REPLACE FUNCTION oran_internal.complete_account_erasure',
+      ),
+    );
+    const servicesStep = effectiveDispatcher.slice(
+      effectiveDispatcher.indexOf("WHEN 'services' THEN"),
+      effectiveDispatcher.indexOf("WHEN 'staging_locations' THEN"),
+    );
+
+    expect(effectiveDispatcher.match(/WHEN '[a-z_]+' THEN/g)).toHaveLength(72);
+    expect(servicesStep).toContain('WITH matching_services AS MATERIALIZED');
+    expect(servicesStep).toContain('FROM matching_services');
+    expect(servicesStep).not.toContain(
+      'SELECT id INTO v_high FROM public.services',
+    );
+    expect(servicesStep).not.toContain('ORDER BY id DESC LIMIT 1');
+    expect(highwaterPlannerFix).toContain('pg_catalog.pg_get_functiondef');
+    expect(highwaterPlannerFix).toContain(
+      'account erasure dispatcher security metadata changed unexpectedly',
+    );
   });
 
   it('records Clerk deletion durably and refuses premature completion', () => {

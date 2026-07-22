@@ -140,14 +140,15 @@ fi
 mapfile -t migrations < <(
   find db/migrations -maxdepth 1 -type f -name '*.sql' -printf '%p\n' | sort
 )
-if [[ "${#migrations[@]}" != "74" \
+if [[ "${#migrations[@]}" != "75" \
   || "$(basename "${migrations[66]}")" != "0068_shared_rate_limit_windows.sql" \
   || "$(basename "${migrations[67]}")" != "0069_backend_contact_read_capability.sql" \
   || "$(basename "${migrations[68]}")" != "0070_services_fulltext_index.sql" \
   || "$(basename "${migrations[69]}")" != "0071_account_erasure_workflow.sql" \
   || "$(basename "${migrations[70]}")" != "0072_account_erasure_index_gate.sql" \
-  || "$(basename "${migrations[73]}")" != "0075_data_api_acl_lockdown.sql" ]]; then
-  echo "Repository migration manifest does not match the reviewed 74-file release." >&2
+  || "$(basename "${migrations[73]}")" != "0075_data_api_acl_lockdown.sql" \
+  || "$(basename "${migrations[74]}")" != "0076_account_erasure_highwater_planner_fix.sql" ]]; then
+  echo "Repository migration manifest does not match the reviewed 75-file release." >&2
   exit 1
 fi
 
@@ -338,7 +339,7 @@ release_state="$(
     );"
 )"
 if [[ "$release_state" != \
-  "74|0075_data_api_acl_lockdown.sql|t|0|t|f|f" ]]; then
+  "75|0076_account_erasure_highwater_planner_fix.sql|t|0|t|f|f" ]]; then
   echo "Production release-state assertion failed: $release_state" >&2
   exit 1
 fi

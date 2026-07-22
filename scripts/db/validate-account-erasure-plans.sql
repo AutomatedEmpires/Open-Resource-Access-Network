@@ -95,6 +95,61 @@ BEGIN
 END
 $assert_matching_subset_plan$;
 
+DO $assert_services_highwater_plan$
+DECLARE
+  v_plan json;
+  v_plan_text text;
+BEGIN
+  EXECUTE $explain$
+    EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+    WITH matching_services AS MATERIALIZED (
+      SELECT id
+      FROM public.services
+      WHERE ARRAY[
+              created_by_user_id,
+              updated_by_user_id,
+              integrity_held_by_user_id
+            ] @> ARRAY['user-highwater-no-match']
+        AND (
+          (created_by_user_id IS NOT NULL
+           AND created_by_user_id !~ '^import:')
+          OR (updated_by_user_id IS NOT NULL
+              AND updated_by_user_id !~ '^import:')
+          OR (integrity_held_by_user_id IS NOT NULL
+              AND integrity_held_by_user_id !~ '^import:')
+        )
+    )
+    SELECT id
+    FROM matching_services
+    ORDER BY id DESC
+    LIMIT 1
+  $explain$
+  INTO v_plan;
+
+  v_plan_text := v_plan::text;
+  IF pg_catalog.strpos(v_plan_text, 'idx_ae_services_human_actors') = 0 THEN
+    RAISE EXCEPTION USING
+      MESSAGE = 'account-erasure high-water selector did not use the matching-subset index',
+      DETAIL = v_plan_text;
+  END IF;
+  IF pg_catalog.strpos(v_plan_text, 'CTE Scan') = 0 THEN
+    RAISE EXCEPTION USING
+      MESSAGE = 'account-erasure high-water selector was not materialized',
+      DETAIL = v_plan_text;
+  END IF;
+  IF pg_catalog.strpos(v_plan_text, 'services_pkey') > 0 THEN
+    RAISE EXCEPTION USING
+      MESSAGE = 'account-erasure high-water selector used a backward primary-key scan',
+      DETAIL = v_plan_text;
+  END IF;
+  IF pg_catalog.strpos(v_plan_text, '"Actual Rows": 0') = 0 THEN
+    RAISE EXCEPTION USING
+      MESSAGE = 'zero-match account-erasure high-water selector returned unrelated rows',
+      DETAIL = v_plan_text;
+  END IF;
+END
+$assert_services_highwater_plan$;
+
 DO $assert_json_matching_subset_plan$
 DECLARE
   v_plan json;

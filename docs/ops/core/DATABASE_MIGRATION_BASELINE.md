@@ -6,7 +6,7 @@ ledger. The runner must never create or guess an imported production baseline.
 
 ## Current release manifest
 
-The release contains exactly 74 lexical migration files:
+The release contains exactly 75 lexical migration files:
 
 - first: `0000_initial_schema.sql`
 - comparison/baseline boundary: `0068_shared_rate_limit_windows.sql` (67 files)
@@ -19,9 +19,11 @@ The release contains exactly 74 lexical migration files:
 - canonical external identities: `0073_canonical_entity_identifiers.sql`
 - empty Data API schema: `0074_isolate_data_api_schema.sql`
 - browser-role ACL/RLS lockdown: `0075_data_api_acl_lockdown.sql`
+- erasure high-water planner fix:
+  `0076_account_erasure_highwater_planner_fix.sql`
 
-The expected final repository ledger is therefore exactly 74 rows with
-`0075_data_api_acl_lockdown.sql` as the maximum filename. Supabase's own
+The expected final repository ledger is therefore exactly 75 rows with
+`0076_account_erasure_highwater_planner_fix.sql` as the maximum filename. Supabase's own
 `supabase_migrations.schema_migrations` history is provider metadata and remains
 separate. Do not copy, delete, or rename provider entries while establishing the
 ORAN ledger.
@@ -72,7 +74,7 @@ scripts/db/configure-supabase-data-api.sh <branch-project-ref> oran_api
 
 Acceptance requires all of the following:
 
-- output `74|0075_data_api_acl_lockdown.sql`;
+- output `75|0076_account_erasure_highwater_planner_fix.sql`;
 - `0070` exists as a live, ready, valid concurrent index;
 - all 128 fixed account-erasure indexes are live, ready, and valid;
 - the account-erasure release gate is open;
@@ -108,12 +110,12 @@ repair changes history; it does not execute SQL and is not acceptance evidence.
 8. Execute `0072`. Record it only after the exact gate succeeds and opens
    `indexes_ready`. A SQLSTATE `55000` is a safe stop; leave `0072` absent, repair
    or resume the online build, and retry the migration.
-9. Execute and record `0073`, `0074`, and `0075` in lexical order, recording each
-   only after its SQL succeeds.
+9. Execute and record `0073`, `0074`, `0075`, and `0076` in lexical order,
+   recording each only after its SQL succeeds.
 10. Configure Supabase PostgREST to expose only `oran_api`, then run the Data API
     isolation proof. Migration `0074` creates the schema but cannot change the
     provider setting by itself.
-11. Verify the exact 74-row repository ledger, the release gates, runtime
+11. Verify the exact 75-row repository ledger, the release gates, runtime
     connectivity, and application smoke tests before enabling automatic remote
     migration dispatch.
 
@@ -141,7 +143,7 @@ npx vitest run \
 ```
 
 On the target database, the release is not complete until this returns
-`74|0075_data_api_acl_lockdown.sql` and the erasure gate is true:
+`75|0076_account_erasure_highwater_planner_fix.sql` and the erasure gate is true:
 
 ```sql
 SELECT count(*) || '|' || max(filename)

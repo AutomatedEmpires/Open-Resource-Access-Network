@@ -79,5 +79,14 @@ if [ "$SHELL_ONLY" -eq 1 ]; then
   exec docker exec -it "$NAME" psql -U supabase_admin -d "$DB"
 fi
 
-MIGRATION_DATABASE_URL="$URL" node scripts/db/verify-migrations.mjs
-exit $?
+MIGRATION_DATABASE_URL="$URL" node scripts/db/verify-migrations.mjs || exit $?
+
+docker exec -i "$NAME" psql \
+  -U supabase_admin \
+  -d "$DB" \
+  -X \
+  -v ON_ERROR_STOP=1 \
+  -v allow_disposable_account_erasure_plan_test=true \
+  < scripts/db/validate-account-erasure-plans.sql || exit $?
+
+echo "account-erasure plan verification passed"

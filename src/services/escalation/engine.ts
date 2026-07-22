@@ -96,7 +96,7 @@ export async function checkSlaWarnings(): Promise<number> {
        )
        AND NOT EXISTS (
          SELECT 1 FROM notification_events ne
-         WHERE ne.resource_id = s.id
+         WHERE ne.resource_id = s.id::text
            AND ne.resource_type = 'submission'
            AND ne.event_type = 'submission_sla_warning'
        )`,

@@ -436,19 +436,28 @@ export async function PUT(req: NextRequest, ctx: RouteContext) {
 
   try {
     const scope = await getCommunityAdminScope(authCtx.userId);
-    if (scope.hasExplicitScope) {
-      const accessParams: unknown[] = [id];
-      const scopeCondition = buildCommunitySubmissionScope('sub', scope, accessParams);
-      const accessRows = await executeQuery<{ id: string }>(
-        `SELECT sub.id
-         FROM submissions sub
-         WHERE sub.id = $1${scopeCondition ? ` AND ${scopeCondition}` : ''}`,
-        accessParams,
-      );
+    const accessParams: unknown[] = [id];
+    const scopeCondition = scope.hasExplicitScope
+      ? buildCommunitySubmissionScope('sub', scope, accessParams)
+      : '';
+    const accessRows = await executeQuery<{ id: string; submission_type: string }>(
+      `SELECT sub.id, sub.submission_type
+       FROM submissions sub
+       WHERE sub.id = $1${scopeCondition ? ` AND ${scopeCondition}` : ''}`,
+      accessParams,
+    );
 
-      if (accessRows.length === 0) {
-        return NextResponse.json({ error: 'Submission not found' }, { status: 404 });
-      }
+    if (accessRows.length === 0) {
+      return NextResponse.json({ error: 'Submission not found' }, { status: 404 });
+    }
+
+    const isOrganizationClaimDecision = accessRows[0].submission_type === 'org_claim'
+      && (decision === 'approved' || decision === 'denied');
+    if (isOrganizationClaimDecision && !requireMinRole(authCtx, 'oran_admin')) {
+      return NextResponse.json(
+        { error: 'ORAN administrator permissions required for organization claim decisions.' },
+        { status: 403 },
+      );
     }
 
     // Save reviewer notes before advancing

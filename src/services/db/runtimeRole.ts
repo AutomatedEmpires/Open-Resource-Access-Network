@@ -1,3 +1,5 @@
+import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy';
+
 export const ORAN_BACKEND_DATABASE_ROLE = 'oran_backend_runtime' as const;
 
 const SUPABASE_PROJECT_REF_PATTERN = /^[a-z0-9]{20}$/;
@@ -12,6 +14,7 @@ export function buildRuntimeDatabaseConnectionString(
   connectionString: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
+  assertAllowedRuntimeEndpoint(connectionString, 'DATABASE_URL', env);
   const configuredRole = env.ORAN_DATABASE_ROLE?.trim();
 
   if (!configuredRole) {

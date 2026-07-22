@@ -71,11 +71,13 @@ incidents use
    or service-role keys without a separate RLS review.
 
 The repository's Supabase migration workflow requires an existing, reviewed
-`schema_migrations` baseline before it can apply schema changes. The imported ORAN
-production database does not currently have that repository ledger, so the workflow
-fails closed rather than replaying historical SQL over live data. Supabase-managed
-migrations are tracked separately in Supabase's own migration history. Do not
-conflate the two ledgers or create a production baseline without a schema review.
+`public.schema_migrations` baseline before it can apply schema changes. An
+imported ORAN database without that ledger must fail closed rather than replaying
+historical SQL over populated data. Establish the baseline only after the target
+has been compared semantically with a rehearsal database through
+`0068_shared_rate_limit_windows.sql`. Supabase-managed migrations are tracked in
+Supabase's separate provider history; never copy those entries into ORAN's
+filename-keyed ledger or remove them during reconciliation.
 
 ---
 
@@ -83,19 +85,26 @@ conflate the two ledgers or create a production baseline without a schema review
 
 ORAN uses plain SQL migrations under `db/migrations/`. They are the canonical schema history.
 
-The current repository contains migrations from `0000_initial_schema.sql` through
-`0073_account_erasure_index_gate.sql`.
+The current release contains exactly 74 migration files, from
+`0000_initial_schema.sql` through `0075_data_api_acl_lockdown.sql`.
 
 Production workflow behavior:
 
 - `.github/workflows/db-migrate.yml` installs `psql`, requires a pre-existing
   reviewed `schema_migrations` ledger, and applies each SQL file in lexical order
   exactly once. It never creates or guesses an imported production baseline.
+- The generic workflow refuses to run while either account-erasure migration is
+  absent from the ledger. Operators must complete the controlled `0071` → online
+  index build → `0072` sequence first; the generic runner cannot pause safely for
+  that phase.
 - The workflow is intentionally SQL-first. Drizzle remains available for schema typing and future tooling, but it is not the production migration orchestrator in the current repository state.
 
 Account-erasure index release order:
 
-1. Apply `0071_account_erasure_workflow.sql` and `0072_service_embeddings.sql`.
+1. Apply `0071_account_erasure_workflow.sql`. This installs the private durable
+   request/step ledgers and revocation controls, but its release gate keeps new
+   erasure requests dark. Insert its `schema_migrations` row only after the SQL
+   completes successfully.
 2. From a controlled operator session, prevalidate that `SUPABASE_DB_URL` is the
    dedicated ORAN Supabase direct or session connection. Do not use the
    transaction pooler and do not print the URL.
@@ -105,47 +114,87 @@ Account-erasure index release order:
    same-name artifacts from an interrupted prior build, and verifies every fixed
    manifest index before returning success. Each build has a five-second lock
    budget and a 30-minute statement budget; monitor database disk, WAL, replica
-   lag, and Supabase health throughout this maintenance operation.
-4. Apply `0073_account_erasure_index_gate.sql`. It contains no psql meta-commands
+   lag, and Supabase health throughout this maintenance operation. This is an
+   untracked operator phase: do not invent a migration filename or ledger row for
+   the 128 indexes.
+4. Apply `0072_account_erasure_index_gate.sql`. It contains no psql meta-commands
    and is safe for the migration API; it refuses to advance migration history
-   unless every online index is live, ready, and valid.
+   unless every online index exists on its exact expected schema/table and is
+   live, ready, and valid. Insert its ledger row only after that gate succeeds.
+   A `55000` failure is a safe stop and must leave `0072` unrecorded.
 
 Do not deploy the account-erasure worker between steps 1 and 4. If an online
-build times out, rerun step 3 before retrying the tracked gate.
+build times out, rerun step 3 before retrying the tracked gate. See
+[`RUNBOOK_ACCOUNT_ERASURE.md`](../docs/ops/services/RUNBOOK_ACCOUNT_ERASURE.md)
+for rollout, retry, blocked-request, and monitoring procedures.
 
-### Run migrations via psql
+Post-gate release order:
 
-The bootstrap example below is for a new, empty local or staging database only. Do
-not run it against the imported production database.
+1. Apply and then record `0073_canonical_entity_identifiers.sql`, which admits
+   the canonical source identifiers used by the regional ingestion path.
+2. Apply and then record `0074_isolate_data_api_schema.sql`, which creates the
+   empty, deny-by-default `oran_api` schema.
+3. Apply and then record `0075_data_api_acl_lockdown.sql`, which removes inherited
+   browser-role access to `public` and enables RLS as defense in depth on ORAN
+   application tables.
+4. Configure Supabase PostgREST to expose only `oran_api`, then prove that a
+   publishable/anon request cannot resolve either `public.services` or
+   `public.spatial_ref_sys`. SQL migration `0074` does not change this provider
+   setting by itself.
+
+### Rehearse on a Supabase branch
+
+Use an isolated branch created from the production project. The rehearsal helper
+retrieves branch credentials without printing them, validates the branch project
+identity, refuses a populated target without a repository ledger, handles the
+concurrent `0070` and `0071`/128-index/`0072` phases, and records each SQL file
+only after it succeeds.
+
+To stop at the known imported-schema comparison boundary, run:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-CREATE TABLE IF NOT EXISTS schema_migrations (
-   filename text PRIMARY KEY,
-   applied_at timestamptz NOT NULL DEFAULT now()
-);
-SQL
+MIGRATION_FINAL=0068_shared_rate_limit_windows.sql \
+REAPPLY_DATA_API_LOCKDOWN=true \
+scripts/db/rehearse-supabase-branch.sh \
+  <branch-name> <production-project-ref> <branch-project-ref>
+```
 
-for file in $(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
-   filename="$(basename "$file")"
-   applied=$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -c "SELECT 1 FROM schema_migrations WHERE filename = '$filename' LIMIT 1;")
+Compare the branch and production catalogs at that boundary before baselining a
+populated target. Differences in relations, columns, constraints, indexes,
+triggers, functions, role attributes, or grants must be understood rather than
+papered over with ledger rows.
 
-   if [ "$applied" = "1" ]; then
-      echo "Skipping already applied migration: $filename"
-      continue
-   fi
+Then run the complete release rehearsal:
 
-   echo "Applying migration: $filename"
-   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$file"
-   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (filename) VALUES ('$filename');"
-done
+```bash
+scripts/db/rehearse-supabase-branch.sh \
+  <branch-name> <production-project-ref> <branch-project-ref>
+
+VERIFY_DATA_API_ISOLATION=true \
+scripts/db/configure-supabase-data-api.sh <branch-project-ref> oran_api
+```
+
+The rehearsal must finish with `74|0075_data_api_acl_lockdown.sql`, all 128
+account-erasure indexes live/ready/valid, the release gate open, and Data API
+isolation verified. A partial ledger is not acceptance evidence.
+
+### Verify a greenfield database
+
+The disposable verifier replays the full migration chain on a local
+Supabase-shaped PostgreSQL 17 database and proves the backend capability model.
+It never connects to a remote host and handles the account-erasure online phase
+without creating a production ledger.
+
+```bash
+bash scripts/db/disposable-postgres.sh
 ```
 
 ### Migration ledger
 
-The `schema_migrations` table is the deployment ledger expected by the current
-GitHub Actions migration workflow. Supabase-managed migrations use Supabase's own
-separate history.
+The `public.schema_migrations` table is the deployment ledger expected by the
+current GitHub Actions migration workflow. For this release its exact repository
+state is 74 rows with `0075_data_api_acl_lockdown.sql` as the maximum filename.
+Supabase-managed migrations use Supabase's own separate history.
 
 ### Drizzle status
 

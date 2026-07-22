@@ -162,6 +162,32 @@ describe('ChatServiceCard interactions', () => {
     );
   });
 
+  it('keeps sensitive chat text out of detail and report URLs while preserving structured scope', () => {
+    const sensitiveText = 'I need shelter after leaving an abusive partner';
+    render(
+      <ChatServiceCard
+        card={cardFixture}
+        discoveryContext={{
+          text: sensitiveText,
+          omitTextFromUrl: true,
+          needId: 'housing',
+          confidenceFilter: 'HIGH',
+        }}
+      />,
+    );
+
+    for (const link of [
+      screen.getByRole('link', { name: 'Food Pantry' }),
+      screen.getByRole('link', { name: 'Report data issue' }),
+    ]) {
+      const href = link.getAttribute('href') ?? '';
+      const url = new URL(href, 'https://oran.test');
+      expect(url.searchParams.get('q')).toBeNull();
+      expect(url.searchParams.get('category')).toBe('housing');
+      expect(decodeURIComponent(href)).not.toContain(sensitiveText);
+    }
+  });
+
   it('opens feedback using existing session id and closes back to button state', () => {
     sessionStorage.setItem('oran_chat_session_id', 'existing-session');
 

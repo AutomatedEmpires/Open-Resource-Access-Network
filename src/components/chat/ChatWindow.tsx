@@ -12,6 +12,7 @@ import { Send, AlertTriangle, Phone, Trash2, Clock, Plus, SlidersHorizontal, Boo
 import { Button } from '@/components/ui/button';
 import { ELIGIBILITY_DISCLAIMER, MAX_CHAT_QUOTA } from '@/domain/constants';
 import type { DiscoveryNeedId } from '@/domain/discoveryNeeds';
+import type { GuidedIntakeSubmission } from '@/domain/resourceNavigator';
 import { SERVICE_ATTRIBUTES_TAXONOMY } from '@/domain/taxonomy';
 import type {
   ChatClarification,
@@ -20,6 +21,11 @@ import type {
   SearchInterpretation,
   ServiceCard,
 } from '@/services/chat/types';
+import {
+  clearGuidedIntakeRetry,
+  readGuidedIntakeRetry,
+  writeGuidedIntakeRetry,
+} from '@/services/chat/guidedIntakeHandoff';
 import { ChatServiceCard } from '@/components/chat/ChatServiceCard';
 import { GuidedIntake } from '@/components/chat/GuidedIntake';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
@@ -180,6 +186,7 @@ const QUOTA_RESET_KEY = 'oran:quota-reset-at';
 const SESSION_CONTEXT_KEY_PREFIX = 'oran:chat-session-context:';
 const CHAT_TRANSCRIPT_KEY_PREFIX = 'oran:chat-transcript:';
 const CHAT_DRAFT_KEY_PREFIX = 'oran:chat-draft:';
+const LOCATION_PROMPT_DISMISSED_KEY_PREFIX = 'oran:chat-location-dismissed:';
 const MAX_CHAT_RAIL_SESSIONS = 10;
 const CHAT_REMOVAL_UNDO_WINDOW_MS = 5000;
 
@@ -200,6 +207,35 @@ function getChatTranscriptStorageKey(sessionId: string): string {
 
 function getChatDraftStorageKey(sessionId: string): string {
   return `${CHAT_DRAFT_KEY_PREFIX}${sessionId}`;
+}
+
+function getLocationPromptDismissedStorageKey(sessionId: string): string {
+  return `${LOCATION_PROMPT_DISMISSED_KEY_PREFIX}${sessionId}`;
+}
+
+function readStoredLocationPromptDismissed(sessionId: string): boolean {
+  return typeof window !== 'undefined'
+    && sessionStorage.getItem(getLocationPromptDismissedStorageKey(sessionId)) === 'true';
+}
+
+function writeStoredLocationPromptDismissed(sessionId: string, dismissed: boolean): void {
+  if (typeof window === 'undefined') return;
+  const key = getLocationPromptDismissedStorageKey(sessionId);
+  if (dismissed) {
+    sessionStorage.setItem(key, 'true');
+  } else {
+    sessionStorage.removeItem(key);
+  }
+}
+
+function omitQueryTextFromStoredHref(href: string): string {
+  try {
+    const url = new URL(href, 'https://oran.invalid');
+    url.searchParams.delete('q');
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return href;
+  }
 }
 
 interface StoredMessage {
@@ -242,14 +278,21 @@ function fromStoredMessage(message: StoredMessage): Message {
     resultSummary: message.resultSummary,
     services: message.services,
     isCrisis: message.isCrisis,
-    discoveryContext: message.discoveryContext,
+    discoveryContext: message.discoveryContext
+      ? { ...message.discoveryContext, omitTextFromUrl: true }
+      : undefined,
     retrievalStatus: message.retrievalStatus,
     activeContextUsed: message.activeContextUsed,
     sessionContext: message.sessionContext,
     searchInterpretation: message.searchInterpretation,
     clarification: message.clarification,
     followUpSuggestions: message.followUpSuggestions,
-    executionProposal: message.executionProposal,
+    executionProposal: message.executionProposal
+      ? {
+          ...message.executionProposal,
+          serviceHref: omitQueryTextFromStoredHref(message.executionProposal.serviceHref),
+        }
+      : undefined,
   };
 }
 
@@ -318,26 +361,47 @@ function normalizeSessionContext(sessionContext: ChatSessionContext | undefined)
     return undefined;
   }
 
+  const hasExplicitDeliveryPreference = Object.prototype.hasOwnProperty.call(
+    sessionContext,
+    'preferredDeliveryModes',
+  );
+
   const normalized: ChatSessionContext = {
     ...sessionContext,
+    activeRetrievalText: sessionContext.activeRetrievalText?.trim() || undefined,
     activeCity: sessionContext.activeCity?.trim() || undefined,
+    activeLocation: sessionContext.activeLocation
+      ? {
+          city: sessionContext.activeLocation.city?.trim() || undefined,
+          postalCode: sessionContext.activeLocation.postalCode,
+          stateProvince: sessionContext.activeLocation.stateProvince?.trim() || undefined,
+        }
+      : undefined,
     activeGeo: sessionContext.activeGeo
       ? {
           ...sessionContext.activeGeo,
           radiusMiles: clampDiscoveryRadiusMiles(sessionContext.activeGeo.radiusMiles ?? DEFAULT_DISCOVERY_RADIUS_MILES),
         }
       : undefined,
-    preferredDeliveryModes: sessionContext.preferredDeliveryModes?.filter(Boolean),
     taxonomyTermIds: sessionContext.taxonomyTermIds?.filter(Boolean),
     attributeFilters: sessionContext.attributeFilters,
     profileShapingEnabled: sessionContext.profileShapingEnabled,
+    ...(hasExplicitDeliveryPreference
+      ? { preferredDeliveryModes: sessionContext.preferredDeliveryModes?.filter(Boolean) ?? [] }
+      : {}),
   };
 
   const hasMeaningfulContext = Boolean(
     normalized.activeNeedId
+    || normalized.activeRetrievalText
     || normalized.activeCity
+    || normalized.activeLocation
     || normalized.activeGeo
     || normalized.urgency
+    || normalized.urgencyWindow
+    || normalized.audience
+    || normalized.accessMode
+    || hasExplicitDeliveryPreference
     || normalized.preferredDeliveryModes?.length
     || (normalized.trustFilter && normalized.trustFilter !== 'all')
     || normalized.taxonomyTermIds?.length
@@ -349,6 +413,19 @@ function normalizeSessionContext(sessionContext: ChatSessionContext | undefined)
   }
 
   return normalized;
+}
+
+function buildDeliveryPreferenceContext(
+  current: ChatSessionContext | undefined,
+  attributeFilters: SearchFilters['attributeFilters'] | undefined,
+): Pick<ChatSessionContext, 'preferredDeliveryModes'> | Record<string, never> {
+  if (attributeFilters?.delivery) {
+    return { preferredDeliveryModes: attributeFilters.delivery };
+  }
+  if (current && Object.prototype.hasOwnProperty.call(current, 'preferredDeliveryModes')) {
+    return { preferredDeliveryModes: current.preferredDeliveryModes ?? [] };
+  }
+  return {};
 }
 
 function readStoredSessionContext(sessionId: string): ChatSessionContext | undefined {
@@ -391,7 +468,9 @@ function buildSeededSessionContext(options: {
 }): ChatSessionContext | undefined {
   return normalizeSessionContext({
     activeNeedId: options.initialNeedId ?? undefined,
-    preferredDeliveryModes: options.initialAttributeFilters?.delivery,
+    ...(options.initialAttributeFilters?.delivery
+      ? { preferredDeliveryModes: options.initialAttributeFilters.delivery }
+      : {}),
     trustFilter: options.initialTrustFilter,
     attributeFilters: options.initialAttributeFilters,
     profileShapingEnabled: !options.ignoreProfileShaping,
@@ -493,7 +572,7 @@ function SearchInterpretationPanel({
 
       {interpretation.usedSessionContext && interpretation.sessionSignals.length > 0 && (
         <div className="mt-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-slate-900">
-          <p className="font-medium">Inherited from this chat session</p>
+          <p className="font-medium">Current search context</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {interpretation.sessionSignals.map((signal) => (
               <span
@@ -558,6 +637,8 @@ interface ChatSessionSnapshot {
   messages: Message[];
   draft: string;
   sessionContext?: ChatSessionContext;
+  guidedIntakeRetry?: GuidedIntakeSubmission;
+  locationPromptDismissed?: boolean;
 }
 
 function deleteStoredChatSession(sessionId: string): ChatSessionSummary[] {
@@ -565,6 +646,8 @@ function deleteStoredChatSession(sessionId: string): ChatSessionSummary[] {
     sessionStorage.removeItem(getChatTranscriptStorageKey(sessionId));
     sessionStorage.removeItem(getChatDraftStorageKey(sessionId));
     sessionStorage.removeItem(getSessionContextStorageKey(sessionId));
+    sessionStorage.removeItem(getLocationPromptDismissedStorageKey(sessionId));
+    clearGuidedIntakeRetry(sessionId);
   }
 
   return writeStoredChatSessions(
@@ -585,7 +668,10 @@ function readStoredChatSessions(): ChatSessionSummary[] {
     return [];
   }
 
-  const raw = localStorage.getItem(CHAT_HISTORY_INDEX_KEY);
+  // Transcripts are session-scoped; keep their index in the same storage so
+  // sensitive prompt excerpts cannot outlive the transcript as zombie rows.
+  localStorage.removeItem(CHAT_HISTORY_INDEX_KEY);
+  const raw = sessionStorage.getItem(CHAT_HISTORY_INDEX_KEY);
   if (!raw) {
     return [];
   }
@@ -610,7 +696,8 @@ function writeStoredChatSessions(sessions: ChatSessionSummary[]): ChatSessionSum
   );
 
   if (typeof window !== 'undefined') {
-    localStorage.setItem(CHAT_HISTORY_INDEX_KEY, JSON.stringify(sorted));
+    localStorage.removeItem(CHAT_HISTORY_INDEX_KEY);
+    sessionStorage.setItem(CHAT_HISTORY_INDEX_KEY, JSON.stringify(sorted));
   }
 
   return sorted;
@@ -634,6 +721,8 @@ function readStoredChatSessionSnapshot(sessionId: string): ChatSessionSnapshot |
     messages: readStoredMessages(sessionId),
     draft: readStoredDraft(sessionId),
     sessionContext: readStoredSessionContext(sessionId),
+    guidedIntakeRetry: readGuidedIntakeRetry(sessionId) ?? undefined,
+    locationPromptDismissed: readStoredLocationPromptDismissed(sessionId),
   };
 }
 
@@ -783,6 +872,7 @@ interface ChatWindowProps {
   onSessionChange?: (sessionId: string) => void;
   userId?: string;
   initialPrompt?: string;
+  initialGuidedIntake?: GuidedIntakeSubmission;
   initialNeedId?: DiscoveryNeedId | null;
   initialTrustFilter?: DiscoveryConfidenceFilter;
   initialSortBy?: DiscoverySortOption;
@@ -795,6 +885,7 @@ export function ChatWindow({
   onSessionChange,
   userId,
   initialPrompt,
+  initialGuidedIntake,
   initialNeedId,
   initialTrustFilter,
   initialSortBy,
@@ -831,13 +922,20 @@ export function ChatWindow({
   const [, setMessageScrollEnabled] = useState(false);
   const [showMessageTopFade, setShowMessageTopFade] = useState(false);
   const [showMessageBottomFade, setShowMessageBottomFade] = useState(false);
-  const [locationPromptDismissed, setLocationPromptDismissed] = useState(false);
+  const [locationPromptDismissed, setLocationPromptDismissed] = useState(
+    () => readStoredLocationPromptDismissed(sessionId),
+  );
   const { success, error: toastError, info } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messageLogRef = useRef<HTMLDivElement>(null);
   const quotaStateVersionRef = useRef(0);
+  const locationRequestVersionRef = useRef(0);
   const pendingRemovalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingGuidedIntakeRef = useRef<GuidedIntakeSubmission | undefined>(
+    initialGuidedIntake ?? readGuidedIntakeRetry(sessionId) ?? undefined,
+  );
+  const guidedIntakeInFlightRef = useRef<GuidedIntakeSubmission | undefined>(undefined);
 
   // Filters: trust tier + canonical attribute filters
   const [trustFilter, setTrustFilter] = useState<TrustFilter>(initialTrustFilter ?? 'all');
@@ -851,6 +949,12 @@ export function ChatWindow({
     initialAttributeFilters,
     ignoreProfileShaping: false,
   }));
+  const sessionContextRef = useRef(sessionContext);
+  const locationPromptDismissedRef = useRef(locationPromptDismissed);
+
+  useEffect(() => () => {
+    locationRequestVersionRef.current += 1;
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -996,11 +1100,15 @@ export function ChatWindow({
   }, []);
 
   useEffect(() => {
+    locationRequestVersionRef.current += 1;
+    guidedIntakeInFlightRef.current = undefined;
+    setIsLocating(false);
     const storedSessions = readStoredChatSessions();
     const existingSession = storedSessions.find((session) => session.sessionId === sessionId);
     const storedMessages = readStoredMessages(sessionId);
     const storedDraft = readStoredDraft(sessionId);
     const storedContext = readStoredSessionContext(sessionId);
+    const storedGuidedIntakeRetry = readGuidedIntakeRetry(sessionId);
     const seeded = existingSession?.seeded ?? initialHasSeededContext;
     const seededContext = seeded
       ? buildSeededSessionContext({
@@ -1023,14 +1131,33 @@ export function ChatWindow({
       commitChatSessions(storedSessions, sessionId);
     }
 
+    const pendingGuidedIntake = storedGuidedIntakeRetry
+      ?? (storedMessages.length === 0 ? initialGuidedIntake : undefined);
+    const nextInput = storedDraft
+      || pendingGuidedIntake?.prompt
+      || (storedMessages.length === 0 && seeded ? initialPrompt?.trim() || '' : '');
+
     setMessages(storedMessages);
-    setInput(storedDraft || (storedMessages.length === 0 && seeded ? initialPrompt?.trim() || '' : ''));
+    setInput(nextInput);
+    pendingGuidedIntakeRef.current = pendingGuidedIntake?.prompt === nextInput.trim()
+      ? pendingGuidedIntake
+      : undefined;
+    if (pendingGuidedIntakeRef.current && !storedGuidedIntakeRetry) {
+      writeGuidedIntakeRetry(sessionId, pendingGuidedIntakeRef.current);
+    }
+    if (storedGuidedIntakeRetry && !pendingGuidedIntakeRef.current) {
+      clearGuidedIntakeRetry(sessionId);
+    }
     setShowSeededContext(storedMessages.length === 0 && seeded);
     setHasCrisis(storedMessages.some((message) => message.role === 'assistant' && message.isCrisis));
     setShowVerifyTip(false);
 
     const nextContext = normalizeSessionContext(storedContext ?? seededContext);
+    sessionContextRef.current = nextContext;
     setSessionContext(nextContext);
+    const storedLocationPromptDismissed = readStoredLocationPromptDismissed(sessionId);
+    locationPromptDismissedRef.current = storedLocationPromptDismissed;
+    setLocationPromptDismissed(storedLocationPromptDismissed);
     setTrustFilter((nextContext?.trustFilter ?? initialTrustFilter ?? 'all') as TrustFilter);
     setSeededAttributeFilters(nextContext?.attributeFilters ?? (seeded ? initialAttributeFilters : undefined));
     setIgnoreProfileShaping(nextContext?.profileShapingEnabled === false);
@@ -1039,6 +1166,7 @@ export function ChatWindow({
     commitChatSessions,
     initialHasSeededContext,
     initialAttributeFilters,
+    initialGuidedIntake,
     initialNeedId,
     initialPrompt,
     initialTrustFilter,
@@ -1046,13 +1174,17 @@ export function ChatWindow({
   ]);
 
   useEffect(() => {
-    setSessionContext((current) => normalizeSessionContext({
-      ...(current ?? {}),
-      trustFilter,
-      attributeFilters: seededAttributeFilters,
-      preferredDeliveryModes: seededAttributeFilters?.delivery ?? current?.preferredDeliveryModes,
-      profileShapingEnabled: !ignoreProfileShaping,
-    }));
+    setSessionContext((current) => {
+      const next = normalizeSessionContext({
+        ...(current ?? {}),
+        trustFilter,
+        attributeFilters: seededAttributeFilters,
+        ...buildDeliveryPreferenceContext(current, seededAttributeFilters),
+        profileShapingEnabled: !ignoreProfileShaping,
+      });
+      sessionContextRef.current = next;
+      return next;
+    });
   }, [ignoreProfileShaping, seededAttributeFilters, trustFilter]);
 
   useEffect(() => {
@@ -1113,6 +1245,25 @@ export function ChatWindow({
 
   const activeNeedId = sessionContext?.activeNeedId;
   const activeGeo = sessionContext?.activeGeo;
+  const activeTextLocationLabel = sessionContext?.activeLocation
+    ? sessionContext.activeLocation.postalCode
+      ?? [sessionContext.activeLocation.city, sessionContext.activeLocation.stateProvince].filter(Boolean).join(', ')
+    : sessionContext?.activeCity;
+  const pendingLocationScope = guidedIntakeInFlightRef.current ?? pendingGuidedIntakeRef.current;
+  const hasExplicitLocationContext = Boolean(
+    sessionContext?.activeLocation
+    || sessionContext?.activeCity
+    || pendingLocationScope?.location,
+  );
+  const hasNonSelfAudience = Boolean(
+    (sessionContext?.audience ?? pendingLocationScope?.audience)
+    && (sessionContext?.audience ?? pendingLocationScope?.audience) !== 'self',
+  );
+  const shouldOfferAutomaticLocation = !activeGeo
+    && !hasExplicitLocationContext
+    && !hasNonSelfAudience
+    && !isLoading
+    && !locationPromptDismissed;
   const currentChatSummary = useMemo(
     () => chatSessions.find((session) => session.sessionId === sessionId),
     [chatSessions, sessionId],
@@ -1131,7 +1282,11 @@ export function ChatWindow({
   );
 
   const updateSessionContext = useCallback((updater: (current: ChatSessionContext | undefined) => ChatSessionContext | undefined) => {
-    setSessionContext((current) => normalizeSessionContext(updater(current)));
+    setSessionContext((current) => {
+      const next = normalizeSessionContext(updater(current));
+      sessionContextRef.current = next;
+      return next;
+    });
   }, []);
 
   const handleRadiusChange = useCallback((nextMiles: number) => {
@@ -1147,29 +1302,67 @@ export function ChatWindow({
     } : current);
   }, [ignoreProfileShaping, updateSessionContext]);
 
+  const dismissLocationPrompt = useCallback(() => {
+    locationRequestVersionRef.current += 1;
+    locationPromptDismissedRef.current = true;
+    setLocationPromptDismissed(true);
+    setIsLocating(false);
+    writeStoredLocationPromptDismissed(sessionId, true);
+  }, [sessionId]);
+
   const clearLocation = useCallback(() => {
+    dismissLocationPrompt();
     updateSessionContext((current) => ({
       ...(current ?? {}),
+      activeCity: undefined,
+      activeLocation: undefined,
       activeGeo: undefined,
       profileShapingEnabled: !ignoreProfileShaping,
     }));
-  }, [ignoreProfileShaping, updateSessionContext]);
+  }, [dismissLocationPrompt, ignoreProfileShaping, updateSessionContext]);
 
-  const requestDeviceLocation = useCallback(() => {
+  const requestDeviceLocation = useCallback((explicit = false) => {
     if (isLocating) return;
     if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
       toastError('Device location is not available in this browser.');
       return;
     }
 
+    const currentContext = sessionContextRef.current;
+    const pendingScope = guidedIntakeInFlightRef.current ?? pendingGuidedIntakeRef.current;
+    if (
+      (currentContext?.audience && currentContext.audience !== 'self')
+      || (pendingScope?.audience && pendingScope.audience !== 'self')
+    ) {
+      toastError('Device location is available only when searching for yourself.');
+      return;
+    }
+
+    const requestVersion = ++locationRequestVersionRef.current;
     setIsLocating(true);
     info('Requesting approximate device location…');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        if (requestVersion !== locationRequestVersionRef.current) return;
+        const latestContext = sessionContextRef.current;
+        const latestPendingScope = guidedIntakeInFlightRef.current ?? pendingGuidedIntakeRef.current;
+        const locationBecameIneligible = Boolean(
+          (latestContext?.audience && latestContext.audience !== 'self')
+          || (latestPendingScope?.audience && latestPendingScope.audience !== 'self')
+          || latestPendingScope?.location
+          || (!explicit && (latestContext?.activeLocation || latestContext?.activeCity))
+          || (!explicit && locationPromptDismissedRef.current),
+        );
+        if (locationBecameIneligible) {
+          setIsLocating(false);
+          return;
+        }
         const lat = Math.round(pos.coords.latitude * 100) / 100;
         const lng = Math.round(pos.coords.longitude * 100) / 100;
         updateSessionContext((current) => ({
           ...(current ?? {}),
+          activeCity: undefined,
+          activeLocation: undefined,
           activeGeo: {
             lat,
             lng,
@@ -1177,12 +1370,18 @@ export function ChatWindow({
           },
           profileShapingEnabled: !ignoreProfileShaping,
         }));
+        if (explicit) {
+          locationPromptDismissedRef.current = false;
+          setLocationPromptDismissed(false);
+          writeStoredLocationPromptDismissed(sessionId, false);
+        }
         setShowSeededContext(false);
         setIsLocating(false);
         success('Using your approximate location for nearby chat results.');
       },
       (error) => {
-        setIsLocating(false);
+        if (requestVersion !== locationRequestVersionRef.current) return;
+        dismissLocationPrompt();
         toastError(
           error.code === error.PERMISSION_DENIED
             ? 'Location permission denied.'
@@ -1197,22 +1396,26 @@ export function ChatWindow({
         maximumAge: 60_000,
       },
     );
-  }, [ignoreProfileShaping, info, isLocating, radiusMiles, success, toastError, updateSessionContext]);
+  }, [dismissLocationPrompt, ignoreProfileShaping, info, isLocating, radiusMiles, sessionId, success, toastError, updateSessionContext]);
 
   useEffect(() => {
-    if (sessionContext?.activeGeo || locationPromptDismissed || typeof navigator === 'undefined' || !('permissions' in navigator)) {
+    if (!shouldOfferAutomaticLocation || typeof navigator === 'undefined' || !('permissions' in navigator)) {
       return;
     }
 
+    let cancelled = false;
     const permissions = navigator.permissions as Permissions;
     void permissions.query({ name: 'geolocation' as PermissionName }).then((result) => {
-      if (result.state === 'granted') {
-        requestDeviceLocation();
+      if (!cancelled && result.state === 'granted') {
+        requestDeviceLocation(false);
       }
     }).catch(() => {
       // Non-fatal: some browsers do not expose the permissions query consistently.
     });
-  }, [locationPromptDismissed, requestDeviceLocation, sessionContext?.activeGeo]);
+    return () => {
+      cancelled = true;
+    };
+  }, [requestDeviceLocation, shouldOfferAutomaticLocation]);
 
   const deleteChatSession = useCallback((nextSessionId: string) => {
     const remainingSessions = deleteStoredChatSession(nextSessionId);
@@ -1262,6 +1465,13 @@ export function ChatWindow({
     writeStoredMessages(restoredSummary.sessionId, pendingRemovedChat.messages);
     writeStoredDraft(restoredSummary.sessionId, pendingRemovedChat.draft);
     writeStoredSessionContext(restoredSummary.sessionId, pendingRemovedChat.sessionContext);
+    if (pendingRemovedChat.guidedIntakeRetry) {
+      writeGuidedIntakeRetry(restoredSummary.sessionId, pendingRemovedChat.guidedIntakeRetry);
+    }
+    writeStoredLocationPromptDismissed(
+      restoredSummary.sessionId,
+      Boolean(pendingRemovedChat.locationPromptDismissed),
+    );
     dismissPendingRemovedChat();
     commitChatSessions(upsertStoredChatSession(restoredSummary), restoredSummary.sessionId);
 
@@ -1280,7 +1490,10 @@ export function ChatWindow({
     window.location.assign('/chat');
   }, [commitChatSessions, dismissPendingRemovedChat, onSessionChange, pendingRemovedChat, success]);
 
-  const _clearSessionContextField = useCallback((field: 'activeNeedId' | 'activeCity' | 'urgency' | 'trustFilter' | 'attributeFilters' | 'preferredDeliveryModes') => {
+  const _clearSessionContextField = useCallback((field: 'activeNeedId' | 'activeCity' | 'activeLocation' | 'urgency' | 'audience' | 'accessMode' | 'trustFilter' | 'attributeFilters' | 'preferredDeliveryModes') => {
+    if (field === 'activeLocation' || field === 'activeCity') {
+      dismissLocationPrompt();
+    }
     updateSessionContext((current) => {
       const next = { ...(current ?? {}), profileShapingEnabled: !ignoreProfileShaping };
 
@@ -1299,7 +1512,36 @@ export function ChatWindow({
             const { delivery: _delivery, ...rest } = currentFilters;
             return Object.keys(rest).length > 0 ? rest : undefined;
           });
-          next.preferredDeliveryModes = undefined;
+          delete next.preferredDeliveryModes;
+          break;
+        case 'accessMode': {
+          setSeededAttributeFilters((currentFilters) => {
+            if (!currentFilters?.delivery) return currentFilters;
+            const { delivery: _delivery, ...rest } = currentFilters;
+            return Object.keys(rest).length > 0 ? rest : undefined;
+          });
+          const { delivery: _delivery, ...remainingFilters } = next.attributeFilters ?? {};
+          next.attributeFilters = Object.keys(remainingFilters).length > 0
+            ? remainingFilters
+            : undefined;
+          next.accessMode = undefined;
+          delete next.preferredDeliveryModes;
+          break;
+        }
+        case 'activeLocation':
+          next.activeLocation = undefined;
+          next.activeCity = undefined;
+          break;
+        case 'activeCity':
+          next.activeCity = undefined;
+          break;
+        case 'activeNeedId':
+          next.activeNeedId = undefined;
+          next.activeRetrievalText = undefined;
+          break;
+        case 'urgency':
+          next.urgency = undefined;
+          next.urgencyWindow = undefined;
           break;
         default:
           next[field] = undefined;
@@ -1307,7 +1549,7 @@ export function ChatWindow({
 
       return next;
     });
-  }, [ignoreProfileShaping, updateSessionContext]);
+  }, [dismissLocationPrompt, ignoreProfileShaping, updateSessionContext]);
 
   const _removeSessionAttributeTag = useCallback((taxonomy: string, tag: string) => {
     setSeededAttributeFilters((current) => {
@@ -1350,11 +1592,23 @@ export function ChatWindow({
     [messages],
   );
   const latestAssistantServices = useMemo(() => latestAssistantResult?.services ?? [], [latestAssistantResult]);
-  const latestAssistantDiscoveryContext = latestAssistantResult?.discoveryContext;
+  const latestAssistantDiscoveryContext = useMemo(
+    () => [...messages].reverse().find(
+      (message): message is AssistantMessage => message.role === 'assistant' && Boolean(message.discoveryContext),
+    )?.discoveryContext,
+    [messages],
+  );
+  const handoffFallbackText = pendingGuidedIntakeRef.current?.prompt === latestUserMessage
+    ? pendingGuidedIntakeRef.current.searchText
+    : latestUserMessage;
 
   const handoffDiscoveryContext = useMemo(
-    () => buildHandoffDiscoveryContext(sessionContext, latestUserMessage),
-    [latestUserMessage, sessionContext],
+    () => {
+      const context = latestAssistantDiscoveryContext
+        ?? buildHandoffDiscoveryContext(sessionContext, handoffFallbackText);
+      return { ...context, omitTextFromUrl: true };
+    },
+    [handoffFallbackText, latestAssistantDiscoveryContext, sessionContext],
   );
 
   const _directoryHandoffHref = useMemo(
@@ -1396,8 +1650,8 @@ export function ChatWindow({
     }
 
     sessionStorage.setItem('oran_chat_session_id', nextSessionId);
-    window.location.assign(buildDiscoveryHref('/chat', handoffDiscoveryContext));
-  }, [handoffDiscoveryContext, onSessionChange, sessionId]);
+    window.location.assign('/chat');
+  }, [onSessionChange, sessionId]);
 
   const toggleCurrentConversationSaved = useCallback(() => {
     const existing = currentChatSummary ?? buildChatSessionSummary({
@@ -1419,6 +1673,7 @@ export function ChatWindow({
     updateSessionContext((current) => ({
       ...(current ?? {}),
       activeNeedId: current?.activeNeedId === needId ? undefined : needId,
+      activeRetrievalText: undefined,
       profileShapingEnabled: !ignoreProfileShaping,
     }));
     setShowSeededContext(false);
@@ -1428,6 +1683,7 @@ export function ChatWindow({
     updateSessionContext((current) => ({
       ...(current ?? {}),
       activeNeedId: undefined,
+      activeRetrievalText: undefined,
       profileShapingEnabled: !ignoreProfileShaping,
     }));
   }, [ignoreProfileShaping, updateSessionContext]);
@@ -1463,7 +1719,9 @@ export function ChatWindow({
       return {
         ...(current ?? {}),
         attributeFilters: Object.keys(nextFilters).length > 0 ? nextFilters : undefined,
-        preferredDeliveryModes: taxonomy === 'delivery' ? nextFilters.delivery : current?.preferredDeliveryModes,
+        ...(taxonomy === 'delivery'
+          ? { preferredDeliveryModes: nextFilters.delivery ?? [] }
+          : buildDeliveryPreferenceContext(current, nextFilters)),
         profileShapingEnabled: !ignoreProfileShaping,
       };
     });
@@ -1472,19 +1730,45 @@ export function ChatWindow({
 
   const clearAttributes = useCallback(() => {
     setSeededAttributeFilters(undefined);
-    updateSessionContext((current) => ({
-      ...(current ?? {}),
-      attributeFilters: undefined,
-      preferredDeliveryModes: undefined,
-      profileShapingEnabled: !ignoreProfileShaping,
-    }));
+    updateSessionContext((current) => {
+      const next = {
+        ...(current ?? {}),
+        attributeFilters: undefined,
+        profileShapingEnabled: !ignoreProfileShaping,
+      };
+      delete next.preferredDeliveryModes;
+      return next;
+    });
   }, [ignoreProfileShaping, updateSessionContext]);
 
-  const sendMessage = useCallback(async (override?: string) => {
+  const sendMessage = useCallback(async (
+    override?: string,
+    guidedIntake?: GuidedIntakeSubmission,
+  ) => {
     const trimmed = (override ?? input).trim();
     if (!trimmed || isLoading) return;
+    const storedPendingGuidedIntake = pendingGuidedIntakeRef.current;
+    const pendingGuidedIntake = guidedIntake
+      ?? (storedPendingGuidedIntake?.prompt === trimmed
+        ? storedPendingGuidedIntake
+        : undefined);
+    guidedIntakeInFlightRef.current = pendingGuidedIntake;
+    if (
+      pendingGuidedIntake?.location
+      || (pendingGuidedIntake?.audience && pendingGuidedIntake.audience !== 'self')
+    ) {
+      locationRequestVersionRef.current += 1;
+      setIsLocating(false);
+    }
+    pendingGuidedIntakeRef.current = undefined;
+    if (storedPendingGuidedIntake && !pendingGuidedIntake) {
+      clearGuidedIntakeRetry(sessionId);
+    }
+    if (pendingGuidedIntake) {
+      writeGuidedIntakeRetry(sessionId, pendingGuidedIntake);
+    }
 
-    const commandProposal = planEnabled
+    const commandProposal = !pendingGuidedIntake && planEnabled
       ? buildChatExecutionProposal(trimmed, latestAssistantServices)
       : null;
     if (commandProposal && (commandProposal.action !== 'set_reminder' || reminderEnabled)) {
@@ -1511,7 +1795,8 @@ export function ChatWindow({
     }
 
     const frozenDiscoveryContext: DiscoveryLinkState = {
-      text: trimmed,
+      text: pendingGuidedIntake?.searchText ?? trimmed,
+      omitTextFromUrl: true,
       needId: showSeededContext ? initialNeedId : undefined,
       confidenceFilter: trustFilter,
       sortBy: showSeededContext ? initialSortBy : undefined,
@@ -1532,6 +1817,9 @@ export function ChatWindow({
     setIsLoading(true);
 
     try {
+      const beginsNonSelfGuidedScope = Boolean(
+        pendingGuidedIntake?.audience && pendingGuidedIntake.audience !== 'self',
+      );
       const requestBody: Record<string, unknown> = {
         message: trimmed,
         sessionId,
@@ -1539,21 +1827,35 @@ export function ChatWindow({
         profileMode: ignoreProfileShaping ? 'ignore' : 'use',
         sessionContext: normalizeSessionContext({
           ...(sessionContext ?? {}),
-          activeGeo: sessionContext?.activeGeo
+          activeNeedId: beginsNonSelfGuidedScope ? undefined : sessionContext?.activeNeedId,
+          activeRetrievalText: beginsNonSelfGuidedScope ? undefined : sessionContext?.activeRetrievalText,
+          activeCity: beginsNonSelfGuidedScope ? undefined : sessionContext?.activeCity,
+          activeLocation: beginsNonSelfGuidedScope ? undefined : sessionContext?.activeLocation,
+          activeGeo: !beginsNonSelfGuidedScope && sessionContext?.activeGeo
             ? {
                 ...sessionContext.activeGeo,
                 radiusMiles,
               }
             : undefined,
+          urgency: beginsNonSelfGuidedScope ? undefined : sessionContext?.urgency,
+          urgencyWindow: beginsNonSelfGuidedScope ? undefined : sessionContext?.urgencyWindow,
+          accessMode: beginsNonSelfGuidedScope ? undefined : sessionContext?.accessMode,
+          taxonomyTermIds: beginsNonSelfGuidedScope ? undefined : sessionContext?.taxonomyTermIds,
           trustFilter,
-          attributeFilters: seededAttributeFilters,
-          preferredDeliveryModes: seededAttributeFilters?.delivery ?? sessionContext?.preferredDeliveryModes,
+          attributeFilters: beginsNonSelfGuidedScope ? undefined : seededAttributeFilters,
+          ...(beginsNonSelfGuidedScope
+            ? { preferredDeliveryModes: undefined }
+            : buildDeliveryPreferenceContext(sessionContext, seededAttributeFilters)),
           profileShapingEnabled: !ignoreProfileShaping,
         }),
       };
+      if (pendingGuidedIntake) {
+        const { prompt: _prompt, ...guidedIntakePayload } = pendingGuidedIntake;
+        requestBody.guidedIntake = guidedIntakePayload;
+      }
       const filterPayload: Record<string, unknown> = {};
       if (trustFilter !== 'all') filterPayload.trust = trustFilter;
-      if (seededAttributeFilters && Object.keys(seededAttributeFilters).length > 0) {
+      if (!beginsNonSelfGuidedScope && seededAttributeFilters && Object.keys(seededAttributeFilters).length > 0) {
         filterPayload.attributeFilters = seededAttributeFilters;
       }
       if (Object.keys(filterPayload).length > 0) requestBody.filters = filterPayload;
@@ -1584,24 +1886,47 @@ export function ChatWindow({
       }
 
       const data: ChatResponse = await response.json();
+      const resultDiscoveryContext: DiscoveryLinkState = {
+        ...frozenDiscoveryContext,
+        text: data.effectiveSearchText ?? frozenDiscoveryContext.text,
+        ...(frozenDiscoveryContext.omitTextFromUrl || data.sessionContext?.activeRetrievalText
+          ? { omitTextFromUrl: true }
+          : {}),
+        needId: data.sessionContext !== undefined
+          ? data.sessionContext.activeNeedId
+          : data.intent.category === 'general'
+            ? frozenDiscoveryContext.needId
+            : data.intent.category,
+        attributeFilters: data.sessionContext !== undefined
+          ? data.sessionContext.attributeFilters
+          : frozenDiscoveryContext.attributeFilters,
+      };
 
       if (data.isCrisis) {
         setHasCrisis(true);
         trackInteraction('crisis_banner_shown');
       }
 
-      setSessionContext(normalizeSessionContext(data.sessionContext));
+      const nextSessionContext = normalizeSessionContext(data.sessionContext);
+      sessionContextRef.current = nextSessionContext;
+      setSessionContext(nextSessionContext);
       if (data.sessionContext?.trustFilter) {
         setTrustFilter(data.sessionContext.trustFilter);
       }
-      if (data.sessionContext?.attributeFilters) {
-        setSeededAttributeFilters(data.sessionContext.attributeFilters);
+      if (!data.isCrisis) {
+        setSeededAttributeFilters(data.sessionContext?.attributeFilters);
       }
       if (data.sessionContext?.activeGeo?.radiusMiles) {
         setRadiusMiles(clampDiscoveryRadiusMiles(data.sessionContext.activeGeo.radiusMiles));
       }
       if (typeof data.sessionContext?.profileShapingEnabled === 'boolean') {
         setIgnoreProfileShaping(!data.sessionContext.profileShapingEnabled);
+      }
+      if (pendingGuidedIntake && data.retrievalStatus === 'temporarily_unavailable') {
+        pendingGuidedIntakeRef.current = pendingGuidedIntake;
+        setInput(pendingGuidedIntake.prompt);
+      } else if (pendingGuidedIntake) {
+        clearGuidedIntakeRetry(sessionId);
       }
 
       quotaStateVersionRef.current += 1;
@@ -1622,7 +1947,7 @@ export function ChatWindow({
           resultSummary: data.resultSummary,
           services: data.services,
           isCrisis: data.isCrisis,
-          discoveryContext: frozenDiscoveryContext,
+          discoveryContext: data.isCrisis ? undefined : resultDiscoveryContext,
           retrievalStatus: data.retrievalStatus,
           activeContextUsed: data.activeContextUsed,
           sessionContext: data.sessionContext,
@@ -1632,6 +1957,10 @@ export function ChatWindow({
         },
       ]);
     } catch (error) {
+      if (pendingGuidedIntake) {
+        pendingGuidedIntakeRef.current = pendingGuidedIntake;
+        setInput(pendingGuidedIntake.prompt);
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -1643,6 +1972,7 @@ export function ChatWindow({
         },
       ]);
     } finally {
+      guidedIntakeInFlightRef.current = undefined;
       setIsLoading(false);
       inputRef.current?.focus();
     }
@@ -1772,14 +2102,18 @@ export function ChatWindow({
     setHasCrisis(false);
     setShowVerifyTip(false);
     setInput('');
-    setSessionContext(buildSeededSessionContext({
+    const nextSessionContext = buildSeededSessionContext({
       initialNeedId,
       initialTrustFilter: trustFilter,
       initialAttributeFilters: seededAttributeFilters,
       ignoreProfileShaping,
-    }));
+    });
+    sessionContextRef.current = nextSessionContext;
+    setSessionContext(nextSessionContext);
     writeStoredMessages(sessionId, []);
     writeStoredDraft(sessionId, '');
+    clearGuidedIntakeRetry(sessionId);
+    pendingGuidedIntakeRef.current = undefined;
     inputRef.current?.focus();
   }, [ignoreProfileShaping, initialNeedId, seededAttributeFilters, sessionId, trustFilter]);
 
@@ -1898,7 +2232,8 @@ export function ChatWindow({
             <button
               type="button"
               onClick={clearConversation}
-              className="inline-flex min-h-[34px] items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700"
+              disabled={isLoading}
+              className="inline-flex min-h-[34px] items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
               title="Clear conversation"
               aria-label="Clear conversation"
             >
@@ -1937,13 +2272,15 @@ export function ChatWindow({
         <div className="shrink-0 border-b border-slate-100 bg-slate-50/80 px-5 py-2 md:px-6">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">Active chat context</span>
-            {sessionContext.activeNeedId && (
+            {(sessionContext.activeNeedId || sessionContext.activeRetrievalText) && (
               <button
                 type="button"
                 onClick={() => _clearSessionContextField('activeNeedId')}
                 className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
               >
-                Need: {formatFilterLabel(sessionContext.activeNeedId)} ×
+                Need: {sessionContext.activeNeedId
+                  ? formatFilterLabel(sessionContext.activeNeedId)
+                  : 'previous request'} ×
               </button>
             )}
             {sessionContext.activeGeo && (
@@ -1956,7 +2293,16 @@ export function ChatWindow({
                 {sessionContext.activeGeo.radiusMiles} mi ×
               </button>
             )}
-            {sessionContext.activeCity && (
+            {sessionContext.activeLocation ? (
+              <button
+                type="button"
+                onClick={() => _clearSessionContextField('activeLocation')}
+                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+              >
+                Location: {sessionContext.activeLocation.postalCode
+                  ?? [sessionContext.activeLocation.city, sessionContext.activeLocation.stateProvince].filter(Boolean).join(', ')} ×
+              </button>
+            ) : sessionContext.activeCity ? (
               <button
                 type="button"
                 onClick={() => _clearSessionContextField('activeCity')}
@@ -1964,14 +2310,32 @@ export function ChatWindow({
               >
                 City: {sessionContext.activeCity} ×
               </button>
-            )}
+            ) : null}
             {sessionContext.urgency && (
               <button
                 type="button"
                 onClick={() => _clearSessionContextField('urgency')}
                 className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
               >
-                Urgency: {formatFilterLabel(sessionContext.urgency)} ×
+                Urgency: {formatFilterLabel(sessionContext.urgencyWindow ?? sessionContext.urgency)} ×
+              </button>
+            )}
+            {sessionContext.audience && (
+              <button
+                type="button"
+                onClick={() => _clearSessionContextField('audience')}
+                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+              >
+                For: {formatFilterLabel(sessionContext.audience)} ×
+              </button>
+            )}
+            {sessionContext.accessMode && (
+              <button
+                type="button"
+                onClick={() => _clearSessionContextField('accessMode')}
+                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+              >
+                Access: {formatFilterLabel(sessionContext.accessMode)} ×
               </button>
             )}
             {sessionContext.trustFilter && sessionContext.trustFilter !== 'all' && (
@@ -1983,7 +2347,7 @@ export function ChatWindow({
                 Record confidence: {formatFilterLabel(sessionContext.trustFilter)} ×
               </button>
             )}
-            {sessionContext.preferredDeliveryModes?.map((mode) => (
+            {!sessionContext.accessMode && sessionContext.preferredDeliveryModes?.map((mode) => (
               <button
                 key={`strip-delivery-${mode}`}
                 type="button"
@@ -2033,8 +2397,10 @@ export function ChatWindow({
                 variant="outline"
                 size="sm"
                 onClick={() => {
+                  dismissLocationPrompt();
                   setTrustFilter('all');
                   setSeededAttributeFilters(undefined);
+                  sessionContextRef.current = undefined;
                   setSessionContext(undefined);
                   setShowSeededContext(false);
                 }}
@@ -2106,7 +2472,7 @@ export function ChatWindow({
             <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
               <GuidedIntake
                 submitLabel="Search stored provider records"
-                onSubmit={(prompt) => sendMessage(prompt)}
+                onSubmit={(submission) => sendMessage(submission.prompt, submission)}
               />
             </div>
 
@@ -2124,22 +2490,22 @@ export function ChatWindow({
 
             {/* ── Info row: location prompt + search flow ── */}
             <div className="grid gap-3 sm:grid-cols-2">
-              {!sessionContext?.activeGeo && !locationPromptDismissed && (
+              {shouldOfferAutomaticLocation && (
                 <div className="flex items-start gap-3 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3.5">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-slate-900">Use location for nearby results</p>
                     <p className="mt-0.5 text-xs leading-5 text-slate-500">Uses browser location only with consent. Already granted? Chat picks it up automatically.</p>
                     <div className="mt-2.5 flex gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={requestDeviceLocation} disabled={isLocating}>
+                      <Button type="button" variant="outline" size="sm" onClick={() => requestDeviceLocation(true)} disabled={isLocating}>
                         {isLocating ? 'Locating…' : 'Enable location'}
                       </Button>
-                      <Button type="button" variant="outline" size="sm" onClick={() => setLocationPromptDismissed(true)}>Not now</Button>
+                      <Button type="button" variant="outline" size="sm" onClick={dismissLocationPrompt}>Not now</Button>
                     </div>
                   </div>
                 </div>
               )}
-              <div className={`rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3.5 ${!sessionContext?.activeGeo && !locationPromptDismissed ? '' : 'sm:col-span-2'}`}>
+              <div className={`rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3.5 ${shouldOfferAutomaticLocation ? '' : 'sm:col-span-2'}`}>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">How search works</p>
                 <p className="mt-1.5 text-sm text-slate-700">Use <strong className="font-medium text-slate-900">Refine</strong> to add location, record confidence, and service-detail filters. Save strong options directly from result cards.</p>
               </div>
@@ -2341,10 +2707,10 @@ export function ChatWindow({
 
       {/* Input */}
       <div className="shrink-0 border-t border-slate-200 bg-white px-5 py-4 md:px-6 md:py-4">
-        {quotaRemaining <= 5 && quotaRemaining > 0 && (
+        {!hasCrisis && quotaRemaining <= 5 && quotaRemaining > 0 && (
           <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-800 shadow-sm">
             <p className="font-medium">Low message budget</p>
-            <p className="mt-1">You can keep this search scope and continue in Directory or Map if needed.</p>
+            <p className="mt-1">Directory and Map keep visible categories and filters. Private chat wording stays here, so broader results may appear.</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <a href={_directoryHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-900 shadow-sm">
                 Open Directory
@@ -2360,7 +2726,18 @@ export function ChatWindow({
             <textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => { setInput(e.target.value); autoResize(e.target); }}
+              onChange={(e) => {
+                const nextInput = e.target.value;
+                if (
+                  pendingGuidedIntakeRef.current
+                  && pendingGuidedIntakeRef.current.prompt !== nextInput.trim()
+                ) {
+                  pendingGuidedIntakeRef.current = undefined;
+                  clearGuidedIntakeRetry(sessionId);
+                }
+                setInput(nextInput);
+                autoResize(e.target);
+              }}
               onKeyDown={handleKeyDown}
               placeholder="Describe what you need help with..."
               className="min-h-[84px] flex-1 resize-none rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5 text-[15px] leading-7 text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-300"
@@ -2387,10 +2764,10 @@ export function ChatWindow({
         {quotaRemaining === 0 && quotaResetAt && (
           <QuotaCooldown resetAt={quotaResetAt} onExpired={handleQuotaExpired} />
         )}
-        {quotaRemaining === 0 && !quotaResetAt && (
+        {!hasCrisis && quotaRemaining === 0 && !quotaResetAt && (
           <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-800 shadow-sm" role="alert">
             <p className="font-medium">Daily discovery limit reached.</p>
-            <p className="mt-1">Immediate safety and crisis messages still work. For other needs, continue with the same scope in Directory or Map.</p>
+            <p className="mt-1">Immediate safety and crisis messages still work. Directory and Map keep visible categories and filters, but not private chat wording, so broader results may appear.</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <a href={_directoryHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-900 shadow-sm">
                 Open Directory
@@ -2448,11 +2825,11 @@ export function ChatWindow({
                   <p className="mt-1 text-xs text-slate-500">Focus chat results near your approximate device location.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={requestDeviceLocation} disabled={isLocating}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => requestDeviceLocation(true)} disabled={isLocating || hasNonSelfAudience}>
                     <MapPin className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
                     {isLocating ? 'Locating…' : activeGeo ? 'Refresh location' : 'Use my location'}
                   </Button>
-                  {activeGeo ? (
+                  {activeGeo || activeTextLocationLabel ? (
                     <Button type="button" variant="outline" size="sm" onClick={clearLocation}>
                       Clear location
                     </Button>
@@ -2465,6 +2842,10 @@ export function ChatWindow({
                   value={radiusMiles}
                   onChange={handleRadiusChange}
                 />
+              ) : activeTextLocationLabel ? (
+                <p className="text-sm text-slate-600">
+                  Using {activeTextLocationLabel} from this chat. Choosing device location will replace it.
+                </p>
               ) : (
                 <p className="text-sm text-slate-500">Enable approximate location to filter chat results within a specific distance.</p>
               )}

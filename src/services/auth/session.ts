@@ -41,6 +41,14 @@ interface UserSecurityRow {
   account_status: AccountStatus | null;
 }
 
+interface CapabilityRow {
+  exists: boolean;
+}
+
+interface ErasureStateRow {
+  erased: boolean;
+}
+
 // ============================================================
 // HELPERS
 // ============================================================
@@ -105,7 +113,30 @@ async function getUserSecurity(clerkUserId: string): Promise<UserSecurityRow> {
        LIMIT 1`,
       [clerkUserId],
     );
-    return rows[0] ?? { user_id: clerkUserId, role: 'seeker', account_status: 'active' };
+    if (rows[0]) return rows[0];
+
+    // The erasure migration is deployed dark before its index gate and worker
+    // are activated. Preserve today's new-account behavior while the database
+    // capability is absent, but once installed, a durable digest block must
+    // win over the missing-profile fallback. Otherwise a Clerk session whose
+    // ORAN profile was scrubbed could silently resurrect as a new seeker.
+    const capability = await executeQuery<CapabilityRow>(
+      `SELECT to_regprocedure(
+         'oran_internal.is_account_erased(text)'
+       ) IS NOT NULL AS exists`,
+      [],
+    );
+    if (capability[0]?.exists) {
+      const erasure = await executeQuery<ErasureStateRow>(
+        `SELECT oran_internal.is_account_erased($1::text) AS erased`,
+        [clerkUserId],
+      );
+      if (erasure[0]?.erased) {
+        return { user_id: clerkUserId, role: 'seeker', account_status: 'frozen' };
+      }
+    }
+
+    return { user_id: clerkUserId, role: 'seeker', account_status: 'active' };
   } catch {
     // Authorization must fail closed when the ORAN security record cannot be read.
     return { user_id: clerkUserId, role: 'seeker', account_status: 'frozen' };

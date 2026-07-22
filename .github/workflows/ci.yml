@@ -90,6 +90,9 @@ jobs:
             --require-warning NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
             --require-warning CLERK_SECRET_KEY
 
+      - name: Enforce off-Azure runtime contract
+        run: npm run check:off-azure-runtime
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

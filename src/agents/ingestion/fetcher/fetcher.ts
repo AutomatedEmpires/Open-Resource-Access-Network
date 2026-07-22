@@ -1,7 +1,5 @@
 import crypto from 'node:crypto';
 
-import { Agent } from 'undici';
-
 import { canonicalizeUrl } from '../sourceRegistry';
 
 import {
@@ -11,6 +9,39 @@ import {
   FetcherOptionsSchema,
   type FetchResult,
 } from './types';
+import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy';
+import {
+  getSafeOutboundDispatcher,
+  OutboundHttpPolicyError,
+  validateOutboundHttpUrl,
+  type OutboundDnsResolver,
+} from '@/services/security/outboundHttpPolicy';
+
+async function validateAndCanonicalizeOutboundUrl(
+  url: string,
+  resolver: OutboundDnsResolver | undefined,
+  signal: AbortSignal,
+): Promise<string> {
+  const allowed = assertAllowedRuntimeEndpoint(url, 'ingestion source URL');
+  const target = await validateOutboundHttpUrl(allowed, { resolver, signal });
+  return canonicalizeUrl(target.url.href);
+}
+
+function redactUrlCredentials(value: string): string {
+  try {
+    const target = new URL(value);
+    target.username = '';
+    target.password = '';
+    return target.href;
+  } catch {
+    return value;
+  }
+}
+
+export interface PageFetcherDependencies {
+  /** Override DNS resolution for deterministic tests. */
+  resolver?: OutboundDnsResolver;
+}
 
 /**
  * PageFetcher handles fetching URLs with proper redirect handling,
@@ -21,15 +52,14 @@ import {
  */
 export class PageFetcher {
   private readonly options: FetcherOptions;
+  private readonly resolver?: OutboundDnsResolver;
 
-  private static readonly insecureTlsDispatcher = new Agent({
-    connect: {
-      rejectUnauthorized: false,
-    },
-  });
-
-  constructor(options: Partial<FetcherOptions> = {}) {
+  constructor(
+    options: Partial<FetcherOptions> = {},
+    dependencies: PageFetcherDependencies = {},
+  ) {
     this.options = FetcherOptionsSchema.parse(options);
+    this.resolver = dependencies.resolver;
   }
 
   /**
@@ -44,15 +74,40 @@ export class PageFetcher {
 
     // Validate + canonicalize URL
     try {
-      requestedUrl = canonicalizeUrl(url);
+      requestedUrl = await validateAndCanonicalizeOutboundUrl(
+        url,
+        this.resolver,
+        AbortSignal.timeout(this.options.timeoutMs),
+      );
       currentUrl = requestedUrl;
-    } catch {
-      return this.createError('invalid_url', `Invalid URL format: ${url}`, url, false);
+    } catch (error) {
+      const safeRequestedUrl = redactUrlCredentials(url);
+      const invalid = error instanceof OutboundHttpPolicyError && error.code === 'invalid_url';
+      if (!invalid) {
+        return this.createError(
+          'blocked',
+          'Ingestion source URL was rejected by outbound policy',
+          safeRequestedUrl,
+          false,
+        );
+      }
+      return this.createError('invalid_url', 'Invalid URL format', safeRequestedUrl, false);
     }
 
     try {
       // Use manual redirect handling to capture the chain
       while (redirectCount <= this.options.maxRedirects) {
+        try {
+          assertAllowedRuntimeEndpoint(currentUrl, 'ingestion source URL');
+        } catch {
+          return this.createError(
+            'blocked',
+            'Microsoft-hosted source endpoints are prohibited',
+            requestedUrl,
+            false,
+          );
+        }
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.options.timeoutMs);
 
@@ -67,10 +122,9 @@ export class PageFetcher {
             signal: controller.signal,
           };
 
-          // Allow explicit opt-out of TLS verification (unsafe; use only in controlled dev/test).
-          if (!this.options.validateSsl && currentUrl.startsWith('https:')) {
-            requestInit.dispatcher = PageFetcher.insecureTlsDispatcher;
-          }
+          // Connection-time lookup repeats public-address validation to close
+          // the DNS rebinding window after URL preflight.
+          requestInit.dispatcher = getSafeOutboundDispatcher(this.options.validateSsl);
 
           const response = await fetch(currentUrl, requestInit);
 
@@ -89,11 +143,32 @@ export class PageFetcher {
               );
             }
 
+            try {
+              await response.body?.cancel();
+            } catch {
+              // Redirect bodies are not consumed; a locked body must not hide the redirect policy result.
+            }
+
             // Record current URL in chain before following redirect
             redirectChain.push(currentUrl);
 
-            // Resolve relative redirects
-            currentUrl = canonicalizeUrl(new URL(location, currentUrl).href);
+            // Resolve and validate the raw redirect before canonicalization can
+            // strip credentials or normalize a prohibited protocol.
+            try {
+              currentUrl = await validateAndCanonicalizeOutboundUrl(
+                new URL(location, currentUrl).href,
+                this.resolver,
+                AbortSignal.timeout(this.options.timeoutMs),
+              );
+            } catch {
+              return this.createError(
+                'blocked',
+                'Redirect target was rejected by outbound policy',
+                requestedUrl,
+                false,
+                response.status,
+              );
+            }
             redirectCount++;
             continue;
           }

@@ -4,6 +4,11 @@ import { PageFetcher, isFetchError, isFetchSuccess } from '@/agents/ingestion/fe
 
 const fetchMock = vi.hoisted(() => vi.fn());
 const originalFetch = global.fetch;
+const publicResolver = async () => [{ address: '93.184.216.34', family: 4 as const }];
+
+function createFetcher(options: ConstructorParameters<typeof PageFetcher>[0] = {}): PageFetcher {
+  return new PageFetcher(options, { resolver: publicResolver });
+}
 
 function makeResponse(
   body: string | null,
@@ -50,6 +55,7 @@ beforeEach(() => {
 
 afterEach(() => {
   global.fetch = originalFetch;
+  vi.unstubAllEnvs();
 });
 
 describe('PageFetcher', () => {
@@ -74,7 +80,7 @@ describe('PageFetcher', () => {
         }),
       );
 
-    const fetcher = new PageFetcher();
+    const fetcher = createFetcher();
     const result = await fetcher.fetch('https://example.com/start');
 
     expect(isFetchSuccess(result)).toBe(true);
@@ -99,7 +105,7 @@ describe('PageFetcher', () => {
 
   it('sets an insecure TLS dispatcher only when validateSsl is false for https', async () => {
     fetchMock.mockResolvedValue(makeResponse('ok'));
-    const fetcher = new PageFetcher({ validateSsl: false });
+    const fetcher = createFetcher({ validateSsl: false });
 
     await fetcher.fetch('https://example.com/secure');
     await fetcher.fetch('http://example.com/plain');
@@ -113,7 +119,7 @@ describe('PageFetcher', () => {
   });
 
   it('returns invalid_url for malformed URLs', async () => {
-    const fetcher = new PageFetcher();
+    const fetcher = createFetcher();
     const result = await fetcher.fetch('not-a-valid-url');
 
     expect(isFetchError(result)).toBe(true);
@@ -125,7 +131,7 @@ describe('PageFetcher', () => {
 
   it('returns network_error when a redirect response has no Location header', async () => {
     fetchMock.mockResolvedValueOnce(makeResponse(null, { status: 301 }));
-    const fetcher = new PageFetcher();
+    const fetcher = createFetcher();
 
     const result = await fetcher.fetch('https://example.com/start');
 
@@ -138,7 +144,7 @@ describe('PageFetcher', () => {
 
   it('returns blocked for explicit 403/451 responses', async () => {
     fetchMock.mockResolvedValueOnce(makeResponse('forbidden', { status: 403 }));
-    const fetcher = new PageFetcher();
+    const fetcher = createFetcher();
 
     const result = await fetcher.fetch('https://example.com/blocked');
 
@@ -147,6 +153,63 @@ describe('PageFetcher', () => {
     expect(result.code).toBe('blocked');
     expect(result.httpStatus).toBe(403);
     expect(result.retryable).toBe(false);
+  });
+
+  it('blocks Microsoft hosts and redirects before the prohibited network call', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production');
+    const fetcher = createFetcher();
+
+    const direct = await fetcher.fetch('https://oran.azurewebsites.net/resource');
+    expect(isFetchError(direct)).toBe(true);
+    if (isFetchError(direct)) expect(direct.code).toBe('blocked');
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fetchMock.mockResolvedValueOnce(makeResponse(null, {
+      status: 302,
+      headers: { location: 'https://files.microsoft.com/resource' },
+    }));
+    const redirected = await fetcher.fetch('https://example.org/start');
+    expect(isFetchError(redirected)).toBe(true);
+    if (isFetchError(redirected)) expect(redirected.code).toBe('blocked');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('https://example.org/start', expect.any(Object));
+  });
+
+  it.each([
+    'file:///etc/passwd',
+    'https://user:secret@example.org/resource',
+    'http://127.0.0.1/admin',
+    'http://169.254.169.254/latest/meta-data',
+    'http://[::1]/admin',
+  ])('rejects unsafe source %s before canonicalization or fetch', async (url) => {
+    const result = await createFetcher().fetch(url);
+
+    expect(isFetchError(result)).toBe(true);
+    if (isFetchError(result)) expect(result.code).toBe('blocked');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('redacts embedded credentials from rejected fetch metadata', async () => {
+    const result = await createFetcher().fetch('https://user:secret@example.org/resource');
+
+    expect(isFetchError(result)).toBe(true);
+    if (isFetchError(result)) {
+      expect(result.requestedUrl).toBe('https://example.org/resource');
+      expect(JSON.stringify(result)).not.toContain('secret');
+    }
+  });
+
+  it('validates a raw redirect before canonicalization can hide credentials', async () => {
+    fetchMock.mockResolvedValueOnce(makeResponse('discard', {
+      status: 302,
+      headers: { location: 'https://user:secret@example.org/private' },
+    }));
+
+    const result = await createFetcher().fetch('https://example.org/start');
+
+    expect(isFetchError(result)).toBe(true);
+    if (isFetchError(result)) expect(result.code).toBe('blocked');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('returns too_many_redirects when redirect count exceeds the configured maximum', async () => {
@@ -164,7 +227,7 @@ describe('PageFetcher', () => {
         }),
       );
 
-    const fetcher = new PageFetcher({ maxRedirects: 1 });
+    const fetcher = createFetcher({ maxRedirects: 1 });
     const result = await fetcher.fetch('https://example.com/start');
 
     expect(isFetchError(result)).toBe(true);
@@ -180,7 +243,7 @@ describe('PageFetcher', () => {
         headers: { 'content-length': '999' },
       }),
     );
-    const fetcher = new PageFetcher({ maxContentLength: 50 });
+    const fetcher = createFetcher({ maxContentLength: 50 });
 
     const byHeader = await fetcher.fetch('https://example.com/too-large-header');
     expect(isFetchError(byHeader)).toBe(true);
@@ -214,7 +277,7 @@ describe('PageFetcher', () => {
       { error: 'string-error', expected: 'unknown' },
     ] as const;
 
-    const fetcher = new PageFetcher();
+    const fetcher = createFetcher();
 
     for (const c of cases) {
       fetchMock.mockRejectedValueOnce(c.error);

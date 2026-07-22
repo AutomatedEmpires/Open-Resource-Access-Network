@@ -13,6 +13,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { Bookmark, Search, Trash2, MessageCircle, MapPin, AlertTriangle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -56,6 +57,24 @@ import {
   writeStoredSavedServiceIds,
 } from '@/services/saved/client';
 import { getSavedTogglePresentation } from '@/services/saved/presentation';
+
+function SavedComparisonLoadingState() {
+  return (
+    <div
+      className="rounded-[24px] border border-[var(--border)] bg-[var(--bg-surface)] px-5 py-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]"
+      role="status"
+      aria-busy="true"
+      aria-label="Loading saved service comparison"
+    >
+      <p className="text-sm font-medium text-[var(--text-secondary)]">Preparing your private comparison…</p>
+    </div>
+  );
+}
+
+const SavedServiceComparison = dynamic(
+  () => import('@/components/seeker/SavedServiceComparison').then((module) => module.SavedServiceComparison),
+  { ssr: false, loading: SavedComparisonLoadingState },
+);
 
 // ============================================================
 // SERVER-SIDE HELPERS (graceful fallback to localStorage)
@@ -812,6 +831,11 @@ export default function SavedPage() {
         {/* Results */}
         {!isLoading && services.length > 0 && (
           <div className="space-y-4">
+            <SavedServiceComparison
+              key={services.map((service) => service.service.id).join(':')}
+              services={services}
+              buildServiceHref={buildSavedServiceHref}
+            />
             <p className="rounded-[20px] border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-sm font-medium text-[var(--text-secondary)] shadow-[0_10px_30px_rgba(15,23,42,0.04)]" role="status" aria-live="polite">
               {savedGroups.reduce((count, group) => count + group.services.length, 0)} saved service{savedGroups.reduce((count, group) => count + group.services.length, 0) !== 1 ? 's' : ''}
             </p>

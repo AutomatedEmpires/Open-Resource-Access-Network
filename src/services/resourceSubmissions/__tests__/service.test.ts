@@ -547,6 +547,35 @@ describe('resource submission service', () => {
     expect(clientQuery).toHaveBeenCalledTimes(1);
   });
 
+  it('refuses organization claim projection after community-administrator approval', async () => {
+    const draft = createEmptyResourceSubmissionDraft('claim', 'host');
+    const clientQuery = vi.fn(async (sql: string) => {
+      if (sql.includes('FROM form_instances fi') && sql.includes('FOR UPDATE')) {
+        return {
+          rows: [{
+            submission_id: 'sub-community-claim',
+            submission_type: 'org_claim',
+            target_type: 'organization',
+            target_id: 'org-1',
+            submitted_by_user_id: 'submitter-1',
+            form_data: { draft },
+            ...buildProjectionAuthorizationFields(draft, {
+              approval_actor_role: 'community_admin',
+            }),
+          }],
+        };
+      }
+      return { rows: [] };
+    });
+    dbMocks.withTransaction.mockImplementation(
+      async (fn: (client: { query: typeof clientQuery }) => unknown) => fn({ query: clientQuery }),
+    );
+
+    await expect(projectApprovedResourceSubmission('instance-1', 'actor-1'))
+      .rejects.toThrow('Organization claim projection requires approval by an ORAN administrator');
+    expect(clientQuery).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses projection when the current draft hash differs from the reviewed source assertion', async () => {
     const draft = createEmptyResourceSubmissionDraft('listing', 'host');
     draft.service.name = 'Changed after review';
@@ -685,7 +714,9 @@ describe('resource submission service', () => {
             target_id: null,
             submitted_by_user_id: 'submitter-1',
             form_data: { draft },
-            ...buildProjectionAuthorizationFields(draft),
+            ...buildProjectionAuthorizationFields(draft, {
+              approval_actor_role: 'oran_admin',
+            }),
           }],
         };
       }

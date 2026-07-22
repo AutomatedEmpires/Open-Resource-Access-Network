@@ -171,6 +171,51 @@ describe('useFormSubmit', () => {
     expect(onError).toHaveBeenCalledWith('Network down', []);
   });
 
+  it('rejects cross-origin submission endpoints before fetch', async () => {
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useFormSubmit<{ name: string }>({
+        url: 'https://legacy.azurewebsites.net/api/forms',
+        onError,
+      }),
+    );
+
+    let success = true;
+    await act(async () => {
+      success = await result.current.submit({ name: 'test' });
+    });
+
+    expect(success).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(
+      'Form submissions must use an ORAN same-origin endpoint',
+      [],
+    );
+  });
+
+  it('rejects credential-bearing submission endpoints before fetch', async () => {
+    const onError = vi.fn();
+    const credentialUrl = `${window.location.origin.replace('://', '://user:secret@')}/api/forms`;
+    const { result } = renderHook(() =>
+      useFormSubmit<{ name: string }>({
+        url: credentialUrl,
+        onError,
+      }),
+    );
+
+    let success = true;
+    await act(async () => {
+      success = await result.current.submit({ name: 'test' });
+    });
+
+    expect(success).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(
+      'Form submission URLs must not contain credentials',
+      [],
+    );
+  });
+
   it('aborts in-flight submissions when a new submit starts', async () => {
     let firstSignal: AbortSignal | undefined;
     fetchMock

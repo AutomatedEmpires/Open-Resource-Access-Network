@@ -57,21 +57,27 @@ vi.mock('@/components/ui/schedule-editor', () => ({
 
 import { ResourceSubmissionWorkspace } from '@/components/resource-submissions/ResourceSubmissionWorkspace';
 
-function makeDetail() {
-  const draft = createEmptyResourceSubmissionDraft('listing', 'host');
+function makeDetail(options: {
+  status?: string;
+  variant?: 'listing' | 'claim';
+} = {}) {
+  const status = options.status ?? 'draft';
+  const variant = options.variant ?? 'listing';
+  const draft = createEmptyResourceSubmissionDraft(variant, 'host');
   draft.evidence.sourceUrl = 'https://example.org/pantry';
 
   return {
     instance: {
       id: 'entry-1',
       submission_id: 'submission-1',
-      status: 'draft',
+      submission_type: variant === 'claim' ? 'org_claim' : 'new_service',
+      status,
       created_at: '2026-03-17T12:00:00.000Z',
     },
     draft,
     cards: [],
     reviewMeta: {
-      status: 'draft',
+      status,
       submittedAt: null,
       reviewedAt: null,
       resolvedAt: null,
@@ -215,5 +221,82 @@ describe('ResourceSubmissionWorkspace assist flow', () => {
 
     expect((await screen.findAllByText('Listing basics')).length).toBeGreaterThan(0);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('announces that a first claim approval still requires another administrator', async () => {
+    const needsReview = makeDetail({ status: 'needs_review', variant: 'claim' });
+    const pending = makeDetail({ status: 'pending_second_approval', variant: 'claim' });
+    fetchMock.mockImplementation(async (_url: string, options?: RequestInit) => (
+      options?.method === 'PUT' ? {
+        ok: true,
+        json: async () => ({ detail: pending, pendingSecondApproval: true, projection: null }),
+      } : {
+        ok: true,
+        json: async () => ({ detail: needsReview }),
+      }
+    ));
+
+    render(
+      <ResourceSubmissionWorkspace
+        portal="oran_admin"
+        initialVariant="claim"
+        initialChannel="host"
+        pageTitle="Claim review"
+        pageEyebrow="ORAN Admin"
+        pageSubtitle="Review organization ownership evidence."
+        entryId="entry-1"
+      />,
+    );
+
+    await screen.findByRole('button', { name: 'Approve' });
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() => {
+      expect(toastMocks.info).toHaveBeenCalledWith(
+        'First approval recorded. A different administrator must provide final approval.',
+      );
+    });
+    expect(screen.queryByRole('button', { name: 'Start review' })).not.toBeInTheDocument();
+  });
+
+  it('retries approved projection without resubmitting immutable draft content', async () => {
+    const approved = makeDetail({ status: 'approved', variant: 'claim' });
+    fetchMock.mockImplementation(async (_url: string, options?: RequestInit) => (
+      options?.method === 'PUT' ? {
+        ok: true,
+        json: async () => ({
+          detail: approved,
+          projectionRepair: true,
+          projection: { organizationId: 'org-1', serviceId: null },
+        }),
+      } : {
+        ok: true,
+        json: async () => ({ detail: approved }),
+      }
+    ));
+
+    render(
+      <ResourceSubmissionWorkspace
+        portal="oran_admin"
+        initialVariant="claim"
+        initialChannel="host"
+        pageTitle="Claim review"
+        pageEyebrow="ORAN Admin"
+        pageSubtitle="Review organization ownership evidence."
+        entryId="entry-1"
+      />,
+    );
+
+    await screen.findByRole('button', { name: 'Approve' });
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() => {
+      expect(toastMocks.success).toHaveBeenCalledWith('Approved resource projection verified.');
+    });
+    const putCall = fetchMock.mock.calls.find((call) => call[1]?.method === 'PUT');
+    const requestBody = JSON.parse(putCall?.[1]?.body as string) as Record<string, unknown>;
+    expect(requestBody).toMatchObject({ action: 'approve' });
+    expect(requestBody).not.toHaveProperty('draft');
+    expect(requestBody).not.toHaveProperty('notes');
   });
 });

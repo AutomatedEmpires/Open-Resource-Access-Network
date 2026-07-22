@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const port = Number(process.env.PORT ?? 3000);
+const remoteBaseUrl = process.env.PLAYWRIGHT_BASE_URL?.trim();
+const baseURL = remoteBaseUrl || `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: './e2e',
@@ -8,16 +10,19 @@ export default defineConfig({
   expect: {
     timeout: 10_000,
   },
-  fullyParallel: true,
-  retries: process.env.CI ? 2 : 0,
+  // Hosted acceptance may mutate a resettable preview database. Serialize it
+  // and disable retries so a failed lifecycle cannot be replayed concurrently.
+  fullyParallel: !remoteBaseUrl,
+  retries: remoteBaseUrl ? 0 : process.env.CI ? 2 : 0,
+  workers: remoteBaseUrl ? 1 : undefined,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`,
+    baseURL,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
-  webServer: {
+  webServer: remoteBaseUrl ? undefined : {
     command: 'npm run dev',
     url: `http://127.0.0.1:${port}`,
     // Avoid reusing an already-running local dev server that may not have

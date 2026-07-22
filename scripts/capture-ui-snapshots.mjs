@@ -21,6 +21,7 @@ import { chromium } from 'playwright';
 import { readFileSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { assertAllowedRuntimeEndpoint } from '../src/services/runtime/providerPolicyCore.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -31,7 +32,10 @@ const viewportsConfig = JSON.parse(
   readFileSync(resolve(ROOT, 'docs/ui/viewports.json'), 'utf8'),
 );
 
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+const BASE_URL = assertAllowedRuntimeEndpoint(
+  process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000',
+  'NEXT_PUBLIC_SITE_URL',
+);
 
 /** Seeker pages to capture. Key = directory name, value = pathname. */
 const PAGES = {

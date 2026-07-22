@@ -1,6 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { buildUrl, isTransient, sha256, stableStringify } from '../connectorUtils';
+import {
+  buildUrl,
+  fetchWithValidatedRedirects,
+  isTransient,
+  sha256,
+  stableStringify,
+} from '../connectorUtils';
+
+const publicResolver = async () => [{ address: '93.184.216.34', family: 4 as const }];
 
 describe('connectorUtils', () => {
   describe('sha256', () => {
@@ -97,6 +105,100 @@ describe('connectorUtils', () => {
       expect(buildUrl('https://api.example.com///', '/search')).toBe(
         'https://api.example.com/search',
       );
+    });
+  });
+
+  describe('fetchWithValidatedRedirects', () => {
+    it('checks and follows each redirect manually', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(new Response(null, {
+          status: 302,
+          headers: { Location: '/feed/final' },
+        }))
+        .mockResolvedValueOnce(new Response('[]', { status: 200 }));
+
+      const response = await fetchWithValidatedRedirects(
+        'https://api.example.org/feed/start',
+        fetchMock as never,
+        { endpointLabel: 'test feed URL', maxRedirects: 1, resolver: publicResolver },
+      );
+
+      expect(response.status).toBe(200);
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        'https://api.example.org/feed/start',
+        expect.objectContaining({ redirect: 'manual' }),
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        'https://api.example.org/feed/final',
+        expect.objectContaining({ redirect: 'manual' }),
+      );
+    });
+
+    it('rejects a prohibited redirect before requesting its target', async () => {
+      vi.stubEnv('VERCEL_ENV', 'production');
+      const prohibitedTarget = 'https://legacy.azure-mobile.net/tables/resources';
+      const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, {
+        status: 302,
+        headers: { Location: prohibitedTarget },
+      }));
+
+      await expect(fetchWithValidatedRedirects(
+        'https://api.example.org/feed/start',
+        fetchMock as never,
+        { endpointLabel: 'test feed URL', resolver: publicResolver },
+      )).rejects.toThrow('prohibited Microsoft endpoint');
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls.some(([url]) => String(url) === prohibitedTarget)).toBe(false);
+      vi.unstubAllEnvs();
+    });
+
+    it('blocks private literal targets before issuing a request', async () => {
+      const fetchMock = vi.fn();
+
+      await expect(fetchWithValidatedRedirects(
+        'http://169.254.169.254/latest/meta-data',
+        fetchMock as never,
+        { endpointLabel: 'test feed URL', resolver: publicResolver },
+      )).rejects.toMatchObject({ code: 'blocked_address' });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('cancels redirect bodies and blocks sensitive headers from crossing origins', async () => {
+      const redirect = new Response('discard me', {
+        status: 307,
+        headers: { Location: 'https://other.example.org/feed' },
+      });
+      const cancel = vi.spyOn(redirect.body!, 'cancel');
+      const fetchMock = vi.fn().mockResolvedValueOnce(redirect);
+
+      await expect(fetchWithValidatedRedirects(
+        'https://api.example.org/feed',
+        fetchMock as never,
+        {
+          endpointLabel: 'test feed URL',
+          resolver: publicResolver,
+          requestInit: {
+            headers: { 'Ocp-Apim-Subscription-Key': 'do-not-forward' },
+          },
+        },
+      )).rejects.toThrow('invalid or prohibited Location');
+
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an invalid redirect budget before issuing a request', async () => {
+      const fetchMock = vi.fn();
+
+      await expect(fetchWithValidatedRedirects(
+        'https://api.example.org/feed',
+        fetchMock as never,
+        { endpointLabel: 'test feed URL', maxRedirects: 11, resolver: publicResolver },
+      )).rejects.toThrow('integer between 0 and 10');
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 });

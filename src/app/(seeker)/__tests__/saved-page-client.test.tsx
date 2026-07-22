@@ -121,8 +121,8 @@ describe('SavedPageClient', () => {
 
     render(<SavedPage />);
 
-    await screen.findByText('Server Save');
-    expect(screen.getByText('Local Save')).toBeInTheDocument();
+    await screen.findByTestId('saved-service-card-svc-server');
+    expect(screen.getByTestId('saved-service-card-svc-local')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/saved', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -144,7 +144,8 @@ describe('SavedPageClient', () => {
 
     render(<SavedPage />);
 
-    await screen.findByText('Local Save');
+    await screen.findByTestId('saved-service-card-svc-local');
+    expect(await screen.findByRole('heading', { name: 'Compare next steps' })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/services?ids=svc-local',
@@ -167,7 +168,7 @@ describe('SavedPageClient', () => {
     render(<SavedPage />);
 
     await screen.findByTestId('saved-service-card-svc-1');
-    expect(screen.getByRole('status')).toHaveTextContent('1 saved service');
+    expect(screen.getByText('1 saved service')).toBeInTheDocument();
     expect(screen.getByText(/1 saved service could not be loaded/i)).toBeInTheDocument();
     expect(localStorage.getItem(STORAGE_KEY)).toBe('["svc-1"]');
   });
@@ -230,7 +231,7 @@ describe('SavedPageClient', () => {
     render(<SavedPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent('2 saved services');
+      expect(screen.getByText('2 saved services')).toBeInTheDocument();
     });
     fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));

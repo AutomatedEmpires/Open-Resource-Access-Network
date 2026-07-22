@@ -64,7 +64,9 @@ const LIMIT = 20;
 const STATUS_TABS: { value: '' | SubmissionStatus; label: string }[] = [
   { value: '',             label: 'All' },
   { value: 'submitted',    label: 'Submitted' },
+  { value: 'needs_review', label: 'Needs Review' },
   { value: 'under_review', label: 'Under Review' },
+  { value: 'pending_second_approval', label: 'Second Approval' },
   { value: 'approved',     label: 'Approved' },
   { value: 'denied',       label: 'Denied' },
 ];
@@ -132,9 +134,13 @@ function ApprovalsPageInner() {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? 'Decision failed');
       }
-      const json = (await res.json()) as { message: string };
+      const json = (await res.json()) as { message: string; toStatus?: SubmissionStatus };
       setSubmitResult({ success: true, message: json.message });
-      toast.success(`Claim ${decision === 'approved' ? 'approved' : 'denied'} successfully`);
+      toast.success(
+        json.toStatus === 'pending_second_approval'
+          ? 'Claim sent for second approval'
+          : `Claim ${decision === 'approved' ? 'approved' : 'denied'} successfully`,
+      );
       setDecidingId(null);
       setDecisionNotes('');
       void fetchClaims(page, statusFilter);
@@ -255,7 +261,13 @@ function ApprovalsPageInner() {
                 {data.results.map((row) => {
                   const age = daysAgo(row.created_at);
                   const isDeciding = decidingId === row.id;
-                  const canDecide = ['submitted', 'under_review'].includes(row.status);
+                  const canDecide = [
+                    'submitted',
+                    'needs_review',
+                    'under_review',
+                    'escalated',
+                    'pending_second_approval',
+                  ].includes(row.status);
                   return (
                     <React.Fragment key={row.id}>
                       <tr className={`hover:bg-gray-50 ${isDeciding ? 'bg-info-subtle/50' : ''}`}>
@@ -300,7 +312,7 @@ function ApprovalsPageInner() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {canDecide && !isDeciding && (
+                          {!isDeciding && (
                             <div className="flex justify-end gap-2">
                               <Link href={`/approvals/${row.id}`}>
                                 <Button
@@ -311,14 +323,16 @@ function ApprovalsPageInner() {
                                   Card review
                                 </Button>
                               </Link>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setDecidingId(row.id)}
-                                className="gap-1"
-                              >
-                                Quick action
-                              </Button>
+                              {canDecide && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setDecidingId(row.id)}
+                                  className="gap-1"
+                                >
+                                  Quick action
+                                </Button>
+                              )}
                             </div>
                           )}
                           {isDeciding && (

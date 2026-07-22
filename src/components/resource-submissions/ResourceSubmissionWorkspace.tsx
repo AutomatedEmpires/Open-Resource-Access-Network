@@ -549,12 +549,19 @@ export function ResourceSubmissionWorkspace({
         },
         body: JSON.stringify({
           action,
-          draft,
-          notes: draft.evidence.notes,
+          ...(canEdit ? {
+            draft,
+            notes: draft.evidence.notes,
+          } : {}),
           reviewerNotes,
         }),
       });
-      const body = (await res.json().catch(() => null)) as { error?: string; detail?: ResourceSubmissionDetail } | null;
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+        detail?: ResourceSubmissionDetail;
+        pendingSecondApproval?: boolean;
+        projectionRepair?: boolean;
+      } | null;
       if (!res.ok || !body?.detail) {
         throw new Error(body?.error ?? 'Unable to update submission.');
       }
@@ -570,7 +577,15 @@ export function ResourceSubmissionWorkspace({
 
       if (action === 'save') success('Draft saved.');
       if (action === 'submit') success('Resource submitted for review.');
-      if (action === 'approve') success('Resource approved and published.');
+      if (action === 'approve' && body.pendingSecondApproval) {
+        info('First approval recorded. A different administrator must provide final approval.');
+      } else if (action === 'approve' && body.projectionRepair) {
+        success('Approved resource projection verified.');
+      } else if (action === 'approve') {
+        success(draft.variant === 'claim'
+          ? 'Organization claim approved and access activated.'
+          : 'Resource approved and published.');
+      }
       if (action === 'return') info('Submission returned to the submitter.');
       if (action === 'deny') info('Submission denied.');
       if (action === 'start_review') info('Review started.');
@@ -725,12 +740,17 @@ export function ResourceSubmissionWorkspace({
                 Submit for review
               </Button>
             )}
-            {canReview && currentStatus !== 'under_review' && currentStatus !== 'approved' && currentStatus !== 'denied' && (
+            {canReview
+              && currentStatus !== 'under_review'
+              && currentStatus !== 'pending_second_approval'
+              && currentStatus !== 'approved'
+              && currentStatus !== 'denied'
+              && (
               <Button variant="outline" onClick={() => void runAction('start_review')} disabled={isWorking} className="gap-2">
                 <ShieldAlert className="h-4 w-4" aria-hidden="true" />
                 Start review
               </Button>
-            )}
+              )}
           </div>
         )}
       />

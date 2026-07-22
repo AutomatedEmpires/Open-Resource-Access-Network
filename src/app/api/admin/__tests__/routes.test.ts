@@ -17,6 +17,9 @@ const engineMocks = vi.hoisted(() => ({
   acquireLock: vi.fn(),
   releaseLock: vi.fn(),
 }));
+const resourceSubmissionMocks = vi.hoisted(() => ({
+  projectApprovedResourceSubmission: vi.fn(),
+}));
 const flagServiceMocks = vi.hoisted(() => ({
   getAllFlags: vi.fn(),
   getFlag: vi.fn(),
@@ -36,6 +39,7 @@ vi.mock('@/services/auth/guards', () => ({
   requireMinRole: requireMinRoleMock,
 }));
 vi.mock('@/services/workflow/engine', () => engineMocks);
+vi.mock('@/services/resourceSubmissions/service', () => resourceSubmissionMocks);
 vi.mock('@/services/flags/flags', () => ({
   flagService: flagServiceMocks,
   getFlagServiceImplementation: vi.fn().mockResolvedValue('in_memory'),
@@ -114,6 +118,10 @@ beforeEach(() => {
   engineMocks.advance.mockResolvedValue({ success: true, fromStatus: 'submitted', toStatus: 'approved', transitionId: 'tx-1' });
   engineMocks.acquireLock.mockResolvedValue(true);
   engineMocks.releaseLock.mockResolvedValue(undefined);
+  resourceSubmissionMocks.projectApprovedResourceSubmission.mockResolvedValue({
+    organizationId: 'org-1',
+    serviceId: null,
+  });
 });
 
 describe('admin api routes', () => {
@@ -153,15 +161,15 @@ describe('admin api routes', () => {
   it('approves an org claim via the workflow engine', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'admin-1', role: 'oran_admin' });
     engineMocks.acquireLock.mockResolvedValueOnce(true);
-    engineMocks.advance.mockResolvedValueOnce({ success: true, fromStatus: 'submitted', toStatus: 'approved', transitionId: 'tx-1' });
-    dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
-      const client = {
-        query: vi
-          .fn()
-          .mockResolvedValueOnce({ rows: [{ service_id: 'svc-1' }] })
-          .mockResolvedValueOnce({ rows: [] }),
-      };
-      return callback(client);
+    dbMocks.executeQuery.mockResolvedValueOnce([{
+      status: 'pending_second_approval',
+      account_status: 'active',
+    }]);
+    engineMocks.advance.mockResolvedValueOnce({
+      success: true,
+      fromStatus: 'pending_second_approval',
+      toStatus: 'approved',
+      transitionId: 'tx-1',
     });
     const { POST } = await loadApprovalsRoute();
 
@@ -178,6 +186,7 @@ describe('admin api routes', () => {
     const body = await response.json();
     expect(body.success).toBe(true);
     expect(body.id).toBe('11111111-1111-4111-8111-111111111111');
+    expect(body.projection).toEqual({ organizationId: 'org-1', serviceId: null });
     expect(body.message).toBe('Claim approved. Organization is now active.');
   });
 

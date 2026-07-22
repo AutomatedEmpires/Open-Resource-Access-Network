@@ -79,6 +79,13 @@ const envSource = options.namesFile ? readNamesFile(options.namesFile) : process
 const result = validateRuntimeEnv(options.target, envSource, {
   nodeEnv: options.nodeEnv || undefined,
 });
+// Older contract revisions returned a prohibitedSettings collection. The
+// dedicated off-Azure runtime gate now owns that check, but this CLI remains
+// compatible with either result shape so an invalid environment is reported
+// as a normal validation failure instead of throwing.
+const prohibitedSettings = Array.isArray(result.prohibitedSettings)
+  ? result.prohibitedSettings
+  : [];
 const requiredWarnings = options.requireWarnings
   .map((value) => value.trim())
   .filter(Boolean);
@@ -92,11 +99,11 @@ if (!result.ok) {
       `Missing critical ${result.target} settings: ${result.missingCritical.join(', ')}`,
     );
   }
-  if (result.prohibitedSettings.length > 0) {
+  if (prohibitedSettings.length > 0) {
     emit(
       options.format,
       'error',
-      `Retired Microsoft runtime settings are prohibited: ${result.prohibitedSettings.join(', ')}`,
+      `Retired Microsoft runtime settings are prohibited: ${prohibitedSettings.join(', ')}`,
     );
   }
 }

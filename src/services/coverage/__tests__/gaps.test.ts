@@ -26,10 +26,19 @@ beforeEach(() => {
 describe('findUnroutedCandidates', () => {
   it('passes threshold hours to the query', async () => {
     await findUnroutedCandidates(48);
+    const query = mockExecuteQuery.mock.calls[0]?.[0] as string;
     expect(mockExecuteQuery).toHaveBeenCalledWith(
       expect.stringContaining('extracted_candidates'),
       [48],
     );
+    expect(query).toContain('ec.candidate_id AS "candidateId"');
+    expect(query).toContain('ec.jurisdiction_state AS "stateProvince"');
+    expect(query).toContain('caa.candidate_id = ec.candidate_id');
+    expect(query).toContain("caa.status IN ('pending', 'claimed')");
+    expect(query).toContain('ec.assigned_to_user_id IS NULL');
+    expect(query).not.toContain('ec.fields');
+    expect(query).not.toContain('assignment_status');
+    expect(query).not.toContain('needs_review');
   });
 
   it('defaults threshold to 24 hours', async () => {
@@ -60,11 +69,20 @@ describe('getCoverageGapSummaries', () => {
     mockExecuteQuery.mockResolvedValueOnce(summaries);
 
     const result = await getCoverageGapSummaries(24);
+    const query = mockExecuteQuery.mock.calls[0]?.[0] as string;
     expect(result).toEqual(summaries);
     expect(mockExecuteQuery).toHaveBeenCalledWith(
       expect.stringContaining('GROUP BY'),
       [24],
     );
+    expect(query).toContain("COALESCE(ec.jurisdiction_state, 'Unknown')");
+    expect(query).toContain('ec.jurisdiction_county AS county');
+    expect(query).toContain('caa.candidate_id = ec.candidate_id');
+    expect(query).toContain("caa.status IN ('pending', 'claimed')");
+    expect(query).toContain('ec.assigned_to_user_id IS NULL');
+    expect(query).not.toContain('ec.fields');
+    expect(query).not.toContain('assignment_status');
+    expect(query).not.toContain('needs_review');
   });
 });
 

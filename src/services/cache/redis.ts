@@ -1,11 +1,11 @@
 /**
- * Azure Cache for Redis — Client Wrapper
+ * Shared Redis client wrapper
  *
  * Provides a lazy-initialized Redis connection for caching.
- * Requires REDIS_URL in environment (Azure Cache for Redis connection string).
+ * Requires REDIS_URL in the environment when Redis is enabled.
  *
  * Connection format:
- *   rediss://:password@hostname:6380  (Azure Cache for Redis, TLS)
+ *   rediss://:password@hostname:6380
  *
  * Falls back gracefully when Redis is not configured — all operations
  * become no-ops so the app works without Redis in local dev.
@@ -13,6 +13,7 @@
 
 import Redis from 'ioredis';
 import { captureException } from '@/services/telemetry/sentry';
+import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy';
 
 // ============================================================
 // CLIENT SINGLETON
@@ -25,7 +26,10 @@ let connectionFailed = false;
  * Returns true when Redis is configured via REDIS_URL.
  */
 export function isRedisConfigured(): boolean {
-  return !!process.env.REDIS_URL;
+  const url = process.env.REDIS_URL;
+  if (!url) return false;
+  assertAllowedRuntimeEndpoint(url, 'REDIS_URL');
+  return true;
 }
 
 /**
@@ -33,11 +37,12 @@ export function isRedisConfigured(): boolean {
  * or if a previous connection attempt failed.
  */
 function getRedis(): Redis | null {
-  if (connectionFailed) return null;
-  if (redis) return redis;
-
   const url = process.env.REDIS_URL;
   if (!url) return null;
+  assertAllowedRuntimeEndpoint(url, 'REDIS_URL');
+
+  if (connectionFailed) return null;
+  if (redis) return redis;
 
   try {
     redis = new Redis(url, {
@@ -51,7 +56,6 @@ function getRedis(): Redis | null {
       },
       enableReadyCheck: true,
       connectTimeout: 5000,
-      // Azure Cache for Redis uses TLS on port 6380
       tls: url.startsWith('rediss://') ? {} : undefined,
     });
 

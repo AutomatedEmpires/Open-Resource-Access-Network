@@ -22,12 +22,18 @@ ORAN is becoming a public resource intelligence network: a verified resource dat
 - `src/services/workflow/**`, `src/services/community/**`, and `src/services/triage/**` implement the governance backbone around submissions, reviews, and queue movement.
 - `src/services/forms/**`, `src/services/organizations/**`, `src/services/resourceSubmissions/**`, and `src/services/notifications/**` support operator participation and platform workflows.
 - `src/services/auth/**`, `src/services/security/**`, `src/services/cache/**`, `src/services/flags/**`, and `src/services/telemetry/**` provide shared platform controls.
+- `src/services/privacy/accountErasure.ts`, the private `oran_internal` erasure
+  functions, and `/api/internal/account-erasure` form one durable privacy
+  subsystem: synchronous access revocation, bounded background scrubbing, and
+  fail-closed release/authorization gates.
 
 ### Database schema domains
 
 - HSDS core: organizations, services, locations, addresses, phones, schedules, taxonomy.
 - Trust and publication: confidence scores, audit logs, submissions, transitions, queueing, regressions.
 - Participation: org memberships, host admins, seeker profiles, saved services, forms, notifications.
+- Privacy operations: private erasure requests, fixed step ledgers, hashed
+  identity blocks, worker leases, and the online-index release gate.
 - Federation and ingestion: source assertion layer, canonical federation layer, taxonomy federation, resolution clustering, content templates.
 
 ### Ingestion pipelines

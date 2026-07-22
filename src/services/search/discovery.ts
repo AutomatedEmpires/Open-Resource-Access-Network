@@ -56,6 +56,8 @@ export interface DiscoveryLinkState {
   taxonomyTermIds?: string[];
   attributeFilters?: SearchFilters['attributeFilters'];
   page?: number;
+  /** Keep sensitive free-form chat text out of browser-visible URLs. */
+  omitTextFromUrl?: boolean;
 }
 
 export interface DiscoveryUrlState {
@@ -256,7 +258,7 @@ export function buildDiscoveryUrlParams(input: DiscoveryLinkState): URLSearchPar
   const text = resolveDiscoverySearchText(input.text, input.needId);
   const attributeFilters = sanitizeDiscoveryAttributeFilters(input.attributeFilters);
 
-  if (text) {
+  if (text && !input.omitTextFromUrl) {
     params.set('q', text);
   }
   if (input.confidenceFilter && input.confidenceFilter !== 'all') {

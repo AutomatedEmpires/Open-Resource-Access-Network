@@ -39,7 +39,7 @@ function createRequest(
 }
 
 /**
- * Build a client mock for the batch write path (5 queries total, regardless of count).
+ * Build a client mock for the batch write path (6 queries total, regardless of count).
  *
  * Query 2 (regression batch INSERT) uses mockImplementationOnce to read the
  * regressionId UUIDs from the call's first parameter and echo them back in
@@ -58,9 +58,11 @@ function makeClientForNewRegressions() {
     }))
     // 3. Submissions batch INSERT
     .mockResolvedValueOnce({ rows: [] })
-    // 4. Transitions batch INSERT
+    // 4. Regression-to-submission back-link UPDATE
     .mockResolvedValueOnce({ rows: [] })
-    // 5. Notifications batch INSERT
+    // 5. Transitions batch INSERT
+    .mockResolvedValueOnce({ rows: [] })
+    // 6. Notifications batch INSERT
     .mockResolvedValueOnce({ rows: [] });
 }
 
@@ -200,6 +202,39 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
     expect(res.status).toBe(200);
     expect(body.createdCount).toBe(1);
     expect(body.suppressedCount).toBe(0);
+  });
+
+  it('creates the referenced submission before filling the regression back-link', async () => {
+    const candidate = {
+      serviceId: 'svc-1',
+      serviceName: 'Food Pantry',
+      signalType: 'service_updated_after_verification',
+      currentScore: 75,
+      currentBand: 'LIKELY',
+      reasons: ['Service data updated after score computed'],
+      recommendedAction: 'reverify',
+      actionReason: 'Published service changed after last verification snapshot',
+      dedupeKey: 'svc-1:service_updated_after_verification:12345',
+      notesText: 'Auto-flagged: re-review suggested.',
+    };
+    const queryMock = makeClientForNewRegressions();
+
+    detectorMocks.detectRegressions.mockResolvedValue([candidate]);
+    dbMocks.withTransaction.mockImplementation(
+      async (callback: (client: { query: ReturnType<typeof vi.fn> }) => Promise<unknown>) => {
+        return callback({ query: queryMock });
+      },
+    );
+
+    const { POST } = await import('../route');
+    const res = await POST(createRequest({ apiKey: 'secret-key' }));
+
+    expect(res.status).toBe(200);
+    expect(queryMock).toHaveBeenCalledTimes(6);
+    expect(queryMock.mock.calls[1]?.[0]).not.toContain('submission_id');
+    expect(queryMock.mock.calls[2]?.[0]).toContain('INSERT INTO submissions');
+    expect(queryMock.mock.calls[3]?.[0]).toContain('UPDATE confidence_regressions');
+    expect(queryMock.mock.calls[3]?.[0]).toContain('cr.submission_id IS NULL');
   });
 
   it('returns suppressedCount when policy removes flagged listings from seeker visibility', async () => {

@@ -3,6 +3,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { Pool } from 'pg';
+import { assertAllowedRuntimeEndpoint } from '../src/services/runtime/providerPolicyCore.js';
 
 function toInt(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -398,7 +399,8 @@ async function main() {
     printUsageAndExit();
   }
 
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const databaseUrl = assertAllowedRuntimeEndpoint(process.env.DATABASE_URL, 'DATABASE_URL');
+  const pool = new Pool({ connectionString: databaseUrl });
 
   try {
     const feeds = await queryFeeds(pool, args);

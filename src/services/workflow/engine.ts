@@ -230,6 +230,34 @@ function checkHumanApprovalGate(
   return { gate, passed: true, message: 'Approval actor is human' };
 }
 
+/**
+ * Organization ownership decisions can grant host-administrator access and
+ * therefore require the platform-wide ORAN administrator role. This invariant
+ * is deliberately not skippable, including for bulk or system-style callers.
+ */
+function checkOrganizationClaimDecisionRole(
+  submission: SubmissionRow,
+  toStatus: SubmissionStatus,
+  actorRole: string,
+): GateCheckResult {
+  const gate = 'organization_claim_decision_role';
+  const isDecision = toStatus === 'approved' || toStatus === 'denied';
+
+  if (submission.submission_type !== 'org_claim' || !isDecision) {
+    return { gate, passed: true, message: 'Not an organization claim decision' };
+  }
+
+  if (actorRole.trim().toLowerCase() === 'oran_admin') {
+    return { gate, passed: true, message: 'Organization claim decision actor is an ORAN administrator' };
+  }
+
+  return {
+    gate,
+    passed: false,
+    message: 'Only ORAN administrators can approve or deny organization claims',
+  };
+}
+
 // ============================================================
 // CORE ENGINE
 // ============================================================
@@ -282,6 +310,10 @@ export async function advance(req: AdvanceRequest): Promise<AdvanceResult> {
 
     // System/automated approval is never permitted and cannot be skipped.
     gateResults.push(checkHumanApprovalGate(req.toStatus, req.actorRole));
+
+    // Organization-claim decisions grant or deny ownership and cannot be
+    // delegated to community reviewers or bypassed with skipGates.
+    gateResults.push(checkOrganizationClaimDecisionRole(submission, req.toStatus, req.actorRole));
 
     // Check lock (skippable)
     if (!skipOpts.lockCheck) {

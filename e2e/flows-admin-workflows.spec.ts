@@ -11,10 +11,11 @@ async function postJsonWithRetry(
   page: Page,
   url: string,
   data: Record<string, unknown>,
-): Promise<{ ok: boolean; status: number }> {
+): Promise<{ ok: boolean; status: number; body: Record<string, unknown> | null }> {
   for (let attempt = 1; attempt <= 5; attempt++) {
     const res = await page.request.post(url, { data });
-    if (res.ok()) return { ok: true, status: res.status() };
+    const body = await res.json().catch(() => null) as Record<string, unknown> | null;
+    if (res.ok()) return { ok: true, status: res.status(), body };
 
     if ((res.status() === 429 || res.status() === 503 || res.status() === 404) && attempt < 5) {
       const retryAfter = Number(res.headers()['retry-after'] ?? '1');
@@ -23,10 +24,10 @@ async function postJsonWithRetry(
       continue;
     }
 
-    return { ok: false, status: res.status() };
+    return { ok: false, status: res.status(), body };
   }
 
-  return { ok: false, status: 500 };
+  return { ok: false, status: 500, body: null };
 }
 
 test.describe('Admin workflow coverage', () => {
@@ -56,22 +57,102 @@ test.describe('Admin workflow coverage', () => {
       claimNotes: 'Automated end-to-end claim workflow validation.',
     });
     expect(claim.ok).toBeTruthy();
+    const submissionId = claim.body?.submissionId;
+    expect(submissionId).toEqual(expect.any(String));
 
-    await loginAs(page, 'oran_admin', `e2e-oran-${id}`);
+    await loginAs(page, 'oran_admin', `e2e-oran-reviewer-${id}`);
+
+    await expect.poll(async () => {
+      const response = await page.request.get('/api/admin/approvals?status=needs_review&page=1&limit=100');
+      if (!response.ok()) return null;
+      const body = await response.json() as {
+        results?: Array<{
+          id?: string;
+          organization_name?: string;
+          organization_url?: string;
+          organization_email?: string;
+        }>;
+      };
+      return body.results?.find((result) => result.id === submissionId) ?? null;
+    }).toMatchObject({
+      id: submissionId,
+      organization_name: orgName,
+      organization_url: 'https://example.org',
+      organization_email: `claim-${id}@example.org`,
+    });
+
     await page.goto('/approvals');
     await expect(page.getByRole('heading', { name: /Claim Approvals/i })).toBeVisible();
+    await page.getByRole('tab', { name: 'Needs Review' }).click();
 
     const row = page.locator('tr', { hasText: orgName }).first();
-    const reviewButton = row.getByRole('button', { name: 'Review' });
+    await expect(row).toBeVisible({ timeout: 30_000 });
+    await row.getByRole('button', { name: 'Quick action' }).click();
 
-    if (await reviewButton.isVisible().catch(() => false)) {
-      await reviewButton.click();
-      await page.getByRole('button', { name: 'Approve' }).click();
-      await expect(page.getByRole('alert')).toBeVisible({ timeout: 30_000 });
-    } else {
-      // If queue ordering changes and the row is not immediately visible, still assert page health.
-      await expect(page.getByText(/No claims found|Claim Approvals/i)).toBeVisible();
-    }
+    const firstDecisionResponse = page.waitForResponse((response) =>
+      response.url().includes('/api/admin/approvals')
+      && response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Approve' }).click();
+    const firstDecision = await firstDecisionResponse;
+    expect(firstDecision.ok()).toBeTruthy();
+    const firstDecisionBody = await firstDecision.json() as {
+      id?: string;
+      toStatus?: string;
+      pendingSecondApproval?: boolean;
+    };
+    expect(firstDecisionBody.id).toBe(submissionId);
+    expect(firstDecisionBody.toStatus).toBe('pending_second_approval');
+    expect(firstDecisionBody.pendingSecondApproval).toBe(true);
+    await expect(page.getByRole('status')).toContainText(
+      'A different ORAN administrator must provide final approval.',
+      { timeout: 30_000 },
+    );
+
+    await loginAs(page, 'oran_admin', `e2e-oran-approver-${id}`);
+    await page.goto('/approvals');
+    await page.getByRole('tab', { name: 'Second Approval' }).click();
+
+    const pendingRow = page.locator('tr', { hasText: orgName }).first();
+    await expect(pendingRow).toBeVisible({ timeout: 30_000 });
+    await pendingRow.getByRole('button', { name: 'Quick action' }).click();
+
+    const finalDecisionResponse = page.waitForResponse((response) =>
+      response.url().includes('/api/admin/approvals')
+      && response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Approve' }).click();
+    const finalDecision = await finalDecisionResponse;
+    expect(finalDecision.ok()).toBeTruthy();
+    await expect(finalDecision.json()).resolves.toMatchObject({
+      id: submissionId,
+      fromStatus: 'pending_second_approval',
+      toStatus: 'approved',
+      projection: {
+        organizationId: expect.any(String),
+      },
+    });
+
+    await expect(page.getByRole('status')).toContainText(
+      'Claim approved. Organization is now active.',
+      { timeout: 30_000 },
+    );
+
+    await expect.poll(async () => {
+      const firstPage = await page.request.get('/api/admin/approvals?status=approved&page=1&limit=100');
+      if (!firstPage.ok()) return null;
+      const firstBody = await firstPage.json() as {
+        total?: number;
+        results?: Array<{ id?: string; status?: string }>;
+      };
+      const finalPageNumber = Math.max(1, Math.ceil((firstBody.total ?? 0) / 100));
+      const body = finalPageNumber === 1
+        ? firstBody
+        : await (await page.request.get(
+          `/api/admin/approvals?status=approved&page=${finalPageNumber}&limit=100`,
+        )).json() as { results?: Array<{ id?: string; status?: string }> };
+      return body.results?.find((result) => result.id === submissionId)?.status ?? null;
+    }).toBe('approved');
   });
 
   test('ORAN admin can create a new platform scope from UI', async ({ page }) => {

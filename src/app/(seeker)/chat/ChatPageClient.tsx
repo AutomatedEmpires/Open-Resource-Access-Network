@@ -1,13 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ChatWindow } from '@/components/chat/ChatWindow';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { Button } from '@/components/ui/button';
 import { PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonLine } from '@/components/ui/skeleton';
+import type { GuidedIntakeSubmission } from '@/domain/resourceNavigator';
+import { consumeGuidedIntakeHandoff } from '@/services/chat/guidedIntakeHandoff';
 import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
 import {
   consumeOnboardingChatHandoff,
@@ -20,10 +22,25 @@ import {
   resolveDiscoverySearchText,
 } from '@/services/search/discovery';
 
-function generateSessionId(): string {
+function ChatLoadingState() {
+  return (
+    <div className="rounded-[24px] border border-slate-200 bg-white p-5" role="status" aria-busy="true" aria-label="Loading chat">
+      <SkeletonLine className="h-5 w-40" />
+      <SkeletonLine className="mt-3 h-4 w-full" />
+      <SkeletonLine className="mt-2 h-4 w-2/3" />
+    </div>
+  );
+}
+
+const ChatWindow = dynamic(
+  () => import('@/components/chat/ChatWindow').then((module) => module.ChatWindow),
+  { ssr: false, loading: ChatLoadingState },
+);
+
+function generateSessionId(forceNew = false): string {
   const key = 'oran_chat_session_id';
   const existing = sessionStorage.getItem(key);
-  if (existing) return existing;
+  if (existing && !forceNew) return existing;
   const id = crypto.randomUUID();
   sessionStorage.setItem(key, id);
   return id;
@@ -35,8 +52,12 @@ export default function ChatPage() {
   // same empty-string value, eliminating the hydration mismatch / skeleton flash.
   const [sessionId, setSessionId] = useState<string>('');
   const [onboardingHandoff, setOnboardingHandoff] = useState<OnboardingChatHandoff | null>(null);
+  const [guidedIntake, setGuidedIntake] = useState<GuidedIntakeSubmission | null>(null);
   const [savedSyncEnabled] = useState(() => isServerSyncEnabledOnDevice());
   const fromOnboarding = searchParams.get('from') === 'onboarding';
+  const fromGuidedIntake = searchParams.get('from') === 'guided';
+  const handoffRoute = fromGuidedIntake ? 'guided' : fromOnboarding ? 'onboarding' : 'none';
+  const processedHandoffRouteRef = useRef<string | null>(null);
 
   const urlDiscoveryIntent = useMemo(() => parseDiscoveryUrlState(searchParams), [searchParams]);
   const discoveryIntent = useMemo(() => {
@@ -61,18 +82,24 @@ export default function ChatPage() {
     };
   }, [sessionId, urlDiscoveryIntent]);
   const initialPrompt = useMemo(
-    () => onboardingHandoff?.prompt
+    () => guidedIntake?.prompt
+      ?? onboardingHandoff?.prompt
       ?? resolveDiscoverySearchText(discoveryIntent.text, discoveryIntent.needId),
-    [discoveryIntent.needId, discoveryIntent.text, onboardingHandoff],
+    [discoveryIntent.needId, discoveryIntent.text, guidedIntake, onboardingHandoff],
   );
 
   useEffect(() => {
+    if (processedHandoffRouteRef.current === handoffRoute) return;
+    processedHandoffRouteRef.current = handoffRoute;
+
     // sessionStorage unavailable on SSR — initialising via effect ensures SSR and first client
     // render produce identical '' output, eliminating hydration mismatch / skeleton flash.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOnboardingHandoff(fromOnboarding ? consumeOnboardingChatHandoff() : null);
-    setSessionId(generateSessionId());
-  }, [fromOnboarding]);
+    const nextGuidedIntake = fromGuidedIntake ? consumeGuidedIntakeHandoff() : null;
+    setGuidedIntake(nextGuidedIntake);
+    setSessionId(generateSessionId(Boolean(nextGuidedIntake)));
+  }, [fromGuidedIntake, fromOnboarding, handoffRoute]);
 
   if (!sessionId) {
     return (
@@ -88,11 +115,7 @@ export default function ChatPage() {
                 </div>
               </div>
             </div>
-            <div className="rounded-[24px] border border-slate-200 bg-white p-5" role="status" aria-busy="true" aria-label="Loading chat">
-              <SkeletonLine className="h-5 w-40" />
-              <SkeletonLine className="mt-3 h-4 w-full" />
-              <SkeletonLine className="mt-2 h-4 w-2/3" />
-            </div>
+            <ChatLoadingState />
           </div>
         </div>
       </main>
@@ -122,7 +145,10 @@ export default function ChatPage() {
               <ChatWindow
                   sessionId={sessionId}
                   initialPrompt={initialPrompt}
-                  initialNeedId={onboardingHandoff?.needId ?? discoveryIntent.needId}
+                  {...(guidedIntake ? { initialGuidedIntake: guidedIntake } : {})}
+                  initialNeedId={guidedIntake
+                    ? undefined
+                    : onboardingHandoff?.needId ?? discoveryIntent.needId}
                   initialTrustFilter={discoveryIntent.confidenceFilter}
                   initialSortBy={discoveryIntent.sortBy}
                   initialPage={discoveryIntent.page}

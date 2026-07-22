@@ -14,6 +14,8 @@ import {
   CONFIDENCE_BANDS,
   CRISIS_KEYWORDS,
 } from '@/domain/constants';
+import { getDiscoveryNeedSearchText } from '@/domain/discoveryNeeds';
+import { guidedIntakePromptMatchesDraft } from '@/domain/resourceNavigator';
 import { getAuthContext } from '@/services/auth/session';
 import {
   checkQuotaByIdentity,
@@ -28,7 +30,14 @@ import {
 } from '@/services/chat/orchestrator';
 import { buildChatSearchQuery } from '@/services/chat/retrievalProfile';
 import { ChatRequestSchema } from '@/services/chat/types';
-import type { ChatContext, ChatResponse, ChatRetrievalResult, Intent } from '@/services/chat/types';
+import type {
+  ChatContext,
+  ChatResponse,
+  ChatRetrievalResult,
+  ChatSessionContext,
+  GuidedIntakeRequest,
+  Intent,
+} from '@/services/chat/types';
 import { executeCount, executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { flagService } from '@/services/flags/flags';
 import { SUPPORTED_LOCALES } from '@/services/i18n/i18n';
@@ -41,8 +50,15 @@ import { hydrateEnrichedServices } from '@/services/search/hydrateRelations';
 import type { SearchFilters } from '@/services/search/types';
 import { captureException } from '@/services/telemetry/sentry';
 import { getIp } from '@/services/security/ip';
+import { hasDistressSignals, normalizeSafetyText } from '@/services/security/crisisSignals';
 
 const RequestSchema = ChatRequestSchema;
+const SafetyEnvelopeSchema = ChatRequestSchema.pick({
+  message: true,
+  sessionId: true,
+  userId: true,
+  locale: true,
+});
 const engine = new ServiceSearchEngine({ executeQuery, executeCount });
 
 function attachDeviceCookie(
@@ -69,21 +85,19 @@ function consumesDailyQuota(response: ChatResponse): boolean {
 }
 
 function bypassesUsageControls(message: string): boolean {
-  const normalized = message.toLowerCase();
+  const normalized = normalizeSafetyText(message);
   return detectCrisis(message)
     || CRISIS_KEYWORDS.some((keyword) => normalized.includes(keyword));
 }
 
 function stripProfileShaping(context: ChatContext): ChatContext {
+  const activeLocation = context.sessionContext?.activeLocation
+    ?? (context.sessionContext?.activeCity ? { city: context.sessionContext.activeCity } : undefined);
+
   return {
     ...context,
     profileShapingDisabled: true,
-    approximateLocation: context.sessionContext?.activeCity
-      ? {
-          ...context.approximateLocation,
-          city: context.sessionContext.activeCity,
-        }
-      : undefined,
+    approximateLocation: activeLocation,
     userProfile: context.userProfile
       ? {
           userId: context.userProfile.userId,
@@ -119,6 +133,121 @@ function mergeAttributeFilters(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
+function getGuidedDeliveryModes(
+  accessMode: GuidedIntakeRequest['accessMode'],
+): string[] | undefined {
+  switch (accessMode) {
+    case 'phone':
+      return ['phone'];
+    case 'online':
+      return ['virtual'];
+    case 'cannot_travel':
+      return ['phone', 'virtual', 'mobile_outreach', 'home_delivery', 'delivery_available'];
+    default:
+      return undefined;
+  }
+}
+
+function applyGuidedAccessFilters(
+  attributeFilters: SearchFilters['attributeFilters'] | undefined,
+  guidedIntake: GuidedIntakeRequest | undefined,
+): SearchFilters['attributeFilters'] | undefined {
+  if (!guidedIntake?.accessMode) return attributeFilters;
+
+  const nextFilters = attributeFilters ? { ...attributeFilters } : {};
+  const deliveryModes = getGuidedDeliveryModes(guidedIntake.accessMode);
+  if (deliveryModes) {
+    nextFilters.delivery = deliveryModes;
+  } else {
+    delete nextFilters.delivery;
+  }
+
+  return Object.keys(nextFilters).length > 0 ? nextFilters : undefined;
+}
+
+function mergeGuidedSessionContext(
+  sessionContext: ChatSessionContext | undefined,
+  guidedIntake: GuidedIntakeRequest | undefined,
+  guidedLocation: ChatContext['approximateLocation'] | undefined,
+): ChatSessionContext | undefined {
+  if (!guidedIntake) return sessionContext;
+
+  const beginsNonSelfScope = Boolean(
+    guidedIntake.audience && guidedIntake.audience !== 'self',
+  );
+  const deliveryModes = getGuidedDeliveryModes(guidedIntake.accessMode);
+  const hasExistingDeliveryPreference = Boolean(
+    !beginsNonSelfScope
+    && sessionContext
+    && Object.prototype.hasOwnProperty.call(sessionContext, 'preferredDeliveryModes'),
+  );
+  const deliveryContext = guidedIntake.accessMode
+    ? { preferredDeliveryModes: deliveryModes ?? [] }
+    : hasExistingDeliveryPreference
+      ? { preferredDeliveryModes: sessionContext?.preferredDeliveryModes ?? [] }
+      : beginsNonSelfScope ? { preferredDeliveryModes: undefined } : {};
+
+  return {
+    ...(sessionContext ?? {}),
+    activeNeedId: beginsNonSelfScope ? undefined : sessionContext?.activeNeedId,
+    activeRetrievalText: beginsNonSelfScope ? undefined : sessionContext?.activeRetrievalText,
+    activeCity: guidedLocation
+      ? guidedLocation.city
+      : beginsNonSelfScope ? undefined : sessionContext?.activeCity,
+    activeLocation: guidedLocation
+      ?? (beginsNonSelfScope ? undefined : sessionContext?.activeLocation),
+    activeGeo: guidedLocation || beginsNonSelfScope ? undefined : sessionContext?.activeGeo,
+    urgency: guidedIntake.urgency
+      ? guidedIntake.urgency === 'today' ? 'urgent' : 'standard'
+      : beginsNonSelfScope ? undefined : sessionContext?.urgency,
+    urgencyWindow: guidedIntake.urgency
+      ?? (beginsNonSelfScope ? undefined : sessionContext?.urgencyWindow),
+    audience: guidedIntake.audience ?? sessionContext?.audience,
+    accessMode: guidedIntake.accessMode
+      ?? (beginsNonSelfScope ? undefined : sessionContext?.accessMode),
+    ...deliveryContext,
+    taxonomyTermIds: beginsNonSelfScope ? undefined : sessionContext?.taxonomyTermIds,
+    attributeFilters: applyGuidedAccessFilters(
+      beginsNonSelfScope ? undefined : sessionContext?.attributeFilters,
+      guidedIntake,
+    ),
+    profileShapingEnabled: sessionContext?.profileShapingEnabled ?? true,
+  };
+}
+
+function parseGuidedApproximateLocation(
+  location: string | undefined,
+): ChatContext['approximateLocation'] | undefined {
+  const normalized = location?.trim().replace(/\s+/g, ' ');
+  if (!normalized) return undefined;
+
+  const postalMatch = normalized.match(/^(\d{5})(?:-\d{4})?$/);
+  if (postalMatch?.[1]) {
+    return { postalCode: postalMatch[1] };
+  }
+
+  const [city, stateProvince] = normalized.split(',', 2).map((part) => part.trim());
+  if (!city) return undefined;
+
+  return {
+    city,
+    stateProvince: stateProvince || undefined,
+  };
+}
+
+function guidedIntakeMatchesMessage(
+  message: string,
+  guidedIntake: GuidedIntakeRequest,
+): boolean {
+  return guidedIntakePromptMatchesDraft(message, {
+    need: guidedIntake.searchText,
+    location: guidedIntake.location,
+    urgency: guidedIntake.urgency,
+    audience: guidedIntake.audience,
+    accessMode: guidedIntake.accessMode,
+  });
+}
+
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {
@@ -127,7 +256,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const parsed = RequestSchema.safeParse(body);
+  const bodyRecord = body && typeof body === 'object'
+    ? body as Record<string, unknown>
+    : undefined;
+  const safetyEnvelope = SafetyEnvelopeSchema.safeParse({
+    message: bodyRecord?.message,
+    sessionId: bodyRecord?.sessionId,
+    userId: bodyRecord?.userId,
+    locale: bodyRecord?.locale,
+  });
+  const safetyBypassesUsageControls = safetyEnvelope.success
+    && (
+      bypassesUsageControls(safetyEnvelope.data.message)
+      || hasDistressSignals(safetyEnvelope.data.message)
+    );
+  let parsed = RequestSchema.safeParse(body);
+  if (!parsed.success && safetyBypassesUsageControls) {
+    // Optional stale/malformed discovery metadata must never suppress a valid
+    // bounded self-crisis turn. Retry with only the safety-critical envelope.
+    parsed = RequestSchema.safeParse(safetyEnvelope.data);
+  }
   if (!parsed.success) {
     return NextResponse.json(
       { error: 'Invalid request', details: parsed.error.issues },
@@ -135,7 +283,45 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { message, sessionId, locale, filters, profileMode, sessionContext } = parsed.data;
+  const { message, sessionId, locale, filters, profileMode, sessionContext, guidedIntake } = parsed.data;
+  const bypassUsageControls = safetyBypassesUsageControls || bypassesUsageControls(message);
+  const guidedIntakeMatches = !guidedIntake || guidedIntakeMatchesMessage(message, guidedIntake);
+  if (!guidedIntakeMatches && !bypassUsageControls) {
+    return NextResponse.json(
+      { error: 'Guided intake does not match the visible chat message.' },
+      { status: 400 },
+    );
+  }
+
+  // Crisis language must always reach deterministic safety routing. If a
+  // malformed client attaches contradictory structured intake, ignore the
+  // structured fields and preserve the full visible message for crisis checks.
+  const effectiveGuidedIntake = guidedIntakeMatches ? guidedIntake : undefined;
+  const beginsNonSelfGuidedScope = Boolean(
+    effectiveGuidedIntake?.audience && effectiveGuidedIntake.audience !== 'self',
+  );
+  const guidedLocation = parseGuidedApproximateLocation(effectiveGuidedIntake?.location);
+  const requestSessionContext = mergeGuidedSessionContext(sessionContext, effectiveGuidedIntake, guidedLocation);
+  const requestAttributeFilters = applyGuidedAccessFilters(
+    beginsNonSelfGuidedScope ? undefined : filters?.attributeFilters,
+    effectiveGuidedIntake,
+  );
+  const requestTaxonomyTermIds = beginsNonSelfGuidedScope
+    ? undefined
+    : filters?.taxonomyTermIds;
+  const shouldOverrideBrowseAttributeFilters = beginsNonSelfGuidedScope
+    ? Boolean(effectiveGuidedIntake?.accessMode)
+    : Boolean(
+        filters?.attributeFilters
+        || sessionContext?.attributeFilters
+        || effectiveGuidedIntake?.accessMode
+        || (sessionContext
+          && Object.prototype.hasOwnProperty.call(sessionContext, 'preferredDeliveryModes')),
+      );
+  const activeBrowseAttributeFilters = mergeAttributeFilters(
+    requestSessionContext?.attributeFilters,
+    requestAttributeFilters,
+  );
 
   const authCtx = await getAuthContext();
   const effectiveUserId = authCtx?.userId;
@@ -150,7 +336,6 @@ export async function POST(req: NextRequest) {
 
   const ip = getIp(req);
   const rateLimitKey = effectiveUserId ? `chat:user:${effectiveUserId}` : `chat:ip:${ip}`;
-  const bypassUsageControls = bypassesUsageControls(message);
   let usageReservation: ChatUsageReservation | undefined;
 
   // Explicit self-crisis messages must always reach deterministic 911/988/211
@@ -231,19 +416,32 @@ export async function POST(req: NextRequest) {
         : undefined,
     );
     const trust = filters?.trust ?? context.sessionContext?.trustFilter;
-    const taxonomyTermIds = filters?.taxonomyTermIds ?? context.sessionContext?.taxonomyTermIds;
-    const attributeFilters = mergeAttributeFilters(inheritedAttributeFilters, filters?.attributeFilters);
+    const taxonomyTermIds = requestTaxonomyTermIds ?? context.sessionContext?.taxonomyTermIds;
+    const attributeFilters = mergeAttributeFilters(inheritedAttributeFilters, requestAttributeFilters);
     const minConfidenceScore = trust === 'HIGH' ? CONFIDENCE_BANDS.HIGH.min : trust === 'LIKELY' ? CONFIDENCE_BANDS.LIKELY.min : undefined;
 
     try {
-      const query = buildChatSearchQuery(intent, context, {
+      let query = buildChatSearchQuery(intent, context, {
         taxonomyTermIds,
         attributeFilters,
         minConfidenceScore,
         limit: MAX_SERVICES_PER_RESPONSE * 3,
       });
 
-      const response = await cachedSearch(engine, query);
+      let response = await cachedSearch(engine, query);
+      let searchBroadened = false;
+      const categoryFallbackText = context.retrievalText
+        ? getDiscoveryNeedSearchText(intent.category)
+        : undefined;
+      if (
+        response.results.length === 0
+        && categoryFallbackText
+        && categoryFallbackText.toLowerCase() !== query.text?.trim().toLowerCase()
+      ) {
+        query = { ...query, text: categoryFallbackText };
+        response = await cachedSearch(engine, query);
+        searchBroadened = response.results.length > 0;
+      }
       // The paged search rows are lean; dedupe location fanout and hydrate
       // relations so cards can show phones, schedules, and match evidence.
       const seenServiceIds = new Set<string>();
@@ -268,6 +466,9 @@ export async function POST(req: NextRequest) {
         return {
           services,
           retrievalStatus: 'results',
+          effectiveSearchText: query.text,
+          locationBiasApplied: response.locationBiasApplied,
+          searchBroadened,
         };
       }
 
@@ -283,6 +484,9 @@ export async function POST(req: NextRequest) {
       return {
         services: [],
         retrievalStatus: scopeResponse.total === 0 ? 'catalog_empty_for_scope' : 'no_match',
+        effectiveSearchText: query.text,
+        locationBiasApplied: response.locationBiasApplied ?? scopeResponse.locationBiasApplied,
+        searchBroadened: false,
       };
     } catch {
       return {
@@ -297,20 +501,19 @@ export async function POST(req: NextRequest) {
       retrieveServices,
       hydrateContext: async (context) => {
         const hydrated = await hydrateChatContext(context, { executeQuery });
-        const hasBrowseFilters = Boolean(filters?.taxonomyTermIds?.length) || Boolean(filters?.attributeFilters);
-        const merged = !hasBrowseFilters && !sessionContext
+        const hasBrowseFilters = Boolean(requestTaxonomyTermIds?.length)
+          || shouldOverrideBrowseAttributeFilters;
+        const merged = !hasBrowseFilters && !requestSessionContext
           ? hydrated
           : {
               ...hydrated,
-              approximateLocation: sessionContext?.activeCity
+              approximateLocation: requestSessionContext?.activeLocation
+                ?? (requestSessionContext?.activeCity
+                  ? { city: requestSessionContext.activeCity }
+                  : hydrated.approximateLocation),
+              sessionContext: requestSessionContext
                 ? {
-                    ...hydrated.approximateLocation,
-                    city: sessionContext.activeCity,
-                  }
-                : hydrated.approximateLocation,
-              sessionContext: sessionContext
-                ? {
-                    ...sessionContext,
+                    ...requestSessionContext,
                     profileShapingEnabled: profileMode !== 'ignore',
                   }
                 : hydrated.sessionContext,
@@ -318,15 +521,40 @@ export async function POST(req: NextRequest) {
                 ...(hydrated.userProfile ?? { userId: hydrated.userId ?? 'guest' }),
                 browsePreference: {
                   ...(hydrated.userProfile?.browsePreference ?? {}),
-                  ...(filters?.taxonomyTermIds?.length ? { taxonomyTermIds: filters.taxonomyTermIds } : {}),
-                  ...(filters?.attributeFilters ? { attributeFilters: filters.attributeFilters } : {}),
+                  ...(requestTaxonomyTermIds?.length ? { taxonomyTermIds: requestTaxonomyTermIds } : {}),
+                  ...(shouldOverrideBrowseAttributeFilters
+                    ? { attributeFilters: activeBrowseAttributeFilters }
+                    : {}),
                 },
               },
             };
 
-        return profileMode === 'ignore'
+        const shaped = profileMode === 'ignore'
           ? stripProfileShaping(merged)
           : merged;
+        const audience = shaped.sessionContext?.audience;
+        const audienceScoped = audience && audience !== 'self'
+          ? {
+              ...shaped,
+              approximateLocation: shaped.sessionContext?.activeLocation
+                ?? (shaped.sessionContext?.activeCity
+                  ? { city: shaped.sessionContext.activeCity }
+                  : undefined),
+            }
+          : shaped;
+
+        return {
+          ...audienceScoped,
+          ...(effectiveGuidedIntake ? { retrievalText: effectiveGuidedIntake.searchText } : {}),
+          ...(guidedLocation
+            ? {
+                approximateLocation: {
+                  ...audienceScoped.approximateLocation,
+                  ...guidedLocation,
+                },
+              }
+            : {}),
+        };
       },
       isFlagEnabled: (flagName) => flagService.isEnabled(flagName),
     });

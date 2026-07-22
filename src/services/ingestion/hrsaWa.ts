@@ -147,9 +147,8 @@ export function sha256Hex(value: string | Buffer): string {
 export function uuidV5(name: string, namespace = IMPORT_NAMESPACE): string {
   const namespaceBytes = Buffer.from(namespace.replaceAll('-', ''), 'hex');
   const digest = crypto
-    // lgtm[js/weak-cryptographic-algorithm] UUIDv5 requires SHA-1. This is a
-    // stable identifier for public provider records, never a security digest.
     .createHash('sha1')
+    // lgtm[js/weak-cryptographic-algorithm] UUIDv5 mandates SHA-1 for a stable public-record ID, never a security digest.
     .update(Buffer.concat([namespaceBytes, Buffer.from(name, 'utf8')]))
     .digest();
   const bytes = Buffer.from(digest.subarray(0, 16));

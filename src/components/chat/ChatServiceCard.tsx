@@ -316,7 +316,7 @@ export function ChatServiceCard({
           title="Report incorrect information — wrong address, closed, or other data issue"
         >
           <Flag className="h-3 w-3" aria-hidden="true" />
-          Report data issue
+          Flag issue
         </Link>
       </div>
 

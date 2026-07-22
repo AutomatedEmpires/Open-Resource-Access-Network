@@ -43,7 +43,7 @@ function useOptionalLocale() {
           'nav.profile': 'Profile',
           'nav.saved': 'Saved',
           'nav.notifications': 'Notifications',
-          'nav.invitations': 'Invitations',
+          'nav.invitations': 'Organization invitations',
           'nav.sign_out': 'Sign out',
           'nav.sign_in': 'Sign in',
           'nav.profile_menu_aria': 'Profile menu',
@@ -51,6 +51,7 @@ function useOptionalLocale() {
           'nav.open_menu': 'Open menu',
           'nav.explore': 'Explore',
           'nav.work_with_us': 'Work with us',
+          'nav.get_involved_menu_aria': 'Open get involved menu',
         };
         return fallbackLabels[key] ?? key;
       },
@@ -86,7 +87,9 @@ const PRIMARY_NAV: PrimaryNavItem[] = [
 ];
 
 const WORK_WITH_US_MENU: LinkMenuItem[] = [
-  { kind: 'link', href: '/submit-resource', label: 'Submit a Listing' },
+  // Label matches the destination page title ("Submit a Resource" — the public
+  // suggestion flow), so providers don't mistake it for the org listing track.
+  { kind: 'link', href: '/submit-resource', label: 'Submit a Resource' },
   { kind: 'link', href: '/partnerships/organizations', label: 'Register an Organization' },
   { kind: 'link', href: '/partnerships/admins', label: 'Become a Community Admin' },
   { kind: 'link', href: '/partnerships/oran-admins', label: 'Become an ORAN Admin' },

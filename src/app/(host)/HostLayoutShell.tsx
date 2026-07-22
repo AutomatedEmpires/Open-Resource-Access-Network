@@ -35,8 +35,8 @@ const NAV_SECTIONS = [
     heading: 'Record maintenance',
     description: 'Maintain organization identity, services, and location accuracy.',
     items: [
-      { href: '/org/profile', label: 'Profile', icon: Award, description: 'Trust, profile, and verification fields.' },
-      { href: '/org', label: 'Organization', icon: Building2, description: 'Organization-level public record management.' },
+      { href: '/org/profile', label: 'Org Profile', icon: Award, description: 'Trust, profile, and verification fields.' },
+      { href: '/org', label: 'Organizations', icon: Building2, description: 'Organization-level public record management.' },
       { href: '/services', label: 'Services', icon: Wrench, description: 'Service inventory and freshness maintenance.' },
       { href: '/locations', label: 'Locations', icon: MapPin, description: 'Address, hours, and site-level updates.' },
       { href: '/admins', label: 'Team', icon: Users, description: 'Access, invites, and role hygiene.' },

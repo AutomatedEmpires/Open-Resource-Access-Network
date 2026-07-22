@@ -504,7 +504,7 @@ describe('DirectoryPageClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
 
     await screen.findByText('No matches');
-    expect(screen.getByText('Try different keywords, broaden record-confidence filters, or clear service filters.')).toBeInTheDocument();
+    expect(screen.getByText('Try different keywords, allow all confidence levels, or clear the service filters.')).toBeInTheDocument();
   });
 
 

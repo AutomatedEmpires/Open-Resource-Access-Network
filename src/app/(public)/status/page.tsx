@@ -103,6 +103,9 @@ export default function StatusPage() {
               ? 'ORAN is operating normally across all services.'
               : 'See active incidents below for details.'}
           </p>
+          <p className="mt-0.5 text-sm text-gray-500">
+            This is a manually published summary as of the date above — not live monitoring.
+          </p>
         </div>
       </div>
 

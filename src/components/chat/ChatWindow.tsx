@@ -2710,7 +2710,7 @@ export function ChatWindow({
         {!hasCrisis && quotaRemaining <= 5 && quotaRemaining > 0 && (
           <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-800 shadow-sm">
             <p className="font-medium">Low message budget</p>
-            <p className="mt-1">Directory and Map keep visible categories and filters. Private chat wording stays here, so broader results may appear.</p>
+            <p className="mt-1">You can keep browsing in the Directory or Map — your category and filters carry over, but what you typed here stays private to this chat, so you may need to search again there.</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <a href={_directoryHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-900 shadow-sm">
                 Open Directory
@@ -2767,7 +2767,7 @@ export function ChatWindow({
         {!hasCrisis && quotaRemaining === 0 && !quotaResetAt && (
           <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-800 shadow-sm" role="alert">
             <p className="font-medium">Daily discovery limit reached.</p>
-            <p className="mt-1">Immediate safety and crisis messages still work. Directory and Map keep visible categories and filters, but not private chat wording, so broader results may appear.</p>
+            <p className="mt-1">Immediate safety and crisis messages still work. You can keep browsing in the Directory or Map — your category and filters carry over, but what you typed here stays private to this chat, so you may need to search again there.</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <a href={_directoryHandoffHref} className="inline-flex min-h-[44px] items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-900 shadow-sm">
                 Open Directory
@@ -2780,7 +2780,7 @@ export function ChatWindow({
                 onClick={_startNewSession}
                 className="inline-flex min-h-[44px] items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-900 shadow-sm"
               >
-                Start new chat session
+                New chat (daily limit still applies)
               </button>
             </div>
           </div>

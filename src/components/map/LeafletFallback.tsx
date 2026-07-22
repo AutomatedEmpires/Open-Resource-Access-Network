@@ -197,7 +197,7 @@ export function LeafletFallback({
   );
 
   const emptyMessage = services.length === 0
-    ? 'No mappable resources in this view yet.'
+    ? 'No resources on the map yet. Pick a need or search above to load results.'
     : 'These resources do not include a precise map location. Review the results list below.';
 
   return (

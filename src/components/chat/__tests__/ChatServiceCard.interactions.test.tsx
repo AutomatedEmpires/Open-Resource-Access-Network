@@ -156,7 +156,7 @@ describe('ChatServiceCard interactions', () => {
       'href',
       '/service/svc-1?q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=a1000000-4000-4000-8000-000000000001&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%2C%22access%22%3A%5B%22walk_in%22%5D%7D&page=3',
     );
-    expect(screen.getByRole('link', { name: 'Report data issue' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Flag issue' })).toHaveAttribute(
       'href',
       '/report?serviceId=svc-1&q=food&confidence=HIGH&sort=name_desc&category=food_assistance&taxonomyIds=a1000000-4000-4000-8000-000000000001&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%2C%22access%22%3A%5B%22walk_in%22%5D%7D&page=3',
     );
@@ -178,7 +178,7 @@ describe('ChatServiceCard interactions', () => {
 
     for (const link of [
       screen.getByRole('link', { name: 'Food Pantry' }),
-      screen.getByRole('link', { name: 'Report data issue' }),
+      screen.getByRole('link', { name: 'Flag issue' }),
     ]) {
       const href = link.getAttribute('href') ?? '';
       const url = new URL(href, 'https://oran.test');

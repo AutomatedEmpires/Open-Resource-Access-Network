@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { v5 as uuidv5 } from 'uuid';
 
 export const HRSA_SITE_CSV_URL =
   'https://data.hrsa.gov/DataDownload/DD_Files/Health_Center_Service_Delivery_and_LookAlike_Sites.csv';
@@ -145,17 +146,7 @@ export function sha256Hex(value: string | Buffer): string {
 }
 
 export function uuidV5(name: string, namespace = IMPORT_NAMESPACE): string {
-  const namespaceBytes = Buffer.from(namespace.replaceAll('-', ''), 'hex');
-  const digest = crypto
-    .createHash('sha1')
-    // codeql[js/weak-cryptographic-algorithm] UUIDv5 mandates SHA-1 for a stable public-record ID, never a security digest.
-    .update(Buffer.concat([namespaceBytes, Buffer.from(name, 'utf8')]))
-    .digest();
-  const bytes = Buffer.from(digest.subarray(0, 16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = bytes.toString('hex');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  return uuidv5(name, namespace);
 }
 
 export function legacyHrsaIds(site: Pick<HrsaWaSiteIdentity, 'siteId' | 'healthCenterNumber'>) {

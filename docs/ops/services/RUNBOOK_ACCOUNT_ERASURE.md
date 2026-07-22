@@ -22,7 +22,8 @@
 - Migration `0071` must precede the online index build; migration `0072` must
   follow it. Record each migration only after its SQL succeeds. The 128-index
   operator phase is deliberately untracked and must never receive a fabricated
-  ledger row. The worker must not deploy in the gap.
+  ledger row. Migration `0076` must be applied and recorded after the gate and
+  before worker acceptance. The worker must not deploy in either gap.
 
 ## Controlled release
 
@@ -53,8 +54,12 @@
    after this SQL succeeds. A 55000 failure is a safe stop: leave the ledger row
    absent, do not bypass the check or manually update the gate, and return to the
    online builder.
-6. Deploy the application/cron code only after the gate migration succeeds.
-7. Smoke an authorized test account: require 200 or 202 with
+6. Apply `db/migrations/0076_account_erasure_highwater_planner_fix.sql` and
+   record it only after the SQL succeeds. Verify that the dispatcher remains
+   security-definer with its original owner, ACL, and empty search path.
+7. Deploy the application/cron code only after the gate and planner-fix
+   migrations succeed.
+8. Smoke an authorized test account: require 200 or 202 with
    `accessRevoked=true`; verify subsequent auth is denied and the worker drains
    the request. Do not use a founder or operator identity.
 
@@ -113,7 +118,7 @@ npx vitest run \
 bash scripts/db/disposable-postgres.sh
 ```
 
-Before application deployment, confirm both tracked rows exist once and the
+Before application deployment, confirm all tracked erasure rows exist once and the
 gate is open:
 
 ```sql
@@ -121,7 +126,8 @@ SELECT filename, count(*)
 FROM public.schema_migrations
 WHERE filename IN (
   '0071_account_erasure_workflow.sql',
-  '0072_account_erasure_index_gate.sql'
+  '0072_account_erasure_index_gate.sql',
+  '0076_account_erasure_highwater_planner_fix.sql'
 )
 GROUP BY filename
 ORDER BY filename;

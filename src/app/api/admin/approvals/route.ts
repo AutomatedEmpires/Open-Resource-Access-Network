@@ -221,13 +221,36 @@ export async function GET(req: NextRequest) {
               sub.title, sub.notes, sub.reviewer_notes,
               sub.priority, sub.is_locked, sub.sla_deadline, sub.sla_breached,
               sub.created_at, sub.updated_at,
-              s.name AS service_name,
-              o.id AS organization_id, o.name AS organization_name,
-              o.url AS organization_url, o.email AS organization_email,
-              o.phone AS organization_phone
+              COALESCE(
+                s.name,
+                NULLIF(fi.form_data #>> '{draft,service,name}', ''),
+                sub.title
+              ) AS service_name,
+              o.id AS organization_id,
+              COALESCE(
+                NULLIF(fi.form_data #>> '{draft,organization,name}', ''),
+                o.name
+              ) AS organization_name,
+              COALESCE(
+                NULLIF(fi.form_data #>> '{draft,organization,url}', ''),
+                o.url
+              ) AS organization_url,
+              COALESCE(
+                NULLIF(fi.form_data #>> '{draft,organization,email}', ''),
+                o.email
+              ) AS organization_email,
+              COALESCE(
+                NULLIF(fi.form_data #>> '{draft,organization,phone}', ''),
+                o.phone
+              ) AS organization_phone
        FROM submissions sub
+       LEFT JOIN form_instances fi ON fi.submission_id = sub.id
        LEFT JOIN services s ON s.id = sub.service_id
-       LEFT JOIN organizations o ON o.id = s.organization_id
+       LEFT JOIN organizations o
+         ON o.id = COALESCE(
+           s.organization_id,
+           CASE WHEN sub.target_type = 'organization' THEN sub.target_id END
+         )
        ${where}
        ORDER BY sub.priority DESC, sub.created_at ASC
        LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,

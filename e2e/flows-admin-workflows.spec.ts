@@ -61,6 +61,26 @@ test.describe('Admin workflow coverage', () => {
     expect(submissionId).toEqual(expect.any(String));
 
     await loginAs(page, 'oran_admin', `e2e-oran-reviewer-${id}`);
+
+    await expect.poll(async () => {
+      const response = await page.request.get('/api/admin/approvals?status=needs_review&page=1&limit=100');
+      if (!response.ok()) return null;
+      const body = await response.json() as {
+        results?: Array<{
+          id?: string;
+          organization_name?: string;
+          organization_url?: string;
+          organization_email?: string;
+        }>;
+      };
+      return body.results?.find((result) => result.id === submissionId) ?? null;
+    }).toMatchObject({
+      id: submissionId,
+      organization_name: orgName,
+      organization_url: 'https://example.org',
+      organization_email: `claim-${id}@example.org`,
+    });
+
     await page.goto('/approvals');
     await expect(page.getByRole('heading', { name: /Claim Approvals/i })).toBeVisible();
     await page.getByRole('tab', { name: 'Needs Review' }).click();

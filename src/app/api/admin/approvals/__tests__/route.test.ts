@@ -63,21 +63,45 @@ beforeEach(() => {
 
 describe('admin organization claim approvals', () => {
   it('lists claims filtered by needs_review', async () => {
+    const claimRow = {
+      id: SUBMISSION_ID,
+      status: 'needs_review',
+      organization_name: 'Exact Claim Organization',
+      organization_url: 'https://example.org',
+      organization_email: 'claim@example.org',
+    };
     dbMocks.executeQuery
       .mockResolvedValueOnce([{ count: 1 }])
-      .mockResolvedValueOnce([{ id: SUBMISSION_ID, status: 'needs_review' }]);
+      .mockResolvedValueOnce([claimRow]);
 
     const response = await GET(request({ search: '?status=needs_review&page=1&limit=20' }));
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       total: 1,
-      results: [{ id: SUBMISSION_ID, status: 'needs_review' }],
+      results: [claimRow],
     });
     expect(dbMocks.executeQuery).toHaveBeenNthCalledWith(
       1,
       expect.stringContaining('sub.status = $1'),
       ['needs_review'],
+    );
+    expect(dbMocks.executeQuery).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("fi.form_data #>> '{draft,organization,name}'"),
+      ['needs_review', 20, 0],
+    );
+    expect(dbMocks.executeQuery).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('LEFT JOIN form_instances fi ON fi.submission_id = sub.id'),
+      ['needs_review', 20, 0],
+    );
+    const listSql = dbMocks.executeQuery.mock.calls[1]?.[0] as string;
+    expect(listSql).toContain(
+      "COALESCE(\n                NULLIF(fi.form_data #>> '{draft,organization,name}', ''),\n                o.name",
+    );
+    expect(listSql).toContain(
+      "CASE WHEN sub.target_type = 'organization' THEN sub.target_id END",
     );
   });
 

@@ -321,6 +321,10 @@ describe('community api routes', () => {
     engineMocks.advance.mockResolvedValueOnce({ success: true, fromStatus: 'under_review', toStatus: 'approved', transitionId: 'tx-2' });
     dbMocks.executeQuery
       .mockResolvedValueOnce([])                         // scope lookup
+      .mockResolvedValueOnce([{                          // scoped access lookup
+        id: '11111111-1111-4111-8111-111111111111',
+        submission_type: 'service_verification',
+      }])
       .mockResolvedValueOnce([])                         // notes update
       .mockResolvedValueOnce([{ service_id: 'svc-1' }]) // service lookup
       .mockResolvedValueOnce([]);                        // confidence upsert

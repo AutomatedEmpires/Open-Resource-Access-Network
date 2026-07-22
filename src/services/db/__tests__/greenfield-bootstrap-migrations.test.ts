@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -20,6 +20,27 @@ const contactReadCapability = readFileSync(
   resolve(process.cwd(), 'db/migrations/0069_backend_contact_read_capability.sql'),
   'utf8',
 );
+
+const migrationNames = readdirSync(resolve(process.cwd(), 'db/migrations'))
+  .filter((name) => name.endsWith('.sql'))
+  .sort((left, right) => left.localeCompare(right, 'en'));
+
+describe('regional release migration ledger', () => {
+  it('pins the exact 74-file sequence through the Data API lockdown', () => {
+    expect(migrationNames).toHaveLength(74);
+    expect(migrationNames[0]).toBe('0000_initial_schema.sql');
+    expect(migrationNames.slice(66)).toEqual([
+      '0068_shared_rate_limit_windows.sql',
+      '0069_backend_contact_read_capability.sql',
+      '0070_services_fulltext_index.sql',
+      '0071_account_erasure_workflow.sql',
+      '0072_account_erasure_index_gate.sql',
+      '0073_canonical_entity_identifiers.sql',
+      '0074_isolate_data_api_schema.sql',
+      '0075_data_api_acl_lockdown.sql',
+    ]);
+  });
+});
 
 describe('0065 greenfield bootstrap', () => {
   it('no-ops instead of aborting when the hotline import has never run', () => {

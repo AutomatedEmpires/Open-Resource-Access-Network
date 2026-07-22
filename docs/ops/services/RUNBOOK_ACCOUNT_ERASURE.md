@@ -5,8 +5,8 @@
 - Owner role: Identity and Access Lead
 - Reviewers: Data Platform Lead, Platform On-Call Lead
 - Operational status: active
-- Last reviewed (UTC): 2026-07-19
-- Next review due (UTC): 2026-10-19
+- Last reviewed (UTC): 2026-07-21
+- Next review due (UTC): 2026-10-21
 - Severity scope: SEV-1 to SEV-3
 
 ## Safety constraints
@@ -20,7 +20,9 @@
 - Never expose request identities, tombstones, database URLs, or Clerk secrets in
   logs, tickets, command output, or public audit details.
 - Migration `0071` must precede the online index build; migration `0072` must
-  follow it. The worker must not deploy in the gap.
+  follow it. Record each migration only after its SQL succeeds. The 128-index
+  operator phase is deliberately untracked and must never receive a fabricated
+  ledger row. The worker must not deploy in the gap.
 
 ## Controlled release
 
@@ -28,7 +30,9 @@
    not the transaction pooler, and confirm current database health, disk/WAL
    headroom, replica lag, and backups.
 2. Apply `db/migrations/0071_account_erasure_workflow.sql` through the reviewed
-   production migration procedure. The release gate remains closed.
+   production migration procedure. The release gate remains closed. Verify the
+   SQL completed, then and only then insert
+   `0071_account_erasure_workflow.sql` into `public.schema_migrations`.
 3. Run the restart-safe online build without printing the connection URL:
 
    ```bash
@@ -36,12 +40,19 @@
      -f scripts/db/build-account-erasure-indexes.sql
    ```
 
+   The script must finish only after exactly 128 fixed indexes are present on
+   their expected schema/table and are live, ready, and valid. Do not add an
+   index-build row to `schema_migrations`.
+
 4. If a statement hits the five-second lock timeout or 30-minute statement
    timeout, inspect database pressure, resolve the conflict, and rerun the same
    script. It removes only invalid same-name artifacts on their exact expected
    table and reuses valid completed indexes.
-5. Apply `db/migrations/0072_account_erasure_index_gate.sql`. A 55000 failure is
-   a safe stop: do not bypass it or manually update the gate.
+5. Apply `db/migrations/0072_account_erasure_index_gate.sql`. Insert
+   `0072_account_erasure_index_gate.sql` into `public.schema_migrations` only
+   after this SQL succeeds. A 55000 failure is a safe stop: leave the ledger row
+   absent, do not bypass the check or manually update the gate, and return to the
+   online builder.
 6. Deploy the application/cron code only after the gate migration succeeds.
 7. Smoke an authorized test account: require 200 or 202 with
    `accessRevoked=true`; verify subsequent auth is denied and the worker drains
@@ -100,4 +111,22 @@ npx vitest run \
   src/services/auth/__tests__/session.test.ts \
   src/services/db/__tests__/account-erasure-migration.test.ts
 bash scripts/db/disposable-postgres.sh
+```
+
+Before application deployment, confirm both tracked rows exist once and the
+gate is open:
+
+```sql
+SELECT filename, count(*)
+FROM public.schema_migrations
+WHERE filename IN (
+  '0071_account_erasure_workflow.sql',
+  '0072_account_erasure_index_gate.sql'
+)
+GROUP BY filename
+ORDER BY filename;
+
+SELECT indexes_ready
+FROM oran_internal.account_erasure_release_gate
+WHERE singleton;
 ```

@@ -25,6 +25,7 @@
     "validate:runtime": "node scripts/validate-runtime-env.mjs --target webapp",
     "check:off-azure-runtime": "node scripts/check-off-azure-runtime.mjs",
     "ingest:campaign": "npx tsx scripts/run-ingestion-campaign.ts",
+    "ingest:hrsa-wa": "npx tsx scripts/import/hrsa-wa-release.ts",
     "bootstrap:source-feed": "node scripts/bootstrap-source-feed.mjs",
     "provision:owner-access": "node scripts/provision-owner-access.mjs",
     "report:211-canary": "node scripts/run-211-canary-report.mjs",

@@ -78,6 +78,7 @@ jobs:
             if [ "$applied" != "1" ]; then
               echo "::error::ACCOUNT_ERASURE_MANUAL_RUNBOOK_ONLY: $filename is pending."
               echo "::error::Use docs/ops/services/RUNBOOK_ACCOUNT_ERASURE.md; the generic runner cannot pause for the required online index phase."
+              echo "::error::Do not pre-record either migration: 0071 SQL, the untracked 128-index build, and the 0072 validity gate must succeed in that order."
               exit 1
             fi
           done
@@ -93,6 +94,7 @@ jobs:
 
             echo "Applying migration: $filename"
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$file"
+            # A filename is durable evidence of successful SQL, never a bypass.
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (filename) VALUES ('$filename');"
           done < <(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort)
         env:
@@ -100,7 +102,26 @@ jobs:
 
       - name: Verify migration
         run: |
+          set -euo pipefail
+
+          mapfile -t repository_migrations < <(
+            find db/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | sort
+          )
+          expected="$(printf '%s\n' "${repository_migrations[@]}")"
+          actual="$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 \
+            -c "SELECT filename FROM public.schema_migrations ORDER BY filename;")"
+
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::Repository migration ledger does not exactly match the checked-in SQL files."
+            echo "::error::Provider-managed Supabase history must remain in its separate ledger."
+            exit 1
+          fi
+
+          count="${#repository_migrations[@]}"
+          latest="${repository_migrations[$((count - 1))]}"
           echo "Migration completed for environment: ${{ inputs.environment }}"
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT filename, applied_at FROM schema_migrations ORDER BY filename;"
+          echo "Verified exact repository ledger: ${count}|${latest}"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -c "SELECT filename, applied_at FROM public.schema_migrations ORDER BY filename;"
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}

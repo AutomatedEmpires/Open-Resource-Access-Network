@@ -15,6 +15,14 @@ const onlineIndexBuild = readFileSync(
   resolve(process.cwd(), 'scripts/db/build-account-erasure-indexes.sql'),
   'utf8',
 );
+const branchRehearsal = readFileSync(
+  resolve(process.cwd(), 'scripts/db/rehearse-supabase-branch.sh'),
+  'utf8',
+);
+const migrationWorkflow = readFileSync(
+  resolve(process.cwd(), '.github/workflows/db-migrate.yml'),
+  'utf8',
+);
 
 const dispatcher = migration.slice(
   migration.indexOf('CREATE OR REPLACE FUNCTION oran_internal.process_account_erasure_page'),
@@ -124,6 +132,42 @@ describe('0071 bounded durable account erasure migration', () => {
     expect(builtTargets).toHaveLength(128);
     expect(gatedTargets).toHaveLength(128);
     expect(gatedTargets).toEqual(builtTargets);
+  });
+
+  it('records tracked migrations only around the required online operator phase', () => {
+    const applyTrackedMigration = branchRehearsal.slice(
+      branchRehearsal.indexOf('apply_tracked_migration()'),
+      branchRehearsal.indexOf('mapfile -t migrations'),
+    );
+    const sqlExecution = applyTrackedMigration.indexOf('-f "$file"');
+    const ledgerInsert = applyTrackedMigration.indexOf(
+      'INSERT INTO public.schema_migrations',
+    );
+    expect(sqlExecution).toBeGreaterThanOrEqual(0);
+    expect(ledgerInsert).toBeGreaterThanOrEqual(0);
+    expect(sqlExecution).toBeLessThan(ledgerInsert);
+
+    const releaseSequence = branchRehearsal.slice(
+      branchRehearsal.indexOf('# 0071 installs the dark erasure workflow'),
+      branchRehearsal.indexOf('# Later migrations are ordinary tracked SQL'),
+    );
+    const workflowMigration = releaseSequence.indexOf(
+      'apply_tracked_migration "${migrations[69]}"',
+    );
+    const onlineBuild = releaseSequence.indexOf('build-account-erasure-indexes.sql');
+    const validityGate = releaseSequence.indexOf(
+      'apply_tracked_migration "${migrations[70]}"',
+    );
+    expect(workflowMigration).toBeGreaterThanOrEqual(0);
+    expect(onlineBuild).toBeGreaterThanOrEqual(0);
+    expect(validityGate).toBeGreaterThanOrEqual(0);
+    expect(workflowMigration).toBeLessThan(onlineBuild);
+    expect(onlineBuild).toBeLessThan(validityGate);
+
+    expect(migrationWorkflow).toContain('"0071_account_erasure_workflow.sql"');
+    expect(migrationWorkflow).toContain('"0072_account_erasure_index_gate.sql"');
+    expect(migrationWorkflow).toContain('ACCOUNT_ERASURE_MANUAL_RUNBOOK_ONLY');
+    expect(migrationWorkflow).toContain('Do not pre-record either migration');
   });
 
   it('keeps the worker dark until the gate passes and leases only one first worker', () => {

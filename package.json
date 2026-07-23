@@ -80,7 +80,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4.7.0",
-    "@vitest/coverage-v8": "^4.1.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "axe-core": "^4.11.1",
     "drizzle-kit": "^0.31.9",
     "eslint": "^10",

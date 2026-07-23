@@ -1227,7 +1227,7 @@ export default function MapPage() {
                     <div className="mb-3 flex items-start justify-between gap-3">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Service details</p>
-                        <p className="mt-1 text-sm text-slate-600">Use the canonical service taxonomy that powers resource records and search validation.</p>
+                        <p className="mt-1 text-sm text-slate-600">Pick the kind of help you need to load matching services.</p>
                       </div>
                       {hasActiveAttributes ? (
                         <Button type="button" variant="outline" size="sm" onClick={clearAttributes}>
@@ -1775,7 +1775,7 @@ export default function MapPage() {
                           <div className="mb-3 flex items-start justify-between gap-3">
                             <div>
                               <p className="text-sm font-semibold text-slate-900">Service details</p>
-                              <p className="mt-1 text-xs text-slate-500">Canonical service tags from the resource taxonomy. These match what the API validates.</p>
+                              <p className="mt-1 text-xs text-slate-500">Filter by how a service is delivered, what it costs, and how you get access.</p>
                             </div>
                             {hasActiveAttributes ? (
                               <Button type="button" variant="outline" size="sm" onClick={clearAttributes}>

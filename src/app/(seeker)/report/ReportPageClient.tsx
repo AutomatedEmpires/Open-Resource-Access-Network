@@ -191,7 +191,7 @@ function ReportPageInner() {
         >
           <AlertTriangle className="inline h-4 w-4 mr-1.5 align-text-bottom" aria-hidden="true" />
           To report a specific listing, open the service page and click
-          {' '}<span className="font-medium">Report a problem</span>.{' '}
+          {' '}<span className="font-medium">Flag issue</span>.{' '}
           <Link href={directoryHref} className="underline hover:no-underline font-medium">
             Browse the directory
           </Link>{' '}to find a service.
@@ -346,6 +346,16 @@ function ReportPageInner() {
                     <div className="mt-2 rounded-xl bg-slate-50 p-2 text-sm text-stone-600">
                       <span className="font-medium text-stone-500">Reviewer: </span>
                       {r.reviewer_notes}
+                    </div>
+                  )}
+                  {r.status === 'denied' && (
+                    <div className="mt-2">
+                      <Link
+                        href={`/appeal?submissionId=${encodeURIComponent(r.id)}`}
+                        className="text-sm font-medium text-blue-800 underline hover:no-underline"
+                      >
+                        Appeal this decision
+                      </Link>
                     </div>
                   )}
                 </div>

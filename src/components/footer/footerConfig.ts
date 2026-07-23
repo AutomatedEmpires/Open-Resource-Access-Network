@@ -54,9 +54,10 @@ const PUBLIC_COLUMNS: FooterColumn[] = [
   {
     title: 'Get Involved',
     links: [
-      { label: 'List Your Organization', href: '/partnerships' },
+      { label: 'List Your Organization', href: '/partnerships/organizations' },
       { label: 'Donate',                 href: '/partnerships#donate' },
-      { label: 'Volunteer',              href: '/partnerships#volunteer' },
+      // /partnerships has no #volunteer section — link the real recruiting page.
+      { label: 'Volunteer',              href: '/partnerships/admins' },
     ],
   },
   {
@@ -82,7 +83,7 @@ const HOST_COLUMNS: FooterColumn[] = [
   {
     title: 'Manage',
     links: [
-      { label: 'Organization Profile', href: '/org' },
+      { label: 'Organization Profile', href: '/org/profile' },
       { label: 'Services',             href: '/services' },
       { label: 'Locations',            href: '/locations' },
       { label: 'Team Members',         href: '/admins' },

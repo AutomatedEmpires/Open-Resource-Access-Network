@@ -785,7 +785,7 @@ export default function DirectoryPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-slate-900">Start with a common need</p>
-                      <p className="mt-1 text-xs text-slate-500">Choose a category first, then refine with record confidence, service details, and sort order.</p>
+                      <p className="mt-1 text-xs text-slate-500">Choose a category first, then narrow things down with the filters and sort order.</p>
                     </div>
                     <button
                       type="button"
@@ -977,7 +977,7 @@ export default function DirectoryPage() {
                 {!isLoading && !data && !error && (
                   <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-8 text-center shadow-sm">
                     <p className="text-base font-semibold text-slate-900">Start with a search</p>
-                    <p className="mt-1 text-sm text-slate-500">Results come only from stored records with positive publication authority.</p>
+                    <p className="mt-1 text-sm text-slate-500">Search or pick a need above — every result is a service record from a source ORAN has checked and published.</p>
                   </div>
                 )}
 
@@ -1019,7 +1019,7 @@ export default function DirectoryPage() {
                     {allResults.length === 0 ? (
                       <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-8 text-center shadow-sm">
                         <p className="text-base font-semibold text-slate-900">No matches</p>
-                        <p className="mt-1 text-sm text-slate-500">Try different keywords, broaden record-confidence filters, or clear service filters.</p>
+                        <p className="mt-1 text-sm text-slate-500">Try different keywords, allow all confidence levels, or clear the service filters.</p>
                         <div className="mt-4 flex flex-wrap justify-center gap-2">
                           {hasActiveAttributes && (
                             <Button type="button" variant="outline" size="sm" onClick={clearAttributes}>

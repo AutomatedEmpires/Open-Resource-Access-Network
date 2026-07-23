@@ -37,27 +37,33 @@ const websiteSchema = {
     '@type': 'SearchAction',
     target: {
       '@type': 'EntryPoint',
-      urlTemplate: `${SITE.baseUrl}/chat?q={search_term_string}`,
+      // Directory auto-runs ?q= searches; chat only prefills its composer, so a
+      // sitelinks search would land the query on-screen but unexecuted there.
+      urlTemplate: `${SITE.baseUrl}/directory?q={search_term_string}`,
     },
     'query-input': 'required name=search_term_string',
   },
 };
 
 // ── Browse-by-need category chips ───────────────────────────
+// Chips with a canonical discovery need deep-link ?category= so the directory
+// arrives with that category chip SELECTED and results already loading
+// (?q= is free text only — it never activates a category). Chips with no
+// matching need keep a free-text ?q= search.
 const CATEGORIES = [
   { label: 'SNAP & Food Benefits',   href: '/directory?q=SNAP+food+benefits' },
-  { label: 'Food Banks & Meals',     href: '/directory?q=food+banks+meal+centers' },
+  { label: 'Food Banks & Meals',     href: '/directory?category=food_assistance' },
   { label: 'Clothing',               href: '/directory?q=clothing+bank' },
-  { label: 'Rent & Housing',         href: '/directory?q=rent+housing+shelter' },
-  { label: 'Electricity & Utilities', href: '/directory?q=electricity+utility+assistance' },
+  { label: 'Rent & Housing',         href: '/directory?category=housing' },
+  { label: 'Electricity & Utilities', href: '/directory?category=utility_assistance' },
   { label: 'Medicaid & Health',      href: '/directory?q=Medicaid+healthcare' },
-  { label: 'Mental Health',          href: '/directory?q=mental+health' },
-  { label: 'Medical & Dental',       href: '/directory?q=sliding+scale+medical+dental' },
+  { label: 'Mental Health',          href: '/directory?category=mental_health' },
+  { label: 'Medical & Dental',       href: '/directory?category=healthcare' },
   { label: 'Urgent support',         href: '/chat?q=I+need+urgent+support' },
-  { label: 'Employment',             href: '/directory?q=employment+jobs' },
-  { label: 'Legal Aid',              href: '/directory?q=legal+aid' },
+  { label: 'Employment',             href: '/directory?category=employment' },
+  { label: 'Legal Aid',              href: '/directory?category=legal_aid' },
   { label: 'Immigration',            href: '/directory?q=immigration+services' },
-  { label: 'Child & Family',         href: '/directory?q=children+family' },
+  { label: 'Child & Family',         href: '/directory?category=childcare' },
   { label: 'Disability Services',    href: '/directory?q=disability+services' },
   { label: 'Veteran Services',       href: '/directory?q=veteran+services' },
 ] as const;

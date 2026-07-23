@@ -42,7 +42,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/operations', label: 'Operations', icon: LayoutDashboard, description: 'Portal-wide operator home and backlog overview.' },
       { href: '/triage', label: 'Triage Queue', icon: FolderKanban, description: 'Claim, route, and settle escalated queue work.' },
-      { href: '/approvals', label: 'Approvals', icon: ClipboardCheck, description: 'Resolve pending approvals before publication closes.' },
+      { href: '/approvals', label: 'Claim Approvals', icon: ClipboardCheck, description: 'Approve or deny organization ownership claims.' },
       { href: '/appeals', label: 'Appeals', icon: Scale, description: 'Review disputed decisions and response history.' },
       { href: '/reports', label: 'Reports', icon: FileWarning, description: 'Handle trust and safety reports with policy context.' },
     ],
@@ -53,7 +53,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/admin-security', label: 'Security', icon: LockKeyhole, description: 'Review operator controls and held accounts.' },
       { href: '/scopes', label: 'Scopes', icon: ShieldEllipsis, description: 'Grant and audit sensitive operational scope.' },
-      { href: '/rules', label: 'Rules', icon: ShieldCheck, description: 'Tune platform logic and decision guardrails.' },
+      { href: '/rules', label: 'Feature Flags', icon: ShieldCheck, description: 'Turn platform features on or off and manage rollouts.' },
       { href: '/audit', label: 'Audit', icon: BookOpen, description: 'Inspect the authoritative operator trail.' },
       { href: '/zone-management', label: 'Zones', icon: Map, description: 'Maintain geographic boundaries and coverage policy.' },
     ],

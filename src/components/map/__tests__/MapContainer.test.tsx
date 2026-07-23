@@ -135,7 +135,7 @@ describe('MapContainer OpenStreetMap implementation', () => {
     expect(getCurrentPosition).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Finish tile loading' }));
-    expect(await screen.findByText('No mappable resources in this view yet.')).toBeInTheDocument();
+    expect(await screen.findByText('No resources on the map yet. Pick a need or search above to load results.')).toBeInTheDocument();
   });
 
   it('plots only finite, in-range coordinates and keeps discovery state in result links', async () => {

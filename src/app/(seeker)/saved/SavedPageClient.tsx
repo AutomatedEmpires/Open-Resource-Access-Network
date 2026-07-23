@@ -802,8 +802,8 @@ export default function SavedPage() {
             <p className="mb-1 text-base font-semibold text-[var(--text-primary)]">No saved services yet</p>
             <p className="mx-auto mb-6 max-w-xs text-sm text-[var(--text-muted)]">
               {serverSyncEnabled
-                ? 'Bookmark services to access them quickly. Saves on this device can sync to your account when you sign in.'
-                : 'Bookmark services to access them quickly. Saves stay on this device.'}
+                ? 'Tap the bookmark icon on any service card in chat, the directory, or the map to save it here. Saves on this device can sync to your account when you sign in.'
+                : 'Tap the bookmark icon on any service card in chat, the directory, or the map to save it here. Saves stay on this device.'}
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
               <Link href={chatHref}>

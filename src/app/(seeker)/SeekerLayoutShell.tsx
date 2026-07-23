@@ -59,13 +59,6 @@ export function SeekerLayoutShell({
         >
           Open quick actions
         </button>
-        <button
-          type="button"
-          onClick={() => setCommandPaletteOpen(true)}
-          aria-label="Open quick actions"
-        >
-          Open quick actions
-        </button>
       </div>
 
       <AppNav />

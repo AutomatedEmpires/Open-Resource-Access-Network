@@ -188,7 +188,10 @@ describe('admin ingestion candidate action routes', () => {
       createRouteContext('11111111-1111-4111-8111-111111111111'),
     );
 
-    expect(rateLimitMock).toHaveBeenCalledWith('198.51.100.33', expect.any(Object));
+    expect(rateLimitMock).toHaveBeenCalledWith(
+      'admin:ingestion:candidates:publish:write:198.51.100.33',
+      expect.any(Object),
+    );
     expect(requireMinRoleMock).toHaveBeenCalledWith({ userId: 'oran-1' }, 'oran_admin');
     expect(livePublishMocks.publishCandidateToLiveService).toHaveBeenCalledWith(
       expect.objectContaining({

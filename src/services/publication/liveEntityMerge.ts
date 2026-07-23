@@ -48,6 +48,28 @@ function buildPublicationFingerprint(input: LivePublicationIdentityInput): strin
     .join('|') || 'unscoped';
 }
 
+/** Shared side of the publication/merge gate. Acquire before all row locks. */
+export async function acquireLivePublicationGateShared(
+  client: PoolClient,
+): Promise<void> {
+  await client.query(
+    `SELECT pg_catalog.pg_advisory_xact_lock_shared(
+       pg_catalog.hashtextextended('oran:live-publication-merge', 0)
+     )`,
+  );
+}
+
+/** Exclusive side of the publication/merge gate. Acquire before all row locks. */
+export async function acquireLivePublicationMergeLock(
+  client: PoolClient,
+): Promise<void> {
+  await client.query(
+    `SELECT pg_catalog.pg_advisory_xact_lock(
+       pg_catalog.hashtextextended('oran:live-publication-merge', 0)
+     )`,
+  );
+}
+
 export async function acquireLivePublicationAdvisoryLock(
   client: PoolClient,
   input: LivePublicationIdentityInput,

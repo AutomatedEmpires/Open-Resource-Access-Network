@@ -17,12 +17,14 @@ vi.mock('@/services/email/resendEmail', () => emailMocks);
 import {
   acquireLock,
   advance,
+  advanceInTransaction,
   applySla,
   assignSubmission,
   bulkAdvance,
   checkSlaBreaches,
   releaseLock,
   runAutoCheck,
+  sendTerminalStatusEmail,
 } from '@/services/workflow/engine';
 
 beforeEach(() => {
@@ -413,7 +415,7 @@ describe('workflow/engine', () => {
     expect(clientQueryMock).toHaveBeenCalledTimes(5);
   });
 
-  it('sends terminal status email when configured and contact email exists', async () => {
+  it('sends terminal status email post-commit when configured and contact email exists', async () => {
     emailMocks.isEmailConfigured.mockReturnValue(true);
     clientQueryMock
       .mockResolvedValueOnce({
@@ -433,10 +435,11 @@ describe('workflow/engine', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: 'transition-ok-5c' }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({
-        rows: [{ payload: JSON.stringify({ contact_email: 'person@example.org' }), title: 'Broken listing' }],
-      });
+      .mockResolvedValueOnce({ rows: [] });
+    // The payload lookup runs OUTSIDE the transaction via executeQuery.
+    dbMocks.executeQuery.mockResolvedValueOnce([
+      { payload: JSON.stringify({ contact_email: 'person@example.org' }), title: 'Broken listing' },
+    ]);
 
     const result = await advance({
       submissionId: 'sub-5c',
@@ -451,6 +454,102 @@ describe('workflow/engine', () => {
       subject: 'Update: Broken listing — approved',
       text: 'Your submission has been updated to "approved". Thank you for your report.',
     });
+  });
+
+  it('emails when the payload arrives as a JSONB object (regression: JSON.parse on object)', async () => {
+    emailMocks.isEmailConfigured.mockReturnValue(true);
+    dbMocks.executeQuery.mockResolvedValueOnce([
+      { payload: { contact_email: 'jsonb@example.org' }, title: 'Object payload' },
+    ]);
+
+    await sendTerminalStatusEmail('sub-jsonb', 'approved');
+
+    expect(emailMocks.sendEmail).toHaveBeenCalledWith({
+      to: 'jsonb@example.org',
+      subject: 'Update: Object payload — approved',
+      text: 'Your submission has been updated to "approved". Thank you for your report.',
+    });
+  });
+
+  it('sendTerminalStatusEmail is inert for non-terminal statuses and unconfigured email', async () => {
+    emailMocks.isEmailConfigured.mockReturnValue(true);
+    await sendTerminalStatusEmail('sub-x', 'under_review');
+    expect(dbMocks.executeQuery).not.toHaveBeenCalled();
+
+    emailMocks.isEmailConfigured.mockReturnValue(false);
+    await sendTerminalStatusEmail('sub-x', 'approved');
+    expect(dbMocks.executeQuery).not.toHaveBeenCalled();
+    expect(emailMocks.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('sendTerminalStatusEmail swallows missing contacts and delivery failures', async () => {
+    emailMocks.isEmailConfigured.mockReturnValue(true);
+
+    dbMocks.executeQuery.mockResolvedValueOnce([{ payload: { contact_email: '   ' }, title: null }]);
+    await sendTerminalStatusEmail('sub-blank', 'denied');
+    expect(emailMocks.sendEmail).not.toHaveBeenCalled();
+
+    dbMocks.executeQuery.mockResolvedValueOnce([
+      { payload: { contact_email: 'boom@example.org' }, title: null },
+    ]);
+    emailMocks.sendEmail.mockRejectedValueOnce(new Error('provider down'));
+    await expect(sendTerminalStatusEmail('sub-boom', 'denied')).resolves.toBeUndefined();
+
+    dbMocks.executeQuery.mockRejectedValueOnce(new Error('db gone'));
+    await expect(sendTerminalStatusEmail('sub-db', 'denied')).resolves.toBeUndefined();
+  });
+
+  it('advanceInTransaction composes into an outer transaction without opening its own', async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sub-tx',
+          submission_type: 'community_report',
+          status: 'under_review',
+          is_locked: false,
+          locked_by_user_id: null,
+          assigned_to_user_id: null,
+          service_id: null,
+          submitted_by_user_id: 'submitter-tx',
+          target_type: 'service',
+          target_id: null,
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'transition-tx' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await advanceInTransaction(
+      { query: clientQueryMock } as never,
+      {
+        submissionId: 'sub-tx',
+        toStatus: 'denied',
+        actorUserId: 'reviewer-tx',
+        actorRole: 'community_admin',
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(dbMocks.withTransaction).not.toHaveBeenCalled();
+    const issuedSql = clientQueryMock.mock.calls.map((call) => String(call[0]));
+    expect(issuedSql.some((sql) => sql.trim().startsWith('BEGIN'))).toBe(false);
+  });
+
+  it('does not attempt the terminal email when the advance fails', async () => {
+    emailMocks.isEmailConfigured.mockReturnValue(true);
+    clientQueryMock.mockResolvedValueOnce({ rows: [] });
+
+    const result = await advance({
+      submissionId: 'sub-missing',
+      toStatus: 'approved',
+      actorUserId: 'reviewer-x',
+      actorRole: 'community_admin',
+    });
+
+    expect(result.success).toBe(false);
+    expect(dbMocks.executeQuery).not.toHaveBeenCalled();
+    expect(emailMocks.sendEmail).not.toHaveBeenCalled();
   });
 
   it('uses submitter action URL mapping for routed submission types', async () => {

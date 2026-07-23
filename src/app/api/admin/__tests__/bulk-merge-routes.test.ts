@@ -18,10 +18,6 @@ const mergeServiceMocks = vi.hoisted(() => ({
   previewOrganizationMerge: vi.fn(),
   mergeServices: vi.fn(),
 }));
-const workflowMocks = vi.hoisted(() => ({
-  bulkAdvance: vi.fn(),
-}));
-
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimit: rateLimitMock,
@@ -33,7 +29,6 @@ vi.mock('@/services/telemetry/sentry', () => ({
 vi.mock('@/services/auth/session', () => authSessionMocks);
 vi.mock('@/services/auth/guards', () => guardsMocks);
 vi.mock('@/services/merge/service', () => mergeServiceMocks);
-vi.mock('@/services/workflow/engine', () => workflowMocks);
 
 type RequestOptions = {
   search?: string;
@@ -67,10 +62,6 @@ async function loadServiceMergeRoute() {
   return import('../merge/services/route');
 }
 
-async function loadBulkAdvanceRoute() {
-  return import('../bulk/advance/route');
-}
-
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
@@ -92,9 +83,6 @@ beforeEach(() => {
   });
   mergeServiceMocks.mergeOrganizations.mockResolvedValue({ success: true });
   mergeServiceMocks.mergeServices.mockResolvedValue({ success: true });
-  workflowMocks.bulkAdvance.mockResolvedValue([
-    { submissionId: 'sub-1', success: true },
-  ]);
 });
 
 describe('admin organization merge route', () => {
@@ -233,50 +221,5 @@ describe('admin service merge route', () => {
   });
 });
 
-describe('admin bulk advance route', () => {
-  it('enforces role, validates payload, and returns aggregate counts', async () => {
-    const { POST } = await loadBulkAdvanceRoute();
-
-    authSessionMocks.getAuthContext.mockResolvedValueOnce({
-      userId: 'host-1',
-      role: 'host_admin',
-      orgIds: [],
-      orgRoles: new Map(),
-    });
-    guardsMocks.requireMinRole.mockReturnValueOnce(false);
-    const forbidden = await POST(createRequest({ jsonBody: {} }));
-    expect(forbidden.status).toBe(403);
-
-    const invalid = await POST(createRequest({ jsonBody: {} }));
-    expect(invalid.status).toBe(400);
-
-    workflowMocks.bulkAdvance.mockResolvedValueOnce([
-      { submissionId: 'sub-1', success: true },
-      { submissionId: 'sub-2', success: false, error: 'blocked transition' },
-    ]);
-    const ok = await POST(
-      createRequest({
-        jsonBody: {
-          submissionIds: ['11111111-1111-4111-8111-111111111111'],
-          toStatus: 'in_review',
-          reason: 'batch move',
-        },
-        ip: '203.0.113.5',
-      }),
-    );
-    expect(ok.status).toBe(200);
-    await expect(ok.json()).resolves.toEqual({
-      total: 2,
-      succeeded: 1,
-      failed: 1,
-      results: [
-        { submissionId: 'sub-1', success: true },
-        { submissionId: 'sub-2', success: false, error: 'blocked transition' },
-      ],
-    });
-    expect(rateLimitMock).toHaveBeenLastCalledWith(
-      'admin:bulk:advance:203.0.113.5',
-      expect.any(Object),
-    );
-  });
-});
+// Admin bulk advance coverage moved to src/app/api/admin/bulk/advance/__tests__/route.test.ts
+// alongside the preflight-guard rewrite of that route.

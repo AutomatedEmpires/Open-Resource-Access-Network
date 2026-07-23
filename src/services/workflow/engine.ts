@@ -267,7 +267,22 @@ function checkOrganizationClaimDecisionRole(
  * This is the single entry point for all workflow state changes.
  */
 export async function advance(req: AdvanceRequest): Promise<AdvanceResult> {
-  return withTransaction(async (client) => {
+  const result = await withTransaction((client) => advanceInTransaction(client, req));
+  if (result.success) {
+    await sendTerminalStatusEmail(result.submissionId, result.toStatus);
+  }
+  return result;
+}
+
+/**
+ * Advance a submission using an existing database transaction. Bulk routes
+ * compose several advances into one all-or-nothing transaction through this
+ * entry point, so a single failed transition rolls back every sibling change.
+ */
+export async function advanceInTransaction(
+  client: PoolClient,
+  req: AdvanceRequest,
+): Promise<AdvanceResult> {
     // 1. Lock and fetch the submission row
     const rows = await client.query<SubmissionRow>(
       `SELECT id, submission_type, status, is_locked, locked_by_user_id,
@@ -423,7 +438,6 @@ export async function advance(req: AdvanceRequest): Promise<AdvanceResult> {
       transitionId: transition.rows[0]?.id ?? '',
       gateResults,
     };
-  });
 }
 
 // ============================================================
@@ -865,27 +879,47 @@ async function fireStatusChangeNotification(
     );
   }
 
-  // For terminal statuses, email the contact_email from payload (if present).
-  // This handles anonymous reporters who provided an email for follow-up.
-  if (isTerminalStatus(toStatus) && isEmailConfigured()) {
-    const payloadRows = await client.query<{ payload: string | null; title: string | null }>(
+}
+
+/**
+ * For terminal statuses, email the contact_email from payload (if present).
+ * This handles anonymous reporters who provided an email for follow-up.
+ *
+ * Runs OUTSIDE the workflow transaction, strictly after the decision has
+ * committed. Database notification events stay transactional; this external
+ * side effect is intentionally best-effort and never makes a committed
+ * workflow decision appear to have failed.
+ */
+export async function sendTerminalStatusEmail(
+  submissionId: string,
+  toStatus: SubmissionStatus,
+): Promise<void> {
+  if (!isTerminalStatus(toStatus) || !isEmailConfigured()) return;
+
+  try {
+    const payloadRows = await executeQuery<{
+      payload: unknown;
+      title: string | null;
+    }>(
       `SELECT payload, title FROM submissions WHERE id = $1`,
       [submissionId],
     );
-    const payload = payloadRows.rows[0]?.payload;
-    if (payload) {
-      try {
-        const parsed = JSON.parse(payload);
-        const contactEmail = parsed?.contact_email;
-        if (contactEmail && typeof contactEmail === 'string') {
-          const subjectTitle = payloadRows.rows[0]?.title ?? 'Your submission';
-          await sendEmail({
-            to: contactEmail,
-            subject: `Update: ${subjectTitle} — ${toStatus}`,
-            text: `Your submission has been updated to "${toStatus}". Thank you for your report.`,
-          }).catch(() => { /* best-effort */ });
-        }
-      } catch { /* malformed payload — skip */ }
-    }
+    const rawPayload = payloadRows[0]?.payload;
+    const payload = typeof rawPayload === 'string'
+      ? JSON.parse(rawPayload) as unknown
+      : rawPayload;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
+
+    const contactEmail = (payload as Record<string, unknown>).contact_email;
+    if (typeof contactEmail !== 'string' || contactEmail.trim().length === 0) return;
+
+    const subjectTitle = payloadRows[0]?.title ?? 'Your submission';
+    await sendEmail({
+      to: contactEmail,
+      subject: `Update: ${subjectTitle} — ${toStatus}`,
+      text: `Your submission has been updated to "${toStatus}". Thank you for your report.`,
+    }).catch(() => { /* best-effort */ });
+  } catch {
+    // Payload lookup, parsing, and delivery are best-effort after commit.
   }
 }

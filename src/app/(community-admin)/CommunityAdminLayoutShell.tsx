@@ -12,7 +12,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from '@/services/auth/client';
 import {
-  LayoutDashboard, ClipboardList, ShieldCheck, FileText, Globe2, ArrowRight,
+  LayoutDashboard, ClipboardList, ShieldCheck, FileText, FileSearch, Globe2, ArrowRight,
 } from 'lucide-react';
 import { isRoleAtLeast } from '@/services/auth/roles';
 import { AccessDenied } from '@/components/ui/access-denied';
@@ -34,6 +34,7 @@ const NAV_SECTIONS: {
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'Shift overview and triage priorities.' },
       { href: '/queue', label: 'Queue', icon: ClipboardList, description: 'Claim, route, and resolve reviewer work.' },
       { href: '/verify', label: 'Verify', icon: ShieldCheck, description: 'Open the active verification workspace.' },
+      { href: '/candidate-reviews', label: 'Candidate reviews', icon: FileSearch, description: 'Claim and complete assigned independent candidate reviews.' },
       { href: '/community-forms', label: 'Forms', icon: FileText, description: 'Track incoming community form intake.' },
     ],
   },

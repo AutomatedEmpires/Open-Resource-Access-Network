@@ -15,6 +15,10 @@ import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import {
+  CandidateApprovalConflict,
+  assertCandidatePublishApprovalEvidence,
+} from '@/services/ingestion/candidateApprovals';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(
@@ -26,7 +30,16 @@ export async function POST(
   }
 
   const ip = getIp(req);
-  const rl = await checkRateLimitShared(ip, { maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS, windowMs: RATE_LIMIT_WINDOW_MS });
+  const rl = await checkRateLimitShared(`admin:ingestion:candidates:publish:write:${ip}`, {
+    maxRequests: ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+  });
+  if (rl.backendUnavailable) {
+    return NextResponse.json(
+      { error: 'Rate limit service unavailable. Please try again later.' },
+      { status: 503, headers: { 'Retry-After': String(rl.retryAfterSeconds) } }
+    );
+  }
   if (rl.exceeded) {
     return NextResponse.json(
       { error: 'Rate limit exceeded.' },
@@ -69,6 +82,12 @@ export async function POST(
       );
     }
 
+    // Two-person publication gate: once the 0077 evidence schema is applied,
+    // publication requires two independent verifying reviewers and zero
+    // rejections, counted from immutable completed assignments — never
+    // trusted from review_status or readiness flags.
+    await assertCandidatePublishApprovalEvidence(id);
+
     const { publishCandidateToLiveService } = await import(
       '@/agents/ingestion/livePublish'
     );
@@ -105,6 +124,9 @@ export async function POST(
 
     return NextResponse.json({ success: true, serviceId: published.serviceId });
   } catch (error) {
+    if (error instanceof CandidateApprovalConflict) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     captureException(error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }

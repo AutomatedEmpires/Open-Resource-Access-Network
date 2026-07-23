@@ -7,7 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { isDatabaseConfigured } from '@/services/db/postgres';
+import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
+import { REQUIRED_INDEPENDENT_CANDIDATE_APPROVALS } from '@/services/ingestion/candidateApprovals';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
@@ -83,24 +84,62 @@ export async function GET(
     }
 
     // Fetch related data in parallel
-    const [tags, checks, links, assignments, tagConfirmations, suggestions] =
-      await Promise.all([
-        stores.tags.listFor(id, 'candidate'),
-        stores.checks.listFor(id),
-        stores.links.listForCandidate(id),
-        stores.assignments.listForCandidate(id),
-        stores.tagConfirmations.listForCandidate(id),
-        stores.llmSuggestions.listForCandidate(id),
-      ]);
+    const [
+      tags, checks, links, assignments, tagConfirmations, suggestions,
+      currentUserAssignmentRows, assignmentProgressRows,
+    ] = await Promise.all([
+      stores.tags.listFor(id, 'candidate'),
+      stores.checks.listFor(id),
+      stores.links.listForCandidate(id),
+      stores.assignments.listForCandidate(id),
+      stores.tagConfirmations.listForCandidate(id),
+      stores.llmSuggestions.listForCandidate(id),
+      executeQuery<{
+        id: string;
+        status: string;
+        outcome: string | null;
+        expires_at: string | null;
+      }>(
+        `SELECT assignment.id,
+                assignment.status,
+                CASE WHEN assignment.status = 'completed' THEN assignment.outcome END AS outcome,
+                assignment.expires_at
+         FROM public.candidate_admin_assignments assignment
+         JOIN public.admin_review_profiles reviewer
+           ON reviewer.id = assignment.admin_profile_id
+         WHERE assignment.candidate_id = $1
+           AND reviewer.user_id = $2`,
+        [id, authCtx.userId],
+      ),
+      executeQuery<{
+        completed_review_count: number;
+        open_review_count: number;
+      }>(
+        `SELECT count(*) FILTER (WHERE status = 'completed')::integer AS completed_review_count,
+                count(*) FILTER (WHERE status IN ('pending', 'claimed'))::integer AS open_review_count
+         FROM public.candidate_admin_assignments
+         WHERE candidate_id = $1`,
+        [id],
+      ),
+    ]);
 
     return NextResponse.json({
       candidate,
       tags,
       checks,
       links,
-      assignments,
+      // Peer assignment rows expose reviewer identity + outcome, which would
+      // let a reviewer anchor on a colleague's decision. Blind independent
+      // review: only oran_admin (the oversight portal) receives them.
+      ...(requireMinRole(authCtx, 'oran_admin') ? { assignments } : {}),
       tagConfirmations,
       suggestions,
+      currentUserAssignment: currentUserAssignmentRows[0] ?? null,
+      assignmentProgress: {
+        completedReviewCount: assignmentProgressRows[0]?.completed_review_count ?? 0,
+        openReviewCount: assignmentProgressRows[0]?.open_review_count ?? 0,
+        requiredMatchingReviewCount: REQUIRED_INDEPENDENT_CANDIDATE_APPROVALS,
+      },
     });
   } catch (error) {
     captureException(error instanceof Error ? error : new Error(String(error)));

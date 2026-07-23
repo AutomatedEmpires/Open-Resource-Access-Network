@@ -38,8 +38,11 @@ const ingestionStores = vi.hoisted(() => ({
   },
 }));
 
+const executeQueryMock = vi.hoisted(() => vi.fn());
+
 vi.mock('@/services/db/postgres', () => ({
   isDatabaseConfigured: dbConfigMock,
+  executeQuery: executeQueryMock,
 }));
 vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimit: rateLimitMock,
@@ -105,6 +108,7 @@ beforeEach(() => {
   });
   authMocks.getAuthContext.mockResolvedValue(null);
   requireMinRoleMock.mockReturnValue(true);
+  executeQueryMock.mockResolvedValue([]);
   getDrizzleMock.mockReturnValue({ kind: 'db' });
   storeMocks.createIngestionStores.mockReturnValue(ingestionStores);
 
@@ -230,6 +234,56 @@ describe('admin ingestion candidate routes', () => {
       assignments: [{ id: 'assign-1' }],
       tagConfirmations: [{ id: 'confirm-1' }],
       suggestions: [{ id: 'suggest-1' }],
+      currentUserAssignment: null,
+      assignmentProgress: {
+        completedReviewCount: 0,
+        openReviewCount: 0,
+        requiredMatchingReviewCount: 2,
+      },
+    });
+  });
+
+  it('withholds peer assignments from community_admin while returning their own row', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
+    // community_admin passes the entry gate but is NOT oran_admin.
+    requireMinRoleMock.mockImplementation(
+      (_ctx: unknown, role: string) => role !== 'oran_admin',
+    );
+    ingestionStores.candidates.getById.mockResolvedValueOnce({
+      candidateId: '11111111-1111-4111-8111-111111111111',
+    });
+    ingestionStores.tags.listFor.mockResolvedValueOnce([]);
+    ingestionStores.checks.listFor.mockResolvedValueOnce([]);
+    ingestionStores.links.listForCandidate.mockResolvedValueOnce([]);
+    ingestionStores.assignments.listForCandidate.mockResolvedValueOnce([
+      { id: 'assign-peer', admin_profile_id: 'peer-1', outcome: 'verified' },
+    ]);
+    ingestionStores.tagConfirmations.listForCandidate.mockResolvedValueOnce([]);
+    ingestionStores.llmSuggestions.listForCandidate.mockResolvedValueOnce([]);
+    executeQueryMock
+      .mockResolvedValueOnce([
+        { id: 'assign-own', status: 'claimed', outcome: null, expires_at: null },
+      ])
+      .mockResolvedValueOnce([
+        { completed_review_count: 1, open_review_count: 1 },
+      ]);
+    const { GET } = await loadCandidateDetailRoute();
+
+    const response = await GET(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111')
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).not.toHaveProperty('assignments');
+    expect(body.currentUserAssignment).toEqual({
+      id: 'assign-own', status: 'claimed', outcome: null, expires_at: null,
+    });
+    expect(body.assignmentProgress).toEqual({
+      completedReviewCount: 1,
+      openReviewCount: 1,
+      requiredMatchingReviewCount: 2,
     });
   });
 

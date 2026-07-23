@@ -500,6 +500,45 @@ COMMENT ON COLUMN public.extracted_candidates.revision_of_candidate_id IS
   'Immediate immutable parent candidate ID. Terminal candidate rows are never rewritten by re-extraction.';
 COMMENT ON COLUMN public.extracted_candidates.revision_number IS
   'Monotonic revision number within a candidate lineage; roots are revision 1.';
+-- The dual-approval service (src/services/ingestion/candidateApprovals.ts)
+-- records 'approval.claimed' and 'approval.decided' audit events. Extend the
+-- ingestion audit contract in the SAME transaction as the evidence schema so
+-- the already-deployed (probe-gated) app half can never outrun the CHECK.
+ALTER TABLE public.ingestion_audit_events
+  DROP CONSTRAINT IF EXISTS ingestion_audit_events_event_type_check;
+ALTER TABLE public.ingestion_audit_events
+  ADD CONSTRAINT ingestion_audit_events_event_type_check
+  CHECK (
+    event_type IN (
+      'created',
+      'status_changed',
+      'assigned',
+      'unassigned',
+      'score_updated',
+      'field_edited',
+      'tag_added',
+      'tag_removed',
+      'escalated',
+      'published',
+      'archived',
+      'reverified',
+      'candidate.located',
+      'evidence.fetched',
+      'extract.completed',
+      'feed.poll_started',
+      'feed.poll_completed',
+      'normalize.failed',
+      'verify.completed',
+      'review.assigned',
+      'review.status_changed',
+      'publish.approved',
+      'publish.rejected',
+      'reverify.completed',
+      'approval.claimed',
+      'approval.decided'
+    )
+  );
+
 COMMENT ON COLUMN public.extracted_candidates.lineage_root_candidate_id IS
   'Stable root candidate ID used to serialize and uniquely number immutable revisions.';
 

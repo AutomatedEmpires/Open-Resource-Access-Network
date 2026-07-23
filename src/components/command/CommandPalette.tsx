@@ -10,7 +10,7 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { MessageCircle, List, MapPin, Bookmark, User } from 'lucide-react';
+import { MessageCircle, List, MapPin, Bookmark, Rows3, User } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -23,9 +23,10 @@ interface Command {
 }
 
 const COMMANDS: Command[] = [
-  { id: 'chat',      label: 'Go to Chat',      description: 'AI-assisted service search', icon: MessageCircle, href: '/chat'      },
-  { id: 'directory', label: 'Open Directory',   description: 'Browse publication-gated services', icon: List,          href: '/directory' },
+  { id: 'chat',      label: 'Go to Chat',      description: 'Describe what you need and search stored records', icon: MessageCircle, href: '/chat'      },
+  { id: 'directory', label: 'Open Directory',   description: 'Browse and filter verified service listings', icon: List,          href: '/directory' },
   { id: 'map',       label: 'Go to Map',        description: 'Map view of nearby services',  icon: MapPin,        href: '/map'       },
+  { id: 'scroll',    label: 'Open Resource Feed', description: 'Swipe through resources one at a time', icon: Rows3,         href: '/scroll'    },
   { id: 'saved',     label: 'Go to Saved',      description: 'Your saved services',          icon: Bookmark,      href: '/saved'     },
   { id: 'profile',   label: 'Go to Profile',    description: 'Account and display settings', icon: User,          href: '/profile'   },
 ];

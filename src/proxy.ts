@@ -10,8 +10,16 @@ import type { NextFetchEvent, NextRequest } from 'next/server';
 import { clerkMiddleware } from '@clerk/nextjs/server';
 
 const PROTECTED_ROUTES: RegExp[] = [
-  /^\/(saved|profile|appeal|notifications)/,
-  /^\/(host|host-forms|resource-studio|claim|org|locations|services|admins)/,
+  // /saved and /profile are deliberately NOT protected: both are documented
+  // local-first public surfaces (docs/ui/UI_SURFACE_MAP.md) whose pages render
+  // anonymous state with a sign-in upsell; their server-sync APIs stay
+  // auth-guarded at the API layer.
+  /^\/(appeal|notifications)(?:\/|$)/,
+  /^\/(host|host-forms|resource-studio|claim|locations|services|admins)(?:\/|$)/,
+  // Host org surfaces are exactly /org and /org/profile. The public
+  // organization profile /org/[id] must stay crawlable and shareable, so this
+  // pattern must not swallow the whole /org prefix.
+  /^\/org(?:\/profile)?$/,
   /^\/(queue|verify|coverage|dashboard|community-forms)/,
   /^\/(operations|approvals|rules|audit|zone-management|ingestion|appeals|reports|admin-security|scopes|triage|templates|discovery-preview|forms)/,
 ];

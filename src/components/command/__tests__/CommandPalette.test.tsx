@@ -51,7 +51,7 @@ describe('CommandPalette', () => {
   it('filters commands by query and shows no-results copy', () => {
     render(<CommandPalette open onClose={vi.fn()} />);
 
-    expect(screen.getAllByRole('option')).toHaveLength(5);
+    expect(screen.getAllByRole('option')).toHaveLength(6);
 
     const input = screen.getByRole('textbox', { name: 'Search commands' });
     fireEvent.change(input, { target: { value: 'nearby' } });

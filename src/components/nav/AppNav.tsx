@@ -11,9 +11,10 @@ import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useOranAuth } from '@/services/auth/client';
-import { ChevronDown, List, LogOut, MapPin, Menu, MessageCircle, User, X } from 'lucide-react';
+import { ChevronDown, List, LogOut, MapPin, Menu, MessageCircle, Rows3, User, X } from 'lucide-react';
 import type { OranRole } from '@/domain/types';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { NotificationBell } from './NotificationBell';
 import { useLocale } from '@/contexts/LocaleContext';
 
 function useOptionalAuth() {
@@ -40,6 +41,7 @@ function useOptionalLocale() {
           'nav.chat': 'Chat',
           'nav.directory': 'Directory',
           'nav.map': 'Map',
+          'nav.scroll': 'Scroll',
           'nav.profile': 'Profile',
           'nav.saved': 'Saved',
           'nav.notifications': 'Notifications',
@@ -84,6 +86,7 @@ const PRIMARY_NAV: PrimaryNavItem[] = [
   { href: '/chat', labelKey: 'nav.chat', icon: MessageCircle },
   { href: '/directory', labelKey: 'nav.directory', icon: List },
   { href: '/map', labelKey: 'nav.map', icon: MapPin },
+  { href: '/scroll', labelKey: 'nav.scroll', icon: Rows3 },
 ];
 
 const WORK_WITH_US_MENU: LinkMenuItem[] = [
@@ -157,7 +160,13 @@ function getProfileMenuItems(role: OranRole | undefined, signInHref: string, t: 
     ];
   }
 
-  return [{ kind: 'link', href: signInHref, label: t('nav.sign_in') }];
+  // Signed out: Saved and Profile are local-first public surfaces — keep them
+  // reachable so anonymous seekers can re-find on-device saves and settings.
+  return [
+    { kind: 'link', href: '/saved', label: t('nav.saved') },
+    { kind: 'link', href: '/profile', label: t('nav.profile') },
+    { kind: 'link', href: signInHref, label: t('nav.sign_in') },
+  ];
 }
 
 export function AppNav() {
@@ -257,6 +266,9 @@ export function AppNav() {
         </div>
 
         <div className="ml-auto hidden items-center gap-2 lg:flex">
+          {/* Renders nothing when unauthenticated; the inbox otherwise has no
+              visible entry point anywhere in the shell. */}
+          <NotificationBell />
           <div className="relative">
             <button
               type="button"

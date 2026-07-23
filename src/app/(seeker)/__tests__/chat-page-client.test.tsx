@@ -91,6 +91,25 @@ describe('ChatPageClient', () => {
     });
   });
 
+  it('opens a fresh session when the link seeds a ?q= prompt', async () => {
+    navigationState.searchParams = new URLSearchParams('q=shelter');
+    sessionStorage.setItem('oran_chat_session_id', 'existing-session-id');
+    const randomSpy = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValue('fresh-session-id');
+
+    render(<ChatPage />);
+
+    await waitFor(() => {
+      expect(chatWindowMock).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: 'fresh-session-id', initialPrompt: 'shelter' }),
+      );
+    });
+    expect(sessionStorage.getItem('oran_chat_session_id')).toBe('fresh-session-id');
+
+    randomSpy.mockRestore();
+  });
+
   it('creates and persists a new chat session id when one is missing', async () => {
     const randomSpy = vi
       .spyOn(globalThis.crypto, 'randomUUID')

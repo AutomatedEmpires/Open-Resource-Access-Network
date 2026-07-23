@@ -29,6 +29,7 @@ export interface ScopedMobileNavItem {
 /** Seeker mobile navigation is intentionally invariant across seeker routes. */
 export const SEEKER_MOBILE_NAV_ITEMS = [
   { href: '/chat', label: 'Chat', icon: 'chat' },
+  { href: '/directory', label: 'Directory', icon: 'directory' },
   { href: '/map', label: 'Map', icon: 'map' },
   { href: '/scroll', label: 'Scroll', icon: 'scroll' },
   { href: '/profile', label: 'Profile', icon: 'profile' },

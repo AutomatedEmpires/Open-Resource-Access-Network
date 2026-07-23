@@ -1,9 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { ChevronLeft, ChevronRight, FileSearch, RefreshCw } from 'lucide-react';
 
-import { CandidateApprovalPanel } from '@/components/admin/CandidateApprovalPanel';
+// Dynamic SSR-off import (matching the SavedServiceComparison pattern) keeps
+// the review panel out of shared first-load chunks.
+const CandidateApprovalPanel = dynamic(
+  () => import('@/components/admin/CandidateApprovalPanel')
+    .then((module) => module.CandidateApprovalPanel),
+  { ssr: false },
+);
 import { Button } from '@/components/ui/button';
 import { FormAlert } from '@/components/ui/form-alert';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';

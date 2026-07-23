@@ -32,6 +32,7 @@ vi.mock('lucide-react', () => ({
   MapPin: 'svg',
   Menu: 'svg',
   MessageCircle: 'svg',
+  Rows3: 'svg',
   User: 'svg',
   X: 'svg',
 }));

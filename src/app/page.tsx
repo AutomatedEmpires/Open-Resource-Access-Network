@@ -59,7 +59,10 @@ const CATEGORIES = [
   { label: 'Medicaid & Health',      href: '/directory?q=Medicaid+healthcare' },
   { label: 'Mental Health',          href: '/directory?category=mental_health' },
   { label: 'Medical & Dental',       href: '/directory?category=healthcare' },
-  { label: 'Urgent support',         href: '/chat?q=I+need+urgent+support' },
+  // Lands on chat's guided intake with no seeded query: the previous seeded
+  // text ("I need urgent support") tripped the weak-query clarifier and burned
+  // a quota round telling the seeker to rephrase.
+  { label: 'Urgent support',         href: '/chat' },
   { label: 'Employment',             href: '/directory?category=employment' },
   { label: 'Legal Aid',              href: '/directory?category=legal_aid' },
   { label: 'Immigration',            href: '/directory?q=immigration+services' },

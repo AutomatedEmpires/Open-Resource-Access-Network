@@ -76,13 +76,13 @@ describe('seeker layout shell', () => {
     expect(screen.getByTestId('palette-state')).toHaveTextContent('closed');
   });
 
-  it('pins the invariant seeker navigation in Chat, Map, Scroll, Profile order', () => {
+  it('pins the invariant seeker navigation in Chat, Directory, Map, Scroll, Profile order', () => {
     render(<SeekerLayoutShell planEnabled dashboardEnabled>Child</SeekerLayoutShell>);
 
     const nav = screen.getByRole('navigation', { name: 'Seeker mobile navigation' });
     const labels = within(nav).getAllByRole('link').map((link: HTMLElement) => link.textContent?.trim());
 
-    expect(labels).toEqual(['Chat', 'Map', 'Scroll', 'Profile']);
+    expect(labels).toEqual(['Chat', 'Directory', 'Map', 'Scroll', 'Profile']);
     expect(within(nav).queryByRole('link', { name: 'Saved' })).toBeNull();
     expect(within(nav).queryByRole('link', { name: 'Plan' })).toBeNull();
     expect(within(nav).queryByRole('link', { name: 'Dashboard' })).toBeNull();

@@ -56,6 +56,10 @@ export default function ChatPage() {
   const [savedSyncEnabled] = useState(() => isServerSyncEnabledOnDevice());
   const fromOnboarding = searchParams.get('from') === 'onboarding';
   const fromGuidedIntake = searchParams.get('from') === 'guided';
+  // A ?q= link carries fresh intent: open a fresh session so the seeded prompt
+  // is never silently swallowed by an older conversation's messages or draft
+  // (ChatWindow only applies initialPrompt to message-free sessions).
+  const hasSeededPrompt = Boolean(searchParams.get('q')?.trim());
   const handoffRoute = fromGuidedIntake ? 'guided' : fromOnboarding ? 'onboarding' : 'none';
   const processedHandoffRouteRef = useRef<string | null>(null);
 
@@ -98,8 +102,8 @@ export default function ChatPage() {
     setOnboardingHandoff(fromOnboarding ? consumeOnboardingChatHandoff() : null);
     const nextGuidedIntake = fromGuidedIntake ? consumeGuidedIntakeHandoff() : null;
     setGuidedIntake(nextGuidedIntake);
-    setSessionId(generateSessionId(Boolean(nextGuidedIntake)));
-  }, [fromGuidedIntake, fromOnboarding, handoffRoute]);
+    setSessionId(generateSessionId(Boolean(nextGuidedIntake) || hasSeededPrompt));
+  }, [fromGuidedIntake, fromOnboarding, handoffRoute, hasSeededPrompt]);
 
   if (!sessionId) {
     return (

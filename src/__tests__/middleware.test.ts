@@ -190,7 +190,7 @@ describe('Clerk request boundary', () => {
 
   it('passes through protected routes only for unconfigured local development', async () => {
     mutableEnv.NODE_ENV = 'development';
-    const response = await runRequest(makeRequest('/saved'));
+    const response = await runRequest(makeRequest('/notifications'));
 
     expect(response.status).toBe(200);
     expect(response.headers.get('x-middleware-next')).toBe('1');
@@ -198,7 +198,7 @@ describe('Clerk request boundary', () => {
 
   it('fails closed on protected routes when production Clerk config is missing', async () => {
     mutableEnv.NODE_ENV = 'production';
-    const response = await runRequest(makeRequest('/saved'));
+    const response = await runRequest(makeRequest('/notifications'));
 
     expect(response.status).toBe(503);
     await expect(response.text()).resolves.toContain('Authentication is not configured');
@@ -262,13 +262,39 @@ describe('Clerk request boundary', () => {
 
   it('redirects a signed-out user to the Clerk sign-in route with a safe relative return path', async () => {
     configureClerk();
-    const response = await runRequest(makeRequest('/saved?view=compact'));
+    const response = await runRequest(makeRequest('/notifications?filter=unread'));
 
     expect(clerkMocks.userId).toHaveBeenCalledOnce();
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toBe(
-      'https://oran.test/auth/signin?redirect_url=%2Fsaved%3Fview%3Dcompact',
+      'https://oran.test/auth/signin?redirect_url=%2Fnotifications%3Ffilter%3Dunread',
     );
+  });
+
+  it('keeps local-first seeker surfaces and the public org profile reachable while signed out', async () => {
+    configureClerk();
+
+    for (const publicPath of [
+      '/saved',
+      '/profile',
+      '/org/b1000000-0000-0000-0000-000000000001',
+    ]) {
+      const response = await runRequest(makeRequest(publicPath));
+      expect(response.status, publicPath).toBe(200);
+      expect(response.headers.get('x-middleware-next'), publicPath).toBe('1');
+    }
+  });
+
+  it('still gates the host org workspace surfaces behind sign-in', async () => {
+    configureClerk();
+
+    for (const hostPath of ['/org', '/org/profile']) {
+      const response = await runRequest(makeRequest(hostPath));
+      expect(response.status, hostPath).toBe(307);
+      expect(response.headers.get('location'), hostPath).toBe(
+        `https://oran.test/auth/signin?redirect_url=${encodeURIComponent(hostPath)}`,
+      );
+    }
   });
 
   it('allows authenticated identity through while leaving roles to ORAN data guards', async () => {
@@ -283,7 +309,7 @@ describe('Clerk request boundary', () => {
   it('fails closed on protected routes when Clerk identity resolution is unavailable', async () => {
     configureClerk();
     clerkMocks.userId.mockRejectedValueOnce(new Error('Clerk unavailable'));
-    const response = await runRequest(makeRequest('/profile'));
+    const response = await runRequest(makeRequest('/notifications'));
 
     expect(response.status).toBe(503);
     await expect(response.text()).resolves.toContain('temporarily unavailable');

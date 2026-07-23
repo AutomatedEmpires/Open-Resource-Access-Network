@@ -75,6 +75,7 @@ describe('ScopedMobileNav', () => {
   it('exports the seeker tabs in the product-defined order', () => {
     expect(SEEKER_MOBILE_NAV_ITEMS.map(({ label, href }) => ({ label, href }))).toEqual([
       { label: 'Chat', href: '/chat' },
+      { label: 'Directory', href: '/directory' },
       { label: 'Map', href: '/map' },
       { label: 'Scroll', href: '/scroll' },
       { label: 'Profile', href: '/profile' },

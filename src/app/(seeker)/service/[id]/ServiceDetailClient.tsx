@@ -294,7 +294,10 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
               title={service.service.name}
               subtitle={
                 <>
-                  Stored record from {service.organization.name}. Also try the{' '}
+                  Stored record from{' '}
+                  <Link href={`/org/${service.organization.id}`} className="font-medium text-action-base hover:underline">
+                    {service.organization.name}
+                  </Link>. Also try the{' '}
                   <Link href={directoryHref} className="font-medium text-action-base hover:underline">Directory</Link>,{' '}
                   <Link href={mapHref} className="font-medium text-action-base hover:underline">Map</Link>, or{' '}
                   <Link href={chatHref} className="font-medium text-action-base hover:underline">Chat</Link>

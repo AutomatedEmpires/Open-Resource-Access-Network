@@ -27,7 +27,7 @@ const migrationNames = readdirSync(resolve(process.cwd(), 'db/migrations'))
 
 describe('regional release migration ledger', () => {
   it('pins the exact 75-file sequence through the erasure planner fix', () => {
-    expect(migrationNames).toHaveLength(75);
+    expect(migrationNames).toHaveLength(76);
     expect(migrationNames[0]).toBe('0000_initial_schema.sql');
     expect(migrationNames.slice(66)).toEqual([
       '0068_shared_rate_limit_windows.sql',
@@ -39,6 +39,7 @@ describe('regional release migration ledger', () => {
       '0074_isolate_data_api_schema.sql',
       '0075_data_api_acl_lockdown.sql',
       '0076_account_erasure_highwater_planner_fix.sql',
+      '0077_candidate_revision_lineage.sql',
     ]);
   });
 });

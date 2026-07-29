@@ -5,8 +5,8 @@
 - Owner role: Ingestion Operations Lead
 - Reviewers: Data Platform Lead, Platform On-Call Lead
 - Operational status: rollback-only
-- Last reviewed (UTC): 2026-07-14
-- Next review due (UTC): 2026-07-28
+- Last reviewed (UTC): 2026-07-29
+- Next review due (UTC): 2026-08-12
 - Severity scope: SEV-2 to SEV-4
 - Active replacement: `docs/ops/services/RUNBOOK_211_API_INGESTION.md` and persisted feed-state operations
 - Retirement trigger: Archive after Azure Storage Queues, Function bindings, storage credentials, and rollback deployment resources are decommissioned.
@@ -20,6 +20,14 @@ does not apply to active Vercel feed polling, whose progress and replay state ar
 persisted in Supabase rather than carried through this four-queue chain. Bindings
 and host settings were reviewed on 2026-07-14; no live queue-depth, poison,
 throughput, scale, or replay drill was executed.
+
+2026-07-29 review note: the off-Azure archival (#82) stubbed
+`functions/host.json` to an empty function list, so the batch/visibility
+settings described below no longer exist in the working tree — they survive
+only in git history (parent of commit 26b90cb). Activating this rollback now
+additionally requires restoring `functions/host.json` from that history before
+any queue behavior described here applies. Retirement deadline 2026-08-15 is
+approaching; the founder decision to decommission would archive this runbook.
 
 ## Retained Queue Contract
 

@@ -5,8 +5,8 @@
 - Owner role: Ingestion Operations Lead
 - Reviewers: Data Platform Lead, Platform On-Call Lead
 - Operational status: rollback-only
-- Last reviewed (UTC): 2026-07-14
-- Next review due (UTC): 2026-07-28
+- Last reviewed (UTC): 2026-07-29
+- Next review due (UTC): 2026-08-12
 - Severity scope: SEV-2 to SEV-3
 - Active replacement: `docs/ops/services/RUNBOOK_211_API_INGESTION.md` and Vercel internal-route operations
 - Retirement trigger: Archive after Azure Functions, Storage Queue resources, deployment identity, settings, and rollback credentials are decommissioned.
@@ -44,6 +44,11 @@ Queue configuration in `functions/host.json`:
 - three dequeue attempts before poison handling
 - five-minute visibility timeout
 - 30-second maximum polling interval
+
+2026-07-29 review note: the off-Azure archival (#82) stubbed
+`functions/host.json` to an empty function list — the settings above survive
+only in git history (parent of commit 26b90cb) and must be restored from there
+before rollback activation. Retirement deadline 2026-08-15 is approaching.
 
 `manualSubmit` is bound to `POST /api/ingestion/submit` with Function auth but
 the handler intentionally returns 501 and enqueues nothing. Use the authenticated

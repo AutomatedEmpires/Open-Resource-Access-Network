@@ -5,8 +5,8 @@
 - Owner role: Ingestion Operations Lead
 - Reviewers: Data Platform Lead, Platform On-Call Lead
 - Operational status: rollback-only
-- Last reviewed (UTC): 2026-07-14
-- Next review due (UTC): 2026-07-28
+- Last reviewed (UTC): 2026-07-29
+- Next review due (UTC): 2026-08-12
 - Severity scope: SEV-2 to SEV-3
 - Active replacement: `docs/ops/services/RUNBOOK_DEPENDENCY_OUTAGE.md` and Vercel scheduled routes
 - Retirement trigger: Archive after Azure Functions resources, deployment identity, settings, queues, and credentials are decommissioned and catalog links are removed.
@@ -42,6 +42,12 @@ The actual supported manual path is the active authenticated Next.js endpoint
 Queue behavior retained in `functions/host.json` is `batchSize=4`,
 `newBatchThreshold=2`, `maxDequeueCount=3`, five-minute visibility timeout, and
 30-second maximum polling interval.
+
+2026-07-29 review note: the off-Azure archival (#82) stubbed
+`functions/host.json` to an empty function list — the settings above survive
+only in git history (parent of commit 26b90cb) and must be restored from there
+before any behavior described here applies. Retirement deadline 2026-08-15 is
+approaching.
 
 ## Known Configuration Gap
 

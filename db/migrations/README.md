@@ -4,9 +4,9 @@ This folder contains SQL migrations for the Postgres/PostGIS database.
 
 ## Release ledger
 
-The current release contains exactly **75** ordered SQL files, beginning with
+The current release contains exactly **76** ordered SQL files, beginning with
 `0000_initial_schema.sql` and ending with
-`0076_account_erasure_highwater_planner_fix.sql`. `public.schema_migrations` is ORAN's
+`0077_candidate_revision_lineage.sql`. `public.schema_migrations` is ORAN's
 filename-keyed deployment ledger. Supabase's provider-managed migration history
 is separate and must not be copied into, removed from, or used as a substitute
 for this ledger.
@@ -29,6 +29,9 @@ for this ledger.
   `0074` must be paired with the provider setting that exposes only `oran_api`.
 - `0076_account_erasure_highwater_planner_fix.sql` follows `0075` and must be
   recorded before the account-erasure worker is accepted in production.
+- `0077_candidate_revision_lineage.sql` follows `0076`; recording it is the
+  activation switch for the dual-approval candidate regime (the deployed
+  application probes for its evidence schema and stays dark until then).
 - Keep schema changes aligned with the data model in `docs/DATA_MODEL.md`.
 
 ## Related

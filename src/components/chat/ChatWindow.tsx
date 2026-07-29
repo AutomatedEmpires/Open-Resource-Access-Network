@@ -900,6 +900,10 @@ export function ChatWindow({
   const [input, setInput] = useState(() => readStoredDraft(sessionId) || initialPrompt?.trim() || '');
   const [isLoading, setIsLoading] = useState(false);
   const [quotaRemaining, setQuotaRemaining] = useState(MAX_CHAT_QUOTA);
+  // The calling identity's actual ceiling (10 anonymous / 20 authenticated),
+  // learned from the quota endpoint; MAX_CHAT_QUOTA is only the pre-fetch
+  // default so the bar never renders as already-depleted on first paint.
+  const [quotaLimit, setQuotaLimit] = useState(MAX_CHAT_QUOTA);
   const [quotaResetAt, setQuotaResetAt] = useState<Date | null>(() => {
     // Restore persisted reset timestamp from a previous session so the
     // countdown is immediately visible after a page reload.
@@ -1212,8 +1216,9 @@ export function ChatWindow({
 
     fetch('/api/chat/quota', { method: 'GET', headers: { Accept: 'application/json' } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { remaining: number; resetAt: string | null } | null) => {
+      .then((data: { remaining: number; limit?: number; resetAt: string | null } | null) => {
         if (!data) return;
+        if (typeof data.limit === 'number' && data.limit > 0) setQuotaLimit(data.limit);
         applyQuotaState(data.remaining, data.resetAt, quotaVersion);
       })
       .catch(() => {/* non-fatal — keep default quota display */});
@@ -2125,8 +2130,9 @@ export function ChatWindow({
 
     fetch('/api/chat/quota', { method: 'GET', headers: { Accept: 'application/json' } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { remaining: number; resetAt: string | null } | null) => {
+      .then((data: { remaining: number; limit?: number; resetAt: string | null } | null) => {
         if (!data) return;
+        if (typeof data.limit === 'number' && data.limit > 0) setQuotaLimit(data.limit);
         applyQuotaState(data.remaining, data.resetAt, quotaVersion);
       })
       .catch(() => {/* non-fatal */});
@@ -2242,7 +2248,7 @@ export function ChatWindow({
             </button>
           )}
           <p className={`rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums ${
-            quotaRemaining <= 10
+            quotaRemaining <= quotaLimit / 2
               ? 'border-slate-300 bg-slate-100 text-slate-900'
               : 'border-slate-200 bg-white text-slate-600'
           }`}>
@@ -2251,18 +2257,19 @@ export function ChatWindow({
         </div>
       </div>
 
-      {/* ── Quota progress bar ── */}
-      {quotaRemaining < MAX_CHAT_QUOTA && (
+      {/* ── Quota progress bar — proportional to THIS identity's limit, so a
+          fresh anonymous 10/10 renders full instead of half-spent. ── */}
+      {quotaRemaining < quotaLimit && (
         <div className="h-px w-full shrink-0 overflow-hidden bg-slate-100" aria-hidden="true">
           <div
             className={`h-full transition-all duration-300 ${
-              quotaRemaining > Math.floor(MAX_CHAT_QUOTA / 2)
+              quotaRemaining > quotaLimit / 2
                 ? 'bg-slate-300'
-                : quotaRemaining > 10
+                : quotaRemaining > quotaLimit / 5
                 ? 'bg-amber-400'
                 : 'bg-rose-400'
             }`}
-            style={{ width: `${(quotaRemaining / MAX_CHAT_QUOTA) * 100}%` }}
+            style={{ width: `${(quotaRemaining / quotaLimit) * 100}%` }}
           />
         </div>
       )}
@@ -2707,7 +2714,7 @@ export function ChatWindow({
 
       {/* Input */}
       <div className="shrink-0 border-t border-slate-200 bg-white px-5 py-4 md:px-6 md:py-4">
-        {!hasCrisis && quotaRemaining <= 5 && quotaRemaining > 0 && (
+        {!hasCrisis && quotaRemaining <= Math.ceil(quotaLimit / 4) && quotaRemaining > 0 && (
           <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-800 shadow-sm">
             <p className="font-medium">Low message budget</p>
             <p className="mt-1">You can keep browsing in the Directory or Map — your category and filters carry over, but what you typed here stays private to this chat, so you may need to search again there.</p>

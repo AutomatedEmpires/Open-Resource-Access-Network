@@ -192,6 +192,10 @@ export default function MapPage() {
 
   // Track latest bounds from the map for bbox-on-pan queries
   const boundsRef = useRef<Bounds | null>(null);
+  // True once any search has produced a result set (even an empty one): a
+  // pan/zoom during an active browse session may auto-refresh, but the
+  // initial nationwide viewport alone never fires a query.
+  const hasActiveResultsRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -313,10 +317,15 @@ export default function MapPage() {
     nextQuery: string,
     nextCategory: DiscoveryNeedId | null,
     nextAttributes: Record<string, string[]>,
-    _hasBounds = false,
+    hasBounds = false,
   ) => {
+    // A visible map area is legitimate seeker intent: browse-by-area works
+    // without picking a need first. Passive pan/zoom still never auto-fires a
+    // bounds-only query (handleBoundsChange gates that separately), so the
+    // initial nationwide viewport is not treated as intent by itself.
     return Boolean(resolveDiscoverySearchText(nextQuery, nextCategory))
-      || Object.keys(nextAttributes).length > 0;
+      || Object.keys(nextAttributes).length > 0
+      || hasBounds;
   }, []);
 
   const hasShareableIntent = useCallback((
@@ -350,6 +359,7 @@ export default function MapPage() {
 
   const resetResultsToEmpty = useCallback(() => {
     setData(null);
+    hasActiveResultsRef.current = false;
     setError(null);
     pushUrlState('', 'all', 'distance', null, {});
   }, [pushUrlState]);
@@ -473,6 +483,7 @@ export default function MapPage() {
 
         const json = (await res.json()) as SearchResponse;
         setData(json);
+        hasActiveResultsRef.current = true;
         setIsAreaDirty(false);
         pushUrlState(
           trimmed || categorySearchText,
@@ -727,6 +738,17 @@ export default function MapPage() {
       setHasMapBounds(true);
       if (searchMode !== 'bbox') return; // only auto re-query in bbox mode
 
+      // Passive pan/zoom only refreshes an active browse session: either the
+      // seeker has real context (text/category/attributes) or results are
+      // already on screen from an explicit search. The initial nationwide
+      // viewport therefore never auto-fires a query on its own.
+      if (
+        !hasSearchContext(query, activeCategory, selectedAttributes, false)
+        && !hasActiveResultsRef.current
+      ) {
+        return;
+      }
+
       // Mobile behavior: populate once automatically, then switch to explicit "Search this area".
       if (isMobile) {
         if (!didInitialMobileSearchRef.current) {
@@ -745,7 +767,7 @@ export default function MapPage() {
         void runSearch({ bbox: bounds });
       }, DEBOUNCE_MS);
     },
-    [isMobile, runSearch, searchMode],
+    [activeCategory, hasSearchContext, isMobile, query, runSearch, searchMode, selectedAttributes],
   );
 
   // cleanup on unmount
@@ -1455,7 +1477,7 @@ export default function MapPage() {
                             </Button>
                             {searchMode === 'bbox' && (
                               <span className="text-xs text-[var(--text-muted)]">
-                                {canSearch ? 'Updates as you pan.' : 'Choose a need before searching this area.'}
+                                {canSearch ? 'Updates as you pan.' : 'Waiting for the map to load.'}
                               </span>
                             )}
                             {searchMode === 'radius' && deviceCenter ? (

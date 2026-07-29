@@ -303,6 +303,28 @@ describe('MapPageClient', () => {
     expect(getSearchCalls()).toHaveLength(0);
   });
 
+  it('allows explicit browse-by-area with no need chosen once the map has bounds', async () => {
+    mockApi([{ ok: true, body: makeSearchResponse() }]);
+
+    renderWithToast(<MapPage />);
+
+    // Visible map area alone enables the explicit controls…
+    fireEvent.click(screen.getByRole('button', { name: 'emit-bounds' }));
+    const searchThisArea = screen.getByRole('button', { name: 'Search this area' });
+    expect(searchThisArea).toBeEnabled();
+
+    // …but only the deliberate click fires a bounds-only query.
+    fireEvent.click(searchThisArea);
+
+    await waitFor(() => {
+      expect(getSearchCalls().length).toBeGreaterThanOrEqual(1);
+    });
+    const bboxUrl = String(getSearchCalls().at(-1)?.[0]);
+    expect(bboxUrl).toContain('minLat=10');
+    expect(bboxUrl).toContain('maxLng=40');
+    expect(bboxUrl).not.toContain('q=');
+  });
+
   it('seeds a blank map entry from the stored seeker discovery preference', async () => {
     localStorage.setItem('oran:seeker-context', JSON.stringify({
       serviceInterests: ['housing'],

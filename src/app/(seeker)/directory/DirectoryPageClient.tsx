@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, X, AlertTriangle, ArrowLeft, ArrowRight, MapPin, SlidersHorizontal } from 'lucide-react';
+import { Search, X, AlertTriangle, ArrowRight, MapPin, SlidersHorizontal } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { SERVICE_ATTRIBUTES_TAXONOMY } from '@/domain/taxonomy';
@@ -988,32 +988,6 @@ export default function DirectoryPage() {
                         {allResults.length === 0 ? `0 of ${data.total} results` : `Showing ${allResults.length} of ${data.total}`}
                       </p>
 
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void runSearch(Math.max(1, page - 1))}
-                          disabled={page <= 1 || isLoading || isFetchingMore}
-                          className="min-h-[44px] gap-1"
-                          aria-label="Previous page of results"
-                        >
-                          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-                          Prev
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void runSearch(page + 1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, true)}
-                          disabled={!data.hasMore || isLoading || isFetchingMore}
-                          className="min-h-[44px] gap-1"
-                          aria-label="Next page of results"
-                        >
-                          Next
-                          <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                        </Button>
-                      </div>
                     </div>
 
                     {allResults.length === 0 ? (
@@ -1078,31 +1052,22 @@ export default function DirectoryPage() {
 
                     {allResults.length > 0 && (
                       <div className="flex items-center justify-between gap-4 border-t border-slate-200 pt-3">
-                        <p className="text-xs text-slate-400">Page {page}{data.hasMore ? '' : ' · end of results'}</p>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => void runSearch(Math.max(1, page - 1))}
-                            disabled={page <= 1 || isLoading || isFetchingMore}
-                            className="min-h-[44px] gap-1"
-                          >
-                            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-                            Prev
-                          </Button>
+                        <p className="text-xs text-slate-400">
+                          Showing {allResults.length} of {data.total}{data.hasMore ? '' : ' · end of results'}
+                        </p>
+                        {data.hasMore && (
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
                             onClick={() => void runSearch(page + 1, confidenceFilter, sortBy, undefined, undefined, undefined, undefined, true)}
-                            disabled={!data.hasMore || isLoading || isFetchingMore}
+                            disabled={isLoading || isFetchingMore}
                             className="min-h-[44px] gap-1"
                           >
-                            Next
+                            Show more results
                             <ArrowRight className="h-4 w-4" aria-hidden="true" />
                           </Button>
-                        </div>
+                        )}
                       </div>
                     )}
                   </div>

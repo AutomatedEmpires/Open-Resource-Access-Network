@@ -35,16 +35,16 @@ describe('api/chat/quota route', () => {
     });
   });
 
-  it('reports the anonymous launch allowance as 10 before an identity exists', async () => {
+  it('reports the anonymous launch allowance as 10 of 10 before an identity exists', async () => {
     const { GET } = await loadRoute();
     const response = await GET({} as never);
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ remaining: 10, resetAt: null });
+    await expect(response.json()).resolves.toEqual({ remaining: 10, limit: 10, resetAt: null });
     expect(checkQuotaByIdentityMock).not.toHaveBeenCalled();
   });
 
-  it('reads the most restrictive persisted account/device quota', async () => {
+  it('reads the most restrictive persisted account/device quota with the authenticated limit', async () => {
     cookiesMock.mockResolvedValue({
       get: vi.fn().mockReturnValue({ value: '11111111-1111-4111-8111-111111111111' }),
     });
@@ -62,7 +62,23 @@ describe('api/chat/quota route', () => {
     );
     await expect(response.json()).resolves.toEqual({
       remaining: 4,
+      limit: 20,
       resetAt: '2027-01-16T00:00:00.000Z',
+    });
+  });
+
+  it('reports the anonymous limit for a device without an account', async () => {
+    cookiesMock.mockResolvedValue({
+      get: vi.fn().mockReturnValue({ value: '11111111-1111-4111-8111-111111111111' }),
+    });
+    checkQuotaByIdentityMock.mockResolvedValue({ remaining: 7, resetAt: undefined });
+    const { GET } = await loadRoute();
+    const response = await GET({} as never);
+
+    await expect(response.json()).resolves.toEqual({
+      remaining: 7,
+      limit: 10,
+      resetAt: null,
     });
   });
 

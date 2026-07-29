@@ -249,7 +249,7 @@ describe('DirectoryPageClient', () => {
 
     renderWithToast(<DirectoryPage />);
 
-    await screen.findByText('Page 2 · end of results');
+    await screen.findByText('Showing 1 of 1 · end of results');
     expect(screen.getByText('Food Pantry')).toBeInTheDocument();
 
     const searchUrl = fetchMock.mock.calls
@@ -320,7 +320,7 @@ describe('DirectoryPageClient', () => {
       expect(filteredUrl).toContain('page=1');
     });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Next page of results' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Show more results/ }));
 
     await waitFor(() => {
       const searchCalls = fetchMock.mock.calls
@@ -766,7 +766,7 @@ describe('DirectoryPageClient', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     await screen.findByText('Food Pantry');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next page of results' }));
+    fireEvent.click(screen.getByRole('button', { name: /Show more results/ }));
     await screen.findByText('Housing Hotline');
 
     const searchCalls = fetchMock.mock.calls

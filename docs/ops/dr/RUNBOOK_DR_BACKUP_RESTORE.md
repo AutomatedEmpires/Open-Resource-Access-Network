@@ -5,8 +5,8 @@
 - Owner role: Data Platform Lead
 - Reviewers: Platform On-Call Lead, Release Manager
 - Operational status: active
-- Last reviewed (UTC): 2026-07-14
-- Next review due (UTC): 2026-07-28
+- Last reviewed (UTC): 2026-07-29
+- Next review due (UTC): 2026-08-12
 - Severity scope: SEV-1 to SEV-2
 - Restore validation: not executed; RTO and RPO are unmeasured
 - Pre-launch blocker owner: Data Platform Lead
@@ -24,6 +24,13 @@ public production launch until the Data Platform Lead completes one isolated
 Supabase restore, records measured RTO/RPO, and the Release Manager accepts the
 critical-journey evidence. The short review date keeps this blocker visible; it
 does not imply the drill passed.
+
+2026-07-29 review note: the blocker STANDS — no isolated restore drill has been
+performed and no RTO/RPO evidence exists in this repository. The release
+manifest this runbook depends on has advanced to 76 migration files through
+`0077_candidate_revision_lineage.sql` (see
+`docs/ops/core/DATABASE_MIGRATION_BASELINE.md`); any restore acceptance must
+verify against that ledger state, not the previously documented 75.
 
 ## Purpose And Scope
 

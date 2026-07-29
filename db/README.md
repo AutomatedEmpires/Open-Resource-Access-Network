@@ -85,9 +85,9 @@ filename-keyed ledger or remove them during reconciliation.
 
 ORAN uses plain SQL migrations under `db/migrations/`. They are the canonical schema history.
 
-The current release contains exactly 75 migration files, from
+The current release contains exactly 76 migration files, from
 `0000_initial_schema.sql` through
-`0076_account_erasure_highwater_planner_fix.sql`.
+`0077_candidate_revision_lineage.sql`.
 
 Production workflow behavior:
 
@@ -142,7 +142,10 @@ Post-gate release order:
 4. Apply and then record `0076_account_erasure_highwater_planner_fix.sql`, which
    preserves the indexed actor match before choosing a service UUID high-water
    mark and prevents nationwide zero-match erasures from walking the primary key.
-5. Configure Supabase PostgREST to expose only `oran_api`, then prove that a
+5. Apply and then record `0077_candidate_revision_lineage.sql`, which adds
+   immutable candidate revision lineage, protects completed approval evidence,
+   and activates the dual-approval regime the deployed application probes for.
+6. Configure Supabase PostgREST to expose only `oran_api`, then prove that a
    publishable/anon request cannot resolve either `public.services` or
    `public.spatial_ref_sys`. SQL migration `0074` does not change this provider
    setting by itself.
@@ -180,7 +183,7 @@ scripts/db/configure-supabase-data-api.sh <branch-project-ref> oran_api
 ```
 
 The rehearsal must finish with
-`75|0076_account_erasure_highwater_planner_fix.sql`, all 128
+`76|0077_candidate_revision_lineage.sql`, all 128
 account-erasure indexes live/ready/valid, the release gate open, and Data API
 isolation verified. A partial ledger is not acceptance evidence.
 
@@ -199,7 +202,7 @@ bash scripts/db/disposable-postgres.sh
 
 The `public.schema_migrations` table is the deployment ledger expected by the
 current GitHub Actions migration workflow. For this release its exact repository
-state is 75 rows with `0076_account_erasure_highwater_planner_fix.sql` as the
+state is 76 rows with `0077_candidate_revision_lineage.sql` as the
 maximum filename.
 Supabase-managed migrations use Supabase's own separate history.
 

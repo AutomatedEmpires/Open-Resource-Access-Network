@@ -5,6 +5,11 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    ignore:
+      # vite majors are blocked by @storybook/react-vite@8 (peer: vite ^4||^5||^6).
+      # Remove this once Storybook is upgraded to a release that supports vite 7+.
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
     groups:
       nextjs:
         patterns:

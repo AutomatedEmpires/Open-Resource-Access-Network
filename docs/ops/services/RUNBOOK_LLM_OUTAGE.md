@@ -5,8 +5,8 @@
 - Owner role: Ingestion Operations Lead
 - Reviewers: Data Platform Lead, Platform On-Call Lead
 - Operational status: rollback-only
-- Last reviewed (UTC): 2026-07-14
-- Next review due (UTC): 2026-07-28
+- Last reviewed (UTC): 2026-07-29
+- Next review due (UTC): 2026-08-12
 - Severity scope: SEV-2 to SEV-3
 - Active replacement: `docs/ops/services/RUNBOOK_DEPENDENCY_OUTAGE.md` and the active source-feed controls
 - Retirement trigger: Archive after the Azure queue ingestion path, LLM/Foundry deployments, credentials, and rollback settings are decommissioned.
@@ -20,6 +20,12 @@ explicitly activated. It does not govern active seeker chat or search; use
 `RUNBOOK_DEPENDENCY_OUTAGE.md` for current provider degradation. The retained
 code was reviewed and bundled locally on 2026-07-14, but no Azure LLM request,
 quota failure, queue retry, or recovery drill was executed.
+
+2026-07-29 review note: `functions/extractService` and `functions/verifyCandidate`
+remain in the tree unchanged, but the off-Azure archival (#82) stubbed
+`functions/host.json` to an empty function list — activation now additionally
+requires restoring `functions/host.json` from git history (parent of commit
+26b90cb). Retirement deadline 2026-08-15 is approaching.
 
 ## Code-Aligned Behavior
 

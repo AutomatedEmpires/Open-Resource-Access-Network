@@ -47,7 +47,10 @@ const ROUTES = {
   // route's first-load set; no landing-page module changed. Conscious raise,
   // reduction task tracked with the wider budget debt.
   '/':          { target: 100, ratchet: 345 },
-  '/chat':      { target: 160, ratchet: 430 }, // lowered after deferred chat loading (2026-07-21)
+  // '/chat' ratchet 430->425 (2026-07-30): measured 422 kB, so the old ceiling
+  // had drifted 8 kB above reality. Ratchets only move down; keeping a few kB
+  // of headroom absorbs shared-chunk rebalancing without hiding a regression.
+  '/chat':      { target: 160, ratchet: 425 },
   '/directory': { target: 160, ratchet: 560 },
   '/map':       { target: 120, ratchet: 455 },
   '/profile':   { target: 100, ratchet: 440 },

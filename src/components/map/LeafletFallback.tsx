@@ -244,10 +244,13 @@ export function LeafletFallback({
         />
 
         {pins.map((pin) => {
-          const tier =
-            typeof pin.confidenceScore === 'number' && Number.isFinite(pin.confidenceScore)
-              ? getConfidenceTier(Math.max(0, Math.min(100, pin.confidenceScore)))
-              : 'unknown';
+          // Coerce defensively: pg NUMERIC scores historically arrived as
+          // strings, which left every pin on the 'unknown' gray tier.
+          const numericConfidence =
+            pin.confidenceScore == null ? NaN : Number(pin.confidenceScore);
+          const tier = Number.isFinite(numericConfidence)
+            ? getConfidenceTier(Math.max(0, Math.min(100, numericConfidence)))
+            : 'unknown';
           const serviceHref = buildDiscoveryHref(
             `/service/${encodeURIComponent(pin.id)}`,
             discoveryContext ?? {},

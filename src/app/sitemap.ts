@@ -11,18 +11,40 @@ import type { MetadataRoute } from 'next';
 import { PUBLIC_SITEMAP_ENTRIES, SITE } from '@/lib/site';
 import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy';
 
-/** Fetch all public service IDs for sitemap inclusion. */
+/** /api/search caps limit at 100 — request full pages up to this many. */
+const SITEMAP_SERVICE_PAGE_SIZE = 100;
+const SITEMAP_SERVICE_MAX_PAGES = 5;
+
+interface SitemapSearchResponse {
+  results?: Array<{ service?: { service?: { id?: unknown } } }>;
+  hasMore?: boolean;
+}
+
+/** Fetch public service IDs for sitemap inclusion (paged, capped at 500). */
 async function fetchPublicServiceIds(): Promise<string[]> {
   try {
     const baseUrl = assertAllowedRuntimeEndpoint(SITE.baseUrl, 'sitemap base URL');
-    // Use internal API to fetch active service IDs.
-    // In production this runs server-side and has direct DB access.
-    const res = await fetch(`${baseUrl}/api/search?status=active&limit=500&page=1`, {
-      next: { revalidate: 3600 }, // Revalidate every hour
-    });
-    if (!res.ok) return [];
-    const data = (await res.json()) as { results?: Array<{ service: { id: string } }> };
-    return data.results?.map((r) => r.service.id) ?? [];
+    const ids: string[] = [];
+
+    for (let page = 1; page <= SITEMAP_SERVICE_MAX_PAGES; page += 1) {
+      const res = await fetch(
+        `${baseUrl}/api/search?limit=${SITEMAP_SERVICE_PAGE_SIZE}&page=${page}`,
+        { next: { revalidate: 3600 } }, // Revalidate every hour
+      );
+      if (!res.ok) break;
+
+      const data = (await res.json()) as SitemapSearchResponse;
+      // SearchResult nests the record as result.service.service.
+      for (const result of data.results ?? []) {
+        const id = result?.service?.service?.id;
+        if (typeof id === 'string' && id.length > 0) {
+          ids.push(id);
+        }
+      }
+      if (!data.hasMore) break;
+    }
+
+    return ids;
   } catch {
     return [];
   }

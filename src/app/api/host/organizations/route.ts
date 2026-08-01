@@ -159,6 +159,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
+  // Direct organization creation auto-assigns the caller as an ACTIVE
+  // host_admin with no review. Every governed onboarding path runs through
+  // the claim workflow instead, so this endpoint is restricted to platform
+  // admins — otherwise any signed-in seeker could self-escalate to
+  // host_admin with a single request, bypassing claim review entirely.
+  if (authCtx && !isOranAdmin(authCtx)) {
+    return NextResponse.json(
+      { error: 'Organization creation requires platform administrator access. Use the claim workflow to request an organization workspace.' },
+      { status: 403 },
+    );
+  }
+
   const ip = getIp(req);
   const rl = checkRateLimit(`host:org:write:${ip}`, {
     windowMs: RATE_LIMIT_WINDOW_MS,

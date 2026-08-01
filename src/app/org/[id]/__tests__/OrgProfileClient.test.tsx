@@ -57,6 +57,10 @@ interface OrgDataOverrides {
 }
 
 function makeOrgData(overrides: OrgDataOverrides = {}) {
+  // Mirrors the REAL /api/organizations/[id] payload shape: locations carry
+  // address_1/city/state_province/postal_code and may be missing entirely
+  // (this suite previously fabricated fields the API never returned, which
+  // masked a production crash on svc.locations.length).
   const baseServices = [
     {
       id: 'svc-1',
@@ -64,8 +68,7 @@ function makeOrgData(overrides: OrgDataOverrides = {}) {
       description: 'Weekly food distribution',
       url: 'https://helpinghands.example.org/food',
       status: 'active',
-      capacity_status: 'available',
-      locations: [{ city: 'Seattle', state: 'WA', address: null, postal_code: null }],
+      locations: [{ address_1: null, city: 'Seattle', state_province: 'WA', postal_code: null }],
     },
     {
       id: 'svc-2',
@@ -73,8 +76,7 @@ function makeOrgData(overrides: OrgDataOverrides = {}) {
       description: null,
       url: null,
       status: 'active',
-      capacity_status: null,
-      locations: [],
+      // No `locations` key at all — the client must tolerate its absence.
     },
   ];
   const services = overrides.services ?? baseServices;
@@ -143,27 +145,30 @@ describe('OrgProfileClient', () => {
 
     expect(screen.getByRole('heading', { name: 'Services (2)' })).toBeInTheDocument();
     expect(screen.getByText('Food Pantry')).toBeInTheDocument();
-    expect(screen.getByText('Available')).toBeInTheDocument();
     expect(screen.getByText('Seattle, WA')).toBeInTheDocument();
+    // The second service has no locations key — it must still render.
+    expect(screen.getByText('Legal Clinic')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Food Pantry/ })).toHaveAttribute('href', '/service/svc-1');
 
     expect(screen.getByRole('link', { name: /Back to directory/i })).toHaveAttribute('href', '/directory');
   });
 
-  it('shows API-provided error when fetch returns non-OK response', async () => {
+  it('renders a not-found state for a 404 response', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,
       status: 404,
-      json: async () => ({ error: 'Organization not found in registry' }),
+      json: async () => ({ error: 'Organization not found' }),
     });
 
     render(<OrgProfileClient orgId="missing-org" />);
 
-    await screen.findByRole('heading', { name: 'Organization Not Found' });
-    expect(screen.getByText('Organization not found in registry')).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Organization not found' });
+    expect(
+      screen.getByText(/may no longer be listed, or the link may be incorrect/),
+    ).toBeInTheDocument();
   });
 
-  it('shows status-based error fallback when error payload is not JSON', async () => {
+  it('renders a retryable error state — NOT "not found" — for a server failure', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,
       status: 500,
@@ -174,8 +179,9 @@ describe('OrgProfileClient', () => {
 
     render(<OrgProfileClient orgId="bad-json" />);
 
-    await screen.findByRole('heading', { name: 'Organization Not Found' });
-    expect(screen.getByText('Organization not found (500)')).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Something went wrong' });
+    expect(screen.queryByText(/not found/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Try again/i })).toBeInTheDocument();
   });
 
   it('shows no-services state when organization has no active services', async () => {

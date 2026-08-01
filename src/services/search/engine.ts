@@ -169,24 +169,47 @@ export interface CityCoords {
 }
 
 /**
- * Builds the ORDER BY clause based on the requested sort option.
- * Defaults to the record-confidence-first relevance sort.
+ * Builds the ORDER BY clause for the paged search result set. It is applied
+ * OUTSIDE the per-service DISTINCT ON subquery, so it must reference SELECT
+ * aliases (not table-qualified columns). Every variant ends with an id
+ * tiebreaker so LIMIT/OFFSET pages are stable across requests — the append
+ * pagination model depends on that.
  */
-export function buildOrderByClause(sortBy: SortBy | undefined, sortDistanceExpr: string): string {
+export function buildOrderByClause(sortBy: SortBy | undefined): string {
   switch (sortBy) {
     case 'trust':
-      return 'cs.verification_confidence DESC NULLS LAST, profile_match_score DESC, cs.score DESC NULLS LAST';
+      return 'verification_confidence DESC NULLS LAST, profile_match_score DESC, confidence_score DESC NULLS LAST, id ASC';
     case 'distance':
-      return `${sortDistanceExpr} ASC NULLS LAST, cs.verification_confidence DESC NULLS LAST, profile_match_score DESC, cs.score DESC NULLS LAST`;
+      return 'sort_distance ASC NULLS LAST, verification_confidence DESC NULLS LAST, profile_match_score DESC, confidence_score DESC NULLS LAST, id ASC';
     case 'name_asc':
-      return 's.name ASC';
+      return 'name ASC, id ASC';
     case 'name_desc':
-      return 's.name DESC';
+      return 'name DESC, id ASC';
     case 'relevance':
     default:
-      return `cs.verification_confidence DESC NULLS LAST, profile_match_score DESC, cs.score DESC NULLS LAST, ${sortDistanceExpr} ASC NULLS LAST`;
+      return 'verification_confidence DESC NULLS LAST, profile_match_score DESC, confidence_score DESC NULLS LAST, sort_distance ASC NULLS LAST, id ASC';
   }
 }
+
+/**
+ * pg serializes NUMERIC columns (confidence scores, lat/lng) as JSON strings.
+ * Coerce at the single mapping boundary so every consumer receives real
+ * numbers — string scores previously produced "Overall score: NaN" on the
+ * service detail page and disabled the map pin confidence tiers.
+ */
+function toFiniteNumber(value: unknown): number | null {
+  if (value == null) return null;
+  const num = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+/** Columns the result mapper actually reads — replaces `s.*`, which dragged
+ * the 1024-dim embedding vector across the wire on every result row. */
+const SERVICE_RESULT_COLUMNS = `
+      s.id, s.organization_id, s.program_id, s.name, s.description,
+      s.url, s.email, s.status, s.interpretation_services, s.application_process,
+      s.wait_time, s.fees, s.accreditations, s.licenses,
+      s.created_at, s.updated_at`;
 
 export function buildProfileBoostExpression(
   signals: SearchPreferenceSignals | undefined,
@@ -317,44 +340,52 @@ export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): B
 
   const offset = (query.pagination.page - 1) * query.pagination.limit;
 
+  // The location LEFT JOIN fans out one row per active location. DISTINCT ON
+  // keeps exactly one row per service (its nearest location when a distance
+  // expression exists), so pages contain unique services and LIMIT/OFFSET
+  // stays consistent with the COUNT(DISTINCT s.id) total. The ranking ORDER BY
+  // runs outside the subquery over the deduplicated rows.
   const sql = `
-    SELECT
-      s.*,
-      o.name AS organization_name,
-      o.description AS organization_description,
-      o.verified_at AS organization_verified_at,
-      o.created_at AS organization_created_at,
-      o.updated_at AS organization_updated_at,
-      l.id AS location_id,
-      l.organization_id AS location_organization_id,
-      l.name AS location_name,
-      l.latitude, l.longitude,
-      l.created_at AS location_created_at,
-      l.updated_at AS location_updated_at,
-      a.id AS address_id,
-      a.location_id AS address_location_id,
-      a.address_1, a.address_2, a.city, a.region, a.state_province, a.postal_code, a.country,
-      a.created_at AS address_created_at,
-      a.updated_at AS address_updated_at,
-      cs.id AS confidence_id,
-      cs.score AS confidence_score,
-      cs.verification_confidence,
-      cs.eligibility_match,
-      cs.constraint_fit,
-      cs.computed_at AS confidence_computed_at,
-      ${distanceExpr} AS distance_meters,
-      ${sortDistanceExpr} AS sort_distance,
-      ${profileBoostClause.sql} AS profile_match_score
-    FROM services s
-    JOIN organizations o ON o.id = s.organization_id
-    LEFT JOIN service_at_location sal ON sal.service_id = s.id
-    LEFT JOIN locations l
-      ON l.id = sal.location_id
-      AND l.status = 'active'
-    LEFT JOIN addresses a ON a.location_id = l.id
-    LEFT JOIN confidence_scores cs ON cs.service_id = s.id
-    ${whereStr}
-    ORDER BY ${buildOrderByClause(query.sortBy, sortDistanceExpr)}
+    SELECT * FROM (
+      SELECT DISTINCT ON (s.id)
+        ${SERVICE_RESULT_COLUMNS},
+        o.name AS organization_name,
+        o.description AS organization_description,
+        o.verified_at AS organization_verified_at,
+        o.created_at AS organization_created_at,
+        o.updated_at AS organization_updated_at,
+        l.id AS location_id,
+        l.organization_id AS location_organization_id,
+        l.name AS location_name,
+        l.latitude, l.longitude,
+        l.created_at AS location_created_at,
+        l.updated_at AS location_updated_at,
+        a.id AS address_id,
+        a.location_id AS address_location_id,
+        a.address_1, a.address_2, a.city, a.region, a.state_province, a.postal_code, a.country,
+        a.created_at AS address_created_at,
+        a.updated_at AS address_updated_at,
+        cs.id AS confidence_id,
+        cs.score AS confidence_score,
+        cs.verification_confidence,
+        cs.eligibility_match,
+        cs.constraint_fit,
+        cs.computed_at AS confidence_computed_at,
+        ${distanceExpr} AS distance_meters,
+        ${sortDistanceExpr} AS sort_distance,
+        ${profileBoostClause.sql} AS profile_match_score
+      FROM services s
+      JOIN organizations o ON o.id = s.organization_id
+      LEFT JOIN service_at_location sal ON sal.service_id = s.id
+      LEFT JOIN locations l
+        ON l.id = sal.location_id
+        AND l.status = 'active'
+      LEFT JOIN addresses a ON a.location_id = l.id
+      LEFT JOIN confidence_scores cs ON cs.service_id = s.id
+      ${whereStr}
+      ORDER BY s.id, ${sortDistanceExpr} ASC NULLS LAST, a.id ASC NULLS LAST
+    ) deduped
+    ORDER BY ${buildOrderByClause(query.sortBy)}
     LIMIT $${paramIdx} OFFSET $${paramIdx + 1}
   `;
 
@@ -528,7 +559,7 @@ export class ServiceSearchEngine {
 
     const sql = `
       SELECT
-        s.*,
+        ${SERVICE_RESULT_COLUMNS},
         o.name AS organization_name,
         o.description AS organization_description,
         o.verified_at AS organization_verified_at,
@@ -631,8 +662,8 @@ export class ServiceSearchEngine {
               id: row.location_id as string,
               organizationId: row.location_organization_id as string,
               name: (row.location_name as string | null) ?? null,
-              latitude: (row.latitude as number | null) ?? null,
-              longitude: (row.longitude as number | null) ?? null,
+              latitude: toFiniteNumber(row.latitude),
+              longitude: toFiniteNumber(row.longitude),
               status: (row.location_status ?? 'active') as 'active' | 'inactive' | 'defunct',
               createdAt: row.location_created_at as Date,
               updatedAt: row.location_updated_at as Date,
@@ -660,17 +691,17 @@ export class ServiceSearchEngine {
           ? {
               id: (row.confidence_id as string) ?? '',
               serviceId: row.id as string,
-              score: row.confidence_score as number,
-              verificationConfidence: (row.verification_confidence as number) ?? 0,
-              eligibilityMatch: (row.eligibility_match as number) ?? 0,
-              constraintFit: (row.constraint_fit as number) ?? 0,
+              score: toFiniteNumber(row.confidence_score) ?? 0,
+              verificationConfidence: toFiniteNumber(row.verification_confidence) ?? 0,
+              eligibilityMatch: toFiniteNumber(row.eligibility_match) ?? 0,
+              constraintFit: toFiniteNumber(row.constraint_fit) ?? 0,
               computedAt: (row.confidence_computed_at as Date) ?? new Date(),
               createdAt: new Date(),
               updatedAt: new Date(),
             }
           : null,
       },
-      distanceMeters: row.distance_meters != null ? (row.distance_meters as number) : undefined,
+      distanceMeters: toFiniteNumber(row.distance_meters) ?? undefined,
     };
   }
 

@@ -23,6 +23,7 @@ import { FormSection } from '@/components/ui/form-section';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/toast';
 import type { EnrichedService } from '@/domain/types';
+import { computeMatchScore } from '@/domain/match';
 import { buildDiscoveryHref, parseDiscoveryUrlState, resolveDiscoverySearchText } from '@/services/search/discovery';
 import { buildServiceFallbackDiscoveryState } from '@/services/search/discoveryFromService';
 import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
@@ -62,10 +63,6 @@ function formatProvenanceDate(isoDate: string): string {
   });
 }
 
-function computeMatchScore(confidence?: EnrichedService['confidenceScore']): number | null {
-  if (!confidence) return null;
-  return Math.round((confidence.eligibilityMatch + confidence.constraintFit) / 2);
-}
 
 // ============================================================
 // SERVER-SIDE HELPERS

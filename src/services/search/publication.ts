@@ -344,13 +344,17 @@ export async function getPublishedOrganizationDetail(deps: PublicationDeps, orga
   // Attach city/state summaries so the public profile can show where each
   // service operates. Hotline/remote services legitimately have none.
   const serviceIds = services.map((service) => service.id as string);
+  // DISTINCT ON one row per (service, location): a location can carry more
+  // than one address row, and the fan-out would duplicate city/state lines.
   const serviceLocations = serviceIds.length > 0
     ? await deps.executeQuery<Record<string, unknown>>(
-        `SELECT sal.service_id, a.address_1, a.city, a.state_province, a.postal_code
+        `SELECT DISTINCT ON (sal.service_id, l.id)
+                sal.service_id, a.address_1, a.city, a.state_province, a.postal_code
          FROM service_at_location sal
          JOIN locations l ON l.id = sal.location_id AND l.status = '${PUBLISHED_RECORD_STATUS}'
          LEFT JOIN addresses a ON a.location_id = l.id
-         WHERE sal.service_id = ANY($1::uuid[])`,
+         WHERE sal.service_id = ANY($1::uuid[])
+         ORDER BY sal.service_id, l.id, a.id ASC NULLS LAST`,
         [serviceIds],
       )
     : [];

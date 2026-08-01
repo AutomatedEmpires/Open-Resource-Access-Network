@@ -383,7 +383,7 @@ export function buildSearchQuery(query: SearchQuery, cityCoords?: CityCoords): B
       LEFT JOIN addresses a ON a.location_id = l.id
       LEFT JOIN confidence_scores cs ON cs.service_id = s.id
       ${whereStr}
-      ORDER BY s.id, ${sortDistanceExpr} ASC NULLS LAST, a.id ASC NULLS LAST
+      ORDER BY s.id, ${sortDistanceExpr} ASC NULLS LAST, a.id ASC NULLS LAST, l.id ASC NULLS LAST
     ) deduped
     ORDER BY ${buildOrderByClause(query.sortBy)}
     LIMIT $${paramIdx} OFFSET $${paramIdx + 1}

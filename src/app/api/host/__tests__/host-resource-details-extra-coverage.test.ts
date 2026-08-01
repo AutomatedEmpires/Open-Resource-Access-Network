@@ -152,7 +152,13 @@ describe('host organizations collection extra coverage', () => {
     const invalid = await POST(createRequest({ jsonBody: {} }));
     expect(invalid.status).toBe(400);
 
+    // Non-platform-admin callers are refused (self-escalation closed).
     authMocks.getAuthContext.mockResolvedValueOnce({ userId: USER_ID, role: 'host_admin', orgIds: [ORG_ID], orgRoles: new Map() });
+    const escalationBlocked = await POST(createRequest({ jsonBody: { name: 'Org' } }));
+    expect(escalationBlocked.status).toBe(403);
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: USER_ID, role: 'oran_admin', orgIds: [ORG_ID], orgRoles: new Map() });
+    authMocks.isOranAdmin.mockReturnValueOnce(true);
     const query = vi
       .fn()
       .mockResolvedValueOnce({ rows: [{ id: ORG_ID, name: 'Org Created' }] })

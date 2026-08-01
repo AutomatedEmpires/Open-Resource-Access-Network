@@ -85,10 +85,13 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   global.fetch = fetchMock as unknown as typeof fetch;
+  // Mirrors the real /api/search payload: SearchResult nests the record as
+  // result.service.service, and hasMore drives the sitemap pager.
   fetchMock.mockResolvedValue({
     ok: true,
     json: async () => ({
-      results: [{ service: { id: 'svc-1' } }],
+      results: [{ service: { service: { id: 'svc-1' } } }],
+      hasMore: false,
     }),
   });
   delete process.env.NEXT_PUBLIC_SENTRY_DSN;
@@ -146,6 +149,12 @@ describe('platform shell', () => {
     expect(result).toHaveLength(21);
     expect(result.at(-1)?.url).toBe('https://openresourceaccessnetwork.com/service/svc-1');
     expect(result.some((entry) => entry.url === 'https://openresourceaccessnetwork.com/trust')).toBe(true);
+    // /api/search caps limit at 100 — requesting more 400s and silently
+    // emptied the sitemap in production.
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('limit=100'),
+      expect.anything(),
+    );
   });
 
   it('returns only static pages when the sitemap fetch fails', async () => {

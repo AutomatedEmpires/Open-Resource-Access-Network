@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { hydrateCardTier } from '../hydrateRelations';
+import { CARD_PHONES_SQL, CARD_SCHEDULES_SQL, hydrateCardTier } from '../hydrateRelations';
 import type { EnrichedService } from '@/domain/types';
 
 const executeQuery = vi.fn();
@@ -205,5 +205,74 @@ describe('hydrateCardTier', () => {
     expect(result.phones).toEqual([]);
     expect(result.schedules).toEqual([]);
     expect(result.taxonomyTerms).toEqual([]);
+  });
+
+  it('indexes a multi-parent phone row under every scope it carries', async () => {
+    // One HRSA-style row scoped to BOTH a service and its organization: the
+    // sibling service with no phone of its own must still find the org number.
+    executeQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM phones')) {
+        return [
+          phoneRow({ id: 'p-1', service_id: 'svc-1', organization_id: 'org-1', number: '555-0100' }),
+        ];
+      }
+      return [];
+    });
+
+    const [withOwn, sibling] = await hydrateCardTier(
+      { executeQuery },
+      [
+        makeService({ id: 'svc-1' }),
+        makeService({ id: 'svc-2' }),
+      ],
+    );
+
+    expect(withOwn.phones[0]?.number).toBe('555-0100');
+    expect(sibling.phones[0]?.number).toBe('555-0100');
+  });
+
+  it('excludes fax lines and prefers voice numbers in the phone query', () => {
+    // The callable-primary policy lives in the SQL: fax rows never qualify
+    // and voice/untyped rows sort ahead of sms/tty.
+    expect(CARD_PHONES_SQL).toContain("type <> 'fax'");
+    expect(CARD_PHONES_SQL).toMatch(/CASE WHEN type IS NULL OR type = 'voice' THEN 0 ELSE 1 END/);
+    expect(CARD_PHONES_SQL).toContain('created_at');
+    expect(CARD_PHONES_SQL).toContain('updated_at');
+  });
+
+  it('carries real timestamps instead of epoch defaults', async () => {
+    executeQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM phones')) {
+        return [phoneRow({ id: 'p-1', service_id: 'svc-1', created_at: '2026-05-01T12:00:00.000Z', updated_at: '2026-06-01T12:00:00.000Z' })];
+      }
+      return [];
+    });
+
+    const [result] = await hydrateCardTier({ executeQuery }, [makeService({ id: 'svc-1' })]);
+    expect(result.phones[0]?.createdAt.toISOString()).toBe('2026-05-01T12:00:00.000Z');
+    expect(result.phones[0]?.updatedAt.toISOString()).toBe('2026-06-01T12:00:00.000Z');
+  });
+
+  it('includes structured schedules that have no description', async () => {
+    // Hours from the resource-submission workflow store days/opens_at/closes_at
+    // with a NULL description — they must hydrate with their structured fields.
+    executeQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM schedules')) {
+        return [{
+          id: 's-1', service_id: 'svc-1', location_id: null,
+          valid_from: null, valid_to: null, dtstart: null, until: null, wkst: null,
+          days: ['MO', 'TU'], opens_at: '09:00', closes_at: '17:00', description: null,
+          created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z',
+        }];
+      }
+      return [];
+    });
+
+    const [result] = await hydrateCardTier({ executeQuery }, [makeService({ id: 'svc-1' })]);
+    expect(result.schedules).toHaveLength(1);
+    expect(result.schedules[0]?.days).toEqual(['MO', 'TU']);
+    expect(result.schedules[0]?.opensAt).toBe('09:00');
+    expect(result.schedules[0]?.closesAt).toBe('17:00');
+    expect(CARD_SCHEDULES_SQL).toContain('days IS NOT NULL OR opens_at IS NOT NULL');
   });
 });

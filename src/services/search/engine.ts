@@ -21,7 +21,7 @@ import type {
 import type { SearchFilters } from './types';
 import { CONFIDENCE_BANDS } from '@/domain/constants';
 import { buildPublishedServicePredicate } from './publication';
-import { hydrateEnrichedServices } from './hydrateRelations';
+import { hydrateCardTier, hydrateEnrichedServices } from './hydrateRelations';
 
 // ============================================================
 // WHERE CLAUSE BUILDERS
@@ -532,7 +532,17 @@ export class ServiceSearchEngine {
       this.deps.executeCount(built.countSql, built.countParams),
     ]);
 
-    const results: SearchResult[] = rows.map((row) => this.mapRowToResult(row));
+    const mapped: SearchResult[] = rows.map((row) => this.mapRowToResult(row));
+
+    // Card tier: attach the primary phone (service → location → organization
+    // fallback), one hours line, and up to three category labels so result
+    // cards can render honest contact/hours information. Bounded to the page
+    // (three batch queries); full relation hydration stays on the by-ids path.
+    const hydrated = await hydrateCardTier(
+      { executeQuery: this.deps.executeQuery },
+      mapped.map((result) => result.service),
+    );
+    const results = mapped.map((result, index) => ({ ...result, service: hydrated[index] }));
 
     return {
       results,

@@ -1,0 +1,209 @@
+/**
+ * Card-tier hydration tests.
+ *
+ * The paged search path attaches exactly one callable phone (service →
+ * location → organization fallback), one hours line (service → location), and
+ * a capped set of taxonomy labels. These tests pin the fallback chain — the
+ * demo/live data attaches phones at the location/org level, which the old
+ * service-scoped lookup silently missed ("No stored phone number" while a
+ * phone existed one level up).
+ */
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { hydrateCardTier } from '../hydrateRelations';
+import type { EnrichedService } from '@/domain/types';
+
+const executeQuery = vi.fn();
+
+function makeService(overrides: {
+  id: string;
+  locationId?: string | null;
+  organizationId?: string;
+}): EnrichedService {
+  return {
+    service: {
+      id: overrides.id,
+      organizationId: overrides.organizationId ?? 'org-1',
+      programId: null,
+      name: `Service ${overrides.id}`,
+      description: null,
+      url: null,
+      email: null,
+      status: 'active',
+      interpretationServices: null,
+      applicationProcess: null,
+      waitTime: null,
+      fees: null,
+      accreditations: null,
+      licenses: null,
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+    },
+    organization: {
+      id: overrides.organizationId ?? 'org-1',
+      name: 'Org',
+      description: null,
+      status: 'active',
+      verifiedAt: null,
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+    },
+    location: overrides.locationId
+      ? {
+          id: overrides.locationId,
+          organizationId: overrides.organizationId ?? 'org-1',
+          name: null,
+          latitude: null,
+          longitude: null,
+          status: 'active',
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+        }
+      : null,
+    address: null,
+    phones: [],
+    schedules: [],
+    taxonomyTerms: [],
+    confidenceScore: null,
+  } as unknown as EnrichedService;
+}
+
+function phoneRow(overrides: Record<string, unknown>) {
+  return {
+    id: 'p-x',
+    service_id: null,
+    location_id: null,
+    organization_id: null,
+    number: '555-0000',
+    extension: null,
+    type: 'voice',
+    language: null,
+    description: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  executeQuery.mockResolvedValue([]);
+});
+
+describe('hydrateCardTier', () => {
+  it('returns [] for empty input without querying', async () => {
+    const result = await hydrateCardTier({ executeQuery }, []);
+    expect(result).toEqual([]);
+    expect(executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('prefers a service-scoped phone over location and organization phones', async () => {
+    executeQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM phones')) {
+        return [
+          phoneRow({ id: 'p-org', organization_id: 'org-1', number: '555-0300' }),
+          phoneRow({ id: 'p-loc', location_id: 'loc-1', number: '555-0200' }),
+          phoneRow({ id: 'p-svc', service_id: 'svc-1', number: '555-0100' }),
+        ];
+      }
+      return [];
+    });
+
+    const [result] = await hydrateCardTier(
+      { executeQuery },
+      [makeService({ id: 'svc-1', locationId: 'loc-1' })],
+    );
+
+    expect(result.phones).toHaveLength(1);
+    expect(result.phones[0].number).toBe('555-0100');
+  });
+
+  it('falls back to the record location phone, then the organization phone', async () => {
+    executeQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM phones')) {
+        return [
+          phoneRow({ id: 'p-org', organization_id: 'org-1', number: '555-0300' }),
+          phoneRow({ id: 'p-loc', location_id: 'loc-1', number: '555-0200' }),
+        ];
+      }
+      return [];
+    });
+
+    const [withLocation, withoutLocation] = await hydrateCardTier(
+      { executeQuery },
+      [
+        makeService({ id: 'svc-1', locationId: 'loc-1' }),
+        makeService({ id: 'svc-2', locationId: null }),
+      ],
+    );
+
+    expect(withLocation.phones[0]?.number).toBe('555-0200');
+    expect(withoutLocation.phones[0]?.number).toBe('555-0300');
+  });
+
+  it('attaches one schedule line with a service-then-location fallback', async () => {
+    executeQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM schedules')) {
+        return [
+          {
+            id: 's-loc', service_id: null, location_id: 'loc-1',
+            description: 'Open weekdays 9-5',
+            created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z',
+          },
+          {
+            id: 's-svc', service_id: 'svc-2', location_id: null,
+            description: 'Hotline, 24/7',
+            created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z',
+          },
+        ];
+      }
+      return [];
+    });
+
+    const [fromLocation, fromService] = await hydrateCardTier(
+      { executeQuery },
+      [
+        makeService({ id: 'svc-1', locationId: 'loc-1' }),
+        makeService({ id: 'svc-2', locationId: null }),
+      ],
+    );
+
+    expect(fromLocation.schedules[0]?.description).toBe('Open weekdays 9-5');
+    expect(fromService.schedules[0]?.description).toBe('Hotline, 24/7');
+  });
+
+  it('caps taxonomy labels at three per service', async () => {
+    executeQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM service_taxonomy')) {
+        return ['Food', 'Groceries', 'Meals', 'Nutrition', 'Pantry'].map((term, i) => ({
+          service_id: 'svc-1',
+          id: `t-${i}`,
+          term,
+          description: null,
+          parent_id: null,
+          taxonomy: 'custom',
+          created_at: '2026-01-01T00:00:00.000Z',
+        }));
+      }
+      return [];
+    });
+
+    const [result] = await hydrateCardTier(
+      { executeQuery },
+      [makeService({ id: 'svc-1' })],
+    );
+
+    expect(result.taxonomyTerms).toHaveLength(3);
+    expect(result.taxonomyTerms.map((t) => t.term)).toEqual(['Food', 'Groceries', 'Meals']);
+  });
+
+  it('leaves collections empty when nothing matches (no fabricated data)', async () => {
+    const [result] = await hydrateCardTier(
+      { executeQuery },
+      [makeService({ id: 'svc-1', locationId: 'loc-1' })],
+    );
+    expect(result.phones).toEqual([]);
+    expect(result.schedules).toEqual([]);
+    expect(result.taxonomyTerms).toEqual([]);
+  });
+});

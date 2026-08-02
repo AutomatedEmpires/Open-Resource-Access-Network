@@ -39,11 +39,10 @@ interface OrgData {
     description: string | null;
     url: string | null;
     status: string;
-    capacity_status: string | null;
-    locations: Array<{
-      address: string | null;
+    locations?: Array<{
+      address_1: string | null;
       city: string | null;
-      state: string | null;
+      state_province: string | null;
       postal_code: string | null;
     }>;
   }>;
@@ -60,13 +59,6 @@ function deriveTrustLevel(org: OrgData['organization']): TrustLevel {
   return org.verified_at ? 'verified' : 'unverified';
 }
 
-const CAPACITY_LABELS: Record<string, { label: string; color: string }> = {
-  available: { label: 'Available', color: 'text-green-700' },
-  limited: { label: 'Limited', color: 'text-yellow-700' },
-  waitlist: { label: 'Waitlist', color: 'text-orange-700' },
-  closed: { label: 'Closed', color: 'text-error-strong' },
-};
-
 // ============================================================
 // COMPONENT
 // ============================================================
@@ -78,6 +70,7 @@ interface OrgProfileClientProps {
 export default function OrgProfileClient({ orgId }: OrgProfileClientProps) {
   const [data, setData] = useState<OrgData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -86,14 +79,17 @@ export default function OrgProfileClient({ orgId }: OrgProfileClientProps) {
     async function load() {
       try {
         const res = await fetch(`/api/organizations/${encodeURIComponent(orgId)}`);
+        if (res.status === 404 || res.status === 400) {
+          if (!cancelled) setNotFound(true);
+          return;
+        }
         if (!res.ok) {
-          const body = await res.json().catch(() => null);
-          throw new Error(body?.error ?? `Organization not found (${res.status})`);
+          throw new Error(`Request failed (${res.status})`);
         }
         const json = (await res.json()) as OrgData;
         if (!cancelled) setData(json);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load');
+      } catch {
+        if (!cancelled) setError('This organization could not be loaded right now.');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -116,15 +112,41 @@ export default function OrgProfileClient({ orgId }: OrgProfileClientProps) {
     );
   }
 
-  // ── Error ──
-  if (error || !data) {
+  // ── Not found ──
+  if (notFound) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-8 text-center">
-        <h1 className="text-xl font-semibold text-gray-900">Organization Not Found</h1>
-        <p className="mt-2 text-gray-600">{error ?? 'This organization could not be loaded.'}</p>
+        <h1 className="text-xl font-semibold text-gray-900">Organization not found</h1>
+        <p className="mt-2 text-gray-600">
+          This organization may no longer be listed, or the link may be incorrect.
+        </p>
         <Link href="/directory" className="mt-4 inline-block text-action-base hover:underline">
           ← Back to directory
         </Link>
+      </div>
+    );
+  }
+
+  // ── Error ──
+  if (error || !data) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-8 text-center" role="alert">
+        <h1 className="text-xl font-semibold text-gray-900">Something went wrong</h1>
+        <p className="mt-2 text-gray-600">
+          {error ?? 'This organization could not be loaded right now.'} Please try again.
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-4 inline-block text-action-base hover:underline"
+        >
+          Try again
+        </button>
+        <p className="mt-2">
+          <Link href="/directory" className="inline-block text-action-base hover:underline">
+            ← Back to directory
+          </Link>
+        </p>
       </div>
     );
   }
@@ -195,29 +217,22 @@ export default function OrgProfileClient({ orgId }: OrgProfileClientProps) {
         ) : (
           <div className="mt-3 space-y-3">
             {services.map((svc) => {
-              const cap = svc.capacity_status ? CAPACITY_LABELS[svc.capacity_status] : null;
+              const locationLine = (svc.locations ?? [])
+                .map((l) => [l.city, l.state_province].filter(Boolean).join(', '))
+                .filter(Boolean)
+                .join(' · ');
               return (
                 <Link
                   key={svc.id}
                   href={`/service/${svc.id}`}
                   className="block rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md"
                 >
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-medium text-gray-900">{svc.name}</h3>
-                    {cap && (
-                      <span className={`text-xs font-medium ${cap.color}`}>{cap.label}</span>
-                    )}
-                  </div>
+                  <h3 className="font-medium text-gray-900">{svc.name}</h3>
                   {svc.description && (
                     <p className="mt-1 line-clamp-2 text-sm text-gray-600">{svc.description}</p>
                   )}
-                  {svc.locations.length > 0 && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      {svc.locations
-                        .map((l) => [l.city, l.state].filter(Boolean).join(', '))
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </p>
+                  {locationLine && (
+                    <p className="mt-1 text-xs text-gray-500">{locationLine}</p>
                   )}
                 </Link>
               );

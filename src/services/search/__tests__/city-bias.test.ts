@@ -85,14 +85,14 @@ describe('buildSearchQuery with cityCoords', () => {
   it('preserves standard ORDER BY with cityBias distance', () => {
     const result = buildSearchQuery(baseQuery, { lat: 40.7128, lng: -74.006 });
 
-    // ORDER BY should include verification_confidence, score, and distance expression
-    expect(result.sql).toContain('cs.verification_confidence DESC');
-    expect(result.sql).toContain('cs.score DESC');
-    // The ORDER BY uses the raw ST_Distance expression (via buildOrderByClause)
-    const orderIdx = result.sql.indexOf('ORDER BY');
+    // The cityBias ST_Distance expression is computed inside the dedupe
+    // subquery and exposed as the sort_distance alias the ranking uses.
+    expect(result.sql).toContain('ST_Distance');
+    const orderIdx = result.sql.lastIndexOf('ORDER BY');
     const orderClause = result.sql.slice(orderIdx);
-    expect(orderClause).toContain('ST_Distance');
-    expect(orderClause).toContain('ASC NULLS LAST');
+    expect(orderClause).toContain('verification_confidence DESC');
+    expect(orderClause).toContain('confidence_score DESC');
+    expect(orderClause).toContain('sort_distance ASC NULLS LAST');
   });
 
   it('combines cityBias with text search', () => {

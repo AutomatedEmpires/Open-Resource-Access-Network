@@ -23,7 +23,7 @@ import { AddToPlanDialog } from '@/components/seeker/AddToPlanDialog';
 import { SavedCollectionsDialog } from '@/components/seeker/SavedCollectionsDialog';
 import type { EnrichedService } from '@/domain/types';
 import type { ConfidenceBand } from '@/domain/types';
-import { CONFIDENCE_BANDS, ORAN_CONFIDENCE_WEIGHTS } from '@/domain/constants';
+import { computeMatchScore, getConfidenceBand } from '@/domain/match';
 import type { DiscoveryLinkState } from '@/services/search/discovery';
 import { buildPlanServiceSnapshotFromEnrichedService } from '@/services/plans/snapshots';
 import { summarizeServiceAlignment } from '@/services/search/discoveryPresentation';
@@ -33,36 +33,12 @@ import { getSavedTogglePresentation } from '@/services/saved/presentation';
 // HELPERS
 // ============================================================
 
-function getConfidenceBand(score?: number | null): ConfidenceBand {
-  if (score == null) return 'POSSIBLE';
-  if (score >= CONFIDENCE_BANDS.HIGH.min)   return 'HIGH';
-  if (score >= CONFIDENCE_BANDS.LIKELY.min) return 'LIKELY';
-  return 'POSSIBLE';
-}
-
 function bandShortLabel(band: ConfidenceBand): string {
   switch (band) {
     case 'HIGH': return 'High';
     case 'LIKELY': return 'Likely';
     case 'POSSIBLE': return 'Possible';
   }
-}
-
-function computeMatchScore(confidence?: EnrichedService['confidenceScore']): number | null {
-  if (!confidence) return null;
-
-  const eligibility = confidence.eligibilityMatch;
-  const constraint = confidence.constraintFit;
-
-  const matchWeightSum = ORAN_CONFIDENCE_WEIGHTS.eligibility + ORAN_CONFIDENCE_WEIGHTS.constraint;
-  if (matchWeightSum <= 0) return null;
-
-  const score =
-    (ORAN_CONFIDENCE_WEIGHTS.eligibility * eligibility +
-      ORAN_CONFIDENCE_WEIGHTS.constraint * constraint) /
-    matchWeightSum;
-
-  return Math.max(0, Math.min(100, score));
 }
 
 function formatAddress(address: EnrichedService['address']): string | null {

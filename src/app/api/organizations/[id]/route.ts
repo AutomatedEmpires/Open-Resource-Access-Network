@@ -48,16 +48,35 @@ export async function GET(
   }
 
   try {
-    const organization = await getPublishedOrganizationDetail(publicationDeps, id);
+    const detail = await getPublishedOrganizationDetail(publicationDeps, id);
 
-    if (!organization) {
+    if (!detail) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
 
+    const services = Array.isArray(detail.services) ? detail.services : [];
+    const phones = Array.isArray(detail.phones) ? detail.phones : [];
+    const org = detail as Record<string, unknown>;
+
+    // Shape the public payload explicitly — the detail helper also serves the
+    // HSDS API and carries fields (tax ids, legal status) the profile page
+    // must not republish.
     return NextResponse.json({
-      organization,
-      services: Array.isArray(organization.services) ? organization.services : [],
-      serviceCount: Array.isArray(organization.services) ? organization.services.length : 0,
+      organization: {
+        id: org.id,
+        name: org.name,
+        description: org.description ?? null,
+        url: org.url ?? null,
+        email: org.email ?? null,
+        status: org.status,
+        year_incorporated: org.year_incorporated ?? null,
+        logo_url: org.logo_url ?? null,
+        verified_at: org.verified_at ?? null,
+        updated_at: org.updated_at,
+      },
+      services,
+      phones,
+      serviceCount: services.length,
     });
   } catch (err) {
     captureException(err);

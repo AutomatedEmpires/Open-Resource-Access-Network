@@ -84,6 +84,8 @@ describe('public organization profile route', () => {
   it('returns organization profile, active services, and grouped locations', async () => {
     const { GET } = await loadRoute();
 
+    // Query order in getPublishedOrganizationDetail:
+    // organization -> services -> per-service locations -> org phones.
     dbMocks.executeQuery
       .mockResolvedValueOnce([
         {
@@ -93,8 +95,10 @@ describe('public organization profile route', () => {
           url: null,
           email: null,
           status: 'active',
+          tax_id: '91-0000000',
           year_incorporated: 2001,
           logo_url: null,
+          verified_at: null,
           created_at: '2026-01-01T00:00:00.000Z',
           updated_at: '2026-01-01T00:00:00.000Z',
         },
@@ -106,7 +110,6 @@ describe('public organization profile route', () => {
           description: null,
           url: null,
           status: 'active',
-          capacity_status: 'open',
         },
         {
           id: 'svc-2',
@@ -114,22 +117,33 @@ describe('public organization profile route', () => {
           description: null,
           url: null,
           status: 'active',
-          capacity_status: null,
         },
       ])
       .mockResolvedValueOnce([
         {
           service_id: 'svc-1',
-          address: '123 Main',
+          address_1: '123 Main',
           city: 'Seattle',
-          state: 'WA',
+          state_province: 'WA',
           postal_code: '98101',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'phone-1',
+          number: '555-0100',
+          extension: null,
+          type: 'voice',
+          language: null,
+          description: null,
         },
       ]);
 
     const response = await GET(createRequest(), createContext('11111111-1111-4111-8111-111111111111'));
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+
+    expect(body).toMatchObject({
       organization: {
         id: 'org-1',
         name: 'Helping Hands',
@@ -139,17 +153,8 @@ describe('public organization profile route', () => {
         status: 'active',
         year_incorporated: 2001,
         logo_url: null,
-        created_at: '2026-01-01T00:00:00.000Z',
+        verified_at: null,
         updated_at: '2026-01-01T00:00:00.000Z',
-        phones: [
-          {
-            service_id: 'svc-1',
-            address: '123 Main',
-            city: 'Seattle',
-            state: 'WA',
-            postal_code: '98101',
-          },
-        ],
       },
       services: [
         {
@@ -158,7 +163,14 @@ describe('public organization profile route', () => {
           description: null,
           url: null,
           status: 'active',
-          capacity_status: 'open',
+          locations: [
+            {
+              address_1: '123 Main',
+              city: 'Seattle',
+              state_province: 'WA',
+              postal_code: '98101',
+            },
+          ],
         },
         {
           id: 'svc-2',
@@ -166,10 +178,17 @@ describe('public organization profile route', () => {
           description: null,
           url: null,
           status: 'active',
-          capacity_status: null,
+          locations: [],
         },
       ],
+      phones: [{ id: 'phone-1', number: '555-0100' }],
       serviceCount: 2,
     });
+
+    // The public profile payload must not republish registry identifiers.
+    expect(body.organization).not.toHaveProperty('tax_id');
+    expect(body.organization).not.toHaveProperty('tax_status');
+    expect(body.organization).not.toHaveProperty('legal_status');
+    expect(body.organization).not.toHaveProperty('uri');
   });
 });

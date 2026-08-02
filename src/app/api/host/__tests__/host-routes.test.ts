@@ -239,7 +239,10 @@ describe('host organizations collection route', () => {
     expect(Array.isArray(body.details)).toBe(true);
   });
 
-  it('creates an organization and auto-assigns membership when authenticated', async () => {
+  it('rejects organization creation for non-platform admins (escalation closed)', async () => {
+    // Direct org creation auto-assigns the caller as ACTIVE host_admin — any
+    // lower role must be refused, otherwise a signed-in seeker could
+    // self-escalate past the claim workflow with one request.
     authMocks.shouldEnforceAuth.mockReturnValue(true);
     authMocks.getAuthContext.mockResolvedValue({
       userId: 'user-1',
@@ -247,6 +250,26 @@ describe('host organizations collection route', () => {
       orgIds: ['org-1'],
       orgRoles: new Map([['org-1', 'host_admin']]),
     });
+    authMocks.isOranAdmin.mockReturnValue(false);
+
+    const { POST } = await loadOrganizationsCollectionRoute();
+    const response = await POST(
+      createRequest({ jsonBody: { name: 'New Org' } }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(dbMocks.withTransaction).not.toHaveBeenCalled();
+  });
+
+  it('creates an organization and auto-assigns membership for platform admins', async () => {
+    authMocks.shouldEnforceAuth.mockReturnValue(true);
+    authMocks.getAuthContext.mockResolvedValue({
+      userId: 'user-1',
+      role: 'oran_admin',
+      orgIds: ['org-1'],
+      orgRoles: new Map([['org-1', 'host_admin']]),
+    });
+    authMocks.isOranAdmin.mockReturnValue(true);
 
     dbMocks.withTransaction.mockImplementationOnce(async (callback: (client: {
       query: ReturnType<typeof vi.fn>;

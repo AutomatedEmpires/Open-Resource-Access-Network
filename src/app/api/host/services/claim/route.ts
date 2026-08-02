@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
-import { getAuthContext } from '@/services/auth';
+import { getAuthContext, requireOrgAccess } from '@/services/auth';
 import {
   RATE_LIMIT_WINDOW_MS,
   HOST_WRITE_RATE_LIMIT_MAX_REQUESTS,
@@ -92,6 +92,16 @@ export async function POST(req: NextRequest) {
   }
 
   const d = parsed.data;
+
+  // The transfer binds a service to an organization the caller claims to
+  // represent — require membership in that organization (or oran_admin) so
+  // arbitrary users cannot open transfers against orgs they do not belong to.
+  if (!requireOrgAccess(authCtx, d.organizationId)) {
+    return NextResponse.json(
+      { error: 'You do not have access to the requested organization.' },
+      { status: 403 },
+    );
+  }
 
   try {
     const transfer = await initiateTransfer({

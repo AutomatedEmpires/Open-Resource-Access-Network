@@ -333,13 +333,49 @@ export async function getPublishedOrganizationDetail(deps: PublicationDeps, orga
 
   const services = await deps.executeQuery<Record<string, unknown>>(
     `SELECT s.id, s.name, s.alternate_name, s.description, s.url, s.email,
-            status, integrity_hold_at, integrity_hold_reason, created_at, updated_at
+            s.status, s.created_at, s.updated_at
      FROM services s
      WHERE s.organization_id = $1
        AND ${buildPublishableServiceRecordPredicate('s')}
      ORDER BY s.name`,
     [organizationId],
   );
+
+  // Attach city/state summaries so the public profile can show where each
+  // service operates. Hotline/remote services legitimately have none.
+  const serviceIds = services.map((service) => service.id as string);
+  // DISTINCT ON one row per (service, location): a location can carry more
+  // than one address row, and the fan-out would duplicate city/state lines.
+  const serviceLocations = serviceIds.length > 0
+    ? await deps.executeQuery<Record<string, unknown>>(
+        `SELECT DISTINCT ON (sal.service_id, l.id)
+                sal.service_id, a.address_1, a.city, a.state_province, a.postal_code
+         FROM service_at_location sal
+         JOIN locations l ON l.id = sal.location_id AND l.status = '${PUBLISHED_RECORD_STATUS}'
+         LEFT JOIN addresses a ON a.location_id = l.id
+         WHERE sal.service_id = ANY($1::uuid[])
+         ORDER BY sal.service_id, l.id, a.id ASC NULLS LAST`,
+        [serviceIds],
+      )
+    : [];
+
+  const locationsByService = new Map<string, Array<Record<string, unknown>>>();
+  for (const row of serviceLocations) {
+    const serviceId = row.service_id as string;
+    const list = locationsByService.get(serviceId) ?? [];
+    list.push({
+      address_1: row.address_1 ?? null,
+      city: row.city ?? null,
+      state_province: row.state_province ?? null,
+      postal_code: row.postal_code ?? null,
+    });
+    locationsByService.set(serviceId, list);
+  }
+
+  const servicesWithLocations = services.map((service) => ({
+    ...service,
+    locations: locationsByService.get(service.id as string) ?? [],
+  }));
 
   const phones = await deps.executeQuery<Record<string, unknown>>(
     `SELECT id, number, extension, type, language, description
@@ -350,7 +386,7 @@ export async function getPublishedOrganizationDetail(deps: PublicationDeps, orga
 
   return {
     ...organization,
-    services,
+    services: servicesWithLocations,
     phones,
   };
 }

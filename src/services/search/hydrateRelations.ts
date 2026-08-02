@@ -90,18 +90,25 @@ const ACCESSIBILITY_SQL = `SELECT id, location_id, accessibility, details, creat
 /** Card-tier caps — the paged path ships only what a result card renders. */
 const CARD_TIER_MAX_TAXONOMY_TERMS = 3;
 
-const CARD_PHONES_SQL = `SELECT id, service_id, location_id, organization_id, number, extension, type, language, description
+// Fax lines are never a callable primary; voice (or untyped) numbers are
+// preferred over sms/tty so the card's tel: action is honest.
+export const CARD_PHONES_SQL = `SELECT id, service_id, location_id, organization_id, number, extension, type, language, description, created_at, updated_at
   FROM phones
-  WHERE service_id = ANY($1::uuid[])
+  WHERE (service_id = ANY($1::uuid[])
      OR location_id = ANY($2::uuid[])
-     OR organization_id = ANY($3::uuid[])
-  ORDER BY id`;
+     OR organization_id = ANY($3::uuid[]))
+    AND (type IS NULL OR type <> 'fax')
+  ORDER BY (CASE WHEN type IS NULL OR type = 'voice' THEN 0 ELSE 1 END), id`;
 
-const CARD_SCHEDULES_SQL = `SELECT id, service_id, location_id, description
+// Hours entered through the resource-submission workflow are structured
+// (days/opens_at/closes_at) with NO description — they must hydrate too.
+// Description-bearing rows sort first because today's card renders the
+// description line; structured rows carry their fields for formatting.
+export const CARD_SCHEDULES_SQL = `SELECT id, service_id, location_id, valid_from, valid_to, dtstart, until, wkst, days, opens_at, closes_at, description, created_at, updated_at
   FROM schedules
   WHERE (service_id = ANY($1::uuid[]) OR location_id = ANY($2::uuid[]))
-    AND description IS NOT NULL
-  ORDER BY id`;
+    AND (description IS NOT NULL OR days IS NOT NULL OR opens_at IS NOT NULL)
+  ORDER BY (CASE WHEN description IS NOT NULL THEN 0 ELSE 1 END), id`;
 
 function mapPhoneRow(row: Row): Phone {
   return {
@@ -154,6 +161,9 @@ export async function hydrateCardTier(
     deps.executeQuery<Row>(TAXONOMY_SQL, [serviceIds]),
   ]);
 
+  // Index every scope a row carries: ingestion regularly writes phones with
+  // multiple parent ids (e.g. service + organization), and a sibling service
+  // with no phone of its own must still find the shared org number.
   const phonesByService = new Map<string, Phone>();
   const phonesByLocation = new Map<string, Phone>();
   const phonesByOrganization = new Map<string, Phone>();
@@ -161,9 +171,11 @@ export async function hydrateCardTier(
     const phone = mapPhoneRow(row);
     if (phone.serviceId && !phonesByService.has(phone.serviceId)) {
       phonesByService.set(phone.serviceId, phone);
-    } else if (phone.locationId && !phonesByLocation.has(phone.locationId)) {
+    }
+    if (phone.locationId && !phonesByLocation.has(phone.locationId)) {
       phonesByLocation.set(phone.locationId, phone);
-    } else if (phone.organizationId && !phonesByOrganization.has(phone.organizationId)) {
+    }
+    if (phone.organizationId && !phonesByOrganization.has(phone.organizationId)) {
       phonesByOrganization.set(phone.organizationId, phone);
     }
   }
@@ -175,21 +187,22 @@ export async function hydrateCardTier(
       id: row.id as string,
       serviceId: (row.service_id as string | null) ?? null,
       locationId: (row.location_id as string | null) ?? null,
-      validFrom: null,
-      validTo: null,
-      dtstart: null,
-      until: null,
-      wkst: null,
-      days: null,
-      opensAt: null,
-      closesAt: null,
+      validFrom: row.valid_from ? asDate(row.valid_from) : null,
+      validTo: row.valid_to ? asDate(row.valid_to) : null,
+      dtstart: (row.dtstart as string | null) ?? null,
+      until: (row.until as string | null) ?? null,
+      wkst: (row.wkst as string | null) ?? null,
+      days: (row.days as string[] | null) ?? null,
+      opensAt: (row.opens_at as string | null) ?? null,
+      closesAt: (row.closes_at as string | null) ?? null,
       description: (row.description as string | null) ?? null,
       createdAt: asDate(row.created_at),
       updatedAt: asDate(row.updated_at),
     };
     if (schedule.serviceId && !scheduleByService.has(schedule.serviceId)) {
       scheduleByService.set(schedule.serviceId, schedule);
-    } else if (schedule.locationId && !scheduleByLocation.has(schedule.locationId)) {
+    }
+    if (schedule.locationId && !scheduleByLocation.has(schedule.locationId)) {
       scheduleByLocation.set(schedule.locationId, schedule);
     }
   }

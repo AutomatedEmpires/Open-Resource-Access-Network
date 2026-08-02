@@ -87,6 +87,146 @@ const ATTRIBUTES_SQL = `SELECT id, service_id, taxonomy, tag, details, created_a
 const ACCESSIBILITY_SQL = `SELECT id, location_id, accessibility, details, created_at, updated_at
   FROM accessibility_for_disabilities WHERE location_id = ANY($1::uuid[])`;
 
+/** Card-tier caps — the paged path ships only what a result card renders. */
+const CARD_TIER_MAX_TAXONOMY_TERMS = 3;
+
+const CARD_PHONES_SQL = `SELECT id, service_id, location_id, organization_id, number, extension, type, language, description
+  FROM phones
+  WHERE service_id = ANY($1::uuid[])
+     OR location_id = ANY($2::uuid[])
+     OR organization_id = ANY($3::uuid[])
+  ORDER BY id`;
+
+const CARD_SCHEDULES_SQL = `SELECT id, service_id, location_id, description
+  FROM schedules
+  WHERE (service_id = ANY($1::uuid[]) OR location_id = ANY($2::uuid[]))
+    AND description IS NOT NULL
+  ORDER BY id`;
+
+function mapPhoneRow(row: Row): Phone {
+  return {
+    id: row.id as string,
+    serviceId: (row.service_id as string | null) ?? null,
+    locationId: (row.location_id as string | null) ?? null,
+    organizationId: (row.organization_id as string | null) ?? null,
+    number: row.number as string,
+    extension: (row.extension as string | null) ?? null,
+    type: (row.type as Phone['type']) ?? null,
+    language: (row.language as string | null) ?? null,
+    description: (row.description as string | null) ?? null,
+    createdAt: asDate(row.created_at),
+    updatedAt: asDate(row.updated_at),
+  };
+}
+
+/**
+ * Card-tier hydration for the paged search path.
+ *
+ * Result cards need a callable phone number, an hours line, and a few
+ * category labels — without this the directory/map/scroll cards could NEVER
+ * show a phone or hours while the identical component was fully populated on
+ * saved/detail (and live records resorted to pasting hotline numbers into
+ * descriptions).
+ *
+ * Honest phone fallback chain per record: a service-scoped phone first, else
+ * a phone on the record's own location, else an organization phone. Schedules
+ * fall back service → location. Taxonomy labels are capped at
+ * CARD_TIER_MAX_TAXONOMY_TERMS. Everything is a bounded parameterized batch
+ * over the page's ids (three queries per uncached page).
+ */
+export async function hydrateCardTier(
+  deps: HydrationDeps,
+  services: EnrichedService[],
+): Promise<EnrichedService[]> {
+  if (services.length === 0) {
+    return [];
+  }
+
+  const serviceIds = [...new Set(services.map((s) => s.service.id))];
+  const locationIds = [...new Set(
+    services.map((s) => s.location?.id).filter((id): id is string => Boolean(id)),
+  )];
+  const organizationIds = [...new Set(services.map((s) => s.organization.id))];
+
+  const [phoneRows, scheduleRows, taxonomyRows] = await Promise.all([
+    deps.executeQuery<Row>(CARD_PHONES_SQL, [serviceIds, locationIds, organizationIds]),
+    deps.executeQuery<Row>(CARD_SCHEDULES_SQL, [serviceIds, locationIds]),
+    deps.executeQuery<Row>(TAXONOMY_SQL, [serviceIds]),
+  ]);
+
+  const phonesByService = new Map<string, Phone>();
+  const phonesByLocation = new Map<string, Phone>();
+  const phonesByOrganization = new Map<string, Phone>();
+  for (const row of phoneRows) {
+    const phone = mapPhoneRow(row);
+    if (phone.serviceId && !phonesByService.has(phone.serviceId)) {
+      phonesByService.set(phone.serviceId, phone);
+    } else if (phone.locationId && !phonesByLocation.has(phone.locationId)) {
+      phonesByLocation.set(phone.locationId, phone);
+    } else if (phone.organizationId && !phonesByOrganization.has(phone.organizationId)) {
+      phonesByOrganization.set(phone.organizationId, phone);
+    }
+  }
+
+  const scheduleByService = new Map<string, Schedule>();
+  const scheduleByLocation = new Map<string, Schedule>();
+  for (const row of scheduleRows) {
+    const schedule: Schedule = {
+      id: row.id as string,
+      serviceId: (row.service_id as string | null) ?? null,
+      locationId: (row.location_id as string | null) ?? null,
+      validFrom: null,
+      validTo: null,
+      dtstart: null,
+      until: null,
+      wkst: null,
+      days: null,
+      opensAt: null,
+      closesAt: null,
+      description: (row.description as string | null) ?? null,
+      createdAt: asDate(row.created_at),
+      updatedAt: asDate(row.updated_at),
+    };
+    if (schedule.serviceId && !scheduleByService.has(schedule.serviceId)) {
+      scheduleByService.set(schedule.serviceId, schedule);
+    } else if (schedule.locationId && !scheduleByLocation.has(schedule.locationId)) {
+      scheduleByLocation.set(schedule.locationId, schedule);
+    }
+  }
+
+  const taxonomyByService = groupBy<TaxonomyTerm>(taxonomyRows, 'service_id', (row) => ({
+    id: row.id as string,
+    term: row.term as string,
+    description: (row.description as string | null) ?? null,
+    parentId: (row.parent_id as string | null) ?? null,
+    taxonomy: (row.taxonomy as string | null) ?? null,
+    createdAt: asDate(row.created_at),
+    updatedAt: asDate(row.updated_at),
+  }));
+
+  return services.map((service) => {
+    const serviceId = service.service.id;
+    const locationId = service.location?.id ?? null;
+    const organizationId = service.organization.id;
+
+    const phone =
+      phonesByService.get(serviceId)
+      ?? (locationId ? phonesByLocation.get(locationId) : undefined)
+      ?? phonesByOrganization.get(organizationId);
+
+    const schedule =
+      scheduleByService.get(serviceId)
+      ?? (locationId ? scheduleByLocation.get(locationId) : undefined);
+
+    return {
+      ...service,
+      phones: phone ? [phone] : [],
+      schedules: schedule ? [schedule] : [],
+      taxonomyTerms: (taxonomyByService.get(serviceId) ?? []).slice(0, CARD_TIER_MAX_TAXONOMY_TERMS),
+    };
+  });
+}
+
 /**
  * Hydrate relation collections for a batch of enriched services. Returns new
  * objects in the same order; input is not mutated. Intended for by-ids /

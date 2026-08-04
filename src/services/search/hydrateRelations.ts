@@ -133,6 +133,25 @@ function mapPhoneRow(row: Row): Phone {
   };
 }
 
+function mapScheduleRow(row: Row): Schedule {
+  return {
+    id: row.id as string,
+    serviceId: (row.service_id as string | null) ?? null,
+    locationId: (row.location_id as string | null) ?? null,
+    validFrom: row.valid_from ? asDate(row.valid_from) : null,
+    validTo: row.valid_to ? asDate(row.valid_to) : null,
+    dtstart: (row.dtstart as string | null) ?? null,
+    until: (row.until as string | null) ?? null,
+    wkst: (row.wkst as string | null) ?? null,
+    days: (row.days as string[] | null) ?? null,
+    opensAt: (row.opens_at as string | null) ?? null,
+    closesAt: (row.closes_at as string | null) ?? null,
+    description: (row.description as string | null) ?? null,
+    createdAt: asDate(row.created_at),
+    updatedAt: asDate(row.updated_at),
+  };
+}
+
 /**
  * Card-tier hydration for the paged search path.
  *
@@ -188,32 +207,11 @@ export async function hydrateCardTier(
     }
   }
 
-  const scheduleByService = new Map<string, Schedule>();
-  const scheduleByLocation = new Map<string, Schedule>();
-  for (const row of scheduleRows) {
-    const schedule: Schedule = {
-      id: row.id as string,
-      serviceId: (row.service_id as string | null) ?? null,
-      locationId: (row.location_id as string | null) ?? null,
-      validFrom: row.valid_from ? asDate(row.valid_from) : null,
-      validTo: row.valid_to ? asDate(row.valid_to) : null,
-      dtstart: (row.dtstart as string | null) ?? null,
-      until: (row.until as string | null) ?? null,
-      wkst: (row.wkst as string | null) ?? null,
-      days: (row.days as string[] | null) ?? null,
-      opensAt: (row.opens_at as string | null) ?? null,
-      closesAt: (row.closes_at as string | null) ?? null,
-      description: (row.description as string | null) ?? null,
-      createdAt: asDate(row.created_at),
-      updatedAt: asDate(row.updated_at),
-    };
-    if (schedule.serviceId && !scheduleByService.has(schedule.serviceId)) {
-      scheduleByService.set(schedule.serviceId, schedule);
-    }
-    if (schedule.locationId && !scheduleByLocation.has(schedule.locationId)) {
-      scheduleByLocation.set(schedule.locationId, schedule);
-    }
-  }
+  // Schedules are intentionally plural: submission and host workflows store
+  // one row per open day. Preserve the full service-scoped set, falling back
+  // to the full location-scoped set only when the service has no rows.
+  const schedulesByService = groupBy<Schedule>(scheduleRows, 'service_id', mapScheduleRow);
+  const schedulesByLocation = groupBy<Schedule>(scheduleRows, 'location_id', mapScheduleRow);
 
   const taxonomyByService = groupBy<TaxonomyTerm>(taxonomyRows, 'service_id', (row) => ({
     id: row.id as string,
@@ -235,14 +233,15 @@ export async function hydrateCardTier(
       ?? (locationId ? phonesByLocation.get(locationId) : undefined)
       ?? phonesByOrganization.get(organizationId);
 
-    const schedule =
-      scheduleByService.get(serviceId)
-      ?? (locationId ? scheduleByLocation.get(locationId) : undefined);
+    const schedules =
+      schedulesByService.get(serviceId)
+      ?? (locationId ? schedulesByLocation.get(locationId) : undefined)
+      ?? [];
 
     return {
       ...service,
       phones: phone ? [phone] : [],
-      schedules: schedule ? [schedule] : [],
+      schedules,
       taxonomyTerms: (taxonomyByService.get(serviceId) ?? []).slice(0, CARD_TIER_MAX_TAXONOMY_TERMS),
     };
   });

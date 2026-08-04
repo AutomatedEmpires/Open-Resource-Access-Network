@@ -21,18 +21,28 @@ function resultRows<T>(result: unknown): T[] {
 async function reviewerRoutingIsActive(
   db: NodePgDatabase<Record<string, unknown>>,
 ): Promise<boolean> {
-  const signature = 'oran_internal.assign_candidate_reviewers(text,integer)';
+  const assignSignature = 'oran_internal.assign_candidate_reviewers(text,integer)';
+  const listSignature = 'oran_internal.list_undercovered_candidate_reviews(integer,integer)';
   const result = await db.execute(sql`
     SELECT
-      pg_catalog.to_regprocedure(${signature}) IS NOT NULL AS function_exists,
+      pg_catalog.to_regprocedure(${assignSignature}) IS NOT NULL AS assign_function_exists,
       CASE
-        WHEN pg_catalog.to_regprocedure(${signature}) IS NULL THEN false
+        WHEN pg_catalog.to_regprocedure(${assignSignature}) IS NULL THEN false
         ELSE pg_catalog.has_function_privilege(
           current_user,
-          pg_catalog.to_regprocedure(${signature}),
+          pg_catalog.to_regprocedure(${assignSignature}),
           'EXECUTE'
         )
-      END AS executable,
+      END AS assign_executable,
+      pg_catalog.to_regprocedure(${listSignature}) IS NOT NULL AS list_function_exists,
+      CASE
+        WHEN pg_catalog.to_regprocedure(${listSignature}) IS NULL THEN false
+        ELSE pg_catalog.has_function_privilege(
+          current_user,
+          pg_catalog.to_regprocedure(${listSignature}),
+          'EXECUTE'
+        )
+      END AS list_executable,
       EXISTS (
         SELECT 1
         FROM pg_catalog.pg_trigger activation_trigger
@@ -42,20 +52,45 @@ async function reviewerRoutingIsActive(
             'trg_protect_completed_candidate_approval'
           AND NOT activation_trigger.tgisinternal
           AND activation_trigger.tgenabled IN ('O', 'A')
-      ) AS activation_active
+      ) AS activation_active,
+      EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_constraint activation_constraint
+        WHERE activation_constraint.conrelid =
+            'public.candidate_admin_assignments'::pg_catalog.regclass
+          AND activation_constraint.conname =
+            'candidate_admin_assignments_decision_reviewer_check'
+          AND activation_constraint.contype = 'c'
+          AND activation_constraint.convalidated IS TRUE
+      ) AS activation_constraint_validated
   `);
   const state = resultRows<{
-    function_exists: boolean;
-    executable: boolean;
+    assign_function_exists: boolean;
+    assign_executable: boolean;
+    list_function_exists: boolean;
+    list_executable: boolean;
     activation_active: boolean;
+    activation_constraint_validated: boolean;
   }>(result)[0];
   if (!state) {
     throw new Error('Candidate reviewer routing state could not be read');
   }
   if (!state.activation_active) {
-    return false;
+    const provablyDark = state.assign_function_exists
+      && state.list_function_exists
+      && !state.assign_executable
+      && !state.list_executable
+      && !state.activation_constraint_validated;
+    if (provablyDark) return false;
+    throw new Error('Candidate reviewer routing contract drifted after activation');
   }
-  if (!state.function_exists || !state.executable) {
+  if (
+    !state.assign_function_exists
+    || !state.assign_executable
+    || !state.list_function_exists
+    || !state.list_executable
+    || !state.activation_constraint_validated
+  ) {
     throw new Error('Candidate reviewer routing contract drifted after activation');
   }
   return true;
@@ -121,6 +156,28 @@ export function createDrizzleAdminAssignmentStore(
   db: NodePgDatabase<Record<string, unknown>>
 ): AdminAssignmentStore {
   return {
+    async listCandidatesNeedingReviewerCoverage(limit = 100): Promise<string[] | null> {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+        throw new Error('Candidate reviewer repair batch limit must be between 1 and 100');
+      }
+      if (!(await reviewerRoutingIsActive(db))) return null;
+
+      const result = await db.execute(sql`
+        SELECT routed.candidate_id
+        FROM oran_internal.list_undercovered_candidate_reviews(
+          ${limit},
+          2
+        ) AS routed(candidate_id)
+      `);
+
+      return resultRows<{ candidate_id: unknown }>(result).map((row) => {
+        if (typeof row.candidate_id !== 'string' || row.candidate_id.length === 0) {
+          throw new Error('Candidate reviewer repair query returned an invalid candidate identity');
+        }
+        return row.candidate_id;
+      });
+    },
+
     async routeForReview(candidateId, limit = 5): Promise<number | null> {
       if (!(await reviewerRoutingIsActive(db))) return null;
       const result = await db.execute(sql`

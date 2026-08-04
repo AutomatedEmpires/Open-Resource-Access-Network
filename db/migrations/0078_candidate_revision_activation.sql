@@ -325,10 +325,11 @@ SET status = 'reassigned',
     updated_at = NOW()
 WHERE assignment.status = 'completed';
 
--- Human decisions created before reviewer identity became mandatory are not
--- publication authority. Capture every affected candidate before reopening so
--- any already-completed candidate approvals can be invalidated while the
--- activation transaction still owns the evidence boundary.
+-- Human decisions created before community-only reviewer authority became an
+-- enforced contract are not publication authority, even when legacy rows carry
+-- an actor and timestamp. Capture every accepted legacy decision before
+-- reopening it so completed approvals can be invalidated in the same activation
+-- transaction instead of trusting an unverifiable pre-activation role.
 CREATE TEMP TABLE candidate_reopened_human_evidence (
   candidate_id text PRIMARY KEY
 ) ON COMMIT DROP;
@@ -337,46 +338,32 @@ INSERT INTO pg_temp.candidate_reopened_human_evidence (candidate_id)
 SELECT confirmation.candidate_id
 FROM public.tag_confirmation_queue confirmation
 WHERE confirmation.status IN ('approved', 'modified')
-  AND (
-    confirmation.reviewed_by_user_id IS NULL
-    OR confirmation.reviewed_at IS NULL
-  )
 UNION
 SELECT suggestion.candidate_id
 FROM public.llm_suggestions suggestion
 WHERE suggestion.status = 'accepted'
-  AND (
-    suggestion.reviewed_by IS NULL
-    OR suggestion.reviewed_at IS NULL
-  )
 ON CONFLICT (candidate_id) DO NOTHING;
 
--- Reopen them so the activated pending-only decision routes can collect
--- complete, attributable evidence instead of leaving the candidate
--- permanently unpublishable.
+-- Reopen every pre-activation decision so the activated community-only routes
+-- can collect complete, attributable evidence. Tag assignment is cleared too:
+-- a legacy ORAN-admin assignee must not retain the reopened community work.
 UPDATE public.tag_confirmation_queue
 SET status = 'pending',
+    assigned_to_user_id = NULL,
+    assigned_at = NULL,
     reviewed_by_user_id = NULL,
     reviewed_at = NULL,
     modified_tag_value = NULL,
     review_notes = NULL,
     updated_at = NOW()
-WHERE status IN ('approved', 'modified')
-  AND (
-    reviewed_by_user_id IS NULL
-    OR reviewed_at IS NULL
-  );
+WHERE status IN ('approved', 'modified');
 
 UPDATE public.llm_suggestions
 SET status = 'pending',
     reviewed_by = NULL,
     reviewed_at = NULL,
     original_value = NULL
-WHERE status = 'accepted'
-  AND (
-    reviewed_by IS NULL
-    OR reviewed_at IS NULL
-  );
+WHERE status = 'accepted';
 
 -- Existing pending human decisions are the same publication blocker. Fold
 -- them into the captured set so no completed approval can coexist with work
@@ -458,9 +445,9 @@ WHERE candidate.published_service_id IS NULL
   );
 
 -- Route every still-open candidate through the bounded database router. The
--- postcondition counts completed verified identities plus active pending or
--- claimed reviewer identities; stale/inactive/rejected assignments cannot make
--- an open candidate appear staffed.
+-- postcondition counts completed verified identities plus current, unexpired,
+-- qualifying pending or claimed reviewer identities. Stale, unauthorized, or
+-- rejected assignments cannot make an open candidate appear staffed.
 DO $$
 DECLARE
   candidate_row record;
@@ -491,7 +478,14 @@ BEGIN
             THEN assignment.decision_reviewer_profile_id
           WHEN assignment.status IN ('pending', 'claimed')
                AND reviewer.is_active IS TRUE
-               AND reviewer.is_accepting_new IS TRUE
+               AND (
+                 assignment.status = 'claimed'
+                 OR reviewer.is_accepting_new IS TRUE
+               )
+               AND (
+                 assignment.expires_at IS NULL
+                 OR assignment.expires_at > NOW()
+               )
                AND COALESCE(account.account_status, 'active') = 'active'
                AND account.role = 'community_admin'
                AND (
@@ -1048,11 +1042,15 @@ REVOKE ALL ON FUNCTION oran_internal.protect_completed_candidate_approval()
   FROM PUBLIC, oran_runtime, oran_backend_runtime;
 REVOKE ALL ON FUNCTION oran_internal.assign_candidate_reviewers(text, integer)
   FROM PUBLIC, oran_runtime, oran_backend_runtime;
+REVOKE ALL ON FUNCTION oran_internal.list_undercovered_candidate_reviews(integer, integer)
+  FROM PUBLIC, oran_runtime, oran_backend_runtime;
 REVOKE ALL ON FUNCTION oran_internal.escalate_candidate_for_review(text)
   FROM PUBLIC, oran_runtime, oran_backend_runtime;
 REVOKE ALL ON FUNCTION public.evaluate_candidate_readiness(text)
   FROM PUBLIC, oran_runtime, oran_backend_runtime;
 GRANT EXECUTE ON FUNCTION oran_internal.assign_candidate_reviewers(text, integer)
+  TO oran_backend_runtime;
+GRANT EXECUTE ON FUNCTION oran_internal.list_undercovered_candidate_reviews(integer, integer)
   TO oran_backend_runtime;
 GRANT EXECUTE ON FUNCTION oran_internal.escalate_candidate_for_review(text)
   TO oran_backend_runtime;

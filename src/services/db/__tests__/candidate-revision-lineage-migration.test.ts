@@ -55,7 +55,10 @@ describe('0077 candidate revision lineage expand migration', () => {
     expect(expandMigration).not.toContain('ALTER COLUMN min_admin_approvals SET DEFAULT 2');
     expect(expandMigration).not.toContain('approval.claimed');
     expect(expandMigration).not.toMatch(
-      /GRANT EXECUTE ON FUNCTION oran_internal\.(?:assign|escalate)_candidate/,
+      /GRANT EXECUTE ON FUNCTION oran_internal\.(?:assign|escalate|reroute)_candidate/,
+    );
+    expect(expandMigration).not.toContain(
+      'GRANT EXECUTE ON FUNCTION oran_internal.list_undercovered_candidate_reviews',
     );
   });
 
@@ -100,6 +103,38 @@ describe('0077 candidate revision lineage expand migration', () => {
     expect(expandMigration).toContain('reviewer.category_expertise');
     expect(expandMigration).toContain('WHEN routing.county_match THEN 0');
     expect(expandMigration).toContain('RETURN existing_count;');
+    expect(expandMigration).toContain(
+      "assignment.expires_at <= NOW()",
+    );
+    expect(expandMigration).toContain(
+      "SET status = 'expired'",
+    );
+    expect(expandMigration).toContain(
+      "SET status = 'reassigned'",
+    );
+    expect(expandMigration).toContain(
+      "assignment.status = 'claimed'\n          OR reviewer.is_accepting_new IS TRUE",
+    );
+    expect(expandMigration).toContain(
+      'assignment.expires_at IS NULL\n           OR assignment.expires_at > NOW()',
+    );
+    expect(expandMigration).toContain(
+      'ORDER BY (reviewer.id = ANY(expired_reviewer_ids)) ASC',
+    );
+    expect(expandMigration).toContain(
+      'CREATE OR REPLACE FUNCTION oran_internal.list_undercovered_candidate_reviews',
+    );
+    expect(expandMigration).toContain('RETURNS SETOF text');
+    expect(expandMigration).toContain('p_batch_limit > 500');
+    expect(expandMigration).toContain(
+      'ORDER BY candidate.created_at ASC, candidate.candidate_id ASC',
+    );
+    expect(expandMigration).not.toMatch(
+      /CREATE OR REPLACE FUNCTION oran_internal\.list_undercovered_candidate_reviews[\s\S]*?PERFORM oran_internal\.assign_candidate_reviewers/,
+    );
+    expect(expandMigration).toContain(
+      'REVOKE ALL ON FUNCTION oran_internal.list_undercovered_candidate_reviews(integer, integer)',
+    );
   });
 });
 
@@ -219,6 +254,29 @@ describe('0078 candidate revision lineage activation migration', () => {
       "WHERE status IN ('approved', 'modified')",
     );
     expect(activationMigration).toContain("WHERE status = 'accepted'");
+    const legacyHumanEvidenceReset = activationMigration.slice(
+      activationMigration.indexOf(
+        'CREATE TEMP TABLE candidate_reopened_human_evidence',
+      ),
+      activationMigration.indexOf(
+        '-- Existing pending human decisions are the same publication blocker.',
+      ),
+    );
+    expect(legacyHumanEvidenceReset).toContain(
+      "WHERE confirmation.status IN ('approved', 'modified')",
+    );
+    expect(legacyHumanEvidenceReset).toContain(
+      "WHERE suggestion.status = 'accepted'",
+    );
+    expect(legacyHumanEvidenceReset).not.toContain(
+      'confirmation.reviewed_by_user_id IS NULL',
+    );
+    expect(legacyHumanEvidenceReset).not.toContain(
+      'suggestion.reviewed_by IS NULL',
+    );
+    expect(legacyHumanEvidenceReset).toContain('assigned_to_user_id = NULL');
+    expect(legacyHumanEvidenceReset).toContain('reviewed_by_user_id = NULL');
+    expect(legacyHumanEvidenceReset).toContain('reviewed_by = NULL');
     expect(activationMigration).toContain('original_value = NULL');
     expect(activationMigration).toContain('ON DELETE RESTRICT');
     expect(activationMigration).toContain('trg_protect_completed_candidate_approval');
@@ -232,6 +290,9 @@ describe('0078 candidate revision lineage activation migration', () => {
     expect(activationMigration).toContain('approval.decided');
     expect(activationMigration).toContain(
       'GRANT EXECUTE ON FUNCTION oran_internal.assign_candidate_reviewers(text, integer)',
+    );
+    expect(activationMigration).toContain(
+      'GRANT EXECUTE ON FUNCTION oran_internal.list_undercovered_candidate_reviews(integer, integer)',
     );
     expect(activationMigration).toContain(
       'GRANT EXECUTE ON FUNCTION oran_internal.escalate_candidate_for_review(text)',
@@ -272,6 +333,9 @@ describe('0078 candidate revision lineage activation migration', () => {
     );
     expect(validator).toContain(
       "'oran_internal.assign_candidate_reviewers(text,integer)'",
+    );
+    expect(validator).toContain(
+      "'oran_internal.list_undercovered_candidate_reviews(integer,integer)'",
     );
     expect(validator).toContain(
       "'oran_internal.escalate_candidate_for_review(text)'",
@@ -410,7 +474,22 @@ describe('candidate revision deployment boundary', () => {
       'an open candidate lacks two independent community reviewer identities',
     );
     expect(activationValidator).toContain(
-      'candidate human decision evidence is unbound',
+      'bounded candidate undercoverage selector is incomplete',
+    );
+    expect(activationValidator).toContain(
+      "'oran_internal.list_undercovered_candidate_reviews(integer,integer)'",
+    );
+    expect(activationValidator).toContain(
+      'assignment.expires_at > NOW()',
+    );
+    expect(activationValidator).toContain(
+      'candidate human decision evidence lacks community reviewer authority',
+    );
+    expect(activationValidator).toContain(
+      'erasure.text_tombstone = confirmation.reviewed_by_user_id',
+    );
+    expect(activationValidator).toContain(
+      'erasure.text_tombstone = suggestion.reviewed_by',
     );
     expect(activationValidator).toContain(
       'identity-bound candidate readiness function is incomplete',

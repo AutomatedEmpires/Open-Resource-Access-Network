@@ -540,6 +540,12 @@ export interface AdminAssignmentFilters {
 
 export interface AdminAssignmentStore {
   /**
+   * List the oldest open candidates that no longer have two current,
+   * qualifying reviewer identities. Null means the 0078 workflow is dark.
+   */
+  listCandidatesNeedingReviewerCoverage?(limit?: number): Promise<string[] | null>;
+
+  /**
    * Route a candidate with database-enforced capacity and return its total
    * qualifying reviewer identities. Null means the 0078 workflow is still dark.
    */

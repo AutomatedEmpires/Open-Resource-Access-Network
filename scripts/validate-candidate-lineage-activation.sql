@@ -12,6 +12,7 @@ DECLARE
   trigger_function oid;
   public_execute boolean;
   readiness_source text;
+  reroute_source text;
   approvals_default text;
 BEGIN
   IF pg_catalog.current_setting('transaction_read_only') <> 'on' THEN
@@ -197,6 +198,20 @@ BEGIN
       AND (
         confirmation.reviewed_by_user_id IS NULL
         OR confirmation.reviewed_at IS NULL
+        OR (
+          NOT EXISTS (
+            SELECT 1
+            FROM public.user_profiles reviewer_account
+            WHERE reviewer_account.user_id = confirmation.reviewed_by_user_id
+              AND reviewer_account.role = 'community_admin'
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM oran_internal.account_erasure_requests erasure
+            WHERE erasure.text_tombstone = confirmation.reviewed_by_user_id
+              AND erasure.status = 'completed'
+          )
+        )
       )
   ) OR EXISTS (
     SELECT 1
@@ -205,9 +220,24 @@ BEGIN
       AND (
         suggestion.reviewed_by IS NULL
         OR suggestion.reviewed_at IS NULL
+        OR (
+          NOT EXISTS (
+            SELECT 1
+            FROM public.user_profiles reviewer_account
+            WHERE reviewer_account.user_id = suggestion.reviewed_by
+              AND reviewer_account.role = 'community_admin'
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM oran_internal.account_erasure_requests erasure
+            WHERE erasure.text_tombstone = suggestion.reviewed_by
+              AND erasure.status = 'completed'
+          )
+        )
       )
   ) THEN
-    RAISE EXCEPTION 'candidate human decision evidence is unbound';
+    RAISE EXCEPTION
+      'candidate human decision evidence lacks community reviewer authority';
   END IF;
 
   IF EXISTS (
@@ -276,7 +306,14 @@ BEGIN
             THEN assignment.decision_reviewer_profile_id
           WHEN assignment.status IN ('pending', 'claimed')
                AND reviewer.is_active IS TRUE
-               AND reviewer.is_accepting_new IS TRUE
+               AND (
+                 assignment.status = 'claimed'
+                 OR reviewer.is_accepting_new IS TRUE
+               )
+               AND (
+                 assignment.expires_at IS NULL
+                 OR assignment.expires_at > NOW()
+               )
                AND COALESCE(account.account_status, 'active') = 'active'
                AND account.role = 'community_admin'
                AND (
@@ -374,8 +411,29 @@ BEGIN
     RAISE EXCEPTION 'identity-bound candidate readiness function is incomplete';
   END IF;
 
+  SELECT function_row.prosrc
+  INTO reroute_source
+  FROM pg_catalog.pg_proc function_row
+  WHERE function_row.oid =
+      'oran_internal.list_undercovered_candidate_reviews(integer,integer)'::pg_catalog.regprocedure
+    AND function_row.proretset
+    AND function_row.prorettype = 'text'::pg_catalog.regtype
+    AND NOT function_row.prosecdef
+    AND function_row.provolatile = 's';
+  IF reroute_source IS NULL
+     OR reroute_source NOT LIKE '%p_batch_limit > 500%'
+     OR reroute_source NOT LIKE '%p_reviewer_limit > 10%'
+     OR reroute_source NOT LIKE '%published_service_id IS NULL%'
+     OR reroute_source NOT LIKE '%review_status IN (''pending'', ''in_review'', ''escalated'')%'
+     OR reroute_source NOT LIKE '%assignment.expires_at > NOW()%'
+     OR reroute_source NOT LIKE '%ORDER BY candidate.created_at ASC, candidate.candidate_id ASC%'
+     OR reroute_source LIKE '%assign_candidate_reviewers(%' THEN
+    RAISE EXCEPTION 'bounded candidate undercoverage selector is incomplete';
+  END IF;
+
   FOREACH workflow_function IN ARRAY ARRAY[
     'oran_internal.assign_candidate_reviewers(text,integer)'::pg_catalog.regprocedure::oid,
+    'oran_internal.list_undercovered_candidate_reviews(integer,integer)'::pg_catalog.regprocedure::oid,
     'oran_internal.escalate_candidate_for_review(text)'::pg_catalog.regprocedure::oid,
     'public.evaluate_candidate_readiness(text)'::pg_catalog.regprocedure::oid
   ]

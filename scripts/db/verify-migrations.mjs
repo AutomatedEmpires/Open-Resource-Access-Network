@@ -363,12 +363,18 @@ async function exerciseCandidateLineageExpandPhase(client) {
            'oran_backend_runtime',
            'oran_internal.assign_candidate_reviewers(text,integer)',
            'EXECUTE'
-         ) AS reviewer_routing_active`,
+         ) AS reviewer_routing_active,
+         pg_catalog.has_function_privilege(
+           'oran_backend_runtime',
+           'oran_internal.list_undercovered_candidate_reviews(integer,integer)',
+           'EXECUTE'
+         ) AS reviewer_reroute_active`,
     );
     invariant(!state.rows[0].root_not_null, '0077 made lineage root NOT NULL');
     invariant(!state.rows[0].approval_active, '0077 activated approval protection');
     invariant(
-      !state.rows[0].reviewer_routing_active,
+      !state.rows[0].reviewer_routing_active
+        && !state.rows[0].reviewer_reroute_active,
       '0077 exposed reviewer routing before activation',
     );
 
@@ -641,7 +647,8 @@ async function seedCandidateLineageActivationBackfill(client) {
   await client.query(
     `INSERT INTO public.tag_confirmation_queue (
        resource_tag_id, candidate_id, tag_type, tag_value,
-       original_confidence, status, modified_tag_value
+       original_confidence, status, modified_tag_value,
+       assigned_to_user_id, assigned_at, reviewed_by_user_id, reviewed_at
      )
      SELECT
        tag.id,
@@ -650,7 +657,11 @@ async function seedCandidateLineageActivationBackfill(client) {
        tag.tag_value,
        40,
        'modified',
-       'legacy_modified_category'
+       'legacy_modified_category',
+       'migration-activation-reviewer-b',
+       NOW(),
+       'migration-activation-reviewer-b',
+       NOW()
      FROM public.resource_tags tag
      WHERE tag.target_id = 'migration-activation-open-candidate'
        AND tag.target_type = 'candidate'
@@ -659,16 +670,18 @@ async function seedCandidateLineageActivationBackfill(client) {
   await client.query(
     `INSERT INTO public.llm_suggestions (
        candidate_id, suggestion_id, field, suggested_value,
-       original_value, confidence, status
+       original_value, confidence, status, reviewed_by, reviewed_at
      )
      VALUES (
        'migration-activation-open-candidate',
        'migration-activation-unbound-suggestion',
        'description',
-       'Unbound accepted description',
-       'Unbound original description',
+       'Legacy oversight accepted description',
+       'Legacy oversight original description',
        95,
-       'accepted'
+       'accepted',
+       'migration-activation-reviewer-b',
+       NOW()
      )`,
   );
   await client.query(
@@ -721,7 +734,14 @@ async function proveCandidateLineageActivationBackfill(client) {
      WHERE assignment.candidate_id = 'migration-activation-open-candidate'
        AND assignment.status IN ('pending', 'claimed')
        AND reviewer.is_active IS TRUE
-       AND reviewer.is_accepting_new IS TRUE
+       AND (
+         assignment.status = 'claimed'
+         OR reviewer.is_accepting_new IS TRUE
+       )
+       AND (
+         assignment.expires_at IS NULL
+         OR assignment.expires_at > NOW()
+       )
        AND COALESCE(account.account_status, 'active') = 'active'
        AND account.role = 'community_admin'`,
   );
@@ -826,16 +846,19 @@ async function proveCandidateLineageActivationBackfill(client) {
     '0078 froze incomplete legacy approval evidence as authoritative',
   );
   const reopenedTagDecision = await client.query(
-    `SELECT status, reviewed_by_user_id, reviewed_at, modified_tag_value
+    `SELECT status, assigned_to_user_id, assigned_at,
+            reviewed_by_user_id, reviewed_at, modified_tag_value
      FROM public.tag_confirmation_queue
      WHERE candidate_id = 'migration-activation-open-candidate'`,
   );
   invariant(
     reopenedTagDecision.rows[0].status === 'pending'
+      && reopenedTagDecision.rows[0].assigned_to_user_id === null
+      && reopenedTagDecision.rows[0].assigned_at === null
       && reopenedTagDecision.rows[0].reviewed_by_user_id === null
       && reopenedTagDecision.rows[0].reviewed_at === null
       && reopenedTagDecision.rows[0].modified_tag_value === null,
-    '0078 did not reopen unbound tag-review evidence',
+    '0078 did not reopen fully attributed legacy ORAN-admin tag evidence',
   );
   const reopenedSuggestion = await client.query(
     `SELECT status, reviewed_by, reviewed_at, original_value
@@ -847,7 +870,7 @@ async function proveCandidateLineageActivationBackfill(client) {
       && reopenedSuggestion.rows[0].reviewed_by === null
       && reopenedSuggestion.rows[0].reviewed_at === null
       && reopenedSuggestion.rows[0].original_value === null,
-    '0078 did not reopen unbound accepted LLM evidence',
+    '0078 did not reopen fully attributed legacy ORAN-admin LLM evidence',
   );
   await client.query(
     `DELETE FROM public.tag_confirmation_queue
@@ -1629,6 +1652,199 @@ async function exerciseCandidateLineageWorkflow(client) {
         && exhaustedReviewer.rows[0].user_id === 'migration-routing-county',
       'reviewer routing assigned a profile explicitly covering another region',
     );
+    await client.query(
+      `INSERT INTO public.user_profiles (user_id, role)
+       VALUES
+         ('migration-routing-replacement-a', 'community_admin'),
+         ('migration-routing-replacement-b', 'community_admin');
+
+       INSERT INTO public.admin_review_profiles (
+         user_id, coverage_states, coverage_counties, category_expertise
+       )
+       VALUES
+         ('migration-routing-replacement-a', ARRAY['WA'], '{}', ARRAY['housing']),
+         ('migration-routing-replacement-b', '{}', '{}', ARRAY['housing']);`,
+    );
+
+    // Overdue leases and no-longer-eligible assignments are repaired inside
+    // the candidate lock before coverage is counted. Vacation mode releases
+    // unclaimed work but never evicts an otherwise-authorized claimed review.
+    await client.query(
+      `UPDATE public.candidate_admin_assignments assignment
+          SET status = 'claimed',
+              claimed_at = NOW(),
+              expires_at = NOW() - interval '1 hour'
+         FROM public.admin_review_profiles reviewer
+        WHERE assignment.admin_profile_id = reviewer.id
+          AND assignment.candidate_id = 'migration-routing-ranked'
+          AND reviewer.user_id = 'migration-routing-county'`,
+    );
+    await client.query(
+      `UPDATE public.candidate_admin_assignments assignment
+          SET status = 'claimed', claimed_at = NOW()
+         FROM public.admin_review_profiles reviewer
+        WHERE assignment.admin_profile_id = reviewer.id
+          AND assignment.candidate_id = 'migration-routing-ranked'
+          AND reviewer.user_id = 'migration-routing-unrestricted'`,
+    );
+    const repairedRouting = await client.query(
+      `SELECT oran_internal.assign_candidate_reviewers(
+         'migration-routing-ranked', 3
+       )::integer AS reviewer_count`,
+    );
+    invariant(
+      repairedRouting.rows[0].reviewer_count === 3,
+      'reviewer routing did not restore three current reviewer identities',
+    );
+    const repairedAssignments = await client.query(
+      `SELECT reviewer.user_id, assignment.status,
+              assignment.expires_at <= NOW() AS overdue
+         FROM public.candidate_admin_assignments assignment
+         JOIN public.admin_review_profiles reviewer
+           ON reviewer.id = assignment.admin_profile_id
+        WHERE assignment.candidate_id = 'migration-routing-ranked'`,
+    );
+    const repairedByReviewer = new Map(
+      repairedAssignments.rows.map((row) => [row.user_id, row]),
+    );
+    invariant(
+      repairedByReviewer.get('migration-routing-county')?.status === 'expired'
+        && repairedByReviewer.get('migration-routing-county')?.overdue
+        && repairedByReviewer.get('migration-routing-state')?.status === 'reassigned'
+        && repairedByReviewer.get('migration-routing-unrestricted')?.status === 'claimed'
+        && repairedByReviewer.get('migration-routing-replacement-a')?.status === 'pending'
+        && repairedByReviewer.get('migration-routing-replacement-b')?.status === 'pending',
+      'expiry, vacation, or claimed-review rerouting semantics drifted',
+    );
+
+    await client.query(
+      `UPDATE public.candidate_admin_assignments assignment
+          SET status = 'claimed', claimed_at = NOW(),
+              expires_at = NOW() + interval '1 hour'
+         FROM public.admin_review_profiles reviewer
+        WHERE assignment.admin_profile_id = reviewer.id
+          AND assignment.candidate_id = 'migration-routing-exhausted'
+          AND reviewer.user_id = 'migration-routing-county'`,
+    );
+    await client.query(
+      `UPDATE public.user_profiles
+          SET role = 'oran_admin'
+        WHERE user_id = 'migration-routing-county'`,
+    );
+    const authorityRepair = await client.query(
+      `SELECT oran_internal.assign_candidate_reviewers(
+         'migration-routing-exhausted', 2
+       )::integer AS reviewer_count`,
+    );
+    const invalidClaim = await client.query(
+      `SELECT assignment.status
+         FROM public.candidate_admin_assignments assignment
+         JOIN public.admin_review_profiles reviewer
+           ON reviewer.id = assignment.admin_profile_id
+        WHERE assignment.candidate_id = 'migration-routing-exhausted'
+          AND reviewer.user_id = 'migration-routing-county'`,
+    );
+    invariant(
+      authorityRepair.rows[0].reviewer_count === 2
+        && invalidClaim.rows[0].status === 'reassigned',
+      'a claimed assignment survived loss of community-reviewer authority',
+    );
+
+    await client.query(
+      `INSERT INTO public.extracted_candidates (
+         candidate_id, extraction_id, extract_key_sha256, extracted_at,
+         organization_name, service_name, jurisdiction_state,
+         jurisdiction_county, correlation_id, created_at
+       )
+       VALUES (
+         '000-migration-routing-batch', 'migration-routing-batch-extraction',
+         'migration-routing-batch-hash', NOW(), 'Batch routing organization',
+         'Batch routing service', 'WA', 'KING',
+         'migration-routing-batch-correlation', NOW() - interval '1 day'
+       )`,
+    );
+    const batchRouting = await client.query(
+      `SELECT routed.candidate_id
+         FROM oran_internal.list_undercovered_candidate_reviews(1, 2)
+           AS routed(candidate_id)`,
+    );
+    invariant(
+      batchRouting.rowCount === 1
+        && batchRouting.rows[0].candidate_id === '000-migration-routing-batch',
+      'bounded selector did not return only the oldest under-covered candidate ID',
+    );
+    const selectorMutation = await client.query(
+      `SELECT count(*)::integer AS assignment_count
+         FROM public.candidate_admin_assignments
+        WHERE candidate_id = '000-migration-routing-batch'`,
+    );
+    invariant(
+      selectorMutation.rows[0].assignment_count === 0,
+      'undercoverage selector mutated reviewer assignments',
+    );
+    const batchAssignment = await client.query(
+      `SELECT oran_internal.assign_candidate_reviewers(
+         '000-migration-routing-batch', 2
+       )::integer AS reviewer_count`,
+    );
+    invariant(
+      batchAssignment.rows[0].reviewer_count === 2,
+      'selected candidate could not be routed in an isolated assignment call',
+    );
+
+    await client.query(
+      `INSERT INTO public.extracted_candidates (
+         candidate_id, extraction_id, extract_key_sha256, extracted_at,
+         organization_name, service_name, jurisdiction_state,
+         jurisdiction_county, correlation_id
+       )
+       VALUES (
+         'migration-routing-renewal', 'migration-routing-renewal-extraction',
+         'migration-routing-renewal-hash', NOW(), 'Renewal routing organization',
+         'Renewal routing service', 'WA', 'KING',
+         'migration-routing-renewal-correlation'
+       )`,
+    );
+    await client.query(
+      `SELECT oran_internal.assign_candidate_reviewers(
+         'migration-routing-renewal', 2
+       )`,
+    );
+    await client.query(
+      `UPDATE public.candidate_admin_assignments
+          SET expires_at = NOW() - interval '1 hour'
+        WHERE candidate_id = 'migration-routing-renewal'
+          AND status = 'pending'`,
+    );
+    const renewedRouting = await client.query(
+      `SELECT oran_internal.assign_candidate_reviewers(
+         'migration-routing-renewal', 2
+       )::integer AS reviewer_count`,
+    );
+    const renewedLeases = await client.query(
+      `SELECT count(*)::integer AS current_count
+         FROM public.candidate_admin_assignments assignment
+         JOIN public.admin_review_profiles reviewer
+           ON reviewer.id = assignment.admin_profile_id
+        WHERE assignment.candidate_id = 'migration-routing-renewal'
+          AND assignment.status = 'pending'
+          AND assignment.expires_at > NOW()
+          AND reviewer.user_id IN (
+            'migration-routing-replacement-a',
+            'migration-routing-replacement-b'
+          )`,
+    );
+    invariant(
+      renewedRouting.rows[0].reviewer_count === 2
+        && renewedLeases.rows[0].current_count === 2,
+      'exact-two eligible reviewers did not receive renewed future leases',
+    );
+    await expectDatabaseError(
+      client,
+      'SELECT * FROM oran_internal.list_undercovered_candidate_reviews(0, 2)',
+      [],
+      'Candidate review selector batch limit must be between 1 and 500',
+    );
 
     const functionAcl = await client.query(
       `SELECT
@@ -1637,6 +1853,16 @@ async function exerciseCandidateLineageWorkflow(client) {
            'oran_internal.assign_candidate_reviewers(text,integer)',
            'EXECUTE'
          ) AS backend_assign,
+         pg_catalog.has_function_privilege(
+           'oran_backend_runtime',
+           'oran_internal.list_undercovered_candidate_reviews(integer,integer)',
+           'EXECUTE'
+         ) AS backend_reroute,
+         pg_catalog.has_function_privilege(
+           'oran_runtime',
+           'oran_internal.list_undercovered_candidate_reviews(integer,integer)',
+           'EXECUTE'
+         ) AS legacy_reroute,
          pg_catalog.has_function_privilege(
            'oran_backend_runtime',
            'oran_internal.escalate_candidate_for_review(text)',
@@ -1660,13 +1886,30 @@ async function exerciseCandidateLineageWorkflow(client) {
              'oran_internal.assign_candidate_reviewers(text,integer)'::pg_catalog.regprocedure
              AND privilege.grantee = 0
              AND privilege.privilege_type = 'EXECUTE'
-         ) AS public_assign`,
+         ) AS public_assign,
+         EXISTS (
+           SELECT 1
+           FROM pg_catalog.pg_proc function_row
+           CROSS JOIN LATERAL pg_catalog.aclexplode(
+             COALESCE(
+               function_row.proacl,
+               pg_catalog.acldefault('f', function_row.proowner)
+             )
+           ) privilege
+           WHERE function_row.oid =
+             'oran_internal.list_undercovered_candidate_reviews(integer,integer)'::pg_catalog.regprocedure
+             AND privilege.grantee = 0
+             AND privilege.privilege_type = 'EXECUTE'
+         ) AS public_reroute`,
     );
     invariant(
       functionAcl.rows[0].backend_assign
+        && functionAcl.rows[0].backend_reroute
+        && !functionAcl.rows[0].legacy_reroute
         && functionAcl.rows[0].backend_escalate
         && functionAcl.rows[0].backend_readiness
-        && !functionAcl.rows[0].public_assign,
+        && !functionAcl.rows[0].public_assign
+        && !functionAcl.rows[0].public_reroute,
       'candidate workflow function ACL is not least privilege',
     );
 
@@ -1754,6 +1997,37 @@ async function validateCandidateLineageActivationOwner(ownerClient) {
         `${triggerName} replica-only state did not fail the activation validator`,
       );
     }
+
+    await ownerClient.query(
+      `INSERT INTO public.llm_suggestions (
+         candidate_id, suggestion_id, field, suggested_value,
+         confidence, status, reviewed_by, reviewed_at
+       )
+       VALUES (
+         'migration-activation-conflict-candidate',
+         'migration-validator-legacy-oversight-decision',
+         'description', 'Legacy oversight decision', 95, 'accepted',
+         'migration-activation-reviewer-b', NOW()
+       )`,
+    );
+    let oversightDecisionRejected = false;
+    try {
+      await ownerClient.query(validatorSource);
+    } catch (error) {
+      oversightDecisionRejected = String(error?.message ?? error).includes(
+        'candidate human decision evidence lacks community reviewer authority',
+      );
+      await ownerClient.query('ROLLBACK').catch(() => undefined);
+    } finally {
+      await ownerClient.query(
+        `DELETE FROM public.llm_suggestions
+          WHERE suggestion_id = 'migration-validator-legacy-oversight-decision'`,
+      );
+    }
+    invariant(
+      oversightDecisionRejected,
+      'fully attributed ORAN-admin human evidence passed the activation validator',
+    );
 
     await ownerClient.query(validatorSource);
     console.log('candidate-lineage owner catalog validator passed');

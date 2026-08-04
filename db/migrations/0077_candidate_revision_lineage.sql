@@ -147,7 +147,7 @@ CREATE INDEX IF NOT EXISTS idx_candidate_completed_decision_reviewer
 
 -- Supporting routines land dark. CREATE OR REPLACE retains privileges on an
 -- existing function, so explicitly remove every runtime/public grant here and
--- grant the two bounded entry points only in 0078.
+-- grant the bounded entry points only in 0078.
 CREATE OR REPLACE FUNCTION oran_internal.assign_candidate_reviewers(
   p_candidate_id text,
   p_limit integer DEFAULT 5
@@ -163,8 +163,9 @@ DECLARE
   existing_count integer := 0;
   candidate_row record;
   candidate_category text;
+  expired_reviewer_ids uuid[] := ARRAY[]::uuid[];
 BEGIN
-  IF p_limit < 2 OR p_limit > 10 THEN
+  IF p_limit IS NULL OR p_limit < 2 OR p_limit > 10 THEN
     RAISE EXCEPTION 'Candidate reviewer limit must be between 2 and 10';
   END IF;
 
@@ -192,6 +193,58 @@ BEGIN
     RETURN 0;
   END IF;
 
+  -- The candidate lock and advisory lock make lease cleanup and replacement
+  -- one routing decision. An overdue reviewer cannot continue to occupy a
+  -- coverage slot. Fresh alternatives sort first, while a still-eligible
+  -- reviewer can receive a renewed lease when no alternative has capacity.
+  WITH expired_assignment AS (
+    UPDATE public.candidate_admin_assignments assignment
+    SET status = 'expired',
+        outcome = NULL,
+        outcome_notes = NULL,
+        decision_reviewer_profile_id = NULL,
+        updated_at = NOW()
+    WHERE assignment.candidate_id = p_candidate_id
+      AND assignment.status IN ('pending', 'claimed')
+      AND assignment.expires_at IS NOT NULL
+      AND assignment.expires_at <= NOW()
+    RETURNING assignment.admin_profile_id
+  )
+  SELECT COALESCE(
+    pg_catalog.array_agg(expired_assignment.admin_profile_id),
+    ARRAY[]::uuid[]
+  )
+  INTO expired_reviewer_ids
+  FROM expired_assignment;
+
+  -- Authorization loss invalidates both pending and claimed work. Vacation
+  -- mode only releases work that has not been claimed; an active community
+  -- reviewer may finish an already-claimed review without accepting new work.
+  UPDATE public.candidate_admin_assignments assignment
+  SET status = 'reassigned',
+      claimed_at = NULL,
+      expires_at = NULL,
+      outcome = NULL,
+      outcome_notes = NULL,
+      decision_reviewer_profile_id = NULL,
+      updated_at = NOW()
+  WHERE assignment.candidate_id = p_candidate_id
+    AND assignment.status IN ('pending', 'claimed')
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.admin_review_profiles reviewer
+      JOIN public.user_profiles account
+        ON account.user_id = reviewer.user_id
+      WHERE reviewer.id = assignment.admin_profile_id
+        AND reviewer.is_active IS TRUE
+        AND COALESCE(account.account_status, 'active') = 'active'
+        AND account.role = 'community_admin'
+        AND (
+          assignment.status = 'claimed'
+          OR reviewer.is_accepting_new IS TRUE
+        )
+    );
+
   SELECT pg_catalog.btrim(tag.tag_value)
   INTO candidate_category
   FROM public.resource_tags tag
@@ -216,7 +269,14 @@ BEGIN
       THEN assignment.decision_reviewer_profile_id
     WHEN assignment.status IN ('pending', 'claimed')
          AND reviewer.is_active IS TRUE
-         AND reviewer.is_accepting_new IS TRUE
+         AND (
+           assignment.status = 'claimed'
+           OR reviewer.is_accepting_new IS TRUE
+         )
+         AND (
+           assignment.expires_at IS NULL
+           OR assignment.expires_at > NOW()
+         )
          AND COALESCE(account.account_status, 'active') = 'active'
          AND account.role = 'community_admin'
          AND (
@@ -299,7 +359,8 @@ BEGIN
           AND existing_assignment.admin_profile_id = reviewer.id
           AND existing_assignment.status IN ('pending', 'claimed', 'completed')
       )
-    ORDER BY CASE
+    ORDER BY (reviewer.id = ANY(expired_reviewer_ids)) ASC,
+             CASE
                WHEN routing.county_match THEN 0
                WHEN routing.state_match THEN 1
                ELSE 2
@@ -356,7 +417,14 @@ BEGIN
       THEN assignment.decision_reviewer_profile_id
     WHEN assignment.status IN ('pending', 'claimed')
          AND reviewer.is_active IS TRUE
-         AND reviewer.is_accepting_new IS TRUE
+         AND (
+           assignment.status = 'claimed'
+           OR reviewer.is_accepting_new IS TRUE
+         )
+         AND (
+           assignment.expires_at IS NULL
+           OR assignment.expires_at > NOW()
+         )
          AND COALESCE(account.account_status, 'active') = 'active'
          AND account.role = 'community_admin'
          AND (
@@ -377,6 +445,73 @@ BEGIN
   WHERE assignment.candidate_id = p_candidate_id;
 
   RETURN existing_count;
+END;
+$$;
+
+-- Select a bounded oldest-first page of open candidates whose current reviewer
+-- coverage has fallen below the requested target. Returning candidate IDs only
+-- keeps peer identities opaque. The backend routes each ID in its own call to
+-- assign_candidate_reviewers so one failure cannot roll back other candidates.
+CREATE OR REPLACE FUNCTION oran_internal.list_undercovered_candidate_reviews(
+  p_batch_limit integer DEFAULT 100,
+  p_reviewer_limit integer DEFAULT 2
+)
+RETURNS SETOF text
+LANGUAGE plpgsql
+SECURITY INVOKER
+STABLE
+SET search_path = pg_catalog, public, oran_internal
+AS $$
+BEGIN
+  IF p_batch_limit IS NULL OR p_batch_limit < 1 OR p_batch_limit > 500 THEN
+    RAISE EXCEPTION 'Candidate review selector batch limit must be between 1 and 500';
+  END IF;
+  IF p_reviewer_limit IS NULL
+     OR p_reviewer_limit < 2
+     OR p_reviewer_limit > 10 THEN
+    RAISE EXCEPTION 'Candidate reviewer limit must be between 2 and 10';
+  END IF;
+
+  RETURN QUERY
+    SELECT candidate.candidate_id
+    FROM public.extracted_candidates candidate
+    WHERE candidate.published_service_id IS NULL
+      AND candidate.review_status IN ('pending', 'in_review', 'escalated')
+      AND (
+        SELECT count(DISTINCT CASE
+          WHEN assignment.status = 'completed'
+               AND assignment.outcome = 'verified'
+            THEN assignment.decision_reviewer_profile_id
+          WHEN assignment.status IN ('pending', 'claimed')
+               AND reviewer.is_active IS TRUE
+               AND (
+                 assignment.status = 'claimed'
+                 OR reviewer.is_accepting_new IS TRUE
+               )
+               AND (
+                 assignment.expires_at IS NULL
+                 OR assignment.expires_at > NOW()
+               )
+               AND COALESCE(account.account_status, 'active') = 'active'
+               AND account.role = 'community_admin'
+               AND (
+                 (assignment.status = 'pending'
+                   AND reviewer.pending_count <= reviewer.max_pending)
+                 OR
+                 (assignment.status = 'claimed'
+                   AND reviewer.in_review_count <= reviewer.max_in_review)
+               )
+            THEN reviewer.id
+        END)
+        FROM public.candidate_admin_assignments assignment
+        LEFT JOIN public.admin_review_profiles reviewer
+          ON reviewer.id = assignment.admin_profile_id
+        LEFT JOIN public.user_profiles account
+          ON account.user_id = reviewer.user_id
+        WHERE assignment.candidate_id = candidate.candidate_id
+      ) < p_reviewer_limit
+    ORDER BY candidate.created_at ASC, candidate.candidate_id ASC
+    LIMIT p_batch_limit;
 END;
 $$;
 
@@ -409,8 +544,13 @@ REVOKE ALL ON FUNCTION oran_internal.prepare_candidate_revision_lineage()
   FROM PUBLIC, oran_runtime, oran_backend_runtime;
 REVOKE ALL ON FUNCTION oran_internal.assign_candidate_reviewers(text, integer)
   FROM PUBLIC, oran_runtime, oran_backend_runtime;
+REVOKE ALL ON FUNCTION oran_internal.list_undercovered_candidate_reviews(integer, integer)
+  FROM PUBLIC, oran_runtime, oran_backend_runtime;
 REVOKE ALL ON FUNCTION oran_internal.escalate_candidate_for_review(text)
   FROM PUBLIC, oran_runtime, oran_backend_runtime;
+
+COMMENT ON FUNCTION oran_internal.list_undercovered_candidate_reviews(integer, integer) IS
+  'Backend-only bounded oldest-first selector for open candidates lacking current reviewer coverage.';
 
 COMMENT ON COLUMN public.extracted_candidates.revision_of_candidate_id IS
   'Immediate parent candidate ID. Enforcement becomes strict in migration 0078.';

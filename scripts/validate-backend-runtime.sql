@@ -281,6 +281,7 @@ DECLARE
     'oran_internal.process_account_erasure_page(uuid,integer)'::pg_catalog.regprocedure::oid,
     'oran_internal.export_user_governance_data(text)'::pg_catalog.regprocedure::oid,
     'oran_internal.assign_candidate_reviewers(text,integer)'::pg_catalog.regprocedure::oid,
+    'oran_internal.list_undercovered_candidate_reviews(integer,integer)'::pg_catalog.regprocedure::oid,
     'oran_internal.escalate_candidate_for_review(text)'::pg_catalog.regprocedure::oid,
     'public.evaluate_candidate_readiness(text)'::pg_catalog.regprocedure::oid
   ];

@@ -61,10 +61,11 @@ const PHONES_SQL = `SELECT id, service_id, location_id, organization_id, number,
 const SCHEDULES_SQL = `SELECT id, service_id, location_id, valid_from, valid_to, dtstart, until, wkst, days, opens_at, closes_at, description
   FROM schedules WHERE service_id = ANY($1::uuid[])`;
 
-const TAXONOMY_SQL = `SELECT st.service_id, tt.id, tt.term, tt.description, tt.parent_id, tt.taxonomy, tt.created_at
+const TAXONOMY_SQL = `SELECT st.service_id, tt.id, tt.term, tt.description, tt.parent_id, tt.taxonomy, tt.created_at, tt.updated_at
   FROM service_taxonomy st
   JOIN taxonomy_terms tt ON tt.id = st.taxonomy_term_id
-  WHERE st.service_id = ANY($1::uuid[])`;
+  WHERE st.service_id = ANY($1::uuid[])
+  ORDER BY st.service_id, tt.term, tt.id`;
 
 const ELIGIBILITY_SQL = `SELECT id, service_id, description, minimum_age, maximum_age, eligible_values, household_size_min, household_size_max, created_at, updated_at
   FROM eligibility WHERE service_id = ANY($1::uuid[])`;
@@ -90,25 +91,31 @@ const ACCESSIBILITY_SQL = `SELECT id, location_id, accessibility, details, creat
 /** Card-tier caps — the paged path ships only what a result card renders. */
 const CARD_TIER_MAX_TAXONOMY_TERMS = 3;
 
-// Fax lines are never a callable primary; voice (or untyped) numbers are
-// preferred over sms/tty so the card's tel: action is honest.
+// Only voice, hotline, or legacy-untyped rows can back the card's tel: action.
+// SMS, TTY, and fax need different interaction affordances and must not be
+// presented as a conventional call.
 export const CARD_PHONES_SQL = `SELECT id, service_id, location_id, organization_id, number, extension, type, language, description, created_at, updated_at
   FROM phones
   WHERE (service_id = ANY($1::uuid[])
      OR location_id = ANY($2::uuid[])
      OR organization_id = ANY($3::uuid[]))
-    AND (type IS NULL OR type <> 'fax')
-  ORDER BY (CASE WHEN type IS NULL OR type = 'voice' THEN 0 ELSE 1 END), id`;
+    AND (type IS NULL OR type IN ('voice', 'hotline'))
+  ORDER BY (CASE WHEN type IS NULL OR type = 'voice' THEN 0 ELSE 1 END),
+    service_id NULLS LAST, location_id NULLS LAST, organization_id NULLS LAST, id`;
 
 // Hours entered through the resource-submission workflow are structured
 // (days/opens_at/closes_at) with NO description — they must hydrate too.
-// Description-bearing rows sort first because today's card renders the
-// description line; structured rows carry their fields for formatting.
+// Ignore schedules that are not effective today. Description-bearing rows
+// sort first, then the newest applicable row, with stable parent/id ties.
 export const CARD_SCHEDULES_SQL = `SELECT id, service_id, location_id, valid_from, valid_to, dtstart, until, wkst, days, opens_at, closes_at, description, created_at, updated_at
   FROM schedules
   WHERE (service_id = ANY($1::uuid[]) OR location_id = ANY($2::uuid[]))
     AND (description IS NOT NULL OR days IS NOT NULL OR opens_at IS NOT NULL)
-  ORDER BY (CASE WHEN description IS NOT NULL THEN 0 ELSE 1 END), id`;
+    AND (valid_from IS NULL OR valid_from <= $3::date)
+    AND (valid_to IS NULL OR valid_to >= $3::date)
+  ORDER BY (CASE WHEN description IS NOT NULL THEN 0 ELSE 1 END),
+    valid_from DESC NULLS LAST, updated_at DESC NULLS LAST,
+    service_id NULLS LAST, location_id NULLS LAST, id`;
 
 function mapPhoneRow(row: Row): Phone {
   return {
@@ -154,10 +161,11 @@ export async function hydrateCardTier(
     services.map((s) => s.location?.id).filter((id): id is string => Boolean(id)),
   )];
   const organizationIds = [...new Set(services.map((s) => s.organization.id))];
+  const currentDate = new Date().toISOString().slice(0, 10);
 
   const [phoneRows, scheduleRows, taxonomyRows] = await Promise.all([
     deps.executeQuery<Row>(CARD_PHONES_SQL, [serviceIds, locationIds, organizationIds]),
-    deps.executeQuery<Row>(CARD_SCHEDULES_SQL, [serviceIds, locationIds]),
+    deps.executeQuery<Row>(CARD_SCHEDULES_SQL, [serviceIds, locationIds, currentDate]),
     deps.executeQuery<Row>(TAXONOMY_SQL, [serviceIds]),
   ]);
 

@@ -21,7 +21,7 @@ import { ReportProblemDialog } from '@/components/feedback/ReportProblemDialog';
 import { OrgProfileCard } from '@/components/host/OrgProfileCard';
 import { AddToPlanDialog } from '@/components/seeker/AddToPlanDialog';
 import { SavedCollectionsDialog } from '@/components/seeker/SavedCollectionsDialog';
-import type { EnrichedService } from '@/domain/types';
+import type { EnrichedService, Schedule } from '@/domain/types';
 import type { ConfidenceBand } from '@/domain/types';
 import { computeMatchScore, getConfidenceBand } from '@/domain/match';
 import type { DiscoveryLinkState } from '@/services/search/discovery';
@@ -46,6 +46,59 @@ function formatAddress(address: EnrichedService['address']): string | null {
   return [address.address1, address.city, address.stateProvince, address.postalCode]
     .filter(Boolean)
     .join(', ');
+}
+
+const SCHEDULE_DAY_LABELS: Record<string, string> = {
+  MO: 'Mon', MON: 'Mon', MONDAY: 'Mon',
+  TU: 'Tue', TUE: 'Tue', TUES: 'Tue', TUESDAY: 'Tue',
+  WE: 'Wed', WED: 'Wed', WEDNESDAY: 'Wed',
+  TH: 'Thu', THU: 'Thu', THUR: 'Thu', THURS: 'Thu', THURSDAY: 'Thu',
+  FR: 'Fri', FRI: 'Fri', FRIDAY: 'Fri',
+  SA: 'Sat', SAT: 'Sat', SATURDAY: 'Sat',
+  SU: 'Sun', SUN: 'Sun', SUNDAY: 'Sun',
+};
+
+function formatStoredClock(value: string | null | undefined): string | null {
+  const stored = value?.trim();
+  if (!stored) return null;
+
+  const match = /^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d(?:\.\d+)?)?$/.exec(stored);
+  if (!match) return stored;
+
+  const hour = Number(match[1]);
+  const minute = match[2];
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minute} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
+/**
+ * Formats only the schedule fields stored on the record. It does not claim a
+ * provider is currently open or that the schedule is otherwise available.
+ */
+export function formatScheduleSummary(schedule: Schedule | undefined): string | null {
+  if (!schedule) return null;
+
+  const description = schedule.description?.trim();
+  if (description) return description;
+
+  const dayLabels = (schedule.days ?? [])
+    .map((day) => {
+      const stored = day.trim();
+      return stored ? (SCHEDULE_DAY_LABELS[stored.toUpperCase()] ?? stored) : null;
+    })
+    .filter((day): day is string => Boolean(day));
+  const days = dayLabels.length > 0 ? dayLabels.join(', ') : null;
+  const opensAt = formatStoredClock(schedule.opensAt);
+  const closesAt = formatStoredClock(schedule.closesAt);
+  const times = opensAt && closesAt
+    ? `${opensAt}–${closesAt}`
+    : opensAt
+      ? `From ${opensAt}`
+      : closesAt
+        ? `Until ${closesAt}`
+        : null;
+
+  return [days, times].filter((part): part is string => Boolean(part)).join(' · ') || null;
 }
 
 const CAPACITY_STYLES: Record<string, { label: string; color: string }> = {
@@ -133,8 +186,11 @@ export function ServiceCard({
   const matchScore = computeMatchScore(confidenceScore);
   const matchBand = getConfidenceBand(matchScore);
   const formattedAddress = formatAddress(address);
-  const primaryPhone = phones[0];
+  const primaryPhone = phones.find((phone) => (
+    phone.type == null || phone.type === 'voice' || phone.type === 'hotline'
+  ));
   const primarySchedule = schedules[0];
+  const primaryScheduleSummary = formatScheduleSummary(primarySchedule);
   const alignmentLabels = summarizeServiceAlignment(enriched, discoveryContext);
   const helpDescription = service.description?.trim() || null;
   const helpCategories = taxonomyTerms
@@ -336,10 +392,10 @@ export function ServiceCard({
           </div>
         )}
 
-        {primarySchedule?.description && (
+        {primaryScheduleSummary && (
           <div className="flex items-start gap-2 text-gray-600">
             <Clock className="h-4 w-4 flex-shrink-0 mt-0.5 text-gray-400" aria-hidden="true" />
-            <span>{primarySchedule.description}</span>
+            <span>{primaryScheduleSummary}</span>
           </div>
         )}
       </div>

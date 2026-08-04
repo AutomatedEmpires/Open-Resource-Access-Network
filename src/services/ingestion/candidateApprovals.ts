@@ -7,9 +7,10 @@ export const REQUIRED_INDEPENDENT_CANDIDATE_APPROVALS = 2;
 
 /**
  * Dark-landing capability probe: migration 0077 adds the nullable evidence
- * column, while 0078 activates its completion-binding trigger and guarded
- * workflow. Approval routes stay 503 until BOTH objects exist. Fails closed on
- * any probe error. Deliberately un-memoized:
+ * column, while 0078 activates its completion-binding and evidence-locking
+ * triggers plus the guarded workflow. Approval routes stay 503 until every
+ * activation object exists. Fails closed on any probe error. Deliberately
+ * un-memoized:
  * a long-lived instance must observe the migration (or a rollback) promptly.
  */
 export async function isCandidateApprovalEvidenceProvisioned(): Promise<boolean> {
@@ -39,6 +40,14 @@ export async function isCandidateApprovalEvidenceProvisioned(): Promise<boolean>
          FROM pg_catalog.pg_trigger
          WHERE tgrelid = pg_catalog.to_regclass('public.extracted_candidates')
            AND tgname = 'trg_enforce_candidate_revision_lineage'
+           AND NOT tgisinternal
+           AND tgenabled IN ('O', 'A')
+       )
+       AND EXISTS (
+         SELECT 1
+         FROM pg_catalog.pg_trigger
+         WHERE tgrelid = pg_catalog.to_regclass('public.llm_suggestions')
+           AND tgname = 'trg_protect_candidate_llm_suggestion_evidence'
            AND NOT tgisinternal
            AND tgenabled IN ('O', 'A')
        )
@@ -384,6 +393,21 @@ export async function decideCandidateApproval(input: {
     }
     if (assignment.expires_at && new Date(assignment.expires_at).getTime() <= Date.now()) {
       throw new CandidateApprovalConflict('Assignment has expired and must be rerouted.');
+    }
+
+    const pendingSuggestions = await client.query<{ id: string }>(
+      `SELECT suggestion.id
+       FROM public.llm_suggestions suggestion
+       WHERE suggestion.candidate_id = $1
+         AND suggestion.status = 'pending'
+       ORDER BY suggestion.id
+       FOR SHARE OF suggestion`,
+      [input.candidateId],
+    );
+    if (pendingSuggestions.rows.length > 0) {
+      throw new CandidateApprovalConflict(
+        'Resolve pending LLM suggestions before completing the review.',
+      );
     }
 
     if (input.decision === 'approved') {

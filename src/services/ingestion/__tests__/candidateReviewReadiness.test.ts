@@ -95,4 +95,33 @@ describe('peer-blind candidate review readiness', () => {
       evidenceStillMutable: true,
     });
   });
+
+  it('surfaces a pending LLM suggestion as a peer-blind static blocker', async () => {
+    executeQueryMock
+      .mockResolvedValueOnce([{ is_ready: false }])
+      .mockResolvedValueOnce([{
+        has_required_fields: true,
+        has_required_tags: true,
+        tags_confirmed: true,
+        meets_score_threshold: true,
+        blockers: [
+          'pending_llm_suggestion',
+          'Need 2 admin approvals, have 0',
+        ],
+        can_mutate_evidence: true,
+      }]);
+
+    await expect(getPeerBlindCandidateReviewReadiness('cand-1')).resolves.toEqual({
+      reviewReadiness: {
+        canApprove: false,
+        hasRequiredFields: true,
+        hasRequiredTags: true,
+        tagsConfirmed: true,
+        meetsScoreThreshold: true,
+        passesVerification: true,
+        blockers: ['pending_llm_suggestion'],
+      },
+      evidenceStillMutable: true,
+    });
+  });
 });

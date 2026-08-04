@@ -265,13 +265,14 @@ describe('candidateStore', () => {
       lineageAvailable: false,
     });
 
-    expect(db.execute).toHaveBeenCalledTimes(4);
+    expect(db.execute).toHaveBeenCalledTimes(5);
   });
 
   it('uses provisioned lineage columns to lock and return the exact revision', async () => {
     const { db } = createMockDb(
       [[makeRow()]],
       [
+        { rows: [] },
         { rows: [] },
         { rows: [] },
         { rows: [{ available: true }] },
@@ -314,7 +315,7 @@ describe('candidateStore', () => {
       lineageAvailable: true,
     });
 
-    expect(db.execute).toHaveBeenCalledTimes(6);
+    expect(db.execute).toHaveBeenCalledTimes(7);
   });
 
   it('resolves an old-identity replay to the current lineage head before comparing its hash', async () => {
@@ -331,6 +332,7 @@ describe('candidateStore', () => {
         investigationPack: { canonicalUrl: 'https://new.example.gov/services/food' },
       })]],
       [
+        { rows: [] },
         { rows: [] },
         { rows: [] },
         { rows: [{ available: true }] },
@@ -381,13 +383,14 @@ describe('candidateStore', () => {
       lineageAvailable: true,
     });
 
-    expect(db.execute).toHaveBeenCalledTimes(6);
+    expect(db.execute).toHaveBeenCalledTimes(7);
   });
 
-  it('uses stable canonical identity when a later extraction corrects both names', async () => {
+  it('resolves lineage when canonical URL and normalized service identity both match', async () => {
     const { db } = createMockDb(
       [[makeRow({ organizationName: 'Corrected Org', serviceName: 'Corrected Service' })]],
       [
+        { rows: [] },
         { rows: [] },
         { rows: [] },
         { rows: [{ available: true }] },
@@ -416,8 +419,8 @@ describe('candidateStore', () => {
 
     await expect(store.lockMaterializationTarget({
       extractKey: 'b'.repeat(64),
-      orgName: 'Corrected Org',
-      serviceName: 'Corrected Service',
+      orgName: '  Corrected Org  ',
+      serviceName: 'CORRECTED SERVICE',
       canonicalUrl: 'https://example.gov/feed',
     })).resolves.toEqual(expect.objectContaining({
       candidate: expect.objectContaining({ candidateId: 'cand-1' }),
@@ -428,12 +431,93 @@ describe('candidateStore', () => {
     const executeCalls = db.execute.mock.calls as unknown as Array<[unknown]>;
     const firstStableLockSql = JSON.stringify(executeCalls[0]?.[0]);
     const secondStableLockSql = JSON.stringify(executeCalls[1]?.[0]);
+    const thirdStableLockSql = JSON.stringify(executeCalls[2]?.[0]);
     expect(firstStableLockSql).toContain('canonical:https://example.gov/feed');
-    expect(secondStableLockSql).toContain('name:corrected org');
+    expect(secondStableLockSql).toContain(`extract:${'b'.repeat(64)}`);
+    expect(thirdStableLockSql).toContain('name:corrected org');
+
+    const identityQuerySql = JSON.stringify(executeCalls[4]?.[0]);
+    expect(identityQuerySql).toContain('lower(trim(organization_name))');
+    expect(identityQuerySql).toContain('lower(trim(service_name))');
+    expect(identityQuerySql).toContain('corrected org');
+    expect(identityQuerySql).toContain('corrected service');
+    // The normalized service identity must guard the selected flags, WHERE
+    // branches, and ordering branches for canonical URL, address, and name.
+    expect(identityQuerySql.match(/lower\(trim\(organization_name\)\)/g)).toHaveLength(9);
+    expect(identityQuerySql.match(/lower\(trim\(service_name\)\)/g)).toHaveLength(9);
   });
 
-  it('fails closed when a canonical identity spans multiple lineages', async () => {
+  it('does not attach a shared canonical URL to a different service identity', async () => {
     const { db } = createMockDb([], [
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [{ available: true }] },
+      { rows: [{
+        candidate_id: 'cand-other-service',
+        extract_key_sha256: 'a'.repeat(64),
+        revision_of_candidate_id: null,
+        lineage_root_candidate_id: 'cand-other-service',
+        revision_number: 1,
+        matched_exact_extract_key: false,
+        matched_canonical_url: false,
+        matched_address: false,
+        matched_name: false,
+      }] },
+    ]);
+    const store = createDrizzleCandidateStore(db as never);
+
+    await expect(store.lockMaterializationTarget({
+      extractKey: 'b'.repeat(64),
+      orgName: 'Helping Hands',
+      serviceName: 'Food Pantry',
+      canonicalUrl: 'https://shared.example.gov/services',
+    })).resolves.toBeNull();
+
+    expect(db.select).not.toHaveBeenCalled();
+    expect(db.execute).toHaveBeenCalledTimes(5);
+  });
+
+  it('does not attach a co-located address to a different service identity', async () => {
+    const { db } = createMockDb([], [
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [{ available: true }] },
+      { rows: [{
+        candidate_id: 'cand-other-service',
+        extract_key_sha256: 'a'.repeat(64),
+        revision_of_candidate_id: null,
+        lineage_root_candidate_id: 'cand-other-service',
+        revision_number: 1,
+        matched_exact_extract_key: false,
+        matched_canonical_url: false,
+        matched_address: false,
+        matched_name: false,
+      }] },
+    ]);
+    const store = createDrizzleCandidateStore(db as never);
+
+    await expect(store.lockMaterializationTarget({
+      extractKey: 'b'.repeat(64),
+      orgName: 'Helping Hands',
+      serviceName: 'Food Pantry',
+      address: {
+        line1: '123 Main St',
+        city: 'Seattle',
+        region: 'WA',
+        postalCode: '98101',
+        country: 'US',
+      },
+    })).resolves.toBeNull();
+
+    expect(db.select).not.toHaveBeenCalled();
+    expect(db.execute).toHaveBeenCalledTimes(5);
+  });
+
+  it('fails closed when the same canonical URL and service identity span multiple lineages', async () => {
+    const { db } = createMockDb([], [
+      { rows: [] },
       { rows: [] },
       { rows: [] },
       { rows: [{ available: true }] },
@@ -470,7 +554,7 @@ describe('candidateStore', () => {
       serviceName: 'Shared Service',
       canonicalUrl: 'https://shared.example.gov/services',
     })).rejects.toThrow('Ambiguous candidate lineage canonical-url identity');
-    expect(db.execute).toHaveBeenCalledTimes(4);
+    expect(db.execute).toHaveBeenCalledTimes(5);
   });
 
   it('maps rows back into the domain shape for id and extract key lookups', async () => {

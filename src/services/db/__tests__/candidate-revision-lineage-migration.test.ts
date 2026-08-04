@@ -124,10 +124,37 @@ describe('0077 candidate revision lineage expand migration', () => {
     expect(expandMigration).toContain(
       'CREATE OR REPLACE FUNCTION oran_internal.list_undercovered_candidate_reviews',
     );
+    expect(expandMigration).toContain(
+      'CREATE TABLE IF NOT EXISTS oran_internal.candidate_reviewer_routing_state',
+    );
+    expect(expandMigration).toContain(
+      'ALTER TABLE oran_internal.candidate_reviewer_routing_state\n  ENABLE ROW LEVEL SECURITY',
+    );
+    expect(expandMigration).toContain(
+      'ON TABLE oran_internal.candidate_reviewer_routing_state',
+    );
     expect(expandMigration).toContain('RETURNS SETOF text');
     expect(expandMigration).toContain('p_batch_limit > 500');
     expect(expandMigration).toContain(
-      'ORDER BY candidate.created_at ASC, candidate.candidate_id ASC',
+      'ORDER BY routing_state.last_selected_at ASC NULLS FIRST',
+    );
+    expect(expandMigration).toContain(
+      'FOR UPDATE OF candidate SKIP LOCKED',
+    );
+    expect(expandMigration).toContain(
+      'INSERT INTO oran_internal.candidate_reviewer_routing_state AS routing_state',
+    );
+    expect(expandMigration).toContain(
+      "selected_at + interval '5 minutes'",
+    );
+    expect(expandMigration).toContain(
+      "ELSE interval '60 minutes'",
+    );
+    expect(expandMigration).toContain(
+      'DELETE FROM oran_internal.candidate_reviewer_routing_state',
+    );
+    expect(expandMigration).toMatch(
+      /CREATE OR REPLACE FUNCTION oran_internal\.list_undercovered_candidate_reviews[\s\S]*?SECURITY DEFINER[\s\S]*?VOLATILE/,
     );
     expect(expandMigration).not.toMatch(
       /CREATE OR REPLACE FUNCTION oran_internal\.list_undercovered_candidate_reviews[\s\S]*?PERFORM oran_internal\.assign_candidate_reviewers/,
@@ -251,7 +278,7 @@ describe('0078 candidate revision lineage activation migration', () => {
       'AND claimed_at IS NOT NULL',
     );
     expect(activationMigration).toContain(
-      "WHERE status IN ('approved', 'modified')",
+      "WHERE status IN ('approved', 'modified', 'rejected', 'skipped')",
     );
     expect(activationMigration).toContain("WHERE status = 'accepted'");
     const legacyHumanEvidenceReset = activationMigration.slice(
@@ -263,7 +290,7 @@ describe('0078 candidate revision lineage activation migration', () => {
       ),
     );
     expect(legacyHumanEvidenceReset).toContain(
-      "WHERE confirmation.status IN ('approved', 'modified')",
+      "WHERE confirmation.status IN ('approved', 'modified', 'rejected', 'skipped')",
     );
     expect(legacyHumanEvidenceReset).toContain(
       "WHERE suggestion.status = 'accepted'",
@@ -317,6 +344,7 @@ describe('0078 candidate revision lineage activation migration', () => {
     for (const blocker of [
       'missing_required_fields',
       'missing_required_tags',
+      'pending_llm_suggestion',
       'quarantine_source',
       'critical_verification_failure',
       'domain_allowlist_failed',
@@ -505,6 +533,12 @@ describe('candidate revision deployment boundary', () => {
     );
     expect(migrationVerifier).toContain(
       'reviewer account-erasure approval privacy proof passed',
+    );
+    expect(migrationVerifier).toContain(
+      'a permanently under-covered prefix starved later candidate work',
+    );
+    expect(migrationVerifier).toContain(
+      'candidate_reviewer_routing_state',
     );
     expect(activationValidator).toContain(
       "'oran_backend_runtime', workflow_function, 'EXECUTE'",

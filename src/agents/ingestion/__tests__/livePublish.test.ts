@@ -104,6 +104,7 @@ interface HarnessOptions {
     is_active: boolean;
   }>;
   acceptedSuggestions?: Array<Record<string, unknown>>;
+  pendingSuggestions?: Array<Record<string, unknown>>;
   candidateTags?: Array<Record<string, unknown>>;
   tagConfirmations?: Array<Record<string, unknown>>;
   approvalReviewerProfileIds?: string[];
@@ -168,6 +169,12 @@ function createHarness(options: HarnessOptions = {}) {
         : { rows: [{ role: 'oran_admin', account_status: 'active' }], rowCount: 1 };
     }
     if (sql.includes('FROM public.llm_suggestions')) {
+      if (sql.includes("suggestion.status = 'pending'")) {
+        return {
+          rows: options.pendingSuggestions ?? [],
+          rowCount: options.pendingSuggestions?.length ?? 0,
+        };
+      }
       return { rows: options.acceptedSuggestions ?? [], rowCount: options.acceptedSuggestions?.length ?? 0 };
     }
     if (sql.includes('FROM public.resource_tags')) {
@@ -413,6 +420,7 @@ describe('publishCandidateToLiveService', () => {
     ))?.[0]);
     expect(activationSql).toContain("tgenabled IN ('O', 'A')");
     expect(activationSql).toContain('trg_enforce_candidate_revision_lineage');
+    expect(activationSql).toContain('trg_protect_candidate_llm_suggestion_evidence');
     expect(activationSql).toContain('candidate_admin_assignments_decision_reviewer_check');
     expect(activationSql).toContain('idx_extracted_candidates_lineage_revision');
     expect(harness.query.mock.calls.some(([sql]) => (
@@ -462,6 +470,31 @@ describe('publishCandidateToLiveService', () => {
       publishedByUserId: 'oran-1',
     })).rejects.toThrow('invalid reviewed suggestion value');
     expect(harness.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO services'))).toBe(false);
+  });
+
+  it('fails closed on a locked pending LLM suggestion before readiness or live writes', async () => {
+    const stores = createStores();
+    const harness = createHarness({
+      pendingSuggestions: [{ id: 'suggestion-pending-1' }],
+    });
+    const { publishCandidateToLiveService } = await loadModule();
+
+    await expect(publishCandidateToLiveService({
+      stores: stores as never,
+      candidateId: 'cand-1',
+      publishedByUserId: 'oran-1',
+    })).rejects.toThrow('pending LLM suggestion');
+
+    const pendingLockSql = String(harness.query.mock.calls.find(([sql]) => (
+      String(sql).includes("suggestion.status = 'pending'")
+    ))?.[0]);
+    expect(pendingLockSql).toContain('FOR SHARE OF suggestion');
+    expect(harness.query.mock.calls.some(([sql]) => (
+      String(sql).includes('public.evaluate_candidate_readiness')
+    ))).toBe(false);
+    expect(harness.query.mock.calls.some(([sql]) => (
+      String(sql).includes('INSERT INTO services')
+    ))).toBe(false);
   });
 
   it('uses immutable time-of-decision reviewer identity after later deactivation', async () => {

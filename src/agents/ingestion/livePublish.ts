@@ -561,6 +561,13 @@ export async function publishCandidateToLiveService(
            AND tgenabled IN ('O', 'A')
        ) AND EXISTS (
          SELECT 1
+         FROM pg_catalog.pg_trigger
+         WHERE tgrelid = pg_catalog.to_regclass('public.llm_suggestions')
+           AND tgname = 'trg_protect_candidate_llm_suggestion_evidence'
+           AND NOT tgisinternal
+           AND tgenabled IN ('O', 'A')
+       ) AND EXISTS (
+         SELECT 1
          FROM pg_catalog.pg_constraint
          WHERE conrelid = pg_catalog.to_regclass('public.candidate_admin_assignments')
            AND conname = 'candidate_admin_assignments_decision_reviewer_check'
@@ -611,6 +618,18 @@ export async function publishCandidateToLiveService(
     // database function to recompute it. Approval transitions take the same
     // candidate lock, and serializable isolation protects predicate reads.
     const resourceTags = await buildLockedServiceTags(client, options.candidateId);
+    const pendingSuggestionRows = await client.query<{ id: string }>(
+      `SELECT suggestion.id
+       FROM public.llm_suggestions suggestion
+       WHERE suggestion.candidate_id = $1
+         AND suggestion.status = 'pending'
+       ORDER BY suggestion.id
+       FOR SHARE OF suggestion`,
+      [options.candidateId],
+    );
+    if (pendingSuggestionRows.rows.length > 0) {
+      throw new Error(`Candidate ${options.candidateId} has a pending LLM suggestion`);
+    }
     const approvalRows = await client.query<LockedCandidateApprovalRow>(
       `SELECT approval.id AS assignment_id,
               approval.decision_reviewer_profile_id AS reviewer_profile_id,

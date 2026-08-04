@@ -327,9 +327,9 @@ WHERE assignment.status = 'completed';
 
 -- Human decisions created before community-only reviewer authority became an
 -- enforced contract are not publication authority, even when legacy rows carry
--- an actor and timestamp. Capture every accepted legacy decision before
--- reopening it so completed approvals can be invalidated in the same activation
--- transaction instead of trusting an unverifiable pre-activation role.
+-- an actor and timestamp. Capture every terminal legacy decision before
+-- reopening it so neither accepted evidence nor legacy rejection/suppression
+-- can survive activation under an unverifiable pre-activation role.
 CREATE TEMP TABLE candidate_reopened_human_evidence (
   candidate_id text PRIMARY KEY
 ) ON COMMIT DROP;
@@ -337,7 +337,7 @@ CREATE TEMP TABLE candidate_reopened_human_evidence (
 INSERT INTO pg_temp.candidate_reopened_human_evidence (candidate_id)
 SELECT confirmation.candidate_id
 FROM public.tag_confirmation_queue confirmation
-WHERE confirmation.status IN ('approved', 'modified')
+WHERE confirmation.status IN ('approved', 'modified', 'rejected', 'skipped')
 UNION
 SELECT suggestion.candidate_id
 FROM public.llm_suggestions suggestion
@@ -345,8 +345,9 @@ WHERE suggestion.status = 'accepted'
 ON CONFLICT (candidate_id) DO NOTHING;
 
 -- Reopen every pre-activation decision so the activated community-only routes
--- can collect complete, attributable evidence. Tag assignment is cleared too:
--- a legacy ORAN-admin assignee must not retain the reopened community work.
+-- can collect complete, attributable evidence. Tag assignment, review identity,
+-- outcome value, and notes are cleared too: no legacy actor or negative terminal
+-- result may retain or suppress the reopened community work.
 UPDATE public.tag_confirmation_queue
 SET status = 'pending',
     assigned_to_user_id = NULL,
@@ -356,7 +357,7 @@ SET status = 'pending',
     modified_tag_value = NULL,
     review_notes = NULL,
     updated_at = NOW()
-WHERE status IN ('approved', 'modified');
+WHERE status IN ('approved', 'modified', 'rejected', 'skipped');
 
 UPDATE public.llm_suggestions
 SET status = 'pending',
@@ -623,6 +624,56 @@ BEGIN
 END
 $$;
 
+-- LLM evidence and approval decisions use the same candidate-first lock order.
+-- This makes suggestion insert/update serialize with the first completed
+-- review. In particular, a concurrent pending suggestion cannot appear
+-- immediately after an approval checked readiness. Non-status evidence updates
+-- such as account-erasure tombstoning remain possible after review.
+CREATE OR REPLACE FUNCTION oran_internal.protect_candidate_llm_suggestion_evidence()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public, oran_internal
+AS $$
+DECLARE
+  locked_candidate_id text;
+BEGIN
+  IF TG_OP = 'UPDATE'
+     AND NEW.candidate_id IS DISTINCT FROM OLD.candidate_id THEN
+    RAISE EXCEPTION 'Candidate LLM suggestion identity is immutable';
+  END IF;
+
+  locked_candidate_id := NEW.candidate_id;
+
+  PERFORM 1
+  FROM public.extracted_candidates
+  WHERE candidate_id = locked_candidate_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Candidate % does not exist', locked_candidate_id;
+  END IF;
+
+  IF NEW.status = 'pending'
+     AND EXISTS (
+       SELECT 1
+       FROM public.candidate_admin_assignments completed_review
+       WHERE completed_review.candidate_id = locked_candidate_id
+         AND completed_review.status = 'completed'
+     ) THEN
+    RAISE EXCEPTION
+      'Pending LLM suggestion evidence cannot be introduced after a completed review';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_protect_candidate_llm_suggestion_evidence
+  ON public.llm_suggestions;
+CREATE TRIGGER trg_protect_candidate_llm_suggestion_evidence
+  BEFORE INSERT OR UPDATE ON public.llm_suggestions
+  FOR EACH ROW
+  EXECUTE FUNCTION oran_internal.protect_candidate_llm_suggestion_evidence();
+
 CREATE OR REPLACE FUNCTION oran_internal.protect_completed_candidate_approval()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -688,6 +739,16 @@ BEGIN
       IF NOT FOUND THEN
         RAISE EXCEPTION 'Candidate approval completion requires an active authorized community reviewer';
       END IF;
+
+      IF EXISTS (
+           SELECT 1
+           FROM public.llm_suggestions suggestion
+           WHERE suggestion.candidate_id = locked_candidate_id
+             AND suggestion.status = 'pending'
+         ) THEN
+        RAISE EXCEPTION
+          'Candidate approval completion requires all LLM suggestions to be resolved';
+      END IF;
       NEW.decision_reviewer_profile_id := authorized_reviewer_profile_id;
     END IF;
   END IF;
@@ -738,6 +799,7 @@ DECLARE
   has_critical_failure boolean := false;
   has_domain_failure boolean := false;
   pending_tag_count integer := 0;
+  pending_llm_suggestion_count integer := 0;
   approval_count integer := 0;
   rejection_count integer := 0;
   escalation_count integer := 0;
@@ -879,6 +941,16 @@ BEGIN
     blocker_values := array_append(blocker_values, 'pending_tag_confirmation');
   END IF;
 
+  SELECT count(*)::integer
+  INTO pending_llm_suggestion_count
+  FROM public.llm_suggestions suggestion
+  WHERE suggestion.candidate_id = p_candidate_id
+    AND suggestion.status = 'pending';
+
+  IF pending_llm_suggestion_count > 0 THEN
+    blocker_values := array_append(blocker_values, 'pending_llm_suggestion');
+  END IF;
+
   SELECT
     COALESCE(
       bool_or(check_row.severity = 'critical' AND check_row.status = 'fail'),
@@ -949,6 +1021,7 @@ BEGIN
     has_required_fields
     AND has_required_tags
     AND tags_confirmed
+    AND pending_llm_suggestion_count = 0
     AND meets_score
     AND has_approval
     AND NOT has_quarantine_source
@@ -1039,6 +1112,8 @@ ALTER TABLE public.ingestion_audit_events
 REVOKE ALL ON FUNCTION oran_internal.enforce_candidate_revision_lineage()
   FROM PUBLIC, oran_runtime, oran_backend_runtime;
 REVOKE ALL ON FUNCTION oran_internal.protect_completed_candidate_approval()
+  FROM PUBLIC, oran_runtime, oran_backend_runtime;
+REVOKE ALL ON FUNCTION oran_internal.protect_candidate_llm_suggestion_evidence()
   FROM PUBLIC, oran_runtime, oran_backend_runtime;
 REVOKE ALL ON FUNCTION oran_internal.assign_candidate_reviewers(text, integer)
   FROM PUBLIC, oran_runtime, oran_backend_runtime;

@@ -13,6 +13,7 @@ DECLARE
   public_execute boolean;
   readiness_source text;
   reroute_source text;
+  routing_state_relation oid;
   approvals_default text;
 BEGIN
   IF pg_catalog.current_setting('transaction_read_only') <> 'on' THEN
@@ -62,6 +63,81 @@ BEGIN
       AND NOT attisdropped
   ) THEN
     RAISE EXCEPTION 'candidate-lineage activation columns are incomplete';
+  END IF;
+
+  SELECT pg_catalog.to_regclass(
+    'oran_internal.candidate_reviewer_routing_state'
+  ) INTO routing_state_relation;
+  IF routing_state_relation IS NULL OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_class relation
+    WHERE relation.oid = routing_state_relation
+      AND relation.relkind = 'r'
+      AND relation.relrowsecurity
+  ) OR (
+    SELECT count(*)
+    FROM pg_catalog.pg_attribute attribute
+    WHERE attribute.attrelid = routing_state_relation
+      AND attribute.attname IN (
+        'candidate_id',
+        'selection_count',
+        'last_selected_at',
+        'next_selectable_at',
+        'updated_at'
+      )
+      AND attribute.attnotnull
+      AND NOT attribute.attisdropped
+  ) <> 5 OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_constraint constraint_row
+    WHERE constraint_row.conrelid = routing_state_relation
+      AND constraint_row.conname =
+        'candidate_reviewer_routing_state_candidate_fk'
+      AND constraint_row.contype = 'f'
+      AND constraint_row.confrelid =
+        'public.extracted_candidates'::pg_catalog.regclass
+      AND constraint_row.confupdtype = 'r'
+      AND constraint_row.confdeltype = 'c'
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_index index_row
+    WHERE index_row.indexrelid = pg_catalog.to_regclass(
+        'oran_internal.idx_candidate_reviewer_routing_retry'
+      )
+      AND index_row.indrelid = routing_state_relation
+      AND index_row.indisvalid
+      AND index_row.indisready
+  ) THEN
+    RAISE EXCEPTION 'candidate reviewer routing fairness state is incomplete';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_class relation
+    CROSS JOIN LATERAL pg_catalog.aclexplode(
+      COALESCE(
+        relation.relacl,
+        pg_catalog.acldefault('r', relation.relowner)
+      )
+    ) privilege
+    LEFT JOIN pg_catalog.pg_roles role_row
+      ON role_row.oid = privilege.grantee
+    WHERE relation.oid = routing_state_relation
+      AND (
+        privilege.grantee = 0
+        OR role_row.rolname IN (
+          'anon',
+          'authenticated',
+          'service_role',
+          'oran_runtime',
+          'oran_backend_runtime'
+        )
+      )
+      AND privilege.privilege_type IN (
+        'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'
+      )
+  ) THEN
+    RAISE EXCEPTION 'candidate reviewer routing fairness state is directly accessible';
   END IF;
 
   IF NOT EXISTS (
@@ -356,6 +432,13 @@ BEGIN
       AND tgname = 'trg_protect_completed_candidate_approval'
       AND NOT tgisinternal
       AND tgenabled IN ('O', 'A')
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_trigger
+    WHERE tgrelid = 'public.llm_suggestions'::pg_catalog.regclass
+      AND tgname = 'trg_protect_candidate_llm_suggestion_evidence'
+      AND NOT tgisinternal
+      AND tgenabled IN ('O', 'A')
   ) THEN
     RAISE EXCEPTION 'candidate-lineage activation triggers are incomplete';
   END IF;
@@ -401,6 +484,8 @@ BEGIN
      OR readiness_source NOT LIKE '%escalation_count = 0%'
      OR readiness_source NOT LIKE '%candidate_rejected%'
      OR readiness_source NOT LIKE '%candidate_escalated%'
+     OR readiness_source NOT LIKE '%pending_llm_suggestion%'
+     OR readiness_source NOT LIKE '%suggestion.status = ''pending''%'
      OR readiness_source NOT LIKE '%missing_required_fields%'
      OR readiness_source NOT LIKE '%missing_required_tags%'
      OR readiness_source NOT LIKE '%quarantine_source%'
@@ -418,15 +503,23 @@ BEGIN
       'oran_internal.list_undercovered_candidate_reviews(integer,integer)'::pg_catalog.regprocedure
     AND function_row.proretset
     AND function_row.prorettype = 'text'::pg_catalog.regtype
-    AND NOT function_row.prosecdef
-    AND function_row.provolatile = 's';
+    AND function_row.prosecdef
+    AND function_row.provolatile = 'v'
+    AND function_row.proconfig @> ARRAY[
+      'search_path=pg_catalog, public, oran_internal'
+    ]::text[];
   IF reroute_source IS NULL
      OR reroute_source NOT LIKE '%p_batch_limit > 500%'
      OR reroute_source NOT LIKE '%p_reviewer_limit > 10%'
      OR reroute_source NOT LIKE '%published_service_id IS NULL%'
      OR reroute_source NOT LIKE '%review_status IN (''pending'', ''in_review'', ''escalated'')%'
      OR reroute_source NOT LIKE '%assignment.expires_at > NOW()%'
-     OR reroute_source NOT LIKE '%ORDER BY candidate.created_at ASC, candidate.candidate_id ASC%'
+     OR reroute_source NOT LIKE '%candidate_reviewer_routing_state%'
+     OR reroute_source NOT LIKE '%next_selectable_at <= selected_at%'
+     OR reroute_source NOT LIKE '%ORDER BY routing_state.last_selected_at ASC NULLS FIRST%'
+     OR reroute_source NOT LIKE '%FOR UPDATE OF candidate SKIP LOCKED%'
+     OR reroute_source NOT LIKE '%ON CONFLICT (candidate_id) DO UPDATE%'
+     OR reroute_source NOT LIKE '%interval ''60 minutes''%'
      OR reroute_source LIKE '%assign_candidate_reviewers(%' THEN
     RAISE EXCEPTION 'bounded candidate undercoverage selector is incomplete';
   END IF;
@@ -468,7 +561,8 @@ BEGIN
 
   FOREACH trigger_function IN ARRAY ARRAY[
     'oran_internal.enforce_candidate_revision_lineage()'::pg_catalog.regprocedure::oid,
-    'oran_internal.protect_completed_candidate_approval()'::pg_catalog.regprocedure::oid
+    'oran_internal.protect_completed_candidate_approval()'::pg_catalog.regprocedure::oid,
+    'oran_internal.protect_candidate_llm_suggestion_evidence()'::pg_catalog.regprocedure::oid
   ]
   LOOP
     IF pg_catalog.has_function_privilege(

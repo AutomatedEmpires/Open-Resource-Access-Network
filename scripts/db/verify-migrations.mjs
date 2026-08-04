@@ -55,6 +55,11 @@ const UNGRANTED_TABLE_EXCEPTIONS = new Set([
   'oran_internal.chat_rate_limit_windows',
   'oran_internal.chat_usage_events',
   'oran_internal.shared_rate_limit_windows',
+  // Candidate repair fairness is advanced only through the bounded SECURITY
+  // DEFINER selector and cleared by the database-owned assignment routine.
+  // Direct access would expose candidate identities and let callers bypass the
+  // retry lease that prevents a permanently failing prefix from starving work.
+  'oran_internal.candidate_reviewer_routing_state',
   // Durable account erasure is reachable only through the fixed SECURITY
   // DEFINER API in 0071. Direct table access would expose live identifiers and
   // worker state to the application role.
@@ -368,7 +373,44 @@ async function exerciseCandidateLineageExpandPhase(client) {
            'oran_backend_runtime',
            'oran_internal.list_undercovered_candidate_reviews(integer,integer)',
            'EXECUTE'
-         ) AS reviewer_reroute_active`,
+         ) AS reviewer_reroute_active,
+         pg_catalog.to_regclass(
+           'oran_internal.candidate_reviewer_routing_state'
+         ) IS NOT NULL AS routing_state_exists,
+         (SELECT relation.relrowsecurity
+            FROM pg_catalog.pg_class relation
+           WHERE relation.oid = pg_catalog.to_regclass(
+             'oran_internal.candidate_reviewer_routing_state'
+           )) AS routing_state_rls,
+         (SELECT function_row.prosecdef
+            FROM pg_catalog.pg_proc function_row
+           WHERE function_row.oid =
+             'oran_internal.list_undercovered_candidate_reviews(integer,integer)'::pg_catalog.regprocedure
+         ) AS selector_security_definer,
+         (SELECT function_row.provolatile
+            FROM pg_catalog.pg_proc function_row
+           WHERE function_row.oid =
+             'oran_internal.list_undercovered_candidate_reviews(integer,integer)'::pg_catalog.regprocedure
+         ) AS selector_volatility,
+         (
+           pg_catalog.has_table_privilege(
+             'oran_backend_runtime',
+             'oran_internal.candidate_reviewer_routing_state',
+             'SELECT'
+           ) OR pg_catalog.has_table_privilege(
+             'oran_backend_runtime',
+             'oran_internal.candidate_reviewer_routing_state',
+             'INSERT'
+           ) OR pg_catalog.has_table_privilege(
+             'oran_backend_runtime',
+             'oran_internal.candidate_reviewer_routing_state',
+             'UPDATE'
+           ) OR pg_catalog.has_table_privilege(
+             'oran_backend_runtime',
+             'oran_internal.candidate_reviewer_routing_state',
+             'DELETE'
+           )
+         ) AS backend_routing_state_access`,
     );
     invariant(!state.rows[0].root_not_null, '0077 made lineage root NOT NULL');
     invariant(!state.rows[0].approval_active, '0077 activated approval protection');
@@ -376,6 +418,14 @@ async function exerciseCandidateLineageExpandPhase(client) {
       !state.rows[0].reviewer_routing_active
         && !state.rows[0].reviewer_reroute_active,
       '0077 exposed reviewer routing before activation',
+    );
+    invariant(
+      state.rows[0].routing_state_exists
+        && state.rows[0].routing_state_rls
+        && state.rows[0].selector_security_definer
+        && state.rows[0].selector_volatility === 'v'
+        && !state.rows[0].backend_routing_state_access,
+      '0077 candidate reviewer fairness state is not private and dark',
     );
 
     const inserted = await client.query(
@@ -1090,12 +1140,88 @@ async function exerciseCandidateLineageWorkflow(client) {
       );
     };
 
-    for (const reviewerUserId of [
-      'migration-proof-reviewer-a',
-      'migration-proof-reviewer-c',
-    ]) {
-      await completeVerifiedApproval('migration-proof-root', reviewerUserId);
+    const pendingEvidenceAssignment = await client.query(
+      `INSERT INTO public.candidate_admin_assignments (
+         candidate_id, admin_profile_id, status
+       )
+       VALUES ('migration-proof-root', $1, 'pending')
+       RETURNING id`,
+      [reviewerByUser.get('migration-proof-reviewer-a')],
+    );
+    await client.query(
+      `UPDATE public.candidate_admin_assignments
+          SET status = 'claimed', claimed_at = NOW()
+        WHERE id = $1`,
+      [pendingEvidenceAssignment.rows[0].id],
+    );
+    await client.query(
+      `INSERT INTO public.llm_suggestions (
+         candidate_id, suggestion_id, field, suggested_value,
+         original_value, confidence, status
+       )
+       VALUES (
+         'migration-proof-root', 'migration-proof-pending-suggestion',
+         'description', 'Pending corrected description',
+         'Complete materialized readiness proof', 90, 'pending'
+       )`,
+    );
+    for (const outcome of ['verified', 'rejected', 'escalated']) {
+      await expectDatabaseError(
+        client,
+        `UPDATE public.candidate_admin_assignments
+            SET status = 'completed', outcome = $2, completed_at = NOW()
+          WHERE id = $1`,
+        [pendingEvidenceAssignment.rows[0].id, outcome],
+        'Candidate approval completion requires all LLM suggestions to be resolved',
+      );
     }
+    await client.query(
+      `SELECT public.evaluate_candidate_readiness('migration-proof-root')`,
+    );
+    const pendingEvidenceReadiness = await client.query(
+      `SELECT is_ready, blockers
+       FROM public.candidate_readiness
+       WHERE candidate_id = 'migration-proof-root'`,
+    );
+    invariant(
+      !pendingEvidenceReadiness.rows[0].is_ready
+        && pendingEvidenceReadiness.rows[0].blockers.includes('pending_llm_suggestion'),
+      'pending LLM evidence did not block database readiness',
+    );
+    await client.query(
+      `DELETE FROM public.llm_suggestions
+       WHERE suggestion_id = 'migration-proof-pending-suggestion'`,
+    );
+    const completedAfterResolution = await client.query(
+      `UPDATE public.candidate_admin_assignments
+          SET status = 'completed', outcome = 'verified', completed_at = NOW()
+        WHERE id = $1
+        RETURNING decision_reviewer_profile_id`,
+      [pendingEvidenceAssignment.rows[0].id],
+    );
+    invariant(
+      completedAfterResolution.rows[0].decision_reviewer_profile_id
+        === reviewerByUser.get('migration-proof-reviewer-a'),
+      'resolved evidence did not permit an authorized approval completion',
+    );
+    await expectDatabaseError(
+      client,
+      `INSERT INTO public.llm_suggestions (
+         candidate_id, suggestion_id, field, suggested_value,
+         original_value, confidence, status
+       )
+       VALUES (
+         'migration-proof-root', 'migration-proof-late-pending-suggestion',
+         'description', 'Late pending correction',
+         'Complete materialized readiness proof', 90, 'pending'
+       )`,
+      [],
+      'Pending LLM suggestion evidence cannot be introduced after a completed review',
+    );
+    await completeVerifiedApproval(
+      'migration-proof-root',
+      'migration-proof-reviewer-c',
+    );
 
     const oversightOnlyAssignment = await client.query(
       `INSERT INTO public.candidate_admin_assignments (
@@ -1782,6 +1908,18 @@ async function exerciseCandidateLineageWorkflow(client) {
       selectorMutation.rows[0].assignment_count === 0,
       'undercoverage selector mutated reviewer assignments',
     );
+    const batchSelectionState = await client.query(
+      `SELECT selection_count,
+              last_selected_at < next_selectable_at AS retry_window_valid
+         FROM oran_internal.candidate_reviewer_routing_state
+        WHERE candidate_id = '000-migration-routing-batch'`,
+    );
+    invariant(
+      batchSelectionState.rowCount === 1
+        && batchSelectionState.rows[0].selection_count === 1
+        && batchSelectionState.rows[0].retry_window_valid,
+      'bounded selector did not atomically advance private retry state',
+    );
     const batchAssignment = await client.query(
       `SELECT oran_internal.assign_candidate_reviewers(
          '000-migration-routing-batch', 2
@@ -1790,6 +1928,128 @@ async function exerciseCandidateLineageWorkflow(client) {
     invariant(
       batchAssignment.rows[0].reviewer_count === 2,
       'selected candidate could not be routed in an isolated assignment call',
+    );
+    const completedSelectionState = await client.query(
+      `SELECT count(*)::integer AS state_count
+         FROM oran_internal.candidate_reviewer_routing_state
+        WHERE candidate_id = '000-migration-routing-batch'`,
+    );
+    invariant(
+      completedSelectionState.rows[0].state_count === 0,
+      'successful reviewer routing retained stale selector retry state',
+    );
+
+    // A selected candidate that remains impossible to route must enter a
+    // bounded backoff before the next page. Otherwise an oldest-first LIMIT 1
+    // would return the same permanent prefix and never reach later work.
+    await client.query(
+      `INSERT INTO public.extracted_candidates (
+         candidate_id, extraction_id, extract_key_sha256, extracted_at,
+         organization_name, service_name, jurisdiction_state,
+         jurisdiction_county, correlation_id, created_at
+       )
+       VALUES
+         (
+           'migration-routing-fair-oldest', 'migration-routing-fair-oldest-extraction',
+           'migration-routing-fair-oldest-hash', NOW(), 'Fair routing organization',
+           'Fair routing oldest service', 'WA', 'KING',
+           'migration-routing-fair-oldest-correlation', NOW() - interval '3 days'
+         ),
+         (
+           'migration-routing-fair-later', 'migration-routing-fair-later-extraction',
+           'migration-routing-fair-later-hash', NOW(), 'Fair routing organization',
+           'Fair routing later service', 'WA', 'KING',
+           'migration-routing-fair-later-correlation', NOW() - interval '2 days'
+         )`,
+    );
+    await client.query(
+      `CREATE TEMP TABLE migration_routing_accepting_snapshot AS
+       SELECT id, is_accepting_new
+       FROM public.admin_review_profiles`,
+    );
+    await client.query(
+      'UPDATE public.admin_review_profiles SET is_accepting_new = false',
+    );
+    try {
+      const oldestFairSelection = await client.query(
+        `SELECT routed.candidate_id
+           FROM oran_internal.list_undercovered_candidate_reviews(1, 2)
+             AS routed(candidate_id)`,
+      );
+      invariant(
+        oldestFairSelection.rowCount === 1
+          && oldestFairSelection.rows[0].candidate_id === 'migration-routing-fair-oldest',
+        'fair selector did not preserve oldest-first priority for never-selected work',
+      );
+      const impossibleRouting = await client.query(
+        `SELECT oran_internal.assign_candidate_reviewers(
+           'migration-routing-fair-oldest', 2
+         )::integer AS reviewer_count`,
+      );
+      invariant(
+        impossibleRouting.rows[0].reviewer_count === 0,
+        'fair selector fixture unexpectedly found reviewer capacity',
+      );
+      const laterFairSelection = await client.query(
+        `SELECT routed.candidate_id
+           FROM oran_internal.list_undercovered_candidate_reviews(1, 2)
+             AS routed(candidate_id)`,
+      );
+      invariant(
+        laterFairSelection.rowCount === 1
+          && laterFairSelection.rows[0].candidate_id === 'migration-routing-fair-later',
+        'a permanently under-covered prefix starved later candidate work',
+      );
+      const fairSelectionState = await client.query(
+        `SELECT count(*)::integer AS state_count,
+                min(selection_count)::integer AS minimum_selection_count,
+                bool_and(next_selectable_at > last_selected_at) AS retry_windows_valid
+           FROM oran_internal.candidate_reviewer_routing_state
+          WHERE candidate_id IN (
+            'migration-routing-fair-oldest',
+            'migration-routing-fair-later'
+          )`,
+      );
+      invariant(
+        fairSelectionState.rows[0].state_count === 2
+          && fairSelectionState.rows[0].minimum_selection_count === 1
+          && fairSelectionState.rows[0].retry_windows_valid,
+        'fair selector did not retain bounded per-candidate retry state',
+      );
+    } finally {
+      await client.query(
+        `UPDATE public.admin_review_profiles reviewer
+            SET is_accepting_new = snapshot.is_accepting_new
+           FROM migration_routing_accepting_snapshot snapshot
+          WHERE snapshot.id = reviewer.id`,
+      );
+      await client.query('DROP TABLE migration_routing_accepting_snapshot');
+    }
+    const fairCoverage = await client.query(
+      `SELECT candidate_id,
+              oran_internal.assign_candidate_reviewers(candidate_id, 2)::integer
+                AS reviewer_count
+         FROM pg_catalog.unnest(ARRAY[
+           'migration-routing-fair-oldest',
+           'migration-routing-fair-later'
+         ]::text[]) AS candidate(candidate_id)`,
+    );
+    invariant(
+      fairCoverage.rowCount === 2
+        && fairCoverage.rows.every((row) => row.reviewer_count === 2),
+      'fair selector fixtures could not recover after reviewer capacity returned',
+    );
+    const fairStateCleanup = await client.query(
+      `SELECT count(*)::integer AS state_count
+         FROM oran_internal.candidate_reviewer_routing_state
+        WHERE candidate_id IN (
+          'migration-routing-fair-oldest',
+          'migration-routing-fair-later'
+        )`,
+    );
+    invariant(
+      fairStateCleanup.rows[0].state_count === 0,
+      'successful fair routing did not clear bounded retry state',
     );
 
     await client.query(
@@ -1873,6 +2133,25 @@ async function exerciseCandidateLineageWorkflow(client) {
            'public.evaluate_candidate_readiness(text)',
            'EXECUTE'
          ) AS backend_readiness,
+         (
+           pg_catalog.has_table_privilege(
+             'oran_backend_runtime',
+             'oran_internal.candidate_reviewer_routing_state',
+             'SELECT'
+           ) OR pg_catalog.has_table_privilege(
+             'oran_backend_runtime',
+             'oran_internal.candidate_reviewer_routing_state',
+             'INSERT'
+           ) OR pg_catalog.has_table_privilege(
+             'oran_backend_runtime',
+             'oran_internal.candidate_reviewer_routing_state',
+             'UPDATE'
+           ) OR pg_catalog.has_table_privilege(
+             'oran_backend_runtime',
+             'oran_internal.candidate_reviewer_routing_state',
+             'DELETE'
+           )
+         ) AS backend_routing_state_access,
          EXISTS (
            SELECT 1
            FROM pg_catalog.pg_proc function_row
@@ -1908,6 +2187,7 @@ async function exerciseCandidateLineageWorkflow(client) {
         && !functionAcl.rows[0].legacy_reroute
         && functionAcl.rows[0].backend_escalate
         && functionAcl.rows[0].backend_readiness
+        && !functionAcl.rows[0].backend_routing_state_access
         && !functionAcl.rows[0].public_assign
         && !functionAcl.rows[0].public_reroute,
       'candidate workflow function ACL is not least privilege',

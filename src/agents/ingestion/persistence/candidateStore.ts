@@ -377,6 +377,7 @@ export function createDrizzleCandidateStore(
               normalizedAddress.country,
             ].join('\u0000')}`
           : null,
+        `extract:${input.extractKey.toLowerCase()}`,
         `name:${normalizedOrgName}\u0000${normalizedServiceName}`,
       ].filter((key): key is string => Boolean(key)).sort();
 
@@ -397,6 +398,10 @@ export function createDrizzleCandidateStore(
         // First resolve any matching revision to its stable lineage root. The
         // matching row may be historical: later revisions can legitimately
         // correct the URL, address, or display names used by this lookup.
+        // URLs can be shared directory pages and addresses can host multiple
+        // services, so neither may establish lineage without the same
+        // normalized organization/service identity. Only an exact extract key
+        // is strong enough to replay across corrected identity fields.
         const lineageMatchResult = await db.execute(sql`
           SELECT DISTINCT ON (COALESCE(lineage_root_candidate_id, candidate_id))
                  candidate_id,
@@ -406,8 +411,12 @@ export function createDrizzleCandidateStore(
                  COALESCE(revision_number, 1) AS revision_number,
                  extract_key_sha256 = ${input.extractKey} AS matched_exact_extract_key,
                  (${canonicalUrl}::text IS NOT NULL
-                   AND investigation_pack ->> 'canonicalUrl' = ${canonicalUrl}) AS matched_canonical_url,
+                   AND investigation_pack ->> 'canonicalUrl' = ${canonicalUrl}
+                   AND lower(trim(organization_name)) = ${normalizedOrgName}
+                   AND lower(trim(service_name)) = ${normalizedServiceName}) AS matched_canonical_url,
                  (${normalizedAddress?.line1 ?? null}::text IS NOT NULL
+                   AND lower(trim(organization_name)) = ${normalizedOrgName}
+                   AND lower(trim(service_name)) = ${normalizedServiceName}
                    AND lower(trim(coalesce(address_line1, ''))) = ${normalizedAddress?.line1 ?? null}
                    AND lower(trim(coalesce(address_city, ''))) = ${normalizedAddress?.city ?? null}
                    AND lower(trim(coalesce(address_region, ''))) = ${normalizedAddress?.region ?? null}
@@ -420,9 +429,13 @@ export function createDrizzleCandidateStore(
              OR (
                ${canonicalUrl}::text IS NOT NULL
                AND investigation_pack ->> 'canonicalUrl' = ${canonicalUrl}
+               AND lower(trim(organization_name)) = ${normalizedOrgName}
+               AND lower(trim(service_name)) = ${normalizedServiceName}
              )
              OR (
                ${normalizedAddress?.line1 ?? null}::text IS NOT NULL
+               AND lower(trim(organization_name)) = ${normalizedOrgName}
+               AND lower(trim(service_name)) = ${normalizedServiceName}
                AND lower(trim(coalesce(address_line1, ''))) = ${normalizedAddress?.line1 ?? null}
                AND lower(trim(coalesce(address_city, ''))) = ${normalizedAddress?.city ?? null}
                AND lower(trim(coalesce(address_region, ''))) = ${normalizedAddress?.region ?? null}
@@ -438,8 +451,12 @@ export function createDrizzleCandidateStore(
                      WHEN extract_key_sha256 = ${input.extractKey} THEN 0
                      WHEN ${canonicalUrl}::text IS NOT NULL
                        AND investigation_pack ->> 'canonicalUrl' = ${canonicalUrl}
+                       AND lower(trim(organization_name)) = ${normalizedOrgName}
+                       AND lower(trim(service_name)) = ${normalizedServiceName}
                        THEN 1
                      WHEN ${normalizedAddress?.line1 ?? null}::text IS NOT NULL
+                       AND lower(trim(organization_name)) = ${normalizedOrgName}
+                       AND lower(trim(service_name)) = ${normalizedServiceName}
                        AND lower(trim(coalesce(address_line1, ''))) = ${normalizedAddress?.line1 ?? null}
                        AND lower(trim(coalesce(address_city, ''))) = ${normalizedAddress?.city ?? null}
                        AND lower(trim(coalesce(address_region, ''))) = ${normalizedAddress?.region ?? null}
@@ -477,7 +494,6 @@ export function createDrizzleCandidateStore(
           ?? selectUniqueMatch('canonical-url', canonicalMatches)
           ?? selectUniqueMatch('address', addressMatches)
           ?? selectUniqueMatch('name', nameMatches)
-          ?? lineageMatches[0]
           ?? null;
         if (!lineageMatch) return null;
         const matchedExactExtractKey = lineageMatch.extract_key_sha256 === input.extractKey;

@@ -24,6 +24,7 @@ function createTransactionQuery(
     expiresAt?: string | null;
     assignmentStatus?: 'pending' | 'claimed';
     escalationCount?: number;
+    pendingSuggestionCount?: number;
     reviewerRole?: string;
     readiness?: Partial<{
       has_required_fields: boolean;
@@ -68,6 +69,14 @@ function createTransactionQuery(
           status: options.assignmentStatus ?? 'claimed',
           expires_at: options.expiresAt ?? null,
         }],
+      };
+    }
+    if (query.includes('FROM public.llm_suggestions') && query.includes("suggestion.status = 'pending'")) {
+      return {
+        rows: Array.from(
+          { length: options.pendingSuggestionCount ?? 0 },
+          (_, index) => ({ id: `pending-suggestion-${index + 1}` }),
+        ),
       };
     }
     if (query.includes('public.evaluate_candidate_readiness')) {
@@ -327,6 +336,40 @@ describe('candidate approval consensus', () => {
     expect(query.mock.calls.some(([sql]) => sql.includes("SET status = 'completed'"))).toBe(false);
   });
 
+  it('blocks the first approval while an LLM suggestion is still pending', async () => {
+    const query = createTransactionQuery(0, 0, {
+      pendingSuggestionCount: 1,
+    });
+    dbMocks.withTransaction.mockImplementationOnce(async (callback) => callback({ query }));
+
+    await expect(decideCandidateApproval({
+      candidateId: CANDIDATE_ID,
+      assignmentId: ASSIGNMENT_ID,
+      actorUserId: 'reviewer-user-1',
+      decision: 'approved',
+    })).rejects.toThrow('Resolve pending LLM suggestions');
+
+    expect(query.mock.calls.some(([sql]) => sql.includes("SET status = 'completed'"))).toBe(false);
+  });
+
+  it.each(['rejected', 'escalated'] as const)(
+    'blocks a %s completion from freezing a pending LLM suggestion',
+    async (decision) => {
+      const query = createTransactionQuery(0, 0, { pendingSuggestionCount: 1 });
+      dbMocks.withTransaction.mockImplementationOnce(async (callback) => callback({ query }));
+
+      await expect(decideCandidateApproval({
+        candidateId: CANDIDATE_ID,
+        assignmentId: ASSIGNMENT_ID,
+        actorUserId: 'reviewer-user-1',
+        decision,
+        notes: 'Unresolved evidence requires another independent review step.',
+      })).rejects.toThrow('Resolve pending LLM suggestions');
+
+      expect(query.mock.calls.some(([sql]) => sql.includes("SET status = 'completed'"))).toBe(false);
+    },
+  );
+
   it('rejects a decision after the claimed assignment evidence window expires', async () => {
     const query = createTransactionQuery(0, 0, {
       expiresAt: '2020-01-01T00:00:00.000Z',
@@ -373,6 +416,7 @@ describe('evidence schema probe', () => {
     const activationSql = String(dbMocks.executeQuery.mock.calls.at(-1)?.[0]);
     expect(activationSql).toContain("tgenabled IN ('O', 'A')");
     expect(activationSql).toContain('trg_enforce_candidate_revision_lineage');
+    expect(activationSql).toContain('trg_protect_candidate_llm_suggestion_evidence');
     expect(activationSql).toContain('candidate_admin_assignments_decision_reviewer_check');
     expect(activationSql).toContain('convalidated IS TRUE');
     expect(activationSql).toContain('idx_extracted_candidates_lineage_revision');

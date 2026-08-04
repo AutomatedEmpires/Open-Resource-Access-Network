@@ -698,6 +698,13 @@ BEGIN
       AND tgname = 'trg_protect_completed_candidate_approval'
       AND NOT tgisinternal
       AND tgenabled IN ('O', 'A')
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_trigger
+    WHERE tgrelid = 'public.llm_suggestions'::pg_catalog.regclass
+      AND tgname = 'trg_protect_candidate_llm_suggestion_evidence'
+      AND NOT tgisinternal
+      AND tgenabled IN ('O', 'A')
   ) THEN
     RAISE EXCEPTION 'candidate revision-lineage triggers are not activated';
   END IF;

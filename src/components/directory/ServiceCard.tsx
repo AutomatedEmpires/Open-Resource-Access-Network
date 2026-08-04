@@ -58,6 +58,11 @@ const SCHEDULE_DAY_LABELS: Record<string, string> = {
   SU: 'Sun', SUN: 'Sun', SUNDAY: 'Sun',
 };
 
+const SCHEDULE_DAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+const SCHEDULE_DAY_RANK = new Map<string, number>(
+  SCHEDULE_DAY_ORDER.map((day, index) => [day, index]),
+);
+
 function formatStoredClock(value: string | null | undefined): string | null {
   const stored = value?.trim();
   if (!stored) return null;
@@ -71,34 +76,99 @@ function formatStoredClock(value: string | null | undefined): string | null {
   return `${hour12}:${minute} ${hour < 12 ? 'AM' : 'PM'}`;
 }
 
-/**
- * Formats only the schedule fields stored on the record. It does not claim a
- * provider is currently open or that the schedule is otherwise available.
- */
-export function formatScheduleSummary(schedule: Schedule | undefined): string | null {
-  if (!schedule) return null;
+function normalizeScheduleDay(day: string): string | null {
+  const stored = day.trim();
+  return stored ? (SCHEDULE_DAY_LABELS[stored.toUpperCase()] ?? stored) : null;
+}
 
-  const description = schedule.description?.trim();
-  if (description) return description;
+function sortScheduleDays(days: Iterable<string>): string[] {
+  return [...days].sort((left, right) => {
+    const leftRank = SCHEDULE_DAY_RANK.get(left) ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = SCHEDULE_DAY_RANK.get(right) ?? Number.MAX_SAFE_INTEGER;
+    return leftRank - rightRank || left.localeCompare(right);
+  });
+}
 
-  const dayLabels = (schedule.days ?? [])
-    .map((day) => {
-      const stored = day.trim();
-      return stored ? (SCHEDULE_DAY_LABELS[stored.toUpperCase()] ?? stored) : null;
-    })
-    .filter((day): day is string => Boolean(day));
-  const days = dayLabels.length > 0 ? dayLabels.join(', ') : null;
+function formatStoredTimes(schedule: Schedule): string | null {
   const opensAt = formatStoredClock(schedule.opensAt);
   const closesAt = formatStoredClock(schedule.closesAt);
-  const times = opensAt && closesAt
+  return opensAt && closesAt
     ? `${opensAt}–${closesAt}`
     : opensAt
       ? `From ${opensAt}`
       : closesAt
         ? `Until ${closesAt}`
         : null;
+}
 
-  return [days, times].filter((part): part is string => Boolean(part)).join(' · ') || null;
+function formatScheduleDate(value: unknown): string | null {
+  if (value == null) return null;
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+}
+
+function isScheduleCurrent(schedule: Schedule, currentDate: Date): boolean {
+  const today = formatScheduleDate(currentDate);
+  if (!today) return false;
+
+  const validFrom = formatScheduleDate(schedule.validFrom);
+  const validTo = formatScheduleDate(schedule.validTo);
+  if (schedule.validFrom != null && !validFrom) return false;
+  if (schedule.validTo != null && !validTo) return false;
+
+  return (!validFrom || validFrom <= today) && (!validTo || validTo >= today);
+}
+
+/**
+ * Formats only schedule fields stored on the record. It does not infer that a
+ * provider is currently open or otherwise available. Multi-row schedules are
+ * grouped by stored hours so one-row-per-day data remains complete and calm.
+ */
+export function formatScheduleSummaries(
+  schedules: Schedule[],
+  currentDate: Date = new Date(),
+): string | null {
+  const descriptions = new Map<string, string>();
+  const structuredGroups = new Map<string, { times: string | null; days: Set<string> }>();
+
+  for (const schedule of schedules) {
+    if (!isScheduleCurrent(schedule, currentDate)) continue;
+
+    const description = schedule.description?.trim().replace(/\s+/g, ' ');
+    if (description) {
+      const key = description.toLowerCase();
+      if (!descriptions.has(key)) descriptions.set(key, description);
+      continue;
+    }
+
+    const times = formatStoredTimes(schedule);
+    const days = (schedule.days ?? [])
+      .map(normalizeScheduleDay)
+      .filter((day): day is string => Boolean(day));
+    if (!times && days.length === 0) continue;
+
+    // A row without days may mean the stored hours apply generally. Do not
+    // collapse it into a narrower day-scoped row with the same time range.
+    const key = `${days.length > 0 ? 'day-scoped' : 'dayless'}:${times ?? ''}`;
+    const group = structuredGroups.get(key) ?? { times, days: new Set<string>() };
+    days.forEach((day) => group.days.add(day));
+    structuredGroups.set(key, group);
+  }
+
+  const structured = [...structuredGroups.values()].map(({ times, days }) => {
+    const daySummary = sortScheduleDays(days).join(', ') || null;
+    return [daySummary, times].filter((part): part is string => Boolean(part)).join(' · ');
+  });
+
+  const segments = [...descriptions.values(), ...structured].filter(Boolean);
+  return segments.join('; ') || null;
+}
+
+export function formatScheduleSummary(
+  schedule: Schedule | undefined,
+  currentDate: Date = new Date(),
+): string | null {
+  return formatScheduleSummaries(schedule ? [schedule] : [], currentDate);
 }
 
 const CAPACITY_STYLES: Record<string, { label: string; color: string }> = {
@@ -189,8 +259,7 @@ export function ServiceCard({
   const primaryPhone = phones.find((phone) => (
     phone.type == null || phone.type === 'voice' || phone.type === 'hotline'
   ));
-  const primarySchedule = schedules[0];
-  const primaryScheduleSummary = formatScheduleSummary(primarySchedule);
+  const scheduleSummary = formatScheduleSummaries(schedules);
   const alignmentLabels = summarizeServiceAlignment(enriched, discoveryContext);
   const helpDescription = service.description?.trim() || null;
   const helpCategories = taxonomyTerms
@@ -392,10 +461,10 @@ export function ServiceCard({
           </div>
         )}
 
-        {primaryScheduleSummary && (
+        {scheduleSummary && (
           <div className="flex items-start gap-2 text-gray-600">
             <Clock className="h-4 w-4 flex-shrink-0 mt-0.5 text-gray-400" aria-hidden="true" />
-            <span>{primaryScheduleSummary}</span>
+            <span>{scheduleSummary}</span>
           </div>
         )}
       </div>

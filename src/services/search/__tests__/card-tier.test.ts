@@ -2,8 +2,8 @@
  * Card-tier hydration tests.
  *
  * The paged search path attaches exactly one callable phone (service →
- * location → organization fallback), one hours line (service → location), and
- * a capped set of taxonomy labels. These tests pin the fallback chain — the
+ * location → organization fallback), a complete hours set (service →
+ * location), and a capped set of taxonomy labels. These tests pin the fallback chain — the
  * demo/live data attaches phones at the location/org level, which the old
  * service-scoped lookup silently missed ("No stored phone number" while a
  * phone existed one level up).
@@ -85,6 +85,26 @@ function phoneRow(overrides: Record<string, unknown>) {
   };
 }
 
+function scheduleRow(overrides: Record<string, unknown>) {
+  return {
+    id: 's-x',
+    service_id: null,
+    location_id: null,
+    valid_from: null,
+    valid_to: null,
+    dtstart: null,
+    until: null,
+    wkst: null,
+    days: null,
+    opens_at: null,
+    closes_at: null,
+    description: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   executeQuery.mockResolvedValue([]);
@@ -141,7 +161,7 @@ describe('hydrateCardTier', () => {
     expect(withoutLocation.phones[0]?.number).toBe('555-0300');
   });
 
-  it('attaches one schedule line with a service-then-location fallback', async () => {
+  it('attaches schedules with a service-then-location fallback', async () => {
     executeQuery.mockImplementation(async (sql: string) => {
       if (sql.includes('FROM schedules')) {
         return [
@@ -170,6 +190,48 @@ describe('hydrateCardTier', () => {
 
     expect(fromLocation.schedules[0]?.description).toBe('Open weekdays 9-5');
     expect(fromService.schedules[0]?.description).toBe('Hotline, 24/7');
+  });
+
+  it('preserves every service schedule row and overrides the location set as a whole', async () => {
+    const weekdays = ['MO', 'TU', 'WE', 'TH', 'FR'];
+    executeQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM schedules')) {
+        return [
+          ...weekdays.map((day, index) => scheduleRow({
+            id: `s-service-${index}`,
+            service_id: 'svc-1',
+            days: [day],
+            opens_at: '09:00',
+            closes_at: '17:00',
+          })),
+          scheduleRow({
+            id: 's-location-sat',
+            location_id: 'loc-1',
+            days: ['SA'],
+            opens_at: '10:00',
+            closes_at: '14:00',
+          }),
+          scheduleRow({
+            id: 's-location-sun',
+            location_id: 'loc-1',
+            days: ['SU'],
+            opens_at: '10:00',
+            closes_at: '14:00',
+          }),
+        ];
+      }
+      return [];
+    });
+
+    const [result] = await hydrateCardTier(
+      { executeQuery },
+      [makeService({ id: 'svc-1', locationId: 'loc-1' })],
+    );
+
+    expect(result.schedules).toHaveLength(5);
+    expect(result.schedules.map((schedule) => schedule.days?.[0])).toEqual(weekdays);
+    expect(result.schedules.map((schedule) => schedule.id)).not.toContain('s-location-sat');
+    expect(result.schedules.map((schedule) => schedule.id)).not.toContain('s-location-sun');
   });
 
   it('caps taxonomy labels at three per service', async () => {

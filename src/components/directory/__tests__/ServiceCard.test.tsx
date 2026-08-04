@@ -74,6 +74,19 @@ function collectElements(
   return elements;
 }
 
+function collectText(node: React.ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return String(node);
+  }
+  if (Array.isArray(node)) {
+    return node.map(collectText).join(' ');
+  }
+  if (!React.isValidElement(node)) {
+    return '';
+  }
+  return collectText((node as React.ReactElement<any, any>).props.children);
+}
+
 const enrichedFixture = {
   service: {
     id: 'svc-1',
@@ -177,5 +190,71 @@ describe('ServiceCard', () => {
     expect(anchors.some((child) => child.props.href === 'https://example.org/services/food-pantry')).toBe(true);
     expect(feedbackForm.props.serviceId).toBe('svc-1');
     expect(typeof feedbackForm.props.sessionId).toBe('string');
+  });
+
+  it('renders stored structured schedule days and times without an availability claim', async () => {
+    const { ServiceCard } = await loadServiceCard();
+    const element = ServiceCard({
+      enriched: {
+        ...enrichedFixture,
+        schedules: [{
+          description: null,
+          days: ['MO', 'Tuesday'],
+          opensAt: '09:00:00',
+          closesAt: '17:00:00',
+        }],
+      } as never,
+    }) as React.ReactElement<any, any>;
+
+    const text = collectText(element);
+    expect(text).toContain('Mon, Tue · 9:00 AM–5:00 PM');
+    expect(text).not.toContain('Open now');
+  });
+
+  it('uses only a callable phone for the tel action', async () => {
+    const { ServiceCard } = await loadServiceCard();
+    const element = ServiceCard({
+      enriched: {
+        ...enrichedFixture,
+        phones: [
+          { number: '555-0199', extension: null, type: 'sms' },
+          { number: '555-0100', extension: null, type: 'voice' },
+        ],
+      } as never,
+    }) as React.ReactElement<any, any>;
+    const anchors = collectElements(element, (child) => child.type === 'a');
+
+    expect(anchors.some((anchor) => anchor.props.href === 'tel:555-0100')).toBe(true);
+    expect(anchors.some((anchor) => anchor.props.href === 'tel:555-0199')).toBe(false);
+  });
+
+  it('does not render a tel action when the record has only an SMS number', async () => {
+    const { ServiceCard } = await loadServiceCard();
+    const element = ServiceCard({
+      enriched: {
+        ...enrichedFixture,
+        phones: [{ number: '555-0199', extension: null, type: 'sms' }],
+      } as never,
+    }) as React.ReactElement<any, any>;
+    const anchors = collectElements(element, (child) => child.type === 'a');
+
+    expect(anchors.some((anchor) => String(anchor.props.href).startsWith('tel:'))).toBe(false);
+  });
+
+  it('uses a hotline for the tel action instead of an earlier SMS number', async () => {
+    const { ServiceCard } = await loadServiceCard();
+    const element = ServiceCard({
+      enriched: {
+        ...enrichedFixture,
+        phones: [
+          { number: '555-0199', extension: null, type: 'sms' },
+          { number: '555-0111', extension: null, type: 'hotline' },
+        ],
+      } as never,
+    }) as React.ReactElement<any, any>;
+    const anchors = collectElements(element, (child) => child.type === 'a');
+
+    expect(anchors.some((anchor) => anchor.props.href === 'tel:555-0111')).toBe(true);
+    expect(anchors.some((anchor) => anchor.props.href === 'tel:555-0199')).toBe(false);
   });
 });

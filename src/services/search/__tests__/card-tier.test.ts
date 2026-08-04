@@ -183,6 +183,7 @@ describe('hydrateCardTier', () => {
           parent_id: null,
           taxonomy: 'custom',
           created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-02-01T00:00:00.000Z',
         }));
       }
       return [];
@@ -195,6 +196,13 @@ describe('hydrateCardTier', () => {
 
     expect(result.taxonomyTerms).toHaveLength(3);
     expect(result.taxonomyTerms.map((t) => t.term)).toEqual(['Food', 'Groceries', 'Meals']);
+    expect(result.taxonomyTerms[0]?.updatedAt.toISOString()).toBe('2026-02-01T00:00:00.000Z');
+
+    const taxonomyCall = executeQuery.mock.calls.find(([sql]) => (
+      typeof sql === 'string' && sql.includes('FROM service_taxonomy')
+    ));
+    expect(taxonomyCall?.[0]).toContain('tt.updated_at');
+    expect(taxonomyCall?.[0]).toContain('ORDER BY st.service_id, tt.term, tt.id');
   });
 
   it('leaves collections empty when nothing matches (no fabricated data)', async () => {
@@ -231,11 +239,12 @@ describe('hydrateCardTier', () => {
     expect(sibling.phones[0]?.number).toBe('555-0100');
   });
 
-  it('excludes fax lines and prefers voice numbers in the phone query', () => {
-    // The callable-primary policy lives in the SQL: fax rows never qualify
-    // and voice/untyped rows sort ahead of sms/tty.
-    expect(CARD_PHONES_SQL).toContain("type <> 'fax'");
+  it('selects only voice, hotline, or untyped rows for the Call action', () => {
+    // SMS, TTY, and fax require different affordances and never qualify for
+    // the card tier's tel: link.
+    expect(CARD_PHONES_SQL).toContain("type IN ('voice', 'hotline')");
     expect(CARD_PHONES_SQL).toMatch(/CASE WHEN type IS NULL OR type = 'voice' THEN 0 ELSE 1 END/);
+    expect(CARD_PHONES_SQL).not.toContain("type <> 'fax'");
     expect(CARD_PHONES_SQL).toContain('created_at');
     expect(CARD_PHONES_SQL).toContain('updated_at');
   });
@@ -274,5 +283,19 @@ describe('hydrateCardTier', () => {
     expect(result.schedules[0]?.opensAt).toBe('09:00');
     expect(result.schedules[0]?.closesAt).toBe('17:00');
     expect(CARD_SCHEDULES_SQL).toContain('days IS NOT NULL OR opens_at IS NOT NULL');
+    expect(CARD_SCHEDULES_SQL).toContain('valid_from <= $3::date');
+    expect(CARD_SCHEDULES_SQL).toContain('valid_to >= $3::date');
+    expect(CARD_SCHEDULES_SQL).toContain('valid_from DESC NULLS LAST');
+    expect(CARD_SCHEDULES_SQL).toContain('updated_at DESC NULLS LAST');
+    expect(CARD_SCHEDULES_SQL).toContain('service_id NULLS LAST, location_id NULLS LAST, id');
+
+    const scheduleCall = executeQuery.mock.calls.find(([sql]) => (
+      typeof sql === 'string' && sql.includes('FROM schedules')
+    ));
+    expect(scheduleCall?.[1]).toEqual([
+      ['svc-1'],
+      [],
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    ]);
   });
 });

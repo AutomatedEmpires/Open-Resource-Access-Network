@@ -5,7 +5,7 @@ import {
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
   RATE_LIMIT_WINDOW_MS,
 } from '@/domain/constants';
-import { requireMinRole } from '@/services/auth/guards';
+import { requireRole } from '@/services/auth/guards';
 import { getAuthContext } from '@/services/auth/session';
 import { isDatabaseConfigured } from '@/services/db/postgres';
 import {
@@ -92,13 +92,13 @@ export async function POST(
     if (!auth) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-    if (!requireMinRole(auth, 'community_admin')) {
+    if (!requireRole(auth, 'community_admin')) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
     // Dark landing: claim would mutate assignment state under a schema whose
     // completion trigger is not installed, and decide would fail on the
-    // missing decision_reviewer_user_id column. Unreachable until migration
+    // missing decision_reviewer_profile_id column. Unreachable until migration
     // 0077 provisions the evidence schema.
     if (!(await isCandidateApprovalEvidenceProvisioned())) {
       return NextResponse.json(
@@ -120,24 +120,33 @@ export async function POST(
       );
     }
 
-    const result = parsed.data.action === 'claim'
-      ? await claimCandidateApproval({
-          candidateId: id,
-          assignmentId: parsed.data.assignmentId,
-          actorUserId: auth.userId,
-        })
-      : await decideCandidateApproval({
-          candidateId: id,
-          assignmentId: parsed.data.assignmentId,
-          actorUserId: auth.userId,
-          decision: parsed.data.decision,
-          notes: parsed.data.notes,
-        });
+    if (parsed.data.action === 'claim') {
+      await claimCandidateApproval({
+        candidateId: id,
+        assignmentId: parsed.data.assignmentId,
+        actorUserId: auth.userId,
+      });
+      return NextResponse.json({ success: true, status: 'claimed' });
+    }
 
-    return NextResponse.json({ success: true, ...result });
+    await decideCandidateApproval({
+      candidateId: id,
+      assignmentId: parsed.data.assignmentId,
+      actorUserId: auth.userId,
+      decision: parsed.data.decision,
+      notes: parsed.data.notes,
+    });
+
+    // The transactional service needs aggregate outcomes to advance durable
+    // state, but an independent reviewer must not learn a peer's decision,
+    // decision count, or the resulting candidate workflow status.
+    return NextResponse.json({ success: true, status: 'completed' });
   } catch (error) {
     if (error instanceof CandidateApprovalConflict) {
-      return NextResponse.json({ error: error.message }, { status: 409 });
+      return NextResponse.json(
+        { error: 'This review changed and could not be completed. Refresh and try again.' },
+        { status: 409 },
+      );
     }
     captureException(error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });

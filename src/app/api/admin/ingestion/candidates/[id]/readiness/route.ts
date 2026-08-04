@@ -10,6 +10,8 @@ import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
+import { getCandidateReviewReadAccess } from '@/services/ingestion/candidateReviewAccess';
+import { getPeerBlindCandidateReviewReadiness } from '@/services/ingestion/candidateReviewReadiness';
 import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
@@ -47,6 +49,15 @@ export async function GET(
     if (!UUID_RE.test(id)) {
       return NextResponse.json({ error: 'Invalid candidate ID.' }, { status: 400 });
     }
+    const hasOranOversight = requireMinRole(authCtx, 'oran_admin');
+    const reviewAccess = await getCandidateReviewReadAccess({
+      candidateId: id,
+      actorUserId: authCtx.userId,
+      hasOranOversight,
+    });
+    if (!reviewAccess.allowed) {
+      return NextResponse.json({ error: 'Candidate review access denied.' }, { status: 403 });
+    }
 
     const { createIngestionStores } = await import(
       '@/agents/ingestion/persistence/storeFactory'
@@ -64,7 +75,11 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ readiness });
+    if (hasOranOversight) {
+      return NextResponse.json({ readiness });
+    }
+    const peerBlindReadiness = await getPeerBlindCandidateReviewReadiness(id);
+    return NextResponse.json({ readiness: peerBlindReadiness.reviewReadiness });
   } catch (error) {
     captureException(error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });

@@ -241,4 +241,21 @@ describe('storeFactory', () => {
       resolutionDecisions: { name: 'resolutionDecisionStore' },
     });
   });
+
+  it('rebinds every store to the same transaction for atomic materialization', async () => {
+    const transactionDb = { name: 'transaction-db' };
+    const transaction = vi.fn(async (callback: (db: unknown) => Promise<unknown>) => (
+      callback(transactionDb)
+    ));
+    const stores = createIngestionStores({ transaction } as never);
+
+    await expect(stores.runAtomically?.(async (transactionStores) => {
+      expect(transactionStores.candidates).toEqual({ name: 'candidateStore' });
+      return 'committed';
+    })).resolves.toBe('committed');
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(creatorMocks.candidates).toHaveBeenLastCalledWith(transactionDb);
+    expect(creatorMocks.publishReadiness).toHaveBeenLastCalledWith(transactionDb);
+  });
 });

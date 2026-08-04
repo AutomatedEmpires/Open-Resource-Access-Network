@@ -6,7 +6,7 @@ ledger. The runner must never create or guess an imported production baseline.
 
 ## Current release manifest
 
-The release contains exactly 76 lexical migration files:
+The release contains exactly 77 lexical migration files:
 
 - first: `0000_initial_schema.sql`
 - comparison/baseline boundary: `0068_shared_rate_limit_windows.sql` (67 files)
@@ -21,11 +21,20 @@ The release contains exactly 76 lexical migration files:
 - browser-role ACL/RLS lockdown: `0075_data_api_acl_lockdown.sql`
 - erasure high-water planner fix:
   `0076_account_erasure_highwater_planner_fix.sql`
-- candidate revision lineage + dual-approval evidence:
+- candidate revision lineage expand phase:
   `0077_candidate_revision_lineage.sql`
+- candidate revision and dual-approval activation:
+  `0078_candidate_revision_activation.sql`
 
-The expected final repository ledger is therefore exactly 76 rows with
-`0077_candidate_revision_lineage.sql` as the maximum filename. Supabase's own
+The activated approval ledger stores an immutable reviewer-profile UUID, not a
+raw ORAN or Clerk user identifier. Account erasure tombstones the profile's user
+identity while the referentially valid completed decision remains immutable.
+Migration 0078 does not infer an actor from a legacy assignee: all pre-activation
+completed assignments are reopened and must be decided through the activated
+identity-binding route.
+
+The expected final repository ledger is therefore exactly 77 rows with
+`0078_candidate_revision_activation.sql` as the maximum filename. Supabase's own
 `supabase_migrations.schema_migrations` history is provider metadata and remains
 separate. Do not copy, delete, or rename provider entries while establishing the
 ORAN ledger.
@@ -76,7 +85,7 @@ scripts/db/configure-supabase-data-api.sh <branch-project-ref> oran_api
 
 Acceptance requires all of the following:
 
-- output `76|0077_candidate_revision_lineage.sql`;
+- output `77|0078_candidate_revision_activation.sql`;
 - `0070` exists as a live, ready, valid concurrent index;
 - all 128 fixed account-erasure indexes are live, ready, and valid;
 - the account-erasure release gate is open;
@@ -114,12 +123,28 @@ repair changes history; it does not execute SQL and is not acceptance evidence.
    or resume the online build, and retry the migration.
 9. Execute and record `0073`, `0074`, `0075`, and `0076` in lexical order,
    recording each only after its SQL succeeds.
-10. Configure Supabase PostgREST to expose only `oran_api`, then run the Data API
+10. Execute and record `0077`. It is the backward-compatible expand phase and
+    must leave candidate approval activation dark.
+11. Deploy the exact lineage-aware application SHA. Prove its successful
+    deployment record and healthy `/api/health` response before continuing.
+12. Explicitly execute and record `0078`; then run the backend runtime validator
+    to prove the strict lineage triggers, two-person gate, audit vocabulary, and
+    bounded function ACL are active. `0078` refuses to activate unless two
+    distinct active authorized community reviewers are accepting work with
+    capacity, and it must route every open candidate to two independent
+    community reviewer identities. ORAN-admin profiles are oversight-only and
+    cannot occupy or satisfy a candidate reviewer slot.
+13. Configure Supabase PostgREST to expose only `oran_api`, then run the Data API
     isolation proof. Migration `0074` creates the schema but cannot change the
     provider setting by itself.
-11. Verify the exact 75-row repository ledger, the release gates, runtime
+14. Verify the exact 77-row repository ledger, the release gates, runtime
     connectivity, and application smoke tests before enabling automatic remote
     migration dispatch.
+
+The production release helper intentionally stops at `0077` while activation is
+pending and exposes no override. `0078` must run through the manually dispatched
+database workflow, whose activation path binds the checked-out SHA to a
+successful GitHub deployment record and a healthy exact deployment URL.
 
 Never deploy the account-erasure worker between steps 6 and 8. Never insert the
 `0072` row manually to bypass the gate. A failed SQL file remains absent from the
@@ -145,7 +170,7 @@ npx vitest run \
 ```
 
 On the target database, the release is not complete until this returns
-`76|0077_candidate_revision_lineage.sql` and the erasure gate is true:
+`77|0078_candidate_revision_activation.sql` and the erasure gate is true:
 
 ```sql
 SELECT count(*) || '|' || max(filename)

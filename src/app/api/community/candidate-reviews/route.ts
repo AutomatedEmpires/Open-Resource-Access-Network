@@ -6,7 +6,7 @@ import {
   DEFAULT_PAGE_SIZE,
   RATE_LIMIT_WINDOW_MS,
 } from '@/domain/constants';
-import { requireMinRole } from '@/services/auth/guards';
+import { requireRole } from '@/services/auth/guards';
 import { getAuthContext } from '@/services/auth/session';
 import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { getIp } from '@/services/security/ip';
@@ -24,7 +24,6 @@ interface CandidateReviewInboxRow {
   assignment_id: string;
   assignment_status: 'pending' | 'claimed';
   expires_at: string | null;
-  candidate_review_status: string;
   organization_name: string;
   service_name: string;
   description: string | null;
@@ -69,7 +68,7 @@ export async function GET(req: NextRequest) {
   if (!auth) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
-  if (!requireMinRole(auth, 'community_admin')) {
+  if (!requireRole(auth, 'community_admin')) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
@@ -103,7 +102,7 @@ export async function GET(req: NextRequest) {
        WHERE reviewer.user_id = $1
          AND reviewer.is_active IS TRUE
          AND COALESCE(account.account_status, 'active') = 'active'
-         AND account.role IN ('community_admin', 'oran_admin')
+         AND account.role = 'community_admin'
          AND ${assignmentStatusClause}
          AND (assignment.expires_at IS NULL OR assignment.expires_at > NOW())
          AND candidate.published_service_id IS NULL
@@ -117,7 +116,6 @@ export async function GET(req: NextRequest) {
               assignment.id AS assignment_id,
               assignment.status AS assignment_status,
               assignment.expires_at,
-              candidate.review_status AS candidate_review_status,
               candidate.organization_name,
               candidate.service_name,
               candidate.description,
@@ -138,7 +136,7 @@ export async function GET(req: NextRequest) {
        WHERE reviewer.user_id = $1
          AND reviewer.is_active IS TRUE
          AND COALESCE(account.account_status, 'active') = 'active'
-         AND account.role IN ('community_admin', 'oran_admin')
+         AND account.role = 'community_admin'
          AND ${assignmentStatusClause}
          AND (assignment.expires_at IS NULL OR assignment.expires_at > NOW())
          AND candidate.published_service_id IS NULL

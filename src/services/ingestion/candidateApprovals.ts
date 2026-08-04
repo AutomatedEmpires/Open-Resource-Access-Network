@@ -6,11 +6,10 @@ import { executeQuery, withTransaction } from '@/services/db/postgres';
 export const REQUIRED_INDEPENDENT_CANDIDATE_APPROVALS = 2;
 
 /**
- * Dark-landing capability probe: the dual-approval evidence schema (the
- * decision_reviewer_user_id column and its completion-binding trigger) arrives
- * with migration 0077, which is applied to production manually. The approval
- * routes stay 503 and the publish gate stays in its legacy regime until BOTH
- * objects exist. Fails closed on any probe error. Deliberately un-memoized:
+ * Dark-landing capability probe: migration 0077 adds the nullable evidence
+ * column, while 0078 activates its completion-binding trigger and guarded
+ * workflow. Approval routes stay 503 until BOTH objects exist. Fails closed on
+ * any probe error. Deliberately un-memoized:
  * a long-lived instance must observe the migration (or a rollback) promptly.
  */
 export async function isCandidateApprovalEvidenceProvisioned(): Promise<boolean> {
@@ -19,7 +18,7 @@ export async function isCandidateApprovalEvidenceProvisioned(): Promise<boolean>
       `SELECT true AS exists
        FROM pg_catalog.pg_attribute
        WHERE attrelid = pg_catalog.to_regclass('public.candidate_admin_assignments')
-         AND attname = 'decision_reviewer_user_id'
+         AND attname = 'decision_reviewer_profile_id'
          AND NOT attisdropped`,
       [],
     );
@@ -27,10 +26,55 @@ export async function isCandidateApprovalEvidenceProvisioned(): Promise<boolean>
 
     const triggerRows = await executeQuery<{ exists: boolean }>(
       `SELECT true AS exists
-       FROM pg_catalog.pg_trigger
-       WHERE tgrelid = pg_catalog.to_regclass('public.candidate_admin_assignments')
-         AND tgname = 'trg_protect_completed_candidate_approval'
-         AND NOT tgisinternal`,
+       WHERE EXISTS (
+         SELECT 1
+         FROM pg_catalog.pg_trigger
+         WHERE tgrelid = pg_catalog.to_regclass('public.candidate_admin_assignments')
+           AND tgname = 'trg_protect_completed_candidate_approval'
+           AND NOT tgisinternal
+           AND tgenabled IN ('O', 'A')
+       )
+       AND EXISTS (
+         SELECT 1
+         FROM pg_catalog.pg_trigger
+         WHERE tgrelid = pg_catalog.to_regclass('public.extracted_candidates')
+           AND tgname = 'trg_enforce_candidate_revision_lineage'
+           AND NOT tgisinternal
+           AND tgenabled IN ('O', 'A')
+       )
+       AND EXISTS (
+         SELECT 1
+         FROM pg_catalog.pg_constraint
+         WHERE conrelid = pg_catalog.to_regclass('public.candidate_admin_assignments')
+           AND conname = 'candidate_admin_assignments_decision_reviewer_check'
+           AND convalidated IS TRUE
+       )
+       AND EXISTS (
+         SELECT 1
+         FROM pg_catalog.pg_constraint
+         WHERE conrelid = pg_catalog.to_regclass('public.extracted_candidates')
+           AND conname = 'extracted_candidates_revision_number_check'
+           AND convalidated IS TRUE
+       )
+       AND (
+         SELECT count(*)
+         FROM pg_catalog.pg_attribute
+         WHERE attrelid = pg_catalog.to_regclass('public.extracted_candidates')
+           AND attname IN ('lineage_root_candidate_id', 'revision_number')
+           AND attnotnull IS TRUE
+           AND NOT attisdropped
+       ) = 2
+       AND EXISTS (
+         SELECT 1
+         FROM pg_catalog.pg_index lineage_index
+         WHERE lineage_index.indexrelid = pg_catalog.to_regclass(
+           'public.idx_extracted_candidates_lineage_revision'
+         )
+           AND lineage_index.indrelid = pg_catalog.to_regclass('public.extracted_candidates')
+           AND lineage_index.indisunique IS TRUE
+           AND lineage_index.indisvalid IS TRUE
+           AND lineage_index.indisready IS TRUE
+       )`,
       [],
     );
     return Boolean(triggerRows[0]?.exists);
@@ -42,16 +86,16 @@ export async function isCandidateApprovalEvidenceProvisioned(): Promise<boolean>
 /**
  * Publication gate over immutable completed-assignment evidence.
  *
- * Once the 0077 evidence schema is provisioned, publication requires at least
+ * Once 0078 activates the evidence workflow, publication requires at least
  * REQUIRED_INDEPENDENT_CANDIDATE_APPROVALS distinct verifying reviewers and
  * zero rejecting reviewers — counted directly from completed assignments,
  * never trusted from review_status or candidate_readiness (both of which
  * legacy paths can set without two independent reviewers).
  *
- * While the schema is NOT provisioned, this gate is inert and publication
- * continues under the legacy readiness threshold: applying migration 0077 to
- * production is the founder's explicit activation switch for the stricter
- * regime.
+ * Before activation, this compatibility helper avoids querying a column that
+ * may not exist yet. It is not publication authority: the transactional live
+ * publisher independently requires the 0078 trigger and fails closed while the
+ * workflow is dark.
  */
 export async function assertCandidatePublishApprovalEvidence(
   candidateId: string,
@@ -63,13 +107,17 @@ export async function assertCandidatePublishApprovalEvidence(
   const rows = await executeQuery<{
     approval_count: number;
     rejection_count: number;
+    escalation_count: number;
   }>(
     `SELECT count(DISTINCT CASE
-                WHEN approval.outcome = 'verified' THEN approval.decision_reviewer_user_id
+                WHEN approval.outcome = 'verified' THEN approval.decision_reviewer_profile_id
               END)::integer AS approval_count,
             count(DISTINCT CASE
-                WHEN approval.outcome = 'rejected' THEN approval.decision_reviewer_user_id
-              END)::integer AS rejection_count
+                WHEN approval.outcome = 'rejected' THEN approval.decision_reviewer_profile_id
+              END)::integer AS rejection_count,
+            count(DISTINCT CASE
+                WHEN approval.outcome = 'escalated' THEN approval.decision_reviewer_profile_id
+              END)::integer AS escalation_count
      FROM public.candidate_admin_assignments approval
      WHERE approval.candidate_id = $1
        AND approval.status = 'completed'`,
@@ -77,11 +125,16 @@ export async function assertCandidatePublishApprovalEvidence(
   );
   const approvalCount = rows[0]?.approval_count ?? 0;
   const rejectionCount = rows[0]?.rejection_count ?? 0;
-  if (approvalCount < REQUIRED_INDEPENDENT_CANDIDATE_APPROVALS || rejectionCount > 0) {
+  const escalationCount = rows[0]?.escalation_count ?? 0;
+  if (
+    approvalCount < REQUIRED_INDEPENDENT_CANDIDATE_APPROVALS
+    || rejectionCount > 0
+    || escalationCount > 0
+  ) {
     throw new CandidateApprovalConflict(
       `Publication requires ${REQUIRED_INDEPENDENT_CANDIDATE_APPROVALS} independent`
       + ` approvals with no rejections (currently ${approvalCount} approval(s),`
-      + ` ${rejectionCount} rejection(s)).`,
+      + ` ${rejectionCount} rejection(s), ${escalationCount} escalation(s)).`,
     );
   }
 }
@@ -116,6 +169,33 @@ interface AssignmentRow {
   admin_profile_id: string;
   status: string;
   expires_at: string | null;
+}
+
+interface CandidateReadinessDecisionRow {
+  has_required_fields: boolean;
+  has_required_tags: boolean;
+  tags_confirmed: boolean;
+  meets_score_threshold: boolean;
+  pending_tag_count: number;
+  blockers: unknown;
+}
+
+const PEER_DECISION_READINESS_BLOCKERS = new Set([
+  'candidate_rejected',
+  'candidate_escalated',
+  'candidate_review_disagreement',
+]);
+
+function hasNonApprovalReadinessBlocker(rawBlockers: unknown): boolean {
+  if (!Array.isArray(rawBlockers)) return true;
+  return rawBlockers.some((blocker) => (
+    typeof blocker !== 'string'
+    || (
+      blocker !== 'missing_two_person_approval'
+      && !PEER_DECISION_READINESS_BLOCKERS.has(blocker)
+      && !/^Need \d+ admin approvals, have \d+$/i.test(blocker)
+    )
+  ));
 }
 
 async function lockCandidate(client: PoolClient, candidateId: string) {
@@ -159,7 +239,7 @@ async function lockActiveReviewer(
     !reviewer
     || !reviewer.is_active
     || (reviewer.account_status ?? 'active') !== 'active'
-    || !['community_admin', 'oran_admin'].includes(reviewer.role)
+    || reviewer.role !== 'community_admin'
   ) {
     throw new CandidateApprovalConflict('Only an active assigned reviewer may review this candidate.');
   }
@@ -267,7 +347,12 @@ export async function decideCandidateApproval(input: {
   actorUserId: string;
   decision: 'approved' | 'rejected' | 'escalated';
   notes?: string;
-}): Promise<{ status: string; approvalCount: number; rejectionCount: number }> {
+}): Promise<{
+  status: string;
+  approvalCount: number;
+  rejectionCount: number;
+  escalationCount: number;
+}> {
   const normalizedNotes = input.notes?.trim();
   if (normalizedNotes && normalizedNotes.length > 4_000) {
     throw new CandidateApprovalConflict('Review notes exceed the allowed length.');
@@ -296,6 +381,44 @@ export async function decideCandidateApproval(input: {
     if (assignment.status !== 'claimed') {
       throw new CandidateApprovalConflict('Reviewer must claim the assignment before deciding it.');
     }
+    if (assignment.expires_at && new Date(assignment.expires_at).getTime() <= Date.now()) {
+      throw new CandidateApprovalConflict('Assignment has expired and must be rerouted.');
+    }
+
+    if (input.decision === 'approved') {
+      // Recompute the full non-approval safety baseline while the candidate is
+      // locked. Tag/LLM inputs cannot change after this first completion.
+      await client.query(
+        `SELECT public.evaluate_candidate_readiness($1) AS is_ready`,
+        [input.candidateId],
+      );
+      const readiness = await client.query<CandidateReadinessDecisionRow>(
+        `SELECT has_required_fields,
+                has_required_tags,
+                tags_confirmed,
+                meets_score_threshold,
+                pending_tag_count,
+                blockers
+         FROM public.candidate_readiness
+         WHERE candidate_id = $1
+         FOR UPDATE`,
+        [input.candidateId],
+      );
+      const baseline = readiness.rows[0];
+      if (
+        !baseline
+        || !baseline.has_required_fields
+        || !baseline.has_required_tags
+        || !baseline.tags_confirmed
+        || !baseline.meets_score_threshold
+        || baseline.pending_tag_count !== 0
+        || hasNonApprovalReadinessBlocker(baseline.blockers)
+      ) {
+        throw new CandidateApprovalConflict(
+          'Candidate evidence must be complete, confirmed, and safety-cleared before approval.',
+        );
+      }
+    }
 
     const outcome = input.decision === 'approved' ? 'verified' : input.decision;
     const completed = await client.query<{ id: string }>(
@@ -303,12 +426,13 @@ export async function decideCandidateApproval(input: {
        SET status = 'completed',
            outcome = $2,
            outcome_notes = $3,
+           decision_reviewer_profile_id = $4,
            completed_at = NOW(),
            updated_at = NOW()
        WHERE id = $1
          AND status = 'claimed'
        RETURNING id`,
-      [assignment.id, outcome, normalizedNotes ?? null],
+      [assignment.id, outcome, normalizedNotes ?? null, reviewer.id],
     );
     if (!completed.rows[0]) {
       throw new CandidateApprovalConflict('Assignment decision was already taken.');
@@ -317,13 +441,17 @@ export async function decideCandidateApproval(input: {
     const decisions = await client.query<{
       approval_count: number;
       rejection_count: number;
+      escalation_count: number;
     }>(
       `SELECT count(DISTINCT CASE
-                  WHEN approval.outcome = 'verified' THEN approval.decision_reviewer_user_id
+                  WHEN approval.outcome = 'verified' THEN approval.decision_reviewer_profile_id
                 END)::integer AS approval_count,
               count(DISTINCT CASE
-                  WHEN approval.outcome = 'rejected' THEN approval.decision_reviewer_user_id
-                END)::integer AS rejection_count
+                  WHEN approval.outcome = 'rejected' THEN approval.decision_reviewer_profile_id
+                END)::integer AS rejection_count,
+              count(DISTINCT CASE
+                  WHEN approval.outcome = 'escalated' THEN approval.decision_reviewer_profile_id
+                END)::integer AS escalation_count
        FROM public.candidate_admin_assignments approval
        WHERE approval.candidate_id = $1
          AND approval.status = 'completed'`,
@@ -331,18 +459,26 @@ export async function decideCandidateApproval(input: {
     );
     const approvalCount = decisions.rows[0]?.approval_count ?? 0;
     const rejectionCount = decisions.rows[0]?.rejection_count ?? 0;
+    const escalationCount = decisions.rows[0]?.escalation_count ?? 0;
     const hasApprovalConsensus = (
       approvalCount >= REQUIRED_INDEPENDENT_CANDIDATE_APPROVALS
       && rejectionCount === 0
+      && escalationCount === 0
     );
     const hasRejectionConsensus = (
       rejectionCount >= REQUIRED_INDEPENDENT_CANDIDATE_APPROVALS
       && approvalCount === 0
+      && escalationCount === 0
     );
     const hasDecisionDisagreement = approvalCount > 0 && rejectionCount > 0;
 
     let nextStatus = 'in_review';
-    if (input.decision === 'escalated' || hasDecisionDisagreement || rejectionCount > 0) {
+    if (
+      input.decision === 'escalated'
+      || escalationCount > 0
+      || hasDecisionDisagreement
+      || rejectionCount > 0
+    ) {
       nextStatus = 'escalated';
     }
     if (hasApprovalConsensus) nextStatus = 'verified';
@@ -432,12 +568,13 @@ export async function decideCandidateApproval(input: {
           decision: input.decision,
           approvalCount,
           rejectionCount,
+          escalationCount,
           requiredApprovalCount: REQUIRED_INDEPENDENT_CANDIDATE_APPROVALS,
           eventId: crypto.randomUUID(),
         }),
       ],
     );
 
-    return { status: nextStatus, approvalCount, rejectionCount };
+    return { status: nextStatus, approvalCount, rejectionCount, escalationCount };
   });
 }

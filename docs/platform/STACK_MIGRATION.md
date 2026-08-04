@@ -1,78 +1,92 @@
-# ORAN platform target and migration
+# ORAN production platform and legacy boundary
 
 ## Decision
 
-ORAN is moving off Microsoft/Azure services. The active target is:
+ORAN's production platform is:
 
-- **Vercel** for the Next.js web application, previews, production releases, and short-running server functions
-- **Supabase** for PostgreSQL/PostGIS/pgvector, backups, and later Storage/Realtime capabilities where they serve a verified product need
+- **Vercel** for the Next.js web application, previews, production releases, server route handlers, and authenticated cron requests
+- **Supabase** for PostgreSQL/PostGIS/pgvector, backups, and project-bound runtime and migration connections
 - **Clerk** for user identity, sessions, organizations, and account lifecycle
-- **Sentry** for privacy-filtered errors, traces, and release diagnostics
-- **Resend** for ORAN transactional email delivery
-- **Direct OpenAI or provider-neutral AI adapters** for optional language tasks; deterministic crisis routing and verified retrieval remain available without an LLM
+- **Sentry** for privacy-filtered client, server, and edge errors, traces, and release diagnostics
 
-This platform serves the product vision: a nationwide, chat-first navigator that helps a person find and act on verified government and community services. It is not a directory of retailers that accept one benefit.
+Resend, Redis, and provider-neutral mapping are optional adapter-backed capabilities. Their presence in the repository does not prove that a provider is activated or production-verified.
 
-## Current migration state
+Azure is not part of the production runtime. Azure infrastructure, Functions, and deployment workflows remain archived for an explicitly approved rollback only. Azure language, speech, document, content-classification, and generative-AI implementations may remain as dormant phase-2 adapters where the code still supports them; launch behavior must not require their credentials or availability.
 
-| Concern | Active target | Repository state | Cutover gate |
-| --- | --- | --- | --- |
-| Web hosting | Vercel | Existing `oran` project linked; Node 24 contract; preview build passes; Azure deploys rollback-only | Configure runtime env, pass readiness and smoke tests, then promote |
-| Database | Supabase Postgres | Existing `oran` project in `us-east-1`; PostGIS/pgvector active; Vercel-sized pools; source-purpose migration applied | Configure a pooled runtime connection, verify query plans and readiness from Vercel |
-| Identity | Clerk | Dedicated production instance, custom issuer, Supabase bridge, middleware, UI, and explicit identity mapping are active | Verify sign-in/sign-up/RBAC on the production candidate; retain no legacy provider secrets |
-| Observability | Sentry | Next.js client/server/edge instrumentation is active when DSN is set | Configure project, DSN, source-map token, and alert ownership |
-| Maps | Open/provider-neutral | Leaflet/OpenStreetMap fallback already exists; Azure Maps remains optional legacy code | Select production tiles/geocoding with privacy and usage review |
-| Jobs/queues | Vercel Cron/Supabase | Five ORAN health jobs are registered as authenticated, staggered, once-daily Vercel Cron GETs; Azure Functions remain rollback-only | Configure `CRON_SECRET`, verify each production invocation and alert path, then close the Azure rollback window |
-| Transactional email | Resend | Provider adapter and ORAN-only environment contract active | Verify the sender domain and delivery on the production candidate |
-| SMS | To be selected | No active runtime adapter | Complete consent, suppression, and incident review before adoption |
+ORAN's data model is capable of supporting multiple regions, but that is not a claim of nationwide coverage. The current regional MVP supply is the reviewed Washington HRSA cohort. Additional regions must pass the same provenance, verification, publication, and freshness controls before they become trusted seeker-visible supply.
 
-## Cutover sequence
+## Current production state
 
-1. **Stop Azure drift.** Azure deploy and token-rotation workflows are manual rollback-only. Do not attach `openresourceaccessnetwork.com` to Azure.
-2. **Establish previews.** Import the GitHub repository into Vercel. Configure Preview variables and verify `/`, `/api/health`, chat intake, security headers, and error reporting on the generated Vercel URL.
-3. **Move PostgreSQL.** Restore into a Supabase staging project using the direct connection. Apply `db/migrations` with the `Database Migration (Supabase)` workflow. Use the Supavisor transaction-pooler URL as Vercel `DATABASE_URL`.
-4. **Close the Data API by default.** Existing tables were designed for server-side SQL. Do not expose them through Supabase's Data API until every exposed table has reviewed RLS policies. Never place a secret/service-role key in `NEXT_PUBLIC_*` variables.
-5. **Verify the completed identity cutover.** Clerk middleware/provider/UI, explicit `user_profiles.clerk_user_id` mapping, database-owned roles, and Supabase native third-party auth move together. Do not use the deprecated Clerk JWT-template integration and never link accounts by email inference.
-6. **Move remaining services.** Resend replaces Azure Communication Services. Replace the remaining Azure Functions/Storage Queues, Translator/Speech, Key Vault, and any Azure AI endpoints through explicit adapters and provider-specific tests.
-7. **Promote production.** Validate data parity, auth/RBAC, crisis flows, published-resource provenance, Sentry, rollback, and backups. Only then attach `openresourceaccessnetwork.com` to Vercel and remove the stale Azure DNS target.
-8. **Retire Azure.** After the rollback window and backup verification, revoke Azure deployment credentials and delete resources through an approved decommission change.
+| Concern | Production truth | Operational boundary |
+| --- | --- | --- |
+| Web hosting | Vercel project `oran`, Node 24, Next.js App Router | Merging reviewed `main` deploys production; prove the deployed source SHA, health, and live user paths for every release |
+| Database | Supabase PostgreSQL 17 with PostGIS/pgvector in project `tpatxospkuqvajusuryw` | Server-only SQL uses the validated Supavisor connection and dedicated `oran_backend_runtime` role; a cross-project DSN fails closed |
+| Browser data access | Supabase Data API is denied by default | Do not add browser policies or publishable data access until each exposed table has a reviewed RLS contract |
+| Identity | Dedicated Clerk production instance with explicit Clerk-to-ORAN identity mapping | Clerk establishes identity; database-owned roles and memberships establish authorization; never infer account linkage by email |
+| Observability | Sentry instrumentation is present for client, server, and edge runtimes | Configuration requires a privacy review plus live event, source-map, release, and alert-ownership proof |
+| Maps | Leaflet/OpenStreetMap-compatible, provider-neutral surface | Select tiles/geocoding only after privacy, availability, and usage review; Azure Maps is legacy code |
+| Scheduled work | Six authenticated Vercel Cron routes are declared in `vercel.json` | `CRON_SECRET` is mandatory; each route needs production invocation and alert evidence |
+| Transactional email | Resend adapter and environment contract are present | Treat delivery as dormant until the ORAN sender domain, suppression handling, and production delivery are proved |
+| AI-assisted language tasks | Deterministic launch behavior; optional adapters remain in code | Crisis routing, retrieval, ranking, eligibility, and publication never depend on an external model; any future activation requires explicit provider-specific review |
+| Azure assets | Archived Bicep, Functions, and hard-disabled workflows | No Azure credential or endpoint belongs in the production runtime manifest; reactivation requires an approved rollback or phase-2 change |
 
-## Live preflight (2026-07-13)
+## Regional data boundary
 
-- Vercel project `oran` exists and the migration branch builds successfully as a protected Preview. The root route returns 200. `/api/health` correctly returns 503 because the Vercel project does not yet have the required database/auth runtime secrets.
-- Supabase project `oran` (`tpatxospkuqvajusuryw`) is active in `us-east-1` on PostgreSQL 17. It contains approximately 1.6 million service, organization, and location records.
-- PostGIS 3.3.7 and pgvector 0.8.2 are installed. The `source_resource_purpose` migration is applied and the `source_systems.resource_purpose` column is present with its fail-safe default and constraint.
-- The imported database does not yet have the repository's `schema_migrations` baseline. The GitHub migration workflow is therefore gated by `SUPABASE_MIGRATIONS_ENABLED=true` and fails closed when that baseline is absent; never replay all historical files over the imported schema.
-- The Supabase security advisor reports one error: RLS is disabled on PostGIS table `public.spatial_ref_sys`. It also reports 21 warnings, including mutable function search paths, PostGIS/pgvector in `public`, and executable PostGIS `SECURITY DEFINER` functions. These require a reviewed PostGIS/RLS migration; they were not auto-remediated. See the [Supabase RLS guidance](https://supabase.com/docs/guides/database/postgres/row-level-security).
-- Ninety-six application tables have RLS enabled with no Data API policies. That is a deliberate browser/Data API deny posture. The direct ORAN server pool authenticates as a separately reviewed backend login with an explicit ACL manifest; add user-scoped policies table-by-table only when a Clerk-authenticated browser or Supabase client is introduced.
+The current production release cohort contains 445 published Washington HRSA service records backed by 4,981 accepted provenance facts. Thirty excluded or inactive records remain quarantined for administrator review and are not seeker-visible. These counts describe the governed regional cohort, not nationwide service availability.
+
+All additional source material follows one path:
+
+1. ingest into source assertions with provenance;
+2. normalize and deduplicate into a candidate revision;
+3. complete the required review and approval workflow;
+4. publish the approved revision to canonical records; and
+5. monitor freshness, regressions, corrections, and withdrawal signals.
+
+Unreviewed, quarantined, stale, or inferred data must not appear as verified seeker-facing fact.
+
+## Release sequence
+
+1. **Review the exact change.** Confirm the canonical branch and lease, required checks, approval, and migration impact before merging.
+2. **Validate the runtime contract.** Run the off-Azure guard plus typecheck, lint, tests, migration verification, and build appropriate to the change.
+3. **Apply controlled schema work.** Use the project-bound Supabase migration path. Preserve the repository migration ledger and never replay historical files over an imported schema.
+4. **Deploy from reviewed `main`.** Capture the exact merged SHA and the exact Vercel deployment that contains it.
+5. **Run live acceptance.** Verify `/api/health`, public discovery, crisis routing, authorization boundaries, and the changed end-to-end workflow without exposing secrets or sensitive seeker data.
+6. **Close with provider evidence.** Verify Sentry, cron, email, or other provider behavior only when the release actually depends on it; code or environment-variable presence alone is not activation evidence.
+
+## Azure archive boundary
+
+- Azure deployment and credential-rotation workflows are hard-disabled at the job level.
+- `functions/**` exports are archive tripwires, not deployable production handlers.
+- Production runtime manifests reject Azure/Microsoft endpoints and settings.
+- Provider-independent, synchronous crisis signals run before usage controls. Distress text is not sent to an external content-safety provider.
+- The production chat route does not wire an LLM summarizer or LLM intent enricher. Legacy Azure OpenAI and Translator adapters remain disabled unless a separately reviewed phase-2 path supplies the required wiring, feature gate, and provider configuration.
+- Do not re-enable an Azure service, restore Azure DNS, or add an Azure production secret without explicit approval and a documented rollback/retirement plan.
 
 ## Environment contract
 
 Vercel runtime:
 
-- `DATABASE_URL`: Supabase transaction-pooler URL for the dedicated
-  `oran_backend_runtime.<project-ref>` login, TLS required
-- `ORAN_DATABASE_ROLE=oran_backend_runtime`: fixed database identity assertion;
-  missing, unknown, or mismatched URL usernames fail closed
-- `ORAN_SUPABASE_PROJECT_REF=tpatxospkuqvajusuryw`: non-secret isolation guard;
-  a pooled URL for any other Supabase project fails closed
+- `DATABASE_URL`: Supabase transaction-pooler URL for the dedicated `oran_backend_runtime.<project-ref>` login, with TLS required
+- `ORAN_DATABASE_ROLE=oran_backend_runtime`: fixed database identity assertion; missing, unknown, or mismatched URL usernames fail closed
+- `ORAN_SUPABASE_PROJECT_REF=tpatxospkuqvajusuryw`: non-secret isolation guard; a pooled URL for any other Supabase project fails closed
 - `DATABASE_POOL_MAX=2`: conservative per-instance connection cap
-- `CRON_SECRET`: dedicated random value of at least 32 characters; Vercel sends
-  it as the Bearer credential for registered cron GET requests
-- `NEXT_PUBLIC_SENTRY_DSN`, plus `SENTRY_ORG`, `SENTRY_PROJECT`, and secret `SENTRY_AUTH_TOKEN`
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`
-- `RESEND_API_KEY` and `RESEND_FROM` as a complete server-only pair when transactional email is enabled
+- `CRON_SECRET`: dedicated random value of at least 32 characters used for registered cron requests
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and server-only `CLERK_SECRET_KEY`
+- `NEXT_PUBLIC_SENTRY_DSN`, plus `SENTRY_ORG`, `SENTRY_PROJECT`, and server-only `SENTRY_AUTH_TOKEN` when release/source-map upload is enabled
+- `RESEND_API_KEY` and `RESEND_FROM` only as a complete server-only pair when transactional email is explicitly activated
 - `NEXT_PUBLIC_SUPABASE_URL` and a publishable key only when an RLS-reviewed Data API client is introduced
 
 GitHub Environment:
 
 - `SUPABASE_DB_URL`: direct database connection used only by the migration workflow
+- `SUPABASE_PROJECT_REF`: selected-environment project identity checked before the migration secret is exported or used
 
 ## Non-negotiable safety gates
 
-- Crisis routing never depends on an external model.
+- Crisis routing never depends on an external model or provider.
 - Seekers only receive stored, provenance-backed service records.
-- Supporting references such as “stores that accept SNAP” cannot publish as service resources.
-- Protected routes and privileged writes fail closed.
-- Search text, chat content, precise location, form content, cookies, and auth headers do not enter telemetry.
-- No production domain or database promotion occurs from an unreviewed preview.
+- Architectural scale does not justify a claim of coverage in a region whose supply has not been reviewed and published.
+- Supporting references such as "stores that accept SNAP" cannot publish as service resources.
+- Protected routes and privileged writes fail closed, with authorization enforced server-side.
+- Search text, chat content, precise location, form content, cookies, and authorization headers do not enter telemetry.
+- No production domain, database mutation, or provider activation occurs from an unreviewed preview.

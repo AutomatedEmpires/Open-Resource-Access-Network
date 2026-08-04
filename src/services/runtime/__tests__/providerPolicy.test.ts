@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assertAllowedRuntimeEndpoint,
   assertExpectedSupabaseProjectDatabaseEndpoint,
+  extractSupabaseProjectRefFromDatabaseUrl,
   extractRuntimeEndpointHosts,
   findProhibitedMicrosoftRuntimeSettings,
   isProhibitedMicrosoftEndpoint,
@@ -12,6 +13,31 @@ import {
 } from '@/services/runtime/providerPolicy';
 
 describe('off-Azure runtime provider policy', () => {
+  it('extracts the actual Supabase project from direct and pooler database URLs', () => {
+    const projectRef = 'tpatxospkuqvajusuryw';
+
+    expect(extractSupabaseProjectRefFromDatabaseUrl(
+      `postgresql://postgres@db.${projectRef}.supabase.co:5432/postgres`,
+    )).toBe(projectRef);
+    expect(extractSupabaseProjectRefFromDatabaseUrl(
+      `postgres://postgres.${projectRef}@aws-0-us-west-1.pooler.supabase.com:6543/postgres`,
+    )).toBe(projectRef);
+    expect(extractSupabaseProjectRefFromDatabaseUrl(
+      `postgres://oran_backend_runtime.${projectRef}@aws-0-us-west-1.pooler.supabase.com:6543/postgres`,
+    )).toBe(projectRef);
+  });
+
+  it.each([
+    undefined,
+    '',
+    'not-a-url',
+    'postgres://postgres@localhost:5432/postgres',
+    'postgres://postgres.tpatxospkuqvajusuryw@pooler.supabase.com.evil.example:6543/postgres',
+    'https://db.tpatxospkuqvajusuryw.supabase.co/postgres',
+  ])('does not derive a project target from a missing or non-Supabase database URL', (value) => {
+    expect(extractSupabaseProjectRefFromDatabaseUrl(value)).toBeNull();
+  });
+
   it('recognizes retired provider and Azure-hosting environment names', () => {
     expect(isProhibitedMicrosoftEnvName('AZURE_OPENAI_KEY')).toBe(true);
     expect(isProhibitedMicrosoftEnvName('FOUNDRY_KEY')).toBe(true);

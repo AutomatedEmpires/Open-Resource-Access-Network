@@ -140,7 +140,7 @@ fi
 mapfile -t migrations < <(
   find db/migrations -maxdepth 1 -type f -name '*.sql' -printf '%p\n' | sort
 )
-if [[ "${#migrations[@]}" != "76" \
+if [[ "${#migrations[@]}" != "77" \
   || "$(basename "${migrations[66]}")" != "0068_shared_rate_limit_windows.sql" \
   || "$(basename "${migrations[67]}")" != "0069_backend_contact_read_capability.sql" \
   || "$(basename "${migrations[68]}")" != "0070_services_fulltext_index.sql" \
@@ -148,8 +148,9 @@ if [[ "${#migrations[@]}" != "76" \
   || "$(basename "${migrations[70]}")" != "0072_account_erasure_index_gate.sql" \
   || "$(basename "${migrations[73]}")" != "0075_data_api_acl_lockdown.sql" \
   || "$(basename "${migrations[74]}")" != "0076_account_erasure_highwater_planner_fix.sql" \
-  || "$(basename "${migrations[75]}")" != "0077_candidate_revision_lineage.sql" ]]; then
-  echo "Repository migration manifest does not match the reviewed 76-file release." >&2
+  || "$(basename "${migrations[75]}")" != "0077_candidate_revision_lineage.sql" \
+  || "$(basename "${migrations[76]}")" != "0078_candidate_revision_activation.sql" ]]; then
+  echo "Repository migration manifest does not match the reviewed 77-file release." >&2
   exit 1
 fi
 
@@ -315,6 +316,13 @@ SQL
 fi
 apply_tracked_migration "${migrations[70]}"
 for file in "${migrations[@]:71}"; do
+  filename="$(basename "$file")"
+  if [[ "$filename" == "0078_candidate_revision_activation.sql" \
+    && -z "${applied_migrations[$filename]:-}" ]]; then
+    echo "Stopping after the backward-compatible 0077 expand phase."
+    echo "0078 activation is accepted only through the gated db-migrate workflow after exact deployed-SHA and health proof."
+    break
+  fi
   apply_tracked_migration "$file"
 done
 
@@ -339,8 +347,12 @@ release_state="$(
       has_schema_privilege('authenticated', 'public', 'USAGE')
     );"
 )"
-if [[ "$release_state" != \
-  "76|0077_candidate_revision_lineage.sql|t|0|t|f|f" ]]; then
+if [[ -n "${applied_migrations[0078_candidate_revision_activation.sql]:-}" ]]; then
+  expected_release_state="77|0078_candidate_revision_activation.sql|t|0|t|f|f"
+else
+  expected_release_state="76|0077_candidate_revision_lineage.sql|t|0|t|f|f"
+fi
+if [[ "$release_state" != "$expected_release_state" ]]; then
   echo "Production release-state assertion failed: $release_state" >&2
   exit 1
 fi

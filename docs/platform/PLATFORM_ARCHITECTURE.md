@@ -1,17 +1,17 @@
 # ORAN Platform Architecture
 
-ORAN is becoming a public resource intelligence network: a verified resource data platform that aggregates service information, normalizes it into canonical records, governs trust and publication, and distributes that data across seeker experiences, operator workflows, and machine-consumable APIs. The repository already contains the major building blocks for that platform; this document defines how they fit together and what architectural boundaries must hold as the system scales.
+ORAN is a public resource intelligence network: a verified resource data platform that aggregates service information, normalizes it into canonical records, governs trust and publication, and distributes that data across seeker experiences, operator workflows, and machine-consumable APIs. The production runtime is Vercel + Supabase/PostgreSQL + Clerk + Sentry. The schema and retrieval boundaries can support multiple regions, while the current governed regional MVP supply is the reviewed Washington HRSA cohort; architectural capacity must never be presented as nationwide service coverage.
 
 ## Platform Pillars
 
 | Pillar | Purpose | Primary Repo Areas |
 | --- | --- | --- |
 | Resource Data Graph | Canonical organizations, services, locations, programs, taxonomy, confidence, coverage, and federation layers | `db/migrations/**`, `src/db/**`, `src/domain/**` |
-| Ingestion and Federation | Source ingestion, evidence capture, normalization, crosswalks, dedupe, and publish preparation | `src/agents/ingestion/**`, `src/services/ingestion/**`, `functions/fetchPage/**`, `functions/extractService/**`, `functions/verifyCandidate/**`, `functions/scheduledCrawl/**`, `src/app/api/admin/ingestion/**` |
+| Ingestion and Federation | Source ingestion, evidence capture, normalization, crosswalks, dedupe, and publish preparation | `src/agents/ingestion/**`, `src/services/ingestion/**`, `src/app/api/admin/ingestion/**`, `src/app/api/internal/**`, `vercel.json` |
 | Trust and Governance | Audit, approvals, scopes, zones, appeals, workflow gates, queueing, confidence regressions, moderation | `src/services/workflow/**`, `src/services/community/**`, `src/services/triage/**`, `src/services/regression/**`, `src/app/api/admin/**`, `src/app/api/community/**` |
 | Discovery and Navigation | Deterministic retrieval, scoring, seeker search, map, chat, HSDS distribution, saved/profile shaping | `src/services/search/**`, `src/services/scoring/**`, `src/services/chat/**`, `src/app/(seeker)/**`, `src/app/api/search/**`, `src/app/api/chat/**`, `src/app/api/hsds/**` |
 | Participation and Operations | Host portals, organization self-management, forms, submissions, notifications, resource studio | `src/app/(host)/**`, `src/services/organizations/**`, `src/services/forms/**`, `src/services/resourceSubmissions/**`, `src/services/notifications/**`, `src/app/api/host/**`, `src/app/api/forms/**` |
-| Platform Delivery and Integrations | Auth, feature flags, telemetry, caching, Azure infrastructure, background functions, deploy/runtime contracts | `src/services/auth/**`, `src/services/flags/**`, `src/services/cache/**`, `src/services/telemetry/**`, `infra/**`, `functions/**`, `.github/workflows/**`, `scripts/**` |
+| Platform Delivery and Integrations | Clerk auth, feature flags, Sentry telemetry, caching, Vercel delivery/cron, Supabase runtime contracts, and archived provider boundaries | `src/services/auth/**`, `src/services/flags/**`, `src/services/cache/**`, `src/services/telemetry/**`, `src/services/runtime/**`, `vercel.json`, `.github/workflows/**`, `scripts/**` |
 
 ## Current System Map
 
@@ -22,6 +22,7 @@ ORAN is becoming a public resource intelligence network: a verified resource dat
 - `src/services/workflow/**`, `src/services/community/**`, and `src/services/triage/**` implement the governance backbone around submissions, reviews, and queue movement.
 - `src/services/forms/**`, `src/services/organizations/**`, `src/services/resourceSubmissions/**`, and `src/services/notifications/**` support operator participation and platform workflows.
 - `src/services/auth/**`, `src/services/security/**`, `src/services/cache/**`, `src/services/flags/**`, and `src/services/telemetry/**` provide shared platform controls.
+- `src/services/db/**` reaches Supabase PostgreSQL through validated, server-only direct SQL. Browser/Data API access remains denied unless a table receives an explicit RLS-reviewed client contract.
 - `src/services/privacy/accountErasure.ts`, the private `oran_internal` erasure
   functions, and `/api/internal/account-erasure` form one durable privacy
   subsystem: synchronous access revocation, bounded background scrubbing, and
@@ -38,15 +39,17 @@ ORAN is becoming a public resource intelligence network: a verified resource dat
 
 ### Ingestion pipelines
 
-- Azure Functions handle crawl, fetch, extraction, verification, manual submit routing, SLA checks, and regression scans.
-- `src/agents/ingestion/**` contains the richer ingestion/federation runtime with source records, normalization, taxonomy crosswalks, resolution, and newly added 211 NDP connectors.
+- `src/agents/ingestion/**` contains the canonical ingestion/federation domain with source records, normalization, taxonomy crosswalks, resolution, and 211 NDP connectors.
 - `src/app/api/admin/ingestion/**` exposes operator controls for sources, jobs, candidates, feed polling, and publish readiness.
+- Authenticated Next.js internal routes scheduled by `vercel.json` run production feed polling, SLA, coverage, confidence-regression, freshness, and account-erasure maintenance.
+- `functions/**` and Azure deployment assets are archived legacy adapters with fail-closed tripwires. They are not production execution paths.
 
 Ingestion ownership rule:
 
 - `src/agents/ingestion/**` is the canonical ingestion domain
-- `functions/**` are execution adapters
+- Next.js route handlers and authenticated Vercel Cron requests are the production execution boundary
 - `src/services/ingestion/**` is a thin helper layer only
+- `functions/**` must remain archived unless an explicitly approved rollback is required
 
 ### Discovery and search systems
 
@@ -62,7 +65,7 @@ Public distribution tiers:
 
 ### Conversational navigation
 
-- Crisis detection, quota, rate limit, intent framing, profile hydration, retrieval, and optional post-retrieval summarization are handled in `src/services/chat/**` and exposed via `src/app/api/chat/route.ts`.
+- Crisis detection, quota, rate limit, intent framing, profile hydration, retrieval, and response assembly are handled in `src/services/chat/**` and exposed via `src/app/api/chat/route.ts`. The orchestrator retains an optional post-retrieval summarizer interface, but the production route does not inject it.
 
 ### Dashboards and user portals
 
@@ -78,15 +81,17 @@ Public distribution tiers:
 
 ### Infrastructure definitions and external integrations
 
-- Azure-first infrastructure is defined in `infra/**` and deployment workflows under `.github/workflows/**`.
-- Core integrations include Azure App Service, PostgreSQL Flexible Server, Key Vault, Redis, Application Insights, Azure Maps, Azure Communication Services, Azure Functions, optional Translator, optional Speech, and optional Document Intelligence.
+- Vercel hosts the Next.js application and server route handlers; a merge to `main` is the production deployment boundary. `vercel.json` owns the authenticated maintenance schedules.
+- Supabase provides PostgreSQL 17 with PostGIS/pgvector. Runtime queries use the project-bound pooled connection and a dedicated backend role; migrations use a separately validated direct connection.
+- Clerk provides identity and sessions while ORAN database roles and explicit Clerk user mappings remain authoritative for application authorization.
+- Sentry receives privacy-filtered client, server, and edge diagnostics when configured. Sensitive seeker text, precise location, form content, cookies, and authorization data must not enter telemetry.
+- Redis, Resend, and provider-neutral maps are adapter-backed capabilities. Their absence must preserve documented degraded or fail-closed behavior; an adapter's presence is not evidence that a provider is operationally activated.
+- `infra/**`, `functions/**`, and Azure deployment workflows are retained only as archived rollback/reference assets. Azure language, translation, speech, document, and generative-AI adapters are optional phase-2 code paths where still present, not production dependencies.
 
 ## Architectural Drift Register
 
 ### P0
 
-- Top-level architecture documentation understates the system. Existing maps still read like a search/chat app even though the repo now includes federation, forms, host operations, community governance, and operator tooling.
-- Ingestion still spans three implementation layers: `functions/**`, `src/services/ingestion/**`, and `src/agents/ingestion/**`. The canonical ownership boundary is now documented, but implementation cleanup should continue to reduce legacy helper drift.
 - Legacy `verification_queue` language is now mostly confined to compatibility/history material and a few internal prompt documents; live product and SSOT workflow surfaces largely describe the canonical submissions pipeline.
 
 ### P1
@@ -113,8 +118,9 @@ Public distribution tiers:
 
 ### Deployment reliability
 
-- Keep runtime contract validation enforced in CI and Azure deploy workflows.
-- Continue moving abuse-sensitive routes to shared Redis-backed controls.
+- Keep runtime/provider contract validation enforced in CI and before every Vercel production release.
+- Preserve exact-SHA deployment proof, health checks, and live acceptance for each release.
+- Keep abuse-sensitive, horizontally scaled controls on shared PostgreSQL or Redis primitives with documented fail-closed behavior.
 
 ### Schema integrity
 
@@ -129,8 +135,8 @@ Public distribution tiers:
 
 ### Security and observability
 
-- Preserve no-PII telemetry, fail-closed auth, Key Vault-backed secret handling, and crisis-first gating.
-- Keep Application Insights and audit logs aligned with high-risk workflow transitions.
+- Preserve no-PII Sentry telemetry, fail-closed Clerk authorization, server-only provider credentials, project-bound database endpoints, and crisis-first gating.
+- Keep Sentry release evidence and database audit logs aligned with high-risk workflow transitions.
 
 ### Migration safety and CI/CD
 
@@ -142,7 +148,7 @@ Public distribution tiers:
 1. Finish ingestion consolidation around the source assertion and canonical federation layers, including 211/NDP and partner-feed connectors.
 2. Clarify the public distribution layer so seeker APIs and HSDS APIs read as one coherent resource network surface.
 3. Deepen verification and governance automation around submissions, evidence, scopes, and community routing.
-4. Expand multilingual, multimodal, and ecosystem integrations only after the canonical graph and trust controls remain coherent under load.
+4. Expand region by region, and add multilingual, multimodal, or ecosystem integrations only after each supply cohort and the canonical trust controls remain coherent under load.
 
 ## Stewardship Standard
 

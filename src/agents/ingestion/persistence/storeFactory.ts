@@ -57,7 +57,7 @@ import { createDrizzleResolutionDecisionStore } from './resolutionDecisionStore'
 export function createIngestionStores(
   db: NodePgDatabase<typeof schema>
 ): IngestionStores {
-  return {
+  const stores: IngestionStores = {
     sourceRegistry: createDrizzleSourceRegistryStore(db),
     jobs: createDrizzleJobStore(db),
     evidence: createDrizzleEvidenceStore(db),
@@ -104,4 +104,14 @@ export function createIngestionStores(
     resolutionCandidates: createDrizzleResolutionCandidateStore(db),
     resolutionDecisions: createDrizzleResolutionDecisionStore(db),
   };
+
+  if (typeof db.transaction === 'function') {
+    stores.runAtomically = async <T>(callback: (transactionStores: IngestionStores) => Promise<T>) => (
+      db.transaction(async (transaction) => callback(
+        createIngestionStores(transaction as unknown as NodePgDatabase<typeof schema>),
+      ))
+    );
+  }
+
+  return stores;
 }

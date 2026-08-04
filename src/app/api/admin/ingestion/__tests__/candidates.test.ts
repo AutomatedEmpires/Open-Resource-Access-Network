@@ -108,7 +108,26 @@ beforeEach(() => {
   });
   authMocks.getAuthContext.mockResolvedValue(null);
   requireMinRoleMock.mockReturnValue(true);
-  executeQueryMock.mockResolvedValue([]);
+  executeQueryMock.mockImplementation((statement: string) => {
+    const sql = String(statement);
+    if (sql.includes('public.evaluate_candidate_readiness')) {
+      return Promise.resolve([{ is_ready: false }]);
+    }
+    if (sql.includes('readiness.has_required_fields')) {
+      return Promise.resolve([{
+        has_required_fields: true,
+        has_required_tags: true,
+        tags_confirmed: true,
+        meets_score_threshold: true,
+        blockers: ['Need 2 admin approvals, have 0'],
+        can_mutate_evidence: true,
+      }]);
+    }
+    if (sql.includes('completed_review_count')) {
+      return Promise.resolve([{ completed_review_count: 0, open_review_count: 0 }]);
+    }
+    return Promise.resolve([]);
+  });
   getDrizzleMock.mockReturnValue({ kind: 'db' });
   storeMocks.createIngestionStores.mockReturnValue(ingestionStores);
 
@@ -234,7 +253,17 @@ describe('admin ingestion candidate routes', () => {
       assignments: [{ id: 'assign-1' }],
       tagConfirmations: [{ id: 'confirm-1' }],
       suggestions: [{ id: 'suggest-1' }],
+      reviewReadiness: {
+        canApprove: true,
+        hasRequiredFields: true,
+        hasRequiredTags: true,
+        tagsConfirmed: true,
+        meetsScoreThreshold: true,
+        passesVerification: true,
+        blockers: [],
+      },
       currentUserAssignment: null,
+      canMutateEvidence: false,
       assignmentProgress: {
         completedReviewCount: 0,
         openReviewCount: 0,
@@ -251,21 +280,56 @@ describe('admin ingestion candidate routes', () => {
     );
     ingestionStores.candidates.getById.mockResolvedValueOnce({
       candidateId: '11111111-1111-4111-8111-111111111111',
+      review: {
+        status: 'escalated',
+        assignedToRole: 'oran_admin',
+        assignedToKey: 'peer-reviewer-id',
+      },
     });
-    ingestionStores.tags.listFor.mockResolvedValueOnce([]);
-    ingestionStores.checks.listFor.mockResolvedValueOnce([]);
-    ingestionStores.links.listForCandidate.mockResolvedValueOnce([]);
+    ingestionStores.tags.listFor.mockResolvedValueOnce([{
+      id: 'tag-visible', tagValue: 'food', assignedByUserId: 'peer-reviewer-id',
+    }]);
+    ingestionStores.checks.listFor.mockResolvedValueOnce([{
+      checkId: 'check-visible', status: 'pass', actorId: 'peer-reviewer-id',
+    }]);
+    ingestionStores.links.listForCandidate.mockResolvedValueOnce([{
+      id: 'link-visible', url: 'https://example.gov', verifiedByUserId: 'peer-reviewer-id',
+    }]);
     ingestionStores.assignments.listForCandidate.mockResolvedValueOnce([
       { id: 'assign-peer', admin_profile_id: 'peer-1', outcome: 'verified' },
     ]);
-    ingestionStores.tagConfirmations.listForCandidate.mockResolvedValueOnce([]);
-    ingestionStores.llmSuggestions.listForCandidate.mockResolvedValueOnce([]);
+    ingestionStores.tagConfirmations.listForCandidate.mockResolvedValueOnce([{
+      id: 'confirmation-peer',
+      status: 'approved',
+      reviewedByUserId: 'peer-reviewer-id',
+      reviewNotes: 'Peer subjective notes',
+      evidenceRefs: ['evidence-1'],
+    }]);
+    ingestionStores.llmSuggestions.listForCandidate.mockResolvedValueOnce([{
+      id: 'suggestion-peer',
+      suggestionStatus: 'accepted',
+      reviewedByUserId: 'peer-reviewer-id',
+      reviewNotes: 'Peer suggestion notes',
+      suggestedValue: 'Durable value',
+    }]);
     executeQueryMock
       .mockResolvedValueOnce([
         { id: 'assign-own', status: 'claimed', outcome: null, expires_at: null },
       ])
+      .mockResolvedValueOnce([{ is_ready: false }])
       .mockResolvedValueOnce([
-        { completed_review_count: 1, open_review_count: 1 },
+        {
+          has_required_fields: true,
+          has_required_tags: true,
+          tags_confirmed: true,
+          meets_score_threshold: true,
+          blockers: [
+            'Need 2 admin approvals, have 1',
+            'candidate_escalated',
+            'pending_tag_confirmation',
+          ],
+          can_mutate_evidence: false,
+        },
       ]);
     const { GET } = await loadCandidateDetailRoute();
 
@@ -280,10 +344,72 @@ describe('admin ingestion candidate routes', () => {
     expect(body.currentUserAssignment).toEqual({
       id: 'assign-own', status: 'claimed', outcome: null, expires_at: null,
     });
-    expect(body.assignmentProgress).toEqual({
-      completedReviewCount: 1,
-      openReviewCount: 1,
-      requiredMatchingReviewCount: 2,
+    expect(body).not.toHaveProperty('assignmentProgress');
+    expect(body.candidate.review).toEqual({});
+    expect(body.tags).toEqual([{ id: 'tag-visible', tagValue: 'food' }]);
+    expect(body.checks).toEqual([{ checkId: 'check-visible', status: 'pass' }]);
+    expect(body.links).toEqual([{ id: 'link-visible', url: 'https://example.gov' }]);
+    expect(body.tagConfirmations).toEqual([{
+      id: 'confirmation-peer',
+      status: 'approved',
+      evidenceRefs: ['evidence-1'],
+    }]);
+    expect(body.suggestions).toEqual([{
+      id: 'suggestion-peer',
+      suggestionStatus: 'accepted',
+      suggestedValue: 'Durable value',
+    }]);
+    expect(body.reviewReadiness).toEqual({
+      canApprove: false,
+      hasRequiredFields: true,
+      hasRequiredTags: true,
+      tagsConfirmed: true,
+      meetsScoreThreshold: true,
+      passesVerification: true,
+      blockers: ['pending_tag_confirmation'],
+    });
+    expect(body.canMutateEvidence).toBe(false);
+    expect(ingestionStores.assignments.listForCandidate).not.toHaveBeenCalled();
+  });
+
+  it('suppresses legacy ORAN-admin assignments while retaining oversight fields', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-assigned' });
+    ingestionStores.candidates.getById.mockResolvedValueOnce({
+      candidateId: '11111111-1111-4111-8111-111111111111',
+      review: { status: 'in_review', assignedToKey: 'oran-assigned' },
+    });
+    const { GET } = await loadCandidateDetailRoute();
+
+    const response = await GET(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.currentUserAssignment).toBeNull();
+    expect(body.canMutateEvidence).toBe(false);
+    expect(body.candidate.review).toEqual({ status: 'in_review', assignedToKey: 'oran-assigned' });
+    expect(body).toHaveProperty('assignmentProgress');
+  });
+
+  it('denies community-admin detail access without an active candidate assignment', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'community-unassigned' });
+    requireMinRoleMock.mockImplementation(
+      (_ctx: unknown, role: string) => role !== 'oran_admin',
+    );
+    executeQueryMock.mockResolvedValueOnce([]);
+    const { GET } = await loadCandidateDetailRoute();
+
+    const response = await GET(
+      createRequest(),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+
+    expect(response.status).toBe(403);
+    expect(ingestionStores.candidates.getById).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      error: 'This candidate is not assigned to the current reviewer.',
     });
   });
 
@@ -302,48 +428,10 @@ describe('admin ingestion candidate routes', () => {
     });
   });
 
-  it('updates review status through the candidate detail route', async () => {
-    authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
-    const { PATCH } = await loadCandidateDetailRoute();
+  it('does not export the legacy unassigned candidate PATCH mutation', async () => {
+    const candidateDetailRoute = await loadCandidateDetailRoute();
 
-    const response = await PATCH(
-      createRequest({
-        jsonBody: {
-          reviewStatus: 'verified',
-        },
-      }),
-      createRouteContext('11111111-1111-4111-8111-111111111111')
-    );
-
-    expect(ingestionStores.candidates.updateReviewStatus).toHaveBeenCalledWith(
-      '11111111-1111-4111-8111-111111111111',
-      'verified',
-      'community-1'
-    );
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ success: true });
-  });
-
-  it('captures unexpected store errors on patch', async () => {
-    authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
-    ingestionStores.candidates.updateReviewStatus.mockRejectedValueOnce(
-      new Error('db blew up')
-    );
-    const { PATCH } = await loadCandidateDetailRoute();
-
-    const response = await PATCH(
-      createRequest({
-        jsonBody: {
-          reviewStatus: 'verified',
-        },
-      }),
-      createRouteContext('11111111-1111-4111-8111-111111111111')
-    );
-
-    expect(response.status).toBe(500);
-    expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(Error));
-    await expect(response.json()).resolves.toEqual({
-      error: 'Internal server error.',
-    });
+    expect(candidateDetailRoute).not.toHaveProperty('PATCH');
+    expect(ingestionStores.candidates.updateReviewStatus).not.toHaveBeenCalled();
   });
 });

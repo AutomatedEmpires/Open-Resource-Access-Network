@@ -181,6 +181,9 @@ export interface CandidateStore {
     jurisdictionCounty?: string;
     jurisdictionCity?: string;
     jurisdictionKind?: string;
+    revisionOfCandidateId?: string;
+    lineageRootCandidateId?: string;
+    revisionNumber?: number;
   }): Promise<void>;
 
   /** Get by ID. */
@@ -192,6 +195,29 @@ export interface CandidateStore {
   /** Find by normalized org+service name (cross-path dedup). */
   findByNormalizedName(orgName: string, serviceName: string): Promise<ExtractedCandidate | null>;
 
+  /** Serialize and lock the current lineage before multi-store materialization. */
+  lockMaterializationTarget(input: {
+    extractKey: string,
+    orgName: string,
+    serviceName: string,
+    canonicalUrl?: string,
+    address?: {
+      line1: string;
+      city: string;
+      region: string;
+      postalCode: string;
+      country: string;
+    },
+  }): Promise<{
+    candidate: ExtractedCandidate;
+    /** True only when the incoming key matched an older revision, not the locked head. */
+    historicalExtractReplay: boolean;
+    /** True only when the incoming key is the locked lineage head's current key. */
+    exactExtractKey: boolean;
+    /** False only while additive lineage columns are not installed yet. */
+    lineageAvailable: boolean;
+  } | null>;
+
   /** Update a candidate. */
   update(candidateId: string, updates: Partial<ExtractedCandidate>): Promise<void>;
 
@@ -201,6 +227,9 @@ export interface CandidateStore {
     status: CandidateReviewStatus,
     byUserId?: string
   ): Promise<void>;
+
+  /** Move a newly materialized pending candidate into controlled admin escalation. */
+  escalateForReview(candidateId: string): Promise<void>;
 
   /** Update confidence score (triggers tier recalc). */
   updateConfidenceScore(candidateId: string, score: number): Promise<void>;
@@ -264,13 +293,16 @@ export interface TagStore {
   /** Bulk add tags (for efficiency). */
   bulkAdd(tags: ResourceTag[]): Promise<void>;
 
-  /** Replace all tags of a type for a target. */
+  /**
+   * Reconcile all tags of a type for a target while preserving the durable
+   * identity of values that remain present. Returns the persisted identities.
+   */
   replaceByType(
     targetId: string,
     targetType: 'candidate' | 'service',
     tagType: ResourceTagType,
     newTags: ResourceTag[]
-  ): Promise<void>;
+  ): Promise<ResourceTag[]>;
 }
 
 // ============================================================
@@ -507,6 +539,12 @@ export interface AdminAssignmentFilters {
 }
 
 export interface AdminAssignmentStore {
+  /**
+   * Route a candidate with database-enforced capacity and return its total
+   * qualifying reviewer identities. Null means the 0078 workflow is still dark.
+   */
+  routeForReview?(candidateId: string, limit?: number): Promise<number | null>;
+
   /** Create an assignment. */
   create(assignment: AdminAssignment): Promise<void>;
 
@@ -575,18 +613,29 @@ export interface TagConfirmationStore {
   /** Create multiple confirmations (batch from extraction). */
   bulkCreate(confirmations: TagConfirmation[]): Promise<void>;
 
+  /**
+   * Replace the pending queue for one candidate/tag type. Human-reviewed
+   * decisions are never removed by this reconciliation.
+   */
+  replacePendingForCandidate(
+    candidateId: string,
+    tagType: ResourceTagType,
+    confirmations: TagConfirmation[]
+  ): Promise<void>;
+
   /** Get by ID. */
   getById(confirmationId: string): Promise<TagConfirmation | null>;
 
   /** Update confirmation decision. */
   updateDecision(
+    candidateId: string,
     confirmationId: string,
     status: TagConfirmationStatus,
     confirmedValue?: string,
     confirmedConfidence?: number,
     userId?: string,
     notes?: string
-  ): Promise<void>;
+  ): Promise<'updated' | 'conflict'>;
 
   /** List confirmations with filters. */
   list(
@@ -632,12 +681,13 @@ export interface LlmSuggestionStore {
 
   /** Update suggestion decision. */
   updateDecision(
+    candidateId: string,
     suggestionId: string,
     status: SuggestionStatus,
     acceptedValue?: string,
     userId?: string,
     notes?: string
-  ): Promise<void>;
+  ): Promise<'updated' | 'conflict'>;
 
   /** List suggestions with filters. */
   list(
@@ -1175,6 +1225,8 @@ export interface ResolutionDecisionStore {
 // ============================================================
 
 export interface IngestionStores {
+  /** Run one multi-store materialization callback on a single DB transaction. */
+  runAtomically?<T>(callback: (stores: IngestionStores) => Promise<T>): Promise<T>;
   sourceRegistry: SourceRegistryStore;
   jobs: JobStore;
   evidence: EvidenceStore;

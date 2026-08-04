@@ -10,9 +10,20 @@ on:
         options:
           - staging
           - production
+      activate_candidate_lineage:
+        description: 'Activate 0078 after the exact lineage-aware app deployment is healthy'
+        required: true
+        type: boolean
+        default: false
+      lineage_app_sha:
+        description: 'Exact 40-character deployed app SHA (required only for 0078 activation)'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
+  deployments: read
 
 concurrency:
   group: db-migrate-${{ inputs.environment }}
@@ -27,6 +38,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Prove production migrations use exact remote main
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+
+          if [ "$TARGET_ENVIRONMENT" != "production" ]; then
+            exit 0
+          fi
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Production migrations must be dispatched from refs/heads/main."
+            exit 1
+          fi
+
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          checkout_sha="$(git rev-parse HEAD)"
+          remote_main_sha="$(git rev-parse refs/remotes/origin/main)"
+          if [ "$checkout_sha" != "$remote_main_sha" ]; then
+            echo "::error::Production migration checkout is not the exact remote main SHA."
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -52,12 +85,129 @@ jobs:
           fi
           echo "::add-mask::$SUPABASE_DB_URL"
           node scripts/validate-runtime-endpoint.mjs SUPABASE_DB_URL SUPABASE_PROJECT_REF
+          target_sha="$(node -e 'const { createHash } = require("node:crypto"); process.stdout.write(createHash("sha256").update(process.env.SUPABASE_PROJECT_REF.trim()).digest("hex"));')"
+          if [[ ! "$target_sha" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Unable to derive the expected Supabase target identity."
+            exit 1
+          fi
           echo "DATABASE_URL=$SUPABASE_DB_URL" >> "$GITHUB_ENV"
+          echo "SUPABASE_TARGET_SHA256=$target_sha" >> "$GITHUB_ENV"
 
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
+      - name: Prove exact lineage-aware deployment before activation
+        if: ${{ inputs.activate_candidate_lineage }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          LINEAGE_APP_SHA: ${{ inputs.lineage_app_sha }}
+          SUPABASE_TARGET_SHA256: ${{ env.SUPABASE_TARGET_SHA256 }}
+        run: |
+          set -euo pipefail
+
+          checkout_sha="$(git rev-parse HEAD)"
+          if [[ ! "$LINEAGE_APP_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::0078 activation requires the exact 40-character lineage-aware app SHA."
+            exit 1
+          fi
+          if [ "$LINEAGE_APP_SHA" != "$checkout_sha" ]; then
+            echo "::error::0078 activation SHA does not match the checked-out migration/app commit."
+            exit 1
+          fi
+
+          case "$TARGET_ENVIRONMENT" in
+            production) deployment_environment="Production" ;;
+            staging) deployment_environment="Preview" ;;
+            *)
+              echo "::error::Unsupported candidate-lineage activation environment."
+              exit 1
+              ;;
+          esac
+
+          deployments="$({
+            curl --fail --silent --show-error --get \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              --data-urlencode "sha=$LINEAGE_APP_SHA" \
+              --data-urlencode "environment=$deployment_environment" \
+              --data-urlencode "per_page=20" \
+              "https://api.github.com/repos/$REPOSITORY/deployments"
+          } 2>&1)" || {
+            printf '%s\n' "$deployments" >&2
+            exit 1
+          }
+          deployment_id="$(printf '%s' "$deployments" | jq -r '.[0].id // empty')"
+          if [ -z "$deployment_id" ]; then
+            echo "::error::No $deployment_environment deployment exists for the exact activation SHA."
+            exit 1
+          fi
+
+          statuses="$({
+            curl --fail --silent --show-error \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$REPOSITORY/deployments/$deployment_id/statuses"
+          } 2>&1)" || {
+            printf '%s\n' "$statuses" >&2
+            exit 1
+          }
+          latest_status="$(printf '%s' "$statuses" | jq -c '
+            sort_by(.created_at)
+            | reverse
+            | .[0]
+            // empty
+          ')"
+          if [ -z "$latest_status" ]; then
+            echo "::error::The exact activation deployment has no status evidence."
+            exit 1
+          fi
+          latest_state="$(printf '%s' "$latest_status" | jq -r '.state // empty')"
+          latest_creator="$(printf '%s' "$latest_status" | jq -r '.creator.login // empty')"
+          health_base_url="$(printf '%s' "$latest_status" | jq -r '.environment_url // empty')"
+          if [ "$latest_state" != "success" ]; then
+            echo "::error::The latest exact-SHA deployment status is not successful."
+            exit 1
+          fi
+          if [ "$latest_creator" != "vercel[bot]" ]; then
+            echo "::error::The latest exact-SHA deployment status was not created by vercel[bot]."
+            exit 1
+          fi
+          if [[ ! "$health_base_url" =~ ^https://oran-[A-Za-z0-9-]+-jackson-coles-projects-dd76106c\.vercel\.app/?$ ]]; then
+            echo "::error::The exact activation deployment URL does not belong to the ORAN Vercel project/team."
+            exit 1
+          fi
+
+          health_response="$({
+            curl --fail --silent --show-error \
+              --max-time 20 \
+              --header 'Cache-Control: no-cache' \
+              "${health_base_url%/}/api/health"
+          } 2>&1)" || {
+            printf '%s\n' "$health_response" >&2
+            exit 1
+          }
+          if ! printf '%s' "$health_response" | jq -e \
+            --arg database_target "$SUPABASE_TARGET_SHA256" '
+            .status == "healthy"
+            and .configuration == "ready"
+            and .database == "connected"
+            and .databaseTarget == $database_target
+          ' >/dev/null; then
+            echo "::error::The exact lineage-aware deployment did not pass target-bound /api/health."
+            exit 1
+          fi
+
+          printf 'LINEAGE_HEALTH_URL=%s\n' "$health_base_url" >> "$GITHUB_ENV"
+          echo "Exact lineage-aware deployment and health proof passed for $LINEAGE_APP_SHA."
+
       - name: Run SQL migrations
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          ACTIVATE_CANDIDATE_LINEAGE: ${{ inputs.activate_candidate_lineage }}
         run: |
           set -euo pipefail
 
@@ -83,6 +233,26 @@ jobs:
             fi
           done
 
+          # Activation is a separate release operation. Never let one workflow
+          # run both the backward-compatible 0077 expand and the 0078 contract:
+          # the exact lineage-aware application must be deployed between them.
+          if [ "$ACTIVATE_CANDIDATE_LINEAGE" = "true" ]; then
+            expand_applied="$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 \
+              -c "SELECT 1 FROM public.schema_migrations WHERE filename = '0077_candidate_revision_lineage.sql' LIMIT 1;")"
+            activation_applied="$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 \
+              -c "SELECT 1 FROM public.schema_migrations WHERE filename = '0078_candidate_revision_activation.sql' LIMIT 1;")"
+
+            if [ "$expand_applied" != "1" ]; then
+              echo "::error::0078 activation requires 0077 to have completed in a prior non-activation run."
+              echo "::error::Apply 0077 dark, deploy the exact lineage-aware app SHA, then dispatch activation separately."
+              exit 1
+            fi
+            if [ "$activation_applied" = "1" ]; then
+              echo "::error::0078 is already recorded; activation is a one-time contract transition."
+              exit 1
+            fi
+          fi
+
           while IFS= read -r file; do
             filename="$(basename "$file")"
             applied=$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -c "SELECT 1 FROM schema_migrations WHERE filename = '$filename' LIMIT 1;")
@@ -92,14 +262,18 @@ jobs:
               continue
             fi
 
+            if [ "$filename" = "0078_candidate_revision_activation.sql" ] \
+              && [ "$ACTIVATE_CANDIDATE_LINEAGE" != "true" ]; then
+              echo "Candidate lineage expand phase is applied through 0077."
+              echo "0078 remains dark until an explicit activation run proves the exact deployed app SHA and health."
+              break
+            fi
+
             echo "Applying migration: $filename"
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$file"
             # A filename is durable evidence of successful SQL, never a bypass.
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (filename) VALUES ('$filename');"
           done < <(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort)
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-
       - name: Verify migration
         run: |
           set -euo pipefail
@@ -107,7 +281,14 @@ jobs:
           mapfile -t repository_migrations < <(
             find db/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | sort
           )
-          expected="$(printf '%s\n' "${repository_migrations[@]}")"
+          activation_applied="$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 \
+            -c "SELECT 1 FROM public.schema_migrations WHERE filename = '0078_candidate_revision_activation.sql' LIMIT 1;")"
+          if [ "$activation_applied" = "1" ]; then
+            expected="$(printf '%s\n' "${repository_migrations[@]}")"
+          else
+            expected="$(printf '%s\n' "${repository_migrations[@]}" \
+              | sed -n '1,/^0077_candidate_revision_lineage.sql$/p')"
+          fi
           actual="$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 \
             -c "SELECT filename FROM public.schema_migrations ORDER BY filename;")"
 
@@ -117,11 +298,50 @@ jobs:
             exit 1
           fi
 
-          count="${#repository_migrations[@]}"
-          latest="${repository_migrations[$((count - 1))]}"
+          count="$(printf '%s\n' "$actual" | sed '/^$/d' | wc -l)"
+          latest="$(printf '%s\n' "$actual" | tail -1)"
           echo "Migration completed for environment: ${{ inputs.environment }}"
           echo "Verified exact repository ledger: ${count}|${latest}"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
             -c "SELECT filename, applied_at FROM public.schema_migrations ORDER BY filename;"
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Prove activated catalog and repeat exact deployment health
+        if: ${{ inputs.activate_candidate_lineage }}
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          LINEAGE_HEALTH_URL: ${{ env.LINEAGE_HEALTH_URL }}
+          SUPABASE_TARGET_SHA256: ${{ env.SUPABASE_TARGET_SHA256 }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$LINEAGE_HEALTH_URL" =~ ^https://oran-[A-Za-z0-9-]+-jackson-coles-projects-dd76106c\.vercel\.app/?$ ]]; then
+            echo "::error::Exact activation deployment URL was not preserved from preflight."
+            exit 1
+          fi
+
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 \
+            -f scripts/validate-candidate-lineage-activation.sql
+
+          health_response="$({
+            curl --fail --silent --show-error \
+              --max-time 20 \
+              --header 'Cache-Control: no-cache' \
+              "${LINEAGE_HEALTH_URL%/}/api/health"
+          } 2>&1)" || {
+            printf '%s\n' "$health_response" >&2
+            exit 1
+          }
+          if ! printf '%s' "$health_response" | jq -e \
+            --arg database_target "$SUPABASE_TARGET_SHA256" '
+            .status == "healthy"
+            and .configuration == "ready"
+            and .database == "connected"
+            and .databaseTarget == $database_target
+          ' >/dev/null; then
+            echo "::error::The exact deployment became unhealthy or changed database target after 0078 activation."
+            exit 1
+          fi
+
+          echo "0078 catalog/runtime contract and post-mutation health proof passed."

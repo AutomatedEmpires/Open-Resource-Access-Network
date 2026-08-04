@@ -10,6 +10,86 @@ import { candidateAdminAssignments } from '@/db/schema';
 import type { AdminAssignment, AssignmentStatus, AdminDecision } from '../adminAssignments';
 import type { AdminAssignmentStore, AdminAssignmentFilters } from '../stores';
 
+function resultRows<T>(result: unknown): T[] {
+  if (Array.isArray(result)) return result as T[];
+  if (result && typeof result === 'object' && Array.isArray((result as { rows?: unknown }).rows)) {
+    return (result as { rows: T[] }).rows;
+  }
+  return [];
+}
+
+async function reviewerRoutingIsActive(
+  db: NodePgDatabase<Record<string, unknown>>,
+): Promise<boolean> {
+  const signature = 'oran_internal.assign_candidate_reviewers(text,integer)';
+  const result = await db.execute(sql`
+    SELECT
+      pg_catalog.to_regprocedure(${signature}) IS NOT NULL AS function_exists,
+      CASE
+        WHEN pg_catalog.to_regprocedure(${signature}) IS NULL THEN false
+        ELSE pg_catalog.has_function_privilege(
+          current_user,
+          pg_catalog.to_regprocedure(${signature}),
+          'EXECUTE'
+        )
+      END AS executable,
+      EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_trigger activation_trigger
+        WHERE activation_trigger.tgrelid =
+            'public.candidate_admin_assignments'::pg_catalog.regclass
+          AND activation_trigger.tgname =
+            'trg_protect_completed_candidate_approval'
+          AND NOT activation_trigger.tgisinternal
+          AND activation_trigger.tgenabled IN ('O', 'A')
+      ) AS activation_active
+  `);
+  const state = resultRows<{
+    function_exists: boolean;
+    executable: boolean;
+    activation_active: boolean;
+  }>(result)[0];
+  if (!state) {
+    throw new Error('Candidate reviewer routing state could not be read');
+  }
+  if (!state.activation_active) {
+    return false;
+  }
+  if (!state.function_exists || !state.executable) {
+    throw new Error('Candidate reviewer routing contract drifted after activation');
+  }
+  return true;
+}
+
+function fromDatabaseStatus(status: string): AssignmentStatus {
+  if (status === 'claimed') return 'accepted';
+  if (status === 'declined') return 'skipped';
+  if (status === 'reassigned') return 'withdrawn';
+  return status as AssignmentStatus;
+}
+
+function toDatabaseStatus(status: AssignmentStatus): string {
+  if (status === 'accepted') return 'claimed';
+  if (status === 'skipped') return 'declined';
+  if (status === 'withdrawn') return 'reassigned';
+  return status;
+}
+
+function fromDatabaseDecision(decision: string | null): AdminDecision | undefined {
+  if (decision === 'verified') return 'approve';
+  if (decision === 'rejected') return 'reject';
+  if (decision === 'escalated') return 'escalate';
+  return decision ? decision as AdminDecision : undefined;
+}
+
+function toDatabaseDecision(decision: AdminDecision): string {
+  if (decision === 'approve') return 'verified';
+  if (decision === 'reject') return 'rejected';
+  if (decision === 'needs_more_info') return 'escalated';
+  if (decision === 'escalate') return 'escalated';
+  return decision;
+}
+
 /**
  * Convert a DB row to an AdminAssignment domain object.
  */
@@ -22,8 +102,8 @@ function rowToAssignment(
     adminProfileId: row.adminProfileId,
     assignmentRank: row.priorityRank,
     distanceMeters: row.distanceMeters ? Number(row.distanceMeters) : undefined,
-    assignmentStatus: row.status as AssignmentStatus,
-    decision: row.outcome ? (row.outcome as AdminDecision) : undefined,
+    assignmentStatus: fromDatabaseStatus(row.status),
+    decision: fromDatabaseDecision(row.outcome),
     decisionNotes: row.outcomeNotes ?? undefined,
     assignedAt: row.assignedAt.toISOString(),
     acceptedAt: row.claimedAt?.toISOString(),
@@ -41,6 +121,24 @@ export function createDrizzleAdminAssignmentStore(
   db: NodePgDatabase<Record<string, unknown>>
 ): AdminAssignmentStore {
   return {
+    async routeForReview(candidateId, limit = 5): Promise<number | null> {
+      if (!(await reviewerRoutingIsActive(db))) return null;
+      const result = await db.execute(sql`
+        SELECT oran_internal.assign_candidate_reviewers(
+          ${candidateId},
+          ${limit}
+        )::integer AS qualifying_reviewer_count
+      `);
+      const rawCount = resultRows<{ qualifying_reviewer_count: number | string }>(
+        result,
+      )[0]?.qualifying_reviewer_count;
+      const reviewerCount = Number(rawCount);
+      if (!Number.isInteger(reviewerCount) || reviewerCount < 0) {
+        throw new Error('Candidate reviewer routing returned an invalid coverage count');
+      }
+      return reviewerCount;
+    },
+
     async create(assignment: AdminAssignment): Promise<void> {
       await db.insert(candidateAdminAssignments).values({
         candidateId: assignment.candidateId,
@@ -48,7 +146,7 @@ export function createDrizzleAdminAssignmentStore(
         assignmentType: 'geographic',
         priorityRank: assignment.assignmentRank,
         distanceMeters: assignment.distanceMeters?.toString(),
-        status: assignment.assignmentStatus,
+        status: toDatabaseStatus(assignment.assignmentStatus),
         assignedAt: new Date(assignment.assignedAt),
         expiresAt: assignment.decisionDueBy
           ? new Date(assignment.decisionDueBy)
@@ -65,7 +163,7 @@ export function createDrizzleAdminAssignmentStore(
         assignmentType: 'geographic' as const,
         priorityRank: a.assignmentRank,
         distanceMeters: a.distanceMeters?.toString(),
-        status: a.assignmentStatus,
+        status: toDatabaseStatus(a.assignmentStatus),
         assignedAt: new Date(a.assignedAt),
         expiresAt: a.decisionDueBy ? new Date(a.decisionDueBy) : undefined,
       }));
@@ -109,7 +207,7 @@ export function createDrizzleAdminAssignmentStore(
       notes?: string
     ): Promise<void> {
       const updates: Record<string, unknown> = {
-        status,
+        status: toDatabaseStatus(status),
         updatedAt: new Date(),
       };
 
@@ -120,7 +218,7 @@ export function createDrizzleAdminAssignmentStore(
         updates.completedAt = new Date();
       }
       if (decision) {
-        updates.outcome = decision;
+        updates.outcome = toDatabaseDecision(decision);
       }
       if (notes) {
         updates.outcomeNotes = notes;
@@ -151,19 +249,19 @@ export function createDrizzleAdminAssignmentStore(
       }
       if (filters.assignmentStatus) {
         conditions.push(
-          eq(candidateAdminAssignments.status, filters.assignmentStatus)
+          eq(candidateAdminAssignments.status, toDatabaseStatus(filters.assignmentStatus))
         );
       }
       if (filters.decision) {
         conditions.push(
-          eq(candidateAdminAssignments.outcome, filters.decision)
+          eq(candidateAdminAssignments.outcome, toDatabaseDecision(filters.decision))
         );
       }
       if (filters.isOverdue) {
         conditions.push(
           and(
             lt(candidateAdminAssignments.expiresAt, new Date()),
-            inArray(candidateAdminAssignments.status, ['pending', 'accepted'])
+            inArray(candidateAdminAssignments.status, ['pending', 'claimed'])
           )!
         );
       }
@@ -197,7 +295,7 @@ export function createDrizzleAdminAssignmentStore(
 
       if (statusFilter && statusFilter.length > 0) {
         conditions.push(
-          inArray(candidateAdminAssignments.status, statusFilter)
+          inArray(candidateAdminAssignments.status, statusFilter.map(toDatabaseStatus))
         );
       }
 
@@ -215,7 +313,7 @@ export function createDrizzleAdminAssignmentStore(
         .where(
           and(
             lt(candidateAdminAssignments.expiresAt, new Date()),
-            inArray(candidateAdminAssignments.status, ['pending', 'accepted'])
+            inArray(candidateAdminAssignments.status, ['pending', 'claimed'])
           )
         )
         .limit(limit ?? 50);
@@ -226,13 +324,13 @@ export function createDrizzleAdminAssignmentStore(
       const result = await db
         .update(candidateAdminAssignments)
         .set({
-          status: 'withdrawn',
+          status: 'reassigned',
           updatedAt: new Date(),
         })
         .where(
           and(
             eq(candidateAdminAssignments.candidateId, candidateId),
-            inArray(candidateAdminAssignments.status, ['pending', 'accepted'])
+            inArray(candidateAdminAssignments.status, ['pending', 'claimed'])
           )
         )
         .returning({ id: candidateAdminAssignments.id });

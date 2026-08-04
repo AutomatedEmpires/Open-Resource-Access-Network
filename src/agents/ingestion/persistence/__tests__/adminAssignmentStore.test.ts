@@ -8,8 +8,10 @@ function createMockDb(
 ) {
   const insertValues: unknown[] = [];
   const updateSets: unknown[] = [];
+  const execute = vi.fn(async (_statement?: unknown): Promise<unknown> => undefined);
 
   const db = {
+    execute,
     select: vi.fn(() => {
       const result = selectResults.shift() ?? [];
       const terminal: any = {
@@ -143,6 +145,49 @@ describe('adminAssignmentStore', () => {
     expect(insertValues).toHaveLength(2);
   });
 
+  it('delegates reviewer routing to the database-owned capacity function', async () => {
+    const { db } = createMockDb();
+    db.execute
+      .mockResolvedValueOnce({
+        rows: [{ function_exists: true, executable: true, activation_active: true }],
+      })
+      .mockResolvedValueOnce({ rows: [{ qualifying_reviewer_count: 3 }] });
+    const store = createDrizzleAdminAssignmentStore(db as never);
+
+    await expect(store.routeForReview?.('cand-1', 4)).resolves.toBe(3);
+
+    expect(db.execute).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(db.execute.mock.calls[0]?.[0])).toContain(
+      "activation_trigger.tgenabled IN ('O', 'A')",
+    );
+  });
+
+  it('keeps ingestion available while database-owned routing is still dark', async () => {
+    const { db } = createMockDb();
+    db.execute.mockResolvedValueOnce({
+      rows: [{ function_exists: true, executable: false, activation_active: false }],
+    });
+    const store = createDrizzleAdminAssignmentStore(db as never);
+
+    await expect(store.routeForReview?.('cand-1', 4)).resolves.toBeNull();
+
+    expect(db.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when activated reviewer routing privileges drift', async () => {
+    const { db } = createMockDb();
+    db.execute.mockResolvedValueOnce({
+      rows: [{ function_exists: true, executable: false, activation_active: true }],
+    });
+    const store = createDrizzleAdminAssignmentStore(db as never);
+
+    await expect(store.routeForReview?.('cand-1', 4)).rejects.toThrow(
+      'Candidate reviewer routing contract drifted after activation',
+    );
+
+    expect(db.execute).toHaveBeenCalledTimes(1);
+  });
+
   it('maps select rows back into domain objects for direct lookups', async () => {
     const { db } = createMockDb([
       [makeRow()],
@@ -152,7 +197,7 @@ describe('adminAssignmentStore', () => {
           candidateId: 'cand-2',
           adminProfileId: 'admin-2',
           status: 'completed',
-          outcome: 'approve',
+          outcome: 'verified',
           outcomeNotes: 'Looks good',
           claimedAt: new Date('2026-01-01T01:00:00.000Z'),
           completedAt: new Date('2026-01-01T02:00:00.000Z'),
@@ -191,7 +236,7 @@ describe('adminAssignmentStore', () => {
 
     expect(updateSets[0]).toEqual(
       expect.objectContaining({
-        status: 'accepted',
+        status: 'claimed',
         claimedAt: expect.any(Date),
         updatedAt: expect.any(Date),
       }),
@@ -200,7 +245,7 @@ describe('adminAssignmentStore', () => {
       expect.objectContaining({
         status: 'completed',
         completedAt: expect.any(Date),
-        outcome: 'approve',
+        outcome: 'verified',
         outcomeNotes: 'Verified by staff',
       }),
     );
@@ -238,7 +283,7 @@ describe('adminAssignmentStore', () => {
 
     expect(updateSets[0]).toEqual(
       expect.objectContaining({
-        status: 'withdrawn',
+        status: 'reassigned',
         updatedAt: expect.any(Date),
       }),
     );

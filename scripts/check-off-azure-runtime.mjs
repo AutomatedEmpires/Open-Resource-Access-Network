@@ -336,6 +336,23 @@ if (!/^\s+SUPABASE_PROJECT_REF:\s*\$\{\{\s*vars\.SUPABASE_PROJECT_REF\s*\}\}\s*$
   violations.push(`${migrationWorkflowPath}: SUPABASE_PROJECT_REF must come from the selected GitHub Environment`);
 }
 
+if (
+  !migrationWorkflowSource.includes('if [ "$GITHUB_REF" != "refs/heads/main" ]')
+  || !migrationWorkflowSource.includes(
+    'git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main',
+  )
+  || !migrationWorkflowSource.includes('if [ "$checkout_sha" != "$remote_main_sha" ]')
+) {
+  violations.push(`${migrationWorkflowPath}: production migrations must prove the exact remote main SHA`);
+}
+
+if (
+  !migrationWorkflowSource.includes('SUPABASE_TARGET_SHA256')
+  || migrationWorkflowSource.split('.databaseTarget == $database_target').length - 1 !== 2
+) {
+  violations.push(`${migrationWorkflowPath}: activation health must bind the deployed app to the selected Supabase target before and after SQL`);
+}
+
 const controlledMigrationNames = [
   '0071_account_erasure_workflow.sql',
   '0072_account_erasure_index_gate.sql',

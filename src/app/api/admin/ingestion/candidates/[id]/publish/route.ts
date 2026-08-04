@@ -82,10 +82,9 @@ export async function POST(
       );
     }
 
-    // Two-person publication gate: once the 0077 evidence schema is applied,
-    // publication requires two independent verifying reviewers and zero
-    // rejections, counted from immutable completed assignments — never
-    // trusted from review_status or readiness flags.
+    // The 0077 migration only expands the evidence schema. The 0078 activation
+    // makes completed decisions immutable; livePublish then re-locks and
+    // transactionally re-evaluates two independent approvals with no rejection.
     await assertCandidatePublishApprovalEvidence(id);
 
     const { publishCandidateToLiveService } = await import(
@@ -101,25 +100,6 @@ export async function POST(
       candidateId: id,
       publishedByUserId: authCtx.userId,
       geocode: isGeocodingConfigured() ? geocode : undefined,
-    });
-
-    // Audit event
-    await stores.audit.append({
-      eventId: crypto.randomUUID(),
-      correlationId: crypto.randomUUID(),
-      eventType: 'publish.approved',
-      actorType: 'human',
-      actorId: authCtx.userId,
-      targetType: 'candidate',
-      targetId: id,
-      timestamp: new Date().toISOString(),
-      inputs: {},
-      outputs: {
-        serviceId: published.serviceId,
-        organizationId: published.organizationId,
-        locationId: published.locationId,
-      },
-      evidenceRefs: [],
     });
 
     return NextResponse.json({ success: true, serviceId: published.serviceId });

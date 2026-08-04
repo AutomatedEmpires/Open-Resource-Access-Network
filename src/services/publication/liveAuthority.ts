@@ -4,6 +4,7 @@ export type PublicationSourceKind =
   | 'host_submission'
   | 'community_review'
   | 'canonical_feed'
+  | 'candidate_two_person_authoritative'
   | 'candidate_allowlisted'
   | 'unknown';
 
@@ -24,7 +25,8 @@ const SOURCE_RANK: Record<PublicationSourceKind, number> = {
   host_submission: 100,
   community_review: 90,
   canonical_feed: 80,
-  candidate_allowlisted: 70,
+  candidate_two_person_authoritative: 70,
+  candidate_allowlisted: 60,
   unknown: 50,
 };
 
@@ -41,7 +43,13 @@ export function getPublicationSourceRank(sourceKind: PublicationSourceKind): num
 export function inferPublicationSourceKind(payload: Record<string, unknown>): PublicationSourceKind {
   const meta = readObject(payload.meta);
   const explicit = meta.publicationSourceKind;
-  if (explicit === 'host_submission' || explicit === 'community_review' || explicit === 'canonical_feed' || explicit === 'candidate_allowlisted') {
+  if (
+    explicit === 'host_submission'
+    || explicit === 'community_review'
+    || explicit === 'canonical_feed'
+    || explicit === 'candidate_two_person_authoritative'
+    || explicit === 'candidate_allowlisted'
+  ) {
     return explicit;
   }
 
@@ -69,7 +77,8 @@ export async function getCurrentPublicationAuthority(
         AND entity_id = $1
         AND status = 'current'
       ORDER BY generated_at DESC
-      LIMIT 1`,
+      LIMIT 1
+      FOR SHARE`,
     [serviceId],
   );
 

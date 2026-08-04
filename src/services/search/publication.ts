@@ -133,10 +133,61 @@ function buildApprovedManualAuthoritativeServiceIdsQuery(): string {
       )`;
 }
 
+function buildTwoPersonCandidateAuthoritativeServiceIdsQuery(): string {
+  const purposes = SEEKER_PUBLISHABLE_RESOURCE_PURPOSES
+    .map((purpose) => `'${purpose}'`)
+    .join(', ');
+
+  // Read the additive decision column through the row JSON shape. Before 0077
+  // the key is absent (count = 0) instead of making every seeker query fail at
+  // SQL parse time; after 0078 only trigger-bound immutable values can qualify.
+  return `SELECT candidate_snapshot.entity_id AS service_id
+    FROM public.hsds_export_snapshots candidate_snapshot
+    JOIN public.extracted_candidates published_candidate
+      ON published_candidate.candidate_id = (candidate_snapshot.hsds_payload #>> '{meta,sourceCandidateId}')
+     AND published_candidate.published_service_id = candidate_snapshot.entity_id
+     AND published_candidate.review_status = 'published'
+    JOIN public.source_systems candidate_system
+      ON candidate_system.id::text = (candidate_snapshot.hsds_payload #>> '{meta,sourceSystemId}')
+     AND candidate_system.is_active IS TRUE
+    WHERE candidate_snapshot.entity_type = 'service'
+      AND candidate_snapshot.status = 'current'
+      AND (candidate_snapshot.hsds_payload #>> '{meta,publicationSourceKind}') = 'candidate_two_person_authoritative'
+      AND CASE
+        WHEN jsonb_typeof(candidate_snapshot.hsds_payload #> '{meta,approvalCount}') = 'number'
+          THEN (candidate_snapshot.hsds_payload #>> '{meta,approvalCount}')::integer
+        ELSE 0
+      END >= 2
+      AND candidate_system.trust_tier IN (
+        'verified_publisher',
+        'trusted_partner',
+        'curated',
+        'community'
+      )
+      AND candidate_system.resource_purpose IN (${purposes})
+      AND (
+        SELECT count(DISTINCT (
+          to_jsonb(candidate_approval) ->> 'decision_reviewer_profile_id'
+        ))
+        FROM public.candidate_admin_assignments candidate_approval
+        WHERE candidate_approval.candidate_id = published_candidate.candidate_id
+          AND candidate_approval.status = 'completed'
+          AND candidate_approval.outcome = 'verified'
+      ) >= 2
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.candidate_admin_assignments candidate_rejection
+        WHERE candidate_rejection.candidate_id = published_candidate.candidate_id
+          AND candidate_rejection.status = 'completed'
+          AND candidate_rejection.outcome IN ('rejected', 'escalated')
+      )`;
+}
+
 /**
  * Requires affirmative publication authority. A live row is not seeker-visible
  * merely because canonical provenance is absent: it must prove either the
- * canonical feed path or the approved manual-submission path.
+ * canonical feed path, the approved manual-submission path, or immutable
+ * two-person candidate publication evidence.
  */
 export function buildPublishableSourcePredicate(
   serviceAlias = 's',
@@ -150,6 +201,8 @@ export function buildPublishableSourcePredicate(
     ${buildCanonicalAuthoritativeServiceIdsQuery()}
     UNION
     ${buildApprovedManualAuthoritativeServiceIdsQuery()}
+    UNION
+    ${buildTwoPersonCandidateAuthoritativeServiceIdsQuery()}
   )`;
 }
 

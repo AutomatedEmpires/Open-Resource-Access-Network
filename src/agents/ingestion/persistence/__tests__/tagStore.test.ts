@@ -5,6 +5,7 @@ import { createDrizzleTagStore } from '../tagStore';
 function createMockDb(selectResults: unknown[] = []) {
   const insertValues: unknown[] = [];
   const deleteWhereCalls: unknown[] = [];
+  const updateSets: unknown[] = [];
 
   const db = {
     select: vi.fn(() => {
@@ -36,9 +37,17 @@ function createMockDb(selectResults: unknown[] = []) {
         return Promise.resolve();
       }),
     })),
+    update: vi.fn(() => ({
+      set: vi.fn((value: unknown) => {
+        updateSets.push(value);
+        return {
+          where: vi.fn(() => Promise.resolve()),
+        };
+      }),
+    })),
   };
 
-  return { db, insertValues, deleteWhereCalls };
+  return { db, insertValues, deleteWhereCalls, updateSets };
 }
 
 function makeRow(overrides: Record<string, unknown> = {}) {
@@ -145,6 +154,7 @@ describe('tagStore', () => {
 
     expect(insertValues).toEqual([
       {
+        id: 'tag-1',
         targetId: 'svc-1',
         targetType: 'service',
         tagType: 'category',
@@ -155,6 +165,7 @@ describe('tagStore', () => {
       },
       [
         {
+          id: 'tag-2',
           targetId: 'cand-2',
           targetType: 'candidate',
           tagType: 'audience',
@@ -164,6 +175,7 @@ describe('tagStore', () => {
           addedBy: null,
         },
         {
+          id: 'tag-3',
           targetId: 'svc-2',
           targetType: 'service',
           tagType: 'program',
@@ -189,12 +201,27 @@ describe('tagStore', () => {
     await expect(store.findByTag('category', 'food', 'service')).resolves.toEqual(['svc-1', 'svc-2']);
   });
 
-  it('removes and replaces tags by target and type', async () => {
-    const { db, deleteWhereCalls, insertValues } = createMockDb();
+  it('removes stale values and preserves durable ids for unchanged values', async () => {
+    const { db, deleteWhereCalls, insertValues, updateSets } = createMockDb([
+      [
+        makeRow({ id: 'tag-stable', tagValue: 'food', confidence: 70 }),
+        makeRow({ id: 'tag-removed', tagValue: 'transportation' }),
+      ],
+    ]);
     const store = createDrizzleTagStore(db as never);
 
     await store.remove('svc-1', 'service', 'category', 'food');
-    await store.replaceByType('svc-1', 'service', 'category', [
+    const reconciled = await store.replaceByType('svc-1', 'service', 'category', [
+      {
+        id: 'new-extraction-id',
+        serviceId: 'svc-1',
+        tagType: 'category',
+        tagValue: 'food',
+        tagConfidence: 93,
+        assignedBy: 'agent',
+        assignedByUserId: 'agent-2',
+        evidenceRefs: ['evidence-new'],
+      },
       {
         id: 'tag-9',
         serviceId: 'svc-1',
@@ -208,16 +235,27 @@ describe('tagStore', () => {
     ]);
 
     expect(deleteWhereCalls).toHaveLength(2);
-    expect(insertValues.at(-1)).toEqual([
+    expect(updateSets).toEqual([
       {
-        targetId: 'svc-1',
-        targetType: 'service',
-        tagType: 'category',
-        tagValue: 'housing',
-        confidence: 90,
+        tagValue: 'food',
+        confidence: 93,
         source: 'agent',
         addedBy: 'agent-2',
       },
+    ]);
+    expect(insertValues.at(-1)).toEqual({
+      id: 'tag-9',
+      targetId: 'svc-1',
+      targetType: 'service',
+      tagType: 'category',
+      tagValue: 'housing',
+      confidence: 90,
+      source: 'agent',
+      addedBy: 'agent-2',
+    });
+    expect(reconciled).toEqual([
+      expect.objectContaining({ id: 'tag-stable', tagValue: 'food' }),
+      expect.objectContaining({ id: 'tag-9', tagValue: 'housing' }),
     ]);
   });
 });

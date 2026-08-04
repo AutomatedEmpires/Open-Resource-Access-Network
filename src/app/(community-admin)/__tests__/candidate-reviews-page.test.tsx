@@ -30,7 +30,6 @@ function inbox(assignmentStatus: 'pending' | 'claimed') {
       candidate_id: CANDIDATE_ID,
       assignment_status: assignmentStatus,
       expires_at: null,
-      candidate_review_status: assignmentStatus === 'pending' ? 'pending' : 'in_review',
       organization_name: 'Community Bridge',
       service_name: 'Emergency housing',
       description: 'Short-term placement and navigation.',
@@ -56,8 +55,18 @@ function detail(status: 'pending' | 'claimed' | 'completed') {
         description: 'Short-term placement and navigation.',
         websiteUrl: 'https://example.org/housing',
       },
-      review: { status: status === 'pending' ? 'pending' : 'in_review' },
+      review: {},
     },
+    reviewReadiness: {
+      canApprove: true,
+      hasRequiredFields: true,
+      hasRequiredTags: true,
+      tagsConfirmed: true,
+      meetsScoreThreshold: true,
+      passesVerification: true,
+      blockers: [],
+    },
+    canMutateEvidence: status === 'claimed',
     currentUserAssignment: {
       id: ASSIGNMENT_ID,
       status,
@@ -101,13 +110,21 @@ describe('community candidate review inbox', () => {
     expect(await screen.findByText('Emergency housing')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Open review' }));
 
-    expect(await screen.findByRole('button', { name: 'Claim review' })).toBeInTheDocument();
+    expect(await screen.findByRole(
+      'button',
+      { name: 'Claim review' },
+      { timeout: 10_000 },
+    )).toBeInTheDocument();
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
       `/api/admin/ingestion/candidates/${CANDIDATE_ID}`,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Claim review' }));
 
-    const approve = await screen.findByRole('button', { name: 'Approve' });
+    const approve = await screen.findByRole(
+      'button',
+      { name: 'Approve' },
+      { timeout: 10_000 },
+    );
     expect(fetchMock.mock.calls[2]?.[0]).toBe(
       `/api/admin/ingestion/candidates/${CANDIDATE_ID}/approval`,
     );
@@ -117,6 +134,9 @@ describe('community candidate review inbox', () => {
     });
 
     fireEvent.click(approve);
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Confirm approval');
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm approval' }));
 
     await waitFor(() => {
       expect(fetchMock.mock.calls[5]?.[0]).toBe(

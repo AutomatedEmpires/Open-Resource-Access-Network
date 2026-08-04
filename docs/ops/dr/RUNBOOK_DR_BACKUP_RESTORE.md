@@ -27,10 +27,10 @@ does not imply the drill passed.
 
 2026-07-29 review note: the blocker STANDS — no isolated restore drill has been
 performed and no RTO/RPO evidence exists in this repository. The release
-manifest this runbook depends on has advanced to 76 migration files through
-`0077_candidate_revision_lineage.sql` (see
+manifest this runbook depends on has advanced to 77 migration files through
+`0078_candidate_revision_activation.sql` (see
 `docs/ops/core/DATABASE_MIGRATION_BASELINE.md`); any restore acceptance must
-verify against that ledger state, not the previously documented 75.
+verify against that ledger state, not the previously documented 76.
 
 ## Purpose And Scope
 

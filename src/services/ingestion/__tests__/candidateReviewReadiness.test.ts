@@ -32,7 +32,7 @@ describe('peer-blind candidate review readiness', () => {
         hasRequiredTags: true,
         tagsConfirmed: true,
         meetsScoreThreshold: true,
-        passesVerification: true,
+        passesVerification: false,
         blockers: ['readiness_evidence_invalid'],
       },
       evidenceStillMutable: true,
@@ -67,6 +67,32 @@ describe('peer-blind candidate review readiness', () => {
         blockers: [],
       },
       evidenceStillMutable: false,
+    });
+  });
+
+  it('preserves unrelated static blockers that begin with Need', async () => {
+    executeQueryMock
+      .mockResolvedValueOnce([{ is_ready: false }])
+      .mockResolvedValueOnce([{
+        has_required_fields: true,
+        has_required_tags: true,
+        tags_confirmed: true,
+        meets_score_threshold: true,
+        blockers: ['Need government-issued ID verification'],
+        can_mutate_evidence: true,
+      }]);
+
+    await expect(getPeerBlindCandidateReviewReadiness('cand-1')).resolves.toEqual({
+      reviewReadiness: {
+        canApprove: false,
+        hasRequiredFields: true,
+        hasRequiredTags: true,
+        tagsConfirmed: true,
+        meetsScoreThreshold: true,
+        passesVerification: true,
+        blockers: ['Need government-issued ID verification'],
+      },
+      evidenceStillMutable: true,
     });
   });
 });

@@ -26,7 +26,8 @@ export interface PeerBlindCandidateReviewReadiness {
 }
 
 function isStaticReviewBlocker(blocker: string): boolean {
-  return !PEER_DECISION_BLOCKERS.has(blocker) && !blocker.startsWith('Need ');
+  return !PEER_DECISION_BLOCKERS.has(blocker)
+    && !/^Need \d+ admin approvals, have \d+$/i.test(blocker);
 }
 
 /**
@@ -68,11 +69,12 @@ export async function getPeerBlindCandidateReviewReadiness(candidateId: string):
   const blockers: string[] = hasValidBlockerEvidence
     ? (rawBlockers as string[]).filter(isStaticReviewBlocker)
     : ['readiness_evidence_invalid'];
-  const passesVerification = !blockers.some((blocker) => (
-    blocker === 'quarantine_source'
-    || blocker === 'critical_verification_failure'
-    || blocker === 'domain_allowlist_failed'
-  ));
+  const passesVerification = hasValidBlockerEvidence
+    && !blockers.some((blocker) => (
+      blocker === 'quarantine_source'
+      || blocker === 'critical_verification_failure'
+      || blocker === 'domain_allowlist_failed'
+    ));
   const reviewReadiness = {
     hasRequiredFields: readiness.has_required_fields,
     hasRequiredTags: readiness.has_required_tags,

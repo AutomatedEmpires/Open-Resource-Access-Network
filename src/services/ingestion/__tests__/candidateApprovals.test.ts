@@ -9,6 +9,7 @@ vi.mock('@/services/db/postgres', () => dbMocks);
 
 import {
   assertCandidatePublishApprovalEvidence,
+  claimCandidateApproval,
   decideCandidateApproval,
   isCandidateApprovalEvidenceProvisioned,
 } from '../candidateApprovals';
@@ -21,6 +22,7 @@ function createTransactionQuery(
   rejectionCount: number,
   options: {
     expiresAt?: string | null;
+    assignmentStatus?: 'pending' | 'claimed';
     escalationCount?: number;
     reviewerRole?: string;
     readiness?: Partial<{
@@ -63,7 +65,7 @@ function createTransactionQuery(
           id: ASSIGNMENT_ID,
           candidate_id: CANDIDATE_ID,
           admin_profile_id: 'reviewer-profile-1',
-          status: 'claimed',
+          status: options.assignmentStatus ?? 'claimed',
           expires_at: options.expiresAt ?? null,
         }],
       };
@@ -84,6 +86,7 @@ function createTransactionQuery(
         }],
       };
     }
+    if (query.includes("SET status = 'claimed'")) return { rows: [{ id: ASSIGNMENT_ID }] };
     if (query.includes("SET status = 'completed'")) return { rows: [{ id: ASSIGNMENT_ID }] };
     if (query.includes('AS rejection_count')) {
       return {
@@ -152,6 +155,25 @@ describe('candidate approval consensus', () => {
     })).rejects.toThrow('Only an active assigned reviewer');
 
     expect(query.mock.calls.some(([sql]) => sql.includes("SET status = 'completed'"))).toBe(false);
+  });
+
+  it('enforces the claim deadline in the database update', async () => {
+    const query = createTransactionQuery(0, 0, {
+      assignmentStatus: 'pending',
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    });
+    dbMocks.withTransaction.mockImplementationOnce(async (callback) => callback({ query }));
+
+    await expect(claimCandidateApproval({
+      candidateId: CANDIDATE_ID,
+      assignmentId: ASSIGNMENT_ID,
+      actorUserId: 'reviewer-user-1',
+    })).resolves.toEqual({ status: 'claimed' });
+
+    const claimSql = String(query.mock.calls.find(([sql]) => (
+      sql.includes("SET status = 'claimed'")
+    ))?.[0]);
+    expect(claimSql).toContain('expires_at IS NULL OR expires_at > NOW()');
   });
 
   it('keeps a single rejection nonterminal and escalates for another independent review', async () => {
@@ -256,6 +278,9 @@ describe('candidate approval consensus', () => {
     expect(completionIndex).toBeGreaterThan(evaluationIndex);
     const completionCall = query.mock.calls[completionIndex];
     expect(String(completionCall?.[0])).toContain('decision_reviewer_profile_id = $4');
+    expect(String(completionCall?.[0])).toContain(
+      'expires_at IS NULL OR expires_at > NOW()',
+    );
     expect(completionCall?.[1]).toEqual([
       ASSIGNMENT_ID,
       'verified',
@@ -403,10 +428,12 @@ describe('publish approval evidence gate', () => {
     }]);
 
     await expect(assertCandidatePublishApprovalEvidence(CANDIDATE_ID))
-      .rejects.toThrow('independent approvals');
+      .rejects.toThrow(
+        'approvals with no rejections or escalations (currently 2 approval(s), 0 rejection(s), 1 escalation(s))',
+      );
   });
 
-  it('resolves at two distinct approvals and zero rejections', async () => {
+  it('resolves at two distinct approvals and zero rejections or escalations', async () => {
     provisionProbe(true);
     dbMocks.executeQuery.mockResolvedValueOnce([{ approval_count: 2, rejection_count: 0 }]);
 

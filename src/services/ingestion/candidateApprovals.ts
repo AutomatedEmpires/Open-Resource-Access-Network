@@ -133,7 +133,7 @@ export async function assertCandidatePublishApprovalEvidence(
   ) {
     throw new CandidateApprovalConflict(
       `Publication requires ${REQUIRED_INDEPENDENT_CANDIDATE_APPROVALS} independent`
-      + ` approvals with no rejections (currently ${approvalCount} approval(s),`
+      + ` approvals with no rejections or escalations (currently ${approvalCount} approval(s),`
       + ` ${rejectionCount} rejection(s), ${escalationCount} escalation(s)).`,
     );
   }
@@ -305,6 +305,7 @@ export async function claimCandidateApproval(input: {
            updated_at = NOW()
        WHERE id = $1
          AND status = 'pending'
+         AND (expires_at IS NULL OR expires_at > NOW())
        RETURNING id`,
       [assignment.id],
     );
@@ -431,6 +432,7 @@ export async function decideCandidateApproval(input: {
            updated_at = NOW()
        WHERE id = $1
          AND status = 'claimed'
+         AND (expires_at IS NULL OR expires_at > NOW())
        RETURNING id`,
       [assignment.id, outcome, normalizedNotes ?? null, reviewer.id],
     );

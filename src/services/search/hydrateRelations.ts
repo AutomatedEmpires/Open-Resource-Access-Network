@@ -61,10 +61,11 @@ const PHONES_SQL = `SELECT id, service_id, location_id, organization_id, number,
 const SCHEDULES_SQL = `SELECT id, service_id, location_id, valid_from, valid_to, dtstart, until, wkst, days, opens_at, closes_at, description
   FROM schedules WHERE service_id = ANY($1::uuid[])`;
 
-const TAXONOMY_SQL = `SELECT st.service_id, tt.id, tt.term, tt.description, tt.parent_id, tt.taxonomy, tt.created_at
+const TAXONOMY_SQL = `SELECT st.service_id, tt.id, tt.term, tt.description, tt.parent_id, tt.taxonomy, tt.created_at, tt.updated_at
   FROM service_taxonomy st
   JOIN taxonomy_terms tt ON tt.id = st.taxonomy_term_id
-  WHERE st.service_id = ANY($1::uuid[])`;
+  WHERE st.service_id = ANY($1::uuid[])
+  ORDER BY st.service_id, tt.term, tt.id`;
 
 const ELIGIBILITY_SQL = `SELECT id, service_id, description, minimum_age, maximum_age, eligible_values, household_size_min, household_size_max, created_at, updated_at
   FROM eligibility WHERE service_id = ANY($1::uuid[])`;
@@ -86,6 +87,165 @@ const ATTRIBUTES_SQL = `SELECT id, service_id, taxonomy, tag, details, created_a
 
 const ACCESSIBILITY_SQL = `SELECT id, location_id, accessibility, details, created_at, updated_at
   FROM accessibility_for_disabilities WHERE location_id = ANY($1::uuid[])`;
+
+/** Card-tier caps — the paged path ships only what a result card renders. */
+const CARD_TIER_MAX_TAXONOMY_TERMS = 3;
+
+// Only voice, hotline, or legacy-untyped rows can back the card's tel: action.
+// SMS, TTY, and fax need different interaction affordances and must not be
+// presented as a conventional call.
+export const CARD_PHONES_SQL = `SELECT id, service_id, location_id, organization_id, number, extension, type, language, description, created_at, updated_at
+  FROM phones
+  WHERE (service_id = ANY($1::uuid[])
+     OR location_id = ANY($2::uuid[])
+     OR organization_id = ANY($3::uuid[]))
+    AND (type IS NULL OR type IN ('voice', 'hotline'))
+  ORDER BY (CASE WHEN type IS NULL OR type = 'voice' THEN 0 ELSE 1 END),
+    service_id NULLS LAST, location_id NULLS LAST, organization_id NULLS LAST, id`;
+
+// Hours entered through the resource-submission workflow are structured
+// (days/opens_at/closes_at) with NO description — they must hydrate too.
+// Ignore schedules that are not effective today. Description-bearing rows
+// sort first, then the newest applicable row, with stable parent/id ties.
+export const CARD_SCHEDULES_SQL = `SELECT id, service_id, location_id, valid_from, valid_to, dtstart, until, wkst, days, opens_at, closes_at, description, created_at, updated_at
+  FROM schedules
+  WHERE (service_id = ANY($1::uuid[]) OR location_id = ANY($2::uuid[]))
+    AND (description IS NOT NULL OR days IS NOT NULL OR opens_at IS NOT NULL)
+    AND (valid_from IS NULL OR valid_from <= $3::date)
+    AND (valid_to IS NULL OR valid_to >= $3::date)
+  ORDER BY (CASE WHEN description IS NOT NULL THEN 0 ELSE 1 END),
+    valid_from DESC NULLS LAST, updated_at DESC NULLS LAST,
+    service_id NULLS LAST, location_id NULLS LAST, id`;
+
+function mapPhoneRow(row: Row): Phone {
+  return {
+    id: row.id as string,
+    serviceId: (row.service_id as string | null) ?? null,
+    locationId: (row.location_id as string | null) ?? null,
+    organizationId: (row.organization_id as string | null) ?? null,
+    number: row.number as string,
+    extension: (row.extension as string | null) ?? null,
+    type: (row.type as Phone['type']) ?? null,
+    language: (row.language as string | null) ?? null,
+    description: (row.description as string | null) ?? null,
+    createdAt: asDate(row.created_at),
+    updatedAt: asDate(row.updated_at),
+  };
+}
+
+function mapScheduleRow(row: Row): Schedule {
+  return {
+    id: row.id as string,
+    serviceId: (row.service_id as string | null) ?? null,
+    locationId: (row.location_id as string | null) ?? null,
+    validFrom: row.valid_from ? asDate(row.valid_from) : null,
+    validTo: row.valid_to ? asDate(row.valid_to) : null,
+    dtstart: (row.dtstart as string | null) ?? null,
+    until: (row.until as string | null) ?? null,
+    wkst: (row.wkst as string | null) ?? null,
+    days: (row.days as string[] | null) ?? null,
+    opensAt: (row.opens_at as string | null) ?? null,
+    closesAt: (row.closes_at as string | null) ?? null,
+    description: (row.description as string | null) ?? null,
+    createdAt: asDate(row.created_at),
+    updatedAt: asDate(row.updated_at),
+  };
+}
+
+/**
+ * Card-tier hydration for the paged search path.
+ *
+ * Result cards need a callable phone number, an hours line, and a few
+ * category labels — without this the directory/map/scroll cards could NEVER
+ * show a phone or hours while the identical component was fully populated on
+ * saved/detail (and live records resorted to pasting hotline numbers into
+ * descriptions).
+ *
+ * Honest phone fallback chain per record: a service-scoped phone first, else
+ * a phone on the record's own location, else an organization phone. Schedules
+ * fall back service → location. Taxonomy labels are capped at
+ * CARD_TIER_MAX_TAXONOMY_TERMS. Everything is a bounded parameterized batch
+ * over the page's ids (three queries per uncached page).
+ */
+export async function hydrateCardTier(
+  deps: HydrationDeps,
+  services: EnrichedService[],
+): Promise<EnrichedService[]> {
+  if (services.length === 0) {
+    return [];
+  }
+
+  const serviceIds = [...new Set(services.map((s) => s.service.id))];
+  const locationIds = [...new Set(
+    services.map((s) => s.location?.id).filter((id): id is string => Boolean(id)),
+  )];
+  const organizationIds = [...new Set(services.map((s) => s.organization.id))];
+  const currentDate = new Date().toISOString().slice(0, 10);
+
+  const [phoneRows, scheduleRows, taxonomyRows] = await Promise.all([
+    deps.executeQuery<Row>(CARD_PHONES_SQL, [serviceIds, locationIds, organizationIds]),
+    deps.executeQuery<Row>(CARD_SCHEDULES_SQL, [serviceIds, locationIds, currentDate]),
+    deps.executeQuery<Row>(TAXONOMY_SQL, [serviceIds]),
+  ]);
+
+  // Index every scope a row carries: ingestion regularly writes phones with
+  // multiple parent ids (e.g. service + organization), and a sibling service
+  // with no phone of its own must still find the shared org number.
+  const phonesByService = new Map<string, Phone>();
+  const phonesByLocation = new Map<string, Phone>();
+  const phonesByOrganization = new Map<string, Phone>();
+  for (const row of phoneRows) {
+    const phone = mapPhoneRow(row);
+    if (phone.serviceId && !phonesByService.has(phone.serviceId)) {
+      phonesByService.set(phone.serviceId, phone);
+    }
+    if (phone.locationId && !phonesByLocation.has(phone.locationId)) {
+      phonesByLocation.set(phone.locationId, phone);
+    }
+    if (phone.organizationId && !phonesByOrganization.has(phone.organizationId)) {
+      phonesByOrganization.set(phone.organizationId, phone);
+    }
+  }
+
+  // Schedules are intentionally plural: submission and host workflows store
+  // one row per open day. Preserve the full service-scoped set, falling back
+  // to the full location-scoped set only when the service has no rows.
+  const schedulesByService = groupBy<Schedule>(scheduleRows, 'service_id', mapScheduleRow);
+  const schedulesByLocation = groupBy<Schedule>(scheduleRows, 'location_id', mapScheduleRow);
+
+  const taxonomyByService = groupBy<TaxonomyTerm>(taxonomyRows, 'service_id', (row) => ({
+    id: row.id as string,
+    term: row.term as string,
+    description: (row.description as string | null) ?? null,
+    parentId: (row.parent_id as string | null) ?? null,
+    taxonomy: (row.taxonomy as string | null) ?? null,
+    createdAt: asDate(row.created_at),
+    updatedAt: asDate(row.updated_at),
+  }));
+
+  return services.map((service) => {
+    const serviceId = service.service.id;
+    const locationId = service.location?.id ?? null;
+    const organizationId = service.organization.id;
+
+    const phone =
+      phonesByService.get(serviceId)
+      ?? (locationId ? phonesByLocation.get(locationId) : undefined)
+      ?? phonesByOrganization.get(organizationId);
+
+    const schedules =
+      schedulesByService.get(serviceId)
+      ?? (locationId ? schedulesByLocation.get(locationId) : undefined)
+      ?? [];
+
+    return {
+      ...service,
+      phones: phone ? [phone] : [],
+      schedules,
+      taxonomyTerms: (taxonomyByService.get(serviceId) ?? []).slice(0, CARD_TIER_MAX_TAXONOMY_TERMS),
+    };
+  });
+}
 
 /**
  * Hydrate relation collections for a batch of enriched services. Returns new

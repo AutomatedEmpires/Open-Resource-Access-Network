@@ -175,9 +175,14 @@ export function SeekerContextStrip({ pathname }: { pathname: string }) {
     return null;
   }
 
+  const hideOnImmersiveMobileRoute = pathname === '/chat'
+    || pathname.startsWith('/chat/')
+    || pathname === '/map'
+    || pathname.startsWith('/map/');
+
   return (
     <div
-      className={`${pathname === '/map' || pathname.startsWith('/map/') ? 'hidden md:block ' : ''}border-b border-slate-200/80 bg-white/75 backdrop-blur`}
+      className={`${hideOnImmersiveMobileRoute ? 'hidden md:block ' : ''}border-b border-slate-200/80 bg-white/75 backdrop-blur`}
       data-seeker-context-strip
     >
       <div className="container mx-auto flex max-w-6xl items-center justify-between gap-2 overflow-hidden px-4 py-2">

@@ -68,6 +68,9 @@ export function ChatServiceCard({
   const [showFeedback, setShowFeedback] = useState(false);
   const serviceHref = buildDiscoveryHref(`/service/${card.serviceId}`, discoveryContext ?? {});
   const reportHref = buildDiscoveryHref(`/report?serviceId=${encodeURIComponent(card.serviceId)}`, discoveryContext ?? {});
+  const helpDescription = card.description?.trim() || null;
+  const eligibilitySummary = card.eligibilityHint?.trim() || null;
+  const eligibilityIncludesConfirmation = eligibilitySummary?.toLowerCase().includes('confirm') ?? false;
   const savedToggleCopy = savedSyncEnabled == null
     ? {
         ariaLabel: isSaved ? 'Remove from saved' : 'Save this service',
@@ -138,9 +141,31 @@ export function ChatServiceCard({
         </div>
       </div>
 
-      {card.description && (
-        <p className="mt-2 line-clamp-2 text-xs text-slate-600">{card.description}</p>
-      )}
+      <dl className="mt-3 grid gap-2" aria-label={`Service scope and eligibility for ${card.serviceName}`}>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            What this helps with
+          </dt>
+          <dd className="mt-1 line-clamp-2 text-sm leading-5 text-slate-800">
+            {helpDescription
+              ?? 'This record does not list what the service helps with. Confirm the service scope with the provider.'}
+          </dd>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Who may qualify
+          </dt>
+          <dd className="mt-1 text-sm leading-5 text-slate-800">
+            {eligibilitySummary
+              ?? 'This record does not list who may qualify. Confirm current requirements with the provider.'}
+          </dd>
+          {eligibilitySummary && !eligibilityIncludesConfirmation && (
+            <dd className="mt-1 text-xs leading-4 text-slate-500">
+              Confirm current requirements with the provider.
+            </dd>
+          )}
+        </div>
+      </dl>
 
       <div className="mt-3 space-y-1 text-xs text-slate-500">
         {card.address && (
@@ -247,8 +272,6 @@ export function ChatServiceCard({
           </div>
         </div>
       )}
-
-      <p className="mt-2 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700">{card.eligibilityHint}</p>
 
       {card.requiredDocuments && card.requiredDocuments.length > 0 && (
         <div className="mt-2 flex items-start gap-2 rounded border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700">

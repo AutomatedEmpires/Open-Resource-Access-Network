@@ -237,6 +237,10 @@ export default function DirectoryPage() {
     return buildDiscoveryHref('/chat', directoryDiscoveryContext);
   }, [directoryDiscoveryContext]);
 
+  const mapHref = useMemo(() => {
+    return buildDiscoveryHref('/map', directoryDiscoveryContext);
+  }, [directoryDiscoveryContext]);
+
   const buildServiceDetailHref = useCallback((serviceId: string) => {
     return buildDiscoveryHref(`/service/${serviceId}`, directoryDiscoveryContext);
   }, [directoryDiscoveryContext]);
@@ -666,14 +670,25 @@ export default function DirectoryPage() {
       <div className="container mx-auto max-w-6xl px-4 pt-4 pb-8 md:py-8">
         <section className="rounded-[30px] border border-slate-200 bg-white p-4 shadow-sm md:p-8">
             <PageHeader
-              eyebrow="Resource discovery"
-              title="Directory"
+              eyebrow="Find local help"
+              title="Browse services"
+              subtitle="Search and filter the list. Each result puts its listed service scope, eligibility details, and missing information up front."
               badges={(
                 <>
-                  <PageHeaderBadge tone="trust">Publication-gated records</PageHeaderBadge>
+                  <PageHeaderBadge tone="trust">Published service records</PageHeaderBadge>
                   {deviceLocation ? <PageHeaderBadge tone="accent">Approximate location active</PageHeaderBadge> : null}
                   {hasActiveRefinements ? <PageHeaderBadge>Refinements on</PageHeaderBadge> : null}
                 </>
+              )}
+              actions={(
+                <nav className="inline-flex rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] p-1" aria-label="Result views">
+                  <span aria-current="page" className="inline-flex min-h-[40px] items-center rounded-lg bg-white px-3 py-2 text-sm font-semibold text-[var(--text-primary)] shadow-sm">
+                    List view
+                  </span>
+                  <Link href={mapHref} className="inline-flex min-h-[40px] items-center rounded-lg px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-white hover:text-[var(--text-primary)]">
+                    Map view
+                  </Link>
+                </nav>
               )}
             />
 
@@ -977,7 +992,7 @@ export default function DirectoryPage() {
                 {!isLoading && !data && !error && (
                   <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-8 text-center shadow-sm">
                     <p className="text-base font-semibold text-slate-900">Start with a search</p>
-                    <p className="mt-1 text-sm text-slate-500">Search or pick a need above — every result is a service record from a source ORAN has checked and published.</p>
+                    <p className="mt-1 text-sm text-slate-500">Search or pick a need above. Results come from ORAN&apos;s published catalog and may include missing or outdated details.</p>
                   </div>
                 )}
 

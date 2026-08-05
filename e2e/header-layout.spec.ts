@@ -115,6 +115,33 @@ test('mobile intake and crisis access do not compete for the same space', async 
   expect(submitBox!.y + submitBox!.height + 16).toBeLessThanOrEqual(bottomNavBox!.y);
 });
 
+test('mobile chat keeps its composer above navigation when seeker context is stored', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem('oran:preferences', JSON.stringify({ approximateCity: 'Phoenix' }));
+    localStorage.setItem('oran:saved-service-ids', JSON.stringify(['svc-1']));
+  });
+
+  await page.goto('/chat', { waitUntil: 'domcontentloaded' });
+
+  const contextStrip = page.locator('[data-seeker-context-strip]');
+  const composer = page.getByRole('textbox', { name: 'Chat message input' });
+  const send = page.getByRole('button', { name: 'Send message' });
+  const bottomNav = page.getByRole('navigation', { name: 'Seeker mobile navigation' });
+
+  await expect(contextStrip).toHaveCount(1);
+  await expect(contextStrip).toBeHidden();
+  await expect(composer).toBeVisible();
+  await expect(send).toBeVisible();
+  await expect(bottomNav).toBeVisible();
+
+  const sendBox = await send.boundingBox();
+  const bottomNavBox = await bottomNav.boundingBox();
+  expect(sendBox).not.toBeNull();
+  expect(bottomNavBox).not.toBeNull();
+  expect(sendBox!.y + sendBox!.height + 8).toBeLessThanOrEqual(bottomNavBox!.y);
+});
+
 test('public mobile navigation exposes every primary destination without a scoped bottom nav', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/about', { waitUntil: 'domcontentloaded' });

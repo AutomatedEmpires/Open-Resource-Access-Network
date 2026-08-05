@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 const port = Number(process.env.PORT ?? 3000);
 const remoteBaseUrl = process.env.PLAYWRIGHT_BASE_URL?.trim();
 const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim();
+const webServerCommand = process.env.PLAYWRIGHT_WEB_SERVER_COMMAND?.trim() || 'npm run dev';
 const baseURL = remoteBaseUrl || `http://localhost:${port}`;
 
 export default defineConfig({
@@ -10,6 +11,9 @@ export default defineConfig({
   timeout: 60_000,
   expect: {
     timeout: 10_000,
+    toHaveScreenshot: {
+      pathTemplate: `{testDir}/{testFilePath}-snapshots/{arg}-{projectName}-{platform}-${process.arch}{ext}`,
+    },
   },
   // Hosted acceptance may mutate a resettable preview database. Serialize it
   // and disable retries so a failed lifecycle cannot be replayed concurrently.
@@ -24,7 +28,7 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   webServer: remoteBaseUrl ? undefined : {
-    command: 'npm run dev',
+    command: webServerCommand,
     url: `http://localhost:${port}`,
     // Avoid reusing an already-running local dev server that may not have
     // ORAN E2E auth env vars (causes flaky auth callback failures).

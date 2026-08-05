@@ -173,7 +173,9 @@ describe('chat types + conversion', () => {
     expect(card.scheduleDescription).toBe('Mon-Fri 9-5');
     expect(card.description).toBeUndefined();
     expect(card.links).toBeUndefined();
-    expect(card.eligibilityHint.toLowerCase()).toContain('may qualify');
+    expect(card.eligibilityHint).toBe(
+      'This record does not list who may qualify. Confirm current requirements with the provider.',
+    );
   });
 
   it('builds next-step, coverage, eligibility, document, distance, and verification details from stored fields', () => {

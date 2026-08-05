@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, MapPin, AlertTriangle, X, ChevronDown, SlidersHorizontal, Loader2 } from 'lucide-react';
 
@@ -887,6 +888,7 @@ export default function MapPage() {
     bottomSheetSnap === 'full' ? '0%' :
     bottomSheetSnap === 'half' ? '52%' :
     'calc(100% - 80px)';
+  const mobileSearchStackHeight = 56 + 48 + (appliedFilterItems.length > 0 ? 40 : 0);
 
   return (
     <>
@@ -915,7 +917,11 @@ export default function MapPage() {
             </div>
 
             {/* Floating search bar */}
-            <div className="absolute top-0 left-0 right-0 px-3 pt-3 z-30 pointer-events-none">
+            <div
+              className="absolute top-0 left-0 right-0 px-3 pt-3 z-30 pointer-events-none"
+              data-testid="mobile-map-search-stack"
+              data-search-stack-height={mobileSearchStackHeight}
+            >
               <form
                 onSubmit={handleSubmit}
                 className="pointer-events-auto flex h-12 items-center gap-1.5 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]/95 pl-3 pr-1 shadow-[0_4px_20px_rgba(15,23,42,0.12)] backdrop-blur-md"
@@ -967,6 +973,14 @@ export default function MapPage() {
                   )}
                 </button>
               </form>
+              <div className="pointer-events-auto mt-2 flex justify-end">
+                <Link
+                  href={directoryHref}
+                  className="inline-flex min-h-[40px] items-center rounded-xl border border-[var(--border)] bg-white/95 px-3 py-2 text-sm font-semibold text-[var(--text-primary)] shadow-md backdrop-blur-md"
+                >
+                  List view
+                </Link>
+              </div>
 
               {/* Active filter chips — horizontal scroll */}
               {appliedFilterItems.length > 0 && (
@@ -1001,7 +1015,8 @@ export default function MapPage() {
             {isAreaDirty && canSearch && (
               <div
                 className="absolute left-0 right-0 z-30 flex justify-center pointer-events-none"
-                style={{ top: `${56 + (appliedFilterItems.length > 0 ? 40 : 0) + 8}px` }}
+                style={{ top: `${mobileSearchStackHeight + 8}px` }}
+                data-testid="mobile-map-search-area"
               >
                 <button
                   type="button"
@@ -1019,7 +1034,7 @@ export default function MapPage() {
               <div
                 role="alert"
                 className="absolute left-3 right-3 z-30 flex items-start gap-2 rounded-2xl border border-error-soft bg-white/95 p-3 shadow-md"
-                style={{ top: `${56 + (appliedFilterItems.length > 0 ? 40 : 0) + (isAreaDirty && canSearch ? 48 : 8)}px` }}
+                style={{ top: `${mobileSearchStackHeight + (isAreaDirty && canSearch ? 48 : 8)}px` }}
               >
                 <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
                 <div>
@@ -1378,7 +1393,7 @@ export default function MapPage() {
                 <div className="min-w-0 flex-1">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Resource discovery</span>
-                    <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)]">Publication-gated records</span>
+                    <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)]">Published service records</span>
                     {deviceCenter ? (
                       <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)]">Approximate location active</span>
                     ) : null}
@@ -1388,9 +1403,17 @@ export default function MapPage() {
                   </div>
                   <div className="flex flex-col gap-1 md:flex-row md:items-end md:gap-3">
                     <h1 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-5xl">Map</h1>
-                    <p className="pb-1 text-sm text-slate-500">Find source-authorized help nearby with the least amount of effort.</p>
+                    <p className="pb-1 text-sm text-slate-500">See where services are located, then open a listing for its service scope and listed eligibility details.</p>
                   </div>
                 </div>
+                <nav className="inline-flex shrink-0 self-start rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] p-1" aria-label="Result views">
+                  <Link href={directoryHref} className="inline-flex min-h-[40px] items-center rounded-lg px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-white hover:text-[var(--text-primary)]">
+                    List view
+                  </Link>
+                  <span aria-current="page" className="inline-flex min-h-[40px] items-center rounded-lg bg-white px-3 py-2 text-sm font-semibold text-[var(--text-primary)] shadow-sm">
+                    Map view
+                  </span>
+                </nav>
               </div>
 
               <ErrorBoundary>

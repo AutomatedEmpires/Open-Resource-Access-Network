@@ -42,11 +42,9 @@ import { gzipSync } from 'node:zlib';
 // Units: kilobytes of gzipped First Load JS.
 const ROUTES = {
   //            target  ratchet (measured 2026-07-17)
-  // '/' ratchet 340->345 (2026-07-23): shared-chunk rebalancing from the new
-  // candidate-review admin surfaces (PR #103) shifted 5 kB into the landing
-  // route's first-load set; no landing-page module changed. Conscious raise,
-  // reduction task tracked with the wider budget debt.
-  '/':          { target: 100, ratchet: 345 },
+  // '/' ratchet 345->340 (2026-08-05): defer below-fold and authenticated-only
+  // seeker shell controls so the simplified entry experience loads first.
+  '/':          { target: 100, ratchet: 340 },
   // '/chat' ratchet 430->425 (2026-07-30): measured 422 kB, so the old ceiling
   // had drifted 8 kB above reality. Ratchets only move down; keeping a few kB
   // of headroom absorbs shared-chunk rebalancing without hiding a regression.

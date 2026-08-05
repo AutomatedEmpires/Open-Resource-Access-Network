@@ -7,7 +7,7 @@
       "community_line": "Community Resources: Call 211"
     },
     "disclaimer": {
-      "eligibility": "Results shown are source-backed records that passed ORAN's publication gate. Eligibility is determined by each service provider — ORAN does not guarantee qualification. Always confirm with the provider."
+      "eligibility": "Results shown are published service records in ORAN's catalog. Eligibility is determined by each service provider — ORAN does not guarantee qualification. Always confirm with the provider."
     },
     "input": {
       "placeholder": "Describe what you need help with...",
@@ -79,7 +79,7 @@
     "notifications": "Notifications"
   },
   "footer": {
-    "tagline": "Source-backed service information.",
+    "tagline": "Published service information.",
     "crisis_resources": "Crisis Resources",
     "crisis_resources_aria": "Open crisis resources and hotlines",
     "legal_aria": "Legal links",

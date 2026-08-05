@@ -464,8 +464,8 @@ export function enrichedServiceToCard(
     .filter((description): description is string => Boolean(description))
     .slice(0, 2);
   const eligibilityHint = eligibilityDescriptions.length > 0
-    ? `You may qualify if these stored criteria fit: ${eligibilityDescriptions.join(' · ')} Confirm current eligibility with the provider.`
-    : 'You may qualify, but eligibility details are not available in this result. Confirm requirements with the provider.';
+    ? `Stored eligibility criteria: ${eligibilityDescriptions.join(' · ')} Confirm current eligibility with the provider.`
+    : 'This record does not list who may qualify. Confirm current requirements with the provider.';
   const serviceAreaSummary = (enriched.serviceAreas ?? [])
     .map((area) => area.name?.trim() || area.description?.trim() || area.extentType)
     .filter((area): area is string => Boolean(area))

@@ -56,9 +56,9 @@ describe('GuidedIntake', () => {
     const submitButton = screen.getByRole('button', { name: 'Find help' });
 
     expect(needInput).toHaveAttribute('rows', '2');
-    expect(needInput).toHaveClass('min-h-20');
+    expect(needInput).toHaveClass('min-h-24');
     expect(locationInput.closest('details')).toBeInTheDocument();
-    expect(screen.getByText('Add location or other details')).toBeInTheDocument();
+    expect(screen.getByText('Filters: location, timing, access')).toBeInTheDocument();
     expect(submitButton).toHaveClass('disabled:opacity-100');
   });
 

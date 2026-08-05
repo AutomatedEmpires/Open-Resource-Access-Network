@@ -492,10 +492,10 @@ export const MAX_SERVICES_PER_RESPONSE = 5;
 /**
  * REQUIRED disclaimer — must appear on every response containing service recommendations.
  * ORAN never guarantees eligibility. Services are surfaced only after the
- * publication-authority gate accepts source-backed evidence.
+ * publication-authority gate accepts a record for public display.
  */
 export const ELIGIBILITY_DISCLAIMER =
-  "Results shown are source-backed records that passed ORAN's publication gate. " +
+  "Results shown are published service records in ORAN's catalog. " +
   'Eligibility is determined by each service ' +
   'provider — ORAN does not guarantee qualification. Always confirm with the provider. ' +
   'Information may have changed since the source was last checked.';

@@ -17,7 +17,10 @@ on:
       - 'src/app/globals.css'
       - 'src/locales/**'
       - 'next.config.mjs'
+      - 'package.json'
+      - 'package-lock.json'
       - 'playwright.config.ts'
+      - 'scripts/start-standalone.mjs'
       - 'e2e/header-layout.spec.ts'
       - 'e2e/flows-guided-intake.spec.ts'
       - 'e2e/smoke-seeker.spec.ts'
@@ -33,12 +36,13 @@ permissions:
 jobs:
   visual:
     name: Visual Regression
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       # Skip DB-backed features in UI smoke
       DATABASE_URL: ""
       PW_REUSE_SERVER: "0"
+      PLAYWRIGHT_WEB_SERVER_COMMAND: "npm run start"
 
     steps:
       - uses: actions/checkout@v6
@@ -55,6 +59,9 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
 
+      - name: Build production application
+        run: npm run build
+
       - name: Run seeker interaction tests
         run: >-
           npx playwright test
@@ -65,9 +72,9 @@ jobs:
       - name: Run visual regression tests
         run: |
           if [ "${{ inputs.update_snapshots }}" = "true" ]; then
-            npx playwright test e2e/visual/visual.spec.ts --update-snapshots
+            npx playwright test e2e/visual/visual.spec.ts --workers=1 --update-snapshots=all
           else
-            npx playwright test e2e/visual/visual.spec.ts
+            npx playwright test e2e/visual/visual.spec.ts --workers=1
           fi
 
       - name: Upload diff artifacts on failure

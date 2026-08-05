@@ -77,8 +77,8 @@ test.describe('Guided intake acceptance', () => {
     const intake = page.getByRole('form', { name: 'Guided service intake' });
 
     await intake.getByLabel('What do you need help with?').fill(NEED);
+    await intake.getByText('Filters: location, timing, access').click();
     await intake.getByLabel(/City or ZIP/).fill(APPROXIMATE_LOCATION);
-    await intake.getByText('Add timing or access needs').click();
     await intake.getByLabel('How soon?').selectOption('today');
     await intake.getByLabel('Who is this for?').selectOption('family');
     await intake.getByLabel('How can you reach help?').selectOption('phone');
@@ -116,13 +116,14 @@ test.describe('Guided intake acceptance', () => {
     });
     expect(capturedChatRequest.body.guidedIntake).not.toHaveProperty('prompt');
 
-    const discoveryNav = page.getByTestId('desktop-primary-nav');
-    const directoryHref = await discoveryNav.getByRole('link', { name: 'Browse services' }).getAttribute('href');
-    const mapHref = await discoveryNav.getByRole('link', { name: 'Map' }).getAttribute('href');
+    const resultViews = page.getByRole('navigation', { name: 'Result views' });
+    const directoryHref = await resultViews.getByRole('link', { name: 'List view' }).getAttribute('href');
+    const mapHref = await resultViews.getByRole('link', { name: 'Map view' }).getAttribute('href');
     for (const href of [directoryHref, mapHref]) {
       expect(href).toBeTruthy();
       const url = new URL(href ?? '', page.url());
       expect(url.searchParams.get('q')).toBeNull();
+      expect(url.searchParams.get('category')).toBe('utility_assistance');
       expect(href).not.toContain(NEED);
       expect(href).not.toContain(APPROXIMATE_LOCATION);
     }
@@ -133,8 +134,8 @@ test.describe('Guided intake acceptance', () => {
     const intake = page.getByRole('form', { name: 'Guided service intake' });
 
     await intake.getByLabel('What do you need help with?').fill('I am thinking about suicide');
+    await intake.getByText('Filters: location, timing, access').click();
     await intake.getByLabel(/City or ZIP/).fill('Tacoma, WA');
-    await intake.getByText('Add timing or access needs').click();
     await intake.getByLabel('How soon?').selectOption('today');
     await intake.getByLabel('Who is this for?').selectOption('self');
     await intake.getByRole('button', { name: 'Find help' }).click();

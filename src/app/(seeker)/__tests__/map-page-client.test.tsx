@@ -287,6 +287,8 @@ describe('MapPageClient', () => {
     renderWithToast(<MapPage />);
 
     expect(screen.getByRole('heading', { name: 'Map' })).toBeInTheDocument();
+    expect(screen.getByText('Map view')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'List view' })).toHaveAttribute('href', '/directory?sort=distance');
     expect(getSearchSubmitButton()).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Search this area' })).toBeDisabled();
     expect(screen.getByTestId('map-container')).toBeInTheDocument();
@@ -472,6 +474,8 @@ describe('MapPageClient', () => {
 
     expect(getSearchCalls()).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Search this area' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'List view' })).toHaveAttribute('href', expect.stringContaining('/directory'));
+    expect(screen.getByTestId('mobile-map-search-stack')).toHaveAttribute('data-search-stack-height', '104');
 
     fireEvent.keyDown(screen.getByRole('button', { name: 'Expand results panel' }), { key: 'Enter' });
     expect(screen.getByRole('button', { name: 'Collapse results panel' })).toBeInTheDocument();

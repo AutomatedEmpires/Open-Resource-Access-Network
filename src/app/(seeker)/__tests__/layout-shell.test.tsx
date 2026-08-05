@@ -58,22 +58,22 @@ afterAll(() => {
 });
 
 describe('seeker layout shell', () => {
-  it('toggles command palette with Ctrl/Cmd+K and closes through palette callback', () => {
+  it('toggles command palette with Ctrl/Cmd+K and closes through palette callback', async () => {
     render(<SeekerLayoutShell planEnabled>Child</SeekerLayoutShell>);
 
     expect(screen.getAllByRole('button', { name: 'Open quick actions' })).toHaveLength(1);
-    expect(screen.getByTestId('palette-state')).toHaveTextContent('closed');
+    expect(await screen.findByTestId('palette-state')).toHaveTextContent('closed');
 
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
-    expect(screen.getByTestId('palette-state')).toHaveTextContent('open');
+    await waitFor(() => expect(screen.getByTestId('palette-state')).toHaveTextContent('open'));
 
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
-    expect(screen.getByTestId('palette-state')).toHaveTextContent('closed');
+    await waitFor(() => expect(screen.getByTestId('palette-state')).toHaveTextContent('closed'));
 
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
-    expect(screen.getByTestId('palette-state')).toHaveTextContent('open');
+    await waitFor(() => expect(screen.getByTestId('palette-state')).toHaveTextContent('open'));
     fireEvent.click(screen.getByRole('button', { name: 'close-palette' }));
-    expect(screen.getByTestId('palette-state')).toHaveTextContent('closed');
+    await waitFor(() => expect(screen.getByTestId('palette-state')).toHaveTextContent('closed'));
   });
 
   it('pins the concise seeker navigation in Home, Find help, Browse, Saved order', () => {
@@ -89,6 +89,19 @@ describe('seeker layout shell', () => {
     expect(within(nav).queryByRole('link', { name: 'Profile' })).toBeNull();
     expect(within(nav).queryByRole('link', { name: 'Plan' })).toBeNull();
     expect(within(nav).queryByRole('link', { name: 'Dashboard' })).toBeNull();
+  });
+
+  it('keeps immersive chat and map routes free of the marketing footer', async () => {
+    const { rerender } = render(<SeekerLayoutShell planEnabled>Chat</SeekerLayoutShell>);
+    expect(screen.queryByTestId('app-footer')).toBeNull();
+
+    usePathnameMock.mockReturnValue('/map');
+    rerender(<SeekerLayoutShell planEnabled>Map</SeekerLayoutShell>);
+    expect(screen.queryByTestId('app-footer')).toBeNull();
+
+    usePathnameMock.mockReturnValue('/directory');
+    rerender(<SeekerLayoutShell planEnabled>Directory</SeekerLayoutShell>);
+    expect(await screen.findByTestId('app-footer')).toBeInTheDocument();
   });
 
   it('renders seeker context strip details from localStorage', async () => {
@@ -119,6 +132,19 @@ describe('seeker layout shell', () => {
     localStorage.setItem('oran:preferences', JSON.stringify({ approximateCity: 'Phoenix' }));
 
     render(<SeekerLayoutShell planEnabled>Map</SeekerLayoutShell>);
+
+    await waitFor(() => {
+      expect(screen.getByText('Near Phoenix (approx.)')).toBeInTheDocument();
+    });
+
+    expect(document.querySelector('[data-seeker-context-strip]')).toHaveClass('hidden', 'md:block');
+  });
+
+  it('keeps saved seeker context out of the fixed mobile chat viewport', async () => {
+    localStorage.setItem('oran:preferences', JSON.stringify({ approximateCity: 'Phoenix' }));
+    localStorage.setItem('oran:saved-service-ids', JSON.stringify(['svc-1']));
+
+    render(<SeekerLayoutShell planEnabled>Chat</SeekerLayoutShell>);
 
     await waitFor(() => {
       expect(screen.getByText('Near Phoenix (approx.)')).toBeInTheDocument();

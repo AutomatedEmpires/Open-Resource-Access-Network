@@ -27,7 +27,6 @@ import {
   writeGuidedIntakeRetry,
 } from '@/services/chat/guidedIntakeHandoff';
 import { ChatServiceCard } from '@/components/chat/ChatServiceCard';
-import { GuidedIntake } from '@/components/chat/GuidedIntake';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
 import { DistanceRadiusControl } from '@/components/seeker/DistanceRadiusControl';
 import { QuickNeedFilterGrid } from '@/components/seeker/QuickNeedFilterGrid';
@@ -1281,6 +1280,14 @@ export function ChatWindow({
     () => chatSessions.filter((session) => !session.saved),
     [chatSessions],
   );
+  const hasMeaningfulMobileHistory = useMemo(
+    () => chatSessions.some((session) => (
+      session.sessionId !== sessionId
+      || session.saved
+      || session.messageCount > 0
+    )),
+    [chatSessions, sessionId],
+  );
   const activeAttributeCount = useMemo(
     () => Object.values(seededAttributeFilters ?? {}).reduce((total, values) => total + values.length, 0),
     [seededAttributeFilters],
@@ -2139,8 +2146,8 @@ export function ChatWindow({
   }, [applyQuotaState]);
 
   return (
-    <div className="grid min-h-[700px] gap-3 md:h-full md:min-h-0 md:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)] 2xl:grid-cols-[300px_minmax(0,1fr)]">
-      <div className="space-y-3 md:hidden">
+    <div className="chat-window-grid grid h-full min-h-0 bg-white lg:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="space-y-3 border-b border-slate-200 p-3 lg:hidden">
         {messages.length > 0 ? (
           <button
             type="button"
@@ -2151,7 +2158,7 @@ export function ChatWindow({
             New chat
           </button>
         ) : null}
-        {(savedChatSessions.length > 0 || recentChatSessions.length > 0) ? (
+        {hasMeaningfulMobileHistory ? (
           <details className="rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.05)]">
             <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-slate-900 [&::-webkit-details-marker]:hidden">
               Chat history
@@ -2184,7 +2191,7 @@ export function ChatWindow({
         ) : null}
       </div>
 
-      <aside className="hidden min-h-0 flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_14px_36px_rgba(15,23,42,0.05)] md:flex">
+      <aside className="hidden min-h-0 flex-col overflow-hidden border-r border-slate-200 bg-slate-50/70 lg:flex">
         <div className="border-b border-slate-200 px-4 py-4">
           <button
             type="button"
@@ -2219,12 +2226,25 @@ export function ChatWindow({
         <ChatHistoryNote />
       </aside>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
 
       {/* ── Compact toolbar ── */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-5 py-3 md:px-6">
-        <span className="hidden text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 lg:block">Publication-gated records</span>
-        <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2.5 md:px-6">
+        <nav className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1" aria-label="Result views">
+          <a
+            href={_directoryHandoffHref}
+            className="inline-flex min-h-[34px] items-center rounded-lg px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-white hover:text-slate-950"
+          >
+            List view
+          </a>
+          <a
+            href={_mapHandoffHref}
+            className="inline-flex min-h-[34px] items-center rounded-lg px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-white hover:text-slate-950"
+          >
+            Map view
+          </a>
+        </nav>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={() => setFiltersOpen(true)}
@@ -2232,7 +2252,7 @@ export function ChatWindow({
             aria-label="Open chat filters"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-            Refine
+            Filters
           </button>
           <button
             type="button"
@@ -2449,7 +2469,7 @@ export function ChatWindow({
       {/* ── Message log ── */}
       <div
         ref={messageLogRef}
-        className="relative min-h-0 flex-1 overflow-y-auto px-5 py-5 md:px-6 [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-track]:bg-transparent"
+        className="relative min-h-0 flex-1 overflow-y-auto px-4 py-5 [scrollbar-gutter:stable] [scrollbar-width:thin] [&>*]:mx-auto [&>*]:w-full [&>*]:max-w-3xl [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-track]:bg-transparent sm:px-6"
         role="log"
         aria-live="polite"
         aria-label="Chat messages"
@@ -2471,12 +2491,12 @@ export function ChatWindow({
         )}
 
         {messages.length === 0 && (
-          <div className="flex flex-col gap-4 py-2">
+          <div className="flex min-h-full flex-col justify-center gap-5 py-6">
             {/* ── Welcome heading ── */}
             <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div className="max-w-[46rem]">
-                <p className="text-2xl font-semibold tracking-tight text-slate-900 md:text-[2rem]">Find services that may help.</p>
-                <p className="mt-1.5 text-[15px] leading-7 text-slate-500">Describe what you need in your own words. Add only details that can improve the match.</p>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-900 md:text-[2rem]">How can ORAN help?</h2>
+                <p className="mt-1.5 text-[15px] leading-7 text-slate-500">Describe the situation in your own words. Use filters only when they improve the match.</p>
               </div>
               {activeGeo ? (
                 <span className="inline-flex min-h-[32px] items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
@@ -2484,14 +2504,6 @@ export function ChatWindow({
                   Nearby: {activeGeo.radiusMiles} mi
                 </span>
               ) : null}
-            </div>
-
-            <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-              <GuidedIntake
-                compact
-                submitLabel="Find help"
-                onSubmit={(submission) => sendMessage(submission.prompt, submission)}
-              />
             </div>
 
             {/* ── Quick-need grid ── */}
@@ -2506,28 +2518,22 @@ export function ChatWindow({
             />
             </div>
 
-            {/* ── Info row: location prompt + search flow ── */}
-            <div className="grid gap-3 sm:grid-cols-2">
-              {shouldOfferAutomaticLocation && (
-                <div className="flex items-start gap-3 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3.5">
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-900">Use location for nearby results</p>
-                    <p className="mt-0.5 text-xs leading-5 text-slate-500">Uses browser location only with consent. Already granted? Chat picks it up automatically.</p>
-                    <div className="mt-2.5 flex gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={() => requestDeviceLocation(true)} disabled={isLocating}>
-                        {isLocating ? 'Locating…' : 'Enable location'}
-                      </Button>
-                      <Button type="button" variant="outline" size="sm" onClick={dismissLocationPrompt}>Not now</Button>
-                    </div>
-                  </div>
+            {/* ── Optional location consent ── */}
+            {shouldOfferAutomaticLocation && (
+              <div className="flex flex-col gap-3 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3.5 sm:flex-row sm:items-center">
+                <MapPin className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-900">Use location for nearby results</p>
+                  <p className="mt-0.5 text-xs leading-5 text-slate-500">Optional. Browser location is used only with your consent.</p>
                 </div>
-              )}
-              <div className={`rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3.5 ${shouldOfferAutomaticLocation ? '' : 'sm:col-span-2'}`}>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">How search works</p>
-                <p className="mt-1.5 text-sm text-slate-700">Use <strong className="font-medium text-slate-900">Refine</strong> to add location, record confidence, and service-detail filters. Save strong options directly from result cards.</p>
+                <div className="flex shrink-0 gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => requestDeviceLocation(true)} disabled={isLocating}>
+                    {isLocating ? 'Locating…' : 'Enable location'}
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={dismissLocationPrompt}>Not now</Button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -2716,15 +2722,16 @@ export function ChatWindow({
 
       {/* Eligibility disclaimer — always shown */}
       <div
-        className="border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-700"
+        className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600"
         role="note"
         aria-label="Eligibility disclaimer"
       >
-        {ELIGIBILITY_DISCLAIMER}
+        <p className="mx-auto max-w-3xl">{ELIGIBILITY_DISCLAIMER}</p>
       </div>
 
       {/* Input */}
-      <div className="shrink-0 border-t border-slate-200 bg-white px-5 py-4 md:px-6 md:py-4">
+      <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+        <div className="mx-auto max-w-3xl">
         {!hasCrisis && quotaRemaining <= Math.ceil(quotaLimit / 4) && quotaRemaining > 0 && (
           <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-800 shadow-sm">
             <p className="font-medium">Low message budget</p>
@@ -2739,7 +2746,7 @@ export function ChatWindow({
             </div>
           </div>
         )}
-        <div className="mt-4 rounded-[30px] border border-slate-200 bg-white p-3 shadow-[0_18px_42px_rgba(15,23,42,0.08)]">
+        <div className="rounded-[24px] border border-slate-300 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.08)]">
           <div className="flex gap-2">
             <textarea
               ref={inputRef}
@@ -2758,7 +2765,7 @@ export function ChatWindow({
               }}
               onKeyDown={handleKeyDown}
               placeholder="Describe what you need help with..."
-              className="min-h-[84px] flex-1 resize-none rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-5 text-[15px] leading-7 text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              className="min-h-14 flex-1 resize-none rounded-[18px] border-0 bg-white px-4 py-3 text-[15px] leading-7 text-slate-800 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-azure)]"
               rows={1}
               aria-label="Chat message input"
               disabled={isLoading}
@@ -2768,7 +2775,7 @@ export function ChatWindow({
               disabled={isLoading || !input.trim()}
               size="icon"
               aria-label="Send message"
-              className="min-h-[64px] min-w-[64px] self-end rounded-[22px] bg-slate-900 shadow-sm hover:bg-slate-800"
+              className="min-h-[48px] min-w-[48px] self-end rounded-2xl bg-slate-900 shadow-sm hover:bg-slate-800"
             >
               <Send className="h-4 w-4" aria-hidden="true" />
             </Button>
@@ -2803,14 +2810,15 @@ export function ChatWindow({
             </div>
           </div>
         )}
+        </div>
       </div>
 
       <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
         <DialogContent className="max-w-3xl rounded-[28px] border border-slate-200 bg-white p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-6 py-5 text-left">
-            <DialogTitle className="text-xl font-semibold text-slate-900">Chat filters</DialogTitle>
+            <DialogTitle className="text-xl font-semibold text-slate-900">Filters</DialogTitle>
             <DialogDescription className="mt-1 text-sm text-slate-500">
-              Narrow chat results with the same quick-filter pattern used in seeker discovery.
+              Narrow results by the kind of help, distance, or how the service is offered.
             </DialogDescription>
           </DialogHeader>
 
@@ -2819,7 +2827,7 @@ export function ChatWindow({
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Quick filters</p>
-                  <p className="mt-1 text-xs text-slate-500">Start with the kind of help you need, then add record confidence and service details below.</p>
+                  <p className="mt-1 text-xs text-slate-500">Choose the main kind of help you need.</p>
                 </div>
                 {activeNeedId ? (
                   <Button type="button" variant="outline" size="sm" onClick={clearCategory}>
@@ -2873,7 +2881,7 @@ export function ChatWindow({
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Service details</p>
-                  <p className="mt-1 text-xs text-slate-500">Canonical service tags from the ORAN taxonomy. These match what the API validates.</p>
+                  <p className="mt-1 text-xs text-slate-500">Choose only the service details that matter to you.</p>
                 </div>
                 {activeAttributeCount > 0 ? (
                   <Button type="button" variant="outline" size="sm" onClick={clearAttributes}>

@@ -1,14 +1,27 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
 
 import AppNav from '@/components/nav/AppNav';
 import { ScopedMobileNav, SEEKER_MOBILE_NAV_ITEMS } from '@/components/nav/ScopedMobileNav';
-import { CommandPalette } from '@/components/command/CommandPalette';
-import { AppFooter } from '@/components/footer';
 import { SeekerFeatureFlagsProvider } from '@/components/seeker/SeekerFeatureFlags';
-import { SeekerContextStrip } from '@/components/seeker/SeekerContextStrip';
+
+const CommandPalette = dynamic(
+  () => import('@/components/command/CommandPalette').then((module) => module.CommandPalette),
+  { ssr: false },
+);
+
+const AppFooter = dynamic(
+  () => import('@/components/footer').then((module) => module.AppFooter),
+  { ssr: false },
+);
+
+const SeekerContextStrip = dynamic(
+  () => import('@/components/seeker/SeekerContextStrip').then((module) => module.SeekerContextStrip),
+  { ssr: false },
+);
 
 export function SeekerLayoutShell({
   children,
@@ -22,6 +35,7 @@ export function SeekerLayoutShell({
   dashboardEnabled?: boolean;
 }) {
   const pathname = usePathname();
+  const isImmersiveDiscoveryRoute = pathname === '/chat' || pathname === '/map';
 
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
@@ -65,13 +79,15 @@ export function SeekerLayoutShell({
 
       <SeekerContextStrip pathname={pathname} />
 
-      <main id="main-content" className="flex-1 pb-14 md:pb-0 animate-[page-enter_var(--transition-standard)_both]">
+      <main id="main-content" className={`flex-1 animate-[page-enter_var(--transition-standard)_both] ${isImmersiveDiscoveryRoute ? '' : 'pb-14 md:pb-0'}`}>
         {children}
       </main>
 
-      <div className="pb-14 md:pb-0">
-        <AppFooter />
-      </div>
+      {!isImmersiveDiscoveryRoute ? (
+        <div className="pb-14 md:pb-0">
+          <AppFooter />
+        </div>
+      ) : null}
 
       <ScopedMobileNav
         scopeLabel="Seeker"

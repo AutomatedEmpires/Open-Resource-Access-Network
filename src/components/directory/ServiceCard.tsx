@@ -11,7 +11,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import {
-  MapPin, Phone, Clock, ExternalLink, Tag, Globe2,
+  MapPin, Phone, Clock, ExternalLink, Globe2,
   Accessibility, FileText, Heart, Bookmark, BookmarkCheck, AlertCircle,
   Utensils, Navigation, Bus, Users, Layers, MessageSquare,
 } from 'lucide-react';
@@ -54,6 +54,40 @@ const CAPACITY_STYLES: Record<string, { label: string; color: string }> = {
   waitlist:  { label: 'Waitlist',  color: 'bg-orange-100 text-orange-800' },
   closed:    { label: 'Closed',    color: 'bg-red-100 text-red-800' },
 };
+
+type EligibilityRule = NonNullable<EnrichedService['eligibility']>[number];
+
+function formatEligibilityCriterion(rule: EligibilityRule): string | null {
+  const details: string[] = [];
+  const description = rule.description?.trim();
+
+  if (description) details.push(description);
+
+  if (rule.minimumAge != null && rule.maximumAge != null) {
+    details.push(`Ages ${rule.minimumAge}\u2013${rule.maximumAge}`);
+  } else if (rule.minimumAge != null) {
+    details.push(`Age ${rule.minimumAge} or older`);
+  } else if (rule.maximumAge != null) {
+    details.push(`Age ${rule.maximumAge} or younger`);
+  }
+
+  if (rule.householdSizeMin != null && rule.householdSizeMax != null) {
+    details.push(`Household of ${rule.householdSizeMin}\u2013${rule.householdSizeMax}`);
+  } else if (rule.householdSizeMin != null) {
+    details.push(`Household of ${rule.householdSizeMin} or more`);
+  } else if (rule.householdSizeMax != null) {
+    details.push(`Household of up to ${rule.householdSizeMax}`);
+  }
+
+  const listedGroups = rule.eligibleValues
+    ?.map((value) => value.trim())
+    .filter(Boolean);
+  if (listedGroups && listedGroups.length > 0) {
+    details.push(`Listed groups: ${listedGroups.join(', ')}`);
+  }
+
+  return details.length > 0 ? details.join(' \u00b7 ') : null;
+}
 
 // ============================================================
 // SERVICE CARD
@@ -102,6 +136,13 @@ export function ServiceCard({
   const primaryPhone = phones[0];
   const primarySchedule = schedules[0];
   const alignmentLabels = summarizeServiceAlignment(enriched, discoveryContext);
+  const helpDescription = service.description?.trim() || null;
+  const helpCategories = taxonomyTerms
+    .map((term) => term.term?.trim())
+    .filter((term): term is string => Boolean(term));
+  const eligibilityCriteria = (eligibility ?? [])
+    .map(formatEligibilityCriterion)
+    .filter((criterion): criterion is string => Boolean(criterion));
   const savedToggleCopy = savedSyncEnabled == null
     ? {
         ariaLabel: isSaved ? 'Unsave this service' : 'Save this service',
@@ -123,7 +164,6 @@ export function ServiceCard({
     || (!compact && location && (location.transitAccess?.length || location.parkingAvailable))
     || (!compact && contacts && contacts.length > 0)
     || (!compact && serviceAreas && serviceAreas.length > 0)
-    || (!compact && eligibility && eligibility.length > 0)
     || (!compact && requiredDocuments && requiredDocuments.length > 0)
     || (!compact && (organization.missionStatement || organization.verifiedAt))
   );
@@ -193,7 +233,7 @@ export function ServiceCard({
           title={`Record confidence: ${bandShortLabel(trustBand)}`}
           aria-label={`Record confidence: ${bandShortLabel(trustBand)}`}
         >
-          {bandShortLabel(trustBand)}
+          Record confidence: {bandShortLabel(trustBand)}
         </Badge>
         {matchScore != null && (
           <Badge
@@ -223,25 +263,46 @@ export function ServiceCard({
         </div>
       )}
 
-      {/* Description */}
-      {!compact && service.description && (
-        <p className="mb-3 line-clamp-2 text-sm text-slate-600">{service.description}</p>
-      )}
-
-      {/* Taxonomy tags */}
-      {taxonomyTerms.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          {taxonomyTerms.slice(0, compact ? 3 : 4).map((t) => (
-            <span key={t.id} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-              <Tag className="h-3 w-3" aria-hidden="true" />
-              {t.term}
-            </span>
-          ))}
-          {taxonomyTerms.length > (compact ? 3 : 4) && (
-            <span className="text-xs text-slate-400">+{taxonomyTerms.length - (compact ? 3 : 4)} more</span>
+      <dl className="mb-3 grid gap-2" aria-label={`Service scope and eligibility for ${service.name}`}>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            What this helps with
+          </dt>
+          <dd className="mt-1 line-clamp-2 text-sm leading-5 text-slate-800">
+            {helpDescription
+              ?? (helpCategories.length > 0
+                ? `Categories: ${helpCategories.slice(0, 4).join(', ')}`
+                : 'This record does not list what the service helps with. Confirm the service scope with the provider.')}
+          </dd>
+          {helpDescription && helpCategories.length > 0 && (
+            <dd className="mt-1 line-clamp-1 text-xs text-slate-500">
+              Categories: {helpCategories.slice(0, 4).join(', ')}
+            </dd>
           )}
         </div>
-      )}
+        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Who may qualify
+          </dt>
+          {eligibilityCriteria.length > 0 ? (
+            <dd className="mt-1 text-sm leading-5 text-slate-800">
+              {eligibilityCriteria.slice(0, 2).join('; ')}
+              {eligibilityCriteria.length > 2 && (
+                <span className="text-slate-500"> +{eligibilityCriteria.length - 2} more listed requirements.</span>
+              )}
+            </dd>
+          ) : (
+            <dd className="mt-1 text-sm leading-5 text-slate-700">
+              This record does not list who may qualify. Confirm current requirements with the provider.
+            </dd>
+          )}
+          {eligibilityCriteria.length > 0 && (
+            <dd className="mt-1 text-xs leading-4 text-slate-500">
+              Confirm current requirements with the provider.
+            </dd>
+          )}
+        </div>
+      </dl>
 
       {/* Core details */}
       <div className="space-y-1.5 text-sm">
@@ -412,28 +473,6 @@ export function ServiceCard({
         </div>
       )}
 
-      {showMoreDetails && !compact && eligibility && eligibility.length > 0 && (
-        <div className="mt-2 text-sm border-l-2 border-amber-300 pl-2">
-          <p className="font-medium text-gray-700 flex items-center gap-1">
-            <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
-            Eligibility
-          </p>
-          {eligibility.slice(0, 2).map((e, i) => (
-            <p key={i} className="text-xs text-gray-600 mt-0.5">
-              {e.description}
-              {(e.minimumAge != null || e.maximumAge != null) && (
-                <span className="ml-1 text-gray-500">
-                  (Ages {e.minimumAge ?? '?'}–{e.maximumAge ?? '?'})
-                </span>
-              )}
-            </p>
-          ))}
-          {eligibility.length > 2 && (
-            <p className="text-xs text-gray-400 mt-0.5">+{eligibility.length - 2} more criteria</p>
-          )}
-        </div>
-      )}
-
       {showMoreDetails && !compact && requiredDocuments && requiredDocuments.length > 0 && (
         <div className="mt-2 text-sm text-gray-600">
           <p className="flex items-center gap-1 font-medium text-gray-700">
@@ -447,10 +486,6 @@ export function ServiceCard({
           </ul>
         </div>
       )}
-
-      <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-        You may qualify. Confirm eligibility and hours with the provider.
-      </p>
 
       {showMoreDetails && !compact && (organization.missionStatement || organization.verifiedAt) && (
         <div className="mt-3">

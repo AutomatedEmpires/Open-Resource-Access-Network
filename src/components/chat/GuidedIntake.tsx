@@ -112,7 +112,7 @@ export function GuidedIntake({
         maxLength={500}
         required
         placeholder="Example: I need help paying my electric bill this week."
-        className={`mt-2 w-full rounded-xl border border-[var(--border-control)] bg-white px-4 py-3 text-[15px] leading-6 text-[var(--text-primary)] shadow-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-azure)] ${compact ? 'min-h-20 resize-none' : 'min-h-28 resize-y'}`}
+        className={`mt-2 w-full bg-white px-4 py-3 text-[15px] leading-6 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none ${compact ? 'min-h-24 resize-none rounded-2xl border-0 shadow-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-azure)]' : 'min-h-28 resize-y rounded-xl border border-[var(--border-control)] shadow-sm focus:ring-2 focus:ring-[var(--brand-azure)]'}`}
       />
 
       {!compact && locationField}
@@ -120,7 +120,7 @@ export function GuidedIntake({
       <details className="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-alt)] text-left">
         <summary className="flex min-h-[48px] cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-[var(--text-primary)] [&::-webkit-details-marker]:hidden">
           <SlidersHorizontal className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
-          {compact ? 'Add location or other details' : 'Add timing or access needs'}
+          {compact ? 'Filters: location, timing, access' : 'Add timing or access needs'}
           <span className="ml-auto text-xs font-normal text-[var(--text-muted)]">Optional</span>
         </summary>
         <div className="grid gap-4 border-t border-[var(--border-subtle)] px-4 py-4 sm:grid-cols-2">
@@ -191,7 +191,7 @@ export function GuidedIntake({
           {!isSubmitting && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
         </Button>
         <p className="text-xs leading-5 text-[var(--text-muted)]">
-          Share only what is needed. Do not include Social Security numbers, full birth dates, case numbers, passwords, or account details.
+          Share only what is needed. Do not include Social Security numbers, full birth dates, case or account numbers, or passwords.
         </p>
       </div>
     </form>

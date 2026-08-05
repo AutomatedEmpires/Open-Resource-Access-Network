@@ -209,6 +209,8 @@ describe('DirectoryPageClient', () => {
     renderWithToast(<DirectoryPage />);
 
     expect(screen.getByText('Start with a search')).toBeInTheDocument();
+    expect(screen.getByText('List view')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Map view' })).toHaveAttribute('href', '/map');
   });
 
   it('renders the shared current search scope summary from canonical discovery state', async () => {

@@ -58,7 +58,7 @@ test.describe('Seeker flows (public)', () => {
     }
 
     // When DB is configured, we should land in a results state.
-    await expect(page.getByRole('heading', { name: 'Directory', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Browse services', exact: true })).toBeVisible();
     await expect(page.getByRole('status')).toContainText(/Showing|0 of/i);
   });
 

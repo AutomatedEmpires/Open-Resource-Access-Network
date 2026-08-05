@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/start-standalone.mjs",
     "storybook": "storybook dev -p 6006 --ci --disable-telemetry",
     "build-storybook": "storybook build --ci",
     "lint": "eslint",

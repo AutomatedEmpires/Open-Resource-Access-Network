@@ -87,7 +87,7 @@
 @media (min-width: 1024px) {
   .app-nav-grid {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   }
 }
 
@@ -212,6 +212,28 @@ body {
 
 .card-enter {
   animation: card-enter var(--transition-standard) both;
+}
+
+.chat-workspace {
+  height: calc(100dvh - 7.5rem);
+  min-height: 0;
+}
+
+.chat-window-grid {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+@media (min-width: 1024px) {
+  .chat-window-grid {
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 768px) {
+  .chat-workspace {
+    height: calc(100dvh - 6.3rem);
+    min-height: 0;
+  }
 }
 
 /* Seeker page fade-in (respects reduced-motion via --transition-standard) */

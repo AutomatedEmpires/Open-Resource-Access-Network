@@ -8,19 +8,12 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   AlertTriangle,
-  Bookmark,
-  ChevronDown,
-  List,
-  LogOut,
-  MapPin,
   Menu,
-  MessageCircle,
-  Rows3,
-  User,
   X,
 } from 'lucide-react';
 
@@ -28,8 +21,16 @@ import type { OranRole } from '@/domain/types';
 import { useLocale } from '@/contexts/LocaleContext';
 import { useCrisisModal } from '@/components/crisis/CrisisContext';
 import { useOranAuth } from '@/services/auth/client';
-import { LanguageSwitcher } from './LanguageSwitcher';
-import { NotificationBell } from './NotificationBell';
+
+const LanguageSwitcher = dynamic(
+  () => import('./LanguageSwitcher').then((module) => module.LanguageSwitcher),
+  { ssr: false },
+);
+
+const NotificationBell = dynamic(
+  () => import('./NotificationBell').then((module) => module.NotificationBell),
+  { ssr: false },
+);
 
 function useOptionalAuth() {
   try {
@@ -84,7 +85,6 @@ function useOptionalLocale() {
 interface PrimaryNavItem {
   href: string;
   labelKey: string;
-  icon: React.ElementType;
 }
 
 interface LinkMenuItem {
@@ -107,18 +107,18 @@ interface ActionMenuItem {
 type MenuItem = LinkMenuItem | ActionMenuItem;
 
 const PRIMARY_NAV: PrimaryNavItem[] = [
-  { href: '/chat', labelKey: 'nav.chat', icon: MessageCircle },
-  { href: '/directory', labelKey: 'nav.directory', icon: List },
-  { href: '/map', labelKey: 'nav.map', icon: MapPin },
+  { href: '/chat', labelKey: 'nav.chat' },
+  { href: '/directory', labelKey: 'nav.directory' },
+  { href: '/map', labelKey: 'nav.map' },
 ];
 
 const MOBILE_CORE_NAV: PrimaryNavItem[] = [
   ...PRIMARY_NAV,
-  { href: '/saved', labelKey: 'nav.saved', icon: Bookmark },
+  { href: '/saved', labelKey: 'nav.saved' },
 ];
 
 const MOBILE_DISCOVERY_NAV: PrimaryNavItem[] = [
-  { href: '/scroll', labelKey: 'nav.scroll', icon: Rows3 },
+  { href: '/scroll', labelKey: 'nav.scroll' },
 ];
 
 const MOBILE_MORE_LINKS: LocalizedLinkItem[] = [
@@ -292,7 +292,7 @@ export function AppNav() {
         </div>
 
         <div className="hidden items-center gap-1 whitespace-nowrap lg:flex lg:justify-self-center" data-testid="desktop-primary-nav">
-          {PRIMARY_NAV.map(({ href, labelKey, icon: Icon }) => {
+          {PRIMARY_NAV.map(({ href, labelKey }) => {
             const active = isActive(href);
             return (
               <Link
@@ -305,7 +305,6 @@ export function AppNav() {
                 }`}
                 aria-current={active ? 'page' : undefined}
               >
-                <Icon className="h-4 w-4" aria-hidden="true" />
                 {t(labelKey)}
               </Link>
             );
@@ -316,7 +315,7 @@ export function AppNav() {
           className="hidden h-full min-w-0 items-center justify-end gap-1 whitespace-nowrap 2xl:flex 2xl:justify-self-end"
           data-testid="desktop-nav-actions"
         >
-          <NotificationBell />
+          {isAuthenticated ? <NotificationBell /> : null}
 
           {!isAuthenticated ? (
             <>
@@ -329,7 +328,6 @@ export function AppNav() {
                 }`}
                 aria-current={isActive('/saved') ? 'page' : undefined}
               >
-                <Bookmark className="h-4 w-4" aria-hidden="true" />
                 {t('nav.saved')}
               </Link>
               <Link
@@ -341,7 +339,6 @@ export function AppNav() {
                 }`}
                 aria-current={isActive('/profile') ? 'page' : undefined}
               >
-                <User className="h-4 w-4" aria-hidden="true" />
                 {t('nav.profile')}
               </Link>
             </>
@@ -376,9 +373,13 @@ export function AppNav() {
                 aria-controls="account-disclosure"
                 aria-label={t('nav.profile_menu_aria')}
               >
-                <User className="h-4 w-4" aria-hidden="true" />
                 {t('nav.account')}
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${uiState.profileOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+                <span
+                  className={`inline-block text-xs transition-transform ${uiState.profileOpen ? 'rotate-180' : ''}`}
+                  aria-hidden="true"
+                >
+                  ▾
+                </span>
               </button>
 
               {uiState.profileOpen ? (
@@ -400,7 +401,6 @@ export function AppNav() {
                             onClick={handleSignOut}
                             className="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
                           >
-                            <LogOut className="h-4 w-4" aria-hidden="true" />
                             {item.label}
                           </button>
                         );
@@ -483,7 +483,7 @@ export function AppNav() {
             <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
               {t('nav.explore')}
             </p>
-            {MOBILE_CORE_NAV.map(({ href, labelKey, icon: Icon }) => {
+            {MOBILE_CORE_NAV.map(({ href, labelKey }) => {
               const active = isActive(href);
               const duplicatedByScopedNav = href === '/chat' || href === '/directory' || href === '/saved';
               return (
@@ -498,12 +498,11 @@ export function AppNav() {
                   }`}
                   aria-current={active ? 'page' : undefined}
                 >
-                  <Icon className="h-4 w-4" aria-hidden="true" />
                   {t(labelKey)}
                 </Link>
               );
             })}
-            {MOBILE_DISCOVERY_NAV.map(({ href, labelKey, icon: Icon }) => {
+            {MOBILE_DISCOVERY_NAV.map(({ href, labelKey }) => {
               const active = isActive(href);
               return (
                 <Link
@@ -517,7 +516,6 @@ export function AppNav() {
                   }`}
                   aria-current={active ? 'page' : undefined}
                 >
-                  <Icon className="h-4 w-4" aria-hidden="true" />
                   {t(labelKey)}
                 </Link>
               );
@@ -539,7 +537,6 @@ export function AppNav() {
                     onClick={handleSignOut}
                     className="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
                   >
-                    <LogOut className="h-4 w-4" aria-hidden="true" />
                     {item.label}
                   </button>
                 );

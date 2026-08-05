@@ -8,9 +8,12 @@ describe('public trust language', () => {
     const disclaimers = [ELIGIBILITY_DISCLAIMER, en.chat.disclaimer.eligibility];
 
     for (const disclaimer of disclaimers) {
-      expect(disclaimer).toContain('source-backed');
-      expect(disclaimer).toContain('publication gate');
-      expect(disclaimer).not.toMatch(/verified records?/i);
+      expect(disclaimer).toContain('published service records');
+      expect(disclaimer).toContain("ORAN's catalog");
+      expect(disclaimer).toContain('does not guarantee qualification');
+      expect(disclaimer).toContain('confirm with the provider');
+      expect(disclaimer).not.toMatch(/source-backed/i);
+      expect(disclaimer).not.toMatch(/(?:all|every).*verified|verified.*(?:all|every)/i);
     }
   });
 

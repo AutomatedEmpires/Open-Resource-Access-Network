@@ -12,7 +12,7 @@ const captureExceptionMock = vi.hoisted(() => vi.fn());
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({ checkRateLimitShared: rateLimitMock }));
 vi.mock('@/services/auth/session', () => ({ getAuthContext: authMock }));
-vi.mock('@/services/auth/guards', () => ({ requireMinRole: roleMock }));
+vi.mock('@/services/auth/guards', () => ({ requireRole: roleMock }));
 vi.mock('@/services/telemetry/sentry', () => ({ captureException: captureExceptionMock }));
 
 function request(search = '', ip = '198.51.100.42') {
@@ -34,7 +34,9 @@ beforeEach(() => {
     retryAfterSeconds: 0,
   });
   authMock.mockResolvedValue({ userId: 'community-reviewer-1', role: 'community_admin' });
-  roleMock.mockReturnValue(true);
+  roleMock.mockImplementation(
+    (context: { role?: string }, role: string) => context.role === role,
+  );
 });
 
 describe('GET /api/community/candidate-reviews', () => {
@@ -78,6 +80,16 @@ describe('GET /api/community/candidate-reviews', () => {
     expect(dbMocks.executeQuery).not.toHaveBeenCalled();
   });
 
+  it('denies ORAN-admin oversight identities from the reviewer inbox', async () => {
+    authMock.mockResolvedValueOnce({ userId: 'oran-admin-1', role: 'oran_admin' });
+    const { GET } = await import('../route');
+
+    const response = await GET(request());
+
+    expect(response.status).toBe(403);
+    expect(dbMocks.executeQuery).not.toHaveBeenCalled();
+  });
+
   it('lists only the signed-in reviewer open assignments without peer evidence', async () => {
     dbMocks.executeQuery
       .mockResolvedValueOnce([{ count: 1 }])
@@ -86,7 +98,6 @@ describe('GET /api/community/candidate-reviews', () => {
         assignment_id: '22222222-2222-4222-8222-222222222222',
         assignment_status: 'pending',
         expires_at: '2026-07-15T00:00:00.000Z',
-        candidate_review_status: 'pending',
         organization_name: 'Community Bridge',
         service_name: 'Emergency housing',
         description: 'Short-term placement.',
@@ -114,10 +125,12 @@ describe('GET /api/community/candidate-reviews', () => {
 
     const listCall = dbMocks.executeQuery.mock.calls[1] as [string, unknown[]];
     expect(listCall[0]).toContain('WHERE reviewer.user_id = $1');
+    expect(listCall[0]).toContain("account.role = 'community_admin'");
+    expect(listCall[0]).not.toContain("'oran_admin'");
     expect(listCall[0]).toContain("assignment.status IN ('pending', 'claimed')");
     expect(listCall[1]).toEqual(['community-reviewer-1', 20, 0]);
     const selectedColumns = listCall[0].split('FROM public.candidate_admin_assignments')[0];
-    expect(selectedColumns).not.toMatch(/outcome|notes|admin_profile_id|reviewer\.user_id/i);
+    expect(selectedColumns).not.toMatch(/outcome|notes|admin_profile_id|reviewer\.user_id|candidate\.review_status/i);
   });
 
   it('uses parameterized status filtering and returns a generic failure', async () => {

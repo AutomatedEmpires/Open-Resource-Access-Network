@@ -7,9 +7,11 @@
  * No auth required. Rate-limited to prevent abuse.
  */
 
+import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { isDatabaseConfigured, executeQuery } from '@/services/db/postgres';
 import { validateRuntimeEnv } from '@/services/runtime/envContract';
+import { extractSupabaseProjectRefFromDatabaseUrl } from '@/services/runtime/providerPolicy';
 import { checkRateLimit } from '@/services/security/rateLimit';
 import { getIp } from '@/services/security/ip';
 
@@ -54,6 +56,21 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  const databaseProjectRef = extractSupabaseProjectRefFromDatabaseUrl(process.env.DATABASE_URL);
+  const databaseTarget = databaseProjectRef
+    ? createHash('sha256').update(databaseProjectRef, 'utf8').digest('hex')
+    : null;
+  if (process.env.NODE_ENV === 'production' && !databaseTarget) {
+    return NextResponse.json(
+      {
+        status: 'unhealthy',
+        configuration: 'invalid',
+        database: 'target_invalid',
+      },
+      { status: 503, headers: NO_STORE_HEADERS },
+    );
+  }
+
   if (!isDatabaseConfigured()) {
     return NextResponse.json(
       { status: 'unhealthy', database: 'not_configured' },
@@ -70,6 +87,7 @@ export async function GET(req: NextRequest) {
       status: 'healthy',
       configuration: 'ready',
       database: 'connected',
+      databaseTarget,
       latencyMs,
     }, {
       headers: NO_STORE_HEADERS,

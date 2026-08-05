@@ -22,7 +22,7 @@ vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimitShared: rateLimitMock,
 }));
 vi.mock('@/services/auth/session', () => ({ getAuthContext: authMock }));
-vi.mock('@/services/auth/guards', () => ({ requireMinRole: roleMock }));
+vi.mock('@/services/auth/guards', () => ({ requireRole: roleMock }));
 vi.mock('@/services/telemetry/sentry', () => ({ captureException: captureExceptionMock }));
 vi.mock('@/services/ingestion/candidateApprovals', () => approvalMocks);
 
@@ -50,7 +50,9 @@ beforeEach(() => {
     retryAfterSeconds: 0,
   });
   authMock.mockResolvedValue({ userId: 'reviewer-user-1', role: 'community_admin' });
-  roleMock.mockReturnValue(true);
+  roleMock.mockImplementation(
+    (context: { role?: string }, role: string) => context.role === role,
+  );
   approvalMocks.claimCandidateApproval.mockResolvedValue({ status: 'claimed' });
   approvalMocks.decideCandidateApproval.mockResolvedValue({
     status: 'in_review',
@@ -105,7 +107,7 @@ describe('POST candidate approval route', () => {
     expect(limited.headers.get('Retry-After')).toBe('9');
   });
 
-  it('requires authentication and community-admin-or-higher authorization', async () => {
+  it('requires authentication and the exact community-admin reviewer role', async () => {
     const { POST } = await import('../route');
 
     authMock.mockResolvedValueOnce(null);
@@ -113,6 +115,25 @@ describe('POST candidate approval route', () => {
 
     roleMock.mockReturnValueOnce(false);
     expect((await POST(request(), context())).status).toBe(403);
+  });
+
+  it('denies ORAN-admin oversight identities without calling approval services', async () => {
+    authMock.mockResolvedValueOnce({ userId: 'oran-oversight-1', role: 'oran_admin' });
+    const { POST } = await import('../route');
+
+    const response = await POST(
+      request({ action: 'claim', assignmentId: ASSIGNMENT_ID }),
+      context(),
+    );
+
+    expect(response.status).toBe(403);
+    expect(roleMock).toHaveBeenCalledWith(
+      { userId: 'oran-oversight-1', role: 'oran_admin' },
+      'community_admin',
+    );
+    expect(approvalMocks.isCandidateApprovalEvidenceProvisioned).not.toHaveBeenCalled();
+    expect(approvalMocks.claimCandidateApproval).not.toHaveBeenCalled();
+    expect(approvalMocks.decideCandidateApproval).not.toHaveBeenCalled();
   });
 
   it('validates candidate IDs and discriminated action payloads', async () => {
@@ -175,6 +196,10 @@ describe('POST candidate approval route', () => {
       notes: 'Source and service details verified.',
     });
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      status: 'completed',
+    });
   });
 
   it('maps workflow conflicts to 409 without leaking unexpected errors', async () => {
@@ -188,7 +213,9 @@ describe('POST candidate approval route', () => {
       context(),
     );
     expect(conflict.status).toBe(409);
-    await expect(conflict.json()).resolves.toEqual({ error: 'Assignment has expired.' });
+    await expect(conflict.json()).resolves.toEqual({
+      error: 'This review changed and could not be completed. Refresh and try again.',
+    });
 
     approvalMocks.claimCandidateApproval.mockRejectedValueOnce(
       new Error('postgres://secret-host/raw failure'),

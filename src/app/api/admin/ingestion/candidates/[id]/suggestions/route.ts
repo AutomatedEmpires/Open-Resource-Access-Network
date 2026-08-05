@@ -2,7 +2,7 @@
  * GET  /api/admin/ingestion/candidates/[id]/suggestions — List LLM suggestions.
  * PUT  /api/admin/ingestion/candidates/[id]/suggestions — Accept/reject a suggestion.
  *
- * Community-admin or ORAN-admin.
+ * Community-admin or ORAN-admin may read; only community-admin reviewers may decide.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -11,20 +11,40 @@ import { isDatabaseConfigured } from '@/services/db/postgres';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
-import { requireMinRole } from '@/services/auth/guards';
+import { requireMinRole, requireRole } from '@/services/auth/guards';
+import {
+  getCandidateReviewReadAccess,
+  redactPeerReviewMetadata,
+} from '@/services/ingestion/candidateReviewAccess';
 import { getIp } from '@/services/security/ip';
 import {
   RATE_LIMIT_WINDOW_MS,
   ORAN_ADMIN_READ_RATE_LIMIT_MAX_REQUESTS,
   ORAN_ADMIN_WRITE_RATE_LIMIT_MAX_REQUESTS,
 } from '@/domain/constants';
+import { validateSuggestionValue } from '@/agents/ingestion/llmSuggestions';
 
 const SuggestionDecisionSchema = z.object({
   suggestionId: z.string().uuid(),
   status: z.enum(['accepted', 'modified', 'rejected']),
-  acceptedValue: z.string().optional(),
+  acceptedValue: z.string().trim().min(1).max(20_000).optional(),
   notes: z.string().max(2000).optional(),
-}).strict();
+}).strict().superRefine((decision, context) => {
+  if (decision.status === 'modified' && !decision.acceptedValue) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['acceptedValue'],
+      message: 'A modified suggestion requires an accepted value.',
+    });
+  }
+  if (decision.status !== 'modified' && decision.acceptedValue !== undefined) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['acceptedValue'],
+      message: 'An accepted value is only allowed for a modified suggestion.',
+    });
+  }
+});
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(
@@ -57,6 +77,15 @@ export async function GET(
     if (!UUID_RE.test(id)) {
       return NextResponse.json({ error: 'Invalid candidate ID.' }, { status: 400 });
     }
+    const hasOranOversight = requireMinRole(authCtx, 'oran_admin');
+    const reviewAccess = await getCandidateReviewReadAccess({
+      candidateId: id,
+      actorUserId: authCtx.userId,
+      hasOranOversight,
+    });
+    if (!reviewAccess.allowed) {
+      return NextResponse.json({ error: 'Candidate review access denied.' }, { status: 403 });
+    }
 
     const { createIngestionStores } = await import(
       '@/agents/ingestion/persistence/storeFactory'
@@ -70,7 +99,9 @@ export async function GET(
     const acceptedValues = await stores.llmSuggestions.getAcceptedValues(id);
 
     return NextResponse.json({
-      suggestions,
+      suggestions: hasOranOversight
+        ? suggestions
+        : suggestions.map(redactPeerReviewMetadata),
       acceptedValues: Object.fromEntries(acceptedValues),
     });
   } catch (error) {
@@ -101,7 +132,7 @@ export async function PUT(
     if (!authCtx) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-    if (!requireMinRole(authCtx, 'community_admin')) {
+    if (!requireRole(authCtx, 'community_admin')) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
@@ -127,13 +158,38 @@ export async function PUT(
     const db = getDrizzle();
     const stores = createIngestionStores(db);
 
-    await stores.llmSuggestions.updateDecision(
+    const suggestion = await stores.llmSuggestions.getById(parsed.data.suggestionId);
+    if (!suggestion || suggestion.candidateId !== id) {
+      return NextResponse.json(
+        { error: 'Decision can no longer be applied. Refresh the candidate and try again.' },
+        { status: 409 },
+      );
+    }
+    const reviewedValue = parsed.data.status === 'modified'
+      ? parsed.data.acceptedValue ?? ''
+      : suggestion.suggestedValue;
+    const valueValidation = validateSuggestionValue(suggestion.fieldName, reviewedValue);
+    if (!valueValidation.success) {
+      return NextResponse.json(
+        { error: valueValidation.error },
+        { status: 400 },
+      );
+    }
+
+    const decisionResult = await stores.llmSuggestions.updateDecision(
+      id,
       parsed.data.suggestionId,
       parsed.data.status,
-      parsed.data.acceptedValue,
+      parsed.data.status === 'modified' ? valueValidation.value : undefined,
       authCtx.userId,
       parsed.data.notes
     );
+    if (decisionResult !== 'updated') {
+      return NextResponse.json(
+        { error: 'Decision can no longer be applied. Refresh the candidate and try again.' },
+        { status: 409 },
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

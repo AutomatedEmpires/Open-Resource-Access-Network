@@ -35,6 +35,45 @@ export const SuggestionFieldSchema = z.enum([
 
 export type SuggestionField = z.infer<typeof SuggestionFieldSchema>;
 
+export function validateSuggestionValue(
+  field: SuggestionField,
+  rawValue: string,
+): { success: true; value: string } | { success: false; error: string } {
+  const value = rawValue.trim();
+  const invalidLength = (minimum: number, maximum: number) => (
+    value.length < minimum || value.length > maximum
+  );
+  if (field === 'name') {
+    if (invalidLength(2, 200) || /[\r\n\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value)) {
+      return { success: false, error: 'Service name must be 2 to 200 plain-text characters.' };
+    }
+  } else if (field === 'description') {
+    if (invalidLength(20, 10_000) || /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value)) {
+      return { success: false, error: 'Description must be 20 to 10,000 text characters.' };
+    }
+  } else if (field === 'website') {
+    if (invalidLength(1, 2_048)) {
+      return { success: false, error: 'Website URL is too long.' };
+    }
+    try {
+      const url = new URL(value);
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+        return { success: false, error: 'Website must be an http(s) URL without credentials.' };
+      }
+    } catch {
+      return { success: false, error: 'Website must be a valid http(s) URL.' };
+    }
+  } else if (field === 'phone') {
+    const digits = value.replace(/\D/g, '');
+    if (!/^[0-9+().\-\s]+$/.test(value) || digits.length < 7 || digits.length > 15 || value.length > 50) {
+      return { success: false, error: 'Phone must contain 7 to 15 digits and standard phone punctuation only.' };
+    }
+  } else if (invalidLength(1, 20_000)) {
+    return { success: false, error: 'Suggestion value is empty or too long.' };
+  }
+  return { success: true, value };
+}
+
 // ============================================================
 // Suggestion status
 // ============================================================

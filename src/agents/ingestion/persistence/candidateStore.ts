@@ -17,6 +17,114 @@ import {
 
 type DbSchema = typeof import('../../../db/schema');
 
+type CandidateRowWithLineage = ExtractedCandidateRow & {
+  revisionOfCandidateId?: string | null;
+  lineageRootCandidateId?: string | null;
+  revisionNumber?: number | null;
+};
+
+interface CandidateLineageIdentityRow {
+  candidate_id: string;
+  extract_key_sha256: string;
+  revision_of_candidate_id: string | null;
+  lineage_root_candidate_id: string;
+  revision_number: number;
+  matched_exact_extract_key?: boolean;
+  matched_canonical_url?: boolean;
+  matched_address?: boolean;
+  matched_name?: boolean;
+}
+
+function resultRows<T>(result: unknown): T[] {
+  if (Array.isArray(result)) return result as T[];
+  if (result && typeof result === 'object' && Array.isArray((result as { rows?: unknown }).rows)) {
+    return (result as { rows: T[] }).rows;
+  }
+  return [];
+}
+
+async function hasCandidateLineageColumns(db: NodePgDatabase<DbSchema>): Promise<boolean> {
+  try {
+    const result = await db.execute(sql`
+      SELECT count(*) = 3 AS available
+      FROM pg_catalog.pg_attribute
+      WHERE attrelid = pg_catalog.to_regclass('public.extracted_candidates')
+        AND attname = ANY(ARRAY[
+          'revision_of_candidate_id',
+          'lineage_root_candidate_id',
+          'revision_number'
+        ]::name[])
+        AND NOT attisdropped
+    `);
+    return Boolean(resultRows<{ available: boolean }>(result)[0]?.available);
+  } catch {
+    return false;
+  }
+}
+
+async function canExecuteDatabaseFunction(
+  db: NodePgDatabase<DbSchema>,
+  signature: string,
+): Promise<boolean> {
+  try {
+    const result = await db.execute(sql`
+      SELECT CASE
+        WHEN pg_catalog.to_regprocedure(${signature}) IS NULL THEN false
+        ELSE pg_catalog.has_function_privilege(
+          current_user,
+          pg_catalog.to_regprocedure(${signature}),
+          'EXECUTE'
+        )
+      END AS available
+    `);
+    return Boolean(resultRows<{ available: boolean }>(result)[0]?.available);
+  } catch {
+    return false;
+  }
+}
+
+async function insertCandidateWithLineage(
+  db: NodePgDatabase<DbSchema>,
+  row: NewExtractedCandidateRow,
+  lineage: {
+    revisionOfCandidateId?: string;
+    lineageRootCandidateId: string;
+    revisionNumber: number;
+  },
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO public.extracted_candidates (
+      candidate_id, extraction_id, extract_key_sha256, extracted_at,
+      revision_of_candidate_id, lineage_root_candidate_id, revision_number,
+      organization_name, service_name, description, website_url, phone, phones,
+      address_line1, address_line2, address_city, address_region,
+      address_postal_code, address_country, is_remote_service,
+      review_status, assigned_to_role, assigned_to_user_id, assigned_at,
+      jurisdiction_state, jurisdiction_county, jurisdiction_city, jurisdiction_kind,
+      review_by, last_verified_at, reverify_at, verification_checklist,
+      investigation_pack, primary_evidence_id, provenance_records,
+      job_id, correlation_id
+    ) VALUES (
+      ${row.candidateId}, ${row.extractionId}, ${row.extractKeySha256}, ${row.extractedAt},
+      ${lineage.revisionOfCandidateId ?? null}, ${lineage.lineageRootCandidateId}, ${lineage.revisionNumber},
+      ${row.organizationName}, ${row.serviceName}, ${row.description ?? null},
+      ${row.websiteUrl ?? null}, ${row.phone ?? null}, ${JSON.stringify(row.phones ?? [])}::jsonb,
+      ${row.addressLine1 ?? null}, ${row.addressLine2 ?? null}, ${row.addressCity ?? null},
+      ${row.addressRegion ?? null}, ${row.addressPostalCode ?? null},
+      ${row.addressCountry ?? 'US'}, ${row.isRemoteService ?? false},
+      ${row.reviewStatus ?? 'pending'}, ${row.assignedToRole ?? null},
+      ${row.assignedToUserId ?? null}, ${row.assignedAt ?? null},
+      ${row.jurisdictionState ?? null}, ${row.jurisdictionCounty ?? null},
+      ${row.jurisdictionCity ?? null}, ${row.jurisdictionKind ?? null},
+      ${row.reviewBy ?? null}, ${row.lastVerifiedAt ?? null}, ${row.reverifyAt ?? null},
+      ${JSON.stringify(row.verificationChecklist ?? {})}::jsonb,
+      ${JSON.stringify(row.investigationPack ?? {})}::jsonb,
+      ${row.primaryEvidenceId ?? null}, ${JSON.stringify(row.provenanceRecords ?? {})}::jsonb,
+      ${row.jobId ?? null}, ${row.correlationId}
+    )
+  `);
+}
+
 /**
  * Maps DB jurisdiction kind to contract kind.
  */
@@ -62,12 +170,16 @@ function mapJurisdictionKindToDb(
 /**
  * Maps a database row to an ExtractedCandidate domain object.
  */
-function rowToCandidate(row: ExtractedCandidateRow): ExtractedCandidate {
+function rowToCandidate(row: CandidateRowWithLineage): ExtractedCandidate {
   return {
     extractionId: row.extractionId,
     candidateId: row.candidateId,
     extractKeySha256: row.extractKeySha256 as `${string}`,
     extractedAt: row.extractedAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    revisionOfCandidateId: row.revisionOfCandidateId ?? undefined,
+    lineageRootCandidateId: row.lineageRootCandidateId ?? undefined,
+    revisionNumber: row.revisionNumber ?? undefined,
     review: {
       status: row.reviewStatus as ReviewStatus,
       jurisdiction: row.jurisdictionState
@@ -167,7 +279,18 @@ export function createDrizzleCandidateStore(
         jobId: candidate.jobId ? (candidate.jobId as unknown as string) : undefined,
       };
 
-      await db.insert(extractedCandidates).values(row);
+      if (await hasCandidateLineageColumns(db)) {
+        await insertCandidateWithLineage(db, row, {
+          revisionOfCandidateId: candidate.revisionOfCandidateId,
+          lineageRootCandidateId: candidate.lineageRootCandidateId ?? candidate.candidateId,
+          revisionNumber: candidate.revisionNumber ?? 1,
+        });
+      } else {
+        if (candidate.revisionOfCandidateId) {
+          throw new Error('Candidate revision lineage is not provisioned yet');
+        }
+        await db.insert(extractedCandidates).values(row);
+      }
 
       // Log audit event
       await db.insert(ingestionAuditEvents).values({
@@ -193,7 +316,11 @@ export function createDrizzleCandidateStore(
         .select()
         .from(extractedCandidates)
         .where(eq(extractedCandidates.extractKeySha256, extractKey))
-        .orderBy(desc(extractedCandidates.extractedAt))
+        .orderBy(
+          desc(extractedCandidates.extractedAt),
+          desc(extractedCandidates.createdAt),
+          desc(extractedCandidates.candidateId),
+        )
         .limit(1);
 
       return rows.length > 0 ? rowToCandidate(rows[0]) : null;
@@ -216,10 +343,276 @@ export function createDrizzleCandidateStore(
             sql`lower(trim(${extractedCandidates.serviceName})) = ${normalizedServiceName}`,
           ),
         )
-        .orderBy(desc(extractedCandidates.extractedAt))
+        .orderBy(
+          desc(extractedCandidates.extractedAt),
+          desc(extractedCandidates.createdAt),
+          desc(extractedCandidates.candidateId),
+        )
         .limit(1);
 
       return rows.length > 0 ? rowToCandidate(rows[0]) : null;
+    },
+
+    async lockMaterializationTarget(input) {
+      const normalizedOrgName = input.orgName.trim().toLowerCase();
+      const normalizedServiceName = input.serviceName.trim().toLowerCase();
+      const canonicalUrl = input.canonicalUrl?.trim() || null;
+      const normalizedAddress = input.address
+        ? {
+            line1: input.address.line1.trim().toLowerCase(),
+            city: input.address.city.trim().toLowerCase(),
+            region: input.address.region.trim().toLowerCase(),
+            postalCode: input.address.postalCode.trim().toLowerCase(),
+            country: input.address.country.trim().toLowerCase(),
+          }
+        : null;
+      const lineageLockKeys = [
+        canonicalUrl ? `canonical:${canonicalUrl.trim().toLowerCase()}` : null,
+        normalizedAddress
+          ? `address:${[
+              normalizedAddress.line1,
+              normalizedAddress.city,
+              normalizedAddress.region,
+              normalizedAddress.postalCode,
+              normalizedAddress.country,
+            ].join('\u0000')}`
+          : null,
+        `extract:${input.extractKey.toLowerCase()}`,
+        `name:${normalizedOrgName}\u0000${normalizedServiceName}`,
+      ].filter((key): key is string => Boolean(key)).sort();
+
+      // A query planner need not evaluate a set-returning lock expression in
+      // presentation order. Take each already-sorted identity lock in its own
+      // statement so every transaction has one deterministic global order.
+      for (const lineageLockKey of lineageLockKeys) {
+        await db.execute(sql`
+          SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+            ${`oran:candidate-lineage:${lineageLockKey}`},
+            0
+          ))
+        `);
+      }
+
+      const lineageAvailable = await hasCandidateLineageColumns(db);
+      if (lineageAvailable) {
+        // First resolve any matching revision to its stable lineage root. The
+        // matching row may be historical: later revisions can legitimately
+        // correct the URL, address, or display names used by this lookup.
+        // URLs can be shared directory pages and addresses can host multiple
+        // services, so neither may establish lineage without the same
+        // normalized organization/service identity. Only an exact extract key
+        // is strong enough to replay across corrected identity fields.
+        const lineageMatchResult = await db.execute(sql`
+          SELECT DISTINCT ON (COALESCE(lineage_root_candidate_id, candidate_id))
+                 candidate_id,
+                 extract_key_sha256,
+                 revision_of_candidate_id,
+                 COALESCE(lineage_root_candidate_id, candidate_id) AS lineage_root_candidate_id,
+                 COALESCE(revision_number, 1) AS revision_number,
+                 extract_key_sha256 = ${input.extractKey} AS matched_exact_extract_key,
+                 (${canonicalUrl}::text IS NOT NULL
+                   AND investigation_pack ->> 'canonicalUrl' = ${canonicalUrl}
+                   AND lower(trim(organization_name)) = ${normalizedOrgName}
+                   AND lower(trim(service_name)) = ${normalizedServiceName}) AS matched_canonical_url,
+                 (${normalizedAddress?.line1 ?? null}::text IS NOT NULL
+                   AND lower(trim(organization_name)) = ${normalizedOrgName}
+                   AND lower(trim(service_name)) = ${normalizedServiceName}
+                   AND lower(trim(coalesce(address_line1, ''))) = ${normalizedAddress?.line1 ?? null}
+                   AND lower(trim(coalesce(address_city, ''))) = ${normalizedAddress?.city ?? null}
+                   AND lower(trim(coalesce(address_region, ''))) = ${normalizedAddress?.region ?? null}
+                   AND lower(trim(coalesce(address_postal_code, ''))) = ${normalizedAddress?.postalCode ?? null}
+                   AND lower(trim(coalesce(address_country, 'US'))) = ${normalizedAddress?.country ?? null}) AS matched_address,
+                 (lower(trim(organization_name)) = ${normalizedOrgName}
+                   AND lower(trim(service_name)) = ${normalizedServiceName}) AS matched_name
+          FROM public.extracted_candidates
+          WHERE extract_key_sha256 = ${input.extractKey}
+             OR (
+               ${canonicalUrl}::text IS NOT NULL
+               AND investigation_pack ->> 'canonicalUrl' = ${canonicalUrl}
+               AND lower(trim(organization_name)) = ${normalizedOrgName}
+               AND lower(trim(service_name)) = ${normalizedServiceName}
+             )
+             OR (
+               ${normalizedAddress?.line1 ?? null}::text IS NOT NULL
+               AND lower(trim(organization_name)) = ${normalizedOrgName}
+               AND lower(trim(service_name)) = ${normalizedServiceName}
+               AND lower(trim(coalesce(address_line1, ''))) = ${normalizedAddress?.line1 ?? null}
+               AND lower(trim(coalesce(address_city, ''))) = ${normalizedAddress?.city ?? null}
+               AND lower(trim(coalesce(address_region, ''))) = ${normalizedAddress?.region ?? null}
+               AND lower(trim(coalesce(address_postal_code, ''))) = ${normalizedAddress?.postalCode ?? null}
+               AND lower(trim(coalesce(address_country, 'US'))) = ${normalizedAddress?.country ?? null}
+             )
+             OR (
+               lower(trim(organization_name)) = ${normalizedOrgName}
+               AND lower(trim(service_name)) = ${normalizedServiceName}
+             )
+          ORDER BY COALESCE(lineage_root_candidate_id, candidate_id),
+                   CASE
+                     WHEN extract_key_sha256 = ${input.extractKey} THEN 0
+                     WHEN ${canonicalUrl}::text IS NOT NULL
+                       AND investigation_pack ->> 'canonicalUrl' = ${canonicalUrl}
+                       AND lower(trim(organization_name)) = ${normalizedOrgName}
+                       AND lower(trim(service_name)) = ${normalizedServiceName}
+                       THEN 1
+                     WHEN ${normalizedAddress?.line1 ?? null}::text IS NOT NULL
+                       AND lower(trim(organization_name)) = ${normalizedOrgName}
+                       AND lower(trim(service_name)) = ${normalizedServiceName}
+                       AND lower(trim(coalesce(address_line1, ''))) = ${normalizedAddress?.line1 ?? null}
+                       AND lower(trim(coalesce(address_city, ''))) = ${normalizedAddress?.city ?? null}
+                       AND lower(trim(coalesce(address_region, ''))) = ${normalizedAddress?.region ?? null}
+                       AND lower(trim(coalesce(address_postal_code, ''))) = ${normalizedAddress?.postalCode ?? null}
+                       AND lower(trim(coalesce(address_country, 'US'))) = ${normalizedAddress?.country ?? null}
+                       THEN 2
+                     WHEN lower(trim(organization_name)) = ${normalizedOrgName}
+                       AND lower(trim(service_name)) = ${normalizedServiceName}
+                       THEN 3
+                     ELSE 4
+                   END,
+                   revision_number DESC,
+                   extracted_at DESC,
+                   created_at DESC,
+                   candidate_id DESC
+        `);
+        const lineageMatches = resultRows<CandidateLineageIdentityRow>(lineageMatchResult);
+        const selectUniqueMatch = (
+          kind: string,
+          matches: CandidateLineageIdentityRow[],
+        ): CandidateLineageIdentityRow | null => {
+          const roots = new Set(matches.map((match) => match.lineage_root_candidate_id));
+          if (roots.size > 1) {
+            throw new Error(`Ambiguous candidate lineage ${kind} identity`);
+          }
+          return matches[0] ?? null;
+        };
+        const exactMatches = lineageMatches.filter((match) => (
+          match.matched_exact_extract_key ?? match.extract_key_sha256 === input.extractKey
+        ));
+        const canonicalMatches = lineageMatches.filter((match) => match.matched_canonical_url);
+        const addressMatches = lineageMatches.filter((match) => match.matched_address);
+        const nameMatches = lineageMatches.filter((match) => match.matched_name);
+        const lineageMatch = selectUniqueMatch('extract-key', exactMatches)
+          ?? selectUniqueMatch('canonical-url', canonicalMatches)
+          ?? selectUniqueMatch('address', addressMatches)
+          ?? selectUniqueMatch('name', nameMatches)
+          ?? null;
+        if (!lineageMatch) return null;
+        const matchedExactExtractKey = lineageMatch.extract_key_sha256 === input.extractKey;
+
+        // Every ingestion identity for this lineage converges on this lock,
+        // even when the incoming data only matches an older revision. Once it
+        // is held, re-read and row-lock the actual lineage head.
+        await db.execute(sql`
+          SELECT pg_catalog.pg_advisory_xact_lock(
+            pg_catalog.hashtextextended(
+              ${`oran:candidate-lineage-root:${lineageMatch.lineage_root_candidate_id}`},
+              0
+            )
+          )
+        `);
+
+        const lineageHeadResult = await db.execute(sql`
+          SELECT candidate_id,
+                 extract_key_sha256,
+                 revision_of_candidate_id,
+                 COALESCE(lineage_root_candidate_id, candidate_id) AS lineage_root_candidate_id,
+                 COALESCE(revision_number, 1) AS revision_number
+          FROM public.extracted_candidates
+          WHERE COALESCE(lineage_root_candidate_id, candidate_id) = ${lineageMatch.lineage_root_candidate_id}
+          ORDER BY revision_number DESC NULLS LAST,
+                   extracted_at DESC,
+                   created_at DESC,
+                   candidate_id DESC
+          LIMIT 1
+          FOR UPDATE
+        `);
+        const lineageHead = resultRows<CandidateLineageIdentityRow>(lineageHeadResult)[0];
+        if (!lineageHead) return null;
+
+        const rows = await db
+          .select()
+          .from(extractedCandidates)
+          .where(eq(extractedCandidates.candidateId, lineageHead.candidate_id))
+          .limit(1);
+        const row = rows[0];
+        if (!row) return null;
+
+        return {
+          candidate: rowToCandidate({
+            ...row,
+            revisionOfCandidateId: lineageHead.revision_of_candidate_id,
+            lineageRootCandidateId: lineageHead.lineage_root_candidate_id,
+            revisionNumber: lineageHead.revision_number,
+          }),
+          historicalExtractReplay: matchedExactExtractKey
+            && lineageHead.extract_key_sha256 !== input.extractKey,
+          exactExtractKey: lineageHead.extract_key_sha256 === input.extractKey,
+          lineageAvailable: true,
+        };
+      }
+
+      const identityConditions = [
+        eq(extractedCandidates.extractKeySha256, input.extractKey),
+      ];
+      if (canonicalUrl) {
+        identityConditions.push(
+          and(
+            sql`${extractedCandidates.investigationPack} ->> 'canonicalUrl' = ${canonicalUrl}`,
+            sql`lower(trim(${extractedCandidates.organizationName})) = ${normalizedOrgName}`,
+            sql`lower(trim(${extractedCandidates.serviceName})) = ${normalizedServiceName}`,
+          )!,
+        );
+      }
+      if (normalizedAddress) {
+        const addressIdentity = and(
+          sql`lower(trim(${extractedCandidates.organizationName})) = ${normalizedOrgName}`,
+          sql`lower(trim(${extractedCandidates.serviceName})) = ${normalizedServiceName}`,
+          sql`lower(trim(coalesce(${extractedCandidates.addressLine1}, ''))) = ${normalizedAddress.line1}`,
+          sql`lower(trim(coalesce(${extractedCandidates.addressCity}, ''))) = ${normalizedAddress.city}`,
+          sql`lower(trim(coalesce(${extractedCandidates.addressRegion}, ''))) = ${normalizedAddress.region}`,
+          sql`lower(trim(coalesce(${extractedCandidates.addressPostalCode}, ''))) = ${normalizedAddress.postalCode}`,
+          sql`lower(trim(coalesce(${extractedCandidates.addressCountry}, 'US'))) = ${normalizedAddress.country}`,
+        );
+        if (addressIdentity) identityConditions.push(addressIdentity);
+      }
+      const nameIdentity = and(
+        sql`lower(trim(${extractedCandidates.organizationName})) = ${normalizedOrgName}`,
+        sql`lower(trim(${extractedCandidates.serviceName})) = ${normalizedServiceName}`,
+      );
+      if (nameIdentity) identityConditions.push(nameIdentity);
+
+      const rows = await db
+        .select()
+        .from(extractedCandidates)
+        .where(or(...identityConditions))
+        .orderBy(
+          sql`CASE
+                WHEN ${extractedCandidates.extractKeySha256} = ${input.extractKey} THEN 0
+                WHEN ${canonicalUrl}::text IS NOT NULL
+                  AND ${extractedCandidates.investigationPack} ->> 'canonicalUrl' = ${canonicalUrl}
+                  AND lower(trim(${extractedCandidates.organizationName})) = ${normalizedOrgName}
+                  AND lower(trim(${extractedCandidates.serviceName})) = ${normalizedServiceName}
+                  THEN 1
+                WHEN lower(trim(${extractedCandidates.organizationName})) = ${normalizedOrgName}
+                  AND lower(trim(${extractedCandidates.serviceName})) = ${normalizedServiceName}
+                  THEN 2
+                ELSE 3
+              END`,
+          desc(extractedCandidates.extractedAt),
+          desc(extractedCandidates.createdAt),
+          desc(extractedCandidates.candidateId),
+        )
+        .limit(1)
+        .for('update');
+
+      const row = rows[0];
+      return row
+        ? {
+          candidate: rowToCandidate(row),
+          historicalExtractReplay: false,
+          exactExtractKey: row.extractKeySha256 === input.extractKey,
+          lineageAvailable: false,
+        }
+        : null;
     },
 
     async update(candidateId, updates) {
@@ -229,9 +622,9 @@ export function createDrizzleCandidateStore(
         if (updates.fields.organizationName) updateData.organizationName = updates.fields.organizationName;
         if (updates.fields.serviceName) updateData.serviceName = updates.fields.serviceName;
         if (updates.fields.description !== undefined) updateData.description = updates.fields.description;
-        if (updates.fields.websiteUrl !== undefined) updateData.websiteUrl = updates.fields.websiteUrl;
-        if (updates.fields.phone !== undefined) updateData.phone = updates.fields.phone;
-        if (updates.fields.phones !== undefined) updateData.phones = updates.fields.phones;
+        updateData.websiteUrl = updates.fields.websiteUrl ?? null;
+        updateData.phone = updates.fields.phone ?? null;
+        updateData.phones = updates.fields.phones ?? [];
         if (updates.fields.address) {
           updateData.addressLine1 = updates.fields.address.line1;
           updateData.addressLine2 = updates.fields.address.line2;
@@ -239,10 +632,15 @@ export function createDrizzleCandidateStore(
           updateData.addressRegion = updates.fields.address.region;
           updateData.addressPostalCode = updates.fields.address.postalCode;
           updateData.addressCountry = updates.fields.address.country;
+        } else {
+          updateData.addressLine1 = null;
+          updateData.addressLine2 = null;
+          updateData.addressCity = null;
+          updateData.addressRegion = null;
+          updateData.addressPostalCode = null;
+          updateData.addressCountry = null;
         }
-        if (updates.fields.isRemoteService !== undefined) {
-          updateData.isRemoteService = updates.fields.isRemoteService;
-        }
+        updateData.isRemoteService = updates.fields.isRemoteService ?? false;
       }
 
       if (updates.review) {
@@ -302,6 +700,38 @@ export function createDrizzleCandidateStore(
         actorId: byUserId,
         details: { newStatus: status },
       });
+    },
+
+    async escalateForReview(candidateId) {
+      if (
+        await canExecuteDatabaseFunction(
+          db,
+          'oran_internal.escalate_candidate_for_review(text)',
+        )
+      ) {
+        await db.execute(
+          sql`SELECT oran_internal.escalate_candidate_for_review(${candidateId})`,
+        );
+        return;
+      }
+
+      // During the additive migration window the stricter transition function
+      // exists but is not executable yet. Preserve the legacy pending-to-
+      // escalated behavior until 0078 grants the guarded function.
+      await db
+        .update(extractedCandidates)
+        .set({
+          reviewStatus: 'escalated',
+          assignedToRole: 'oran_admin',
+          assignedToUserId: null,
+          assignedAt: null,
+        })
+        .where(
+          and(
+            eq(extractedCandidates.candidateId, candidateId),
+            eq(extractedCandidates.reviewStatus, 'pending'),
+          ),
+        );
     },
 
     async updateConfidenceScore(candidateId, score) {

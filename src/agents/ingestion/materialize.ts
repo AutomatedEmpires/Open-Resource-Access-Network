@@ -17,14 +17,15 @@ const REVIEW_BY_HOURS = {
   red: 12,
 } as const;
 
-const REVERIFY_BY_DAYS = {
-  green: 90,
-  yellow: 45,
-  orange: 14,
-  red: 7,
-} as const;
-
 const AUTO_APPROVE_TAG_CONFIDENCE = 80;
+const IMMUTABLE_REVIEW_STATUSES = new Set<ReviewStatus>([
+  'in_review',
+  'escalated',
+  'verified',
+  'rejected',
+  'published',
+  'archived',
+]);
 
 export interface MaterializePipelineArtifactsOptions {
   jobId?: string;
@@ -37,14 +38,13 @@ export interface MaterializePipelineArtifactsResult {
   deduped: boolean;
   assignedToRole?: 'community_admin' | 'oran_admin';
   reviewStatus?: ReviewStatus;
+  revisionOfCandidateId?: string;
+  lineageRootCandidateId?: string;
+  revisionNumber?: number;
 }
 
 function addHours(isoDate: string, hours: number): string {
   return new Date(Date.parse(isoDate) + hours * 60 * 60 * 1000).toISOString();
-}
-
-function addDays(isoDate: string, days: number): string {
-  return new Date(Date.parse(isoDate) + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function buildEvidenceProvenance(evidenceId?: string): ExtractedCandidate['provenance'] {
@@ -81,6 +81,9 @@ function determineReviewRole(
   if (hasCriticalFailure(candidate.verificationChecks)) {
     return 'oran_admin';
   }
+  if (hasDomainFailure(candidate.verificationChecks)) {
+    return 'oran_admin';
+  }
   if (candidate.score.overall < 60 || candidate.score.tier === 'red') {
     return 'oran_admin';
   }
@@ -114,12 +117,8 @@ function buildReviewTimers(
     ? undefined
     : addHours(candidate.extractedAt, REVIEW_BY_HOURS[baseTier]);
 
-  const reverifyTier = candidate.sourceTrustLevel === 'quarantine' ? 'orange' : candidate.score.tier;
-
   return {
     reviewBy,
-    lastVerifiedAt: candidate.extractedAt,
-    reverifyAt: addDays(candidate.extractedAt, REVERIFY_BY_DAYS[reverifyTier]),
   };
 }
 
@@ -155,6 +154,10 @@ function buildCandidateRecord(
     correlationId: string;
     assignedToRole: 'community_admin' | 'oran_admin';
     reviewStatus: ReviewStatus;
+    extractionId?: string;
+    revisionOfCandidateId?: string;
+    lineageRootCandidateId?: string;
+    revisionNumber?: number;
   },
 ): ExtractedCandidate & {
   jobId?: string;
@@ -168,10 +171,13 @@ function buildCandidateRecord(
   const jurisdiction = buildJurisdiction(candidate);
 
   return {
-    extractionId: candidate.extractionId,
+    extractionId: options.extractionId ?? candidate.extractionId,
     candidateId: options.candidateId,
     extractKeySha256: candidate.extractKeySha256,
     extractedAt: candidate.extractedAt,
+    revisionOfCandidateId: options.revisionOfCandidateId,
+    lineageRootCandidateId: options.lineageRootCandidateId ?? options.candidateId,
+    revisionNumber: options.revisionNumber ?? 1,
     review: {
       status: options.reviewStatus,
       jurisdiction,
@@ -219,14 +225,19 @@ function buildCandidateRecord(
   };
 }
 
-function buildCategoryTags(candidateId: string, candidate: PipelineCandidateArtifact): ResourceTag[] {
+function buildCategoryTags(
+  candidateId: string,
+  candidate: PipelineCandidateArtifact,
+  evidenceId?: string,
+): ResourceTag[] {
   return candidate.categoryTags.map((tag) => ({
+    id: crypto.randomUUID(),
     candidateId,
     tagType: 'category',
     tagValue: tag.tagValue,
     tagConfidence: tag.confidence,
     assignedBy: 'agent',
-    evidenceRefs: [],
+    evidenceRefs: evidenceId ? [evidenceId] : [],
   }));
 }
 
@@ -246,6 +257,7 @@ function buildGeographicTags(candidateId: string, candidate: PipelineCandidateAr
   }
 
   return Array.from(values).map((tagValue) => ({
+    id: crypto.randomUUID(),
     candidateId,
     tagType: 'geographic',
     tagValue,
@@ -269,6 +281,7 @@ function buildSourceQualityTags(
 
   return [
     {
+      id: crypto.randomUUID(),
       candidateId,
       tagType: 'source_quality',
       tagValue: sourceTagValue,
@@ -285,6 +298,7 @@ function buildVerificationTags(
   reviewStatus: ReviewStatus,
 ): Record<'verification_missing' | 'verification_status', ResourceTag[]> {
   const missing = buildVerificationMissingTags(candidate.verificationChecklist).map((tagValue) => ({
+    id: crypto.randomUUID(),
     candidateId,
     tagType: 'verification_missing' as const,
     tagValue,
@@ -304,6 +318,7 @@ function buildVerificationTags(
     verification_missing: missing,
     verification_status: [
       {
+        id: crypto.randomUUID(),
         candidateId,
         tagType: 'verification_status',
         tagValue: statusValue,
@@ -404,8 +419,8 @@ async function replaceTagType(
   candidateId: string,
   tagType: ResourceTagType,
   tags: ResourceTag[],
-): Promise<void> {
-  await stores.tags.replaceByType(candidateId, 'candidate', tagType, tags);
+): Promise<ResourceTag[]> {
+  return stores.tags.replaceByType(candidateId, 'candidate', tagType, tags);
 }
 
 async function recordVerificationChecks(
@@ -429,48 +444,68 @@ async function recordVerificationChecks(
   }
 }
 
-export async function materializePipelineArtifacts(
+async function persistEvidenceArtifact(
+  stores: IngestionStores,
+  execution: DetailedPipelineExecution,
+  options: MaterializePipelineArtifactsOptions,
+): Promise<void> {
+  const { evidence } = execution.artifacts;
+  if (!evidence) return;
+
+  const existingEvidence = await stores.evidence.getById(evidence.evidenceId);
+  if (existingEvidence) return;
+
+  await stores.evidence.create({
+    evidenceId: evidence.evidenceId,
+    canonicalUrl: evidence.canonicalUrl,
+    fetchedAt: evidence.fetchedAt,
+    httpStatus: evidence.httpStatus,
+    contentHashSha256: evidence.contentHashSha256,
+    contentType: evidence.contentType,
+    blobUri: undefined,
+    jobId: options.jobId,
+    correlationId: options.correlationId,
+    htmlRaw: evidence.htmlRaw,
+    textExtracted: evidence.textExtracted,
+    title: evidence.title,
+    metaDescription: evidence.metaDescription,
+    language: evidence.language,
+    contentLength: evidence.contentLength,
+  });
+}
+
+async function materializePipelineArtifactsInTransaction(
   stores: IngestionStores,
   execution: DetailedPipelineExecution,
   options: MaterializePipelineArtifactsOptions,
 ): Promise<MaterializePipelineArtifactsResult> {
   const { evidence, candidate } = execution.artifacts;
 
-  if (evidence) {
-    const existingEvidence = await stores.evidence.getById(evidence.evidenceId);
-    if (!existingEvidence) {
-      await stores.evidence.create({
-        evidenceId: evidence.evidenceId,
-        canonicalUrl: evidence.canonicalUrl,
-        fetchedAt: evidence.fetchedAt,
-        httpStatus: evidence.httpStatus,
-        contentHashSha256: evidence.contentHashSha256,
-        contentType: evidence.contentType,
-        blobUri: undefined,
-        jobId: options.jobId,
-        correlationId: options.correlationId,
-        htmlRaw: evidence.htmlRaw,
-        textExtracted: evidence.textExtracted,
-        title: evidence.title,
-        metaDescription: evidence.metaDescription,
-        language: evidence.language,
-        contentLength: evidence.contentLength,
-      });
-    }
-  }
-
   if (!candidate) {
+    await persistEvidenceArtifact(stores, execution, options);
     return {
       evidenceId: evidence?.evidenceId,
       deduped: false,
     };
   }
 
-  const existingCandidate = await stores.candidates.getByExtractKey(candidate.extractKeySha256);
+  const hasLockedLineageLookup = typeof stores.candidates.lockMaterializationTarget === 'function';
+  const lockedTarget = hasLockedLineageLookup
+    ? await stores.candidates.lockMaterializationTarget({
+        extractKey: candidate.extractKeySha256,
+        orgName: candidate.organizationName,
+        serviceName: candidate.serviceName,
+        canonicalUrl: evidence?.canonicalUrl ?? candidate.websiteUrl,
+        address: candidate.address,
+      })
+    : null;
+  const existingCandidate = lockedTarget?.candidate
+    ?? await stores.candidates.getByExtractKey(candidate.extractKeySha256);
+  const exactExtractKeyMatch = lockedTarget?.exactExtractKey ?? Boolean(existingCandidate);
 
   // LB6: Cross-path dedup — if no exact extractKey match, try normalized name match
   // to catch duplicates from different intake paths (web scrape vs HSDS API vs CSV).
-  const crossPathMatch = existingCandidate
+  const crossPathMatch = existingCandidate || hasLockedLineageLookup
     ? null
     : await stores.candidates.findByNormalizedName(
         candidate.organizationName,
@@ -478,9 +513,81 @@ export async function materializePipelineArtifacts(
       );
 
   const deduplicatedCandidate = existingCandidate ?? crossPathMatch;
-  const candidateId = deduplicatedCandidate?.candidateId ?? candidate.candidateId;
+  // An exact key can belong to an older revision. Once the lineage lookup has
+  // locked a newer head, replaying that historical payload is stale input, not
+  // a mutation of the head. Return the current head without persisting the old
+  // fields, extraction identity, evidence, checks, tags, or provenance.
+  if (
+    (lockedTarget?.historicalExtractReplay || exactExtractKeyMatch)
+    && deduplicatedCandidate
+    && (
+      lockedTarget?.historicalExtractReplay
+      || IMMUTABLE_REVIEW_STATUSES.has(deduplicatedCandidate.review.status)
+    )
+  ) {
+    return {
+      candidateId: deduplicatedCandidate.candidateId,
+      evidenceId: evidence?.evidenceId,
+      deduped: true,
+      assignedToRole: deduplicatedCandidate.review.assignedToRole,
+      reviewStatus: deduplicatedCandidate.review.status,
+      ...(lockedTarget?.lineageAvailable === false
+        ? {}
+        : {
+            revisionOfCandidateId: deduplicatedCandidate.revisionOfCandidateId,
+            lineageRootCandidateId:
+              deduplicatedCandidate.lineageRootCandidateId ?? deduplicatedCandidate.candidateId,
+            revisionNumber: deduplicatedCandidate.revisionNumber ?? 1,
+          }),
+    };
+  }
+
+  const createsRevision = Boolean(
+    deduplicatedCandidate
+      && IMMUTABLE_REVIEW_STATUSES.has(deduplicatedCandidate.review.status),
+  );
+  if (createsRevision && lockedTarget?.lineageAvailable === false) {
+    throw new Error('Candidate revision lineage is not provisioned yet');
+  }
+  // A terminal candidate is durable authorization evidence. Re-extraction
+  // appends a child revision with fresh identities and never edits that row.
+  const candidateId = createsRevision ? crypto.randomUUID() : deduplicatedCandidate?.candidateId ?? candidate.candidateId;
+  const existingConfirmations = await stores.tagConfirmations.listForCandidate(candidateId);
+  if (
+    deduplicatedCandidate
+    && !createsRevision
+    && existingConfirmations.some(
+      (confirmation) => confirmation.confirmationStatus !== 'pending',
+    )
+  ) {
+    throw new Error(
+      'Candidate has reviewed tag evidence; re-extraction requires a new revision',
+    );
+  }
+
+  await persistEvidenceArtifact(stores, execution, options);
+  // The pipeline already minted this execution's extraction identity. Keep it
+  // so verification checks and provenance remain attached to the child.
+  const extractionId = candidate.extractionId;
   const assignedToRole = determineReviewRole(candidate);
-  const reviewStatus = determineReviewStatus(candidate, assignedToRole, deduplicatedCandidate?.review.status);
+  const reviewStatus = determineReviewStatus(
+    candidate,
+    assignedToRole,
+    createsRevision ? undefined : deduplicatedCandidate?.review.status,
+  );
+  // Candidate inserts must always begin as pending. Escalation is a distinct,
+  // database-owned transition so callers cannot manufacture reviewed evidence
+  // in the same INSERT that creates the candidate identity.
+  const persistedReviewStatus = reviewStatus === 'escalated' ? 'pending' : reviewStatus;
+  const revisionOfCandidateId = createsRevision
+    ? deduplicatedCandidate?.candidateId
+    : deduplicatedCandidate?.revisionOfCandidateId;
+  const revisionNumber = createsRevision
+    ? (deduplicatedCandidate?.revisionNumber ?? 1) + 1
+    : deduplicatedCandidate?.revisionNumber ?? 1;
+  const lineageRootCandidateId = createsRevision
+    ? deduplicatedCandidate?.lineageRootCandidateId ?? deduplicatedCandidate?.candidateId
+    : deduplicatedCandidate?.lineageRootCandidateId ?? candidateId;
 
   const candidateRecord = buildCandidateRecord(candidate, {
     candidateId,
@@ -489,10 +596,14 @@ export async function materializePipelineArtifacts(
     jobId: options.jobId,
     correlationId: options.correlationId,
     assignedToRole,
-    reviewStatus,
+    reviewStatus: persistedReviewStatus,
+    extractionId,
+    revisionOfCandidateId,
+    lineageRootCandidateId,
+    revisionNumber,
   });
 
-  if (deduplicatedCandidate) {
+  if (deduplicatedCandidate && !createsRevision) {
     await stores.candidates.update(candidateId, {
       fields: candidateRecord.fields,
       review: candidateRecord.review,
@@ -506,13 +617,23 @@ export async function materializePipelineArtifacts(
   await stores.candidates.updateConfidenceScore(candidateId, candidate.score.overall);
   await recordVerificationChecks(stores, candidateId, candidate.verificationChecks);
 
-  const categoryTags = buildCategoryTags(candidateId, candidate);
+  const categoryTags = buildCategoryTags(candidateId, candidate, evidence?.evidenceId);
   const geographicTags = buildGeographicTags(candidateId, candidate);
   const sourceQualityTags = buildSourceQualityTags(candidateId, candidate, evidence?.canonicalUrl);
   const verificationTags = buildVerificationTags(candidateId, candidate, reviewStatus);
 
-  await replaceTagType(stores, candidateId, 'category', categoryTags);
-  await replaceTagType(stores, candidateId, 'geographic', geographicTags);
+  const persistedCategoryTags = await replaceTagType(
+    stores,
+    candidateId,
+    'category',
+    categoryTags,
+  );
+  const persistedGeographicTags = await replaceTagType(
+    stores,
+    candidateId,
+    'geographic',
+    geographicTags,
+  );
   await replaceTagType(stores, candidateId, 'source_quality', sourceQualityTags);
   await replaceTagType(
     stores,
@@ -527,30 +648,26 @@ export async function materializePipelineArtifacts(
     verificationTags.verification_status,
   );
 
-  const existingConfirmations = await stores.tagConfirmations.listForCandidate(candidateId);
-  const existingConfirmationKeys = new Set(
-    existingConfirmations.map(
-      (confirmation) => `${confirmation.tagType}:${confirmation.suggestedValue.toLowerCase()}`,
-    ),
-  );
-
-  const newConfirmations = candidate.categoryTags
-    .filter((tag) => tag.confidence < AUTO_APPROVE_TAG_CONFIDENCE)
-    .filter((tag) => !existingConfirmationKeys.has(`category:${tag.tagValue.toLowerCase()}`))
+  const newConfirmations = persistedCategoryTags
+    .filter((tag) => tag.tagConfidence < AUTO_APPROVE_TAG_CONFIDENCE)
     .map((tag) =>
-      createTagConfirmation(candidateId, 'category', tag.tagValue, tag.confidence, {
-        evidenceRefs: evidence?.evidenceId ? [evidence.evidenceId] : [],
+      createTagConfirmation(candidateId, 'category', tag.tagValue, tag.tagConfidence, {
+        resourceTagId: tag.id,
+        evidenceRefs: tag.evidenceRefs,
       }),
     );
 
-  if (newConfirmations.length > 0) {
-    await stores.tagConfirmations.bulkCreate(newConfirmations);
-  }
+  await stores.tagConfirmations.replacePendingForCandidate(
+    candidateId,
+    'category',
+    newConfirmations,
+  );
 
   const pendingTagCount =
-    existingConfirmations.filter((confirmation) => confirmation.confirmationStatus === 'pending')
-      .length +
-    newConfirmations.filter((confirmation) => confirmation.confirmationStatus === 'pending').length;
+    existingConfirmations.filter(
+      (confirmation) => confirmation.tagType !== 'category'
+        && confirmation.confirmationStatus === 'pending',
+    ).length + newConfirmations.length;
 
   const existingLinks = new Set(
     (await stores.links.listForCandidate(candidateId)).map((link) => link.url),
@@ -564,17 +681,48 @@ export async function materializePipelineArtifacts(
     buildReadinessSnapshot({
       candidateId,
       candidate,
-      categoryTags,
-      geographicTags,
+      categoryTags: persistedCategoryTags,
+      geographicTags: persistedGeographicTags,
       pendingTagCount,
     }),
   );
+
+  // Production routing is database-owned so concurrent candidates cannot
+  // over-allocate a reviewer and a candidate never self-asserts approval.
+  let routedReviewerCount: number | null = null;
+  if (stores.assignments?.routeForReview) {
+    routedReviewerCount = await stores.assignments.routeForReview(candidateId, 5);
+  }
+  const reviewerCapacityExhausted =
+    routedReviewerCount !== null && routedReviewerCount < 2;
+  const shouldEscalate = reviewStatus === 'escalated' || reviewerCapacityExhausted;
+  if (shouldEscalate) {
+    await stores.candidates.escalateForReview(candidateId);
+  }
+  const effectiveReviewStatus = shouldEscalate ? 'escalated' : reviewStatus;
+  const effectiveAssignedToRole = shouldEscalate ? 'oran_admin' : assignedToRole;
 
   return {
     candidateId,
     evidenceId: evidence?.evidenceId,
     deduped: Boolean(deduplicatedCandidate),
-    assignedToRole,
-    reviewStatus,
+    assignedToRole: effectiveAssignedToRole,
+    reviewStatus: effectiveReviewStatus,
+    ...(createsRevision
+      ? { revisionOfCandidateId, lineageRootCandidateId, revisionNumber }
+      : {}),
   };
+}
+
+export async function materializePipelineArtifacts(
+  stores: IngestionStores,
+  execution: DetailedPipelineExecution,
+  options: MaterializePipelineArtifactsOptions,
+): Promise<MaterializePipelineArtifactsResult> {
+  if (stores.runAtomically) {
+    return stores.runAtomically((transactionStores) => (
+      materializePipelineArtifactsInTransaction(transactionStores, execution, options)
+    ));
+  }
+  return materializePipelineArtifactsInTransaction(stores, execution, options);
 }

@@ -7,6 +7,7 @@ const authMocks = vi.hoisted(() => ({
   getAuthContext: vi.fn(),
 }));
 const requireMinRoleMock = vi.hoisted(() => vi.fn());
+const requireRoleMock = vi.hoisted(() => vi.fn());
 const getDrizzleMock = vi.hoisted(() => vi.fn());
 const storeFactoryMocks = vi.hoisted(() => ({
   createIngestionStores: vi.fn(),
@@ -18,6 +19,7 @@ const geocodingMocks = vi.hoisted(() => ({
 const livePublishMocks = vi.hoisted(() => ({
   publishCandidateToLiveService: vi.fn(),
 }));
+const executeQueryMock = vi.hoisted(() => vi.fn());
 
 const stores = vi.hoisted(() => ({
   publishReadiness: {
@@ -32,6 +34,7 @@ const stores = vi.hoisted(() => ({
   },
   llmSuggestions: {
     listForCandidate: vi.fn(),
+    getById: vi.fn(),
     getAcceptedValues: vi.fn(),
     updateDecision: vi.fn(),
   },
@@ -44,6 +47,7 @@ const stores = vi.hoisted(() => ({
 
 vi.mock('@/services/db/postgres', () => ({
   isDatabaseConfigured: dbConfigMock,
+  executeQuery: executeQueryMock,
 }));
 vi.mock('@/services/security/rateLimit', () => ({
   checkRateLimit: rateLimitMock,
@@ -55,6 +59,7 @@ vi.mock('@/services/telemetry/sentry', () => ({
 vi.mock('@/services/auth/session', () => authMocks);
 vi.mock('@/services/auth/guards', () => ({
   requireMinRole: requireMinRoleMock,
+  requireRole: requireRoleMock,
 }));
 vi.mock('@/services/db/drizzle', () => ({
   getDrizzle: getDrizzleMock,
@@ -118,6 +123,7 @@ beforeEach(() => {
   });
   authMocks.getAuthContext.mockResolvedValue(null);
   requireMinRoleMock.mockReturnValue(true);
+  requireRoleMock.mockReturnValue(true);
   getDrizzleMock.mockReturnValue({ kind: 'db' });
   storeFactoryMocks.createIngestionStores.mockReturnValue(stores);
 
@@ -129,15 +135,43 @@ beforeEach(() => {
   stores.candidates.getById.mockResolvedValue(null);
   stores.audit.append.mockResolvedValue(undefined);
   stores.llmSuggestions.listForCandidate.mockResolvedValue([]);
+  stores.llmSuggestions.getById.mockResolvedValue({
+    id: '22222222-2222-4222-8222-222222222222',
+    candidateId: '11111111-1111-4111-8111-111111111111',
+    fieldName: 'name',
+    suggestedValue: 'Valid service name',
+  });
   stores.llmSuggestions.getAcceptedValues.mockResolvedValue(new Map());
-  stores.llmSuggestions.updateDecision.mockResolvedValue(undefined);
+  stores.llmSuggestions.updateDecision.mockResolvedValue('updated');
   stores.tagConfirmations.listForCandidate.mockResolvedValue([]);
   stores.tagConfirmations.countPendingByTier.mockResolvedValue({
     green: 1,
     orange: 0,
     red: 0,
   });
-  stores.tagConfirmations.updateDecision.mockResolvedValue(undefined);
+  stores.tagConfirmations.updateDecision.mockResolvedValue('updated');
+  executeQueryMock.mockImplementation((statement: string) => {
+    const sql = String(statement);
+    if (sql.includes('SELECT assignment.id')) {
+      return Promise.resolve([{
+        id: 'assignment-own', status: 'claimed', outcome: null, expires_at: null,
+      }]);
+    }
+    if (sql.includes('public.evaluate_candidate_readiness')) {
+      return Promise.resolve([{ is_ready: false }]);
+    }
+    if (sql.includes('readiness.has_required_fields')) {
+      return Promise.resolve([{
+        has_required_fields: true,
+        has_required_tags: true,
+        tags_confirmed: true,
+        meets_score_threshold: true,
+        blockers: ['Need 2 admin approvals, have 1'],
+        can_mutate_evidence: true,
+      }]);
+    }
+    return Promise.resolve([]);
+  });
   geocodingMocks.isConfigured.mockReturnValue(false);
   geocodingMocks.geocode.mockResolvedValue([]);
   livePublishMocks.publishCandidateToLiveService.mockResolvedValue({
@@ -177,10 +211,6 @@ describe('admin ingestion candidate action routes', () => {
 
   it('publishes a ready candidate and writes side effects', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-1' });
-    const uuidSpy = vi
-      .spyOn(globalThis.crypto, 'randomUUID')
-      .mockReturnValueOnce('event-id')
-      .mockReturnValueOnce('corr-id');
     const { POST } = await loadPublishRoute();
 
     const response = await POST(
@@ -200,25 +230,12 @@ describe('admin ingestion candidate action routes', () => {
         geocode: undefined,
       }),
     );
-    expect(stores.audit.append).toHaveBeenCalledWith(
-      expect.objectContaining({
-        eventId: 'event-id',
-        correlationId: 'corr-id',
-        outputs: {
-          serviceId: 'service-id',
-          organizationId: 'org-id',
-          locationId: 'loc-id',
-        },
-      }),
-    );
-    expect(stores.audit.append).toHaveBeenCalledTimes(1);
+    expect(stores.audit.append).not.toHaveBeenCalled();
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       success: true,
       serviceId: 'service-id',
     });
-
-    uuidSpy.mockRestore();
   });
 
   it('enforces publish route infra/auth/rate-limit/input guards', async () => {
@@ -299,6 +316,9 @@ describe('admin ingestion candidate action routes', () => {
 
   it('returns readiness for community admins and 404 when missing', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
+    requireMinRoleMock.mockImplementation(
+      (_ctx: unknown, role: string) => role !== 'oran_admin',
+    );
     const { GET } = await loadReadinessRoute();
 
     const okResponse = await GET(
@@ -313,8 +333,13 @@ describe('admin ingestion candidate action routes', () => {
     expect(okResponse.status).toBe(200);
     await expect(okResponse.json()).resolves.toEqual({
       readiness: {
-        score: 82,
-        thresholdMet: true,
+        canApprove: true,
+        hasRequiredFields: true,
+        hasRequiredTags: true,
+        tagsConfirmed: true,
+        meetsScoreThreshold: true,
+        passesVerification: true,
+        blockers: [],
       },
     });
 
@@ -333,8 +358,16 @@ describe('admin ingestion candidate action routes', () => {
 
   it('lists suggestions with accepted values and updates suggestion decisions', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
+    requireMinRoleMock.mockImplementation(
+      (_ctx: unknown, role: string) => role !== 'oran_admin',
+    );
     stores.llmSuggestions.listForCandidate.mockResolvedValueOnce([
-      { id: 'suggest-1', field: 'name' },
+      {
+        id: 'suggest-1',
+        field: 'name',
+        reviewedByUserId: 'peer-user',
+        reviewNotes: 'Peer subjective notes',
+      },
     ]);
     stores.llmSuggestions.getAcceptedValues.mockResolvedValueOnce(
       new Map([
@@ -371,6 +404,7 @@ describe('admin ingestion candidate action routes', () => {
     );
 
     expect(stores.llmSuggestions.updateDecision).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
       '22222222-2222-4222-8222-222222222222',
       'modified',
       'Edited value',
@@ -401,12 +435,63 @@ describe('admin ingestion candidate action routes', () => {
     expect(stores.llmSuggestions.updateDecision).not.toHaveBeenCalled();
     const body = await response.json();
     expect(body.error).toBe('Invalid input.');
+
+    const missingModifiedValue = await PUT(
+      createRequest({
+        jsonBody: {
+          suggestionId: '22222222-2222-4222-8222-222222222222',
+          status: 'modified',
+        },
+      }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    expect(missingModifiedValue.status).toBe(400);
+
+    const unexpectedAcceptedValue = await PUT(
+      createRequest({
+        jsonBody: {
+          suggestionId: '22222222-2222-4222-8222-222222222222',
+          status: 'accepted',
+          acceptedValue: 'A hidden override',
+        },
+      }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    expect(unexpectedAcceptedValue.status).toBe(400);
+
+    stores.llmSuggestions.getById.mockResolvedValueOnce({
+      id: '22222222-2222-4222-8222-222222222222',
+      candidateId: '11111111-1111-4111-8111-111111111111',
+      fieldName: 'website',
+      suggestedValue: 'javascript:alert(1)',
+    });
+    const invalidAcceptedUrl = await PUT(
+      createRequest({
+        jsonBody: {
+          suggestionId: '22222222-2222-4222-8222-222222222222',
+          status: 'accepted',
+        },
+      }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    expect(invalidAcceptedUrl.status).toBe(400);
+    await expect(invalidAcceptedUrl.json()).resolves.toEqual({
+      error: 'Website must be an http(s) URL without credentials.',
+    });
   });
 
   it('lists tag confirmations and updates decisions', async () => {
     authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
+    requireMinRoleMock.mockImplementation(
+      (_ctx: unknown, role: string) => role !== 'oran_admin',
+    );
     stores.tagConfirmations.listForCandidate.mockResolvedValueOnce([
-      { id: 'confirm-1', proposedTag: 'food' },
+      {
+        id: 'confirm-1',
+        proposedTag: 'food',
+        reviewedByUserId: 'peer-user',
+        reviewNotes: 'Peer subjective notes',
+      },
     ]);
     stores.tagConfirmations.countPendingByTier.mockResolvedValueOnce({
       green: 2,
@@ -434,7 +519,7 @@ describe('admin ingestion candidate action routes', () => {
       createRequest({
         jsonBody: {
           confirmationId: '33333333-3333-4333-8333-333333333333',
-          status: 'confirmed',
+          status: 'modified',
           confirmedValue: 'food_assistance',
           notes: 'Exact taxonomy match',
         },
@@ -443,8 +528,9 @@ describe('admin ingestion candidate action routes', () => {
     );
 
     expect(stores.tagConfirmations.updateDecision).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
       '33333333-3333-4333-8333-333333333333',
-      'confirmed',
+      'modified',
       'food_assistance',
       undefined,
       'community-1',
@@ -454,6 +540,74 @@ describe('admin ingestion candidate action routes', () => {
     await expect(updateResponse.json()).resolves.toEqual({
       success: true,
     });
+  });
+
+  it('returns 409 when tag or suggestion decision evidence is stale or mismatched', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'community-1' });
+    stores.llmSuggestions.updateDecision.mockResolvedValueOnce('conflict');
+    stores.tagConfirmations.updateDecision.mockResolvedValueOnce('conflict');
+    const suggestionsRoute = await loadSuggestionsRoute();
+    const tagsRoute = await loadTagsRoute();
+
+    const suggestionResponse = await suggestionsRoute.PUT(
+      createRequest({
+        jsonBody: {
+          suggestionId: '22222222-2222-4222-8222-222222222222',
+          status: 'accepted',
+        },
+      }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    const tagResponse = await tagsRoute.PUT(
+      createRequest({
+        jsonBody: {
+          confirmationId: '33333333-3333-4333-8333-333333333333',
+          status: 'confirmed',
+        },
+      }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+
+    expect(suggestionResponse.status).toBe(409);
+    expect(tagResponse.status).toBe(409);
+    await expect(suggestionResponse.json()).resolves.toEqual(
+      expect.objectContaining({ error: expect.stringContaining('Refresh') }),
+    );
+    await expect(tagResponse.json()).resolves.toEqual(
+      expect.objectContaining({ error: expect.stringContaining('Refresh') }),
+    );
+  });
+
+  it('allows ORAN-admin oversight reads but denies tag and suggestion mutations', async () => {
+    authMocks.getAuthContext.mockResolvedValue({ userId: 'oran-oversight-1', role: 'oran_admin' });
+    requireMinRoleMock.mockReturnValue(true);
+    requireRoleMock.mockReturnValue(false);
+    const suggestionsRoute = await loadSuggestionsRoute();
+    const tagsRoute = await loadTagsRoute();
+
+    const suggestionResponse = await suggestionsRoute.PUT(
+      createRequest({
+        jsonBody: {
+          suggestionId: '22222222-2222-4222-8222-222222222222',
+          status: 'accepted',
+        },
+      }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    const tagResponse = await tagsRoute.PUT(
+      createRequest({
+        jsonBody: {
+          confirmationId: '33333333-3333-4333-8333-333333333333',
+          status: 'confirmed',
+        },
+      }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+
+    expect(suggestionResponse.status).toBe(403);
+    expect(tagResponse.status).toBe(403);
+    expect(stores.llmSuggestions.updateDecision).not.toHaveBeenCalled();
+    expect(stores.tagConfirmations.updateDecision).not.toHaveBeenCalled();
   });
 
   it('captures tag route exceptions and returns 500', async () => {
@@ -514,7 +668,7 @@ describe('admin ingestion candidate action routes', () => {
     expect((await PUT(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(401);
 
     authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
-    requireMinRoleMock.mockReturnValueOnce(false);
+    requireRoleMock.mockReturnValueOnce(false);
     expect((await PUT(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(403);
 
     authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
@@ -536,6 +690,19 @@ describe('admin ingestion candidate action routes', () => {
         error: 'Invalid input.',
       }),
     );
+
+    authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
+    const mislabeledConfirmedValue = await PUT(
+      createRequest({
+        jsonBody: {
+          confirmationId: '33333333-3333-4333-8333-333333333333',
+          status: 'confirmed',
+          confirmedValue: 'different_value',
+        },
+      }),
+      createRouteContext('11111111-1111-4111-8111-111111111111'),
+    );
+    expect(mislabeledConfirmedValue.status).toBe(400);
   });
 
   it('captures tag PUT exceptions and returns 500', async () => {
@@ -629,7 +796,7 @@ describe('admin ingestion candidate action routes', () => {
     expect((await PUT(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(401);
 
     authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });
-    requireMinRoleMock.mockReturnValueOnce(false);
+    requireRoleMock.mockReturnValueOnce(false);
     expect((await PUT(createRequest(), createRouteContext('11111111-1111-4111-8111-111111111111'))).status).toBe(403);
 
     authMocks.getAuthContext.mockResolvedValueOnce({ userId: 'community-1' });

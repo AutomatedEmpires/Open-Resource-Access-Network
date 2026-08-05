@@ -20,7 +20,6 @@ interface CandidateReviewRow {
   candidate_id: string;
   assignment_status: 'pending' | 'claimed';
   expires_at: string | null;
-  candidate_review_status: string;
   organization_name: string;
   service_name: string;
   description: string | null;

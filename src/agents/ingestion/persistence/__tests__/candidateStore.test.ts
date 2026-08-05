@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDrizzleCandidateStore } from '../candidateStore';
 import type { CandidateReviewStatus } from '../../stores';
 
-function createMockDb(selectResults: unknown[] = []) {
+function createMockDb(selectResults: unknown[] = [], executeResults: unknown[] = []) {
   const insertValues: unknown[] = [];
   const updateSets: unknown[] = [];
 
   const db = {
+    execute: vi.fn(() => Promise.resolve(executeResults.shift())),
     select: vi.fn(() => {
       const result = selectResults.shift() ?? [];
       const builder: any = {
@@ -15,6 +16,7 @@ function createMockDb(selectResults: unknown[] = []) {
         where: vi.fn(() => builder),
         orderBy: vi.fn(() => builder),
         limit: vi.fn(() => builder),
+        for: vi.fn(() => builder),
         offset: vi.fn(() => Promise.resolve(result)),
         then: (onFulfilled?: ((value: unknown) => unknown) | null, onRejected?: ((reason: unknown) => unknown) | null) =>
           Promise.resolve(result).then(onFulfilled ?? undefined, onRejected ?? undefined),
@@ -50,6 +52,9 @@ function makeRow(overrides: Record<string, unknown> = {}) {
     extractionId: 'ext-1',
     extractKeySha256: 'a'.repeat(64),
     extractedAt: new Date('2026-01-01T00:00:00.000Z'),
+    revisionOfCandidateId: null,
+    lineageRootCandidateId: 'cand-1',
+    revisionNumber: 1,
     organizationName: 'Helping Hands',
     serviceName: 'Food Pantry',
     description: 'Emergency grocery assistance',
@@ -168,6 +173,388 @@ describe('candidateStore', () => {
         details: { correlationId: 'corr-1' },
       }),
     );
+  });
+
+  it('raw-inserts an explicit child revision only when lineage columns are available', async () => {
+    const { db, insertValues } = createMockDb([], [
+      { rows: [{ available: true }] },
+      { rows: [] },
+    ]);
+    const store = createDrizzleCandidateStore(db as never);
+
+    await store.create({
+      extractionId: 'ext-2',
+      candidateId: 'cand-2',
+      extractKeySha256: 'b'.repeat(64),
+      extractedAt: '2026-01-02T00:00:00.000Z',
+      revisionOfCandidateId: 'cand-1',
+      lineageRootCandidateId: 'cand-1',
+      revisionNumber: 2,
+      review: { status: 'pending', timers: {}, tags: [], checklist: {} },
+      fields: {
+        organizationName: 'Helping Hands',
+        serviceName: 'Food Pantry',
+        description: 'Updated grocery assistance',
+        isRemoteService: false,
+      },
+      provenance: {},
+      correlationId: 'corr-2',
+    } as never);
+
+    expect(db.execute).toHaveBeenCalledTimes(2);
+    expect(insertValues).toEqual([
+      expect.objectContaining({
+        candidateId: 'cand-2',
+        eventType: 'created',
+      }),
+    ]);
+  });
+
+  it('fails closed for a child revision before the additive schema is present', async () => {
+    const { db, insertValues } = createMockDb([], [
+      { rows: [{ available: false }] },
+    ]);
+    const store = createDrizzleCandidateStore(db as never);
+
+    await expect(store.create({
+      extractionId: 'ext-2',
+      candidateId: 'cand-2',
+      extractKeySha256: 'b'.repeat(64),
+      extractedAt: '2026-01-02T00:00:00.000Z',
+      revisionOfCandidateId: 'cand-1',
+      lineageRootCandidateId: 'cand-1',
+      revisionNumber: 2,
+      review: { status: 'pending', timers: {}, tags: [], checklist: {} },
+      fields: {
+        organizationName: 'Helping Hands',
+        serviceName: 'Food Pantry',
+        description: 'Updated grocery assistance',
+        isRemoteService: false,
+      },
+      provenance: {},
+      correlationId: 'corr-2',
+    } as never)).rejects.toThrow('lineage is not provisioned');
+
+    expect(insertValues).toHaveLength(0);
+  });
+
+  it('locks and returns the latest lineage target before materialization', async () => {
+    const { db } = createMockDb([[makeRow()]]);
+    const store = createDrizzleCandidateStore(db as never);
+
+    await expect(store.lockMaterializationTarget({
+      extractKey: 'a'.repeat(64),
+      orgName: 'Helping Hands',
+      serviceName: 'Food Pantry',
+      canonicalUrl: 'https://example.gov/feed',
+      address: {
+        line1: '123 Main St',
+        city: 'Seattle',
+        region: 'WA',
+        postalCode: '98101',
+        country: 'US',
+      },
+    })).resolves.toEqual({
+      candidate: expect.objectContaining({
+        candidateId: 'cand-1',
+        lineageRootCandidateId: 'cand-1',
+        revisionNumber: 1,
+      }),
+      historicalExtractReplay: false,
+      exactExtractKey: true,
+      lineageAvailable: false,
+    });
+
+    expect(db.execute).toHaveBeenCalledTimes(5);
+  });
+
+  it('uses provisioned lineage columns to lock and return the exact revision', async () => {
+    const { db } = createMockDb(
+      [[makeRow()]],
+      [
+        { rows: [] },
+        { rows: [] },
+        { rows: [] },
+        { rows: [{ available: true }] },
+        {
+          rows: [{
+            candidate_id: 'cand-1',
+            extract_key_sha256: 'a'.repeat(64),
+            revision_of_candidate_id: null,
+            lineage_root_candidate_id: 'cand-1',
+            revision_number: 1,
+          }],
+        },
+        { rows: [] },
+        {
+          rows: [{
+            candidate_id: 'cand-1',
+            extract_key_sha256: 'a'.repeat(64),
+            revision_of_candidate_id: null,
+            lineage_root_candidate_id: 'cand-1',
+            revision_number: 1,
+          }],
+        },
+      ],
+    );
+    const store = createDrizzleCandidateStore(db as never);
+
+    await expect(store.lockMaterializationTarget({
+      extractKey: 'a'.repeat(64),
+      orgName: 'Helping Hands',
+      serviceName: 'Food Pantry',
+      canonicalUrl: 'https://example.gov/feed',
+    })).resolves.toEqual({
+      candidate: expect.objectContaining({
+        candidateId: 'cand-1',
+        lineageRootCandidateId: 'cand-1',
+        revisionNumber: 1,
+      }),
+      historicalExtractReplay: false,
+      exactExtractKey: true,
+      lineageAvailable: true,
+    });
+
+    expect(db.execute).toHaveBeenCalledTimes(7);
+  });
+
+  it('resolves an old-identity replay to the current lineage head before comparing its hash', async () => {
+    const oldHash = 'a'.repeat(64);
+    const headHash = 'b'.repeat(64);
+    const { db } = createMockDb(
+      [[makeRow({
+        candidateId: 'cand-rev-2',
+        extractionId: 'ext-rev-2',
+        extractKeySha256: headHash,
+        organizationName: 'Helping Hands Northwest',
+        serviceName: 'Community Food Access',
+        addressLine1: '987 New Ave',
+        investigationPack: { canonicalUrl: 'https://new.example.gov/services/food' },
+      })]],
+      [
+        { rows: [] },
+        { rows: [] },
+        { rows: [] },
+        { rows: [{ available: true }] },
+        {
+          rows: [{
+            candidate_id: 'cand-rev-1',
+            extract_key_sha256: oldHash,
+            revision_of_candidate_id: null,
+            lineage_root_candidate_id: 'cand-rev-1',
+            revision_number: 1,
+          }],
+        },
+        { rows: [] },
+        {
+          rows: [{
+            candidate_id: 'cand-rev-2',
+            extract_key_sha256: headHash,
+            revision_of_candidate_id: 'cand-rev-1',
+            lineage_root_candidate_id: 'cand-rev-1',
+            revision_number: 2,
+          }],
+        },
+      ],
+    );
+    const store = createDrizzleCandidateStore(db as never);
+
+    await expect(store.lockMaterializationTarget({
+      extractKey: oldHash,
+      orgName: 'Helping Hands',
+      serviceName: 'Food Pantry',
+      canonicalUrl: 'https://example.gov/feed',
+    })).resolves.toEqual({
+      candidate: expect.objectContaining({
+        candidateId: 'cand-rev-2',
+        revisionOfCandidateId: 'cand-rev-1',
+        lineageRootCandidateId: 'cand-rev-1',
+        revisionNumber: 2,
+        fields: expect.objectContaining({
+          organizationName: 'Helping Hands Northwest',
+          serviceName: 'Community Food Access',
+        }),
+        investigation: expect.objectContaining({
+          canonicalUrl: 'https://new.example.gov/services/food',
+        }),
+      }),
+      historicalExtractReplay: true,
+      exactExtractKey: false,
+      lineageAvailable: true,
+    });
+
+    expect(db.execute).toHaveBeenCalledTimes(7);
+  });
+
+  it('resolves lineage when canonical URL and normalized service identity both match', async () => {
+    const { db } = createMockDb(
+      [[makeRow({ organizationName: 'Corrected Org', serviceName: 'Corrected Service' })]],
+      [
+        { rows: [] },
+        { rows: [] },
+        { rows: [] },
+        { rows: [{ available: true }] },
+        { rows: [{
+          candidate_id: 'cand-1',
+          extract_key_sha256: 'a'.repeat(64),
+          revision_of_candidate_id: null,
+          lineage_root_candidate_id: 'cand-1',
+          revision_number: 1,
+          matched_exact_extract_key: false,
+          matched_canonical_url: true,
+          matched_address: false,
+          matched_name: false,
+        }] },
+        { rows: [] },
+        { rows: [{
+          candidate_id: 'cand-1',
+          extract_key_sha256: 'a'.repeat(64),
+          revision_of_candidate_id: null,
+          lineage_root_candidate_id: 'cand-1',
+          revision_number: 1,
+        }] },
+      ],
+    );
+    const store = createDrizzleCandidateStore(db as never);
+
+    await expect(store.lockMaterializationTarget({
+      extractKey: 'b'.repeat(64),
+      orgName: '  Corrected Org  ',
+      serviceName: 'CORRECTED SERVICE',
+      canonicalUrl: 'https://example.gov/feed',
+    })).resolves.toEqual(expect.objectContaining({
+      candidate: expect.objectContaining({ candidateId: 'cand-1' }),
+      exactExtractKey: false,
+      lineageAvailable: true,
+    }));
+
+    const executeCalls = db.execute.mock.calls as unknown as Array<[unknown]>;
+    const firstStableLockSql = JSON.stringify(executeCalls[0]?.[0]);
+    const secondStableLockSql = JSON.stringify(executeCalls[1]?.[0]);
+    const thirdStableLockSql = JSON.stringify(executeCalls[2]?.[0]);
+    expect(firstStableLockSql).toContain('canonical:https://example.gov/feed');
+    expect(secondStableLockSql).toContain(`extract:${'b'.repeat(64)}`);
+    expect(thirdStableLockSql).toContain('name:corrected org');
+
+    const identityQuerySql = JSON.stringify(executeCalls[4]?.[0]);
+    expect(identityQuerySql).toContain('lower(trim(organization_name))');
+    expect(identityQuerySql).toContain('lower(trim(service_name))');
+    expect(identityQuerySql).toContain('corrected org');
+    expect(identityQuerySql).toContain('corrected service');
+    // The normalized service identity must guard the selected flags, WHERE
+    // branches, and ordering branches for canonical URL, address, and name.
+    expect(identityQuerySql.match(/lower\(trim\(organization_name\)\)/g)).toHaveLength(9);
+    expect(identityQuerySql.match(/lower\(trim\(service_name\)\)/g)).toHaveLength(9);
+  });
+
+  it('does not attach a shared canonical URL to a different service identity', async () => {
+    const { db } = createMockDb([], [
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [{ available: true }] },
+      { rows: [{
+        candidate_id: 'cand-other-service',
+        extract_key_sha256: 'a'.repeat(64),
+        revision_of_candidate_id: null,
+        lineage_root_candidate_id: 'cand-other-service',
+        revision_number: 1,
+        matched_exact_extract_key: false,
+        matched_canonical_url: false,
+        matched_address: false,
+        matched_name: false,
+      }] },
+    ]);
+    const store = createDrizzleCandidateStore(db as never);
+
+    await expect(store.lockMaterializationTarget({
+      extractKey: 'b'.repeat(64),
+      orgName: 'Helping Hands',
+      serviceName: 'Food Pantry',
+      canonicalUrl: 'https://shared.example.gov/services',
+    })).resolves.toBeNull();
+
+    expect(db.select).not.toHaveBeenCalled();
+    expect(db.execute).toHaveBeenCalledTimes(5);
+  });
+
+  it('does not attach a co-located address to a different service identity', async () => {
+    const { db } = createMockDb([], [
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [{ available: true }] },
+      { rows: [{
+        candidate_id: 'cand-other-service',
+        extract_key_sha256: 'a'.repeat(64),
+        revision_of_candidate_id: null,
+        lineage_root_candidate_id: 'cand-other-service',
+        revision_number: 1,
+        matched_exact_extract_key: false,
+        matched_canonical_url: false,
+        matched_address: false,
+        matched_name: false,
+      }] },
+    ]);
+    const store = createDrizzleCandidateStore(db as never);
+
+    await expect(store.lockMaterializationTarget({
+      extractKey: 'b'.repeat(64),
+      orgName: 'Helping Hands',
+      serviceName: 'Food Pantry',
+      address: {
+        line1: '123 Main St',
+        city: 'Seattle',
+        region: 'WA',
+        postalCode: '98101',
+        country: 'US',
+      },
+    })).resolves.toBeNull();
+
+    expect(db.select).not.toHaveBeenCalled();
+    expect(db.execute).toHaveBeenCalledTimes(5);
+  });
+
+  it('fails closed when the same canonical URL and service identity span multiple lineages', async () => {
+    const { db } = createMockDb([], [
+      { rows: [] },
+      { rows: [] },
+      { rows: [] },
+      { rows: [{ available: true }] },
+      { rows: [
+        {
+          candidate_id: 'cand-a',
+          extract_key_sha256: 'a'.repeat(64),
+          revision_of_candidate_id: null,
+          lineage_root_candidate_id: 'cand-a',
+          revision_number: 1,
+          matched_exact_extract_key: false,
+          matched_canonical_url: true,
+          matched_address: false,
+          matched_name: false,
+        },
+        {
+          candidate_id: 'cand-b',
+          extract_key_sha256: 'b'.repeat(64),
+          revision_of_candidate_id: null,
+          lineage_root_candidate_id: 'cand-b',
+          revision_number: 1,
+          matched_exact_extract_key: false,
+          matched_canonical_url: true,
+          matched_address: false,
+          matched_name: false,
+        },
+      ] },
+    ]);
+    const store = createDrizzleCandidateStore(db as never);
+
+    await expect(store.lockMaterializationTarget({
+      extractKey: 'c'.repeat(64),
+      orgName: 'Shared Site Org',
+      serviceName: 'Shared Service',
+      canonicalUrl: 'https://shared.example.gov/services',
+    })).rejects.toThrow('Ambiguous candidate lineage canonical-url identity');
+    expect(db.execute).toHaveBeenCalledTimes(5);
   });
 
   it('maps rows back into the domain shape for id and extract key lookups', async () => {
@@ -320,6 +707,33 @@ describe('candidateStore', () => {
     expect((insertValues[0] as { details: { updatedFields: string[] } }).details.updatedFields).toEqual(
       expect.arrayContaining(['organizationName', 'jurisdictionKind', 'investigationPack', 'provenanceRecords']),
     );
+  });
+
+  it('clears optional contact and address columns during pending replacement', async () => {
+    const { db, updateSets } = createMockDb();
+    const store = createDrizzleCandidateStore(db as never);
+
+    await store.update('cand-pending', {
+      fields: {
+        organizationName: 'Helping Hands',
+        serviceName: 'Remote Navigation',
+        description: 'Remote-only navigation support.',
+        isRemoteService: true,
+      },
+    } as never);
+
+    expect(updateSets[0]).toEqual(expect.objectContaining({
+      websiteUrl: null,
+      phone: null,
+      phones: [],
+      addressLine1: null,
+      addressLine2: null,
+      addressCity: null,
+      addressRegion: null,
+      addressPostalCode: null,
+      addressCountry: null,
+      isRemoteService: true,
+    }));
   });
 
   it('skips writes when update payload has no mutable fields', async () => {

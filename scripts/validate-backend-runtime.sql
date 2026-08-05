@@ -271,7 +271,19 @@ DECLARE
     'oran_internal.check_chat_quota(text,text,integer)'::pg_catalog.regprocedure::oid,
     'oran_internal.reserve_chat_request(uuid,text,text,text,integer,integer,integer,integer)'::pg_catalog.regprocedure::oid,
     'oran_internal.finalize_chat_request(uuid,boolean)'::pg_catalog.regprocedure::oid,
-    'oran_internal.consume_shared_rate_limit(text,integer,integer)'::pg_catalog.regprocedure::oid
+    'oran_internal.consume_shared_rate_limit(text,integer,integer)'::pg_catalog.regprocedure::oid,
+    'oran_internal.is_account_erased(text)'::pg_catalog.regprocedure::oid,
+    'oran_internal.queue_account_erasure(text,text,text,uuid)'::pg_catalog.regprocedure::oid,
+    'oran_internal.claim_account_erasure_requests(integer)'::pg_catalog.regprocedure::oid,
+    'oran_internal.release_account_erasure_lease(uuid)'::pg_catalog.regprocedure::oid,
+    'oran_internal.record_account_erasure_failure(uuid,text)'::pg_catalog.regprocedure::oid,
+    'oran_internal.mark_clerk_account_deleted(uuid,text,text)'::pg_catalog.regprocedure::oid,
+    'oran_internal.process_account_erasure_page(uuid,integer)'::pg_catalog.regprocedure::oid,
+    'oran_internal.export_user_governance_data(text)'::pg_catalog.regprocedure::oid,
+    'oran_internal.assign_candidate_reviewers(text,integer)'::pg_catalog.regprocedure::oid,
+    'oran_internal.list_undercovered_candidate_reviews(integer,integer)'::pg_catalog.regprocedure::oid,
+    'oran_internal.escalate_candidate_for_review(text)'::pg_catalog.regprocedure::oid,
+    'public.evaluate_candidate_readiness(text)'::pg_catalog.regprocedure::oid
   ];
 BEGIN
   IF session_user::text <> 'oran_backend_runtime'
@@ -543,6 +555,174 @@ BEGIN
         v_function.nspname, v_function.proname;
     END IF;
   END LOOP;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_attribute
+    WHERE attrelid = 'public.extracted_candidates'::pg_catalog.regclass
+      AND attname = 'revision_of_candidate_id'
+      AND NOT attisdropped
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_attribute
+    WHERE attrelid = 'public.extracted_candidates'::pg_catalog.regclass
+      AND attname = 'revision_number'
+      AND attnotnull
+      AND NOT attisdropped
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_attribute
+    WHERE attrelid = 'public.extracted_candidates'::pg_catalog.regclass
+      AND attname = 'lineage_root_candidate_id'
+      AND attnotnull
+      AND NOT attisdropped
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_attribute
+    WHERE attrelid = 'public.candidate_admin_assignments'::pg_catalog.regclass
+      AND attname = 'decision_reviewer_profile_id'
+      AND atttypid = 'uuid'::pg_catalog.regtype
+      AND NOT attisdropped
+  ) OR EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_attribute
+    WHERE attrelid = 'public.candidate_admin_assignments'::pg_catalog.regclass
+      AND attname = 'decision_reviewer_user_id'
+      AND NOT attisdropped
+  ) THEN
+    RAISE EXCEPTION 'candidate revision-lineage columns are not activated';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_constraint
+    WHERE conrelid = 'public.extracted_candidates'::pg_catalog.regclass
+      AND conname = 'extracted_candidates_revision_number_check'
+      AND contype = 'c'
+      AND convalidated
+  ) OR (
+    SELECT count(*)
+    FROM pg_catalog.pg_constraint
+    WHERE conrelid = 'public.extracted_candidates'::pg_catalog.regclass
+      AND conname IN (
+        'extracted_candidates_revision_parent_fk',
+        'extracted_candidates_lineage_root_fk'
+      )
+      AND contype = 'f'
+      AND confdeltype = 'r'
+      AND confupdtype = 'r'
+      AND convalidated
+  ) <> 2 OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_constraint
+    WHERE conrelid = 'public.candidate_admin_assignments'::pg_catalog.regclass
+      AND conname = 'candidate_admin_assignments_decision_reviewer_check'
+      AND contype = 'c'
+      AND convalidated
+  ) OR (
+    SELECT count(*)
+    FROM pg_catalog.pg_constraint
+    WHERE conrelid = 'public.candidate_admin_assignments'::pg_catalog.regclass
+      AND conname IN (
+        'candidate_admin_assignments_admin_profile_id_fkey',
+        'candidate_admin_assignments_decision_reviewer_profile_fk'
+      )
+      AND confrelid = 'public.admin_review_profiles'::pg_catalog.regclass
+      AND contype = 'f'
+      AND confdeltype = 'r'
+      AND confupdtype = 'r'
+      AND convalidated
+  ) <> 2 THEN
+    RAISE EXCEPTION 'candidate revision-lineage constraints are not activated';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.extracted_candidates candidate
+    WHERE candidate.published_service_id IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM public.candidate_admin_assignments assignment
+        WHERE assignment.candidate_id = candidate.candidate_id
+          AND assignment.status = 'completed'
+      )
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM public.tag_confirmation_queue confirmation
+          WHERE confirmation.candidate_id = candidate.candidate_id
+            AND confirmation.status = 'pending'
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM public.llm_suggestions suggestion
+          WHERE suggestion.candidate_id = candidate.candidate_id
+            AND suggestion.status = 'pending'
+        )
+      )
+  ) THEN
+    RAISE EXCEPTION
+      'pending candidate human evidence coexists with completed approval evidence';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.candidate_admin_assignments assignment
+    JOIN public.admin_review_profiles reviewer
+      ON reviewer.id = assignment.admin_profile_id
+    JOIN public.user_profiles account
+      ON account.user_id = reviewer.user_id
+    WHERE assignment.status IN ('pending', 'claimed')
+      AND account.role <> 'community_admin'
+  ) THEN
+    RAISE EXCEPTION 'oversight-only assignment occupies a candidate reviewer slot';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_trigger
+    WHERE tgrelid = 'public.extracted_candidates'::pg_catalog.regclass
+      AND tgname = 'trg_enforce_candidate_revision_lineage'
+      AND NOT tgisinternal
+      AND tgenabled IN ('O', 'A')
+  ) OR EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_trigger
+    WHERE tgrelid = 'public.extracted_candidates'::pg_catalog.regclass
+      AND tgname = 'trg_prepare_candidate_revision_lineage'
+      AND NOT tgisinternal
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_trigger
+    WHERE tgrelid = 'public.candidate_admin_assignments'::pg_catalog.regclass
+      AND tgname = 'trg_protect_completed_candidate_approval'
+      AND NOT tgisinternal
+      AND tgenabled IN ('O', 'A')
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_trigger
+    WHERE tgrelid = 'public.llm_suggestions'::pg_catalog.regclass
+      AND tgname = 'trg_protect_candidate_llm_suggestion_evidence'
+      AND NOT tgisinternal
+      AND tgenabled IN ('O', 'A')
+  ) THEN
+    RAISE EXCEPTION 'candidate revision-lineage triggers are not activated';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.publish_criteria
+    WHERE min_admin_approvals < 2
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_constraint
+    WHERE conrelid = 'public.ingestion_audit_events'::pg_catalog.regclass
+      AND conname = 'ingestion_audit_events_event_type_check'
+      AND pg_catalog.pg_get_constraintdef(oid) LIKE '%approval.claimed%'
+      AND pg_catalog.pg_get_constraintdef(oid) LIKE '%approval.decided%'
+  ) THEN
+    RAISE EXCEPTION 'candidate dual-approval workflow is not activated';
+  END IF;
 END
 $validate_backend_runtime$;
 

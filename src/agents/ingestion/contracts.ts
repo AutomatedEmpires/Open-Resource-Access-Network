@@ -119,6 +119,11 @@ export const ExtractedCandidateSchema = z.object({
   candidateId: z.string().min(1),
   extractKeySha256: z.string().regex(/^[a-f0-9]{64}$/i),
   extractedAt: z.string().datetime(),
+  /** Persisted review/update clock; distinct from the source extraction time. */
+  updatedAt: z.string().datetime().optional(),
+  revisionOfCandidateId: z.string().min(1).optional(),
+  lineageRootCandidateId: z.string().min(1).optional(),
+  revisionNumber: z.number().int().min(1).optional(),
   review: z
     .object({
       status: ReviewStatusSchema.default('pending'),

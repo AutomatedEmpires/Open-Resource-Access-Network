@@ -53,6 +53,7 @@ function tagToRow(tag: ResourceTag) {
   const targetId = tag.serviceId ?? tag.candidateId ?? '';
   const targetType: string = tag.serviceId ? 'service' : 'candidate';
   return {
+    id: tag.id ?? crypto.randomUUID(),
     targetId,
     targetType,
     tagType: tag.tagType,
@@ -160,22 +161,51 @@ export function createDrizzleTagStore(
       targetType: 'candidate' | 'service',
       tagType: ResourceTagType,
       newTags: ResourceTag[]
-    ): Promise<void> {
-      // Delete existing tags of this type
-      await db
-        .delete(resourceTags)
-        .where(
-          and(
-            eq(resourceTags.targetId, targetId),
-            eq(resourceTags.targetType, targetType),
-            eq(resourceTags.tagType, tagType)
-          )
-        );
+    ): Promise<ResourceTag[]> {
+      const existingTags = await this.listByType(targetId, targetType, tagType);
+      const existingByValue = new Map(
+        existingTags.map((tag) => [tag.tagValue.trim().toLowerCase(), tag]),
+      );
+      const retainedValues = new Set<string>();
+      const reconciledTags: ResourceTag[] = [];
 
-      // Insert new tags
-      if (newTags.length > 0) {
-        await this.bulkAdd(newTags);
+      for (const tag of newTags) {
+        const normalizedValue = tag.tagValue.trim().toLowerCase();
+        if (retainedValues.has(normalizedValue)) continue;
+        retainedValues.add(normalizedValue);
+
+        const existing = existingByValue.get(normalizedValue);
+        const reconciledTag: ResourceTag = {
+          ...tag,
+          id: existing?.id ?? tag.id ?? crypto.randomUUID(),
+        };
+        reconciledTags.push(reconciledTag);
+
+        if (existing?.id) {
+          await db
+            .update(resourceTags)
+            .set({
+              tagValue: reconciledTag.tagValue,
+              confidence: reconciledTag.tagConfidence,
+              source: reconciledTag.assignedBy ?? 'system',
+              addedBy: reconciledTag.assignedByUserId ?? null,
+            })
+            .where(eq(resourceTags.id, existing.id));
+        } else {
+          await db.insert(resourceTags).values(tagToRow(reconciledTag));
+        }
       }
+
+      for (const existing of existingTags) {
+        if (
+          existing.id
+          && !retainedValues.has(existing.tagValue.trim().toLowerCase())
+        ) {
+          await db.delete(resourceTags).where(eq(resourceTags.id, existing.id));
+        }
+      }
+
+      return reconciledTags;
     },
   };
 }

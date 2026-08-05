@@ -14,6 +14,7 @@ import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
 import { requireMinRole } from '@/services/auth/guards';
+import { getCandidateReviewReadAccess } from '@/services/ingestion/candidateReviewAccess';
 import { flagService } from '@/services/flags/flags';
 import {
   FEATURE_FLAGS,
@@ -72,6 +73,15 @@ export async function GET(
   }
 
   try {
+    const reviewAccess = await getCandidateReviewReadAccess({
+      candidateId: id,
+      actorUserId: authCtx.userId,
+      hasOranOversight: requireMinRole(authCtx, 'oran_admin'),
+    });
+    if (!reviewAccess.allowed) {
+      return NextResponse.json({ error: 'Candidate review access denied.' }, { status: 403 });
+    }
+
     const { createIngestionStores } = await import(
       '@/agents/ingestion/persistence/storeFactory'
     );

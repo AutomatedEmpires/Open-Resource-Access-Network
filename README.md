@@ -14,9 +14,6 @@ ORAN exists because finding help is still too fragmented, too slow, and too easy
 [![Visual Regression](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/visual-regression.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/visual-regression.yml)
 [![Bundle Size Budget](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/bundle-size.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/bundle-size.yml)
 [![Runbook Freshness](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/runbook-freshness.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/runbook-freshness.yml)
-[![Deploy Infra](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-infra.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-infra.yml)
-[![Deploy App Service](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-appservice.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-appservice.yml)
-[![Deploy Functions](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-functions.yml/badge.svg?branch=main)](https://github.com/AutomatedEmpires/Open-Resource-Access-Network/actions/workflows/deploy-azure-functions.yml)
 
 ![Seeking Partnerships](https://img.shields.io/badge/Partnerships-open-0A7F5A?style=flat-square)
 ![Investor Conversations](https://img.shields.io/badge/Investor%20conversations-open-1F6FEB?style=flat-square)
@@ -33,9 +30,10 @@ ORAN exists because finding help is still too fragmented, too slow, and too easy
 ![Next.js 16](https://img.shields.io/badge/Next.js-16-black?style=flat-square)
 ![React 19](https://img.shields.io/badge/React-19-149ECA?style=flat-square)
 ![TypeScript Strict](https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square)
-![Azure First](https://img.shields.io/badge/Platform-Azure--first-0078D4?style=flat-square)
-![PostgreSQL + PostGIS](https://img.shields.io/badge/Data-PostgreSQL%20%2B%20PostGIS-336791?style=flat-square)
-![Azure Functions](https://img.shields.io/badge/Runtime-Azure%20Functions-0062AD?style=flat-square)
+![Vercel](https://img.shields.io/badge/Runtime-Vercel-000000?style=flat-square)
+![Supabase PostgreSQL + PostGIS](https://img.shields.io/badge/Data-Supabase%20PostgreSQL%20%2B%20PostGIS-3FCF8E?style=flat-square)
+![Clerk](https://img.shields.io/badge/Identity-Clerk-6C47FF?style=flat-square)
+![Sentry](https://img.shields.io/badge/Telemetry-Sentry-362D59?style=flat-square)
 ![Retrieval First](https://img.shields.io/badge/Policy-retrieval--first-0A7F5A?style=flat-square)
 ![Verified Scoring](https://img.shields.io/badge/Results-verified%20%2B%20scored-0F766E?style=flat-square)
 ![No Hallucinated Facts](https://img.shields.io/badge/Policy-no%20hallucinated%20facts-1F6FEB?style=flat-square)
@@ -61,8 +59,8 @@ ORAN is not trying to be another generic directory. It is trying to become the t
 | Safety posture | Crisis routing happens before normal response flow | [docs/VISION.md](docs/VISION.md), [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md) |
 | Data trust | Import-first, verify-before-publish lifecycle | [docs/contracts/INGESTION_CONTRACT.md](docs/contracts/INGESTION_CONTRACT.md), [db/README.md](db/README.md) |
 | Match discipline | Deterministic trust and match scoring | [docs/SCORING_MODEL.md](docs/SCORING_MODEL.md), [docs/contracts/SCORING_CONTRACT.md](docs/contracts/SCORING_CONTRACT.md) |
-| AI boundaries | AI can assist ingestion and summarization, not seeker-facing fact invention | [docs/CHAT_ARCHITECTURE.md](docs/CHAT_ARCHITECTURE.md), [docs/agents/AGENTS_OVERVIEW.md](docs/agents/AGENTS_OVERVIEW.md), [docs/platform/OWNER_INFO.md](docs/platform/OWNER_INFO.md) |
-| Platform posture | Migrating to Vercel + Supabase + Clerk + Sentry; Azure is rollback-only | [docs/platform/STACK_MIGRATION.md](docs/platform/STACK_MIGRATION.md) |
+| AI boundaries | Optional AI adapters may assist ingestion or post-retrieval summarization; production launch behavior is deterministic | [docs/CHAT_ARCHITECTURE.md](docs/CHAT_ARCHITECTURE.md), [docs/agents/AGENTS_OVERVIEW.md](docs/agents/AGENTS_OVERVIEW.md), [docs/platform/OWNER_INFO.md](docs/platform/OWNER_INFO.md) |
+| Platform posture | Vercel + Supabase + Clerk + Sentry are the production stack; Azure is archived legacy code | [docs/platform/STACK_MIGRATION.md](docs/platform/STACK_MIGRATION.md) |
 | External brief | Investor, partner, and collaborator brief with proof links | [docs/INVESTOR_PARTNER_BRIEF.md](docs/INVESTOR_PARTNER_BRIEF.md) |
 
 ## How ORAN Works
@@ -84,6 +82,10 @@ ORAN is designed to grow from real source material, not fabricated catalogs.
 - Staff and organization submissions that still route through review and verification.
 
 The hard rule is simple: external content can assist ingestion, but it does not get shown directly to seekers without staging, review, and publish controls.
+
+### Regional release boundary
+
+The data model and retrieval architecture can support multiple regions, but that capability is not a claim of nationwide coverage. The current regional MVP supply is the reviewed Washington HRSA cohort. Records outside the governed regional supply must complete the same provenance, review, and publication lifecycle before ORAN presents them as trusted seeker results.
 
 ## How Trust Is Earned
 
@@ -117,9 +119,9 @@ Reference: [docs/SCORING_MODEL.md](docs/SCORING_MODEL.md)
 
 ## How AI Is Used
 
-ORAN uses AI in carefully bounded places, not as a license to invent.
+ORAN constrains optional AI-assisted paths carefully; the production seeker flow does not depend on them.
 
-- AI may assist with extraction, categorization, ingestion support, and optional post-retrieval summarization.
+- Dormant or phase-2 adapters may assist with extraction, categorization, ingestion support, and optional post-retrieval summarization after explicit activation review.
 - AI does not retrieve services, rank services, or inject new facts into seeker answers.
 - Seeker-facing answers must remain grounded in stored records.
 - Crisis routing remains rule-driven and safety-first.
@@ -161,19 +163,17 @@ Roadmap: [docs/ROADMAP_PUBLIC.md](docs/ROADMAP_PUBLIC.md)
 
 ```mermaid
 flowchart LR
-    U[Seekers Hosts Admins] --> A[src/app<br/>Next.js App Router]
-    A --> API[src/app/api<br/>Route Handlers]
+    U[Seekers Hosts Admins] --> V[Vercel<br/>Next.js App Router]
+    V --> API[src/app/api<br/>Route Handlers and Cron]
     API --> S[src/services<br/>Chat Search Scoring Verification]
-    S --> D[(PostgreSQL + PostGIS)]
+    S --> D[(Supabase<br/>PostgreSQL PostGIS pgvector)]
     D --> I[db/import<br/>Import and Review Pipeline]
-    F[functions<br/>Azure Functions Workflows] --> D
-    F --> S
-    G[docs<br/>SSOT Governance Security] -.defines.-> A
+    C[Clerk<br/>Identity and Sessions] --> V
+    T[Sentry<br/>Privacy-filtered Telemetry] -.observes.-> V
+    G[docs<br/>SSOT Governance Security] -.defines.-> V
     G -.defines.-> API
     G -.defines.-> S
-    P[infra<br/>Azure Bicep] -.deploys.-> A
-    P -.deploys.-> F
-    P -.deploys.-> D
+    L[Azure assets<br/>Archived rollback and optional phase-2 adapters] -.archived only.-> S
 ```
 
 ## Repo Guide
@@ -189,16 +189,18 @@ flowchart LR
 | Source governance | [docs/agents/AGENTS_SOURCE_REGISTRY.md](docs/agents/AGENTS_SOURCE_REGISTRY.md) |
 | Security and privacy controls | [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md) |
 | Evidence and workflow health | [docs/EVIDENCE_DASHBOARD.md](docs/EVIDENCE_DASHBOARD.md) |
-| Azure platform direction | [docs/platform/PLATFORM_AZURE.md](docs/platform/PLATFORM_AZURE.md) |
-| Azure dashboard modernization plan | [docs/platform/AZURE_DASHBOARD_MODERNIZATION.md](docs/platform/AZURE_DASHBOARD_MODERNIZATION.md) |
+| Current production platform | [docs/platform/STACK_MIGRATION.md](docs/platform/STACK_MIGRATION.md) |
+| Legacy Azure reference | [docs/platform/PLATFORM_AZURE.md](docs/platform/PLATFORM_AZURE.md) |
 | Enterprise evolution strategy | [docs/platform/ENTERPRISE_EVOLUTION_STRATEGY.md](docs/platform/ENTERPRISE_EVOLUTION_STRATEGY.md) |
 | Infrastructure as code | [infra/README.md](infra/README.md) |
 
 ## Quick Start
 
+The committed dependency lock is `package-lock.json`, so install dependencies with `npm ci`. The Automated Empires control plane invokes the canonical development and validation scripts through pnpm:
+
 ```bash
-npm install
-npm run dev
+npm ci
+pnpm dev
 ```
 
 Open `http://localhost:3000`.
@@ -212,9 +214,9 @@ docker compose -f db/docker-compose.yml up -d
 Recommended validation path:
 
 ```bash
-npm run lint
-npx tsc --noEmit
-npm run test
+pnpm typecheck
+pnpm lint
+pnpm test
 ```
 
 ## Delivery And Review Links

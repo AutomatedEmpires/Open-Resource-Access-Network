@@ -55,7 +55,6 @@ describe('seeker publication predicates', () => {
     );
     expect(predicate).not.toContain('supporting_reference');
     expect(predicate).not.toContain('excluded');
-    expect(predicate).not.toContain('NOT EXISTS');
   });
 
   it('requires an approved manual projection with matching snapshot, assertion, and transition', () => {
@@ -82,6 +81,19 @@ describe('seeker publication predicates', () => {
     expect(predicate).toContain('publication_approval.gates_passed IS TRUE');
     expect(predicate).toContain("publication_approval.actor_role IN ('community_admin', 'oran_admin')");
     expect(predicate).toContain('publication_approval.actor_user_id <> publication_submission.submitted_by_user_id');
+  });
+
+  it('requires the recognized two-person candidate authority with immutable decision identities', () => {
+    const predicate = buildPublishableSourcePredicate('resource', 'positive_authority');
+
+    expect(predicate).toContain("= 'candidate_two_person_authoritative'");
+    expect(predicate).toContain("#> '{meta,approvalCount}'");
+    expect(predicate).toContain("to_jsonb(candidate_approval) ->> 'decision_reviewer_profile_id'");
+    expect(predicate).not.toContain('candidate_approval.decision_reviewer_profile_id');
+    expect(predicate).toContain("candidate_approval.outcome = 'verified'");
+    expect(predicate).toContain("candidate_rejection.outcome IN ('rejected', 'escalated')");
+    expect(predicate).not.toContain("= 'candidate_allowlisted'");
+    expect(predicate).not.toContain('candidate_reviewer.user_id');
   });
 
   it('builds the publication lanes once as an uncorrelated authoritative-ID union', () => {

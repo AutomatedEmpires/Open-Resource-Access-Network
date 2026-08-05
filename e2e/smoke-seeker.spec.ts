@@ -7,30 +7,22 @@ test.describe('Seeker flows (public)', () => {
     await page.goto('/');
 
     const nav = page.getByRole('navigation', { name: 'Seeker mobile navigation' });
-    const crisis = page.getByRole('button', { name: /open crisis resources and emergency hotlines/i });
+    const crisis = nav.getByRole('button', { name: /open crisis resources/i });
 
     await expect(nav).toBeVisible();
-    await expect(nav.getByRole('link')).toHaveText(['Chat', 'Map', 'Scroll', 'Profile']);
-    await expect(nav.getByRole('link', { name: 'Chat', exact: true })).toHaveAttribute('href', '/chat');
-    await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);
-    await expect(crisis).toBeVisible();
-
-    const navBox = await nav.boundingBox();
-    const crisisBox = await crisis.boundingBox();
-    expect(navBox).not.toBeNull();
-    expect(crisisBox).not.toBeNull();
-    expect(crisisBox!.y + crisisBox!.height).toBeLessThanOrEqual(navBox!.y);
+    await expect(nav.getByRole('link')).toHaveText(['Home', 'Find help', 'Browse', 'Saved']);
+    await expect(nav.getByRole('link', { name: 'Find help', exact: true })).toHaveAttribute('href', '/chat');
+    await expect(nav.getByRole('link', { name: 'Home', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(nav.getByRole('button', { name: /open crisis resources/i })).toBeVisible();
+    await expect(crisis).toHaveCount(1);
   });
 
-  test('landing page shows crisis FAB and can reach chat', async ({ page }) => {
+  test('landing page keeps crisis help visible and can reach chat', async ({ page }) => {
     await page.goto('/');
 
-    // Persistent floating crisis help button — present on every page
-    await expect(
-      page.getByRole('button', { name: /open crisis resources and emergency hotlines/i }),
-    ).toBeVisible();
+    await expect(page.locator('[data-tablet-crisis-control]')).toBeVisible();
 
-    await page.getByRole('link', { name: 'Find services with chat' }).click();
+    await page.getByRole('link', { name: 'Find help', exact: true }).click();
     await expect(page).toHaveURL(/\/chat$/);
     await expect(page.getByRole('textbox', { name: 'Chat message input' })).toBeVisible();
   });

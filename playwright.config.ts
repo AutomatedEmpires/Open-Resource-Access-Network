@@ -2,7 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 const port = Number(process.env.PORT ?? 3000);
 const remoteBaseUrl = process.env.PLAYWRIGHT_BASE_URL?.trim();
-const baseURL = remoteBaseUrl || `http://127.0.0.1:${port}`;
+const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim();
+const baseURL = remoteBaseUrl || `http://localhost:${port}`;
 
 export default defineConfig({
   testDir: './e2e',
@@ -24,7 +25,7 @@ export default defineConfig({
   },
   webServer: remoteBaseUrl ? undefined : {
     command: 'npm run dev',
-    url: `http://127.0.0.1:${port}`,
+    url: `http://localhost:${port}`,
     // Avoid reusing an already-running local dev server that may not have
     // ORAN E2E auth env vars (causes flaky auth callback failures).
     reuseExistingServer: process.env.PW_REUSE_SERVER === '1',
@@ -43,7 +44,12 @@ export default defineConfig({
     },
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(chromiumExecutablePath
+          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+          : {}),
+      },
       dependencies: ['clerk setup'],
     },
   ],

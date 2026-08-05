@@ -43,7 +43,11 @@ describe('OnboardingPageClient', () => {
   it('starts with the immediate need and keeps sensitive questions behind an explicit optional step', () => {
     render(<OnboardingPageClient />);
 
-    expect(screen.getByRole('heading', { name: 'What do you need help with right now?' })).toBeInTheDocument();
+    expect(screen.getByText('Optional search setup')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Help ORAN narrow your search.' })).toBeInTheDocument();
+    expect(screen.getByText(/Location, timing, household, and access details are optional/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'What do you need help with?' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Food' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Employment context (optional)')).not.toBeInTheDocument();
 
     reachOptionalChoice();

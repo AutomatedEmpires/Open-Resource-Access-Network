@@ -190,23 +190,23 @@ describe('portal layouts', () => {
     expect(screen.getByRole('navigation', { name: 'ORAN admin mobile navigation' })).toBeInTheDocument();
   });
 
-  it('renders the seeker shell with active desktop and mobile navigation links', async () => {
-    usePathnameMock.mockReturnValue('/map/cluster');
+  it('renders the seeker shell with the simplified mobile navigation links', async () => {
+    usePathnameMock.mockReturnValue('/directory/results');
     const { default: SeekerLayoutShell } = await loadSeekerLayout();
 
     const { container } = render(<SeekerLayoutShell planEnabled={false}>Child</SeekerLayoutShell>) as { container: HTMLElement };
     const main = container.querySelectorAll('#main-content');
+    const homeLink = container.querySelector('a[href="/"]');
     const chatLink = container.querySelector('a[href="/chat"]');
-    const mapLink = container.querySelector('a[href="/map"]');
-    const scrollLink = container.querySelector('a[href="/scroll"]');
-    const profileLink = container.querySelector('a[href="/profile"]');
+    const directoryLink = container.querySelector('a[href="/directory"]');
+    const savedLink = container.querySelector('a[href="/saved"]');
 
     expect(main).toHaveLength(1);
     expect(screen.getByTestId('app-nav')).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Seeker mobile navigation' })).toBeInTheDocument();
+    expect(homeLink).toBeTruthy();
     expect(chatLink).toBeTruthy();
-    expect(mapLink).toBeTruthy();
-    expect(scrollLink).toBeTruthy();
-    expect(profileLink).toBeTruthy();
+    expect(directoryLink?.getAttribute('aria-current')).toBe('page');
+    expect(savedLink).toBeTruthy();
   });
 });

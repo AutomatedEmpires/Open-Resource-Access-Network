@@ -45,6 +45,18 @@ beforeEach(() => {
   global.fetch = fetchMock as unknown as typeof fetch;
 });
 
+function openSection(title: string) {
+  const button = screen.getByRole('button', {
+    name: (accessibleName: string, element: Element | null) => (
+      element?.getAttribute('aria-controls')?.startsWith('section-') === true
+      && accessibleName.startsWith(title)
+    ),
+  });
+  if (button.getAttribute('aria-expanded') === 'false') {
+    fireEvent.click(button);
+  }
+}
+
 describe('ProfilePageClient', () => {
   it('loads local-only preferences when unauthenticated and shows saved count summary', async () => {
     localStorage.setItem(PREFS_KEY, JSON.stringify({ approximateCity: 'Austin, TX', language: 'vi' }));
@@ -57,6 +69,9 @@ describe('ProfilePageClient', () => {
     render(<ProfilePage />);
 
     await screen.findByText('Profile');
+    openSection('Approximate location');
+    openSection('Preferred language');
+    openSection('Saved resources');
     await waitFor(() => {
       expect(screen.getByLabelText('City or region')).toHaveValue('Austin, TX');
       expect(screen.getByLabelText('Language')).toHaveValue('vi');
@@ -82,6 +97,8 @@ describe('ProfilePageClient', () => {
 
     render(<ProfilePage />);
 
+    await screen.findByText('Profile');
+    openSection('Saved resources');
     await screen.findByText('No saved services yet.');
     expect(screen.getByRole('link', { name: 'Browse services' })).toHaveAttribute(
       'href',
@@ -105,6 +122,8 @@ describe('ProfilePageClient', () => {
 
     render(<ProfilePage />);
 
+    await screen.findByText('Profile');
+    openSection('Saved resources');
     await screen.findByText('No saved services yet.');
     expect(screen.getByRole('link', { name: 'Browse services' })).toHaveAttribute(
       'href',
@@ -136,6 +155,8 @@ describe('ProfilePageClient', () => {
     render(<ProfilePage />);
 
     await screen.findByText('You are signed in. Your preferences are syncing across devices.');
+    openSection('Approximate location');
+    openSection('Preferred language');
     expect(screen.getByLabelText('City or region')).toHaveValue('Madrid');
     expect(screen.getByLabelText('Language')).toHaveValue('es');
     // Sign out appears in both the auth banner and the privacy section and uses
@@ -152,6 +173,8 @@ describe('ProfilePageClient', () => {
 
     render(<ProfilePage />);
     await screen.findByText('Profile');
+    openSection('Approximate location');
+    openSection('Preferred language');
 
     fireEvent.change(screen.getByLabelText('City or region'), {
       target: { value: 'Seattle, WA' },
@@ -246,6 +269,9 @@ describe('ProfilePageClient', () => {
       expect(body.seekerProfile).toBeDefined();
     });
 
+    openSection('Approximate location');
+    openSection('Preferred language');
+
     fireEvent.change(screen.getByLabelText('City or region'), {
       target: { value: 'Seattle, WA' },
     });
@@ -282,6 +308,8 @@ describe('ProfilePageClient', () => {
 
     render(<ProfilePage />);
     await screen.findByText('Profile');
+    openSection('Privacy & data');
+    openSection('Saved resources');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete my data' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
@@ -394,6 +422,8 @@ describe('ProfilePageClient', () => {
 
     render(<ProfilePage />);
     await screen.findByText('Profile');
+    openSection('Display');
+    openSection('Privacy & data');
 
     fireEvent.click(screen.getByRole('button', { name: 'Evening' }));
     expect(document.documentElement.classList.contains('dark')).toBe(true);
@@ -421,6 +451,7 @@ describe('ProfilePageClient', () => {
 
     render(<ProfilePage />);
     await screen.findByText('Profile');
+    openSection('Practical fit constraints');
 
     fireEvent.click(screen.getByRole('button', { name: 'Transportation is a barrier' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Need help today' }));
@@ -477,6 +508,7 @@ describe('ProfilePageClient', () => {
 
     render(<ProfilePage />);
     await screen.findByText('You are signed in. Your preferences are syncing across devices.');
+    openSection('Privacy & data');
 
     fireEvent.click(screen.getByRole('button', { name: 'Export my data' }));
     await waitFor(() => {
@@ -525,6 +557,7 @@ describe('ProfilePageClient', () => {
 
     render(<ProfilePage />);
     await screen.findByText('You are signed in. Your preferences are syncing across devices.');
+    openSection('Privacy & data');
     fireEvent.click(screen.getByRole('button', { name: 'Delete my data' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
 
@@ -563,6 +596,7 @@ describe('ProfilePageClient', () => {
 
     render(<ProfilePage />);
     await screen.findByText('You are signed in. Your preferences are syncing across devices.');
+    openSection('Privacy & data');
     fireEvent.click(screen.getByRole('button', { name: 'Delete my data' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
 

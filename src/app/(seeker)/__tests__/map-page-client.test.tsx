@@ -460,6 +460,10 @@ describe('MapPageClient', () => {
 
     renderWithToast(<MapPage />);
 
+    const mobileMapLayer = screen.getByTestId('map-container').parentElement;
+    expect(mobileMapLayer).toHaveClass('z-0');
+    expect(mobileMapLayer?.parentElement).toHaveClass('top-16', 'z-30', 'isolate');
+
     fireEvent.change(getMapSearchBox(), {
       target: { value: 'shelter' },
     });

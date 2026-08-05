@@ -105,7 +105,7 @@ export function LanguageSwitcher() {
   return (
     <div
       ref={containerRef}
-      className="relative"
+      className="relative flex h-full items-center"
       onKeyDown={handleKeyDown}
     >
       {/* Trigger */}
@@ -116,7 +116,7 @@ export function LanguageSwitcher() {
         aria-expanded={open}
         aria-label={t('common.select_language')}
         title={t('common.select_language')}
-        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-md px-2.5 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-muted)]"
+        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-muted)]"
       >
         <Globe className="h-4 w-4 shrink-0 text-[var(--text-muted)]" aria-hidden="true" />
         <span className="hidden sm:inline">{current.nativeName}</span>
@@ -133,7 +133,7 @@ export function LanguageSwitcher() {
           role="listbox"
           aria-label={t('common.select_language')}
           aria-activedescendant={focusIndex >= 0 ? `lang-option-${LANGUAGES[focusIndex]?.code}` : undefined}
-          className="absolute right-0 top-full z-50 mt-1.5 w-44 overflow-hidden rounded-xl border border-[var(--border)] bg-white py-1 shadow-lg ring-1 ring-black/5"
+          className="absolute right-0 top-full z-50 mt-2 w-44 overflow-hidden rounded-xl border border-[var(--border)] bg-white py-1 shadow-xl ring-1 ring-black/5"
         >
           {LANGUAGES.map((lang, idx) => {
             const isSelected = lang.code === locale;

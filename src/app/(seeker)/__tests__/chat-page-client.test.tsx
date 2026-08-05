@@ -66,6 +66,8 @@ describe('ChatPageClient', () => {
     });
     expect(screen.getByTestId('chat-window')).toHaveTextContent('session:existing-session-id');
     expect(screen.getByRole('heading', { name: 'Chat' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Browse Directory' })).toHaveClass('hidden', 'sm:inline-flex');
+    expect(screen.getByText('Local device saves').parentElement).toHaveClass('hidden', 'lg:inline-flex');
 
     randomSpy.mockRestore();
   });

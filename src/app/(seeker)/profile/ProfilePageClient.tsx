@@ -110,11 +110,10 @@ function hasMeaningfulServerProfile(profile: ServerProfile | null): boolean {
 // ============================================================
 // PROFILE DATA CONSTANTS
 // ============================================================
-const SERVICE_INTEREST_OPTIONS: ReadonlyArray<{ id: ServiceInterestId; label: string; icon: string; color: string }> =
+const SERVICE_INTEREST_OPTIONS: ReadonlyArray<{ id: ServiceInterestId; label: string; color: string }> =
   DISCOVERY_NEEDS.map((need) => ({
     id: need.id,
     label: need.label,
-    icon: need.icon,
     color: need.profileColorClass,
   }));
 
@@ -558,7 +557,7 @@ export default function ProfilePage() {
 
   // Track which sections are open
   const [openSections, setOpenSections] = useState<Set<string>>(
-    () => new Set(['services', 'aboutme', 'constraints', 'identity', 'location', 'language', 'display', 'saved', 'privacy'])
+    () => new Set(['services'])
   );
 
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
@@ -1031,7 +1030,6 @@ export default function ProfilePage() {
                 <PillButton
                   key={opt.id}
                   label={opt.label}
-                  icon={opt.icon}
                   selected={seeker.serviceInterests.includes(opt.id)}
                   onToggle={() => toggleInArray('serviceInterests', opt.id)}
                   colorClass={opt.color}

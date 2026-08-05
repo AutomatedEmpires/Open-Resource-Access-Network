@@ -12,22 +12,22 @@
 }
 
 :root {
-  --background: #F2F6FA;
-  --foreground: #061B35;
+  --background: #F6F5F0;
+  --foreground: #182520;
 
-  /* ORAN brand — high-contrast cobalt/sky with cool metal surfaces. */
-  --brand-sky:       #19B5FE;
-  --brand-azure:     #087EF5;
-  --brand-cobalt:    #064BC7;
-  --brand-navy:      #061B35;
-  --metal-bright:    #F8FBFF;
-  --metal-silver:    #C4CFDC;
-  --metal-steel:     #8191A5;
-  --surface-page:    #EEF4FA;
-  --gradient-brand:  linear-gradient(135deg, #19B5FE 0%, #087EF5 48%, #064BC7 100%);
-  --gradient-brand-deep: linear-gradient(145deg, #064BC7 0%, #073E9E 52%, #061B35 100%);
-  --gradient-chrome: linear-gradient(135deg, #FFFFFF 0%, #C4CFDC 35%, #F8FBFF 57%, #8191A5 100%);
-  --gradient-surface: linear-gradient(145deg, #F8FBFF 0%, #EEF4FA 55%, #D9E2EC 100%);
+  /* ORAN brand — calm civic green with warm, low-glare surfaces. */
+  --brand-sky:       #B9DDD2;
+  --brand-azure:     #277A68;
+  --brand-cobalt:    #195F51;
+  --brand-navy:      #17382F;
+  --metal-bright:    #FCFCF9;
+  --metal-silver:    #D8D9D1;
+  --metal-steel:     #747F79;
+  --surface-page:    #F6F5F0;
+  --gradient-brand:  linear-gradient(135deg, #3B8A76 0%, #277A68 52%, #195F51 100%);
+  --gradient-brand-deep: linear-gradient(145deg, #286F60 0%, #1D594D 52%, #17382F 100%);
+  --gradient-chrome: linear-gradient(135deg, #FFFFFF 0%, #D8D9D1 42%, #FCFCF9 68%, #AAB2AC 100%);
+  --gradient-surface: linear-gradient(145deg, #FCFCF9 0%, #F6F5F0 55%, #E8E9E2 100%);
 
   /* Z-Index scale — named layers to prevent ad-hoc stacking conflicts */
   --z-skip-link: 100;
@@ -38,18 +38,19 @@
   --z-sticky: 30;
   --z-elevated: 20;
 
-  /* ── Cool metal semantic color tokens ── light mode ────────────────────
-   * Strong blue carries action and identity; silver stays structural.
+  /* ── Calm civic semantic color tokens ── light mode ────────────────────
+   * Deep green carries action and identity; warm neutrals stay structural.
    * ----------------------------------------------------------------------- */
-  --bg-page:        #EEF4FA;   /* cool silver-blue page background          */
-  --bg-surface:     #FFFFFF;   /* white — cards, panels, inputs             */
-  --bg-surface-alt: #F8FBFF;   /* bright metal highlight                    */
-  --border:         #C4CFDC;   /* silver divider/border                     */
-  --border-subtle:  #DCE5EE;   /* subtle cool separator                     */
+  --bg-page:        #F6F5F0;   /* warm, low-glare page background            */
+  --bg-surface:     #FFFFFF;   /* cards, panels, and inputs                  */
+  --bg-surface-alt: #EFF2ED;   /* quiet selected and hover surface           */
+  --border:         #D3D8D2;   /* neutral divider and border                 */
+  --border-control: #7F8C85;   /* 3.5:1 on white for unfocused form controls */
+  --border-subtle:  #E5E8E3;   /* subtle separator                           */
 
-  --text-primary:   #061B35;   /* navy — headings, body                     */
-  --text-secondary: #3D526B;   /* steel navy — supporting text              */
-  --text-muted:     #687B91;   /* cool steel — placeholders, captions       */
+  --text-primary:   #182520;   /* near-black green — headings and body       */
+  --text-secondary: #43534C;   /* supporting text                            */
+  --text-muted:     #66736D;   /* placeholders and captions                  */
 
   /* Motion tokens — zero-out under prefers-reduced-motion */
   --transition-fast:     150ms ease;
@@ -61,10 +62,37 @@
   bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
 }
 
+@media (max-width: 767px) {
+  body:has([data-scoped-mobile-nav]) .crisis-fab-position {
+    display: none;
+  }
+
+  body:has([data-seeker-discovery-nav]) .app-nav-scoped-duplicate {
+    display: none;
+  }
+}
+
 @media (min-width: 768px) {
   .crisis-fab-position {
     bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
   }
+}
+
+@media (min-width: 768px) and (max-width: 1535px) {
+  body:has([data-tablet-crisis-control]) .crisis-fab-position {
+    display: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-nav-grid {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+}
+
+.app-nav-mobile-panel {
+  max-height: calc(100dvh - 8rem);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -80,7 +108,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-ring: #087EF5;
+  --color-ring: #277A68;
 
   /* ── Semantic status colour tokens ───────────────────────────────────────
    * White / Neutral design system.
@@ -99,17 +127,42 @@
   --color-error-strong:  #b91c1c;
   --color-error-deep:    #991b1b;
 
-  /* Action / brand — saturated sky to navy. */
-  --color-info-subtle:   #F0F8FF;
-  --color-info-muted:    #DCEEFF;
-  --color-action-soft:   #B7DBFF;
-  --color-action-pale:   #70BEFF;
-  --color-action:        #19B5FE;
-  --color-action-base:   #064BC7;
-  --color-action-strong: #043EAA;
-  --color-action-deep:   #073687;
-  --color-action-max:    #061B35;
-  --color-action-mid:    #0B94F6;
+  /* Action / brand — restrained civic green. */
+  --color-info-subtle:   #F0F7F4;
+  --color-info-muted:    #DCECE6;
+  --color-action-soft:   #BAD9CE;
+  --color-action-pale:   #8CC0B0;
+  --color-action:        #277A68;
+  --color-action-base:   #195F51;
+  --color-action-strong: #154E43;
+  --color-action-deep:   #123F37;
+  --color-action-max:    #17382F;
+  --color-action-mid:    #277A68;
+
+  /* Existing blue utility usage inherits the calmer product palette. */
+  --color-blue-50:  #F0F7F4;
+  --color-blue-100: #DCECE6;
+  --color-blue-200: #BAD9CE;
+  --color-blue-300: #8CC0B0;
+  --color-blue-400: #5A9F8C;
+  --color-blue-500: #3B8A76;
+  --color-blue-600: #277A68;
+  --color-blue-700: #195F51;
+  --color-blue-800: #154E43;
+  --color-blue-900: #17382F;
+  --color-blue-950: #0B241F;
+
+  --color-sky-50:  #F4F9F7;
+  --color-sky-100: #E4F1EC;
+  --color-sky-200: #C9E3D9;
+  --color-sky-300: #A6D0C2;
+  --color-sky-400: #76B5A2;
+  --color-sky-500: #4A9781;
+  --color-sky-600: #337D69;
+  --color-sky-700: #286456;
+  --color-sky-800: #245146;
+  --color-sky-900: #20443B;
+  --color-sky-950: #102A24;
 
   --font-sans:    var(--font-manrope, system-ui, Arial, Helvetica, sans-serif);
   --font-display: var(--font-space-grotesk, var(--font-manrope, system-ui, Arial, Helvetica, sans-serif));
@@ -130,7 +183,7 @@ body {
 
 /* Ensure focus rings are always visible — WCAG 2.4.7 */
 :focus-visible {
-  outline: 3px solid #087EF5;
+  outline: 3px solid #277A68;
   outline-offset: 2px;
 }
 

@@ -76,13 +76,13 @@ test.describe('Guided intake acceptance', () => {
     await page.goto('/');
     const intake = page.getByRole('form', { name: 'Guided service intake' });
 
-    await intake.getByLabel('What do you need help with right now?').fill(NEED);
-    await intake.getByText('Add details only if they matter').click();
-    await intake.getByLabel('City, 2-letter state, or ZIP').fill(APPROXIMATE_LOCATION);
+    await intake.getByLabel('What do you need help with?').fill(NEED);
+    await intake.getByLabel(/City or ZIP/).fill(APPROXIMATE_LOCATION);
+    await intake.getByText('Add timing or access needs').click();
     await intake.getByLabel('How soon?').selectOption('today');
     await intake.getByLabel('Who is this for?').selectOption('family');
     await intake.getByLabel('How can you reach help?').selectOption('phone');
-    await intake.getByRole('button', { name: 'Find my next step' }).click();
+    await intake.getByRole('button', { name: 'Find help' }).click();
 
     await expect(page).toHaveURL(/\/chat\?from=guided$/);
     const handoffUrl = new URL(page.url());
@@ -116,23 +116,28 @@ test.describe('Guided intake acceptance', () => {
     });
     expect(capturedChatRequest.body.guidedIntake).not.toHaveProperty('prompt');
 
-    const directoryHref = await page.getByRole('link', { name: 'Open Directory' }).getAttribute('href');
-    expect(directoryHref).toBeTruthy();
-    const directoryUrl = new URL(directoryHref ?? '', page.url());
-    expect(directoryUrl.searchParams.get('q')).toBeNull();
-    expect(directoryHref).not.toContain(APPROXIMATE_LOCATION);
+    const discoveryNav = page.getByTestId('desktop-primary-nav');
+    const directoryHref = await discoveryNav.getByRole('link', { name: 'Browse services' }).getAttribute('href');
+    const mapHref = await discoveryNav.getByRole('link', { name: 'Map' }).getAttribute('href');
+    for (const href of [directoryHref, mapHref]) {
+      expect(href).toBeTruthy();
+      const url = new URL(href ?? '', page.url());
+      expect(url.searchParams.get('q')).toBeNull();
+      expect(href).not.toContain(NEED);
+      expect(href).not.toContain(APPROXIMATE_LOCATION);
+    }
   });
 
   test('routes a guided self-crisis turn to immediate help', async ({ page }) => {
     await page.goto('/');
     const intake = page.getByRole('form', { name: 'Guided service intake' });
 
-    await intake.getByLabel('What do you need help with right now?').fill('I am thinking about suicide');
-    await intake.getByText('Add details only if they matter').click();
-    await intake.getByLabel('City, 2-letter state, or ZIP').fill('Tacoma, WA');
+    await intake.getByLabel('What do you need help with?').fill('I am thinking about suicide');
+    await intake.getByLabel(/City or ZIP/).fill('Tacoma, WA');
+    await intake.getByText('Add timing or access needs').click();
     await intake.getByLabel('How soon?').selectOption('today');
     await intake.getByLabel('Who is this for?').selectOption('self');
-    await intake.getByRole('button', { name: 'Find my next step' }).click();
+    await intake.getByRole('button', { name: 'Find help' }).click();
 
     await expect(page).toHaveURL(/\/chat\?from=guided$/);
     expect(Array.from(new URL(page.url()).searchParams.entries())).toEqual([['from', 'guided']]);

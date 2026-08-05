@@ -11,9 +11,16 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - '.github/workflows/visual-regression.yml'
       - 'src/app/**'
       - 'src/components/**'
       - 'src/app/globals.css'
+      - 'src/locales/**'
+      - 'next.config.mjs'
+      - 'playwright.config.ts'
+      - 'e2e/header-layout.spec.ts'
+      - 'e2e/flows-guided-intake.spec.ts'
+      - 'e2e/smoke-seeker.spec.ts'
       - 'e2e/visual/**'
 
 concurrency:
@@ -47,6 +54,13 @@ jobs:
 
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
+
+      - name: Run seeker interaction tests
+        run: >-
+          npx playwright test
+          e2e/header-layout.spec.ts
+          e2e/flows-guided-intake.spec.ts
+          e2e/smoke-seeker.spec.ts
 
       - name: Run visual regression tests
         run: |

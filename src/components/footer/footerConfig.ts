@@ -43,21 +43,20 @@ export function getFooterVariant(role: OranRole | undefined): FooterVariant {
 
 const PUBLIC_COLUMNS: FooterColumn[] = [
   {
-    title: 'Find Help',
+    title: 'Find services',
     links: [
-      { label: 'Chat Assistant',    href: '/chat' },
-      { label: 'Service Directory', href: '/directory' },
-      { label: 'Map View',          href: '/map' },
-      { label: 'Saved Services',    href: '/saved' },
+      { label: 'Start a search',  href: '/chat' },
+      { label: 'Browse Services', href: '/directory' },
+      { label: 'Map',             href: '/map' },
+      { label: 'Resource feed',   href: '/scroll' },
+      { label: 'Saved Services',  href: '/saved' },
     ],
   },
   {
     title: 'Get Involved',
     links: [
-      { label: 'List Your Organization', href: '/partnerships/organizations' },
-      { label: 'Donate',                 href: '/partnerships#donate' },
-      // /partnerships has no #volunteer section — link the real recruiting page.
-      { label: 'Volunteer',              href: '/partnerships/admins' },
+      { label: 'For Service Providers', href: '/partnerships/organizations' },
+      { label: 'Submit or Correct a Resource', href: '/submit-resource' },
     ],
   },
   {
@@ -65,16 +64,8 @@ const PUBLIC_COLUMNS: FooterColumn[] = [
     links: [
       { label: 'About ORAN', href: '/about' },
       { label: 'Trust Center', href: '/trust' },
-      { label: 'Team',       href: '/about/team' },
-      { label: 'Press',      href: '/about/press' },
-      { label: 'Changelog',  href: '/changelog' },
       { label: 'Contact',    href: '/contact' },
       { label: 'Status',     href: '/status' },
-      {
-        label: 'GitHub',
-        href: 'https://github.com/AutomatedEmpires/Open-Resource-Access-Network',
-        external: true,
-      },
     ],
   },
 ];

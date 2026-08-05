@@ -131,15 +131,19 @@ export default function ChatPage() {
       <div className="mx-auto w-full max-w-[1820px] px-4 pt-3 pb-5 md:px-5 md:py-5">
         <section className="flex min-h-[800px] min-w-0 flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.07)] md:h-[calc(100dvh-6.3rem)] md:min-h-0">
           {/* ── Slim page title bar ── */}
-          <div className="flex shrink-0 items-center gap-3 border-b border-slate-100 px-5 py-3">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3 sm:gap-3 sm:px-5">
             <h1 className="text-base font-semibold tracking-tight text-slate-950">Chat</h1>
-            <PageHeaderBadge tone="trust">Publication-gated records</PageHeaderBadge>
-            <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync' : 'Local device saves'}</PageHeaderBadge>
-            <div className="ml-auto flex items-center gap-2">
+            <span className="hidden sm:inline-flex">
+              <PageHeaderBadge tone="trust">Publication-gated records</PageHeaderBadge>
+            </span>
+            <span className="hidden lg:inline-flex">
+              <PageHeaderBadge>{savedSyncEnabled ? 'Saves can sync' : 'Local device saves'}</PageHeaderBadge>
+            </span>
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               <Link href="/saved">
                 <Button variant="outline" size="sm">Open Saved</Button>
               </Link>
-              <Link href="/directory">
+              <Link href="/directory" className="hidden sm:inline-flex">
                 <Button variant="outline" size="sm">Browse Directory</Button>
               </Link>
             </div>

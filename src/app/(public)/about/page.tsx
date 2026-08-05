@@ -298,7 +298,7 @@ export default function AboutPage() {
             <h3 className="mb-1 flex items-center justify-between font-semibold text-gray-900 group-hover:text-gray-900">
               Get Help <span aria-hidden="true" className="text-gray-300 group-hover:text-gray-500">→</span>
             </h3>
-            <p className="text-sm text-gray-500">Tell ORAN what is wrong and find a trustworthy next step.</p>
+            <p className="text-sm text-gray-500">Describe what you need and review possible service matches.</p>
           </Link>
           <Link
             href="/partnerships/organizations"

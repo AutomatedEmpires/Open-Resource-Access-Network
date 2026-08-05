@@ -76,14 +76,17 @@ describe('seeker layout shell', () => {
     expect(screen.getByTestId('palette-state')).toHaveTextContent('closed');
   });
 
-  it('pins the invariant seeker navigation in Chat, Directory, Map, Scroll, Profile order', () => {
+  it('pins the concise seeker navigation in Home, Find help, Browse, Saved order', () => {
     render(<SeekerLayoutShell planEnabled dashboardEnabled>Child</SeekerLayoutShell>);
 
     const nav = screen.getByRole('navigation', { name: 'Seeker mobile navigation' });
     const labels = within(nav).getAllByRole('link').map((link: HTMLElement) => link.textContent?.trim());
 
-    expect(labels).toEqual(['Chat', 'Directory', 'Map', 'Scroll', 'Profile']);
-    expect(within(nav).queryByRole('link', { name: 'Saved' })).toBeNull();
+    expect(labels).toEqual(['Home', 'Find help', 'Browse', 'Saved']);
+    expect(within(nav).getByRole('button', { name: 'Open crisis resources and emergency hotlines' })).toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: 'Map' })).toBeNull();
+    expect(within(nav).queryByRole('link', { name: 'Resource feed' })).toBeNull();
+    expect(within(nav).queryByRole('link', { name: 'Profile' })).toBeNull();
     expect(within(nav).queryByRole('link', { name: 'Plan' })).toBeNull();
     expect(within(nav).queryByRole('link', { name: 'Dashboard' })).toBeNull();
   });
@@ -109,6 +112,19 @@ describe('seeker layout shell', () => {
     expect(screen.getByText('2 saved')).toBeInTheDocument();
     expect(screen.getByText('Personalized profile')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Personalize your search' })).toBeInTheDocument();
+  });
+
+  it('keeps saved seeker context out of the fixed mobile map viewport', async () => {
+    usePathnameMock.mockReturnValue('/map');
+    localStorage.setItem('oran:preferences', JSON.stringify({ approximateCity: 'Phoenix' }));
+
+    render(<SeekerLayoutShell planEnabled>Map</SeekerLayoutShell>);
+
+    await waitFor(() => {
+      expect(screen.getByText('Near Phoenix (approx.)')).toBeInTheDocument();
+    });
+
+    expect(document.querySelector('[data-seeker-context-strip]')).toHaveClass('hidden', 'md:block');
   });
 
   it('updates saved badges and context strip immediately when same-tab saved state changes', async () => {

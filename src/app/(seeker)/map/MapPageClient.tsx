@@ -894,13 +894,13 @@ export default function MapPage() {
       {isMobile && (
         <>
           {/*
-           * The seeker layout has a sticky header (h-14) and a fixed bottom nav (h-14).
+           * The seeker layout has a sticky header (h-16) and a fixed bottom nav (h-14).
            * This container fills the exact gap between them.
            */}
-          <div className="fixed top-14 bottom-14 inset-x-0 overflow-hidden bg-white">
+          <div className="fixed inset-x-0 top-16 bottom-14 z-30 isolate overflow-hidden bg-white">
 
             {/* Full-screen map */}
-            <div className="absolute inset-0">
+            <div className="absolute inset-0 z-0">
               <ErrorBoundary>
                 <MapContainer
                   className="w-full h-full"

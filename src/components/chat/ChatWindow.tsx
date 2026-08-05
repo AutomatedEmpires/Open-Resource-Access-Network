@@ -2139,42 +2139,52 @@ export function ChatWindow({
   }, [applyQuotaState]);
 
   return (
-    <div className="grid min-h-[700px] gap-3 md:h-full md:min-h-0 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)] 2xl:grid-cols-[300px_minmax(0,1fr)]">
-      <div className="space-y-3 lg:hidden">
-        <button
-          type="button"
-          onClick={_startNewSession}
-          className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          New chat
-        </button>
-        <div className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_12px_32px_rgba(15,23,42,0.05)]">
-          <ChatRailSection
-            title="Saved chats"
-            emptyCopy="Save a conversation to keep it at the top of your chat history."
-            sessions={savedChatSessions}
-            activeSessionId={sessionId}
-            onSelect={selectSession}
-            onDelete={deleteChatSession}
-          />
-          <div className="mt-4">
-            <ChatRailSection
-              title="Recent chats"
-              emptyCopy="Recent conversations appear here after you send your first message."
-              sessions={recentChatSessions}
-              activeSessionId={sessionId}
-              onSelect={selectSession}
-              onDelete={deleteChatSession}
-            />
-          </div>
-          <div className="mt-4 rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">
-            Chats stay on this device. The rail keeps the newest 10 conversations and trims older ones automatically.
-          </div>
-        </div>
+    <div className="grid min-h-[700px] gap-3 md:h-full md:min-h-0 md:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)] 2xl:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="space-y-3 md:hidden">
+        {messages.length > 0 ? (
+          <button
+            type="button"
+            onClick={_startNewSession}
+            className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            New chat
+          </button>
+        ) : null}
+        {(savedChatSessions.length > 0 || recentChatSessions.length > 0) ? (
+          <details className="rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.05)]">
+            <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-slate-900 [&::-webkit-details-marker]:hidden">
+              Chat history
+              <span className="text-xs font-medium text-slate-500">
+                {savedChatSessions.length + recentChatSessions.length} saved or recent
+              </span>
+            </summary>
+            <div className="border-t border-slate-200 p-3">
+              <ChatRailSection
+                title="Saved chats"
+                emptyCopy="Save a conversation to keep it at the top of your chat history."
+                sessions={savedChatSessions}
+                activeSessionId={sessionId}
+                onSelect={selectSession}
+                onDelete={deleteChatSession}
+              />
+              <div className="mt-4">
+                <ChatRailSection
+                  title="Recent chats"
+                  emptyCopy="Recent conversations appear here after you send your first message."
+                  sessions={recentChatSessions}
+                  activeSessionId={sessionId}
+                  onSelect={selectSession}
+                  onDelete={deleteChatSession}
+                />
+              </div>
+              <ChatHistoryNote />
+            </div>
+          </details>
+        ) : null}
       </div>
 
-      <aside className="hidden min-h-0 flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_14px_36px_rgba(15,23,42,0.05)] lg:flex">
+      <aside className="hidden min-h-0 flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_14px_36px_rgba(15,23,42,0.05)] md:flex">
         <div className="border-b border-slate-200 px-4 py-4">
           <button
             type="button"
@@ -2461,12 +2471,12 @@ export function ChatWindow({
         )}
 
         {messages.length === 0 && (
-          <div className="flex flex-col gap-6 py-2">
+          <div className="flex flex-col gap-4 py-2">
             {/* ── Welcome heading ── */}
             <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div className="max-w-[46rem]">
-                <p className="text-2xl font-semibold tracking-tight text-slate-900 md:text-[2rem]">Tell ORAN what is wrong.</p>
-                <p className="mt-1.5 text-[15px] leading-7 text-slate-500">Describe the situation in your own words. Add only the details that can change which provider serves you.</p>
+                <p className="text-2xl font-semibold tracking-tight text-slate-900 md:text-[2rem]">Find services that may help.</p>
+                <p className="mt-1.5 text-[15px] leading-7 text-slate-500">Describe what you need in your own words. Add only details that can improve the match.</p>
               </div>
               {activeGeo ? (
                 <span className="inline-flex min-h-[32px] items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
@@ -2478,7 +2488,8 @@ export function ChatWindow({
 
             <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
               <GuidedIntake
-                submitLabel="Search stored provider records"
+                compact
+                submitLabel="Find help"
                 onSubmit={(submission) => sendMessage(submission.prompt, submission)}
               />
             </div>

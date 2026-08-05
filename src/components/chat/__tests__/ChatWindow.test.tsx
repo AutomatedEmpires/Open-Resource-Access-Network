@@ -245,7 +245,7 @@ describe('ChatWindow', () => {
 
     expect(screen.getByRole('note', { name: 'Eligibility disclaimer' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
-    expect(screen.getByText('Tell ORAN what is wrong.')).toBeInTheDocument();
+    expect(screen.getByText('Find services that may help.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
@@ -482,13 +482,13 @@ describe('ChatWindow', () => {
     }));
 
     render(<ChatWindow sessionId={sessionId} />);
-    fireEvent.change(screen.getByLabelText('What do you need help with right now?'), {
+    fireEvent.change(screen.getByLabelText('What do you need help with?'), {
       target: { value: 'Food help' },
     });
     fireEvent.change(screen.getByLabelText('Who is this for?'), {
       target: { value: 'someone_else' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search stored provider records' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Find help' }));
 
     await waitFor(() => expect(getChatCalls()).toHaveLength(1));
     const body = JSON.parse(String((getChatCalls()[0]?.[1] as { body: string }).body));
@@ -527,13 +527,13 @@ describe('ChatWindow', () => {
 
     render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
     await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledTimes(1));
-    fireEvent.change(screen.getByLabelText('What do you need help with right now?'), {
+    fireEvent.change(screen.getByLabelText('What do you need help with?'), {
       target: { value: 'Food help' },
     });
     fireEvent.change(screen.getByLabelText('Who is this for?'), {
       target: { value: 'someone_else' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search stored provider records' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Find help' }));
     await waitFor(() => expect(getChatCalls()).toHaveLength(1));
 
     positionSuccess?.({

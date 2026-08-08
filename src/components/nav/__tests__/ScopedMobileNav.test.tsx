@@ -113,6 +113,20 @@ describe('ScopedMobileNav', () => {
     expect(within(nav).getByRole('link', { name: 'Saved' })).toHaveAttribute('href', '/saved');
   });
 
+  it('marks Browse as the current mobile destination on the map surface', () => {
+    render(
+      <ScopedMobileNav
+        scopeLabel="Seeker"
+        pathname="/map"
+        items={SEEKER_MOBILE_NAV_ITEMS}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'Browse' })).toHaveAttribute('data-active');
+    expect(screen.getByRole('link', { name: 'Browse' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Find help' })).not.toHaveAttribute('aria-current');
+  });
+
   it('localizes seeker labels and crisis access when locale context is available', () => {
     const translations: Record<string, string> = {
       'nav.home': 'Accueil',

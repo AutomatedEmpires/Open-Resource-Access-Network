@@ -101,6 +101,15 @@
     --transition-standard: 0ms;
     --transition-slow:     0ms;
   }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 
@@ -215,7 +224,7 @@ body {
 }
 
 .chat-workspace {
-  height: calc(100dvh - 7.5rem);
+  height: calc(100dvh - 7.625rem);
   min-height: 0;
 }
 
@@ -231,7 +240,7 @@ body {
 
 @media (min-width: 768px) {
   .chat-workspace {
-    height: calc(100dvh - 6.3rem);
+    height: calc(100dvh - 4.0625rem);
     min-height: 0;
   }
 }

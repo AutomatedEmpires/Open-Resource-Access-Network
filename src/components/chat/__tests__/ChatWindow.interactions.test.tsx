@@ -353,6 +353,9 @@ describe('ChatWindow interactions', () => {
     const input = screen.getByLabelText('Chat message input');
     fireEvent.change(input, { target: { value: 'Need assistance' } });
 
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true, keyCode: 229 });
+    expect(getChatCalls()).toHaveLength(0);
+
     fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
     expect(getChatCalls()).toHaveLength(0);
 

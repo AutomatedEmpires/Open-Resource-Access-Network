@@ -167,7 +167,7 @@ function getSearchSubmitButton() {
 }
 
 function getRefineMapButton() {
-  return screen.getByRole('button', { name: /^(Refine map|Filters)$/i });
+  return screen.getByRole('button', { name: /^(Refine map|Filters)(?: \(\d+ active\))?$/i });
 }
 
 async function clickUseMyLocationControl() {
@@ -389,6 +389,22 @@ describe('MapPageClient', () => {
     }));
   });
 
+  it('preserves non-quick categories and exposes the full category set in Filters', async () => {
+    navigationState.searchParams = new URLSearchParams(
+      'category=utility_assistance&sort=distance',
+    );
+    mockApi([{ ok: true, body: makeSearchResponse() }]);
+
+    renderWithToast(<MapPage />);
+    await screen.findByText('Shelter');
+
+    expect(screen.getByRole('button', { name: 'Utilities' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(getRefineMapButton());
+    await screen.findByText('Narrow the map by category, service details, and list order in one place.');
+    expect(screen.getAllByRole('button', { name: 'Utilities' })).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Education' })).toBeInTheDocument();
+  });
+
   it('runs text search and shows pin coverage + mapped results', async () => {
     mockApi([{ ok: true, body: makeSearchResponse() }]);
 
@@ -402,7 +418,7 @@ describe('MapPageClient', () => {
     await screen.findByText('Shelter');
     expect(screen.getByRole('status')).toHaveTextContent('2 of 2 shown');
     expect(screen.getByTestId('map-service-count')).toHaveTextContent('2');
-    expect(screen.getByRole('button', { name: 'Search this area' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update this area' })).toBeInTheDocument();
     expect(screen.getByText('Also applicable but not pinned')).toBeInTheDocument();
     expect(screen.getByText('No precise map location listed')).toBeInTheDocument();
   });
@@ -423,7 +439,7 @@ describe('MapPageClient', () => {
     await screen.findByText('Shelter');
 
     fireEvent.click(screen.getByRole('button', { name: 'emit-bounds' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Search this area' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Update this area' }));
 
     await waitFor(() => {
       expect(getSearchCalls().length).toBeGreaterThanOrEqual(2);
@@ -465,6 +481,9 @@ describe('MapPageClient', () => {
     const mobileMapLayer = screen.getByTestId('map-container').parentElement;
     expect(mobileMapLayer).toHaveClass('z-0');
     expect(mobileMapLayer?.parentElement).toHaveClass('top-16', 'z-30', 'isolate');
+
+    fireEvent.click(screen.getByRole('button', { name: 'emit-bounds' }));
+    expect(await screen.findByRole('button', { name: 'Search this area' })).toBeInTheDocument();
 
     fireEvent.change(getMapSearchBox(), {
       target: { value: 'shelter' },
@@ -686,7 +705,7 @@ describe('MapPageClient', () => {
       expect(String(getSearchCalls().at(-1)?.[0])).toContain('attributes=');
     });
 
-    expect(screen.getByRole('button', { name: 'Search this area' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update this area' })).toBeInTheDocument();
   });
 
   it('shows canonical filter controls in the unified dialog', async () => {

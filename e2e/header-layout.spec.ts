@@ -172,7 +172,7 @@ test('scoped mobile navigation avoids duplicate primary links while preserving m
 
 test('tablet header crisis control opens verified emergency options', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 900 });
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/');
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
 
   await expect(page.locator('.crisis-fab-position')).toBeHidden();

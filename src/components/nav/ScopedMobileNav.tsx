@@ -78,8 +78,13 @@ export function ScopedMobileNav({ scopeLabel, pathname, items }: ScopedMobileNav
   };
   const isSeekerDiscoveryNav = items.length === SEEKER_MOBILE_NAV_ITEMS.length
     && items.every(({ href }) => SEEKER_DESTINATIONS.has(href));
-  const isActive = (href: string) => (
+  const isCurrentPage = (href: string) => (
     href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`)
+  );
+  const isSectionActive = (href: string) => (
+    isSeekerDiscoveryNav && href === '/directory' && (pathname === '/map' || pathname.startsWith('/map/'))
+      ? true
+      : isCurrentPage(href)
   );
 
   return (
@@ -93,7 +98,8 @@ export function ScopedMobileNav({ scopeLabel, pathname, items }: ScopedMobileNav
       <span className="sr-only">Current scope: {scopeLabel}</span>
       <div className="flex h-14 w-full items-center">
         {items.map(({ href, label, icon, badge }) => {
-          const active = isActive(href);
+          const active = isSectionActive(href);
+          const currentPage = isCurrentPage(href);
           const Icon = isMobileNavIconName(icon) ? MOBILE_NAV_ICONS[icon] : icon;
           const labelKey = SEEKER_LABEL_KEYS[href];
           const visibleLabel = isSeekerDiscoveryNav && labelKey ? t(labelKey) : label;
@@ -104,7 +110,8 @@ export function ScopedMobileNav({ scopeLabel, pathname, items }: ScopedMobileNav
               className={`relative flex h-full flex-1 flex-col items-center justify-center gap-0.5 overflow-hidden text-[10px] font-bold transition-colors sm:text-xs ${
                 active ? 'text-[var(--brand-cobalt)]' : 'text-[var(--text-muted)] hover:text-[var(--brand-cobalt)]'
               }`}
-              aria-current={active ? 'page' : undefined}
+              aria-current={currentPage ? 'page' : undefined}
+              data-active={active ? '' : undefined}
             >
               <span className={`relative flex items-center justify-center rounded-full px-3 py-1 transition-colors ${
                 active ? 'bg-gradient-brand-deep text-white shadow-md' : ''

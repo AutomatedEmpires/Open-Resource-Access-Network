@@ -7,7 +7,7 @@
  */
 
 'use client';
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { Send, AlertTriangle, Phone, Trash2, Clock, Plus, SlidersHorizontal, Bookmark, BookmarkCheck, MapPin, BellRing, ListTodo } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ELIGIBILITY_DISCLAIMER, MAX_CHAT_QUOTA } from '@/domain/constants';
@@ -177,6 +177,7 @@ function formatTime(date: Date): string {
 function autoResize(el: HTMLTextAreaElement | null) {
   if (!el) return;
   el.style.height = 'auto';
+  if (!el.value) return;
   el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
 }
 
@@ -1207,6 +1208,10 @@ export function ChatWindow({
     commitChatSessions(upsertStoredChatSession(summary), sessionId);
   }, [commitChatSessions, initialPrompt, input, messages, sessionId, showSeededContext]);
 
+  useLayoutEffect(() => {
+    autoResize(inputRef.current);
+  }, [input]);
+
   // Fetch the server-authoritative quota state on mount.
   // This ensures the countdown and remaining count are accurate even after
   // a page reload or cross-device navigation.
@@ -2011,7 +2016,12 @@ export function ChatWindow({
   ]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (
+      e.key === 'Enter'
+      && !e.shiftKey
+      && !e.nativeEvent.isComposing
+      && e.nativeEvent.keyCode !== 229
+    ) {
       e.preventDefault();
       void sendMessage();
     }
@@ -2229,61 +2239,64 @@ export function ChatWindow({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
 
       {/* ── Compact toolbar ── */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2.5 md:px-6">
-        <nav className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1" aria-label="Result views">
+      <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:px-6">
+        <span className="hidden shrink-0 text-sm font-semibold text-slate-900 md:inline lg:hidden">Find help</span>
+        <nav className="inline-flex shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-1" aria-label="Result views">
           <a
             href={_directoryHandoffHref}
-            className="inline-flex min-h-[34px] items-center rounded-lg px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-white hover:text-slate-950"
+            className="inline-flex min-h-11 items-center rounded-lg px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-white hover:text-slate-950"
+            aria-label="List view"
           >
-            List view
+            List
           </a>
           <a
             href={_mapHandoffHref}
-            className="inline-flex min-h-[34px] items-center rounded-lg px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-white hover:text-slate-950"
+            className="inline-flex min-h-11 items-center rounded-lg px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-white hover:text-slate-950"
+            aria-label="Map view"
           >
-            Map view
+            Map
           </a>
         </nav>
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={() => setFiltersOpen(true)}
-            className="inline-flex min-h-[34px] items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900"
             aria-label="Open chat filters"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
             Filters
           </button>
-          <button
-            type="button"
-            onClick={toggleCurrentConversationSaved}
-            className="inline-flex min-h-[34px] items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900"
-            aria-label={currentChatSummary?.saved ? 'Unsave current chat' : 'Save current chat'}
-            title={currentChatSummary?.saved ? 'Unsave current chat' : 'Save current chat'}
-          >
-            {currentChatSummary?.saved ? <BookmarkCheck className="h-3.5 w-3.5" aria-hidden="true" /> : <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />}
-            {currentChatSummary?.saved ? 'Saved' : 'Save chat'}
-          </button>
           {messages.length > 0 && (
-            <button
-              type="button"
-              onClick={clearConversation}
-              disabled={isLoading}
-              className="inline-flex min-h-[34px] items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Clear conversation"
-              aria-label="Clear conversation"
-            >
-              <Trash2 className="h-3 w-3" aria-hidden="true" />
-              Clear
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={toggleCurrentConversationSaved}
+                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900"
+                aria-label={currentChatSummary?.saved ? 'Unsave current chat' : 'Save current chat'}
+                title={currentChatSummary?.saved ? 'Unsave current chat' : 'Save current chat'}
+              >
+                {currentChatSummary?.saved ? <BookmarkCheck className="h-3.5 w-3.5" aria-hidden="true" /> : <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />}
+                <span className="hidden sm:inline">{currentChatSummary?.saved ? 'Saved' : 'Save chat'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={clearConversation}
+                disabled={isLoading}
+                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Clear conversation"
+                aria-label="Clear conversation"
+              >
+                <Trash2 className="h-3 w-3" aria-hidden="true" />
+                <span className="hidden sm:inline">Clear</span>
+              </button>
+            </>
           )}
-          <p className={`rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums ${
-            quotaRemaining <= quotaLimit / 2
-              ? 'border-slate-300 bg-slate-100 text-slate-900'
-              : 'border-slate-200 bg-white text-slate-600'
-          }`}>
-            {quotaRemaining} left today
-          </p>
+          {messages.length > 0 ? (
+            <p className="hidden rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold tabular-nums text-slate-900 sm:block">
+              {quotaRemaining} left today
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -2313,7 +2326,8 @@ export function ChatWindow({
               <button
                 type="button"
                 onClick={() => _clearSessionContextField('activeNeedId')}
-                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                className="inline-flex min-h-11 items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                aria-label="Remove need from active chat context"
               >
                 Need: {sessionContext.activeNeedId
                   ? formatFilterLabel(sessionContext.activeNeedId)
@@ -2324,7 +2338,8 @@ export function ChatWindow({
               <button
                 type="button"
                 onClick={clearLocation}
-                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                className="inline-flex min-h-11 items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                aria-label="Remove distance from active chat context"
               >
                 <MapPin className="mr-1 h-3 w-3" aria-hidden="true" />
                 {sessionContext.activeGeo.radiusMiles} mi ×
@@ -2334,7 +2349,8 @@ export function ChatWindow({
               <button
                 type="button"
                 onClick={() => _clearSessionContextField('activeLocation')}
-                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                className="inline-flex min-h-11 items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                aria-label="Remove location from active chat context"
               >
                 Location: {sessionContext.activeLocation.postalCode
                   ?? [sessionContext.activeLocation.city, sessionContext.activeLocation.stateProvince].filter(Boolean).join(', ')} ×
@@ -2343,7 +2359,8 @@ export function ChatWindow({
               <button
                 type="button"
                 onClick={() => _clearSessionContextField('activeCity')}
-                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                className="inline-flex min-h-11 items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                aria-label="Remove city from active chat context"
               >
                 City: {sessionContext.activeCity} ×
               </button>
@@ -2352,7 +2369,8 @@ export function ChatWindow({
               <button
                 type="button"
                 onClick={() => _clearSessionContextField('urgency')}
-                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                className="inline-flex min-h-11 items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                aria-label="Remove urgency from active chat context"
               >
                 Urgency: {formatFilterLabel(sessionContext.urgencyWindow ?? sessionContext.urgency)} ×
               </button>
@@ -2361,7 +2379,8 @@ export function ChatWindow({
               <button
                 type="button"
                 onClick={() => _clearSessionContextField('audience')}
-                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                className="inline-flex min-h-11 items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                aria-label="Remove audience from active chat context"
               >
                 For: {formatFilterLabel(sessionContext.audience)} ×
               </button>
@@ -2370,7 +2389,8 @@ export function ChatWindow({
               <button
                 type="button"
                 onClick={() => _clearSessionContextField('accessMode')}
-                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                className="inline-flex min-h-11 items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                aria-label="Remove access mode from active chat context"
               >
                 Access: {formatFilterLabel(sessionContext.accessMode)} ×
               </button>
@@ -2379,7 +2399,8 @@ export function ChatWindow({
               <button
                 type="button"
                 onClick={() => _clearSessionContextField('trustFilter')}
-                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                className="inline-flex min-h-11 items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                aria-label="Remove record confidence from active chat context"
               >
                 Record confidence: {formatFilterLabel(sessionContext.trustFilter)} ×
               </button>
@@ -2401,7 +2422,8 @@ export function ChatWindow({
                     profileShapingEnabled: !ignoreProfileShaping,
                   }));
                 }}
-                className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                className="inline-flex min-h-11 items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                aria-label={`Remove ${formatFilterLabel(mode)} delivery from active chat context`}
               >
                 Delivery: {formatFilterLabel(mode)} ×
               </button>
@@ -2413,7 +2435,8 @@ export function ChatWindow({
                   key={`strip-${taxonomy}-${tag}`}
                   type="button"
                   onClick={() => _removeSessionAttributeTag(taxonomy, tag)}
-                  className="inline-flex min-h-[26px] items-center rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                  className="inline-flex min-h-11 items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-300"
+                  aria-label={`Remove ${formatFilterLabel(tag)} from active chat context`}
                 >
                   {formatFilterLabel(tag)} ×
                 </button>
@@ -2423,7 +2446,7 @@ export function ChatWindow({
                 <button
                   type="button"
                   onClick={() => setIgnoreProfileShaping((current) => !current)}
-                  className={`inline-flex min-h-[26px] items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${ignoreProfileShaping ? 'border-slate-300 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-700'}`}
+                  className={`inline-flex min-h-11 items-center rounded-full border px-3 py-1 text-xs font-medium ${ignoreProfileShaping ? 'border-slate-300 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-700'}`}
                   aria-pressed={ignoreProfileShaping}
                 >
                   {ignoreProfileShaping ? 'Profile off' : 'Profile on'}
@@ -2515,6 +2538,7 @@ export function ChatWindow({
               ariaLabel="Quick chat categories"
               className="w-full"
               gridClassName="grid grid-cols-2 gap-2 lg:grid-cols-4"
+              limit={4}
             />
             </div>
 
@@ -2720,17 +2744,8 @@ export function ChatWindow({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Eligibility disclaimer — always shown */}
-      <div
-        className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600"
-        role="note"
-        aria-label="Eligibility disclaimer"
-      >
-        <p className="mx-auto max-w-3xl">{ELIGIBILITY_DISCLAIMER}</p>
-      </div>
-
       {/* Input */}
-      <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+      <div className="shrink-0 border-t border-slate-200 bg-white px-3 py-2 sm:px-6 sm:py-3">
         <div className="mx-auto max-w-3xl">
         {!hasCrisis && quotaRemaining <= Math.ceil(quotaLimit / 4) && quotaRemaining > 0 && (
           <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-800 shadow-sm">
@@ -2765,7 +2780,7 @@ export function ChatWindow({
               }}
               onKeyDown={handleKeyDown}
               placeholder="Describe what you need help with..."
-              className="min-h-14 flex-1 resize-none rounded-[18px] border-0 bg-white px-4 py-3 text-[15px] leading-7 text-slate-800 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-azure)]"
+              className="min-h-12 flex-1 resize-none rounded-[18px] border-0 bg-white px-4 py-2.5 text-[15px] leading-7 text-slate-800 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-azure)] sm:min-h-14 sm:py-3"
               rows={1}
               aria-label="Chat message input"
               disabled={isLoading}
@@ -2780,10 +2795,22 @@ export function ChatWindow({
               <Send className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
-          <div className="px-2 pt-3 text-[11px] text-slate-500">
-            {quotaRemaining === 0
-              ? 'Daily discovery limit reached. Immediate safety and crisis messages still work.'
-              : 'Ask for nearby services, provider details, eligibility hints, or next steps from stored records.'}
+          <div className="flex flex-col gap-1 px-2 pt-1.5 text-[11px] leading-4 text-slate-500 sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:pt-2.5">
+            <p className="hidden sm:block">
+              {quotaRemaining === 0
+                ? 'Daily discovery limit reached. Immediate safety and crisis messages still work.'
+                : 'Ask for nearby services, eligibility details, or next steps.'}
+            </p>
+            <div role="note" aria-label="Eligibility disclaimer" className="sm:max-w-[22rem] sm:text-right">
+              <details className="group">
+                <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1 font-medium text-slate-600 underline decoration-slate-300 underline-offset-2 [&::-webkit-details-marker]:hidden">
+                  <span className="sm:hidden">Verify details with the provider.</span>
+                  <span className="hidden sm:inline">Confirm eligibility and availability with the provider.</span>
+                  <span className="text-sm leading-none transition-transform group-open:rotate-180" aria-hidden="true">⌄</span>
+                </summary>
+                <p className="mt-1 text-left text-slate-500 sm:text-right">{ELIGIBILITY_DISCLAIMER}</p>
+              </details>
+            </div>
           </div>
         </div>
         {quotaRemaining === 0 && quotaResetAt && (
@@ -2841,6 +2868,7 @@ export function ChatWindow({
                 onSelect={handleCategoryClick}
                 ariaLabel="Chat category"
                 gridClassName="grid grid-cols-2 gap-2 md:grid-cols-4"
+                includeAll
               />
             </div>
 

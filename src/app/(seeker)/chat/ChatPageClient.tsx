@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -105,9 +104,7 @@ export default function ChatPage() {
   if (!sessionId) {
     return (
       <main className="bg-[var(--bg-page)]">
-        <div className="border-b border-[var(--border)] bg-white px-4 py-3">
-          <h1 className="mx-auto max-w-7xl text-base font-semibold text-[var(--text-primary)]">Find help</h1>
-        </div>
+        <h1 className="sr-only">Find help</h1>
         <ChatLoadingState />
       </main>
     );
@@ -116,15 +113,8 @@ export default function ChatPage() {
   return (
     <main className="bg-[var(--bg-page)]">
       <section className="chat-workspace flex min-w-0 flex-col overflow-hidden bg-white">
-        <div className="flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-white px-4 py-2.5 sm:px-5">
-          <h1 className="text-base font-semibold tracking-tight text-[var(--text-primary)]">Find help</h1>
-          <div className="ml-auto flex items-center gap-2">
-            <Link href="/saved" className="hidden min-h-11 items-center rounded-lg px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] sm:inline-flex">
-              Saved
-            </Link>
-            <span className="sr-only">{savedSyncEnabled ? 'Saved services can sync to your account.' : 'Saved services stay on this device.'}</span>
-          </div>
-        </div>
+        <h1 className="sr-only">Find help</h1>
+        <span className="sr-only">{savedSyncEnabled ? 'Saved services can sync to your account.' : 'Saved services stay on this device.'}</span>
         <ErrorBoundary>
           <div className="min-h-0 flex-1 overflow-hidden">
             <ChatWindow

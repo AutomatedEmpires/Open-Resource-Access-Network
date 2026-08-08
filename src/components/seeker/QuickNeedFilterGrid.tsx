@@ -1,6 +1,10 @@
 'use client';
 
-import { QUICK_DISCOVERY_NEEDS, type DiscoveryNeedId } from '@/domain/discoveryNeeds';
+import {
+  DISCOVERY_NEEDS,
+  QUICK_DISCOVERY_NEEDS,
+  type DiscoveryNeedId,
+} from '@/domain/discoveryNeeds';
 
 interface QuickNeedFilterGridProps {
   activeNeedId: DiscoveryNeedId | null | undefined;
@@ -9,6 +13,8 @@ interface QuickNeedFilterGridProps {
   className?: string;
   gridClassName?: string;
   buttonClassName?: string;
+  limit?: number;
+  includeAll?: boolean;
 }
 
 export function QuickNeedFilterGrid({
@@ -18,11 +24,23 @@ export function QuickNeedFilterGrid({
   className = '',
   gridClassName = 'grid grid-cols-2 gap-2 lg:grid-cols-4',
   buttonClassName = 'inline-flex h-11 w-full items-center justify-center rounded-full border px-3 py-2 text-sm font-medium transition-colors',
+  limit,
+  includeAll = false,
 }: QuickNeedFilterGridProps) {
+  const availableNeeds = includeAll ? DISCOVERY_NEEDS : QUICK_DISCOVERY_NEEDS;
+  const safeLimit = typeof limit === 'number' ? Math.max(0, limit) : availableNeeds.length;
+  const limitedNeeds = availableNeeds.slice(0, safeLimit);
+  const activeNeed = DISCOVERY_NEEDS.find((need) => need.id === activeNeedId);
+  const visibleNeeds = activeNeed
+    && safeLimit > 0
+    && !limitedNeeds.some((need) => need.id === activeNeed.id)
+    ? [...limitedNeeds.slice(0, Math.max(0, safeLimit - 1)), activeNeed]
+    : limitedNeeds;
+
   return (
     <div className={className}>
       <div className={gridClassName} role="group" aria-label={ariaLabel}>
-        {QUICK_DISCOVERY_NEEDS.map((need) => {
+        {visibleNeeds.map((need) => {
           const selected = activeNeedId === need.id;
           return (
             <button

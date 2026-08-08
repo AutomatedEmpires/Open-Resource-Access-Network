@@ -15,8 +15,6 @@ import {
   resolveDiscoveryNeedId,
 } from '@/domain/discoveryNeeds';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
-import { FormField } from '@/components/ui/form-field';
-import { FormSection } from '@/components/ui/form-section';
 import { PageHeader, PageHeaderBadge } from '@/components/ui/PageHeader';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { ServiceCard } from '@/components/directory/ServiceCard';
@@ -667,88 +665,122 @@ export default function DirectoryPage() {
 
   return (
     <main className="min-h-screen bg-white">
-      <div className="container mx-auto max-w-6xl px-4 pt-4 pb-8 md:py-8">
-        <section className="rounded-[30px] border border-slate-200 bg-white p-4 shadow-sm md:p-8">
-            <PageHeader
-              eyebrow="Find local help"
-              title="Browse services"
-              subtitle="Search and filter the list. Each result puts its listed service scope, eligibility details, and missing information up front."
-              badges={(
-                <>
-                  <PageHeaderBadge tone="trust">Published service records</PageHeaderBadge>
-                  {deviceLocation ? <PageHeaderBadge tone="accent">Approximate location active</PageHeaderBadge> : null}
-                  {hasActiveRefinements ? <PageHeaderBadge>Refinements on</PageHeaderBadge> : null}
-                </>
-              )}
-              actions={(
-                <nav className="inline-flex rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] p-1" aria-label="Result views">
-                  <span aria-current="page" className="inline-flex min-h-[40px] items-center rounded-lg bg-white px-3 py-2 text-sm font-semibold text-[var(--text-primary)] shadow-sm">
-                    List view
-                  </span>
-                  <Link href={mapHref} className="inline-flex min-h-[40px] items-center rounded-lg px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-white hover:text-[var(--text-primary)]">
-                    Map view
-                  </Link>
-                </nav>
-              )}
-            />
+      <div className="container mx-auto max-w-6xl px-4 pb-20 pt-5 md:py-8">
+        <PageHeader
+          eyebrow="Find local help"
+          title="Browse services"
+          subtitle="Search published listings, then compare what each service helps with and who may qualify."
+          badges={(
+            <>
+              <PageHeaderBadge tone="trust">Published listings</PageHeaderBadge>
+              {deviceLocation ? <PageHeaderBadge tone="accent">Approximate location active</PageHeaderBadge> : null}
+              {hasActiveRefinements ? <PageHeaderBadge>Refinements on</PageHeaderBadge> : null}
+            </>
+          )}
+          actions={(
+            <nav className="inline-flex rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] p-1" aria-label="Result views">
+              <span aria-current="page" className="inline-flex min-h-11 items-center rounded-lg bg-white px-3 py-2 text-sm font-semibold text-[var(--text-primary)] shadow-sm">
+                List view
+              </span>
+              <Link href={mapHref} className="inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-white hover:text-[var(--text-primary)]">
+                Map view
+              </Link>
+            </nav>
+          )}
+        />
 
-            <ErrorBoundary>
-              <div className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:p-4">
-                <FormSection
-                  className="mb-3"
+        <ErrorBoundary>
+          <div>
+            <section aria-labelledby="directory-search-heading" className="border-y border-slate-200 py-4 sm:rounded-[24px] sm:border sm:p-5 sm:shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 id="directory-search-heading" className="text-base font-semibold text-slate-950">What do you need help with?</h2>
+                  <p className="mt-1 text-sm text-slate-500">Use plain language or choose a common need.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen(true)}
+                  className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-100"
+                  aria-haspopup="dialog"
+                  aria-expanded={filtersOpen}
                 >
-                  <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-                    <FormField id="directory-search" label="Search services" className="w-full">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
-                        <input
-                          ref={searchInputRef}
-                          id="directory-search"
-                          value={query}
-                          onChange={(e) => {
-                            setQuery(e.target.value);
-                            if (activeCategory && !isDiscoveryNeedSearchText(activeCategory, e.target.value)) {
-                              setActiveCategory(null);
-                            }
-                          }}
-                          type="search"
-                          placeholder="Search for services (e.g., rent help, food pantry, job training)"
-                          className="min-h-[46px] w-full rounded-2xl border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                          aria-label="Search services"
-                        />
-                        {query && (
-                          <button
-                            type="button"
-                            onClick={handleClearSearch}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-slate-400 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                            aria-label="Clear search"
-                          >
-                            <X className="h-3.5 w-3.5" aria-hidden="true" />
-                          </button>
-                        )}
-                      </div>
-                    </FormField>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <Button type="submit" disabled={!canSearch || isLoading} className="w-full sm:w-auto">
-                        Search
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleUseMyLocation}
-                        disabled={isLocating}
-                        title="Opt-in: uses device location in-session only; not stored"
-                        className="w-full gap-1.5 sm:w-auto"
-                      >
-                        <MapPin className="h-4 w-4" aria-hidden="true" />
-                        {isLocating ? 'Locating…' : 'Use my location'}
-                      </Button>
-                    </div>
-                  </form>
-                </FormSection>
+                  <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+                  Filters
+                  {hasActiveRefinements ? (
+                    <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
+                      {appliedFilterItems.length || 1}
+                    </span>
+                  ) : null}
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+                <label htmlFor="directory-search" className="sr-only">Search services</label>
+                <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-300 bg-white p-1.5 shadow-sm focus-within:border-slate-400 focus-within:ring-2 focus-within:ring-slate-200">
+                  <Search className="ml-2 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+                  <input
+                    ref={searchInputRef}
+                    id="directory-search"
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      if (activeCategory && !isDiscoveryNeedSearchText(activeCategory, e.target.value)) {
+                        setActiveCategory(null);
+                      }
+                    }}
+                    type="search"
+                    placeholder="Rent help, food, a clinic…"
+                    className="min-h-11 min-w-0 flex-1 border-0 bg-transparent px-1 py-2 text-sm text-slate-800 outline-none"
+                    aria-label="Search services"
+                  />
+                  {query ? (
+                    <button
+                      type="button"
+                      onClick={handleClearSearch}
+                      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  ) : null}
+                  <Button type="submit" disabled={!canSearch || isLoading} className="min-h-11 shrink-0 px-4">
+                    Search
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleUseMyLocation}
+                    disabled={isLocating}
+                    title="Opt-in: uses device location in-session only; not stored"
+                    className="min-h-11 gap-1.5"
+                  >
+                    <MapPin className="h-4 w-4" aria-hidden="true" />
+                    {isLocating ? 'Locating…' : 'Use my location'}
+                  </Button>
+                  <p className="text-xs text-slate-500">
+                    {savedSyncEnabled ? 'Saved listings can sync to your account.' : 'Saved listings stay on this device.'}
+                  </p>
+                </div>
+              </form>
+
+              <div className="mt-4 border-t border-slate-200 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Common needs</p>
+                <QuickNeedFilterGrid
+                  activeNeedId={activeCategory}
+                  onSelect={handleCategoryClick}
+                  ariaLabel="Quick category filters"
+                  className="mt-3"
+                  gridClassName="flex gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-4"
+                  buttonClassName="inline-flex min-h-11 min-w-[8rem] items-center justify-center rounded-full border px-3 py-2 text-sm font-medium transition-colors md:min-w-0"
+                />
+              </div>
+            </section>
 
                 {deviceLocation && (
-                  <div className="mb-3">
+                  <div className="mb-3 mt-4">
                     <button
                       type="button"
                       onClick={clearDeviceLocation}
@@ -778,7 +810,7 @@ export default function DirectoryPage() {
                 )}
 
                 {profileGuidanceActive && (
-                  <div className="mb-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 shadow-sm">
+                  <div className="mb-4 mt-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 shadow-sm">
                     <p className="font-semibold">Saved profile guidance active</p>
                     <p className="mt-1 text-xs text-slate-700">
                       Your saved seeker profile influenced the starting browse state. You can clear the category or any filters at any time.
@@ -796,62 +828,27 @@ export default function DirectoryPage() {
                   </div>
                 )}
 
-                <div className="mb-4 rounded-[20px] border border-slate-200 bg-slate-50 p-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Start with a common need</p>
-                      <p className="mt-1 text-xs text-slate-500">Choose a category first, then narrow things down with the filters and sort order.</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setFiltersOpen(true)}
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-100"
-                      aria-haspopup="dialog"
-                      aria-expanded={filtersOpen}
-                    >
-                      <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-                      Filters
-                      {hasActiveRefinements ? (
-                        <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
-                          {appliedFilterItems.length || 1}
-                        </span>
-                      ) : null}
-                    </button>
-                  </div>
-
-                  <QuickNeedFilterGrid
-                    activeNeedId={activeCategory}
-                    onSelect={handleCategoryClick}
-                    ariaLabel="Quick category filters"
-                    className="mt-4"
-                  />
-
-                  <p className="mt-3 text-xs text-slate-500">
-                    {savedSyncEnabled ? 'Saves can sync to your account.' : 'Saves stay on this device.'}
-                  </p>
-                </div>
-
                 <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
                   <DialogContent className="max-w-3xl border-slate-200 bg-white p-0 sm:rounded-[28px]">
                     <DialogHeader className="border-b border-slate-200 px-6 py-5 text-left">
                       <DialogTitle className="text-lg font-semibold text-slate-950">Refine directory results</DialogTitle>
+                      <p className="mt-1 text-sm text-slate-500">Changes update the list as you choose them.</p>
                     </DialogHeader>
 
                     <div className="max-h-[80vh] space-y-6 overflow-y-auto px-6 py-5">
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">Category</p>
-                          <p className="mt-1 text-xs text-slate-500">Choose the kind of support you want to browse first.</p>
+                      {activeCategory ? (
+                        <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" role="group" aria-label="Current need filter">
+                          <div>
+                            <p className="text-xs font-medium text-slate-500">Current need</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-900">{getDiscoveryNeedLabel(activeCategory)}</p>
+                          </div>
+                          <Button type="button" variant="outline" size="sm" onClick={clearCategory}>
+                            Clear
+                          </Button>
                         </div>
-                        <QuickNeedFilterGrid
-                          activeNeedId={activeCategory}
-                          onSelect={handleCategoryClick}
-                          ariaLabel="Directory category filters"
-                          gridClassName="grid grid-cols-2 gap-2 md:grid-cols-4"
-                        />
-                      </div>
+                      ) : null}
 
-                      <div className="space-y-3 border-t border-slate-200 pt-5">
+                      <div className="space-y-3">
                         <div>
                           <p className="text-sm font-semibold text-slate-900">Service details</p>
                           <p className="mt-1 text-xs text-slate-500">Narrow by common service attributes without hiding other publication-gated records outside your exact wording.</p>
@@ -947,13 +944,13 @@ export default function DirectoryPage() {
                         Clear all filters
                       </Button>
                       <Button type="button" size="sm" onClick={() => setFiltersOpen(false)}>
-                        Show results
+                        Done
                       </Button>
                     </div>
                   </DialogContent>
                 </Dialog>
 
-                <SeekerAppliedFilters items={appliedFilterItems} onClearAll={clearAllFilters} />
+                <SeekerAppliedFilters items={appliedFilterItems} onClearAll={clearAllFilters} className="mt-4" />
                 {hasActiveRefinements && (
                   <DiscoveryContextPanel
                     discoveryContext={directoryDiscoveryContext}
@@ -990,7 +987,7 @@ export default function DirectoryPage() {
                 )}
 
                 {!isLoading && !data && !error && (
-                  <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-8 text-center shadow-sm">
+                  <div className="py-10 text-center">
                     <p className="text-base font-semibold text-slate-900">Start with a search</p>
                     <p className="mt-1 text-sm text-slate-500">Search or pick a need above. Results come from ORAN&apos;s published catalog and may include missing or outdated details.</p>
                   </div>
@@ -1089,7 +1086,6 @@ export default function DirectoryPage() {
                 )}
               </div>
             </ErrorBoundary>
-        </section>
       </div>
     </main>
   );

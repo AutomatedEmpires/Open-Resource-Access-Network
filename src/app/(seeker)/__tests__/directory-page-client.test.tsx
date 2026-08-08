@@ -410,6 +410,8 @@ describe('DirectoryPageClient', () => {
       expect(screen.getByRole('button', { name: 'Clear search' })).toBeInTheDocument();
     });
 
+    expect(screen.getByRole('group', { name: 'Current need filter' })).toHaveTextContent('Food');
+
     fireEvent.click(screen.getAllByRole('button', { name: 'Food' })[0]);
     expect(replaceMock).toHaveBeenCalledWith('/directory', { scroll: false });
   });

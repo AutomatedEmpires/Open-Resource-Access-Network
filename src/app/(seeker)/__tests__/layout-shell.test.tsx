@@ -91,7 +91,7 @@ describe('seeker layout shell', () => {
     expect(within(nav).queryByRole('link', { name: 'Dashboard' })).toBeNull();
   });
 
-  it('keeps immersive chat and map routes free of the marketing footer', async () => {
+  it('keeps core discovery routes free of the marketing footer', () => {
     const { rerender } = render(<SeekerLayoutShell planEnabled>Chat</SeekerLayoutShell>);
     expect(screen.queryByTestId('app-footer')).toBeNull();
 
@@ -101,7 +101,7 @@ describe('seeker layout shell', () => {
 
     usePathnameMock.mockReturnValue('/directory');
     rerender(<SeekerLayoutShell planEnabled>Directory</SeekerLayoutShell>);
-    expect(await screen.findByTestId('app-footer')).toBeInTheDocument();
+    expect(screen.queryByTestId('app-footer')).toBeNull();
   });
 
   it('renders seeker context strip details from localStorage', async () => {
@@ -137,7 +137,8 @@ describe('seeker layout shell', () => {
       expect(screen.getByText('Near Phoenix (approx.)')).toBeInTheDocument();
     });
 
-    expect(document.querySelector('[data-seeker-context-strip]')).toHaveClass('hidden', 'md:block');
+    expect(document.querySelector('[data-seeker-context-strip]')).toHaveClass('hidden');
+    expect(document.querySelector('[data-seeker-context-strip]')).not.toHaveClass('md:block');
   });
 
   it('keeps saved seeker context out of the fixed mobile chat viewport', async () => {
@@ -150,7 +151,8 @@ describe('seeker layout shell', () => {
       expect(screen.getByText('Near Phoenix (approx.)')).toBeInTheDocument();
     });
 
-    expect(document.querySelector('[data-seeker-context-strip]')).toHaveClass('hidden', 'md:block');
+    expect(document.querySelector('[data-seeker-context-strip]')).toHaveClass('hidden');
+    expect(document.querySelector('[data-seeker-context-strip]')).not.toHaveClass('md:block');
   });
 
   it('updates saved badges and context strip immediately when same-tab saved state changes', async () => {

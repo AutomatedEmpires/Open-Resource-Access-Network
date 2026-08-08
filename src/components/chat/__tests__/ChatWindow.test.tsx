@@ -298,6 +298,24 @@ describe('ChatWindow', () => {
     });
   });
 
+  it('auto-sizes a programmatically restored multi-line draft', async () => {
+    const scrollHeightSpy = vi
+      .spyOn(HTMLTextAreaElement.prototype, 'scrollHeight', 'get')
+      .mockReturnValue(96);
+
+    render(
+      <ChatWindow
+        sessionId="11111111-1111-4111-8111-111111111111"
+        initialPrompt="I need help keeping my power on this week and I need to know what documents to bring."
+        initialNeedId="utility_assistance"
+      />,
+    );
+
+    const input = screen.getByRole('textbox', { name: 'Chat message input' });
+    await waitFor(() => expect(input).toHaveStyle({ height: '96px' }));
+    scrollHeightSpy.mockRestore();
+  });
+
   it('sends structured retrieval context once while preserving the full safety message', async () => {
     const prompt = 'Utility bill help. Near 48201. I need help today. I need help I can reach by phone.';
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
@@ -1257,8 +1275,8 @@ describe('ChatWindow', () => {
 
     await screen.findByText('Refine this search');
     expect(screen.getByText('Active chat context')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Need: Housing ×' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'City: Denver ×' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove need from active chat context' })).toHaveTextContent('Need: Housing ×');
+    expect(screen.getByRole('button', { name: 'Remove city from active chat context' })).toHaveTextContent('City: Denver ×');
 
     fireEvent.click(screen.getByRole('button', { name: 'Help paying rent' }));
 

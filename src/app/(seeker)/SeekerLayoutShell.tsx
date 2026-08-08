@@ -36,6 +36,7 @@ export function SeekerLayoutShell({
 }) {
   const pathname = usePathname();
   const isImmersiveDiscoveryRoute = pathname === '/chat' || pathname === '/map';
+  const hideFooter = isImmersiveDiscoveryRoute || pathname === '/directory';
 
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
@@ -65,11 +66,12 @@ export function SeekerLayoutShell({
         onClose={() => setCommandPaletteOpen(false)}
       />
 
-      <div className="sr-only" aria-hidden="false">
+      <div className="sr-only focus-within:not-sr-only focus-within:fixed focus-within:left-4 focus-within:top-20 focus-within:z-[9999]">
         <button
           type="button"
           onClick={() => setCommandPaletteOpen(true)}
           aria-label="Open quick actions"
+          className="rounded-md bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg outline-none ring-2 ring-slate-500"
         >
           Open quick actions
         </button>
@@ -83,7 +85,7 @@ export function SeekerLayoutShell({
         {children}
       </main>
 
-      {!isImmersiveDiscoveryRoute ? (
+      {!hideFooter ? (
         <div className="pb-14 md:pb-0">
           <AppFooter />
         </div>

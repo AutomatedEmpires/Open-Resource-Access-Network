@@ -137,7 +137,7 @@ describe('ServiceDetailClient', () => {
     expect(screen.getByRole('heading', { name: 'Access and availability' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Contact and next steps' })).toBeInTheDocument();
     expect(screen.getByText('555-0100 ext. 9')).toBeInTheDocument();
-    expect(screen.getByText('Adults 18+')).toBeInTheDocument();
+    expect(screen.getByText('Adults 18+ · Age 18 or older')).toBeInTheDocument();
     expect(screen.getByText(/Wheelchair accessible/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to browse' })).toHaveAttribute(
       'href',
@@ -175,6 +175,35 @@ describe('ServiceDetailClient', () => {
         body: JSON.stringify({ serviceId: 'svc-1' }),
       });
     });
+  });
+
+  it('renders structured hours and type-correct contact actions', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [{
+          ...makeService(),
+          phones: [
+            { id: 'sms-1', number: '555-0101', type: 'sms' },
+            { id: 'fax-1', number: '555-0102', type: 'fax' },
+            { id: 'voice-1', number: '555-0103', type: 'voice', locationId: 'loc-1' },
+          ],
+          schedules: [
+            { id: 'mon', locationId: 'loc-1', days: ['MO'], opensAt: '09:00', closesAt: '17:00' },
+            { id: 'tue', locationId: 'loc-1', days: ['TU'], opensAt: '09:00', closesAt: '17:00' },
+          ],
+        }],
+      }),
+    });
+
+    render(<ServiceDetailPage serviceId="svc-1" />);
+
+    await screen.findByTestId('service-card');
+    expect(screen.getByText('Mon, Tue · 9:00 AM–5:00 PM')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Text Food Pantry: 555-0101' })).toHaveAttribute('href', 'sms:555-0101');
+    expect(screen.getByRole('link', { name: 'Call Food Pantry: 555-0103' })).toHaveAttribute('href', 'tel:555-0103');
+    expect(screen.getByText('555-0102')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /555-0102/ })).not.toBeInTheDocument();
   });
 
   it('keeps saves local-only when cross-device sync is off', async () => {

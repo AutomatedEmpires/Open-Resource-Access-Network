@@ -536,9 +536,9 @@ export class ServiceSearchEngine {
     const mapped: SearchResult[] = rows.map((row) => this.mapRowToResult(row));
 
     // Card tier: attach the primary phone (service → location → organization
-    // fallback), one hours line, and up to three category labels so result
-    // cards can render honest contact/hours information. Bounded to the page
-    // (three batch queries); full relation hydration stays on the by-ids path.
+    // fallback), current hours, up to three category labels, and stored
+    // eligibility so result cards can render honest, useful facts. Bounded to
+    // the page (four batch queries); full hydration stays on the by-ids path.
     let results = mapped;
     try {
       const hydrated = await hydrateCardTier(
@@ -547,7 +547,7 @@ export class ServiceSearchEngine {
       );
       results = mapped.map((result, index) => ({ ...result, service: hydrated[index] }));
     } catch (error) {
-      // Phones, hours, and category labels improve result cards, but their
+      // Phones, hours, categories, and eligibility improve result cards, but
       // optional batch hydration must never take down otherwise valid search
       // results. The telemetry wrapper strips raw messages/stacks and this
       // context contains structural counts only.
@@ -710,6 +710,7 @@ export class ServiceSearchEngine {
         phones: [],
         schedules: [],
         taxonomyTerms: [],
+        cardDataStatus: 'unavailable',
         confidenceScore: row.confidence_score != null
           ? {
               id: (row.confidence_id as string) ?? '',

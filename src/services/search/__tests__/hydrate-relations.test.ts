@@ -98,10 +98,12 @@ describe('hydrateEnrichedServices', () => {
     expect(a.schedules[0]).toMatchObject({ description: 'Mon-Fri 9-5', days: ['MO', 'FR'], opensAt: '09:00' });
     expect(a.taxonomyTerms[0]).toMatchObject({ term: 'Food Pantry' });
     expect(a.eligibility?.[0]).toMatchObject({ description: 'Adults 18+', minimumAge: 18 });
+    expect(a.cardDataStatus).toBe('loaded');
 
     expect(b.phones[0]).toMatchObject({ number: '555-0200', type: 'hotline' });
     expect(b.schedules).toEqual([]);
     expect(b.eligibility).toEqual([]);
+    expect(b.cardDataStatus).toBe('loaded');
   });
 
   it('keys accessibility by location and skips the query when no locations exist', async () => {
@@ -146,5 +148,89 @@ describe('hydrateEnrichedServices', () => {
     const [hydrated] = await hydrateEnrichedServices(deps, [input]);
     expect(input.phones).toEqual([]);
     expect(hydrated.phones).toHaveLength(1);
+  });
+
+  it('hydrates parent-safe location and organization fallbacks without sibling leakage', async () => {
+    const deps = makeDeps([
+      { match: 'FROM phones', rows: [
+        { id: 'p-service-a', service_id: SVC_A, location_id: LOC_A, organization_id: 'org-1', number: '555-0100', type: 'voice' },
+        { id: 'p-location', service_id: null, location_id: LOC_A, organization_id: 'org-1', number: '555-0200', type: 'voice' },
+        { id: 'p-organization', service_id: null, location_id: null, organization_id: 'org-1', number: '555-0300', type: 'voice' },
+      ] },
+      { match: 'FROM schedules', rows: [
+        { id: 's-service-a', service_id: SVC_A, location_id: LOC_A, description: 'Service A hours' },
+        { id: 's-location', service_id: null, location_id: LOC_A, description: 'Location hours' },
+      ] },
+    ]);
+
+    const [serviceA, sibling] = await hydrateEnrichedServices(deps, [
+      leanService(SVC_A, LOC_A),
+      leanService(SVC_B, LOC_A),
+    ]);
+
+    expect(serviceA.phones.map((phone) => phone.id)).toEqual([
+      'p-service-a',
+      'p-location',
+      'p-organization',
+    ]);
+    expect(sibling.phones.map((phone) => phone.id)).toEqual([
+      'p-location',
+      'p-organization',
+    ]);
+    expect(serviceA.schedules.map((schedule) => schedule.id)).toEqual(['s-service-a']);
+    expect(sibling.schedules.map((schedule) => schedule.id)).toEqual(['s-location']);
+
+    const phoneCall = deps.mock.mock.calls.find(([sql]) => String(sql).includes('FROM phones'));
+    expect(phoneCall?.[1]).toEqual([[SVC_A, SVC_B], [LOC_A], ['org-1']]);
+    expect(String(phoneCall?.[0])).toContain('service_id IS NULL AND location_id IS NULL');
+  });
+
+  it('reuses successful card-tier phone, hours, and eligibility batches for chat hydration', async () => {
+    const deps = makeDeps([
+      { match: 'JOIN taxonomy_terms', rows: [
+        { id: 't1', service_id: SVC_A, term: 'Food Pantry', taxonomy: 'custom' },
+      ] },
+    ]);
+    const cardService = {
+      ...leanService(SVC_A),
+      phones: [{
+        id: 'org-phone',
+        organizationId: 'org-1',
+        number: '555-0300',
+        type: 'voice' as const,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }],
+      schedules: [{
+        id: 'location-hours',
+        locationId: LOC_A,
+        description: 'Weekdays 9–5',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }],
+      eligibility: [{
+        id: 'eligibility-1',
+        serviceId: SVC_A,
+        description: 'County residents',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }],
+      cardDataStatus: 'loaded' as const,
+    };
+
+    const [hydrated] = await hydrateEnrichedServices(
+      deps,
+      [cardService],
+      { reuseLoadedCardData: true },
+    );
+
+    expect(hydrated.phones).toEqual(cardService.phones);
+    expect(hydrated.schedules).toEqual(cardService.schedules);
+    expect(hydrated.eligibility).toEqual(cardService.eligibility);
+    expect(hydrated.taxonomyTerms[0]).toMatchObject({ term: 'Food Pantry' });
+    const sql = deps.mock.mock.calls.map(([query]) => String(query)).join('\n');
+    expect(sql).not.toContain('FROM phones');
+    expect(sql).not.toContain('FROM schedules');
+    expect(sql).not.toContain('FROM eligibility');
   });
 });

@@ -263,6 +263,15 @@ describe('ServiceCard', () => {
     ] as never, new Date('2026-06-15T12:00:00.000Z'))).toBe('Current hours');
   });
 
+  it('uses the regional day when UTC has already crossed into tomorrow', async () => {
+    const { formatScheduleSummaries } = await loadServiceCard();
+
+    expect(formatScheduleSummaries([
+      { description: 'Ends tonight', validTo: new Date('2026-08-08T00:00:00.000Z') },
+      { description: 'Starts tomorrow', validFrom: new Date('2026-08-09T00:00:00.000Z') },
+    ] as never, new Date('2026-08-09T00:30:00.000Z'))).toBe('Ends tonight');
+  });
+
   it('keeps dayless hours separate from a narrower day-scoped row', async () => {
     const { formatScheduleSummaries } = await loadServiceCard();
 

@@ -62,6 +62,8 @@ function makeEnrichedService(overrides: Partial<EnrichedService> = {}): Enriched
       },
     ],
     taxonomyTerms: [],
+    eligibility: [],
+    cardDataStatus: 'loaded',
     confidenceScore: null,
     ...overrides,
   };
@@ -174,7 +176,70 @@ describe('chat types + conversion', () => {
     expect(card.description).toBeUndefined();
     expect(card.links).toBeUndefined();
     expect(card.eligibilityHint).toBe(
-      'This record does not list who may qualify. Confirm current requirements with the provider.',
+      'No eligibility requirements are stored for this listing. Confirm current requirements with the provider.',
+    );
+  });
+
+  it('uses only callable phones and formats complete structured hours', () => {
+    const card = enrichedServiceToCard(makeEnrichedService({
+      phones: [
+        { id: 'sms-1', serviceId: 'svc-1', number: '512-555-1111', type: 'sms', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'voice-1', serviceId: 'svc-1', number: '512-555-2222', type: 'voice', createdAt: new Date(), updatedAt: new Date() },
+      ],
+      schedules: [
+        { id: 'mon', serviceId: 'svc-1', days: ['MO'], opensAt: '09:00', closesAt: '17:00', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'tue', serviceId: 'svc-1', days: ['TU'], opensAt: '09:00', closesAt: '17:00', createdAt: new Date(), updatedAt: new Date() },
+      ],
+    }));
+
+    expect(card.phone).toBe('512-555-2222');
+    expect(card.scheduleDescription).toBe('Mon, Tue · 9:00 AM–5:00 PM');
+  });
+
+  it('never presents SMS, fax, or TTY records as a Call action', () => {
+    const card = enrichedServiceToCard(makeEnrichedService({
+      phones: [
+        { id: 'sms-1', serviceId: 'svc-1', number: '512-555-1111', type: 'sms', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'fax-1', serviceId: 'svc-1', number: '512-555-2222', type: 'fax', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'tty-1', serviceId: 'svc-1', number: '512-555-3333', type: 'tty', createdAt: new Date(), updatedAt: new Date() },
+      ],
+    }));
+
+    expect(card.phone).toBeUndefined();
+    expect(card.nextStep).not.toMatch(/^Call the provider/);
+  });
+
+  it('uses stored categories to explain what a service helps with when description is empty', () => {
+    const card = enrichedServiceToCard(makeEnrichedService({
+      service: {
+        ...makeEnrichedService().service,
+        description: null,
+      },
+      taxonomyTerms: [
+        { id: 'tax-1', term: 'Housing navigation', createdAt: new Date(), updatedAt: new Date() },
+        { id: 'tax-2', term: 'Rental assistance', createdAt: new Date(), updatedAt: new Date() },
+      ],
+    }));
+
+    expect(card.description).toBe('Categories: Housing navigation, Rental assistance');
+  });
+
+  it('explains relation-loading failure without claiming the provider listed nothing', () => {
+    const card = enrichedServiceToCard(makeEnrichedService({
+      service: {
+        ...makeEnrichedService().service,
+        description: null,
+      },
+      taxonomyTerms: [],
+      eligibility: undefined,
+      cardDataStatus: 'unavailable',
+    }));
+
+    expect(card.description).toBe(
+      'Service categories could not be loaded. Open the listing or confirm the service scope with the provider.',
+    );
+    expect(card.eligibilityHint).toBe(
+      'Eligibility details could not be loaded. Open the listing or confirm current requirements with the provider.',
     );
   });
 
@@ -203,6 +268,7 @@ describe('chat types + conversion', () => {
         id: 'elig-1',
         serviceId: 'svc-intake',
         description: 'Residents of Kootenai County may apply.',
+        minimumAge: 18,
         updatedAt: new Date(),
         createdAt: new Date(),
       }],
@@ -237,7 +303,24 @@ describe('chat types + conversion', () => {
       sourceUrl: 'https://example.org/utility-intake',
     });
     expect(card.eligibilityHint).toContain('Residents of Kootenai County may apply.');
+    expect(card.eligibilityHint).toContain('Age 18 or older');
     expect(card.whatToAsk).toContain('Utility Relief Intake');
+  });
+
+  it('signals additional stored eligibility rules instead of silently truncating them', () => {
+    const card = enrichedServiceToCard(makeEnrichedService({
+      eligibility: ['County resident', 'Age 18 or older', 'Income limit applies'].map((description, index) => ({
+        id: `elig-${index}`,
+        serviceId: 'svc-1',
+        description,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+    }));
+
+    expect(card.eligibilityHint).toContain('County resident · Age 18 or older');
+    expect(card.eligibilityHint).toContain('+1 more listed requirements.');
+    expect(card.eligibilityHint).not.toContain('Income limit applies');
   });
 
   it('derives deterministic match reasons from browse filters, taxonomy, and action intent', () => {

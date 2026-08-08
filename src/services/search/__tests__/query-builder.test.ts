@@ -495,6 +495,8 @@ describe('ServiceSearchEngine', () => {
     expect(result.results[0]?.service.phones).toEqual([]);
     expect(result.results[0]?.service.schedules).toEqual([]);
     expect(result.results[0]?.service.taxonomyTerms).toEqual([]);
+    expect(result.results[0]?.service.eligibility).toBeUndefined();
+    expect(result.results[0]?.service.cardDataStatus).toBe('unavailable');
     expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(Error), {
       feature: 'search_card_tier_hydration',
       extra: { resultCount: 1 },

@@ -122,13 +122,29 @@ describe('ServiceCard listing clarity', () => {
   });
 
   it('states both evidence gaps and directs the seeker to confirm', () => {
-    render(<ServiceCard compact enriched={makeEnrichedService()} />);
+    render(<ServiceCard compact enriched={makeEnrichedService({
+      eligibility: [],
+      cardDataStatus: 'loaded',
+    })} />);
 
     expect(
       screen.getByText('This record does not list what the service helps with. Confirm the service scope with the provider.'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('This record does not list who may qualify. Confirm current requirements with the provider.'),
+      screen.getByText('No eligibility requirements are stored for this listing. Confirm current requirements with the provider.'),
+    ).toBeInTheDocument();
+  });
+
+  it('distinguishes temporarily unavailable card facts from a known-empty record', () => {
+    render(<ServiceCard compact enriched={makeEnrichedService({
+      cardDataStatus: 'unavailable',
+    })} />);
+
+    expect(
+      screen.getByText('Service categories could not be loaded. Open the listing or confirm the service scope with the provider.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Eligibility details could not be loaded. Open the listing or confirm current requirements with the provider.'),
     ).toBeInTheDocument();
   });
 });

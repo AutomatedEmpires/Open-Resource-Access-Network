@@ -442,8 +442,8 @@ export async function POST(req: NextRequest) {
         response = await cachedSearch(engine, query);
         searchBroadened = response.results.length > 0;
       }
-      // The paged search rows are lean; dedupe location fanout and hydrate
-      // relations so cards can show phones, schedules, and match evidence.
+      // Dedupe location fanout, then hydrate detail-only relations. Successful
+      // card-tier phone, hours, and eligibility batches are reused below.
       const seenServiceIds = new Set<string>();
       const leanServices = response.results
         .map((result) => result.service)
@@ -455,11 +455,15 @@ export async function POST(req: NextRequest) {
           return true;
         });
       if (leanServices.length > 0) {
-        // Hydration is enrichment, not retrieval: if it fails, degrade to
-        // lean cards (no phones/schedules) rather than reporting no results.
+        // Hydration is enrichment, not retrieval: if it fails, keep the safe
+        // card-tier result rather than reporting no results.
         let services = leanServices;
         try {
-          services = await hydrateEnrichedServices({ executeQuery }, leanServices);
+          services = await hydrateEnrichedServices(
+            { executeQuery },
+            leanServices,
+            { reuseLoadedCardData: true },
+          );
         } catch (hydrationError) {
           await captureException(hydrationError, { feature: 'api_chat_hydration' });
         }

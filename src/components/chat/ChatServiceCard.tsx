@@ -157,7 +157,7 @@ export function ChatServiceCard({
           </dt>
           <dd className="mt-1 text-sm leading-5 text-slate-800">
             {eligibilitySummary
-              ?? 'This record does not list who may qualify. Confirm current requirements with the provider.'}
+              ?? 'Eligibility details are not available here. Open ORAN details or confirm current requirements with the provider.'}
           </dd>
           {eligibilitySummary && !eligibilityIncludesConfirmation && (
             <dd className="mt-1 text-xs leading-4 text-slate-500">

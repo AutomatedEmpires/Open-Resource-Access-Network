@@ -171,6 +171,59 @@ describe('summarizeWithLLM', () => {
     expect(systemMsg.content).toContain('Never invent');
   });
 
+  it('omits non-callable numbers and serializes structured stored hours', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: 'A summary.' } }],
+    });
+
+    await summarizeWithLLM([makeService({
+      phones: [{
+        id: 'sms-only',
+        number: '555-9999',
+        serviceId: 'svc-1',
+        type: 'sms',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }],
+      schedules: [{
+        id: 'structured',
+        serviceId: 'svc-1',
+        days: ['MO', 'WE'],
+        opensAt: '08:30',
+        closesAt: '16:00',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }],
+    })], makeIntent());
+
+    const call = mockCreate.mock.calls[0][0];
+    const userMsg = call.messages.find((m: { role: string }) => m.role === 'user');
+    expect(userMsg.content).not.toContain('Phone: 555-9999');
+    expect(userMsg.content).toContain('Hours: Mon, Wed · 8:30 AM–4:00 PM');
+  });
+
+  it('tells the summarizer when additional stored eligibility rules are omitted', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: 'A summary.' } }],
+    });
+
+    await summarizeWithLLM([makeService({
+      eligibility: Array.from({ length: 5 }, (_, index) => ({
+        id: `elig-${index}`,
+        serviceId: 'svc-1',
+        description: `Stored rule ${index + 1}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+    })], makeIntent());
+
+    const call = mockCreate.mock.calls[0][0];
+    const userMsg = call.messages.find((m: { role: string }) => m.role === 'user');
+    expect(userMsg.content).toContain('Stored rule 1; Stored rule 2; Stored rule 3; Stored rule 4');
+    expect(userMsg.content).toContain('+1 more stored criteria not shown');
+    expect(userMsg.content).not.toContain('Stored rule 5');
+  });
+
   it('throws when the LLM returns an empty response', async () => {
     mockCreate.mockResolvedValueOnce({
       choices: [{ message: { content: '' } }],

@@ -87,7 +87,7 @@ describe('search engine hybrid coverage', () => {
 
   it('reranks SQL results with vector similarity and strips helper fields before returning', async () => {
     // Route by SQL shape: search() also issues card-tier hydration queries
-    // (phones/schedules/taxonomy) between the page query and the vector query,
+    // (phones/schedules/taxonomy/eligibility) between the page query and the vector query,
     // so an order-based Once queue would misalign.
     const executeQuery = vi.fn().mockImplementation(async (sql: string) => {
       if (sql.includes('FROM vectors')) {
@@ -100,6 +100,7 @@ describe('search engine hybrid coverage', () => {
         sql.includes('FROM phones')
         || sql.includes('FROM schedules')
         || sql.includes('FROM service_taxonomy')
+        || sql.includes('FROM eligibility')
       ) {
         return [];
       }
@@ -139,4 +140,3 @@ describe('search engine hybrid coverage', () => {
     expect((response.results[0] as unknown as Record<string, unknown>).confidenceScore).toBeUndefined();
   });
 });
-

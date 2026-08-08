@@ -3,13 +3,14 @@
  *
  * The paged search path attaches exactly one callable phone (service →
  * location → organization fallback), a complete hours set (service →
- * location), and a capped set of taxonomy labels. These tests pin the fallback chain — the
+ * location), a capped set of taxonomy labels, and complete stored eligibility
+ * rules. These tests pin the fallback chain — the
  * demo/live data attaches phones at the location/org level, which the old
  * service-scoped lookup silently missed ("No stored phone number" while a
  * phone existed one level up).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CARD_PHONES_SQL, CARD_SCHEDULES_SQL, hydrateCardTier } from '../hydrateRelations';
 import type { EnrichedService } from '@/domain/types';
 
@@ -64,6 +65,7 @@ function makeService(overrides: {
     phones: [],
     schedules: [],
     taxonomyTerms: [],
+    eligibility: [],
     confidenceScore: null,
   } as unknown as EnrichedService;
 }
@@ -105,9 +107,29 @@ function scheduleRow(overrides: Record<string, unknown>) {
   };
 }
 
+function eligibilityRow(overrides: Record<string, unknown>) {
+  return {
+    id: 'e-x',
+    service_id: 'svc-1',
+    description: 'Stored eligibility requirement',
+    minimum_age: null,
+    maximum_age: null,
+    eligible_values: null,
+    household_size_min: null,
+    household_size_max: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-02T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   executeQuery.mockResolvedValue([]);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('hydrateCardTier', () => {
@@ -267,6 +289,54 @@ describe('hydrateCardTier', () => {
     expect(taxonomyCall?.[0]).toContain('ORDER BY st.service_id, tt.term, tt.id');
   });
 
+  it('attaches every stored eligibility rule without inventing a match decision', async () => {
+    executeQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM eligibility')) {
+        return [
+          eligibilityRow({
+            id: 'e-age',
+            description: 'County residents',
+            minimum_age: 18,
+          }),
+          eligibilityRow({
+            id: 'e-household',
+            eligible_values: ['Families with children'],
+            household_size_min: 2,
+          }),
+        ];
+      }
+      return [];
+    });
+
+    const [result, sibling] = await hydrateCardTier(
+      { executeQuery },
+      [makeService({ id: 'svc-1' }), makeService({ id: 'svc-2' })],
+    );
+
+    expect(result.eligibility).toHaveLength(2);
+    const criteria = result.eligibility ?? [];
+    expect(criteria[0]).toMatchObject({
+      id: 'e-age',
+      description: 'County residents',
+      minimumAge: 18,
+    });
+    expect(criteria[1]).toMatchObject({
+      id: 'e-household',
+      description: 'Stored eligibility requirement',
+      eligibleValues: ['Families with children'],
+      householdSizeMin: 2,
+    });
+    expect(sibling.eligibility).toEqual([]);
+    expect(result.cardDataStatus).toBe('loaded');
+    expect(criteria[0]?.updatedAt.toISOString()).toBe('2026-01-02T00:00:00.000Z');
+
+    const eligibilityCall = executeQuery.mock.calls.find(([sql]) => (
+      typeof sql === 'string' && sql.includes('FROM eligibility')
+    ));
+    expect(eligibilityCall?.[1]).toEqual([['svc-1', 'svc-2']]);
+    expect(eligibilityCall?.[0]).toContain('ORDER BY service_id, created_at, id');
+  });
+
   it('leaves collections empty when nothing matches (no fabricated data)', async () => {
     const [result] = await hydrateCardTier(
       { executeQuery },
@@ -275,11 +345,11 @@ describe('hydrateCardTier', () => {
     expect(result.phones).toEqual([]);
     expect(result.schedules).toEqual([]);
     expect(result.taxonomyTerms).toEqual([]);
+    expect(result.eligibility).toEqual([]);
+    expect(result.cardDataStatus).toBe('loaded');
   });
 
-  it('indexes a multi-parent phone row under every scope it carries', async () => {
-    // One HRSA-style row scoped to BOTH a service and its organization: the
-    // sibling service with no phone of its own must still find the org number.
+  it('never reuses a service-scoped multi-parent phone for a sibling service', async () => {
     executeQuery.mockImplementation(async (sql: string) => {
       if (sql.includes('FROM phones')) {
         return [
@@ -298,7 +368,35 @@ describe('hydrateCardTier', () => {
     );
 
     expect(withOwn.phones[0]?.number).toBe('555-0100');
-    expect(sibling.phones[0]?.number).toBe('555-0100');
+    expect(sibling.phones).toEqual([]);
+    expect(CARD_PHONES_SQL).toContain('service_id IS NULL AND location_id = ANY($2::uuid[])');
+    expect(CARD_PHONES_SQL).toContain('service_id IS NULL AND location_id IS NULL AND organization_id = ANY($3::uuid[])');
+  });
+
+  it('never reuses a service-scoped schedule through its location id', async () => {
+    executeQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM schedules')) {
+        return [scheduleRow({
+          id: 's-private-to-service',
+          service_id: 'svc-1',
+          location_id: 'loc-1',
+          description: 'Service-specific intake hours',
+        })];
+      }
+      return [];
+    });
+
+    const [withOwn, sibling] = await hydrateCardTier(
+      { executeQuery },
+      [
+        makeService({ id: 'svc-1', locationId: 'loc-1' }),
+        makeService({ id: 'svc-2', locationId: 'loc-1' }),
+      ],
+    );
+
+    expect(withOwn.schedules[0]?.description).toBe('Service-specific intake hours');
+    expect(sibling.schedules).toEqual([]);
+    expect(CARD_SCHEDULES_SQL).toContain('service_id IS NULL AND location_id = ANY($2::uuid[])');
   });
 
   it('selects only voice, hotline, or untyped rows for the Call action', () => {
@@ -359,5 +457,17 @@ describe('hydrateCardTier', () => {
       [],
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     ]);
+  });
+
+  it('uses the regional calendar date at the UTC/Pacific boundary', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-09T00:30:00.000Z'));
+
+    await hydrateCardTier({ executeQuery }, [makeService({ id: 'svc-1' })]);
+
+    const scheduleCall = executeQuery.mock.calls.find(([sql]) => (
+      typeof sql === 'string' && sql.includes('FROM schedules')
+    ));
+    expect(scheduleCall?.[1]?.[2]).toBe('2026-08-08');
   });
 });

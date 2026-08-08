@@ -927,6 +927,8 @@ export interface EnrichedService {
   phones: Phone[];
   schedules: Schedule[];
   taxonomyTerms: TaxonomyTerm[];
+  /** Whether the bounded public-card relations loaded successfully. */
+  cardDataStatus?: 'loaded' | 'unavailable';
   confidenceScore?: ConfidenceScore | null;
   distanceMeters?: number | null;
   eligibility?: Eligibility[] | null;

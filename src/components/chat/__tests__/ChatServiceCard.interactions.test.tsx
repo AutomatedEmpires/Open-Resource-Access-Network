@@ -149,7 +149,7 @@ describe('ChatServiceCard interactions', () => {
       screen.getByText('This record does not list what the service helps with. Confirm the service scope with the provider.'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('This record does not list who may qualify. Confirm current requirements with the provider.'),
+      screen.getByText('Eligibility details are not available here. Open ORAN details or confirm current requirements with the provider.'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/You qualify/i)).not.toBeInTheDocument();
   });

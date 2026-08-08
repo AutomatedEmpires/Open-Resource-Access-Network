@@ -5,7 +5,13 @@
  * All tests are self-contained — no DB connection required.
  */
 
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+
+const captureExceptionMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@/services/telemetry/sentry', () => ({
+  captureException: captureExceptionMock,
+}));
 import {
   buildRadiusWhereClause,
   buildBboxWhereClause,
@@ -16,6 +22,11 @@ import {
   ServiceSearchEngine,
 } from '../engine';
 import type { SearchQuery } from '../types';
+
+beforeEach(() => {
+  captureExceptionMock.mockReset();
+  captureExceptionMock.mockResolvedValue(undefined);
+});
 
 // ============================================================
 // buildRadiusWhereClause
@@ -438,5 +449,57 @@ describe('ServiceSearchEngine', () => {
 
     expect(result.page).toBe(2);
     expect(result.limit).toBe(10);
+  });
+
+  it('returns lean search results and reports safe telemetry when card hydration fails', async () => {
+    const executeQuery = vi.fn()
+      .mockResolvedValueOnce([{
+        id: '11111111-1111-4111-8111-111111111111',
+        organization_id: '22222222-2222-4222-8222-222222222222',
+        program_id: null,
+        name: 'Community Food Support',
+        description: null,
+        url: null,
+        email: null,
+        status: 'active',
+        interpretation_services: null,
+        application_process: null,
+        wait_time: null,
+        fees: null,
+        accreditations: null,
+        licenses: null,
+        created_at: new Date('2026-01-01T00:00:00.000Z'),
+        updated_at: new Date('2026-01-02T00:00:00.000Z'),
+        organization_name: 'Community Organization',
+        organization_description: null,
+        organization_status: 'active',
+        organization_verified_at: null,
+        organization_created_at: new Date('2026-01-01T00:00:00.000Z'),
+        organization_updated_at: new Date('2026-01-02T00:00:00.000Z'),
+        location_id: null,
+        confidence_score: null,
+      }])
+      .mockRejectedValue(new Error('card relation query unavailable'));
+    const engine = new ServiceSearchEngine({
+      executeQuery,
+      executeCount: async () => 1,
+    });
+
+    const result = await engine.search({
+      filters: { status: 'active' },
+      pagination: { page: 1, limit: 20 },
+    });
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]?.service.service.name).toBe('Community Food Support');
+    expect(result.results[0]?.service.phones).toEqual([]);
+    expect(result.results[0]?.service.schedules).toEqual([]);
+    expect(result.results[0]?.service.taxonomyTerms).toEqual([]);
+    expect(result.results[0]?.service.eligibility).toBeUndefined();
+    expect(result.results[0]?.service.cardDataStatus).toBe('unavailable');
+    expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(Error), {
+      feature: 'search_card_tier_hydration',
+      extra: { resultCount: 1 },
+    });
   });
 });

@@ -9,6 +9,11 @@ import { DISCOVERY_NEED_IDS, type DiscoveryNeedId } from '@/domain/discoveryNeed
 import type { ResourceVerificationStatus } from '@/domain/resourceNavigator';
 import { selectServiceLinks, type ServiceLink } from '@/services/chat/links';
 import { formatDiscoveryAttributeLabel } from '@/services/search/discoveryPresentation';
+import {
+  formatScheduleSummaries,
+  formatStoredEligibilityCriterion,
+  selectCallablePhone,
+} from '@/services/search/cardPresentation';
 import type { SearchFilters } from '@/services/search/types';
 import { SearchFiltersSchema } from '@/services/search/types';
 import { GuidedIntakeRequestSchema } from '@/services/chat/guidedIntakeContract';
@@ -416,12 +421,12 @@ export function deriveChatMatchReasons(
 
   if (
     options?.intent?.actionQualifier === 'contact'
-    && (Boolean(enriched.phones[0]?.number) || options.links?.some((link) => link.kind === 'contact'))
+    && (Boolean(selectCallablePhone(enriched.phones)?.number) || options.links?.some((link) => link.kind === 'contact'))
   ) {
     addReason(reasons, seen, 'Includes direct contact details');
   }
 
-  if (options?.intent?.actionQualifier === 'hours' && Boolean(enriched.schedules[0]?.description)) {
+  if (options?.intent?.actionQualifier === 'hours' && Boolean(formatScheduleSummaries(enriched.schedules))) {
     addReason(reasons, seen, 'Includes hours information');
   }
 
@@ -440,8 +445,8 @@ export function enrichedServiceToCard(
         .join(', ')
     : undefined;
 
-  const phone = phones[0]?.number;
-  const schedule = schedules[0]?.description;
+  const phone = selectCallablePhone(phones)?.number;
+  const schedule = formatScheduleSummaries(schedules);
 
   const links = selectServiceLinks(enriched, {
     intentCategory: options?.intent?.category ?? 'general',
@@ -460,12 +465,23 @@ export function enrichedServiceToCard(
     links,
   });
   const eligibilityDescriptions = (enriched.eligibility ?? [])
-    .map((rule) => rule.description?.trim())
-    .filter((description): description is string => Boolean(description))
-    .slice(0, 2);
+    .map(formatStoredEligibilityCriterion)
+    .filter((description): description is string => Boolean(description));
+  const cardDataUnavailable = enriched.cardDataStatus === 'unavailable';
+  const eligibilityUnavailable = cardDataUnavailable || enriched.eligibility == null;
   const eligibilityHint = eligibilityDescriptions.length > 0
-    ? `You may qualify if these stored criteria fit: ${eligibilityDescriptions.join(' · ')} Confirm current eligibility with the provider.`
-    : 'You may qualify, but eligibility details are not available in this result. Confirm requirements with the provider.';
+    ? `Stored eligibility criteria: ${eligibilityDescriptions.slice(0, 2).join(' · ')}${eligibilityDescriptions.length > 2 ? ` +${eligibilityDescriptions.length - 2} more listed requirements.` : ''} Confirm current eligibility with the provider.`
+    : eligibilityUnavailable
+      ? 'Eligibility details could not be loaded. Open the listing or confirm current requirements with the provider.'
+      : 'No eligibility requirements are stored for this listing. Confirm current requirements with the provider.';
+  const helpCategories = enriched.taxonomyTerms
+    .map((term) => term.term?.trim())
+    .filter((term): term is string => Boolean(term));
+  const helpDescription = service.description?.trim()
+    || (helpCategories.length > 0 ? `Categories: ${helpCategories.slice(0, 4).join(', ')}` : undefined)
+    || (cardDataUnavailable
+      ? 'Service categories could not be loaded. Open the listing or confirm the service scope with the provider.'
+      : undefined);
   const serviceAreaSummary = (enriched.serviceAreas ?? [])
     .map((area) => area.name?.trim() || area.description?.trim() || area.extentType)
     .filter((area): area is string => Boolean(area))
@@ -488,7 +504,7 @@ export function enrichedServiceToCard(
     serviceId: service.id,
     serviceName: service.name,
     organizationName: organization.name,
-    description: service.description ?? undefined,
+    description: helpDescription,
     address: addressStr,
     phone,
     scheduleDescription: schedule ?? undefined,

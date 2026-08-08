@@ -13,13 +13,13 @@ describe('GuidedIntake', () => {
     const onSubmit = vi.fn();
     render(<GuidedIntake onSubmit={onSubmit} />);
 
-    expect(screen.getByText('Add details only if they matter')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Find my next step' })).toBeDisabled();
+    expect(screen.getByText('Add timing or access needs')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Find help' })).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText('What do you need help with right now?'), {
+    fireEvent.change(screen.getByLabelText('What do you need help with?'), {
       target: { value: 'I need help with a utility bill' },
     });
-    fireEvent.change(screen.getByLabelText('City, 2-letter state, or ZIP'), {
+    fireEvent.change(screen.getByLabelText(/City or ZIP/), {
       target: { value: '48201' },
     });
     fireEvent.change(screen.getByLabelText('How soon?'), {
@@ -28,7 +28,7 @@ describe('GuidedIntake', () => {
     fireEvent.change(screen.getByLabelText('How can you reach help?'), {
       target: { value: 'phone' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Find my next step' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Find help' }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({
@@ -45,31 +45,45 @@ describe('GuidedIntake', () => {
   it('includes a minimum-necessary privacy reminder', () => {
     render(<GuidedIntake onSubmit={vi.fn()} />);
 
-    expect(screen.getByText(/Do not include a Social Security number/i)).toBeInTheDocument();
+    expect(screen.getByText(/Do not include Social Security numbers/i)).toBeInTheDocument();
+  });
+
+  it('keeps the first action compact while preserving optional location details', () => {
+    render(<GuidedIntake compact onSubmit={vi.fn()} />);
+
+    const needInput = screen.getByLabelText('What do you need help with?');
+    const locationInput = screen.getByLabelText(/City or ZIP/);
+    const submitButton = screen.getByRole('button', { name: 'Find help' });
+
+    expect(needInput).toHaveAttribute('rows', '2');
+    expect(needInput).toHaveClass('min-h-24');
+    expect(locationInput.closest('details')).toBeInTheDocument();
+    expect(screen.getByText('Filters: location, timing, access')).toBeInTheDocument();
+    expect(submitButton).toHaveClass('disabled:opacity-100');
   });
 
   it('keeps the required need field controlled when a seeker clears and rewrites it', () => {
     render(<GuidedIntake initialNeed="food help" onSubmit={vi.fn()} />);
-    const needInput = screen.getByLabelText('What do you need help with right now?');
+    const needInput = screen.getByLabelText('What do you need help with?');
 
     fireEvent.change(needInput, { target: { value: '' } });
     expect(needInput).toHaveValue('');
-    expect(screen.getByRole('button', { name: 'Find my next step' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Find help' })).toBeDisabled();
 
     fireEvent.change(needInput, { target: { value: 'housing help' } });
     expect(needInput).toHaveValue('housing help');
-    expect(screen.getByRole('button', { name: 'Find my next step' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Find help' })).toBeEnabled();
   });
 
   it('does not submit punctuation-only need text', () => {
     const onSubmit = vi.fn();
     render(<GuidedIntake onSubmit={onSubmit} />);
 
-    fireEvent.change(screen.getByLabelText('What do you need help with right now?'), {
+    fireEvent.change(screen.getByLabelText('What do you need help with?'), {
       target: { value: '!!!' },
     });
 
-    expect(screen.getByRole('button', { name: 'Find my next step' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Find help' })).toBeDisabled();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -77,32 +91,32 @@ describe('GuidedIntake', () => {
     const onSubmit = vi.fn();
     render(<GuidedIntake onSubmit={onSubmit} />);
 
-    fireEvent.change(screen.getByLabelText('What do you need help with right now?'), {
+    fireEvent.change(screen.getByLabelText('What do you need help with?'), {
       target: { value: 'food help' },
     });
-    fireEvent.change(screen.getByLabelText('City, 2-letter state, or ZIP'), {
+    fireEvent.change(screen.getByLabelText(/City or ZIP/), {
       target: { value: 'Detroit, Michigan' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Find my next step' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Find help' }));
 
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Use a city, City, ST, or 5-digit ZIP code.',
     );
-    expect(screen.getByLabelText('City, 2-letter state, or ZIP')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText(/City or ZIP/)).toHaveAttribute('aria-invalid', 'true');
   });
 
   it('does not let invalid optional location data suppress a crisis turn', async () => {
     const onSubmit = vi.fn();
     render(<GuidedIntake onSubmit={onSubmit} />);
 
-    fireEvent.change(screen.getByLabelText('What do you need help with right now?'), {
+    fireEvent.change(screen.getByLabelText('What do you need help with?'), {
       target: { value: 'I want to kill myself' },
     });
-    fireEvent.change(screen.getByLabelText('City, 2-letter state, or ZIP'), {
+    fireEvent.change(screen.getByLabelText(/City or ZIP/), {
       target: { value: 'Main Street, WA' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Find my next step' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Find help' }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({
@@ -120,13 +134,13 @@ describe('GuidedIntake', () => {
     const onSubmit = vi.fn();
     render(<GuidedIntake onSubmit={onSubmit} />);
 
-    fireEvent.change(screen.getByLabelText('What do you need help with right now?'), {
+    fireEvent.change(screen.getByLabelText('What do you need help with?'), {
       target: { value: 'I do not see a way out' },
     });
-    fireEvent.change(screen.getByLabelText('City, 2-letter state, or ZIP'), {
+    fireEvent.change(screen.getByLabelText(/City or ZIP/), {
       target: { value: 'Main Street, WA' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Find my next step' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Find help' }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith({
@@ -144,16 +158,16 @@ describe('GuidedIntake', () => {
     const onSubmit = vi.fn();
     render(<GuidedIntake onSubmit={onSubmit} />);
 
-    fireEvent.change(screen.getByLabelText('What do you need help with right now?'), {
+    fireEvent.change(screen.getByLabelText('What do you need help with?'), {
       target: { value: 'They want to die' },
     });
-    fireEvent.change(screen.getByLabelText('City, 2-letter state, or ZIP'), {
+    fireEvent.change(screen.getByLabelText(/City or ZIP/), {
       target: { value: 'Main Street, WA' },
     });
     fireEvent.change(screen.getByLabelText('Who is this for?'), {
       target: { value: 'someone_else' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Find my next step' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Find help' }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({

@@ -26,6 +26,11 @@ import type { EnrichedService } from '@/domain/types';
 import { computeMatchScore } from '@/domain/match';
 import { buildDiscoveryHref, parseDiscoveryUrlState, resolveDiscoverySearchText } from '@/services/search/discovery';
 import { buildServiceFallbackDiscoveryState } from '@/services/search/discoveryFromService';
+import {
+  formatScheduleSummaries,
+  formatStoredEligibilityCriterion,
+  isCallablePhone,
+} from '@/services/search/cardPresentation';
 import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
 import {
   addServerSaved,
@@ -216,6 +221,27 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
         : 'Limited record confidence';
   const matchScore = computeMatchScore(service?.confidenceScore);
   const formattedAddress = service ? formatAddress(service) : null;
+  const scheduleSummary = service ? formatScheduleSummaries(service.schedules) : null;
+  const eligibilityCriteria = (service?.eligibility ?? [])
+    .map(formatStoredEligibilityCriterion)
+    .filter((criterion): criterion is string => Boolean(criterion));
+  const contactPhones = (service?.phones ?? []).slice(0, 3).map((phone) => ({
+    ...phone,
+    actionLabel: phone.type === 'sms'
+      ? 'Text'
+      : phone.type === 'tty'
+        ? 'TTY'
+        : phone.type === 'fax'
+          ? 'Fax'
+          : phone.type === 'hotline'
+            ? 'Hotline'
+            : 'Call',
+    href: phone.type === 'sms'
+      ? `sms:${phone.number}`
+      : isCallablePhone(phone)
+        ? `tel:${phone.number}`
+        : null,
+  }));
 
   return (
     <main className="min-h-screen bg-white">
@@ -377,21 +403,19 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                     <FileText className="h-4 w-4" aria-hidden="true" />
                     Eligibility and documents
                   </p>
-                  {service.eligibility && service.eligibility.length > 0 ? (
+                  {eligibilityCriteria.length > 0 ? (
                     <ul className="mt-3 space-y-2 text-sm text-slate-800">
-                      {service.eligibility.slice(0, 3).map((rule, index) => (
-                        <li key={`${rule.description}-${index}`} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                          <p>{rule.description}</p>
-                          {(rule.minimumAge != null || rule.maximumAge != null) ? (
-                            <p className="mt-1 text-xs text-slate-600">
-                              Age range: {rule.minimumAge ?? '?'} to {rule.maximumAge ?? '?'}
-                            </p>
-                          ) : null}
+                      {eligibilityCriteria.slice(0, 3).map((criterion, index) => (
+                        <li key={`${criterion}-${index}`} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                          <p>{criterion}</p>
                         </li>
                       ))}
+                      {eligibilityCriteria.length > 3 ? (
+                        <li className="text-xs text-slate-600">+{eligibilityCriteria.length - 3} more stored requirements</li>
+                      ) : null}
                     </ul>
                   ) : (
-                    <p className="mt-3 text-sm text-slate-800">No stored eligibility criteria are listed for this record.</p>
+                    <p className="mt-3 text-sm text-slate-800">No eligibility requirements are stored for this listing.</p>
                   )}
                   {service.requiredDocuments && service.requiredDocuments.length > 0 ? (
                     <div className="mt-3 text-sm text-slate-800">
@@ -422,9 +446,7 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                   <p className="flex items-start gap-2">
                     <Clock className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-500" aria-hidden="true" />
                     <span>
-                      {service.schedules && service.schedules.length > 0
-                        ? service.schedules.slice(0, 2).map((schedule) => schedule.description).filter(Boolean).join(' · ')
-                        : 'No stored schedule details are listed.'}
+                      {scheduleSummary ?? 'No current stored schedule details are listed.'}
                     </span>
                   </p>
                   {service.serviceAreas && service.serviceAreas.length > 0 ? (
@@ -480,17 +502,27 @@ export default function ServiceDetailPage({ serviceId }: { serviceId: string }) 
                     <Phone className="h-4 w-4" aria-hidden="true" />
                     Contact the provider
                   </p>
-                  {service.phones.length > 0 ? (
+                  {contactPhones.length > 0 ? (
                     <div className="space-y-2">
-                      {service.phones.slice(0, 2).map((phone) => (
-                        <a
-                          key={phone.id}
-                          href={`tel:${phone.number}`}
-                          className="block text-slate-900 hover:underline"
-                        >
-                          {phone.number}
-                          {phone.extension ? ` ext. ${phone.extension}` : ''}
-                        </a>
+                      {contactPhones.map((phone) => (
+                        phone.href ? (
+                          <a
+                            key={phone.id}
+                            href={phone.href}
+                            className="block text-slate-900 hover:underline"
+                            aria-label={`${phone.actionLabel} ${service.service.name}: ${phone.number}`}
+                          >
+                            {phone.number}
+                            {phone.extension ? ` ext. ${phone.extension}` : ''}
+                            <span className="ml-2 text-xs text-slate-500">{phone.actionLabel}</span>
+                          </a>
+                        ) : (
+                          <p key={phone.id} className="text-slate-900">
+                            {phone.number}
+                            {phone.extension ? ` ext. ${phone.extension}` : ''}
+                            <span className="ml-2 text-xs text-slate-500">{phone.actionLabel}</span>
+                          </p>
+                        )
                       ))}
                     </div>
                   ) : (

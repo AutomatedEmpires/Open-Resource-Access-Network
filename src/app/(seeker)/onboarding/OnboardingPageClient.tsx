@@ -314,10 +314,10 @@ export default function OnboardingPageClient() {
     <main className="bg-gradient-surface min-h-screen px-4 py-6 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-3xl">
         <header className="bg-gradient-brand-deep mb-5 overflow-hidden rounded-[28px] border border-white/70 p-5 text-white shadow-xl sm:p-7">
-          <p className="text-xs font-semibold uppercase tracking-widest text-blue-100">Private, progressive onboarding</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Find help that fits today.</h1>
+          <p className="text-xs font-semibold uppercase tracking-widest text-blue-100">Optional search setup</p>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Help ORAN narrow your search.</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-blue-50 sm:text-base">
-            Start with what you need. Every personal detail is optional, and you decide whether ORAN uses it once or saves it to your profile.
+            Start with what you need. Location, timing, household, and access details are optional. Choose one-time use or save them to your profile.
           </p>
         </header>
 
@@ -347,7 +347,7 @@ export default function OnboardingPageClient() {
           {step === 0 ? (
             <div>
               <h2 ref={headingRef} tabIndex={-1} className="text-2xl font-bold tracking-tight text-[var(--brand-navy)] focus:outline-none">
-                What do you need help with right now?
+                What do you need help with?
               </h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">Choose a starting point. You can explain more in chat.</p>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -355,7 +355,7 @@ export default function OnboardingPageClient() {
                   <ChoiceButton
                     key={need.id}
                     selected={draft.needId === need.id && !customNeedMode}
-                    label={`${need.icon} ${need.label}`}
+                    label={need.label}
                     onClick={() => selectNeed(need.id)}
                   />
                 ))}

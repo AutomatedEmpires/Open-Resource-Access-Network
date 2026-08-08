@@ -1,5 +1,5 @@
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const useStateMock = vi.hoisted(() => vi.fn());
 
@@ -44,8 +44,10 @@ vi.mock('lucide-react', async (importOriginal) => {
   };
 });
 
+let serviceCardModule: typeof import('../ServiceCard');
+
 async function loadServiceCard() {
-  return import('../ServiceCard');
+  return serviceCardModule;
 }
 
 function collectElements(
@@ -72,6 +74,19 @@ function collectElements(
 
   visit(node);
   return elements;
+}
+
+function collectText(node: React.ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return String(node);
+  }
+  if (Array.isArray(node)) {
+    return node.map(collectText).join(' ');
+  }
+  if (!React.isValidElement(node)) {
+    return '';
+  }
+  return collectText((node as React.ReactElement<any, any>).props.children);
 }
 
 const enrichedFixture = {
@@ -132,8 +147,11 @@ const enrichedFixture = {
   },
 } as const;
 
+beforeAll(async () => {
+  serviceCardModule = await import('../ServiceCard');
+}, 30_000);
+
 beforeEach(() => {
-  vi.resetModules();
   vi.clearAllMocks();
 
   useStateMock.mockImplementation((initial: unknown) => [initial, vi.fn()]);
@@ -177,5 +195,136 @@ describe('ServiceCard', () => {
     expect(anchors.some((child) => child.props.href === 'https://example.org/services/food-pantry')).toBe(true);
     expect(feedbackForm.props.serviceId).toBe('svc-1');
     expect(typeof feedbackForm.props.sessionId).toBe('string');
+  });
+
+  it('renders stored structured schedule days and times without an availability claim', async () => {
+    const { ServiceCard } = await loadServiceCard();
+    const element = ServiceCard({
+      enriched: {
+        ...enrichedFixture,
+        schedules: [{
+          description: null,
+          days: ['MO', 'Tuesday'],
+          opensAt: '09:00:00',
+          closesAt: '17:00:00',
+        }],
+      } as never,
+    }) as React.ReactElement<any, any>;
+
+    const text = collectText(element);
+    expect(text).toContain('Mon, Tue · 9:00 AM–5:00 PM');
+    expect(text).not.toContain('Open now');
+  });
+
+  it('renders every stored weekday in order and keeps distinct hour groups', async () => {
+    const { ServiceCard } = await loadServiceCard();
+    const element = ServiceCard({
+      enriched: {
+        ...enrichedFixture,
+        schedules: [
+          { description: null, days: ['FR'], opensAt: '09:00', closesAt: '17:00' },
+          { description: null, days: ['MO'], opensAt: '09:00:00', closesAt: '17:00:00' },
+          { description: null, days: ['WE'], opensAt: '09:00', closesAt: '17:00' },
+          { description: null, days: ['TU'], opensAt: '09:00', closesAt: '17:00' },
+          { description: null, days: ['TH'], opensAt: '09:00', closesAt: '17:00' },
+          { description: null, days: ['SU'], opensAt: '10:00', closesAt: '14:00' },
+          { description: null, days: ['SA'], opensAt: '10:00', closesAt: '14:00' },
+        ],
+      } as never,
+    }) as React.ReactElement<any, any>;
+
+    const text = collectText(element);
+    expect(text).toContain(
+      'Mon, Tue, Wed, Thu, Fri · 9:00 AM–5:00 PM; Sat, Sun · 10:00 AM–2:00 PM',
+    );
+    expect(text).not.toContain('Open now');
+  });
+
+  it('deduplicates equivalent stored schedule descriptions', async () => {
+    const { formatScheduleSummaries } = await loadServiceCard();
+
+    expect(formatScheduleSummaries([
+      { description: 'Call for seasonal hours' },
+      { description: '  call   for seasonal hours  ' },
+    ] as never)).toBe('Call for seasonal hours');
+  });
+
+  it('shows only schedules valid on the requested date', async () => {
+    const { formatScheduleSummaries } = await loadServiceCard();
+
+    expect(formatScheduleSummaries([
+      { description: 'Expired hours', validTo: new Date('2026-05-31T00:00:00.000Z') },
+      {
+        description: 'Current hours',
+        validFrom: new Date('2026-06-01T00:00:00.000Z'),
+        validTo: new Date('2026-06-30T00:00:00.000Z'),
+      },
+      { description: 'Future hours', validFrom: new Date('2026-07-01T00:00:00.000Z') },
+    ] as never, new Date('2026-06-15T12:00:00.000Z'))).toBe('Current hours');
+  });
+
+  it('uses the regional day when UTC has already crossed into tomorrow', async () => {
+    const { formatScheduleSummaries } = await loadServiceCard();
+
+    expect(formatScheduleSummaries([
+      { description: 'Ends tonight', validTo: new Date('2026-08-08T00:00:00.000Z') },
+      { description: 'Starts tomorrow', validFrom: new Date('2026-08-09T00:00:00.000Z') },
+    ] as never, new Date('2026-08-09T00:30:00.000Z'))).toBe('Ends tonight');
+  });
+
+  it('keeps dayless hours separate from a narrower day-scoped row', async () => {
+    const { formatScheduleSummaries } = await loadServiceCard();
+
+    expect(formatScheduleSummaries([
+      { description: null, days: null, opensAt: '09:00', closesAt: '17:00' },
+      { description: null, days: ['MO'], opensAt: '09:00', closesAt: '17:00' },
+    ] as never)).toBe('9:00 AM–5:00 PM; Mon · 9:00 AM–5:00 PM');
+  });
+
+  it('uses only a callable phone for the tel action', async () => {
+    const { ServiceCard } = await loadServiceCard();
+    const element = ServiceCard({
+      enriched: {
+        ...enrichedFixture,
+        phones: [
+          { number: '555-0199', extension: null, type: 'sms' },
+          { number: '555-0100', extension: null, type: 'voice' },
+        ],
+      } as never,
+    }) as React.ReactElement<any, any>;
+    const anchors = collectElements(element, (child) => child.type === 'a');
+
+    expect(anchors.some((anchor) => anchor.props.href === 'tel:555-0100')).toBe(true);
+    expect(anchors.some((anchor) => anchor.props.href === 'tel:555-0199')).toBe(false);
+  });
+
+  it('does not render a tel action when the record has only an SMS number', async () => {
+    const { ServiceCard } = await loadServiceCard();
+    const element = ServiceCard({
+      enriched: {
+        ...enrichedFixture,
+        phones: [{ number: '555-0199', extension: null, type: 'sms' }],
+      } as never,
+    }) as React.ReactElement<any, any>;
+    const anchors = collectElements(element, (child) => child.type === 'a');
+
+    expect(anchors.some((anchor) => String(anchor.props.href).startsWith('tel:'))).toBe(false);
+  });
+
+  it('uses a hotline for the tel action instead of an earlier SMS number', async () => {
+    const { ServiceCard } = await loadServiceCard();
+    const element = ServiceCard({
+      enriched: {
+        ...enrichedFixture,
+        phones: [
+          { number: '555-0199', extension: null, type: 'sms' },
+          { number: '555-0111', extension: null, type: 'hotline' },
+        ],
+      } as never,
+    }) as React.ReactElement<any, any>;
+    const anchors = collectElements(element, (child) => child.type === 'a');
+
+    expect(anchors.some((anchor) => anchor.props.href === 'tel:555-0111')).toBe(true);
+    expect(anchors.some((anchor) => anchor.props.href === 'tel:555-0199')).toBe(false);
   });
 });

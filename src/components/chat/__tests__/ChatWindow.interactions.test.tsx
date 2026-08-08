@@ -83,7 +83,7 @@ describe('ChatWindow interactions', () => {
 
     render(<ChatWindow sessionId="scroll-session" />);
 
-    expect(screen.getByText('Tell ORAN what is wrong.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'How can ORAN help?' })).toBeInTheDocument();
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText('Chat message input'), {
@@ -122,7 +122,7 @@ describe('ChatWindow interactions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear conversation' }));
 
     expect(messageLog.scrollTop).toBe(0);
-    expect(screen.getByText('Tell ORAN what is wrong.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'How can ORAN help?' })).toBeInTheDocument();
   });
 
   it('sends chat messages, renders service cards, and toggles save/unsave', async () => {
@@ -352,6 +352,9 @@ describe('ChatWindow interactions', () => {
 
     const input = screen.getByLabelText('Chat message input');
     fireEvent.change(input, { target: { value: 'Need assistance' } });
+
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true, keyCode: 229 });
+    expect(getChatCalls()).toHaveLength(0);
 
     fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
     expect(getChatCalls()).toHaveLength(0);

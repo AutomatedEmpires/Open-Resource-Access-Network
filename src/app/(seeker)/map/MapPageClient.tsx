@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, MapPin, AlertTriangle, X, ChevronDown, SlidersHorizontal, Loader2 } from 'lucide-react';
 
@@ -843,6 +844,7 @@ export default function MapPage() {
   // ── Mobile bottom-sheet state ──────────────────────────────────────────
   const [bottomSheetSnap, setBottomSheetSnap] = useState<'peek' | 'half' | 'full'>('peek');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const mobileFiltersTriggerRef = useRef<HTMLButtonElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffsetY, setDragOffsetY] = useState(0);
   const dragStartY = useRef<number | null>(null);
@@ -887,6 +889,11 @@ export default function MapPage() {
     bottomSheetSnap === 'full' ? '0%' :
     bottomSheetSnap === 'half' ? '52%' :
     'calc(100% - 80px)';
+  const mobileSearchStackHeight = 56 + 48 + (appliedFilterItems.length > 0 ? 40 : 0);
+  const areaSearchLabel = searchMode === 'radius'
+    ? 'Search visible map instead'
+    : data ? 'Update this area' : 'Search this area';
+  const showMobileAreaSearch = hasMapBounds && canSearch && (!data || isAreaDirty);
 
   return (
     <>
@@ -894,13 +901,13 @@ export default function MapPage() {
       {isMobile && (
         <>
           {/*
-           * The seeker layout has a sticky header (h-14) and a fixed bottom nav (h-14).
+           * The seeker layout has a sticky header (h-16) and a fixed bottom nav (h-14).
            * This container fills the exact gap between them.
            */}
-          <div className="fixed top-14 bottom-14 inset-x-0 overflow-hidden bg-white">
+          <div className="fixed inset-x-0 top-16 bottom-14 z-30 isolate overflow-hidden bg-white">
 
             {/* Full-screen map */}
-            <div className="absolute inset-0">
+            <div className="absolute inset-0 z-0">
               <ErrorBoundary>
                 <MapContainer
                   className="w-full h-full"
@@ -915,7 +922,11 @@ export default function MapPage() {
             </div>
 
             {/* Floating search bar */}
-            <div className="absolute top-0 left-0 right-0 px-3 pt-3 z-30 pointer-events-none">
+            <div
+              className="absolute top-0 left-0 right-0 px-3 pt-3 z-30 pointer-events-none"
+              data-testid="mobile-map-search-stack"
+              data-search-stack-height={mobileSearchStackHeight}
+            >
               <form
                 onSubmit={handleSubmit}
                 className="pointer-events-auto flex h-12 items-center gap-1.5 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]/95 pl-3 pr-1 shadow-[0_4px_20px_rgba(15,23,42,0.12)] backdrop-blur-md"
@@ -954,6 +965,7 @@ export default function MapPage() {
                   <Search className="h-4 w-4" aria-hidden="true" />
                 </button>
                 <button
+                  ref={mobileFiltersTriggerRef}
                   type="button"
                   onClick={() => setMobileFiltersOpen(true)}
                   className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-secondary)]"
@@ -967,6 +979,14 @@ export default function MapPage() {
                   )}
                 </button>
               </form>
+              <div className="pointer-events-auto mt-2 flex justify-end">
+                <Link
+                  href={directoryHref}
+                  className="inline-flex min-h-[40px] items-center rounded-xl border border-[var(--border)] bg-white/95 px-3 py-2 text-sm font-semibold text-[var(--text-primary)] shadow-md backdrop-blur-md"
+                >
+                  List view
+                </Link>
+              </div>
 
               {/* Active filter chips — horizontal scroll */}
               {appliedFilterItems.length > 0 && (
@@ -998,10 +1018,11 @@ export default function MapPage() {
             </div>
 
             {/* "Search this area" pill — floats below search bar */}
-            {isAreaDirty && canSearch && (
+            {showMobileAreaSearch && (
               <div
                 className="absolute left-0 right-0 z-30 flex justify-center pointer-events-none"
-                style={{ top: `${56 + (appliedFilterItems.length > 0 ? 40 : 0) + 8}px` }}
+                style={{ top: `${mobileSearchStackHeight + 8}px` }}
+                data-testid="mobile-map-search-area"
               >
                 <button
                   type="button"
@@ -1009,7 +1030,7 @@ export default function MapPage() {
                   className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] shadow-[0_4px_16px_rgba(15,23,42,0.14)]"
                 >
                   <MapPin className="h-3.5 w-3.5 text-[var(--text-primary)]" aria-hidden="true" />
-                  Search this area
+                  {areaSearchLabel}
                 </button>
               </div>
             )}
@@ -1019,7 +1040,7 @@ export default function MapPage() {
               <div
                 role="alert"
                 className="absolute left-3 right-3 z-30 flex items-start gap-2 rounded-2xl border border-error-soft bg-white/95 p-3 shadow-md"
-                style={{ top: `${56 + (appliedFilterItems.length > 0 ? 40 : 0) + (isAreaDirty && canSearch ? 48 : 8)}px` }}
+                style={{ top: `${mobileSearchStackHeight + (showMobileAreaSearch ? 48 : 8)}px` }}
               >
                 <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
                 <div>
@@ -1081,7 +1102,7 @@ export default function MapPage() {
                         className="flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-semibold text-[var(--text-primary)]"
                       >
                         <Search className="h-3 w-3" aria-hidden="true" />
-                        Search area
+                        {areaSearchLabel}
                       </button>
                     )}
                   </div>
@@ -1108,7 +1129,7 @@ export default function MapPage() {
                       <MapPin className="h-10 w-10 text-slate-200 mb-3" aria-hidden="true" />
                       <p className="text-sm font-semibold text-slate-700">Ready to search</p>
                       <p className="mt-1 text-xs text-slate-400 max-w-[220px]">
-                        Type above, use filters, or pan the map to search an area.
+                        Search the visible map area, type a need above, or open Filters.
                       </p>
                     </div>
                   )}
@@ -1192,35 +1213,23 @@ export default function MapPage() {
             </div>
           </div>
 
-          {/* ── Mobile filters overlay (page-level, above header + bottom nav) ── */}
-          {mobileFiltersOpen && (
-            <div
-              className="fixed inset-0 z-[var(--z-modal)] flex flex-col justify-end"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Filters"
+          {/* ── Mobile filters sheet — shared dialog provides focus trap,
+              Escape handling, background inerting, and focus restoration. ── */}
+          <Dialog open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
+            <DialogContent
+              className="bottom-0 left-0 top-auto flex max-h-[88vh] max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-b-none rounded-t-3xl bg-white p-0 shadow-2xl sm:left-1/2 sm:max-w-lg sm:-translate-x-1/2"
+              onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                mobileFiltersTriggerRef.current?.focus();
+              }}
             >
-              <div
-                className="absolute inset-0 bg-black/40"
-                onClick={() => setMobileFiltersOpen(false)}
-                aria-hidden="true"
-              />
-              <div className="relative flex max-h-[88vh] flex-col rounded-t-3xl bg-white shadow-2xl">
-                {/* Handle + header */}
-                <div className="flex-shrink-0 px-5 pt-3 pb-4 border-b border-slate-100">
-                  <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-300" />
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-base font-semibold text-slate-800">Filters</h2>
-                    <button
-                      type="button"
-                      onClick={() => setMobileFiltersOpen(false)}
-                      className="flex items-center justify-center h-8 w-8 rounded-full bg-slate-100 text-slate-500"
-                      aria-label="Close filters"
-                    >
-                      <X className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                  </div>
-                </div>
+              <DialogHeader className="flex-shrink-0 border-b border-slate-100 px-5 pb-4 pt-3 text-left">
+                <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-300" aria-hidden="true" />
+                <DialogTitle className="text-base font-semibold text-slate-800">Filters</DialogTitle>
+                <DialogDescription className="sr-only">
+                  Narrow map results by category, service details, order, or location.
+                </DialogDescription>
+              </DialogHeader>
 
                 {/* Scrollable filter content */}
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
@@ -1241,6 +1250,7 @@ export default function MapPage() {
                       onSelect={handleCategoryClick}
                       ariaLabel="Service category"
                       gridClassName="grid grid-cols-2 gap-2"
+                      includeAll
                     />
                   </div>
 
@@ -1363,9 +1373,8 @@ export default function MapPage() {
                     Search with filters
                   </Button>
                 </div>
-              </div>
-            </div>
-          )}
+            </DialogContent>
+          </Dialog>
         </>
       )}
 
@@ -1378,7 +1387,7 @@ export default function MapPage() {
                 <div className="min-w-0 flex-1">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Resource discovery</span>
-                    <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)]">Publication-gated records</span>
+                    <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)]">Published listings</span>
                     {deviceCenter ? (
                       <span className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)]">Approximate location active</span>
                     ) : null}
@@ -1388,9 +1397,17 @@ export default function MapPage() {
                   </div>
                   <div className="flex flex-col gap-1 md:flex-row md:items-end md:gap-3">
                     <h1 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-5xl">Map</h1>
-                    <p className="pb-1 text-sm text-slate-500">Find source-authorized help nearby with the least amount of effort.</p>
+                    <p className="pb-1 text-sm text-slate-500">See where services are located, then open a listing to review what it helps with and who may qualify.</p>
                   </div>
                 </div>
+                <nav className="inline-flex shrink-0 self-start rounded-xl border border-[var(--border)] bg-[var(--bg-surface-alt)] p-1" aria-label="Result views">
+                  <Link href={directoryHref} className="inline-flex min-h-[40px] items-center rounded-lg px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-white hover:text-[var(--text-primary)]">
+                    List view
+                  </Link>
+                  <span aria-current="page" className="inline-flex min-h-[40px] items-center rounded-lg bg-white px-3 py-2 text-sm font-semibold text-[var(--text-primary)] shadow-sm">
+                    Map view
+                  </span>
+                </nav>
               </div>
 
               <ErrorBoundary>
@@ -1409,33 +1426,8 @@ export default function MapPage() {
                   )}
 
                   <div className="grid gap-4 xl:grid-cols-12 xl:items-stretch">
-                    <div className="order-2 xl:order-1 xl:col-span-7">
+                    <div className="order-2 xl:order-1 xl:col-span-7 xl:row-span-2">
                       <div className="flex h-full flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-lg xl:sticky xl:top-24">
-                        <div className="border-b border-slate-200 px-4 py-4 md:px-5">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-800">Start with a common need</p>
-                              <p className="text-xs text-slate-500">Choose one clear topic to focus the map instantly.</p>
-                            </div>
-                            {deviceCenter ? (
-                              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-600">
-                                Approximate location active
-                              </span>
-                            ) : null}
-                          </div>
-                          <QuickNeedFilterGrid
-                            activeNeedId={activeCategory}
-                            onSelect={handleCategoryClick}
-                            ariaLabel="Common resource terms"
-                            className="mt-4"
-                          />
-                          {deviceCenter ? (
-                            <div className="mt-4 rounded-[18px] border border-slate-200 bg-slate-50 p-3">
-                              <DistanceRadiusControl value={radiusMiles} onChange={handleRadiusChange} />
-                            </div>
-                          ) : null}
-                        </div>
-
                         <div className="flex min-h-0 flex-1 flex-col p-3 md:p-4">
                           <div className="relative min-h-96 flex-1 overflow-hidden rounded-[20px] border border-slate-200 bg-white">
                             <MapContainer
@@ -1457,7 +1449,7 @@ export default function MapPage() {
                                   className="pointer-events-auto gap-1.5 bg-white text-xs shadow-sm"
                                 >
                                   <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                                  Search this area
+                                  {areaSearchLabel}
                                 </Button>
                               </div>
                             )}
@@ -1473,11 +1465,13 @@ export default function MapPage() {
                               className="gap-1.5 bg-white text-xs"
                             >
                               <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                              Search this area
+                              {areaSearchLabel}
                             </Button>
                             {searchMode === 'bbox' && (
                               <span className="text-xs text-[var(--text-muted)]">
-                                {canSearch ? 'Updates as you pan.' : 'Waiting for the map to load.'}
+                                {data
+                                  ? 'Results update as you pan.'
+                                  : canSearch ? 'Search the visible map area.' : 'Waiting for the map to load.'}
                               </span>
                             )}
                             {searchMode === 'radius' && deviceCenter ? (
@@ -1488,9 +1482,9 @@ export default function MapPage() {
                       </div>
                     </div>
 
-                    <div className="order-1 xl:order-2 xl:col-span-5">
-                      <div className="flex h-full flex-col gap-4 xl:sticky xl:top-24">
-                        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-lg">
+                    <div className="contents xl:order-2 xl:col-span-5 xl:block">
+                      <div className="contents xl:sticky xl:top-24 xl:flex xl:h-full xl:flex-col xl:gap-4">
+                        <div className="order-1 rounded-[24px] border border-slate-200 bg-white p-4 shadow-lg xl:order-none">
                           <div className="space-y-4">
                             <div>
                               <p className="text-base font-semibold text-slate-900">Search and refine</p>
@@ -1532,6 +1526,39 @@ export default function MapPage() {
                                 Search map
                               </Button>
                             </form>
+
+                            <div className="border-t border-slate-200 pt-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-800">Common needs</p>
+                                  <p className="mt-0.5 text-xs text-slate-500">Choose one topic to search the map.</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={openFiltersPanel}
+                                  className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                                  aria-haspopup="dialog"
+                                  aria-expanded={desktopFiltersOpen}
+                                  aria-label={hasActiveRefinements ? `Filters (${appliedFilterItems.length || 1} active)` : 'Filters'}
+                                >
+                                  Filters
+                                  {hasActiveRefinements ? (
+                                    <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
+                                      {appliedFilterItems.length || 1}
+                                    </span>
+                                  ) : null}
+                                  <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                                </button>
+                              </div>
+                              <QuickNeedFilterGrid
+                                activeNeedId={activeCategory}
+                                onSelect={handleCategoryClick}
+                                ariaLabel="Common resource terms"
+                                className="mt-3"
+                                gridClassName="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-2"
+                                limit={4}
+                              />
+                            </div>
 
                             <div className="rounded-[18px] border border-slate-200 bg-slate-50 p-3">
                               <div className="flex items-start justify-between gap-3">
@@ -1577,29 +1604,6 @@ export default function MapPage() {
                               ) : null}
                             </div>
 
-                            <div className="rounded-[18px] border border-slate-200 bg-slate-50 p-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-semibold text-slate-800">Refine results</p>
-                                  <p className="mt-1 text-xs leading-relaxed text-slate-500">Open one filter panel to narrow by service details or list order.</p>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={openFiltersPanel}
-                                  className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-                                  aria-haspopup="dialog"
-                                  aria-expanded={desktopFiltersOpen}
-                                >
-                                  Filters
-                                  {hasActiveRefinements ? (
-                                    <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
-                                      {appliedFilterItems.length || 1}
-                                    </span>
-                                  ) : null}
-                                  <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-                                </button>
-                              </div>
-                            </div>
                           </div>
 
                           {appliedFilterItems.length > 0 && (
@@ -1636,7 +1640,7 @@ export default function MapPage() {
                           id="map-results"
                           ref={resultsContainerRef}
                           tabIndex={-1}
-                          className="flex-1 rounded-[24px] border border-slate-200 bg-white p-4 shadow-lg outline-none xl:min-h-0 xl:overflow-y-auto"
+                          className="order-3 flex-1 rounded-[24px] border border-slate-200 bg-white p-4 shadow-lg outline-none xl:order-none xl:min-h-0 xl:overflow-y-auto"
                         >
                           {isLoading && (
                             <div className="space-y-3" role="status" aria-busy="true" aria-label="Loading map results">
@@ -1765,6 +1769,7 @@ export default function MapPage() {
                             onSelect={handleCategoryClick}
                             ariaLabel="Service category"
                             gridClassName="grid grid-cols-2 gap-2 md:grid-cols-4"
+                            includeAll
                           />
                         </div>
 

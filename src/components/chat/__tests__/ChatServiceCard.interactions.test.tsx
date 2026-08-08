@@ -65,7 +65,7 @@ const cardFixture = {
     { url: 'https://example.org/contact', label: 'Contact', kind: 'contact' as const },
     { url: 'https://example.org/more', label: 'More', kind: 'other' as const },
   ],
-  eligibilityHint: 'You may qualify based on your county and household size.',
+  eligibilityHint: 'Stored eligibility criteria: Must live in Spokane County · Household income limits apply. Confirm current eligibility with the provider.',
   matchReasons: ['Offers phone support', 'Does not require ID'],
   distanceMeters: 3218.688,
   serviceAreaSummary: 'Spokane County',
@@ -101,6 +101,12 @@ describe('ChatServiceCard interactions', () => {
     expect(screen.getByRole('link', { name: 'Food Pantry' })).toHaveAttribute('href', '/service/svc-1');
     expect(screen.getByText('Helping Hands')).toBeInTheDocument();
     expect(screen.getByText('Record confidence: High')).toBeInTheDocument();
+    expect(screen.getByText('What this helps with')).toBeInTheDocument();
+    expect(screen.getByText('Emergency grocery assistance.')).toBeInTheDocument();
+    expect(screen.getByText('Who may qualify')).toBeInTheDocument();
+    expect(screen.getByText(/Stored eligibility criteria: Must live in Spokane County/)).toBeInTheDocument();
+    expect(screen.getByText(/Confirm current eligibility with the provider/)).toBeInTheDocument();
+    expect(screen.queryByText('Confirm current requirements with the provider.')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Call Food Pantry at 555-0100/i })).toHaveAttribute('href', 'tel:555-0100');
     expect(screen.getByText('Why this may fit')).toBeInTheDocument();
     expect(screen.getByText('Offers phone support')).toBeInTheDocument();
@@ -134,6 +140,18 @@ describe('ChatServiceCard interactions', () => {
     render(<ChatServiceCard card={{ ...cardFixture, verificationStatus: undefined, verificationLastCheckedAt: undefined }} />);
 
     expect(screen.getByText(/source-check date is not available/i)).toBeInTheDocument();
+  });
+
+  it('states scope and eligibility evidence gaps without inferring a match', () => {
+    render(<ChatServiceCard card={{ ...cardFixture, description: undefined, eligibilityHint: '' }} />);
+
+    expect(
+      screen.getByText('This record does not list what the service helps with. Confirm the service scope with the provider.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Eligibility details are not available here. Open ORAN details or confirm current requirements with the provider.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/You qualify/i)).not.toBeInTheDocument();
   });
 
   it('preserves canonical discovery context in detail and report links when provided', () => {

@@ -20,8 +20,9 @@ import type {
 } from './types';
 import type { SearchFilters } from './types';
 import { CONFIDENCE_BANDS } from '@/domain/constants';
+import { captureException } from '@/services/telemetry/sentry';
 import { buildPublishedServicePredicate } from './publication';
-import { hydrateEnrichedServices } from './hydrateRelations';
+import { hydrateCardTier, hydrateEnrichedServices } from './hydrateRelations';
 
 // ============================================================
 // WHERE CLAUSE BUILDERS
@@ -532,7 +533,29 @@ export class ServiceSearchEngine {
       this.deps.executeCount(built.countSql, built.countParams),
     ]);
 
-    const results: SearchResult[] = rows.map((row) => this.mapRowToResult(row));
+    const mapped: SearchResult[] = rows.map((row) => this.mapRowToResult(row));
+
+    // Card tier: attach the primary phone (service → location → organization
+    // fallback), current hours, up to three category labels, and stored
+    // eligibility so result cards can render honest, useful facts. Bounded to
+    // the page (four batch queries); full hydration stays on the by-ids path.
+    let results = mapped;
+    try {
+      const hydrated = await hydrateCardTier(
+        { executeQuery: this.deps.executeQuery },
+        mapped.map((result) => result.service),
+      );
+      results = mapped.map((result, index) => ({ ...result, service: hydrated[index] }));
+    } catch (error) {
+      // Phones, hours, categories, and eligibility improve result cards, but
+      // optional batch hydration must never take down otherwise valid search
+      // results. The telemetry wrapper strips raw messages/stacks and this
+      // context contains structural counts only.
+      void captureException(error, {
+        feature: 'search_card_tier_hydration',
+        extra: { resultCount: mapped.length },
+      }).catch(() => undefined);
+    }
 
     return {
       results,
@@ -687,6 +710,7 @@ export class ServiceSearchEngine {
         phones: [],
         schedules: [],
         taxonomyTerms: [],
+        cardDataStatus: 'unavailable',
         confidenceScore: row.confidence_score != null
           ? {
               id: (row.confidence_id as string) ?? '',

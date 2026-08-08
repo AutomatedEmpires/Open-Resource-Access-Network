@@ -65,12 +65,13 @@ describe('ChatPageClient', () => {
       });
     });
     expect(screen.getByTestId('chat-window')).toHaveTextContent('session:existing-session-id');
-    expect(screen.getByRole('heading', { name: 'Chat' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Find help' })).toBeInTheDocument();
+    expect(screen.getByText('Saved services stay on this device.')).toBeInTheDocument();
 
     randomSpy.mockRestore();
   });
 
-  it('preserves canonical discovery intent in directory and map links', async () => {
+  it('passes canonical discovery intent into the chat workspace', async () => {
     navigationState.searchParams = new URLSearchParams(
       'category=food&confidence=HIGH&sort=name_desc&taxonomyIds=a1000000-0000-4000-8000-000000000001&attributes=%7B%22delivery%22%3A%5B%22virtual%22%5D%7D&page=3',
     );
@@ -130,7 +131,7 @@ describe('ChatPageClient', () => {
         initialAttributeFilters: undefined,
       });
     });
-    expect(screen.getAllByRole('heading', { name: 'Chat' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('heading', { name: 'Find help' }).length).toBeGreaterThan(0);
 
     randomSpy.mockRestore();
   });

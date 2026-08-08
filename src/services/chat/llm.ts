@@ -17,6 +17,11 @@ import type { EnrichedService } from '@/domain/types';
 import type { Intent } from './types';
 import { ELIGIBILITY_DISCLAIMER, MAX_SERVICES_PER_RESPONSE } from '@/domain/constants';
 import { trackAiEvent } from '@/services/telemetry/events';
+import {
+  formatScheduleSummaries,
+  formatStoredEligibilityCriterion,
+  selectCallablePhone,
+} from '@/services/search/cardPresentation';
 
 // ---------------------------------------------------------------------------
 // Client (lazy singleton — created once per process)
@@ -48,18 +53,23 @@ function serviceToText(s: EnrichedService, idx: number): string {
   const parts: string[] = [`[${idx + 1}] ${s.service.name}`];
   if (s.service.description) parts.push(`  Description: ${s.service.description}`);
   if (s.organization.name) parts.push(`  Organization: ${s.organization.name}`);
-  if (s.phones.length > 0) parts.push(`  Phone: ${s.phones[0].number}`);
+  const callablePhone = selectCallablePhone(s.phones);
+  if (callablePhone) parts.push(`  Phone: ${callablePhone.number}`);
   if (s.address) {
     const addr = [s.address.address1, s.address.city, s.address.stateProvince]
       .filter(Boolean).join(', ');
     if (addr) parts.push(`  Address: ${addr}`);
   }
   if (s.service.url) parts.push(`  Website: ${s.service.url}`);
-  if (s.schedules.length > 0 && s.schedules[0].description) {
-    parts.push(`  Hours: ${s.schedules[0].description}`);
-  }
-  if (s.eligibility && s.eligibility.length > 0 && s.eligibility[0].description) {
-    parts.push(`  Eligibility: ${s.eligibility[0].description}`);
+  const scheduleSummary = formatScheduleSummaries(s.schedules);
+  if (scheduleSummary) parts.push(`  Hours: ${scheduleSummary}`);
+  const eligibilityDescriptions = (s.eligibility ?? [])
+    .map(formatStoredEligibilityCriterion)
+    .filter((description): description is string => Boolean(description));
+  if (eligibilityDescriptions.length > 0) {
+    const visible = eligibilityDescriptions.slice(0, 4);
+    const remainder = eligibilityDescriptions.length - visible.length;
+    parts.push(`  Eligibility: ${visible.join('; ')}${remainder > 0 ? `; +${remainder} more stored criteria not shown` : ''}`);
   }
   return parts.join('\n');
 }

@@ -18,13 +18,15 @@ interface GuidedIntakeProps {
   submitLabel?: string;
   initialNeed?: string;
   className?: string;
+  compact?: boolean;
 }
 
 export function GuidedIntake({
   onSubmit,
-  submitLabel = 'Find my next step',
+  submitLabel = 'Find help',
   initialNeed = '',
   className = '',
+  compact = false,
 }: GuidedIntakeProps) {
   const id = useId();
   const [draft, setDraft] = useState<GuidedIntakeDraft>({ need: initialNeed });
@@ -74,50 +76,62 @@ export function GuidedIntake({
     }
   };
 
+  const locationField = (
+    <label
+      htmlFor={`${id}-location`}
+      className={compact
+        ? 'text-xs font-medium text-[var(--text-secondary)] sm:col-span-2'
+        : 'mt-4 block text-sm font-semibold text-[var(--text-primary)]'}
+    >
+      City or ZIP <span className="font-normal text-[var(--text-muted)]">(optional)</span>
+      <input
+        id={`${id}-location`}
+        value={draft.location ?? ''}
+        onChange={(event) => updateDraft('location', event.target.value)}
+        maxLength={80}
+        placeholder="Example: Detroit, MI or 48201"
+        aria-invalid={Boolean(validationError)}
+        aria-describedby={validationError ? `${id}-validation` : undefined}
+        className={compact
+          ? 'mt-1.5 min-h-[44px] w-full rounded-xl border border-[var(--border-control)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-azure)]'
+          : 'mt-2 min-h-[46px] w-full rounded-xl border border-[var(--border-control)] bg-white px-4 py-2.5 text-sm text-[var(--text-primary)] shadow-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-azure)]'}
+      />
+    </label>
+  );
+
   return (
     <form onSubmit={handleSubmit} className={className} aria-label="Guided service intake">
       <label htmlFor={`${id}-need`} className="block text-sm font-semibold text-slate-950">
-        What do you need help with right now?
+        What do you need help with?
       </label>
       <textarea
         id={`${id}-need`}
         value={draft.need}
         onChange={(event) => updateDraft('need', event.target.value)}
-        rows={3}
+        rows={compact ? 2 : 3}
         maxLength={500}
         required
-        placeholder="Example: My power may be shut off this week and I need help with the bill."
-        className="mt-2 min-h-28 w-full resize-y rounded-[20px] border border-slate-300 bg-white px-4 py-3 text-[15px] leading-6 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
+        placeholder="Example: I need help paying my electric bill this week."
+        className={`mt-2 w-full bg-white px-4 py-3 text-[15px] leading-6 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none ${compact ? 'min-h-24 resize-none rounded-2xl border-0 shadow-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-azure)]' : 'min-h-28 resize-y rounded-xl border border-[var(--border-control)] shadow-sm focus:ring-2 focus:ring-[var(--brand-azure)]'}`}
       />
 
-      <details className="mt-3 rounded-[18px] border border-slate-200 bg-slate-50 text-left">
-        <summary className="flex min-h-[48px] cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-slate-800 [&::-webkit-details-marker]:hidden">
-          <SlidersHorizontal className="h-4 w-4 text-slate-500" aria-hidden="true" />
-          Add details only if they matter
-          <span className="ml-auto text-xs font-normal text-slate-500">Optional</span>
-        </summary>
-        <div className="grid gap-4 border-t border-slate-200 px-4 py-4 sm:grid-cols-2">
-          <label htmlFor={`${id}-location`} className="text-xs font-medium text-slate-700">
-            City, 2-letter state, or ZIP
-            <input
-              id={`${id}-location`}
-              value={draft.location ?? ''}
-              onChange={(event) => updateDraft('location', event.target.value)}
-              maxLength={80}
-              placeholder="Example: Detroit, MI or 48201"
-              aria-invalid={Boolean(validationError)}
-              aria-describedby={validationError ? `${id}-validation` : undefined}
-              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
-            />
-          </label>
+      {!compact && locationField}
 
-          <label htmlFor={`${id}-urgency`} className="text-xs font-medium text-slate-700">
+      <details className="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface-alt)] text-left">
+        <summary className="flex min-h-[48px] cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-[var(--text-primary)] [&::-webkit-details-marker]:hidden">
+          <SlidersHorizontal className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
+          {compact ? 'Filters: location, timing, access' : 'Add timing or access needs'}
+          <span className="ml-auto text-xs font-normal text-[var(--text-muted)]">Optional</span>
+        </summary>
+        <div className="grid gap-4 border-t border-[var(--border-subtle)] px-4 py-4 sm:grid-cols-2">
+          {compact && locationField}
+          <label htmlFor={`${id}-urgency`} className="text-xs font-medium text-[var(--text-secondary)]">
             How soon?
             <select
               id={`${id}-urgency`}
               value={draft.urgency ?? ''}
               onChange={(event) => updateDraft('urgency', event.target.value as GuidedIntakeDraft['urgency'])}
-              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
+              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-[var(--border-control)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-azure)]"
             >
               <option value="">Not specified</option>
               <option value="today">Today</option>
@@ -126,13 +140,13 @@ export function GuidedIntake({
             </select>
           </label>
 
-          <label htmlFor={`${id}-audience`} className="text-xs font-medium text-slate-700">
+          <label htmlFor={`${id}-audience`} className="text-xs font-medium text-[var(--text-secondary)]">
             Who is this for?
             <select
               id={`${id}-audience`}
               value={draft.audience ?? ''}
               onChange={(event) => updateDraft('audience', event.target.value as GuidedIntakeDraft['audience'])}
-              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
+              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-[var(--border-control)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-azure)]"
             >
               <option value="">Not specified</option>
               <option value="self">Me</option>
@@ -142,13 +156,13 @@ export function GuidedIntake({
             </select>
           </label>
 
-          <label htmlFor={`${id}-access`} className="text-xs font-medium text-slate-700">
+          <label htmlFor={`${id}-access`} className="text-xs font-medium text-[var(--text-secondary)] sm:col-span-2">
             How can you reach help?
             <select
               id={`${id}-access`}
               value={draft.accessMode ?? ''}
               onChange={(event) => updateDraft('accessMode', event.target.value as GuidedIntakeDraft['accessMode'])}
-              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
+              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-[var(--border-control)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-azure)]"
             >
               <option value="">Not specified</option>
               <option value="can_travel">I can travel</option>
@@ -166,18 +180,18 @@ export function GuidedIntake({
         </p>
       ) : null}
 
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className={`${compact ? 'mt-3 gap-2' : 'mt-4 gap-3'} flex flex-col sm:flex-row sm:items-center`}>
         <Button
           type="submit"
           size="lg"
           disabled={!hasMeaningfulNeed || isSubmitting}
-          className="min-h-[48px] gap-2 rounded-full px-6"
+          className={`min-h-[48px] gap-2 rounded-xl px-6 disabled:border disabled:border-[var(--border)] disabled:bg-[var(--bg-surface-alt)] disabled:text-[var(--text-secondary)] disabled:opacity-100 ${compact ? 'w-full sm:w-auto' : ''}`}
         >
           {isSubmitting ? 'Opening chat…' : submitLabel}
           {!isSubmitting && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
         </Button>
-        <p className="text-xs leading-5 text-slate-500">
-          Share only what is needed. Do not include a Social Security number, full birth date, or case number.
+        <p className="text-xs leading-5 text-[var(--text-muted)]">
+          Share only what is needed. Do not include Social Security numbers, full birth dates, case or account numbers, or passwords.
         </p>
       </div>
     </form>

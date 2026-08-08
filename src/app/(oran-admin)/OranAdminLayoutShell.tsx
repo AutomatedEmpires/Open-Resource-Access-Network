@@ -116,7 +116,7 @@ export default function OranAdminLayoutShell({ children }: { children: React.Rea
 
       <nav
         aria-label="ORAN admin workspace navigation"
-        className="sticky top-[4.5rem] z-[calc(var(--z-nav)-1)] border-b border-[var(--border)] bg-white/95 backdrop-blur lg:top-20"
+        className="sticky top-16 z-[calc(var(--z-nav)-1)] border-b border-[var(--border)] bg-white/95 backdrop-blur"
       >
         <div className="container mx-auto px-4 py-3">
           <div className="grid gap-3 lg:hidden">

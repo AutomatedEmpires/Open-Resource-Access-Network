@@ -245,7 +245,7 @@ describe('ChatWindow', () => {
 
     expect(screen.getByRole('note', { name: 'Eligibility disclaimer' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
-    expect(screen.getByText('Tell ORAN what is wrong.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'How can ORAN help?' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Food' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
@@ -296,6 +296,24 @@ describe('ChatWindow', () => {
         },
       },
     });
+  });
+
+  it('auto-sizes a programmatically restored multi-line draft', async () => {
+    const scrollHeightSpy = vi
+      .spyOn(HTMLTextAreaElement.prototype, 'scrollHeight', 'get')
+      .mockReturnValue(96);
+
+    render(
+      <ChatWindow
+        sessionId="11111111-1111-4111-8111-111111111111"
+        initialPrompt="I need help keeping my power on this week and I need to know what documents to bring."
+        initialNeedId="utility_assistance"
+      />,
+    );
+
+    const input = screen.getByRole('textbox', { name: 'Chat message input' });
+    await waitFor(() => expect(input).toHaveStyle({ height: '96px' }));
+    scrollHeightSpy.mockRestore();
   });
 
   it('sends structured retrieval context once while preserving the full safety message', async () => {
@@ -468,6 +486,7 @@ describe('ChatWindow', () => {
 
   it('does not send device location or prior seeker constraints for embedded non-self intake', async () => {
     const sessionId = '11111111-1111-4111-8111-111111111111';
+    const prompt = 'Food help. This is for someone else.';
     sessionStorage.setItem(`oran:chat-session-context:${sessionId}`, JSON.stringify({
       activeNeedId: 'housing',
       activeRetrievalText: 'private housing need',
@@ -481,14 +500,14 @@ describe('ChatWindow', () => {
       profileShapingEnabled: true,
     }));
 
-    render(<ChatWindow sessionId={sessionId} />);
-    fireEvent.change(screen.getByLabelText('What do you need help with right now?'), {
-      target: { value: 'Food help' },
-    });
-    fireEvent.change(screen.getByLabelText('Who is this for?'), {
-      target: { value: 'someone_else' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Search stored provider records' }));
+    render(
+      <ChatWindow
+        sessionId={sessionId}
+        initialPrompt={prompt}
+        initialGuidedIntake={{ prompt, searchText: 'Food help', audience: 'someone_else' }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
     await waitFor(() => expect(getChatCalls()).toHaveLength(1));
     const body = JSON.parse(String((getChatCalls()[0]?.[1] as { body: string }).body));
@@ -512,6 +531,7 @@ describe('ChatWindow', () => {
   });
 
   it('ignores automatic geolocation that completes after a non-self guided submit', async () => {
+    const prompt = 'Food help. This is for someone else.';
     let positionSuccess: PositionCallback | undefined;
     const getCurrentPosition = vi.fn((success: PositionCallback) => {
       positionSuccess = success;
@@ -525,15 +545,18 @@ describe('ChatWindow', () => {
       value: { getCurrentPosition },
     });
 
-    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    const { rerender } = render(<ChatWindow sessionId={sessionId} />);
     await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledTimes(1));
-    fireEvent.change(screen.getByLabelText('What do you need help with right now?'), {
-      target: { value: 'Food help' },
-    });
-    fireEvent.change(screen.getByLabelText('Who is this for?'), {
-      target: { value: 'someone_else' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Search stored provider records' }));
+    rerender(
+      <ChatWindow
+        sessionId={sessionId}
+        initialPrompt={prompt}
+        initialGuidedIntake={{ prompt, searchText: 'Food help', audience: 'someone_else' }}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveValue(prompt));
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     await waitFor(() => expect(getChatCalls()).toHaveLength(1));
 
     positionSuccess?.({
@@ -584,6 +607,12 @@ describe('ChatWindow', () => {
 
     render(<ChatWindow sessionId={sessionId} />);
     fireEvent.click(screen.getByRole('button', { name: 'Housing' }));
+    for (const name of ['List view', 'Map view']) {
+      const href = screen.getByRole('link', { name }).getAttribute('href') ?? '';
+      expect(new URL(href, 'https://oran.test').searchParams.get('category')).toBe('housing');
+      expect(new URL(href, 'https://oran.test').searchParams.get('q')).toBeNull();
+      expect(decodeURIComponent(href)).not.toContain('private circumstance');
+    }
     fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
       target: { value: 'Show options' },
     });
@@ -1246,8 +1275,8 @@ describe('ChatWindow', () => {
 
     await screen.findByText('Refine this search');
     expect(screen.getByText('Active chat context')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Need: Housing ×' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'City: Denver ×' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove need from active chat context' })).toHaveTextContent('Need: Housing ×');
+    expect(screen.getByRole('button', { name: 'Remove city from active chat context' })).toHaveTextContent('City: Denver ×');
 
     fireEvent.click(screen.getByRole('button', { name: 'Help paying rent' }));
 

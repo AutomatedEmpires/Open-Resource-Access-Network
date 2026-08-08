@@ -86,13 +86,26 @@ describe('search engine hybrid coverage', () => {
   });
 
   it('reranks SQL results with vector similarity and strips helper fields before returning', async () => {
-    const executeQuery = vi
-      .fn()
-      .mockResolvedValueOnce([makeSearchRow('svc-a', 91), makeSearchRow('svc-b', 72)])
-      .mockResolvedValueOnce([
-        { id: 'svc-a', similarity: 0.2 },
-        { id: 'svc-b', similarity: 0.95 },
-      ]);
+    // Route by SQL shape: search() also issues card-tier hydration queries
+    // (phones/schedules/taxonomy/eligibility) between the page query and the vector query,
+    // so an order-based Once queue would misalign.
+    const executeQuery = vi.fn().mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM vectors')) {
+        return [
+          { id: 'svc-a', similarity: 0.2 },
+          { id: 'svc-b', similarity: 0.95 },
+        ];
+      }
+      if (
+        sql.includes('FROM phones')
+        || sql.includes('FROM schedules')
+        || sql.includes('FROM service_taxonomy')
+        || sql.includes('FROM eligibility')
+      ) {
+        return [];
+      }
+      return [makeSearchRow('svc-a', 91), makeSearchRow('svc-b', 72)];
+    });
     const executeCount = vi.fn().mockResolvedValue(2);
     reRankWithVectorSimilarityMock.mockImplementationOnce((items: Array<Record<string, unknown>>) => [
       items[1],
@@ -127,4 +140,3 @@ describe('search engine hybrid coverage', () => {
     expect((response.results[0] as unknown as Record<string, unknown>).confidenceScore).toBeUndefined();
   });
 });
-

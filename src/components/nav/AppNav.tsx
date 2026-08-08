@@ -7,15 +7,30 @@
 
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useOranAuth } from '@/services/auth/client';
-import { ChevronDown, List, LogOut, MapPin, Menu, MessageCircle, Rows3, User, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  Menu,
+  X,
+} from 'lucide-react';
+
 import type { OranRole } from '@/domain/types';
-import { LanguageSwitcher } from './LanguageSwitcher';
-import { NotificationBell } from './NotificationBell';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useCrisisModal } from '@/components/crisis/CrisisContext';
+import { useOranAuth } from '@/services/auth/client';
+
+const LanguageSwitcher = dynamic(
+  () => import('./LanguageSwitcher').then((module) => module.LanguageSwitcher),
+  { ssr: false },
+);
+
+const NotificationBell = dynamic(
+  () => import('./NotificationBell').then((module) => module.NotificationBell),
+  { ssr: false },
+);
 
 function useOptionalAuth() {
   try {
@@ -38,22 +53,28 @@ function useOptionalLocale() {
       t: (key: string) => {
         const fallbackLabels: Record<string, string> = {
           'nav.main_label': 'Main navigation',
-          'nav.chat': 'Chat',
-          'nav.directory': 'Directory',
+          'nav.chat': 'Find help',
+          'nav.directory': 'Browse services',
           'nav.map': 'Map',
-          'nav.scroll': 'Scroll',
+          'nav.scroll': 'Resource feed',
           'nav.profile': 'Profile',
+          'nav.account': 'Account',
           'nav.saved': 'Saved',
+          'nav.crisis': 'Crisis',
+          'footer.crisis_resources_aria': 'Open crisis resources and emergency hotlines',
           'nav.notifications': 'Notifications',
           'nav.invitations': 'Organization invitations',
           'nav.sign_out': 'Sign out',
           'nav.sign_in': 'Sign in',
-          'nav.profile_menu_aria': 'Profile menu',
+          'nav.profile_menu_aria': 'Open account menu',
           'nav.close_menu': 'Close menu',
           'nav.open_menu': 'Open menu',
-          'nav.explore': 'Explore',
-          'nav.work_with_us': 'Work with us',
-          'nav.get_involved_menu_aria': 'Open get involved menu',
+          'nav.explore': 'More ways to browse',
+          'nav.more': 'More',
+          'nav.for_providers': 'For providers',
+          'nav.submit_or_correct': 'Submit or correct a resource',
+          'nav.volunteer_to_review': 'Volunteer to review resources',
+          'nav.your_services': 'Your services',
         };
         return fallbackLabels[key] ?? key;
       },
@@ -64,13 +85,17 @@ function useOptionalLocale() {
 interface PrimaryNavItem {
   href: string;
   labelKey: string;
-  icon: React.ElementType;
 }
 
 interface LinkMenuItem {
   kind: 'link';
   href: string;
   label: string;
+}
+
+interface LocalizedLinkItem {
+  href: string;
+  labelKey: string;
 }
 
 interface ActionMenuItem {
@@ -80,22 +105,26 @@ interface ActionMenuItem {
 }
 
 type MenuItem = LinkMenuItem | ActionMenuItem;
-type OpenMenu = 'profile' | 'work-with-us' | null;
 
 const PRIMARY_NAV: PrimaryNavItem[] = [
-  { href: '/chat', labelKey: 'nav.chat', icon: MessageCircle },
-  { href: '/directory', labelKey: 'nav.directory', icon: List },
-  { href: '/map', labelKey: 'nav.map', icon: MapPin },
-  { href: '/scroll', labelKey: 'nav.scroll', icon: Rows3 },
+  { href: '/chat', labelKey: 'nav.chat' },
+  { href: '/directory', labelKey: 'nav.directory' },
+  { href: '/map', labelKey: 'nav.map' },
 ];
 
-const WORK_WITH_US_MENU: LinkMenuItem[] = [
-  // Label matches the destination page title ("Submit a Resource" — the public
-  // suggestion flow), so providers don't mistake it for the org listing track.
-  { kind: 'link', href: '/submit-resource', label: 'Submit a Resource' },
-  { kind: 'link', href: '/partnerships/organizations', label: 'Register an Organization' },
-  { kind: 'link', href: '/partnerships/admins', label: 'Become a Community Admin' },
-  { kind: 'link', href: '/partnerships/oran-admins', label: 'Become an ORAN Admin' },
+const MOBILE_CORE_NAV: PrimaryNavItem[] = [
+  ...PRIMARY_NAV,
+  { href: '/saved', labelKey: 'nav.saved' },
+];
+
+const MOBILE_DISCOVERY_NAV: PrimaryNavItem[] = [
+  { href: '/scroll', labelKey: 'nav.scroll' },
+];
+
+const MOBILE_MORE_LINKS: LocalizedLinkItem[] = [
+  { href: '/partnerships/organizations', labelKey: 'nav.for_providers' },
+  { href: '/submit-resource', labelKey: 'nav.submit_or_correct' },
+  { href: '/partnerships/admins', labelKey: 'nav.volunteer_to_review' },
 ];
 
 function getScopeBadge(role: OranRole | undefined, pathname: string): { label: string; href: string } | null {
@@ -128,6 +157,7 @@ function getProfileMenuItems(role: OranRole | undefined, signInHref: string, t: 
       { kind: 'link', href: '/host', label: 'Organization workspace' },
       { kind: 'link', href: '/org/profile', label: 'Organization profile' },
       { kind: 'link', href: '/admins', label: 'Team access' },
+      { kind: 'link', href: '/notifications', label: t('nav.notifications') },
       { kind: 'action', id: 'sign-out', label: t('nav.sign_out') },
     ];
   }
@@ -137,6 +167,7 @@ function getProfileMenuItems(role: OranRole | undefined, signInHref: string, t: 
       { kind: 'link', href: '/dashboard', label: 'Admin workspace' },
       { kind: 'link', href: '/queue', label: 'Review queue' },
       { kind: 'link', href: '/coverage', label: 'Coverage' },
+      { kind: 'link', href: '/notifications', label: t('nav.notifications') },
       { kind: 'action', id: 'sign-out', label: t('nav.sign_out') },
     ];
   }
@@ -146,6 +177,7 @@ function getProfileMenuItems(role: OranRole | undefined, signInHref: string, t: 
       { kind: 'link', href: '/operations', label: 'Admin workspace' },
       { kind: 'link', href: '/approvals', label: 'Approvals' },
       { kind: 'link', href: '/audit', label: 'Audit trail' },
+      { kind: 'link', href: '/notifications', label: t('nav.notifications') },
       { kind: 'action', id: 'sign-out', label: t('nav.sign_out') },
     ];
   }
@@ -160,8 +192,6 @@ function getProfileMenuItems(role: OranRole | undefined, signInHref: string, t: 
     ];
   }
 
-  // Signed out: Saved and Profile are local-first public surfaces — keep them
-  // reachable so anonymous seekers can re-find on-device saves and settings.
   return [
     { kind: 'link', href: '/saved', label: t('nav.saved') },
     { kind: 'link', href: '/profile', label: t('nav.profile') },
@@ -172,13 +202,14 @@ function getProfileMenuItems(role: OranRole | undefined, signInHref: string, t: 
 export function AppNav() {
   const pathname = usePathname() ?? '';
   const { data: session, signOut } = useOptionalAuth();
-  const [uiState, setUiState] = useState<{ mobileOpen: boolean; openMenu: OpenMenu }>({
-    mobileOpen: false,
-    openMenu: null,
-  });
+  const [uiState, setUiState] = useState({ mobileOpen: false, profileOpen: false });
+  const accountTriggerRef = useRef<HTMLButtonElement>(null);
+  const mobileTriggerRef = useRef<HTMLButtonElement>(null);
   const { t, hasLocaleProvider } = useOptionalLocale();
+  const { openCrisis } = useCrisisModal();
 
   const currentRole = session?.user?.role;
+  const isAuthenticated = Boolean(session?.user);
   const signInHref = pathname
     ? `/auth/signin?callbackUrl=${encodeURIComponent(pathname)}`
     : '/auth/signin';
@@ -195,24 +226,21 @@ export function AppNav() {
   };
 
   const isProfileActive = profileMenuItems.some((item) => item.kind === 'link' && isActive(item.href));
-  const isWorkWithUsActive = WORK_WITH_US_MENU.some((item) => isActive(item.href));
+  const isProviderActive = isActive('/partnerships/organizations');
 
   const toggleMobile = () => {
-    setUiState((prev) => ({
-      mobileOpen: !prev.mobileOpen,
-      openMenu: null,
+    setUiState((current) => ({
+      mobileOpen: !current.mobileOpen,
+      profileOpen: false,
     }));
   };
 
-  const toggleMenu = (menu: Exclude<OpenMenu, null>) => {
-    setUiState((prev) => ({
-      ...prev,
-      openMenu: prev.openMenu === menu ? null : menu,
-    }));
+  const toggleProfile = () => {
+    setUiState((current) => ({ ...current, profileOpen: !current.profileOpen }));
   };
 
   const closeAllMenus = () => {
-    setUiState({ mobileOpen: false, openMenu: null });
+    setUiState({ mobileOpen: false, profileOpen: false });
   };
 
   const handleSignOut = () => {
@@ -220,13 +248,34 @@ export function AppNav() {
     void signOut({ redirectUrl: '/' });
   };
 
+  const handleNavigationKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'Escape') return;
+
+    if (uiState.profileOpen) {
+      event.preventDefault();
+      closeAllMenus();
+      accountTriggerRef.current?.focus();
+      return;
+    }
+
+    if (uiState.mobileOpen) {
+      event.preventDefault();
+      closeAllMenus();
+      mobileTriggerRef.current?.focus();
+    }
+  };
+
   return (
-    <nav className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-white/95 backdrop-blur" aria-label={t('nav.main_label')}>
-      <div className="container relative mx-auto flex h-[4.5rem] max-w-7xl items-center justify-between gap-3 px-4 lg:h-20 lg:px-6">
-        <div className="flex min-w-0 items-center gap-2.5 lg:gap-3">
+    <nav
+      className="sticky top-0 z-[var(--z-nav)] border-b border-[var(--border)] bg-white/95 backdrop-blur"
+      aria-label={t('nav.main_label')}
+      onKeyDown={handleNavigationKeyDown}
+    >
+      <div className="app-nav-grid mx-auto flex h-16 max-w-none items-center gap-3 px-4 2xl:px-6">
+        <div className="flex min-w-0 items-center gap-2.5 lg:justify-self-start" data-testid="nav-brand-scope">
           <Link
             href="/"
-            className="shrink-0 text-2xl font-bold tracking-tight text-[var(--text-primary)] transition-colors hover:text-[var(--text-primary)] sm:text-3xl"
+            className="shrink-0 text-2xl font-bold tracking-tight text-[var(--text-primary)]"
           >
             ORAN
           </Link>
@@ -234,7 +283,7 @@ export function AppNav() {
           {scopeBadge ? (
             <Link
               href={scopeBadge.href}
-              className="inline-flex min-h-[32px] max-w-[8.5rem] items-center truncate rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)] shadow-sm transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text-primary)] sm:max-w-none sm:text-[11px]"
+              className="inline-flex min-h-8 max-w-32 items-center truncate rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text-primary)] sm:max-w-none"
               aria-label={`Current scope: ${scopeBadge.label}`}
             >
               {scopeBadge.label}
@@ -242,147 +291,168 @@ export function AppNav() {
           ) : null}
         </div>
 
-        <div className="absolute left-1/2 hidden -translate-x-1/2 lg:flex">
-          <div className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-white px-2 py-1 shadow-sm">
-            {PRIMARY_NAV.map(({ href, labelKey, icon: Icon }) => {
-              const active = isActive(href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`inline-flex min-h-[50px] items-center gap-2 rounded-full px-5 py-2.5 text-base font-medium transition-colors ${
-                    active
-                      ? 'border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
-                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
-                  }`}
-                  aria-current={active ? 'page' : undefined}
-                >
-                  <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
-                  {t(labelKey)}
-                </Link>
-              );
-            })}
-          </div>
+        <div className="hidden items-center gap-1 whitespace-nowrap lg:flex lg:justify-self-center" data-testid="desktop-primary-nav">
+          {PRIMARY_NAV.map(({ href, labelKey }) => {
+            const active = isActive(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold transition-colors ${
+                  active
+                    ? 'bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
+                }`}
+                aria-current={active ? 'page' : undefined}
+              >
+                {t(labelKey)}
+              </Link>
+            );
+          })}
         </div>
 
-        <div className="ml-auto hidden items-center gap-2 lg:flex">
-          {/* Renders nothing when unauthenticated; the inbox otherwise has no
-              visible entry point anywhere in the shell. */}
-          <NotificationBell />
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => toggleMenu('profile')}
-              className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                isProfileActive || uiState.openMenu === 'profile'
-                  ? 'border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
-                  : 'border border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
-              }`}
-              aria-expanded={uiState.openMenu === 'profile'}
-              aria-haspopup="menu"
-              aria-label={t('nav.profile_menu_aria')}
-            >
-              <User className="h-4 w-4" aria-hidden="true" />
-              {t('nav.profile')}
-              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${uiState.openMenu === 'profile' ? 'rotate-180' : ''}`} aria-hidden="true" />
-            </button>
+        <div
+          className="hidden h-full min-w-0 items-center justify-end gap-1 whitespace-nowrap 2xl:flex 2xl:justify-self-end"
+          data-testid="desktop-nav-actions"
+        >
+          {isAuthenticated ? <NotificationBell /> : null}
 
-            {uiState.openMenu === 'profile' && (
-              <div className="absolute right-0 top-full z-50 mt-2 min-w-56 overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-lg">
-                <div className="border-b border-[var(--border)] px-4 py-3 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
-                  {scopeBadge?.label ?? t('nav.profile')}
-                </div>
-                <div className="p-1.5">
-                  {profileMenuItems.map((item) => {
-                    if (item.kind === 'action') {
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={handleSignOut}
-                          className="flex min-h-[44px] w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
-                        >
-                          <LogOut className="h-4 w-4" aria-hidden="true" />
-                          {item.label}
-                        </button>
-                      );
-                    }
+          {!isAuthenticated ? (
+            <>
+              <Link
+                href="/saved"
+                className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
+                  isActive('/saved')
+                    ? 'bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
+                }`}
+                aria-current={isActive('/saved') ? 'page' : undefined}
+              >
+                {t('nav.saved')}
+              </Link>
+              <Link
+                href="/profile"
+                className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
+                  isActive('/profile')
+                    ? 'bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
+                }`}
+                aria-current={isActive('/profile') ? 'page' : undefined}
+              >
+                {t('nav.profile')}
+              </Link>
+            </>
+          ) : null}
 
-                    const active = isActive(item.href);
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={closeAllMenus}
-                        className={`flex min-h-[44px] items-center rounded-xl px-3 py-2 text-sm transition-colors ${
-                          active
-                            ? 'bg-[var(--bg-surface-alt)] font-semibold text-[var(--text-primary)]'
-                            : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
-                        }`}
-                        aria-current={active ? 'page' : undefined}
-                      >
-                        {item.label}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => toggleMenu('work-with-us')}
-              className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                isWorkWithUsActive || uiState.openMenu === 'work-with-us'
-                  ? 'border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
-                  : 'border border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
-              }`}
-              aria-expanded={uiState.openMenu === 'work-with-us'}
-              aria-haspopup="menu"
-              aria-label={t('nav.get_involved_menu_aria')}
-            >
-              {t('nav.work_with_us')}
-              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${uiState.openMenu === 'work-with-us' ? 'rotate-180' : ''}`} aria-hidden="true" />
-            </button>
-
-            {uiState.openMenu === 'work-with-us' && (
-              <div className="absolute right-0 top-full z-50 mt-2 min-w-64 overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-lg">
-                <div className="border-b border-[var(--border)] px-4 py-3 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
-                  {t('nav.work_with_us')}
-                </div>
-                <div className="p-1.5">
-                  {WORK_WITH_US_MENU.map((item) => {
-                    const active = isActive(item.href);
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={closeAllMenus}
-                        className={`flex min-h-[44px] items-center rounded-xl px-3 py-2 text-sm transition-colors ${
-                          active
-                            ? 'bg-[var(--bg-surface-alt)] font-semibold text-[var(--text-primary)]'
-                            : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
-                        }`}
-                        aria-current={active ? 'page' : undefined}
-                      >
-                        {item.label}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
+          <Link
+            href="/partnerships/organizations"
+            className={`inline-flex min-h-[44px] items-center rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
+              isProviderActive
+                ? 'bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
+                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
+            }`}
+            aria-current={isProviderActive ? 'page' : undefined}
+          >
+            {t('nav.for_providers')}
+          </Link>
 
           {hasLocaleProvider ? <LanguageSwitcher /> : null}
+
+          {isAuthenticated ? (
+            <div className="relative flex h-full items-center">
+              <button
+                ref={accountTriggerRef}
+                type="button"
+                onClick={toggleProfile}
+                className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  isProfileActive || uiState.profileOpen
+                    ? 'bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
+                }`}
+                aria-expanded={uiState.profileOpen}
+                aria-controls="account-disclosure"
+                aria-label={t('nav.profile_menu_aria')}
+              >
+                {t('nav.account')}
+                <span
+                  className={`inline-block text-xs transition-transform ${uiState.profileOpen ? 'rotate-180' : ''}`}
+                  aria-hidden="true"
+                >
+                  ▾
+                </span>
+              </button>
+
+              {uiState.profileOpen ? (
+                <div
+                  id="account-disclosure"
+                  className="absolute right-0 top-full z-50 mt-2 min-w-60 overflow-hidden rounded-xl border border-[var(--border)] bg-white shadow-xl"
+                  aria-label={t('nav.account')}
+                >
+                  <div className="border-b border-[var(--border)] px-4 py-3 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                    {scopeBadge?.label ?? t('nav.account')}
+                  </div>
+                  <div className="p-1.5">
+                    {profileMenuItems.map((item) => {
+                      if (item.kind === 'action') {
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={handleSignOut}
+                            className="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      }
+
+                      const active = isActive(item.href);
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={closeAllMenus}
+                          className={`flex min-h-[44px] items-center rounded-lg px-3 py-2 text-sm transition-colors ${
+                            active
+                              ? 'bg-[var(--bg-surface-alt)] font-semibold text-[var(--text-primary)]'
+                              : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
+                          }`}
+                          aria-current={active ? 'page' : undefined}
+                        >
+                          {item.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <Link
+              href={signInHref}
+              className="inline-flex min-h-11 items-center rounded-lg bg-[var(--text-primary)] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--brand-navy)]"
+            >
+              {t('nav.sign_in')}
+            </Link>
+          )}
         </div>
 
-        <div className="flex items-center lg:hidden">
+        <div className="ml-auto flex items-center 2xl:hidden" data-testid="compact-nav-actions">
           <button
             type="button"
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full p-2 hover:bg-[var(--bg-surface-alt)]"
+            onClick={openCrisis}
+            className="hidden min-h-[44px] items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 md:inline-flex 2xl:hidden"
+            aria-haspopup="dialog"
+            aria-label={t('footer.crisis_resources_aria')}
+            data-tablet-crisis-control
+          >
+            <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+            {t('nav.crisis')}
+          </button>
+          <button
+            ref={mobileTriggerRef}
+            type="button"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 hover:bg-[var(--bg-surface-alt)]"
             onClick={toggleMobile}
             aria-expanded={uiState.mobileOpen}
             aria-controls="mobile-nav"
@@ -395,14 +465,14 @@ export function AppNav() {
         </div>
       </div>
 
-      {uiState.mobileOpen && (
-        <div id="mobile-nav" className="border-t border-[var(--border)] bg-white px-4 pb-4 pt-3 lg:hidden">
+      {uiState.mobileOpen ? (
+        <div id="mobile-nav" className="app-nav-mobile-panel overflow-y-auto border-t border-[var(--border)] bg-white px-4 pb-5 pt-3 2xl:hidden">
           {scopeBadge ? (
             <div className="mb-3 flex items-center">
               <Link
                 href={scopeBadge.href}
                 onClick={closeAllMenus}
-                className="inline-flex min-h-[32px] items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)] shadow-sm"
+                className="inline-flex min-h-8 items-center rounded-full border border-[var(--border)] bg-[var(--bg-surface-alt)] px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)]"
               >
                 {scopeBadge.label}
               </Link>
@@ -413,21 +483,39 @@ export function AppNav() {
             <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
               {t('nav.explore')}
             </p>
-            {PRIMARY_NAV.map(({ href, labelKey, icon: Icon }) => {
+            {MOBILE_CORE_NAV.map(({ href, labelKey }) => {
+              const active = isActive(href);
+              const duplicatedByScopedNav = href === '/chat' || href === '/directory' || href === '/saved';
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={closeAllMenus}
+                  className={`${duplicatedByScopedNav ? 'app-nav-scoped-duplicate ' : ''}flex min-h-[44px] items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                    active
+                      ? 'bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
+                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
+                  }`}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  {t(labelKey)}
+                </Link>
+              );
+            })}
+            {MOBILE_DISCOVERY_NAV.map(({ href, labelKey }) => {
               const active = isActive(href);
               return (
                 <Link
                   key={href}
                   href={href}
                   onClick={closeAllMenus}
-                  className={`flex min-h-[44px] items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                  className={`flex min-h-[44px] items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                     active
-                      ? 'border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
+                      ? 'bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
                       : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
                   }`}
                   aria-current={active ? 'page' : undefined}
                 >
-                  <Icon className="h-4 w-4" aria-hidden="true" />
                   {t(labelKey)}
                 </Link>
               );
@@ -438,18 +526,17 @@ export function AppNav() {
 
           <div className="space-y-1">
             <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
-              {scopeBadge?.label ?? t('nav.profile')}
+              {isAuthenticated ? t('nav.account') : t('nav.your_services')}
             </p>
-            {profileMenuItems.map((item) => {
+            {profileMenuItems.filter((item) => item.kind !== 'link' || item.href !== '/saved').map((item) => {
               if (item.kind === 'action') {
                 return (
                   <button
                     key={item.id}
                     type="button"
                     onClick={handleSignOut}
-                    className="flex min-h-[44px] w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
+                    className="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
                   >
-                    <LogOut className="h-4 w-4" aria-hidden="true" />
                     {item.label}
                   </button>
                 );
@@ -461,9 +548,9 @@ export function AppNav() {
                   key={item.href}
                   href={item.href}
                   onClick={closeAllMenus}
-                  className={`flex min-h-[44px] items-center rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                  className={`flex min-h-[44px] items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                     active
-                      ? 'border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
+                      ? 'bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
                       : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
                   }`}
                   aria-current={active ? 'page' : undefined}
@@ -478,33 +565,27 @@ export function AppNav() {
 
           <div className="space-y-1">
             <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
-              {t('nav.work_with_us')}
+              {t('nav.more')}
             </p>
-            {WORK_WITH_US_MENU.map((item) => {
-              const active = isActive(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={closeAllMenus}
-                  className={`flex min-h-[44px] items-center rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                    active
-                      ? 'border border-[var(--border)] bg-[var(--bg-surface-alt)] text-[var(--text-primary)]'
-                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]'
-                  }`}
-                  aria-current={active ? 'page' : undefined}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
+            {MOBILE_MORE_LINKS.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={closeAllMenus}
+                className="flex min-h-[44px] items-center rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface-alt)] hover:text-[var(--text-primary)]"
+              >
+                {t(item.labelKey)}
+              </Link>
+            ))}
           </div>
 
-          <div className="mt-3 border-t border-[var(--border)] pt-3">
-            {hasLocaleProvider ? <LanguageSwitcher /> : null}
-          </div>
+          {hasLocaleProvider ? (
+            <div className="mt-3 border-t border-[var(--border)] pt-3">
+              <LanguageSwitcher />
+            </div>
+          ) : null}
         </div>
-      )}
+      ) : null}
     </nav>
   );
 }

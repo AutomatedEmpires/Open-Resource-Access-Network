@@ -209,6 +209,8 @@ describe('DirectoryPageClient', () => {
     renderWithToast(<DirectoryPage />);
 
     expect(screen.getByText('Start with a search')).toBeInTheDocument();
+    expect(screen.getByText('List view')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Map view' })).toHaveAttribute('href', '/map');
   });
 
   it('renders the shared current search scope summary from canonical discovery state', async () => {
@@ -407,6 +409,8 @@ describe('DirectoryPageClient', () => {
       expect(replaceMock).toHaveBeenCalledWith('/directory?q=food&category=food_assistance', { scroll: false });
       expect(screen.getByRole('button', { name: 'Clear search' })).toBeInTheDocument();
     });
+
+    expect(screen.getByRole('group', { name: 'Current need filter' })).toHaveTextContent('Food');
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Food' })[0]);
     expect(replaceMock).toHaveBeenCalledWith('/directory', { scroll: false });

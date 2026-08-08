@@ -72,7 +72,7 @@ export function CoTagSuggestionPanel({
           Suggested tags for your{' '}
           {selectedCategories.length === 1 ? 'category' : `${selectedCategories.length} categories`}
         </p>
-        <span className="ml-auto text-xs text-blue-500">
+        <span className="ml-auto text-xs text-blue-700">
           {suggestions.length} suggestion{suggestions.length !== 1 ? 's' : ''} across{' '}
           {dimensionCount} dimension{dimensionCount !== 1 ? 's' : ''}
         </span>
@@ -82,7 +82,7 @@ export function CoTagSuggestionPanel({
       <div className="space-y-3">
         {Object.entries(byDimension).map(([dimension, tags]) => (
           <div key={dimension}>
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-blue-600/70">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-blue-700">
               {dimension}
             </p>
             <div className="flex flex-wrap gap-2">
@@ -122,7 +122,7 @@ export function CoTagSuggestionPanel({
       </div>
 
       {!readOnly && (
-        <p className="mt-3 text-xs text-blue-500/80">
+        <p className="mt-3 text-xs text-blue-800">
           Click any chip to add it to your custom terms. Tags help seekers and algorithms find your service.
         </p>
       )}

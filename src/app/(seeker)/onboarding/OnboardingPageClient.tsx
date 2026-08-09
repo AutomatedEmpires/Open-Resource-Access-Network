@@ -115,15 +115,15 @@ function ChoiceButton({
       type="button"
       aria-pressed={selected}
       onClick={onClick}
-      className={`min-h-[54px] rounded-2xl border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-azure)] focus-visible:ring-offset-2 ${
+      className={`min-h-[54px] rounded-2xl border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 ${
         selected
-          ? 'border-[var(--brand-azure)] bg-[var(--brand-navy)] text-white shadow-lg'
-          : 'border-slate-300 bg-white text-slate-950 hover:border-[var(--brand-azure)] hover:bg-slate-50'
+          ? 'border-[var(--brand-primary)] bg-[var(--brand-navy)] text-white shadow-lg'
+          : 'border-slate-300 bg-white text-slate-950 hover:border-[var(--brand-primary)] hover:bg-slate-50'
       }`}
     >
       <span className="flex items-start gap-3">
         <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-          selected ? 'border-white bg-[var(--brand-azure)]' : 'border-slate-400 bg-white'
+          selected ? 'border-white bg-[var(--brand-primary)]' : 'border-slate-400 bg-white'
         }`} aria-hidden="true">
           {selected ? <Check className="h-3.5 w-3.5" /> : null}
         </span>
@@ -160,13 +160,13 @@ function OptionalCheckbox({
 }) {
   return (
     <label className={`flex min-h-[48px] cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-sm font-medium ${
-      checked ? 'border-[var(--brand-azure)] bg-blue-50 text-[var(--brand-navy)]' : 'border-slate-300 bg-white text-slate-800'
+      checked ? 'border-[var(--brand-primary)] bg-blue-50 text-[var(--brand-navy)]' : 'border-slate-300 bg-white text-slate-800'
     }`}>
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="h-5 w-5 rounded border-slate-400 accent-[var(--brand-azure)]"
+        className="h-5 w-5 rounded border-slate-400 accent-[var(--brand-primary)]"
       />
       <span>{label}</span>
     </label>
@@ -327,7 +327,7 @@ export default function OnboardingPageClient() {
               <li key={label} className="text-center">
                 <span className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full border text-xs font-bold ${
                   index === step
-                    ? 'border-[var(--brand-azure)] bg-[var(--brand-azure)] text-white'
+                    ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)] text-white'
                     : index < step
                       ? 'border-[var(--brand-cobalt)] bg-[var(--brand-navy)] text-white'
                       : 'border-slate-300 bg-white text-slate-500'
@@ -379,7 +379,7 @@ export default function OnboardingPageClient() {
                     rows={3}
                     autoFocus
                     placeholder="For example: help replacing an ID after a fire"
-                    className="mt-2 w-full rounded-2xl border border-slate-400 bg-white px-4 py-3 text-base text-slate-950 outline-none focus:border-[var(--brand-azure)] focus:ring-2 focus:ring-blue-200"
+                    className="mt-2 w-full rounded-2xl border border-slate-400 bg-white px-4 py-3 text-base text-slate-950 outline-none focus:border-[var(--brand-primary)] focus:ring-2 focus:ring-blue-200"
                   />
                 </label>
               ) : null}
@@ -407,7 +407,7 @@ export default function OnboardingPageClient() {
                   maxLength={100}
                   autoComplete="postal-code"
                   placeholder="For example: Tacoma, WA or 98402"
-                  className="min-h-12 w-full rounded-2xl border border-slate-400 bg-white py-3 pl-11 pr-4 text-base text-slate-950 outline-none focus:border-[var(--brand-azure)] focus:ring-2 focus:ring-blue-200"
+                  className="min-h-12 w-full rounded-2xl border border-slate-400 bg-white py-3 pl-11 pr-4 text-base text-slate-950 outline-none focus:border-[var(--brand-primary)] focus:ring-2 focus:ring-blue-200"
                 />
               </div>
               <p className="mt-2 text-xs leading-5 text-slate-500">ORAN does not request precise GPS location during onboarding.</p>
@@ -475,7 +475,7 @@ export default function OnboardingPageClient() {
                     updateDraft('householdSize', parsed);
                   }
                 }}
-                className="mt-2 min-h-12 w-full rounded-2xl border border-slate-400 bg-white px-4 py-3 text-base text-slate-950 outline-none focus:border-[var(--brand-azure)] focus:ring-2 focus:ring-blue-200 sm:max-w-xs"
+                className="mt-2 min-h-12 w-full rounded-2xl border border-slate-400 bg-white px-4 py-3 text-base text-slate-950 outline-none focus:border-[var(--brand-primary)] focus:ring-2 focus:ring-blue-200 sm:max-w-xs"
               />
               <WhyThisHelps>Some benefits use household size. ORAN asks for a count, not names, birthdays, or relationship documents.</WhyThisHelps>
               <StepActions back={() => setStep(1)} next={() => setStep(3)} />
@@ -496,7 +496,7 @@ export default function OnboardingPageClient() {
                   <button
                     type="button"
                     onClick={() => setStep(4)}
-                    className="rounded-2xl border border-slate-400 bg-white p-5 text-left transition hover:border-[var(--brand-azure)] hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-azure)]"
+                    className="rounded-2xl border border-slate-400 bg-white p-5 text-left transition hover:border-[var(--brand-primary)] hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]"
                   >
                     <span className="block text-base font-bold text-[var(--brand-navy)]">Skip optional questions</span>
                     <span className="mt-2 block text-sm leading-6 text-slate-600">Continue with need, area, timing, and household context only.</span>
@@ -504,7 +504,7 @@ export default function OnboardingPageClient() {
                   <button
                     type="button"
                     onClick={() => setShowOptionalDetails(true)}
-                    className="bg-gradient-brand-deep rounded-2xl border border-[var(--brand-azure)] p-5 text-left text-white shadow-lg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-azure)] focus-visible:ring-offset-2"
+                    className="bg-gradient-brand-deep rounded-2xl border border-[var(--brand-primary)] p-5 text-left text-white shadow-lg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2"
                   >
                     <span className="block text-base font-bold">Add optional matching details</span>
                     <span className="mt-2 block text-sm leading-6 text-slate-200">Choose only the work, access, veteran, or immigration-support context you want to use.</span>
@@ -523,7 +523,7 @@ export default function OnboardingPageClient() {
                         <select
                           value={draft.employmentStatus}
                           onChange={(event) => updateDraft('employmentStatus', event.target.value as OnboardingDraft['employmentStatus'])}
-                          className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-400 bg-white px-3 text-sm text-slate-950 focus:border-[var(--brand-azure)] focus:outline-none focus:ring-2 focus:ring-blue-200"
+                          className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-400 bg-white px-3 text-sm text-slate-950 focus:border-[var(--brand-primary)] focus:outline-none focus:ring-2 focus:ring-blue-200"
                         >
                           <option value="">Skip this question</option>
                           {EMPLOYMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -534,7 +534,7 @@ export default function OnboardingPageClient() {
                         <select
                           value={draft.incomeRange}
                           onChange={(event) => updateDraft('incomeRange', event.target.value as OnboardingDraft['incomeRange'])}
-                          className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-400 bg-white px-3 text-sm text-slate-950 focus:border-[var(--brand-azure)] focus:outline-none focus:ring-2 focus:ring-blue-200"
+                          className="mt-2 min-h-[48px] w-full rounded-xl border border-slate-400 bg-white px-3 text-sm text-slate-950 focus:border-[var(--brand-primary)] focus:outline-none focus:ring-2 focus:ring-blue-200"
                         >
                           <option value="">Skip this question</option>
                           {INCOME_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -629,7 +629,7 @@ export default function OnboardingPageClient() {
                 </div>
               </dl>
 
-              <div className="bg-gradient-brand-deep mt-6 rounded-2xl border border-[var(--brand-azure)] p-5 text-white">
+              <div className="bg-gradient-brand-deep mt-6 rounded-2xl border border-[var(--brand-primary)] p-5 text-white">
                 <div className="flex items-start gap-3">
                   <ShieldCheck className="mt-0.5 h-6 w-6 shrink-0 text-[var(--brand-sky)]" aria-hidden="true" />
                   <div>

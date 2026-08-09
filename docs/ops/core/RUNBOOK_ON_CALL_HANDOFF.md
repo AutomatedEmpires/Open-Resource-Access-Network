@@ -39,7 +39,7 @@ This runbook standardizes shift handoffs to prevent context loss, missed risks, 
    - Auth boundaries intact
    - Publication integrity and resource-freshness holds intact
 8. Dedicated ORAN provider status: Vercel, Supabase, Clerk, Sentry, and Resend.
-9. Azure rollback window state and whether any legacy worker is enabled.
+9. Confirmation that retired-provider settings and execution paths remain absent.
 
 ## Handoff Template
 

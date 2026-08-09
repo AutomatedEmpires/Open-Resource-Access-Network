@@ -9,7 +9,7 @@ and the expanded catalog is maintained by `db/migrations/0035_feature_flag_catal
 
 | Flag Name         | Default  | Rollout | Purpose                                  | Toggle Owner  | Safety Notes                                           |
 |-------------------|----------|---------|------------------------------------------|---------------|--------------------------------------------------------|
-| `llm_summarize`   | **off**  | 0 %     | Enable LLM post-retrieval summarization  | `oran_admin`  | **Fail-closed**: defaults to off; must never synthesize data |
+| `llm_summarize`   | **retired** | 0 %  | Historical seeker summarization toggle   | None          | Read-only and forced inert; seeker responses are deterministic |
 | `map_enabled`     | on       | 100 %   | Show map surface in navigation           | `oran_admin`  | Disabling hides the map tab                            |
 | `feedback_form`   | on       | 100 %   | Allow seeker feedback submission          | `oran_admin`  | Disabling removes the feedback button                  |
 | `host_claims`     | on       | 100 %   | Allow new host organization claims        | `oran_admin`  | Disabling blocks new claim submissions                 |
@@ -22,7 +22,7 @@ Application code must reference these constants — never use raw string literal
 ```typescript
 import { FEATURE_FLAGS } from '@/domain/constants';
 
-const enabled = await flagService.isEnabled(FEATURE_FLAGS.LLM_SUMMARIZE);
+const enabled = await flagService.isEnabled(FEATURE_FLAGS.SEEKER_PLANS_ENABLED);
 ```
 
 ## Runtime Semantics
@@ -31,7 +31,7 @@ The flag service preserves a few hard guarantees:
 
 - Unknown flag name -> `false`
 - Partial rollout without a subject key -> `false`
-- `llm_summarize` defaults to `false` / 0 %
+- Retired provider and seeker-AI flags are normalized to `false` / 0 % and cannot be edited in the admin UI or API
 - Writes only persist to the DB when the DB is configured; in-memory writes are local-only
 
 When the DB is configured, reads use the stored catalog and merge any missing defaults from

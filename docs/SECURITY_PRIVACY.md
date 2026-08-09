@@ -242,7 +242,7 @@ Status: Implemented.
 - All API responses exclude internal scoring detail from seeker-facing endpoints
 - Database connection strings never in client-side code
 - Environment variables validated at startup
-- Azure Maps shared subscription keys are not returned to the browser; interactive map auth uses a scoped server-brokered token.
+- The Leaflet/OpenStreetMap seeker map requires no browser map key or token broker; custom geocoding endpoints remain server-side and endpoint-policy guarded.
 
 ### Security Headers
 

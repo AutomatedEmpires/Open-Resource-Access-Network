@@ -12,7 +12,7 @@ async function expectNoHorizontalOverlap(left: Locator, right: Locator, gap = 8)
 for (const width of [1024, 1280, 1440, 1920]) {
   test(`header stays collision-free at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/');
     await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
 
     const primary = page.getByTestId('desktop-primary-nav');
@@ -68,7 +68,7 @@ test('French desktop header stays collision-free at the 2xl breakpoint', async (
   const localeResponse = await page.request.post('/api/locale', { data: { locale: 'fr' } });
   expect(localeResponse.ok()).toBe(true);
 
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/');
   const navigation = page.getByRole('navigation', { name: 'Navigation principale' });
   await expect(navigation).toBeVisible();
 
@@ -94,7 +94,7 @@ test('French desktop header stays collision-free at the 2xl breakpoint', async (
 
 test('mobile intake and crisis access do not compete for the same space', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/');
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
 
   const intake = page.getByRole('form', { name: 'Guided service intake' });
@@ -122,7 +122,7 @@ test('mobile chat keeps its composer above navigation when seeker context is sto
     localStorage.setItem('oran:saved-service-ids', JSON.stringify(['svc-1']));
   });
 
-  await page.goto('/chat', { waitUntil: 'domcontentloaded' });
+  await page.goto('/chat');
 
   const contextStrip = page.locator('[data-seeker-context-strip]');
   const composer = page.getByRole('textbox', { name: 'Chat message input' });
@@ -144,7 +144,7 @@ test('mobile chat keeps its composer above navigation when seeker context is sto
 
 test('public mobile navigation exposes every primary destination without a scoped bottom nav', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/about', { waitUntil: 'domcontentloaded' });
+  await page.goto('/about');
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
 
   await expect(page.getByRole('navigation', { name: 'Seeker mobile navigation' })).toHaveCount(0);
@@ -159,7 +159,7 @@ test('public mobile navigation exposes every primary destination without a scope
 
 test('scoped mobile navigation avoids duplicate primary links while preserving map access', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/');
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
   await page.getByRole('button', { name: 'Open navigation menu' }).click();
 

@@ -34,7 +34,7 @@ Scenarios 401-500 define resilience and lifecycle hardening beyond the current e
 | 404 | Reverification timer job fails silently and thousands of listings miss their due dates. | Track timer heartbeat, backfill overdue reverification with catch-up scans, and alert on growing overdue cohorts. |
 | 405 | Organization responds to nothing, but seekers still rely on the listing. | Move from active to at-risk to dormant states based on silence, complaints, and failed reverification attempts rather than abruptly deleting the record. |
 | 406 | Reviewer queue keeps growing while nobody is picking up high-risk items. | Monitor queue age by severity, auto-escalate unclaimed high-risk items, and expose backlog health as an operational SLO. |
-| 407 | Azure Maps or geocoding API fails during a publish surge. | Fail open for non-geo-critical edits, fail closed for location-sensitive publication, and queue deferred geocoding repair work. |
+| 407 | The configured geocoding service fails during a publish surge. | Fail open for non-geo-critical edits, fail closed for location-sensitive publication, and queue deferred geocoding repair work. |
 | 408 | Translation service outage prevents multilingual evidence comparison. | Reduce automation scope for multilingual-sensitive fields and preserve current known-good text until translation resumes. |
 | 409 | Content Safety API outage removes one safety check during a crisis period. | Keep deterministic keyword gates active, mark semantic checks degraded, and narrow auto-publish in affected categories. |
 | 410 | Partner feed goes partially stale while host edits continue. | Keep host and current live authority intact and mark the feed as degraded instead of allowing stale replay to compete. |

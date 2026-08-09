@@ -44,7 +44,7 @@ export const BrandAndMetal: Story = {
       <h2 className="font-semibold text-gray-700">ORAN Brand + Metal</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         <Swatch label="Sky" cssVar="--brand-sky" />
-        <Swatch label="Azure" cssVar="--brand-azure" />
+        <Swatch label="Primary" cssVar="--brand-primary" />
         <Swatch label="Cobalt" cssVar="--brand-cobalt" />
         <Swatch label="Navy" cssVar="--brand-navy" />
         <Swatch label="Bright metal" cssVar="--metal-bright" />

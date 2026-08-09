@@ -2,7 +2,7 @@
  * GET|POST /api/internal/confidence-regression-scan
  *
  * Internal endpoint called by Vercel Cron. POST remains available to
- * authenticated rollback workers and operational tooling.
+ * authenticated internal workers and operational tooling.
  * Detects trust-signal regressions across four signals:
  *   1. service_updated_after_verification — service data changed after score computed
  *   2. feedback_severity — repeated negative seeker feedback or community reports

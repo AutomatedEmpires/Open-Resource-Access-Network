@@ -8,16 +8,16 @@ crosswalk resolution, publication preparation, and ingestion workflow orchestrat
 
 ## Runtime Boundary
 
-The ingestion system spans three implementation layers with distinct roles:
+The ingestion system spans two implementation layers with distinct roles:
 
 - `src/agents/ingestion/**` — canonical ingestion domain logic, stores, orchestration, normalization, crosswalks, federation, publish rules, and feed connectors
-- `functions/**` — execution adapters for timer/background/event-driven workloads that call into canonical ingestion contracts or adjacent internal APIs
-- `src/services/ingestion/**` — thin shared helpers used by routes or legacy call sites; not the canonical home of ingestion orchestration
+- `src/app/api/internal/ingestion/**` — authenticated Vercel route handlers used by cron and provider-neutral operational tooling
+- `src/services/ingestion/**` — thin shared helpers used by routes; not the canonical home of ingestion orchestration
 
 If behavior spans those layers, the rule is:
 
 1. define the domain behavior here
-2. use Functions as execution environments
+2. use authenticated Vercel routes as execution boundaries
 3. keep service-layer ingestion helpers narrow and reusable
 
 ## What Lives Here

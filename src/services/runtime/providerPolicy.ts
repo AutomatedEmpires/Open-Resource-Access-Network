@@ -1,5 +1,6 @@
 import {
   assertAllowedRuntimeEndpoint as assertAllowedRuntimeEndpointCore,
+  assertNoRetiredMicrosoftProviderSettings as assertNoRetiredMicrosoftProviderSettingsCore,
   assertExpectedSupabaseProjectDatabaseEndpoint as assertExpectedSupabaseProjectDatabaseEndpointCore,
   extractRuntimeEndpointHosts as extractRuntimeEndpointHostsCore,
   findProhibitedMicrosoftRuntimeSettings as findProhibitedMicrosoftRuntimeSettingsCore,
@@ -49,6 +50,11 @@ export const assertAllowedRuntimeEndpoint =
     settingName?: string,
     envSource?: Record<string, string | undefined>,
   ) => string;
+
+export const assertNoRetiredMicrosoftProviderSettings =
+  assertNoRetiredMicrosoftProviderSettingsCore as (
+    envSource?: Record<string, string | undefined>,
+  ) => void;
 
 export const assertExpectedSupabaseProjectDatabaseEndpoint =
   assertExpectedSupabaseProjectDatabaseEndpointCore as (

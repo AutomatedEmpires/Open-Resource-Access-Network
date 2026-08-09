@@ -93,8 +93,8 @@ export function GuidedIntake({
         aria-invalid={Boolean(validationError)}
         aria-describedby={validationError ? `${id}-validation` : undefined}
         className={compact
-          ? 'mt-1.5 min-h-[44px] w-full rounded-xl border border-[var(--border-control)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-azure)]'
-          : 'mt-2 min-h-[46px] w-full rounded-xl border border-[var(--border-control)] bg-white px-4 py-2.5 text-sm text-[var(--text-primary)] shadow-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-azure)]'}
+          ? 'mt-1.5 min-h-[44px] w-full rounded-xl border border-[var(--border-control)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]'
+          : 'mt-2 min-h-[46px] w-full rounded-xl border border-[var(--border-control)] bg-white px-4 py-2.5 text-sm text-[var(--text-primary)] shadow-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]'}
       />
     </label>
   );
@@ -112,7 +112,7 @@ export function GuidedIntake({
         maxLength={500}
         required
         placeholder="Example: I need help paying my electric bill this week."
-        className={`mt-2 w-full bg-white px-4 py-3 text-[15px] leading-6 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none ${compact ? 'min-h-24 resize-none rounded-2xl border-0 shadow-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-azure)]' : 'min-h-28 resize-y rounded-xl border border-[var(--border-control)] shadow-sm focus:ring-2 focus:ring-[var(--brand-azure)]'}`}
+        className={`mt-2 w-full bg-white px-4 py-3 text-[15px] leading-6 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none ${compact ? 'min-h-24 resize-none rounded-2xl border-0 shadow-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-primary)]' : 'min-h-28 resize-y rounded-xl border border-[var(--border-control)] shadow-sm focus:ring-2 focus:ring-[var(--brand-primary)]'}`}
       />
 
       {!compact && locationField}
@@ -131,7 +131,7 @@ export function GuidedIntake({
               id={`${id}-urgency`}
               value={draft.urgency ?? ''}
               onChange={(event) => updateDraft('urgency', event.target.value as GuidedIntakeDraft['urgency'])}
-              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-[var(--border-control)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-azure)]"
+              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-[var(--border-control)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
             >
               <option value="">Not specified</option>
               <option value="today">Today</option>
@@ -146,7 +146,7 @@ export function GuidedIntake({
               id={`${id}-audience`}
               value={draft.audience ?? ''}
               onChange={(event) => updateDraft('audience', event.target.value as GuidedIntakeDraft['audience'])}
-              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-[var(--border-control)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-azure)]"
+              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-[var(--border-control)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
             >
               <option value="">Not specified</option>
               <option value="self">Me</option>
@@ -162,7 +162,7 @@ export function GuidedIntake({
               id={`${id}-access`}
               value={draft.accessMode ?? ''}
               onChange={(event) => updateDraft('accessMode', event.target.value as GuidedIntakeDraft['accessMode'])}
-              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-[var(--border-control)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-azure)]"
+              className="mt-1.5 min-h-[44px] w-full rounded-xl border border-[var(--border-control)] bg-white px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
             >
               <option value="">Not specified</option>
               <option value="can_travel">I can travel</option>

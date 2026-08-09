@@ -40,10 +40,22 @@ const TYPE_LABELS: Record<ChangeType, { label: string; bg: string; text: string 
 
 const RELEASES: Release[] = [
   {
+    version: '0.11.0',
+    date: 'August 9, 2026',
+    summary: 'A clearer chat-first discovery experience on the current production stack.',
+    highlight: true,
+    changes: [
+      { type: 'improve', text: 'Find help now carries a structured intake directly into chat and starts one search without a redundant second submit.' },
+      { type: 'improve', text: 'Directory, map, and chat results explain what each listing helps with and who may qualify using stored provider data.' },
+      { type: 'improve', text: 'No-match states keep uncertainty visible and offer Washington 211 as an external recovery path without presenting it as an ORAN-verified result.' },
+      { type: 'infra', text: 'Production now runs on Vercel, Supabase, Clerk, and Sentry; retired Azure and Foundry runtime, deployment, and rollback paths were removed.' },
+    ],
+  },
+  {
     version: '0.10.0',
     date: 'March 13, 2026',
     summary: 'Team, Press, and Changelog pages; footer expanded across all role variants.',
-    highlight: true,
+    highlight: false,
     changes: [
       { type: 'feat',    text: 'Team page — contributor profiles, guiding principles, and open-source contribution paths.' },
       { type: 'feat',    text: 'Press page — media contact, fact sheet, brand guidelines, boilerplate, and press coverage tracking.' },

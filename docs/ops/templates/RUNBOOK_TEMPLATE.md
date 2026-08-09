@@ -109,4 +109,4 @@ Describe what this runbook covers, when it applies, and what it explicitly does 
 - `docs/SSOT.md`
 - `docs/governance/OPERATING_MODEL.md`
 - `docs/SECURITY_PRIVACY.md`
-- `docs/ops/monitoring/MONITORING_QUERIES.md`
+- `docs/ops/monitoring/RUNBOOK_OBSERVABILITY_OUTAGE.md`

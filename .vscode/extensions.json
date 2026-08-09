@@ -16,11 +16,6 @@
     "hbenl.vscode-test-explorer",
 
     "ms-azuretools.vscode-docker",
-    "ms-vscode.azure-account",
-    "ms-azuretools.vscode-azureappservice",
-    "ms-azuretools.vscode-azureresourcegroups",
-    "ms-azuretools.vscode-azure-github-copilot",
-    "ms-azuretools.vscode-bicep",
     "ms-vscode.test-adapter-converter",
     "mtxr.sqltools",
     "mtxr.sqltools-driver-pg",

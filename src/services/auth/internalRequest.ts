@@ -5,7 +5,7 @@ type InternalRequest = {
   headers: Pick<Headers, 'get'>;
 };
 
-type InternalAuthMethod = 'vercel_cron' | 'internal_header' | 'legacy_bearer';
+type InternalAuthMethod = 'vercel_cron' | 'internal_header';
 
 type InternalAuthEnvironment = {
   CRON_SECRET?: string;
@@ -25,12 +25,11 @@ function secretsMatch(candidate: string, expected: string): boolean {
 }
 
 /**
- * Authenticate an ORAN-only scheduled or rollback worker request.
+ * Authenticate an ORAN-only scheduled or internal worker request.
  *
  * Vercel Cron sends CRON_SECRET as a Bearer token. INTERNAL_API_KEY remains a
- * separate rollback credential and is accepted through x-oran-internal-key.
- * The legacy Bearer form is retained temporarily so an Azure rollback worker
- * can be re-enabled without a synchronized code deployment.
+ * separate internal credential and is accepted only through
+ * x-oran-internal-key. Bearer authentication is reserved for Vercel Cron.
  */
 export function authorizeInternalRequest(
   request: InternalRequest,
@@ -55,10 +54,6 @@ export function authorizeInternalRequest(
 
   if (internalApiKey && secretsMatch(internalHeader, internalApiKey)) {
     return { ok: true, method: 'internal_header' };
-  }
-
-  if (internalApiKey && secretsMatch(authorization, `Bearer ${internalApiKey}`)) {
-    return { ok: true, method: 'legacy_bearer' };
   }
 
   return { ok: false, reason: 'unauthorized' };

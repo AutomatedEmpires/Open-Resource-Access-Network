@@ -1,5 +1,9 @@
 # Ingestion Agent Audit — Sprints 1 & 2
 
+> **Historical and superseded (2026-08-09).** This audit brief describes an
+> earlier implementation and must not be used as current engineering guidance.
+> Use `docs/agents/AGENTS_INGESTION_PIPELINE.md` and the current source tree.
+
 **For:** Audit Agent
 **Created:** 2026-03-02
 **Scope:** Code quality, safety compliance, and contract alignment audit
@@ -18,7 +22,7 @@ You are auditing the first two sprints of the ORAN Ingestion Agent implementatio
 
 - `src/agents/ingestion/llm/client.ts` — LLM client interface
 - `src/agents/ingestion/llm/types.ts` — Zod schemas for extraction/categorization
-- `src/agents/ingestion/llm/providers/azureOpenai.ts` — Azure OpenAI implementation
+- `src/agents/ingestion/llm/providers/anthropic.ts` — current optional Anthropic implementation
 - `src/agents/ingestion/llm/prompts/extraction.ts` — Extraction prompt builder
 - `src/agents/ingestion/llm/prompts/categorization.ts` — Categorization prompt builder
 - `src/agents/ingestion/llm/prompts/index.ts` — Barrel export
@@ -89,7 +93,7 @@ Check each file against the non-negotiables in `.github/copilot-instructions.md`
 ### 6. Security Concerns
 
 - [ ] No hardcoded API keys or secrets
-- [ ] Environment variables properly named (LLM_ENDPOINT, LLM_API_KEY, etc.)
+- [ ] Environment variables properly named for the current provider contract
 - [ ] User-Agent string is identifiable for responsible crawling
 - [ ] maxContentLength limit prevents memory exhaustion
 - [ ] Redirect handling has max limit to prevent infinite loops

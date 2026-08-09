@@ -36,12 +36,12 @@ These are separate contracts. Do not collapse them into one generic public data 
 | `/api/hsds/services/[id]` | GET | No | UUID validation | No | HSDS-compatible published service detail |
 | `/api/hsds/organizations` | GET | No | Query parsing only | No | HSDS-compatible published organizations list |
 | `/api/hsds/organizations/[id]` | GET | No | UUID validation | No | HSDS-compatible published organization detail |
-| `/api/maps/token` | GET | No | N/A | Yes (60/5min) | Azure Maps key broker |
-| `/api/internal/sla-check` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | N/A | No | Daily Vercel Cron SLA breach scanner |
-| `/api/internal/confidence-regression-scan` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | N/A | No | Daily Vercel Cron confidence-regression scanner |
-| `/api/internal/coverage-gaps` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | Yes | No | Daily Vercel Cron coverage-gap detection + admin alerting |
-| `/api/internal/ingestion/feed-poll` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | Yes | No | Daily Vercel Cron source-feed poller for active HSDS / 211 feeds |
-| `/api/internal/resource-freshness-scan` | GET/POST | Internal (`CRON_SECRET`; rollback header supported) | Yes | No | Daily Vercel Cron expiry, reverification, and community-review sweep |
+| `/api/maps/token` | GET | No | N/A | Yes (60/5min) | Retired token-broker tombstone (410) |
+| `/api/internal/sla-check` | GET/POST | Internal (`CRON_SECRET`; provider-neutral internal header supported) | N/A | No | Daily Vercel Cron SLA breach scanner |
+| `/api/internal/confidence-regression-scan` | GET/POST | Internal (`CRON_SECRET`; provider-neutral internal header supported) | N/A | No | Daily Vercel Cron confidence-regression scanner |
+| `/api/internal/coverage-gaps` | GET/POST | Internal (`CRON_SECRET`; provider-neutral internal header supported) | Yes | No | Daily Vercel Cron coverage-gap detection + admin alerting |
+| `/api/internal/ingestion/feed-poll` | GET/POST | Internal (`CRON_SECRET`; provider-neutral internal header supported) | Yes | No | Daily Vercel Cron source-feed poller for active HSDS / 211 feeds |
+| `/api/internal/resource-freshness-scan` | GET/POST | Internal (`CRON_SECRET`; provider-neutral internal header supported) | Yes | No | Daily Vercel Cron expiry, reverification, and community-review sweep |
 | `/api/internal/account-erasure` | GET/POST | Internal (`CRON_SECRET`) | N/A | No | Daily; bounded durable account-erasure retries under a fixed wall-clock deadline |
 | `/api/profile` | GET/PUT | Auth required | Yes | Yes | Seeker profile CRUD |
 | `/api/saved` | GET/POST/DELETE | Auth required | Yes | Yes | Saved services CRUD |

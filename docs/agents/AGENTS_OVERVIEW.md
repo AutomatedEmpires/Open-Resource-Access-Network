@@ -6,14 +6,9 @@ This doc explains where agent code lives, how it is developed independently from
 
 - Ingestion/verification agent primitives and contracts:
   - `src/agents/ingestion/**`
-- Azure Functions (runtime triggers):
-  - `functions/scheduledCrawl/` — Daily crawl timer
-  - `functions/fetchPage/` — Queue-driven page fetcher
-  - `functions/extractService/` — Queue-driven LLM extraction
-  - `functions/verifyCandidate/` — Queue-driven verification
-  - `functions/routeToAdmin/` — Queue-driven admin routing
-  - `functions/manualSubmit/` — HTTP endpoint for staff submission
-  - `functions/checkSlaBreaches/` — Timer-driven SLA monitoring
+- Governed runtime triggers:
+  - `src/app/api/internal/ingestion/**` — authenticated Vercel job routes
+  - `vercel.json` — registered schedules
 
 ## Ingestion Pipeline — Built Inventory
 
@@ -25,7 +20,7 @@ This doc explains where agent code lives, how it is developed independently from
 
 | Module | Path |
 |---|---|
-| LLM client + Azure OpenAI | `src/agents/ingestion/llm/` |
+| Optional Anthropic ingestion-assist client | `src/agents/ingestion/llm/` |
 | Extraction + categorization prompts | `src/agents/ingestion/llm/prompts/` |
 | Zod-validated response parser | `src/agents/ingestion/llm/parser.ts` |
 | HTML sanitizer | `src/agents/ingestion/html/sanitizer.ts` |
@@ -72,7 +67,6 @@ This repo also contains **Copilot chatmode profiles** under `.github/agents/`.
 
 Current chatmodes:
 
-- `Azure_function_codegen_and_deployment.chatmode.md`
 - `ORAN_apex_admin_portals.chatmode.md`
 - `ORAN_actions_ci_maintainer.chatmode.md`
 - `ORAN_delta_data_layer.chatmode.md`
@@ -95,16 +89,6 @@ Current chatmodes:
 - Agents may write only to **staging + audit** tables until a human approves publish.
 - Seekers only see **stored verified records**.
 - If an LLM is used, it may only assist with extraction/summarization and must be treated as unverified.
-
-## Copilot Studio (optional)
-
-Microsoft Copilot Studio can be used for **admin-only helper agents** (e.g., summarizing already stored evidence, checklist assistance, drafting reviewer notes).
-
-Hard boundaries:
-
-- Copilot Studio agents must not bypass the Source Registry for crawling.
-- Copilot Studio agents must not publish records directly.
-- Seeker-facing surfaces must continue to read only from stored verified records.
 
 ## How other workstreams integrate
 

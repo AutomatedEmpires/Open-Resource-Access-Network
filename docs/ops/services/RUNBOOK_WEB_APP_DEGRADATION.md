@@ -33,7 +33,7 @@ the Vercel-hosted ORAN web application and API surface.
 4. Test public home, chat, map, and scroll separately from authenticated profile,
    queue, and verification routes.
 5. Confirm Supabase and Clerk status when failures affect database or auth paths.
-6. Check the five authenticated Vercel Cron routes only when scheduled resource
+6. Check the six authenticated Vercel Cron routes only when scheduled resource
    maintenance is affected.
 
 ## Mitigation

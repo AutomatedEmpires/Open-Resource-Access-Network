@@ -17,7 +17,7 @@ body:
         - GitHub Actions (CI)
         - Local (dev container)
         - Local (host machine)
-        - Azure App Service build/deploy
+        - Vercel preview/production deploy
     validations:
       required: true
 

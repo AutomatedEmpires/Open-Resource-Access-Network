@@ -21,7 +21,7 @@ the manual Supabase migration workflow that block safe ORAN delivery.
 - The deployed Vercel commit differs from the reviewed release commit.
 - Sentry source-map upload fails during build.
 - `Database Migration (Supabase)` fails or reports an unbaselined target.
-- A rollback-only Azure workflow is mistaken for the active deployment path.
+- A retired-provider artifact or setting is introduced into the active deployment path.
 
 ## Diagnosis
 
@@ -33,8 +33,7 @@ the manual Supabase migration workflow that block safe ORAN delivery.
    and `/api/health` response.
 5. For Supabase migrations, preserve the fail-closed baseline guard. Never replay
    all historical migrations over an imported schema to make CI green.
-6. Treat `deploy-azure-*`, `deploy-infra`, and Azure token rotation as manual
-   rollback-only workflows, not target-stack delivery.
+6. Require `check:off-azure-runtime` to reject retired-provider artifacts and settings.
 
 ## Mitigation
 
@@ -56,7 +55,7 @@ the manual Supabase migration workflow that block safe ORAN delivery.
 - Sentry associates the release and source maps when configured.
 - Any migration appears once in `schema_migrations` and its focused validation
   passes.
-- No Azure workflow ran unless an explicit rollback decision authorized it.
+- The retired-provider static and runtime policy passes.
 
 ## References
 

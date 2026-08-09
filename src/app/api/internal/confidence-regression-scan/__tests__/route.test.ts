@@ -24,11 +24,14 @@ vi.mock('@/services/telemetry/sentry', () => ({
 }));
 
 function createRequest(
-  options: { apiKey?: string; body?: unknown; jsonError?: boolean } = {},
+  options: { internalKey?: string; cronSecret?: string; body?: unknown; jsonError?: boolean } = {},
 ) {
   const headers = new Headers();
-  if (options.apiKey) {
-    headers.set('authorization', `Bearer ${options.apiKey}`);
+  if (options.internalKey) {
+    headers.set('x-oran-internal-key', options.internalKey);
+  }
+  if (options.cronSecret) {
+    headers.set('authorization', `Bearer ${options.cronSecret}`);
   }
   return {
     headers,
@@ -102,13 +105,13 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
     vi.stubEnv('CRON_SECRET', '');
     vi.stubEnv('INTERNAL_API_KEY', '');
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'secret-key' }));
+    const res = await POST(createRequest({ internalKey: 'secret-key' }));
     expect(res.status).toBe(503);
   });
 
   it('accepts a Vercel Cron GET request with the default limit', async () => {
     const { GET } = await import('../route');
-    const res = await GET(createRequest({ apiKey: 'cron-secret' }));
+    const res = await GET(createRequest({ cronSecret: 'cron-secret' }));
 
     expect(res.status).toBe(200);
     expect(detectorMocks.detectRegressions).toHaveBeenCalledWith(expect.any(Object), 100);
@@ -120,16 +123,16 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns 401 for an incorrect bearer token', async () => {
+  it('returns 401 for an incorrect internal key', async () => {
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'wrong-key' }));
+    const res = await POST(createRequest({ internalKey: 'wrong-key' }));
     expect(res.status).toBe(401);
   });
 
   it('returns 503 when the database is unavailable', async () => {
     dbMocks.isDatabaseConfigured.mockReturnValue(false);
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'secret-key' }));
+    const res = await POST(createRequest({ internalKey: 'secret-key' }));
     expect(res.status).toBe(503);
   });
 
@@ -139,7 +142,7 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
 
   it('passes getPgPool() result and default limit (100) to detectRegressions', async () => {
     const { POST } = await import('../route');
-    await POST(createRequest({ apiKey: 'secret-key', jsonError: true }));
+    await POST(createRequest({ internalKey: 'secret-key', jsonError: true }));
 
     expect(detectorMocks.detectRegressions).toHaveBeenCalledWith(
       dbMocks.getPgPool.mock.results[0]?.value,
@@ -149,13 +152,13 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
 
   it('clamps a limit of 0 up to 1', async () => {
     const { POST } = await import('../route');
-    await POST(createRequest({ apiKey: 'secret-key', body: { limit: 0 } }));
+    await POST(createRequest({ internalKey: 'secret-key', body: { limit: 0 } }));
     expect(detectorMocks.detectRegressions).toHaveBeenCalledWith(expect.any(Object), 1);
   });
 
   it('clamps a limit above 100 down to 100', async () => {
     const { POST } = await import('../route');
-    await POST(createRequest({ apiKey: 'secret-key', body: { limit: 9999 } }));
+    await POST(createRequest({ internalKey: 'secret-key', body: { limit: 9999 } }));
     expect(detectorMocks.detectRegressions).toHaveBeenCalledWith(expect.any(Object), 100);
   });
 
@@ -165,7 +168,7 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
 
   it('returns success with createdCount 0 when detector finds nothing', async () => {
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'secret-key' }));
+    const res = await POST(createRequest({ internalKey: 'secret-key' }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -196,7 +199,7 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
     );
 
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'secret-key' }));
+    const res = await POST(createRequest({ internalKey: 'secret-key' }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -227,7 +230,7 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
     );
 
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'secret-key' }));
+    const res = await POST(createRequest({ internalKey: 'secret-key' }));
 
     expect(res.status).toBe(200);
     expect(queryMock).toHaveBeenCalledTimes(6);
@@ -264,7 +267,7 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
     );
 
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'secret-key' }));
+    const res = await POST(createRequest({ internalKey: 'secret-key' }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -277,7 +280,7 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
 
   it('uses a pool (not a transaction client) for detection', async () => {
     const { POST } = await import('../route');
-    await POST(createRequest({ apiKey: 'secret-key' }));
+    await POST(createRequest({ internalKey: 'secret-key' }));
 
     // getPgPool must be called before withTransaction opens
     const pgPoolCallOrder = dbMocks.getPgPool.mock.invocationCallOrder[0];
@@ -314,7 +317,7 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
     );
 
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'secret-key' }));
+    const res = await POST(createRequest({ internalKey: 'secret-key' }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -348,7 +351,7 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
     );
 
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'secret-key' }));
+    const res = await POST(createRequest({ internalKey: 'secret-key' }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -363,7 +366,7 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
     detectorMocks.detectRegressions.mockRejectedValueOnce(new Error('db error'));
     const { POST } = await import('../route');
 
-    const res = await POST(createRequest({ apiKey: 'secret-key' }));
+    const res = await POST(createRequest({ internalKey: 'secret-key' }));
     const body = await res.json();
 
     expect(res.status).toBe(500);
@@ -377,7 +380,7 @@ describe('GET|POST /api/internal/confidence-regression-scan', () => {
     dbMocks.withTransaction.mockRejectedValueOnce(new Error('scan failed'));
     const { POST } = await import('../route');
 
-    const res = await POST(createRequest({ apiKey: 'secret-key' }));
+    const res = await POST(createRequest({ internalKey: 'secret-key' }));
     const body = await res.json();
 
     expect(res.status).toBe(500);

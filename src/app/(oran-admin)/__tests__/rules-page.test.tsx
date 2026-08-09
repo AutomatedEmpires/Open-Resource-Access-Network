@@ -70,6 +70,28 @@ describe('oran admin rules page', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/rules');
   });
 
+  it('shows retired flags as read-only with truthful deterministic behavior', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => makeRulesResponse({
+        flags: [{
+          name: 'content_safety_crisis',
+          enabled: false,
+          rolloutPct: 0,
+          retired: true,
+          description: 'Retired toggle. Crisis routing is deterministic, provider-independent, and always active.',
+        }],
+      }),
+    });
+
+    render(<RulesPage />);
+
+    await screen.findByText('content_safety_crisis');
+    expect(screen.getByText('Retired · locked')).toBeInTheDocument();
+    expect(screen.getByText(/Crisis routing is deterministic/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+
   it('edits a flag and saves changes with a refreshed list', async () => {
     fetchMock
       .mockResolvedValueOnce({

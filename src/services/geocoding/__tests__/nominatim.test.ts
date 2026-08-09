@@ -99,6 +99,15 @@ describe('Nominatim geocoding', () => {
       await geocode('anywhere');
       expect(String(fetchSpy.mock.calls[0]?.[0]).startsWith('https://geo.internal.example/search?')).toBe(true);
     });
+
+    it('refuses a Microsoft endpoint override before network use', async () => {
+      process.env.VERCEL_ENV = 'production';
+      process.env.NOMINATIM_BASE_URL = 'https://legacy.azurewebsites.net/geocode';
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await expect(geocode('Seattle')).resolves.toEqual([]);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe('reverseGeocode', () => {

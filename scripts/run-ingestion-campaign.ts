@@ -14,7 +14,7 @@ import {
   type SourceTrustLevel,
 } from '../src/agents/ingestion/sourceRegistry';
 import { closeDb, getDb, getPool } from '../src/db';
-import { geocode, isConfigured as isGeocodingConfigured } from '../src/services/geocoding/azureMaps';
+import { geocode, isConfigured as isGeocodingConfigured } from '../src/services/geocoding/nominatim';
 import type { SourceResourcePurpose } from '../src/agents/ingestion/sourcePurpose';
 
 type CampaignOptions = {
@@ -710,7 +710,7 @@ async function publishReadyCandidates(options: {
       stores: options.stores,
       candidateId,
       publishedByUserId: options.actorId,
-      geocode: isGeocodingConfigured() ? geocode : undefined,
+      geocode: process.env.NOMINATIM_BASE_URL && isGeocodingConfigured() ? geocode : undefined,
     });
 
     await options.stores.candidates.markPublished(candidateId, result.serviceId, options.actorId);
@@ -724,7 +724,10 @@ export async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
 
   requireEnv('DATABASE_URL');
-  requireEnv('LLM_ENDPOINT');
+  const llmProvider = requireEnv('LLM_PROVIDER').toLowerCase();
+  if (llmProvider !== 'anthropic') {
+    fail('LLM_PROVIDER must be anthropic for ingestion campaigns');
+  }
   requireEnv('LLM_API_KEY');
   await assertSchemaReady();
 

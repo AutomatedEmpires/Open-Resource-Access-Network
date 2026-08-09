@@ -1,12 +1,11 @@
 {
-  "name": "ORAN (Next.js + Azure)",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "name": "ORAN (Next.js + Supabase)",
+  "image": "ghcr.io/devcontainers/images/base:ubuntu-24.04",
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
-      "version": "22",
+      "version": "24",
       "nodeGypDependencies": true
     },
-    "ghcr.io/devcontainers/features/azure-cli:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
@@ -18,9 +17,7 @@
     }
   },
   "remoteEnv": {
-    "NEXT_TELEMETRY_DISABLED": "1",
-    "AZURE_CORE_COLLECT_TELEMETRY": "0",
-    "AZURE_HTTP_USER_AGENT": "oran-codespace"
+    "NEXT_TELEMETRY_DISABLED": "1"
   },
   "postCreateCommand": "bash .devcontainer/postCreate.sh",
   "customizations": {
@@ -40,11 +37,6 @@
         "hbenl.vscode-test-explorer",
 
         "ms-azuretools.vscode-docker",
-        "ms-vscode.azure-account",
-        "ms-azuretools.vscode-azureappservice",
-        "ms-azuretools.vscode-azureresourcegroups",
-        "ms-azuretools.vscode-azure-github-copilot",
-        "ms-azuretools.vscode-bicep",
         "ms-vscode.test-adapter-converter",
 
         "mtxr.sqltools",

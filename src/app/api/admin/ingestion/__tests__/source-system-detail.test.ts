@@ -193,7 +193,7 @@ describe('source system and feed detail routes', () => {
     expect(deleteResponse.status).toBe(202);
   });
 
-  it('rejects changing a non-Azure source feed to the legacy Azure Function handler', async () => {
+  it('rejects selecting the retired Azure Function handler', async () => {
     sourceFeedsStore.getById.mockResolvedValueOnce({
       id: 'feed-1',
       sourceSystemId: 'sys-1',
@@ -209,8 +209,8 @@ describe('source system and feed detail routes', () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: 'Source feeds cannot be changed to the legacy Azure Function handler.',
-      code: 'legacy_feed_handler_read_only',
+      error: 'Retired feed handlers cannot be selected.',
+      code: 'retired_feed_handler',
     });
     expect(sourceFeedsStore.update).not.toHaveBeenCalled();
     expect(sourceFeedStatesStore.upsert).not.toHaveBeenCalled();
@@ -246,6 +246,25 @@ describe('source system and feed detail routes', () => {
     );
     expect(editResponse.status).toBe(200);
     expect(migrationResponse.status).toBe(200);
+  });
+
+  it('does not allow a retired Azure feed to reselect its retired handler', async () => {
+    sourceFeedsStore.getById.mockResolvedValueOnce({
+      id: 'feed-legacy',
+      sourceSystemId: 'sys-1',
+      feedName: 'Retired Feed',
+      feedHandler: 'azure_function',
+    });
+    const { PUT } = await import('../source-feeds/[id]/route');
+
+    const response = await PUT(
+      createRequest({ feedHandler: 'azure_function' }),
+      createRouteContext('feed-legacy'),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: 'retired_feed_handler' });
+    expect(sourceFeedsStore.update).not.toHaveBeenCalled();
   });
 
   it('queues high-risk feed rollout changes for second approval', async () => {

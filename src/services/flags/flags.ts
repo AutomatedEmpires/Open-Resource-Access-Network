@@ -45,6 +45,31 @@ interface FeatureFlagRow {
 }
 
 const FLAG_CACHE_TTL_MS = 5_000;
+const RETIRED_INERT_FLAGS = new Set<string>([
+  FEATURE_FLAGS.LLM_SUMMARIZE,
+  FEATURE_FLAGS.CONTENT_SAFETY_CRISIS,
+  FEATURE_FLAGS.VECTOR_SEARCH,
+  FEATURE_FLAGS.LLM_INTENT_ENRICH,
+  FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS,
+  FEATURE_FLAGS.TTS_SUMMARIES,
+  FEATURE_FLAGS.LLM_ADMIN_ASSIST,
+  FEATURE_FLAGS.LLM_FEEDBACK_TRIAGE,
+  FEATURE_FLAGS.DOC_INTELLIGENCE_INTAKE,
+]);
+
+export function isRetiredInertFlag(flagName: string): boolean {
+  return RETIRED_INERT_FLAGS.has(flagName);
+}
+
+function getRetiredFlagDescription(flagName: string): string {
+  if (flagName === FEATURE_FLAGS.CONTENT_SAFETY_CRISIS) {
+    return 'Retired toggle. Crisis routing is deterministic, provider-independent, and always active.';
+  }
+  if (flagName === FEATURE_FLAGS.LLM_SUMMARIZE) {
+    return 'Retired toggle. Seeker responses use deterministic stored-record summaries.';
+  }
+  return 'Retired provider toggle retained as read-only data compatibility metadata.';
+}
 
 function normalizeRolloutPct(rolloutPct: number | undefined): number {
   if (typeof rolloutPct !== 'number' || Number.isNaN(rolloutPct)) return 0;
@@ -53,11 +78,19 @@ function normalizeRolloutPct(rolloutPct: number | undefined): number {
 }
 
 function cloneFlag(flag: FeatureFlag): FeatureFlag {
-  return {
+  const clone = {
     ...flag,
     createdAt: new Date(flag.createdAt),
     updatedAt: new Date(flag.updatedAt),
   };
+  return isRetiredInertFlag(clone.name)
+    ? {
+        ...clone,
+        enabled: false,
+        rolloutPct: 0,
+        description: getRetiredFlagDescription(clone.name),
+      }
+    : clone;
 }
 
 function makeFlag(
@@ -85,7 +118,7 @@ const DEFAULT_FLAGS: FeatureFlag[] = [
     FEATURE_FLAGS.LLM_SUMMARIZE,
     false,
     0,
-    'Enable LLM post-retrieval summarization using stored records only.',
+    'Retired toggle. Seeker responses use deterministic stored-record summaries.',
   ),
   makeFlag(FEATURE_FLAGS.MAP_ENABLED, true, 100, 'Expose the seeker map and geospatial discovery features.'),
   makeFlag(FEATURE_FLAGS.FEEDBACK_FORM, true, 100, 'Allow seeker feedback/report submission flows.'),
@@ -96,17 +129,17 @@ const DEFAULT_FLAGS: FeatureFlag[] = [
   makeFlag(FEATURE_FLAGS.NOTIFICATIONS_IN_APP, true, 100, 'Enable in-app notification surfaces and events.'),
   makeFlag(
     FEATURE_FLAGS.CONTENT_SAFETY_CRISIS,
-    true,
-    100,
-    'Run Azure AI Content Safety as a second-layer crisis gate after keyword checks.',
+    false,
+    0,
+    'Legacy inert key. Crisis routing is deterministic and provider-independent.',
   ),
-  makeFlag(FEATURE_FLAGS.VECTOR_SEARCH, false, 0, 'Enable pgvector-backed semantic search and re-ranking.'),
-  makeFlag(FEATURE_FLAGS.LLM_INTENT_ENRICH, false, 0, 'Enable LLM-based intent enrichment for ambiguous chat queries.'),
-  makeFlag(FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS, false, 0, 'Enable translated service descriptions post-retrieval.'),
-  makeFlag(FEATURE_FLAGS.TTS_SUMMARIES, false, 0, 'Enable spoken service summaries via Azure Speech.'),
-  makeFlag(FEATURE_FLAGS.LLM_ADMIN_ASSIST, false, 0, 'Enable LLM-assisted admin review suggestions.'),
-  makeFlag(FEATURE_FLAGS.LLM_FEEDBACK_TRIAGE, false, 0, 'Enable LLM classification of submitted feedback comments.'),
-  makeFlag(FEATURE_FLAGS.DOC_INTELLIGENCE_INTAKE, false, 0, 'Enable Azure Document Intelligence for PDF intake parsing.'),
+  makeFlag(FEATURE_FLAGS.VECTOR_SEARCH, false, 0, 'Legacy inert provider flag retained for data compatibility.'),
+  makeFlag(FEATURE_FLAGS.LLM_INTENT_ENRICH, false, 0, 'Legacy inert provider flag retained for data compatibility.'),
+  makeFlag(FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS, false, 0, 'Legacy inert provider flag retained for data compatibility.'),
+  makeFlag(FEATURE_FLAGS.TTS_SUMMARIES, false, 0, 'Legacy inert provider flag retained for data compatibility.'),
+  makeFlag(FEATURE_FLAGS.LLM_ADMIN_ASSIST, false, 0, 'Legacy inert provider flag retained for data compatibility.'),
+  makeFlag(FEATURE_FLAGS.LLM_FEEDBACK_TRIAGE, false, 0, 'Legacy inert provider flag retained for data compatibility.'),
+  makeFlag(FEATURE_FLAGS.DOC_INTELLIGENCE_INTAKE, false, 0, 'Legacy inert provider flag retained for data compatibility.'),
   makeFlag(FEATURE_FLAGS.TELEMETRY_INTERACTIONS, false, 0, 'Enable privacy-safe UI breadcrumb telemetry.'),
   makeFlag(FEATURE_FLAGS.SEEKER_PLANS_ENABLED, false, 0, 'Enable the local-first seeker execution plan workspace and linked plan actions.'),
   makeFlag(FEATURE_FLAGS.SEEKER_REMINDERS_ENABLED, false, 0, 'Enable seeker reminder scheduling for plan items.'),
@@ -124,7 +157,7 @@ function createFlagMap(flags: FeatureFlag[]): Map<string, FeatureFlag> {
 }
 
 function mapRowToFeatureFlag(row: FeatureFlagRow): FeatureFlag {
-  return {
+  return cloneFlag({
     id: row.id,
     name: row.name,
     enabled: row.enabled,
@@ -134,7 +167,7 @@ function mapRowToFeatureFlag(row: FeatureFlagRow): FeatureFlag {
     updatedByUserId: row.updated_by_user_id,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
-  };
+  });
 }
 
 function mergeWithDefaultCatalog(rows: FeatureFlagRow[]): FeatureFlag[] {
@@ -188,6 +221,8 @@ export class InMemoryFlagService implements FlagService {
     rolloutPct = 100,
     options: FlagUpdateOptions = {},
   ): Promise<void> {
+    const effectiveEnabled = isRetiredInertFlag(flagName) ? false : enabled;
+    const effectiveRolloutPct = isRetiredInertFlag(flagName) ? 0 : rolloutPct;
     const existing = this.store.get(flagName);
     const defaultFlag = getDefaultFlag(flagName);
     const now = new Date();
@@ -195,9 +230,11 @@ export class InMemoryFlagService implements FlagService {
     this.store.set(flagName, {
       id: existing?.id ?? defaultFlag?.id ?? `flag-${flagName}`,
       name: flagName,
-      enabled,
-      rolloutPct: normalizeRolloutPct(rolloutPct),
-      description: existing?.description ?? defaultFlag?.description ?? null,
+      enabled: effectiveEnabled,
+      rolloutPct: normalizeRolloutPct(effectiveRolloutPct),
+      description: isRetiredInertFlag(flagName)
+        ? getRetiredFlagDescription(flagName)
+        : existing?.description ?? defaultFlag?.description ?? null,
       createdByUserId: existing?.createdByUserId ?? defaultFlag?.createdByUserId ?? actorUserId,
       updatedByUserId: actorUserId ?? existing?.updatedByUserId ?? defaultFlag?.updatedByUserId ?? null,
       createdAt: existing?.createdAt ?? defaultFlag?.createdAt ?? now,
@@ -312,10 +349,13 @@ export class HybridFlagService implements FlagService {
     rolloutPct = 100,
     options: FlagUpdateOptions = {},
   ): Promise<void> {
-    const normalizedRolloutPct = normalizeRolloutPct(rolloutPct);
+    const effectiveEnabled = isRetiredInertFlag(flagName) ? false : enabled;
+    const normalizedRolloutPct = isRetiredInertFlag(flagName)
+      ? 0
+      : normalizeRolloutPct(rolloutPct);
 
     if (!isDatabaseConfigured()) {
-      await this.fallback.setFlag(flagName, enabled, normalizedRolloutPct, options);
+      await this.fallback.setFlag(flagName, effectiveEnabled, normalizedRolloutPct, options);
       this.invalidateCache();
       return;
     }
@@ -333,18 +373,18 @@ export class HybridFlagService implements FlagService {
        ON CONFLICT (name) DO UPDATE
        SET enabled = EXCLUDED.enabled,
            rollout_pct = EXCLUDED.rollout_pct,
-           description = COALESCE(feature_flags.description, EXCLUDED.description),
+           description = EXCLUDED.description,
            updated_by_user_id = EXCLUDED.updated_by_user_id,
            updated_at = now()
        RETURNING id, name, enabled, rollout_pct, description, created_by_user_id,
                  updated_by_user_id, created_at, updated_at`,
-      [flagName, enabled, normalizedRolloutPct, description, actorUserId],
+      [flagName, effectiveEnabled, normalizedRolloutPct, description, actorUserId],
     );
 
     const after = rows[0] ? mapRowToFeatureFlag(rows[0]) : null;
 
     if (after) {
-      await this.fallback.setFlag(flagName, enabled, normalizedRolloutPct, options);
+      await this.fallback.setFlag(flagName, effectiveEnabled, normalizedRolloutPct, options);
       try {
         await executeQuery(
           `INSERT INTO audit_logs

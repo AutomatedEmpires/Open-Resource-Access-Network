@@ -231,7 +231,7 @@ export async function scoreSubmission(submissionId: string): Promise<TriageScore
  * Score all actionable submissions that have no score yet or were scored
  * more than 1 hour ago. Returns the count of submissions scored.
  *
- * Safe to call periodically (e.g. from an Azure Function timer trigger).
+ * Safe to call periodically from an authenticated scheduled route.
  * Processes in batches of 100 to limit DB round-trips.
  */
 export async function scoreAllPendingSubmissions(): Promise<number> {

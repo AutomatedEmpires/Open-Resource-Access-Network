@@ -5,7 +5,6 @@ Start here if you’re new to the repo.
 ## Guided experiences
 
 - Investor and partner brief: [docs/INVESTOR_PARTNER_BRIEF.md](INVESTOR_PARTNER_BRIEF.md)
-- Enterprise platform strategy: [docs/platform/ENTERPRISE_EVOLUTION_STRATEGY.md](platform/ENTERPRISE_EVOLUTION_STRATEGY.md)
 - Start-here role lanes: [START_HERE.md](../START_HERE.md)
 - Hackathon onboarding command center: [docs/HACKATHON_ONBOARDING.md](HACKATHON_ONBOARDING.md)
 - Ownership and skills matrix: [docs/OWNERSHIP_SKILLS_MATRIX.md](OWNERSHIP_SKILLS_MATRIX.md)
@@ -27,13 +26,10 @@ Start here if you’re new to the repo.
 
 - Point-in-time repo audit (truth map): `docs/audit/AUDIT_REPORT.md`
 
-## Platform and deployment (Azure-first)
+## Platform and deployment
 
-- Platform direction SSOT: `docs/platform/PLATFORM_AZURE.md`
-- Enterprise platform strategy: `docs/platform/ENTERPRISE_EVOLUTION_STRATEGY.md`
-- Deployment runbook: `docs/platform/DEPLOYMENT_AZURE.md`
+- Platform direction SSOT: `docs/platform/STACK_MIGRATION.md`
 - Integrations SSOT: `docs/platform/INTEGRATIONS.md`
-- Dev Pack / credits mapping: `docs/platform/INTEGRATION_CATALOG.md`
 
 ## Core system specs
 
@@ -73,7 +69,7 @@ Start here if you’re new to the repo.
 ## Folder map
 
 - `docs/governance/` — how we operate (roles, norms, definition-of-done)
-- `docs/platform/` — Azure-first platform and deployment
+- `docs/platform/` — Vercel/Supabase platform and deployment contracts
 - `docs/ui/` — UI/UX contracts, tokens, and flow diagrams
 - `docs/agents/` — agent activation, status snapshots, and agent prompts
 - `docs/solutions/` — implementation guides derived from SSOT specs

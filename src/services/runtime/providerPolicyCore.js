@@ -11,7 +11,18 @@ const PROHIBITED_ENV_NAMES = new Set([
   'functions_worker_runtime',
   'identity_endpoint',
   'identity_header',
+  'llm_api_version',
+  'llm_endpoint',
 ]);
+
+// GitHub-hosted Linux runners expose this Azure CLI installation directory as
+// ambient toolchain metadata. It is not an ORAN provider setting or network
+// endpoint, so treating it as one prevents CI from starting the application.
+const NON_PROVIDER_TOOLCHAIN_ENV_NAMES = new Set([
+  'azure_extension_dir',
+]);
+
+const ALLOWED_LLM_PROVIDER_VALUES = new Set(['anthropic', 'disabled']);
 
 const PROHIBITED_HOST_SUFFIXES = Object.freeze([
   'azconfig.io',
@@ -124,9 +135,12 @@ export function isProhibitedMicrosoftEnvName(name) {
   const normalized = normalize(name);
   if (!normalized) return false;
 
+  const lower = normalized.toLowerCase();
+  if (NON_PROVIDER_TOOLCHAIN_ENV_NAMES.has(lower)) return false;
+
   const upper = normalized.toUpperCase();
   return PROHIBITED_ENV_PREFIXES.some((prefix) => upper.startsWith(prefix))
-    || PROHIBITED_ENV_NAMES.has(normalized.toLowerCase());
+    || PROHIBITED_ENV_NAMES.has(lower);
 }
 
 function normalizeConnectionKey(value) {
@@ -313,6 +327,14 @@ export function findProhibitedMicrosoftRuntimeSettings(envSource = process.env) 
     }
     if (isPresentValue(value) && isProhibitedMicrosoftEndpoint(value)) {
       violations.push(name);
+      continue;
+    }
+    if (
+      name.toUpperCase() === 'LLM_PROVIDER'
+      && isPresentValue(value)
+      && !ALLOWED_LLM_PROVIDER_VALUES.has(normalize(value).toLowerCase())
+    ) {
+      violations.push(name);
     }
   }
 
@@ -320,9 +342,23 @@ export function findProhibitedMicrosoftRuntimeSettings(envSource = process.env) 
 }
 
 /**
- * Retired Microsoft adapters are retained only so their historical unit tests and
- * data contracts remain readable during migration. They may not execute in any
- * development, preview, or production runtime.
+ * Fail startup before application code can observe or use a prohibited
+ * provider setting. Error text contains setting names only, never values.
+ */
+export function assertNoRetiredMicrosoftProviderSettings(envSource = process.env) {
+  if (!isRetiredMicrosoftProviderRuntime(envSource)) return;
+
+  const violations = findProhibitedMicrosoftRuntimeSettings(envSource);
+  if (violations.length > 0) {
+    throw new Error(
+      `Prohibited runtime settings are present: ${violations.join(', ')}`,
+    );
+  }
+}
+
+/**
+ * Microsoft-shaped fixtures remain permissible only in isolated unit tests.
+ * Development, preview, and production runtimes fail closed.
  */
 export function isRetiredMicrosoftProviderRuntime(envSource = process.env) {
   const isIsolatedTestRuntime = normalize(envSource?.NODE_ENV).toLowerCase() === 'test'

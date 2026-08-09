@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const fetchMock = vi.hoisted(() => vi.fn());
@@ -53,6 +53,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   fetchMock.mockReset();
   global.fetch = fetchMock as unknown as typeof fetch;
+});
+
+afterEach(() => {
+  cleanup();
 });
 
 describe('host dashboard page', () => {

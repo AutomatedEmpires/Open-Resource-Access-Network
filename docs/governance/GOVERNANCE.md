@@ -103,11 +103,11 @@ who approves it. This is enforced at the API layer in
 | P1 (standard) | 24 hours | 72 hours unreviewed |
 | P2 (low-confidence / low-traffic area) | 72 hours | 7 days unreviewed |
 
-`checkSlaBreaches` Azure Function runs on a timer and flags overdue assignments.
+The authenticated Vercel SLA-check route runs on a registered schedule and flags overdue assignments.
 
 ### Escalation chain
 
 1. Community admin assigned → reviews within SLA window
 2. If SLA breached → auto-escalate to ORAN admin queue
 3. ORAN admin resolves or re-routes to another community admin
-4. Persistent failures → alert to platform operators via Application Insights
+4. Persistent failures → alert to platform operators via privacy-filtered Sentry telemetry

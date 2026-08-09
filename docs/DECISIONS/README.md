@@ -18,7 +18,7 @@ Create an ADR before implementing changes to:
 |----|-------|--------|
 | ADR-0001 | [SSOT Hierarchy and Truthful Documentation](ADR-0001-ssot-and-truthfulness.md) | Accepted |
 | ADR-0002 | [UI/UX Contract + Vertical Shells](ADR-0002-ui-ux-contract-and-vertical-shells.md) | Accepted |
-| ADR-0002 | [Azure-Native Integration Maximization Plan](ADR-0002-azure-native-integration-plan.md) | Accepted |
+| ADR-0002 | [Azure-Native Integration Maximization Plan](ADR-0002-azure-native-integration-plan.md) | Superseded by the retired-provider boundary in `STACK_MIGRATION.md` |
 | ADR-0003 | [Defer Dark Mode](ADR-0003-defer-dark-mode.md) | Accepted |
 | ADR-0004 | [Crisis-First Chat Gate + Retry-After Rate Limit Contract](ADR-0004-crisis-first-chat-and-retry-after.md) | Accepted |
 | ADR-0005 | [Content Security Policy (CSP)](ADR-0005-content-security-policy.md) | Accepted |

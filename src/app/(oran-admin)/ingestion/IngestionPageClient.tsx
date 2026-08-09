@@ -1057,7 +1057,6 @@ function SourcesTab() {
             >
               <option value="ndp_211">211 NDP</option>
               <option value="hsds_api">HSDS API</option>
-              <option value="azure_function" disabled>Legacy Azure Function (existing feeds only)</option>
               <option value="none">None</option>
             </select>
           </FormField>
@@ -1281,7 +1280,7 @@ function SourcesTab() {
                               <StatusBadge status={feed.isActive ? 'active' : 'inactive'} styles={ACTIVE_STATE_STYLES} />
                             </div>
                             <div className="mt-1 text-xs text-gray-500">
-                              {feed.feedHandler === 'azure_function' ? 'Legacy Azure Function' : feed.feedHandler} · {feed.feedType} · every {feed.refreshIntervalHours ?? '?'}h
+                              {feed.feedHandler === 'azure_function' ? 'Retired handler (read-only)' : feed.feedHandler} · {feed.feedType} · every {feed.refreshIntervalHours ?? '?'}h
                             </div>
                             {feed.baseUrl ? <div className="mt-1 text-xs text-gray-500">{feed.baseUrl}</div> : null}
                             {feed.profileUri ? <div className="mt-1 text-xs text-gray-500">Profile: {feed.profileUri}</div> : null}

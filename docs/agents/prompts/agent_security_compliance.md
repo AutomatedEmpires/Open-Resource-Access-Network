@@ -77,8 +77,8 @@ Start with these known high-risk areas and validate them yourself:
 - src/services/auth/roles.ts
 - src/services/security/rateLimit.ts
 - src/services/security/contentSafety.ts
-- src/services/telemetry/appInsights.ts
 - src/services/telemetry/sentry.ts
+- src/services/runtime/providerPolicy.ts
 - src/app/api/maps/token/route.ts
 - src/app/api/user/data-export/route.ts
 - src/app/api/user/data-delete/route.ts
@@ -87,7 +87,7 @@ Start with these known high-risk areas and validate them yourself:
 
 Known examples of prior risk that you must re-validate rather than assume:
 
-- raw Azure Maps key exposure through the API
+- retired-provider settings or Microsoft-shaped endpoints reaching the runtime
 - legacy audit/data-delete routes creating privacy/compliance defects
 - in-memory abuse controls that may not hold under scale
 - auth model drift between documentation and actual provider configuration

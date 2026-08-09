@@ -32,7 +32,7 @@ describe('buildAgentControlPlaneSnapshot', () => {
         RESEND_API_KEY: 're_test',
         RESEND_FROM: 'ORAN <notifications@openresourceaccessnetwork.com>',
         VERCEL: '1',
-        LLM_ENDPOINT: 'https://llm.example.test',
+        LLM_PROVIDER: 'anthropic',
         LLM_API_KEY: 'llm-key',
       },
       databaseConfigured: true,
@@ -80,9 +80,24 @@ describe('buildAgentControlPlaneSnapshot', () => {
     expect(snapshot.summary.posture).toBe('guided_buildout');
     expect(snapshot.summary.blockers).toContain('DATABASE_URL is not configured for verified resource storage.');
     expect(resourceAlignment?.state).toBe('planned');
-    expect(resourceAlignment?.blockers).toContain(
+    expect(snapshot.integrations.find((item) => item.id === 'ai_core')?.state).toBe('absent');
+    expect(resourceAlignment?.blockers).not.toContain(
       'No LLM runtime is configured for ingestion extraction or admin assist.',
     );
     expect(snapshot.trustModel.openGaps).toContain('feature flags are still backed by an in-memory store');
+  });
+
+  it('reports an explicitly disabled ingestion AI runtime as intentionally absent', async () => {
+    const snapshot = await buildAgentControlPlaneSnapshot({
+      env: { NODE_ENV: 'development', LLM_PROVIDER: 'disabled' },
+      databaseConfigured: false,
+      authConfigured: false,
+      authEnforced: false,
+      flagImplementation: 'in_memory',
+      flagService: { getAllFlags: async () => [] },
+    });
+
+    const ai = snapshot.integrations.find((item) => item.id === 'ai_core');
+    expect(ai).toMatchObject({ state: 'absent', requiredEnv: [], missingEnv: [] });
   });
 });

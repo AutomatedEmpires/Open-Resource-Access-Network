@@ -1,7 +1,12 @@
 import { URL } from 'node:url';
 
 import { createHtmlTextExtractor, createPageFetcher, isFetchError } from '@/agents/ingestion/fetcher';
-import { createLLMClient, getLLMConfigFromEnv, type LLMClient } from '@/agents/ingestion/llm';
+import {
+  createLLMClient,
+  getLLMConfigFromEnv,
+  isLLMConfigReady,
+  type LLMClient,
+} from '@/agents/ingestion/llm';
 import '@/agents/ingestion/llm/providers';
 import type { ExtractedService } from '@/agents/ingestion/llm/types';
 import { CATEGORY_TAGS } from '@/agents/ingestion/tags';
@@ -236,7 +241,7 @@ function mergeAssistPatches(
 
 async function getConfiguredLlmClient(): Promise<LLMClient | null> {
   const config = getLLMConfigFromEnv();
-  if (!config.endpoint || !config.apiKey) {
+  if (!isLLMConfigReady(config)) {
     return null;
   }
   return createLLMClient(config);

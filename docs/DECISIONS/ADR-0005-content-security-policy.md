@@ -19,8 +19,8 @@ Apply a baseline restrictive CSP via `next.config.mjs` `headers()`. The policy:
 | `default-src` | `'self'` | Restrict all resource loading to same origin by default |
 | `script-src` | `'self' 'unsafe-inline'` (prod) / `+ 'unsafe-eval'` (dev) | Next.js requires `unsafe-inline` for inline scripts; `unsafe-eval` only in dev for HMR |
 | `style-src` | `'self' 'unsafe-inline'` | Tailwind CSS injects styles that require `unsafe-inline` |
-| `img-src` | `'self' data: https: blob:` | Azure Maps tiles, data URI icons, HTTPS images |
-| `connect-src` | `'self'` + Azure Maps, Azure AD, App Insights, Sentry domains | Necessary API and telemetry connections |
+| `img-src` | `'self' data: https: blob:` | OpenStreetMap-compatible tiles, data URI icons, HTTPS images |
+| `connect-src` | `'self'` + explicitly approved Clerk, Sentry, and map-tile domains | Necessary identity, map, API, and telemetry connections |
 | `font-src` | `'self'` | Only self-hosted fonts |
 | `object-src` | `'none'` | Block all plugins (Flash, Java, etc.) |
 | `frame-ancestors` | `'none'` | Prevent framing (augments X-Frame-Options: DENY) |

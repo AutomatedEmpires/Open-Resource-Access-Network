@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { FEATURE_FLAGS } from '@/domain/constants';
 
 const dbMocks = vi.hoisted(() => ({
   executeCount: vi.fn(),
@@ -17,8 +16,6 @@ const detectCrisisMock = vi.hoisted(() => vi.fn());
 const hydrateChatContextMock = vi.hoisted(() => vi.fn());
 const isEnabledMock = vi.hoisted(() => vi.fn());
 const captureExceptionMock = vi.hoisted(() => vi.fn());
-const translateBatchMock = vi.hoisted(() => vi.fn());
-const isTranslatorConfiguredMock = vi.hoisted(() => vi.fn());
 const chatQuotaMocks = vi.hoisted(() => ({
   checkQuotaByIdentity: vi.fn(),
   finalizeChatRequest: vi.fn(),
@@ -55,10 +52,6 @@ vi.mock('@/services/flags/flags', () => ({
   flagService: {
     isEnabled: isEnabledMock,
   },
-}));
-vi.mock('@/services/i18n/translator', () => ({
-  translateBatch: translateBatchMock,
-  isConfigured: isTranslatorConfiguredMock,
 }));
 vi.mock('@/services/telemetry/sentry', () => ({
   captureException: captureExceptionMock,
@@ -99,8 +92,6 @@ beforeEach(() => {
   authMocks.getAuthContext.mockResolvedValue(null);
   searchMock.mockResolvedValue({ results: [], total: 0 });
   isEnabledMock.mockReturnValue(false);
-  isTranslatorConfiguredMock.mockReturnValue(false);
-  translateBatchMock.mockResolvedValue([]);
   detectCrisisMock.mockReturnValue(false);
   chatQuotaMocks.checkQuotaByIdentity.mockResolvedValue({
     sessionId: 'device:test',
@@ -406,6 +397,72 @@ describe('api/chat route', () => {
       ],
       retrievalStatus: 'results',
       quotaRemaining: 50,
+    });
+  });
+
+  it('broadens a direct recognized need to the canonical category search without weakening filters', async () => {
+    searchMock
+      .mockResolvedValueOnce({ results: [], total: 0 })
+      .mockResolvedValueOnce({
+        results: [{ service: { id: 'svc-mental-health', name: 'Mental Health Support' } }],
+        total: 1,
+      });
+    hydrateChatContextMock.mockResolvedValueOnce({
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      locale: 'en',
+      messageCount: 0,
+      approximateLocation: { city: 'Seattle', stateProvince: 'WA' },
+    });
+    orchestrateChatMock.mockImplementationOnce(async (_message, sessionId, userId, locale, _rateLimitKey, deps) => {
+      const context = await deps.hydrateContext?.({ sessionId, userId, locale, messageCount: 0 });
+      const retrieval = await deps.retrieveServices(
+        {
+          category: 'mental_health',
+          rawQuery: 'I need mental health support',
+          urgencyQualifier: 'standard',
+        },
+        context,
+      );
+      return retrieval;
+    });
+    const { POST } = await loadRoute();
+
+    const response = await POST(createRequest({
+      jsonBody: {
+        message: 'I need mental health support',
+        sessionId: '11111111-1111-4111-8111-111111111111',
+        locale: 'en',
+        filters: {
+          trust: 'HIGH',
+          attributeFilters: { delivery: ['phone'] },
+        },
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(searchMock).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      text: 'I need mental health support',
+      cityBias: 'Seattle, WA',
+      filters: expect.objectContaining({
+        attributeFilters: { delivery: ['phone'] },
+        minConfidenceScore: 80,
+        publishedOnly: true,
+      }),
+    }));
+    expect(searchMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      text: 'mental health',
+      cityBias: 'Seattle, WA',
+      filters: expect.objectContaining({
+        attributeFilters: { delivery: ['phone'] },
+        minConfidenceScore: 80,
+        publishedOnly: true,
+      }),
+    }));
+    expect(searchMock).toHaveBeenCalledTimes(2);
+    await expect(response.json()).resolves.toMatchObject({
+      retrievalStatus: 'results',
+      effectiveSearchText: 'mental health',
+      searchBroadened: true,
     });
   });
 
@@ -985,6 +1042,9 @@ describe('api/chat route', () => {
       total: 0,
     }).mockResolvedValueOnce({
       results: [],
+      total: 0,
+    }).mockResolvedValueOnce({
+      results: [],
       total: 1,
     });
     orchestrateChatMock.mockImplementationOnce(async (_message, sessionId, userId, locale, _rateLimitKey, deps) => {
@@ -1039,103 +1099,6 @@ describe('api/chat route', () => {
     );
     await expect(response.json()).resolves.toEqual({
       retrievalStatus: 'no_match',
-      quotaRemaining: 50,
-    });
-  });
-
-  it('translates descriptions when multilingual flag and translator are enabled for supported locales', async () => {
-    isEnabledMock.mockImplementation((flagName: string) => flagName === FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS);
-    isTranslatorConfiguredMock.mockReturnValue(true);
-    translateBatchMock.mockResolvedValueOnce([
-      { translatedText: 'Despensa de alimentos' },
-      { translatedText: 'Refugio nocturno' },
-    ]);
-    orchestrateChatMock.mockResolvedValueOnce({
-      reply: 'ok',
-      services: [
-        { id: 'svc-1', description: 'Food pantry' },
-        { id: 'svc-2', description: 'Overnight shelter' },
-      ],
-    });
-    const { POST } = await loadRoute();
-
-    const response = await POST(
-      createRequest({
-        jsonBody: {
-          message: 'help',
-          sessionId: '11111111-1111-4111-8111-111111111111',
-          locale: 'es',
-        },
-      }),
-    );
-
-    expect(response.status).toBe(200);
-    expect(translateBatchMock).toHaveBeenCalledWith(
-      ['Food pantry', 'Overnight shelter'],
-      'es',
-    );
-    await expect(response.json()).resolves.toEqual({
-      reply: 'ok',
-      services: [
-        { id: 'svc-1', description: 'Despensa de alimentos' },
-        { id: 'svc-2', description: 'Refugio nocturno' },
-      ],
-      quotaRemaining: 50,
-    });
-  });
-
-  it('skips translation for unsupported locales even when multilingual is enabled', async () => {
-    isEnabledMock.mockImplementation((flagName: string) => flagName === FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS);
-    isTranslatorConfiguredMock.mockReturnValue(true);
-    orchestrateChatMock.mockResolvedValueOnce({
-      reply: 'ok',
-      services: [{ id: 'svc-1', description: 'Food pantry' }],
-    });
-    const { POST } = await loadRoute();
-
-    const response = await POST(
-      createRequest({
-        jsonBody: {
-          message: 'help',
-          sessionId: '11111111-1111-4111-8111-111111111111',
-          locale: 'xx',
-        },
-      }),
-    );
-
-    expect(response.status).toBe(200);
-    expect(translateBatchMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({
-      reply: 'ok',
-      services: [{ id: 'svc-1', description: 'Food pantry' }],
-      quotaRemaining: 50,
-    });
-  });
-
-  it('fails open when translation errors occur and keeps original descriptions', async () => {
-    isEnabledMock.mockImplementation((flagName: string) => flagName === FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS);
-    isTranslatorConfiguredMock.mockReturnValue(true);
-    translateBatchMock.mockRejectedValueOnce(new Error('translator timeout'));
-    orchestrateChatMock.mockResolvedValueOnce({
-      reply: 'ok',
-      services: [{ id: 'svc-1', description: 'Food pantry' }],
-    });
-    const { POST } = await loadRoute();
-
-    const response = await POST(
-      createRequest({
-        jsonBody: {
-          message: 'help',
-          sessionId: '11111111-1111-4111-8111-111111111111',
-          locale: 'es',
-        },
-      }),
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      reply: 'ok',
-      services: [{ id: 'svc-1', description: 'Food pantry' }],
       quotaRemaining: 50,
     });
   });

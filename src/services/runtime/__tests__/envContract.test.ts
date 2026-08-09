@@ -24,6 +24,7 @@ describe('validateRuntimeEnv', () => {
 
     expect(result.ok).toBe(true);
     expect(result.missingCritical).toEqual([]);
+    expect(result.prohibitedSettings).toEqual([]);
     expect(result.warnings).toEqual([]);
   });
 
@@ -155,21 +156,25 @@ describe('validateRuntimeEnv', () => {
     expect(result.missingCritical).toEqual([]);
   });
 
-  it('validates legacy Functions contracts from names-only sources', () => {
-    const result = validateRuntimeEnv(
-      'functions',
-      [
-        'AzureWebJobsStorage',
-        'FUNCTIONS_WORKER_RUNTIME',
-        'ORAN_APP_URL',
-        'INTERNAL_API_KEY',
-        'NEXT_PUBLIC_SENTRY_DSN',
-      ],
-      { nodeEnv: 'production' },
-    );
+  it('rejects retired Microsoft settings by name without returning values', () => {
+    const result = validateRuntimeEnv('webapp', {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran:test@localhost:5432/oran',
+      ORAN_DATABASE_ROLE: 'oran_backend_runtime',
+      ORAN_SUPABASE_PROJECT_REF: 'tpatxospkuqvajusuryw',
+      CRON_SECRET: 'vercel-cron-secret',
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_example',
+      CLERK_SECRET_KEY: 'sk_test_example',
+      AZURE_OPENAI_KEY: 'must-not-leak',
+      LLM_ENDPOINT: 'https://oran.openai.azure.com',
+      LLM_PROVIDER: 'azure_openai',
+    });
 
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
     expect(result.missingCritical).toEqual([]);
-    expect(result.warnings).toEqual([]);
+    expect(result.prohibitedSettings).toEqual(['AZURE_OPENAI_KEY', 'LLM_ENDPOINT', 'LLM_PROVIDER']);
+    expect(JSON.stringify(result)).not.toContain('must-not-leak');
+    expect(JSON.stringify(result)).not.toContain('openai.azure.com');
+    expect(JSON.stringify(result)).not.toContain('azure_openai');
   });
 });

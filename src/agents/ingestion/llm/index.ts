@@ -29,6 +29,7 @@ export {
   DEFAULT_LLM_CONFIG,
   createLLMClient,
   getLLMConfigFromEnv,
+  isLLMConfigReady,
   getRegisteredLLMProviders,
   registerLLMClientProvider,
 } from './client';

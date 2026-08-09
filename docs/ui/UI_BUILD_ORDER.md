@@ -42,7 +42,7 @@ Completed: 2026-03-02
    - Confidence filter includes disclaimer: "does not imply certainty".
 
 3. `/map` (interactive map) ✅
-   - Azure Maps SDK integrated via server-side token broker.
+   - Leaflet/OpenStreetMap rendering with visible attribution and no browser token broker.
    - "Search this area" bbox-on-pan with 600ms debounce.
 
 Acceptance criteria:

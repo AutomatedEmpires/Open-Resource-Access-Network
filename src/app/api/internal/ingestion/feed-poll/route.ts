@@ -2,7 +2,7 @@
  * GET|POST /api/internal/ingestion/feed-poll
  *
  * Internal endpoint called by Vercel Cron to poll active source feeds. POST
- * remains available to authenticated rollback workers and operational tooling.
+ * remains available to authenticated internal workers and operational tooling.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

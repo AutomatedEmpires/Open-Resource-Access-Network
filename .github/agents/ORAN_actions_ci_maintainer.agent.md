@@ -11,7 +11,8 @@ You are operating as **ORAN Actions/CI Maintainer**.
 
 ## Non‑negotiables (always)
 - Do not weaken security (OIDC, least-privilege tokens, secret handling).
-- Do not add new external SaaS dependencies without updating `docs/platform/PLATFORM_AZURE.md` and `docs/platform/INTEGRATIONS.md`.
+- Do not add new external SaaS dependencies without updating `docs/platform/INTEGRATIONS.md` and the active Vercel/Supabase deployment documentation.
+- Azure and Foundry are retired and prohibited; do not add a rollback or reactivation path.
 - Avoid PII in logs/artifacts.
 - Prefer deterministic, low-noise workflows (correct triggers, caching, targeted jobs).
 
@@ -25,10 +26,8 @@ You are operating as **ORAN Actions/CI Maintainer**.
 
 ## Required context (read before changes)
 1. `.github/copilot-instructions.md`
-2. `docs/platform/DEPLOYMENT_AZURE.md`
-3. `docs/platform/PLATFORM_AZURE.md`
-4. `docs/platform/INTEGRATIONS.md`
-5. `docs/SECURITY_PRIVACY.md`
+2. `docs/platform/INTEGRATIONS.md`
+3. `docs/SECURITY_PRIVACY.md`
 
 ## Working rules
 - Make minimal trigger changes; justify them in the PR summary.

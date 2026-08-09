@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   assertAllowedRuntimeEndpoint,
+  assertNoRetiredMicrosoftProviderSettings,
   assertExpectedSupabaseProjectDatabaseEndpoint,
   extractSupabaseProjectRefFromDatabaseUrl,
   extractRuntimeEndpointHosts,
@@ -43,7 +44,17 @@ describe('off-Azure runtime provider policy', () => {
     expect(isProhibitedMicrosoftEnvName('FOUNDRY_KEY')).toBe(true);
     expect(isProhibitedMicrosoftEnvName('AzureWebJobsStorage')).toBe(true);
     expect(isProhibitedMicrosoftEnvName('WEBSITE_INSTANCE_ID')).toBe(true);
+    expect(isProhibitedMicrosoftEnvName('LLM_ENDPOINT')).toBe(true);
+    expect(isProhibitedMicrosoftEnvName('LLM_API_VERSION')).toBe(true);
     expect(isProhibitedMicrosoftEnvName('OPENAI_API_KEY')).toBe(false);
+  });
+
+  it('ignores the GitHub runner Azure CLI directory without weakening provider checks', () => {
+    expect(isProhibitedMicrosoftEnvName('AZURE_EXTENSION_DIR')).toBe(false);
+    expect(findProhibitedMicrosoftRuntimeSettings({
+      AZURE_EXTENSION_DIR: '/opt/az/azcliextensions',
+      AZURE_OPENAI_KEY: 'must-not-leak',
+    })).toEqual(['AZURE_OPENAI_KEY']);
   });
 
   it('recognizes Microsoft endpoints without rejecting the target stack', () => {
@@ -103,12 +114,50 @@ describe('off-Azure runtime provider policy', () => {
   it('reports setting names only and never returns their values', () => {
     const result = findProhibitedMicrosoftRuntimeSettings({
       LLM_ENDPOINT: 'https://oran.openai.azure.com',
+      LLM_PROVIDER: 'azure_openai',
       AZURE_OPENAI_KEY: 'super-secret-value',
       NEXT_PUBLIC_SUPABASE_URL: 'https://project.supabase.co',
     });
 
-    expect(result).toEqual(['AZURE_OPENAI_KEY', 'LLM_ENDPOINT']);
+    expect(result).toEqual(['AZURE_OPENAI_KEY', 'LLM_ENDPOINT', 'LLM_PROVIDER']);
     expect(result.join(' ')).not.toContain('super-secret-value');
+  });
+
+  it('fails startup on retired settings without exposing their values', () => {
+    const env = {
+      NODE_ENV: 'production',
+      AZURE_OPENAI_KEY: 'super-secret-value',
+      LLM_ENDPOINT: 'https://oran.openai.azure.com',
+      LLM_PROVIDER: 'foundry',
+    };
+
+    expect(() => assertNoRetiredMicrosoftProviderSettings(env)).toThrow(
+      'Prohibited runtime settings are present: AZURE_OPENAI_KEY, LLM_ENDPOINT, LLM_PROVIDER',
+    );
+    try {
+      assertNoRetiredMicrosoftProviderSettings(env);
+    } catch (error) {
+      expect(String(error)).not.toContain('super-secret-value');
+      expect(String(error)).not.toContain('openai.azure.com');
+      expect(String(error)).not.toContain('foundry');
+    }
+  });
+
+  it.each(['openai', 'custom', 'azure_openai', 'foundry'])(
+    'rejects unsupported LLM provider selector %s without disclosing the value',
+    (provider) => {
+      const result = findProhibitedMicrosoftRuntimeSettings({ LLM_PROVIDER: provider });
+      expect(result).toEqual(['LLM_PROVIDER']);
+      expect(JSON.stringify(result)).not.toContain(provider);
+    },
+  );
+
+  it('permits the configured provider-neutral runtime at startup', () => {
+    expect(() => assertNoRetiredMicrosoftProviderSettings({
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://oran@db.example.test/oran',
+      NOMINATIM_BASE_URL: 'https://nominatim.openstreetmap.org',
+    })).not.toThrow();
   });
 
   it('rejects generic Microsoft endpoints at use without disclosing the endpoint', () => {

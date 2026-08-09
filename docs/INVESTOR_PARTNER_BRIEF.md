@@ -108,7 +108,7 @@ Near-term direction includes:
 - stronger public trust evidence and platform briefings
 - more refined user and organization experiences
 - deeper sourcing and verification coverage
-- continued Azure-first operational maturity
+- continued Vercel/Supabase operational maturity
 - a mobile app path for everyday access and younger-user engagement
 
 ## Proof Links
@@ -117,5 +117,4 @@ Near-term direction includes:
 - [docs/VISION.md](VISION.md)
 - [docs/SSOT.md](SSOT.md)
 - [docs/EVIDENCE_DASHBOARD.md](EVIDENCE_DASHBOARD.md)
-- [docs/platform/PLATFORM_AZURE.md](platform/PLATFORM_AZURE.md)
-- [infra/README.md](../infra/README.md)
+- [docs/platform/STACK_MIGRATION.md](platform/STACK_MIGRATION.md)

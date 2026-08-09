@@ -22,13 +22,17 @@ vi.mock('@/services/telemetry/sentry', () => ({
 }));
 
 function createRequest(options: {
-  apiKey?: string;
+  internalKey?: string;
+  cronSecret?: string;
   body?: unknown;
   jsonError?: boolean;
 } = {}) {
   const headers = new Headers();
-  if (options.apiKey) {
-    headers.set('authorization', `Bearer ${options.apiKey}`);
+  if (options.internalKey) {
+    headers.set('x-oran-internal-key', options.internalKey);
+  }
+  if (options.cronSecret) {
+    headers.set('authorization', `Bearer ${options.cronSecret}`);
   }
   headers.set('content-type', 'application/json');
 
@@ -56,13 +60,13 @@ describe('GET|POST /api/internal/coverage-gaps', () => {
     vi.stubEnv('CRON_SECRET', '');
     vi.stubEnv('INTERNAL_API_KEY', '');
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'test-secret' }));
+    const res = await POST(createRequest({ internalKey: 'test-secret' }));
     expect(res.status).toBe(503);
   });
 
   it('accepts a Vercel Cron GET request with the default threshold', async () => {
     const { GET } = await import('../route');
-    const res = await GET(createRequest({ apiKey: 'test-cron-secret' }));
+    const res = await GET(createRequest({ cronSecret: 'test-cron-secret' }));
 
     expect(res.status).toBe(200);
     expect(gapsMocks.getCoverageGapSummaries).toHaveBeenCalledWith(24);
@@ -76,32 +80,32 @@ describe('GET|POST /api/internal/coverage-gaps', () => {
 
   it('returns 401 when authorization header has wrong key', async () => {
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'wrong-key' }));
+    const res = await POST(createRequest({ internalKey: 'wrong-key' }));
     expect(res.status).toBe(401);
   });
 
   it('returns 503 when database is not configured', async () => {
     dbMocks.isDatabaseConfigured.mockReturnValue(false);
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'test-secret' }));
+    const res = await POST(createRequest({ internalKey: 'test-secret' }));
     expect(res.status).toBe(503);
   });
 
   it('returns 400 for invalid JSON body', async () => {
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'test-secret', jsonError: true }));
+    const res = await POST(createRequest({ internalKey: 'test-secret', jsonError: true }));
     expect(res.status).toBe(400);
   });
 
   it('returns 400 for invalid thresholdHours', async () => {
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'test-secret', body: { thresholdHours: -1 } }));
+    const res = await POST(createRequest({ internalKey: 'test-secret', body: { thresholdHours: -1 } }));
     expect(res.status).toBe(400);
   });
 
   it('returns gap report on success with no gaps', async () => {
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'test-secret' }));
+    const res = await POST(createRequest({ internalKey: 'test-secret' }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -120,7 +124,7 @@ describe('GET|POST /api/internal/coverage-gaps', () => {
     gapsMocks.alertOranAdminsAboutGaps.mockResolvedValueOnce(3);
 
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'test-secret' }));
+    const res = await POST(createRequest({ internalKey: 'test-secret' }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -133,7 +137,7 @@ describe('GET|POST /api/internal/coverage-gaps', () => {
 
   it('passes custom thresholdHours to the gap service', async () => {
     const { POST } = await import('../route');
-    await POST(createRequest({ apiKey: 'test-secret', body: { thresholdHours: 48 } }));
+    await POST(createRequest({ internalKey: 'test-secret', body: { thresholdHours: 48 } }));
 
     expect(gapsMocks.getCoverageGapSummaries).toHaveBeenCalledWith(48);
   });
@@ -141,7 +145,7 @@ describe('GET|POST /api/internal/coverage-gaps', () => {
   it('returns 500 when gap check fails', async () => {
     gapsMocks.getCoverageGapSummaries.mockRejectedValueOnce(new Error('DB error'));
     const { POST } = await import('../route');
-    const res = await POST(createRequest({ apiKey: 'test-secret' }));
+    const res = await POST(createRequest({ internalKey: 'test-secret' }));
 
     expect(res.status).toBe(500);
     expect(captureExceptionMock).toHaveBeenCalledOnce();

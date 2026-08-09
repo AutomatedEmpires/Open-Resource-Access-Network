@@ -17,7 +17,7 @@ You are the SQL migration agent for ORAN (Open Resource Access Network), a civic
 
 ## Database Context
 
-- PostgreSQL 16 + PostGIS on Azure Database for PostgreSQL Flexible Server
+- PostgreSQL 17 + PostGIS on the dedicated ORAN Supabase project
 - Extensions enabled: `postgis`, `uuid-ossp`
 - All PKs are `UUID DEFAULT uuid_generate_v4()`
 - All mutable tables have `created_at`, `updated_at`, `created_by_user_id`, `updated_by_user_id`

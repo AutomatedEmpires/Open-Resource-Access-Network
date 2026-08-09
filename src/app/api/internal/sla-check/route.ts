@@ -2,7 +2,7 @@
  * GET|POST /api/internal/sla-check
  *
  * Internal endpoint called by Vercel Cron to check SLA breaches. POST remains
- * available to authenticated rollback workers and operational tooling.
+ * available to authenticated internal workers and operational tooling.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

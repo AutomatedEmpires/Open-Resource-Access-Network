@@ -2,9 +2,9 @@
  * Anthropic LLM Client
  *
  * Production-grade implementation of `LLMClient` backed by the Anthropic
- * Messages API — the registered portfolio AI provider that replaces the
- * legacy Azure OpenAI connector. Uses raw fetch (matching the repo's other
- * provider integrations) so no SDK dependency is required.
+ * Messages API — the registered, review-gated ingestion provider. Uses raw
+ * fetch (matching the repo's other provider integrations) so no SDK dependency
+ * is required.
  *
  * IMPORTANT:
  *  - Never logs PII or raw service content to telemetry.
@@ -172,17 +172,9 @@ export class AnthropicClient implements LLMClient {
     });
 
     if (!response.ok) {
-      // Body may describe the failure; never log it verbatim (may echo content).
       const retryAfter = response.headers.get('retry-after');
-      let detail = '';
-      try {
-        const body = (await response.json()) as { error?: { message?: string } };
-        detail = body.error?.message ?? '';
-      } catch {
-        // Non-JSON error body — status alone is enough for classification.
-      }
       throw new AnthropicHttpError(
-        `Anthropic API error ${response.status}${detail ? `: ${detail}` : ''}`,
+        `Anthropic API request failed with status ${response.status}`,
         response.status,
         retryAfter ? Number.parseInt(retryAfter, 10) : undefined,
       );
@@ -327,9 +319,9 @@ export class AnthropicClient implements LLMClient {
 /**
  * Create an `AnthropicClient` from the shared config object.
  *
- * Requires `apiKey` (LLM_API_KEY). `endpoint` is ignored — the public
- * Anthropic API endpoint is fixed. A GPT-shaped default model coming from
- * the shared env defaults is replaced with the portfolio Claude default.
+ * Requires `apiKey` (LLM_API_KEY). The public Anthropic API endpoint is fixed.
+ * A GPT-shaped default model coming from shared historical defaults is
+ * replaced with the portfolio Claude default.
  */
 export async function createAnthropicClient(
   config: LLMClientConfig,
@@ -338,7 +330,7 @@ export async function createAnthropicClient(
     throw new Error('Anthropic requires an API key. Set LLM_API_KEY or provide config.apiKey.');
   }
 
-  const model = !config.model || config.model.startsWith('gpt-')
+  const model = !config.model || config.model === 'unconfigured' || config.model.startsWith('gpt-')
     ? DEFAULT_ANTHROPIC_MODEL
     : config.model;
 

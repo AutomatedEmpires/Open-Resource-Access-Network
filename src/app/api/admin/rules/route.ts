@@ -8,7 +8,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { flagService, getFlagServiceImplementation } from '@/services/flags/flags';
+import {
+  flagService,
+  getFlagServiceImplementation,
+  isRetiredInertFlag,
+} from '@/services/flags/flags';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import { captureException } from '@/services/telemetry/sentry';
 import { getAuthContext } from '@/services/auth/session';
@@ -66,7 +70,13 @@ export async function GET(req: NextRequest) {
     const implementation = await getFlagServiceImplementation();
 
     return NextResponse.json(
-      { flags, implementation },
+      {
+        flags: flags.map((flag) => ({
+          ...flag,
+          retired: isRetiredInertFlag(flag.name),
+        })),
+        implementation,
+      },
       { headers: { 'Cache-Control': 'private, no-store' } },
     );
   } catch (error) {
@@ -116,6 +126,13 @@ export async function PUT(req: NextRequest) {
 
   const { name, enabled, rolloutPct } = parsed.data;
 
+  if (isRetiredInertFlag(name)) {
+    return NextResponse.json(
+      { error: 'This legacy flag is retired and cannot be changed.' },
+      { status: 409 },
+    );
+  }
+
   try {
     await flagService.setFlag(name, enabled, rolloutPct, {
       actorUserId: authCtx.userId,
@@ -129,7 +146,9 @@ export async function PUT(req: NextRequest) {
       success: true,
       flag: updated,
       implementation,
-      message: `Flag "${name}" updated: ${enabled ? 'enabled' : 'disabled'} at ${rolloutPct}% rollout.`,
+      message: updated
+        ? `Flag "${name}" updated: ${updated.enabled ? 'enabled' : 'disabled'} at ${updated.rolloutPct}% rollout.`
+        : `Flag "${name}" update completed.`,
     });
   } catch (error) {
     await captureException(error, { feature: 'api_admin_rules_update' });

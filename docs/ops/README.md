@@ -3,33 +3,26 @@
 This directory is the operational control plane for production support,
 incident response, resource integrity, and recovery.
 
-The active platform is Vercel + Supabase + Clerk + Sentry + Resend. Azure
-Function, Storage Queue, and Azure OpenAI runbooks are explicitly rollback-only
-until their resources and credentials are decommissioned. They are never the
-default live-production route. See
+The active platform is Vercel + Supabase + Clerk + Sentry + Resend. Azure and
+Foundry are retired and prohibited; they have no operational rollback route. See
 [`STACK_MIGRATION.md`](../platform/STACK_MIGRATION.md).
 
 ## Lifecycle Contract
 
 - `active`: primary instructions for the target production stack.
-- `rollback-only`: instructions used only after an explicit rollback-platform
-  activation decision. They remain freshness-gated until retirement.
-- Retired documents leave the active catalog only after their replacement,
-  links, credentials, and decommission evidence are reconciled.
+- `historical`: immutable incident or migration evidence that is not executable guidance.
 
-Every `RUNBOOK_*.md` in the governed folders declares its lifecycle, owner,
-reviewers, last review, and next review. Rollback-only documents also name their
-active replacement, retirement trigger, validation status, and retirement
-deadline. An expired rollback deadline fails the freshness check.
+Every active `RUNBOOK_*.md` in the governed folders declares its lifecycle,
+owner, reviewers, last review, and next review.
 
 ## Folder Structure
 
 - `core/`: incident command, rollback, release controls, handoff, readiness.
-- `services/`: target services plus explicitly labeled rollback procedures.
+- `services/`: active target-stack services.
 - `security/`: security, privacy, and credential incident procedures.
 - `data/`: resource integrity and freshness operations.
 - `dr/`: disaster recovery and restore procedures.
-- `monitoring/`: observability and legacy monitoring references.
+- `monitoring/`: active observability guidance.
 - `audits/`: historical runbook audit reports.
 - `templates/`: runbook and communication templates.
 
@@ -72,25 +65,9 @@ deadline. An expired rollback deadline fails the freshness check.
 | [CI/CD failure](services/RUNBOOK_CI_CD_PIPELINE_FAILURE.md) | GitHub, Vercel, Sentry source maps, Supabase migrations |
 | [Dependency outage](services/RUNBOOK_DEPENDENCY_OUTAGE.md) | Provider failures and safe degraded modes |
 | [Security incident](security/RUNBOOK_SECURITY_INCIDENT.md) | Security/privacy containment and recovery |
-| [Scheduled worker secret rotation](security/RUNBOOK_INTERNAL_API_KEY_ROTATION.md) | Vercel Cron and rollback-worker credentials |
-| [Runtime configuration failure](security/RUNBOOK_KEY_VAULT_ACCESS_FAILURE.md) | Doppler/Vercel configuration; historical filename retained |
+| [Scheduled worker secret rotation](security/RUNBOOK_INTERNAL_API_KEY_ROTATION.md) | Vercel Cron and provider-neutral internal-tool credentials |
 | [Observability outage](monitoring/RUNBOOK_OBSERVABILITY_OUTAGE.md) | Sentry/Vercel blind spots and fallback checks |
 | [Disaster recovery](dr/RUNBOOK_DR_BACKUP_RESTORE.md) | Backup/restore readiness and recovery validation |
-
-## Azure Rollback-Only Catalog
-
-These documents are not active-stack incident routes:
-
-| Runbook | Scope | Active replacement | Validation | Retirement deadline |
-| --- | --- | --- | --- | --- |
-| [Azure Function failure](services/RUNBOOK_FUNCTION_APP_FAILURE.md) | Legacy Function host/timers | [Dependency outage](services/RUNBOOK_DEPENDENCY_OUTAGE.md) | Code-aligned; live rollback unvalidated | 2026-08-15 |
-| [Azure ingestion pipeline](services/RUNBOOK_INGESTION.md) | Legacy Functions/Storage Queue ingestion | [211 API ingestion](services/RUNBOOK_211_API_INGESTION.md) | Code-aligned; live rollback unvalidated | 2026-08-15 |
-| [Azure OpenAI outage](services/RUNBOOK_LLM_OUTAGE.md) | Legacy ingestion extraction | [Dependency outage](services/RUNBOOK_DEPENDENCY_OUTAGE.md) | Code-aligned; live rollback unvalidated | 2026-08-15 |
-| [Azure queue backlog](services/RUNBOOK_QUEUE_BACKLOG.md) | Legacy Storage Queue throughput | [211 API ingestion](services/RUNBOOK_211_API_INGESTION.md) | Code-aligned; live rollback unvalidated | 2026-08-15 |
-
-`monitoring/MONITORING_QUERIES.md` and `monitoring/LOAD_SCALE_TESTING.md`
-remain Azure rollback references until provider-neutral replacements are
-validated. Do not use their KQL, App Service, or queue guidance for Vercel.
 
 ## Active Alert Routing
 
@@ -106,7 +83,7 @@ validated. Do not use their KQL, App Service, or queue guidance for Vercel.
 | Reviewer capacity/SLA issue | `RUNBOOK_ADMIN_ROUTING` | `RUNBOOK_INCIDENT_TRIAGE` |
 | External provider outage | `RUNBOOK_DEPENDENCY_OUTAGE` | `RUNBOOK_INCIDENT_TRIAGE` |
 | Sentry/telemetry blind spot | `RUNBOOK_OBSERVABILITY_OUTAGE` | `RUNBOOK_INCIDENT_TRIAGE` |
-| Runtime configuration failure | `RUNBOOK_KEY_VAULT_ACCESS_FAILURE` | `RUNBOOK_AUTH_OUTAGE` |
+| Runtime configuration failure | `RUNBOOK_DEPENDENCY_OUTAGE` | `RUNBOOK_AUTH_OUTAGE` |
 | Cron/internal credential exposure | `RUNBOOK_INTERNAL_API_KEY_ROTATION` | `RUNBOOK_SECURITY_INCIDENT` |
 | Any security/privacy signal | `RUNBOOK_SECURITY_INCIDENT` | `RUNBOOK_INCIDENT_TRIAGE` |
 
@@ -116,8 +93,7 @@ validated. Do not use their KQL, App Service, or queue guidance for Vercel.
 2. Name Incident Commander, Operations Driver, and Communications Lead.
 3. Capture the Vercel release, `/api/health`, affected journey, Supabase/Clerk
    status, and privacy-filtered Sentry evidence.
-4. Route through the active table above unless incident command explicitly
-   activates the Azure rollback platform.
+4. Route through the active table above; retired provider platforms are not recovery options.
 5. Stabilize the safest degraded service, validate exit criteria, and capture
    post-incident actions.
 
@@ -147,7 +123,7 @@ Never print environment values while diagnosing. Use `.env.example` and
 | `NEXT_PUBLIC_SENTRY_DSN` | Privacy-filtered error reporting |
 | `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | Release/source-map upload |
 | `RESEND_API_KEY`, `RESEND_FROM` | Transactional email |
-| `INTERNAL_API_KEY` | Optional, separate rollback-worker credential |
+| `INTERNAL_API_KEY` | Optional, separate approved internal-tooling credential |
 
 ## Templates
 

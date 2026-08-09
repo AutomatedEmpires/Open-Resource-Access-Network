@@ -42,12 +42,18 @@ import {
   type DiscoveryConfidenceFilter,
   type DiscoverySortOption,
 } from '@/services/search/discovery';
+
 import { clampDiscoveryRadiusMiles, DEFAULT_DISCOVERY_RADIUS_MILES, milesToMeters } from '@/services/search/radius';
 import { DISCOVERY_ATTRIBUTE_LABELS } from '@/services/search/discoveryPresentation';
 import type { SearchResponse } from '@/services/search/types';
 import { useToast } from '@/components/ui/toast';
 import { trackInteraction } from '@/services/telemetry/sentry';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+
+const ResourceSearchRecovery = React.lazy(async () => {
+  const recoveryModule = await import('@/components/seeker/ResourceSearchRecovery');
+  return { default: recoveryModule.ResourceSearchRecovery };
+});
 
 const DEFAULT_LIMIT = 12;
 type ConfidenceFilter = DiscoveryConfidenceFilter;
@@ -1031,6 +1037,15 @@ export default function DirectoryPage() {
                             Try Chat
                           </Link>
                         </div>
+                        <React.Suspense
+                          fallback={(
+                            <p role="status" className="mt-5 text-sm text-slate-600">
+                              Loading other ways to find help…
+                            </p>
+                          )}
+                        >
+                          <ResourceSearchRecovery className="mx-auto mt-5 max-w-2xl" />
+                        </React.Suspense>
                       </div>
                     ) : (
                       <>

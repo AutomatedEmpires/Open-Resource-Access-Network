@@ -1,5 +1,9 @@
 # ORAN Platform Capabilities Audit
 
+> **Historical audit snapshot.** It describes the platform as observed in
+> 2026-03 and is not an activation plan. Current provider truth lives in
+> `docs/platform/STACK_MIGRATION.md`; Azure and Foundry are prohibited.
+
 **Date**: 2026-03-05
 **Scope**: Filters, tagging pipeline, verification routing, escalation, admin capacity
 **Status**: Comprehensive audit with gap analysis and recommendations
@@ -190,14 +194,14 @@ The **search engine** (`src/services/search/engine.ts`) is pure SQL:
 - Deterministic scoring (confidence weights: 45% verification + 40% eligibility + 15% constraint)
 - **No LLM participates in retrieval or ranking**
 
-The optional `llm_summarize` feature flag allows an LLM to summarize *already-retrieved* results but it **cannot add facts**.
+The legacy `llm_summarize` compatibility key is retired and forced inert. Seeker responses are assembled deterministically from stored records.
 
 ### Summary
 
 ```
 Ingestion:  LLM extracts → Validated against taxonomy → Scored → Color-coded → Admin queue
 Search:     Pure SQL + PostGIS → Deterministic scoring → No LLM
-Chat:       Retrieval-first → Optional LLM summary of existing records only
+Chat:       Retrieval-first → Deterministic response assembly from stored records
 ```
 
 ---

@@ -4,7 +4,7 @@
  * Tests for:
  * - Zod schemas (ExtractionResult, CategorizationResult)
  * - Prompt builders (extraction/categorization messages)
- * - AzureOpenAIClient with mocked SDK calls
+ * - provider-neutral extraction and categorization behavior
  * - Error classification
  */
 
@@ -379,7 +379,7 @@ describe('LLM client factory', () => {
   describe('createLLMClient', () => {
     test('throws for unregistered provider', async () => {
       const config: LLMClientConfig = {
-        provider: 'nonexistent' as 'azure_openai',
+        provider: 'nonexistent' as LLMClientConfig['provider'],
         model: 'test',
       };
 
@@ -387,43 +387,6 @@ describe('LLM client factory', () => {
         'LLM provider "nonexistent" is not registered'
       );
     });
-  });
-});
-
-// ============================================================
-// AZURE OPENAI CLIENT TESTS (with mocks)
-// ============================================================
-
-describe('AzureOpenAIClient', () => {
-  // We'll test the client with mocked SDK responses
-
-  test('AzureOpenAI SDK is importable', async () => {
-    // Verify the openai package is installed and AzureOpenAI is available
-    const { AzureOpenAI } = await import('openai');
-    expect(typeof AzureOpenAI).toBe('function');
-  });
-
-  test('provider self-registers on import', async () => {
-    // Import the provider module to trigger self-registration
-    await import('../llm/providers/azureOpenai');
-
-    const providers = getRegisteredLLMProviders();
-    expect(providers).toContain('azure_openai');
-  });
-
-  test('createAzureOpenAIClient requires endpoint', async () => {
-    const { createAzureOpenAIClient } = await import('../llm/providers/azureOpenai');
-
-    const config: LLMClientConfig = {
-      provider: 'azure_openai',
-      model: 'gpt-4o',
-      apiKey: 'test-key',
-      // Missing endpoint
-    };
-
-    await expect(createAzureOpenAIClient(config)).rejects.toThrow(
-      'Azure OpenAI requires an endpoint'
-    );
   });
 });
 

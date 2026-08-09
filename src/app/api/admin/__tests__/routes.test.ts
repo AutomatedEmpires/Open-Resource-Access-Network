@@ -25,6 +25,7 @@ const flagServiceMocks = vi.hoisted(() => ({
   getFlag: vi.fn(),
   setFlag: vi.fn(),
 }));
+const isRetiredInertFlagMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/db/postgres', () => dbMocks);
 vi.mock('@/services/security/rateLimit', () => ({
@@ -43,6 +44,7 @@ vi.mock('@/services/resourceSubmissions/service', () => resourceSubmissionMocks)
 vi.mock('@/services/flags/flags', () => ({
   flagService: flagServiceMocks,
   getFlagServiceImplementation: vi.fn().mockResolvedValue('in_memory'),
+  isRetiredInertFlag: isRetiredInertFlagMock,
 }));
 
 function createRequest(options: {
@@ -114,6 +116,7 @@ beforeEach(() => {
   flagServiceMocks.getAllFlags.mockResolvedValue([]);
   flagServiceMocks.getFlag.mockResolvedValue(null);
   flagServiceMocks.setFlag.mockResolvedValue(undefined);
+  isRetiredInertFlagMock.mockReturnValue(false);
   captureExceptionMock.mockResolvedValue(undefined);
   engineMocks.advance.mockResolvedValue({ success: true, fromStatus: 'submitted', toStatus: 'approved', transitionId: 'tx-1' });
   engineMocks.acquireLock.mockResolvedValue(true);
@@ -242,7 +245,7 @@ describe('admin api routes', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      flags: [{ name: 'chat-summary', enabled: true, rolloutPct: 100 }],
+      flags: [{ name: 'chat-summary', enabled: true, rolloutPct: 100, retired: false }],
       implementation: 'in_memory',
     });
   });

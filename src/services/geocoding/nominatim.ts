@@ -20,6 +20,8 @@
  *   GEOCODER_USER_AGENT — override the required User-Agent contact string
  */
 
+import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy';
+
 // ============================================================
 // TYPES
 // ============================================================
@@ -52,7 +54,10 @@ const DEFAULT_USER_AGENT = 'ORAN/1.0 (+https://openresourceaccessnetwork.com)';
 const REQUEST_TIMEOUT_MS = 5_000;
 
 function getBaseUrl(): string {
-  return (process.env.NOMINATIM_BASE_URL?.trim() || DEFAULT_BASE_URL).replace(/\/$/, '');
+  return assertAllowedRuntimeEndpoint(
+    (process.env.NOMINATIM_BASE_URL?.trim() || DEFAULT_BASE_URL).replace(/\/$/, ''),
+    'NOMINATIM_BASE_URL',
+  );
 }
 
 function getUserAgent(): string {

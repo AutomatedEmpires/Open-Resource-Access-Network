@@ -211,7 +211,7 @@ export interface DetailedPipelineExecution {
  */
 export const PipelineConfigSchema = z
   .object({
-    /** Whether to use LLM for extraction (requires LLM_ENDPOINT) */
+    /** Whether to use review-gated Anthropic extraction (requires LLM_API_KEY) */
     enableLlmExtraction: z.boolean().default(true),
     /** Whether to run verification checks */
     enableVerification: z.boolean().default(true),

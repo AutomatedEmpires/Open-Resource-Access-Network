@@ -10,6 +10,7 @@ const fetcherMocks = vi.hoisted(() => ({
 
 const llmMocks = vi.hoisted(() => ({
   getLLMConfigFromEnv: vi.fn(),
+  isLLMConfigReady: vi.fn(),
   createLLMClient: vi.fn(),
 }));
 
@@ -21,6 +22,7 @@ vi.mock('@/agents/ingestion/fetcher', () => ({
 
 vi.mock('@/agents/ingestion/llm', () => ({
   getLLMConfigFromEnv: llmMocks.getLLMConfigFromEnv,
+  isLLMConfigReady: llmMocks.isLLMConfigReady,
   createLLMClient: llmMocks.createLLMClient,
 }));
 
@@ -32,6 +34,10 @@ describe('assistResourceSubmissionFromSource', () => {
     vi.clearAllMocks();
     fetcherMocks.createPageFetcher.mockReturnValue({ fetch: fetcherMocks.fetch });
     fetcherMocks.createHtmlTextExtractor.mockReturnValue({ extract: fetcherMocks.extract });
+    llmMocks.isLLMConfigReady.mockImplementation(
+      (config: { provider?: string; apiKey?: string }) =>
+        config.provider === 'anthropic' && Boolean(config.apiKey?.trim()),
+    );
   });
 
   it('falls back to source-only suggestions when no LLM config is available', async () => {
@@ -49,9 +55,8 @@ describe('assistResourceSubmissionFromSource', () => {
       wordCount: 22,
     });
     llmMocks.getLLMConfigFromEnv.mockReturnValue({
-      provider: 'azure_openai',
-      model: 'gpt-4o',
-      endpoint: '',
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-5',
       apiKey: '',
     });
 
@@ -86,9 +91,8 @@ describe('assistResourceSubmissionFromSource', () => {
       wordCount: 40,
     });
     llmMocks.getLLMConfigFromEnv.mockReturnValue({
-      provider: 'azure_openai',
-      model: 'gpt-4o',
-      endpoint: 'https://example.openai.azure.com',
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-5',
       apiKey: 'test-key',
     });
     llmMocks.createLLMClient.mockResolvedValue({

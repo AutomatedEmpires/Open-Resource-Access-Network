@@ -50,6 +50,7 @@ export default function ChatPage() {
   const [sessionId, setSessionId] = useState<string>('');
   const [onboardingHandoff, setOnboardingHandoff] = useState<OnboardingChatHandoff | null>(null);
   const [guidedIntake, setGuidedIntake] = useState<GuidedIntakeSubmission | null>(null);
+  const [autoSubmitGuidedIntake, setAutoSubmitGuidedIntake] = useState(false);
   const [savedSyncEnabled] = useState(() => isServerSyncEnabledOnDevice());
   const fromOnboarding = searchParams.get('from') === 'onboarding';
   const fromGuidedIntake = searchParams.get('from') === 'guided';
@@ -98,6 +99,7 @@ export default function ChatPage() {
     setOnboardingHandoff(fromOnboarding ? consumeOnboardingChatHandoff() : null);
     const nextGuidedIntake = fromGuidedIntake ? consumeGuidedIntakeHandoff() : null;
     setGuidedIntake(nextGuidedIntake);
+    setAutoSubmitGuidedIntake(Boolean(nextGuidedIntake));
     setSessionId(generateSessionId(Boolean(nextGuidedIntake) || hasSeededPrompt));
   }, [fromGuidedIntake, fromOnboarding, handoffRoute, hasSeededPrompt]);
 
@@ -118,9 +120,13 @@ export default function ChatPage() {
         <ErrorBoundary>
           <div className="min-h-0 flex-1 overflow-hidden">
             <ChatWindow
+              key={sessionId}
               sessionId={sessionId}
               initialPrompt={initialPrompt}
               {...(guidedIntake ? { initialGuidedIntake: guidedIntake } : {})}
+              {...(guidedIntake && autoSubmitGuidedIntake
+                ? { autoSubmitInitialGuidedIntake: true }
+                : {})}
               initialNeedId={guidedIntake
                 ? undefined
                 : onboardingHandoff?.needId ?? discoveryIntent.needId}

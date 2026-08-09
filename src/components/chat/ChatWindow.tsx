@@ -23,8 +23,12 @@ import type {
 } from '@/services/chat/types';
 import {
   clearGuidedIntakeRetry,
+  clearGuidedIntakeRetryBlockedUntil,
+  MAX_GUIDED_INTAKE_RETRY_BLOCK_MS,
   readGuidedIntakeRetry,
+  readGuidedIntakeRetryBlockedUntil,
   writeGuidedIntakeRetry,
+  writeGuidedIntakeRetryBlockedUntil,
 } from '@/services/chat/guidedIntakeHandoff';
 import { ChatServiceCard } from '@/components/chat/ChatServiceCard';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
@@ -88,6 +92,27 @@ const DIMENSION_LABELS: Record<string, string> = {
   population: 'Who it serves',
   situation: 'Specific life situations',
 };
+
+const DEFAULT_GUIDED_RETRY_BLOCK_MS = 30_000;
+
+function parseRetryAfterDeadline(value: string | null | undefined, now = Date.now()): number {
+  if (value) {
+    const normalizedValue = value.trim();
+    const seconds = Number(normalizedValue);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return now + Math.min(seconds * 1000, MAX_GUIDED_INTAKE_RETRY_BLOCK_MS);
+    }
+
+    const dateDeadline = Date.parse(normalizedValue);
+    if (Number.isFinite(dateDeadline)) {
+      return dateDeadline > now
+        ? Math.min(dateDeadline, now + MAX_GUIDED_INTAKE_RETRY_BLOCK_MS)
+        : now;
+    }
+  }
+
+  return now + DEFAULT_GUIDED_RETRY_BLOCK_MS;
+}
 
 // ============================================================
 // CRISIS BANNER
@@ -638,6 +663,7 @@ interface ChatSessionSnapshot {
   draft: string;
   sessionContext?: ChatSessionContext;
   guidedIntakeRetry?: GuidedIntakeSubmission;
+  guidedIntakeRetryBlockedUntil?: number;
   locationPromptDismissed?: boolean;
 }
 
@@ -722,6 +748,7 @@ function readStoredChatSessionSnapshot(sessionId: string): ChatSessionSnapshot |
     draft: readStoredDraft(sessionId),
     sessionContext: readStoredSessionContext(sessionId),
     guidedIntakeRetry: readGuidedIntakeRetry(sessionId) ?? undefined,
+    guidedIntakeRetryBlockedUntil: readGuidedIntakeRetryBlockedUntil(sessionId) ?? undefined,
     locationPromptDismissed: readStoredLocationPromptDismissed(sessionId),
   };
 }
@@ -873,6 +900,7 @@ interface ChatWindowProps {
   userId?: string;
   initialPrompt?: string;
   initialGuidedIntake?: GuidedIntakeSubmission;
+  autoSubmitInitialGuidedIntake?: boolean;
   initialNeedId?: DiscoveryNeedId | null;
   initialTrustFilter?: DiscoveryConfidenceFilter;
   initialSortBy?: DiscoverySortOption;
@@ -886,6 +914,7 @@ export function ChatWindow({
   userId,
   initialPrompt,
   initialGuidedIntake,
+  autoSubmitInitialGuidedIntake = false,
   initialNeedId,
   initialTrustFilter,
   initialSortBy,
@@ -899,6 +928,15 @@ export function ChatWindow({
   const [messages, setMessages] = useState<Message[]>(() => readStoredMessages(sessionId));
   const [input, setInput] = useState(() => readStoredDraft(sessionId) || initialPrompt?.trim() || '');
   const [isLoading, setIsLoading] = useState(false);
+  const [restoredSessionId, setRestoredSessionId] = useState<string | null>(null);
+  const [guidedIntakeRetryAvailable, setGuidedIntakeRetryAvailable] = useState(false);
+  const [guidedIntakeRetryRequiresQuotaCheck, setGuidedIntakeRetryRequiresQuotaCheck] = useState(
+    () => Boolean(readGuidedIntakeRetry(sessionId)),
+  );
+  const [guidedIntakeRetryBlockedUntil, setGuidedIntakeRetryBlockedUntil] = useState<number | null>(
+    () => readGuidedIntakeRetryBlockedUntil(sessionId),
+  );
+  const [postRequestFocusTarget, setPostRequestFocusTarget] = useState<'composer' | 'retry' | null>(null);
   const [quotaRemaining, setQuotaRemaining] = useState(MAX_CHAT_QUOTA);
   // The calling identity's actual ceiling (10 anonymous / 20 authenticated),
   // learned from the quota endpoint; MAX_CHAT_QUOTA is only the pre-fetch
@@ -931,7 +969,9 @@ export function ChatWindow({
   );
   const { success, error: toastError, info } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const latestResultMessageRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const retryButtonRef = useRef<HTMLButtonElement>(null);
   const messageLogRef = useRef<HTMLDivElement>(null);
   const quotaStateVersionRef = useRef(0);
   const locationRequestVersionRef = useRef(0);
@@ -940,6 +980,9 @@ export function ChatWindow({
     initialGuidedIntake ?? readGuidedIntakeRetry(sessionId) ?? undefined,
   );
   const guidedIntakeInFlightRef = useRef<GuidedIntakeSubmission | undefined>(undefined);
+  const autoSubmittedGuidedSessionRef = useRef<string | null>(null);
+  const guidedIntakeRetryBlockedUntilRef = useRef(guidedIntakeRetryBlockedUntil);
+  const retryRequiresQuotaCheckAtMountRef = useRef(guidedIntakeRetryRequiresQuotaCheck);
 
   // Filters: trust tier + canonical attribute filters
   const [trustFilter, setTrustFilter] = useState<TrustFilter>(initialTrustFilter ?? 'all');
@@ -963,6 +1006,28 @@ export function ChatWindow({
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
+
+  const updateGuidedIntakeRetryBlock = useCallback((blockedUntil: number | null) => {
+    guidedIntakeRetryBlockedUntilRef.current = blockedUntil;
+    setGuidedIntakeRetryBlockedUntil(blockedUntil);
+    if (blockedUntil) {
+      writeGuidedIntakeRetryBlockedUntil(sessionId, blockedUntil);
+    } else {
+      clearGuidedIntakeRetryBlockedUntil(sessionId);
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!guidedIntakeRetryBlockedUntil) return;
+    const remainingMs = guidedIntakeRetryBlockedUntil - Date.now();
+    const timer = window.setTimeout(() => {
+      updateGuidedIntakeRetryBlock(null);
+      if (pendingGuidedIntakeRef.current) {
+        setGuidedIntakeRetryAvailable(true);
+      }
+    }, Math.max(0, remainingMs));
+    return () => window.clearTimeout(timer);
+  }, [guidedIntakeRetryBlockedUntil, updateGuidedIntakeRetryBlock]);
 
   const dismissPendingRemovedChat = useCallback(() => {
     if (pendingRemovalTimerRef.current) {
@@ -1086,8 +1151,34 @@ export function ChatWindow({
       return;
     }
 
+    const latestMessage = messages[messages.length - 1];
+    if (
+      latestMessage?.role === 'assistant'
+      && (latestMessage.services?.length ?? 0) > 0
+      && latestResultMessageRef.current
+    ) {
+      latestResultMessageRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    if (isLoading || !postRequestFocusTarget) {
+      return;
+    }
+
+    const target = postRequestFocusTarget === 'retry'
+      ? retryButtonRef.current
+      : inputRef.current;
+    if (!target) {
+      return;
+    }
+
+    target.focus({ preventScroll: true });
+    setPostRequestFocusTarget(null);
+  }, [guidedIntakeRetryAvailable, isLoading, postRequestFocusTarget]);
 
   useEffect(() => {
     writeStoredMessages(sessionId, messages);
@@ -1113,6 +1204,12 @@ export function ChatWindow({
     const storedDraft = readStoredDraft(sessionId);
     const storedContext = readStoredSessionContext(sessionId);
     const storedGuidedIntakeRetry = readGuidedIntakeRetry(sessionId);
+    const storedGuidedIntakeRetryBlockedUntil = storedGuidedIntakeRetry
+      ? readGuidedIntakeRetryBlockedUntil(sessionId)
+      : null;
+    if (!storedGuidedIntakeRetry) {
+      clearGuidedIntakeRetryBlockedUntil(sessionId);
+    }
     const seeded = existingSession?.seeded ?? initialHasSeededContext;
     const seededContext = seeded
       ? buildSeededSessionContext({
@@ -1146,6 +1243,12 @@ export function ChatWindow({
     pendingGuidedIntakeRef.current = pendingGuidedIntake?.prompt === nextInput.trim()
       ? pendingGuidedIntake
       : undefined;
+    const isRetryRestoredFromBeforeMount = Boolean(storedGuidedIntakeRetry)
+      && retryRequiresQuotaCheckAtMountRef.current;
+    setGuidedIntakeRetryAvailable(isRetryRestoredFromBeforeMount);
+    setGuidedIntakeRetryRequiresQuotaCheck(isRetryRestoredFromBeforeMount);
+    guidedIntakeRetryBlockedUntilRef.current = storedGuidedIntakeRetryBlockedUntil;
+    setGuidedIntakeRetryBlockedUntil(storedGuidedIntakeRetryBlockedUntil);
     if (pendingGuidedIntakeRef.current && !storedGuidedIntakeRetry) {
       writeGuidedIntakeRetry(sessionId, pendingGuidedIntakeRef.current);
     }
@@ -1166,6 +1269,7 @@ export function ChatWindow({
     setSeededAttributeFilters(nextContext?.attributeFilters ?? (seeded ? initialAttributeFilters : undefined));
     setIgnoreProfileShaping(nextContext?.profileShapingEnabled === false);
     setRadiusMiles(clampDiscoveryRadiusMiles(nextContext?.activeGeo?.radiusMiles ?? DEFAULT_DISCOVERY_RADIUS_MILES));
+    setRestoredSessionId(sessionId);
   }, [
     commitChatSessions,
     initialHasSeededContext,
@@ -1217,17 +1321,41 @@ export function ChatWindow({
   // a page reload or cross-device navigation.
   useEffect(() => {
     const quotaVersion = quotaStateVersionRef.current;
+    const releaseRestoredRetry = (remaining: number | null) => {
+      if (!retryRequiresQuotaCheckAtMountRef.current) return;
+      const blockedUntil = guidedIntakeRetryBlockedUntilRef.current;
+      const retryStillBlocked = Boolean(blockedUntil && blockedUntil > Date.now());
+      if (blockedUntil && !retryStillBlocked) {
+        updateGuidedIntakeRetryBlock(null);
+      }
+      setGuidedIntakeRetryRequiresQuotaCheck(false);
+      if (
+        (remaining === null || remaining > 0)
+        && pendingGuidedIntakeRef.current
+        && !retryStillBlocked
+      ) {
+        setGuidedIntakeRetryAvailable(true);
+      }
+    };
 
     fetch('/api/chat/quota', { method: 'GET', headers: { Accept: 'application/json' } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { remaining: number; limit?: number; resetAt: string | null } | null) => {
-        if (!data) return;
+        if (!data) {
+          releaseRestoredRetry(null);
+          return;
+        }
         if (typeof data.limit === 'number' && data.limit > 0) setQuotaLimit(data.limit);
         applyQuotaState(data.remaining, data.resetAt, quotaVersion);
+        releaseRestoredRetry(data.remaining);
       })
-      .catch(() => {/* non-fatal — keep default quota display */});
+      .catch(() => {
+        // The POST remains authoritative. Do not strand a session-only retry
+        // just because the read-only quota probe was unavailable.
+        releaseRestoredRetry(null);
+      });
 
-  }, [applyQuotaState]);
+  }, [applyQuotaState, updateGuidedIntakeRetryBlock]);
 
   const toggleSave = useCallback((serviceId: string) => {
     setSavedIds((prev) => {
@@ -1484,6 +1612,12 @@ export function ChatWindow({
     writeStoredSessionContext(restoredSummary.sessionId, pendingRemovedChat.sessionContext);
     if (pendingRemovedChat.guidedIntakeRetry) {
       writeGuidedIntakeRetry(restoredSummary.sessionId, pendingRemovedChat.guidedIntakeRetry);
+      if (pendingRemovedChat.guidedIntakeRetryBlockedUntil) {
+        writeGuidedIntakeRetryBlockedUntil(
+          restoredSummary.sessionId,
+          pendingRemovedChat.guidedIntakeRetryBlockedUntil,
+        );
+      }
     }
     writeStoredLocationPromptDismissed(
       restoredSummary.sessionId,
@@ -1769,6 +1903,19 @@ export function ChatWindow({
       ?? (storedPendingGuidedIntake?.prompt === trimmed
         ? storedPendingGuidedIntake
         : undefined);
+    const blockedUntil = guidedIntakeRetryBlockedUntilRef.current;
+    const retryIsBlocked = Boolean(
+      pendingGuidedIntake
+      && (
+        guidedIntakeRetryRequiresQuotaCheck
+        || (blockedUntil && blockedUntil > Date.now())
+        || (guidedIntakeRetryAvailable && quotaRemaining === 0)
+      )
+    );
+    if (retryIsBlocked) return;
+    if (blockedUntil) {
+      updateGuidedIntakeRetryBlock(null);
+    }
     guidedIntakeInFlightRef.current = pendingGuidedIntake;
     if (
       pendingGuidedIntake?.location
@@ -1779,10 +1926,15 @@ export function ChatWindow({
     }
     pendingGuidedIntakeRef.current = undefined;
     if (storedPendingGuidedIntake && !pendingGuidedIntake) {
+      updateGuidedIntakeRetryBlock(null);
       clearGuidedIntakeRetry(sessionId);
+      setGuidedIntakeRetryAvailable(false);
+      setGuidedIntakeRetryRequiresQuotaCheck(false);
     }
     if (pendingGuidedIntake) {
       writeGuidedIntakeRetry(sessionId, pendingGuidedIntake);
+      setGuidedIntakeRetryAvailable(false);
+      setGuidedIntakeRetryRequiresQuotaCheck(false);
     }
 
     const commandProposal = !pendingGuidedIntake && planEnabled
@@ -1832,6 +1984,10 @@ export function ChatWindow({
       { role: 'user', content: trimmed, timestamp: new Date() },
     ]);
     setIsLoading(true);
+
+    let shouldOfferGuidedRetryAfterFailure = true;
+    let shouldPreserveGuidedIntakeAfterFailure = true;
+    let guidedIntakeBlockedUntilAfterFailure: number | null = null;
 
     try {
       const beginsNonSelfGuidedScope = Boolean(
@@ -1884,6 +2040,17 @@ export function ChatWindow({
       });
 
       if (!response.ok) {
+        const retryAfter = response.headers?.get?.('Retry-After');
+        shouldOfferGuidedRetryAfterFailure = response.status === 503 && !retryAfter;
+        shouldPreserveGuidedIntakeAfterFailure = response.status !== 400 && response.status !== 422;
+        if (response.status === 429 || (response.status === 503 && retryAfter)) {
+          const retryAfterDeadline = parseRetryAfterDeadline(retryAfter);
+          if (retryAfterDeadline > Date.now()) {
+            guidedIntakeBlockedUntilAfterFailure = retryAfterDeadline;
+          } else if (response.status === 503) {
+            shouldOfferGuidedRetryAfterFailure = true;
+          }
+        }
         let errorMsg = 'Something went wrong. Please try again.';
         try {
           const errBody = await response.json() as {
@@ -1895,6 +2062,19 @@ export function ChatWindow({
           if (typeof errBody.quotaRemaining === 'number') {
             quotaStateVersionRef.current += 1;
             applyQuotaState(errBody.quotaRemaining, errBody.quotaResetAt);
+            if (errBody.quotaRemaining === 0 && errBody.quotaResetAt) {
+              const resetDeadline = Date.parse(errBody.quotaResetAt);
+              if (Number.isFinite(resetDeadline) && resetDeadline > Date.now()) {
+                const quotaResetDeadline = Math.min(
+                  resetDeadline,
+                  Date.now() + MAX_GUIDED_INTAKE_RETRY_BLOCK_MS,
+                );
+                guidedIntakeBlockedUntilAfterFailure = Math.max(
+                  guidedIntakeBlockedUntilAfterFailure ?? 0,
+                  quotaResetDeadline,
+                );
+              }
+            }
           }
         } catch { /* fall through to generic message */ }
         const responseError = new Error(errorMsg);
@@ -1940,10 +2120,20 @@ export function ChatWindow({
         setIgnoreProfileShaping(!data.sessionContext.profileShapingEnabled);
       }
       if (pendingGuidedIntake && data.retrievalStatus === 'temporarily_unavailable') {
+        updateGuidedIntakeRetryBlock(null);
         pendingGuidedIntakeRef.current = pendingGuidedIntake;
         setInput(pendingGuidedIntake.prompt);
+        setGuidedIntakeRetryAvailable(true);
+        setPostRequestFocusTarget('retry');
       } else if (pendingGuidedIntake) {
+        updateGuidedIntakeRetryBlock(null);
         clearGuidedIntakeRetry(sessionId);
+        pendingGuidedIntakeRef.current = undefined;
+        setGuidedIntakeRetryAvailable(false);
+        setGuidedIntakeRetryRequiresQuotaCheck(false);
+        setPostRequestFocusTarget('composer');
+      } else {
+        setPostRequestFocusTarget('composer');
       }
 
       quotaStateVersionRef.current += 1;
@@ -1975,8 +2165,27 @@ export function ChatWindow({
       ]);
     } catch (error) {
       if (pendingGuidedIntake) {
-        pendingGuidedIntakeRef.current = pendingGuidedIntake;
         setInput(pendingGuidedIntake.prompt);
+        if (shouldPreserveGuidedIntakeAfterFailure) {
+          pendingGuidedIntakeRef.current = pendingGuidedIntake;
+          if (guidedIntakeBlockedUntilAfterFailure) {
+            updateGuidedIntakeRetryBlock(guidedIntakeBlockedUntilAfterFailure);
+            setGuidedIntakeRetryAvailable(false);
+            setPostRequestFocusTarget('composer');
+          } else {
+            setGuidedIntakeRetryAvailable(shouldOfferGuidedRetryAfterFailure);
+            setPostRequestFocusTarget(shouldOfferGuidedRetryAfterFailure ? 'retry' : 'composer');
+          }
+        } else {
+          updateGuidedIntakeRetryBlock(null);
+          clearGuidedIntakeRetry(sessionId);
+          pendingGuidedIntakeRef.current = undefined;
+          setGuidedIntakeRetryAvailable(false);
+          setGuidedIntakeRetryRequiresQuotaCheck(false);
+          setPostRequestFocusTarget('composer');
+        }
+      } else {
+        setPostRequestFocusTarget('composer');
       }
       setMessages((prev) => [
         ...prev,
@@ -1991,7 +2200,6 @@ export function ChatWindow({
     } finally {
       guidedIntakeInFlightRef.current = undefined;
       setIsLoading(false);
-      inputRef.current?.focus();
     }
   }, [
     applyQuotaState,
@@ -2013,7 +2221,43 @@ export function ChatWindow({
     userId,
     ignoreProfileShaping,
     sessionContext,
+    guidedIntakeRetryAvailable,
+    guidedIntakeRetryRequiresQuotaCheck,
+    updateGuidedIntakeRetryBlock,
   ]);
+
+  useEffect(() => {
+    if (
+      !autoSubmitInitialGuidedIntake
+      || !initialGuidedIntake
+      || restoredSessionId !== sessionId
+      || autoSubmittedGuidedSessionRef.current === sessionId
+      || messages.length > 0
+      || input.trim() !== initialGuidedIntake.prompt.trim()
+    ) {
+      return;
+    }
+
+    // Wait until the session restore effect has completed, then claim this
+    // fresh handoff before starting the request. The ref survives React's
+    // Strict Mode effect replay, so the home intake can create only one turn.
+    autoSubmittedGuidedSessionRef.current = sessionId;
+    void sendMessage(undefined, initialGuidedIntake);
+  }, [
+    autoSubmitInitialGuidedIntake,
+    initialGuidedIntake,
+    input,
+    messages.length,
+    restoredSessionId,
+    sendMessage,
+    sessionId,
+  ]);
+
+  const retryGuidedIntake = useCallback(() => {
+    const pendingGuidedIntake = pendingGuidedIntakeRef.current;
+    if (!pendingGuidedIntake || isLoading) return;
+    void sendMessage(undefined, pendingGuidedIntake);
+  }, [isLoading, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (
@@ -2135,9 +2379,12 @@ export function ChatWindow({
     writeStoredMessages(sessionId, []);
     writeStoredDraft(sessionId, '');
     clearGuidedIntakeRetry(sessionId);
+    updateGuidedIntakeRetryBlock(null);
     pendingGuidedIntakeRef.current = undefined;
+    setGuidedIntakeRetryAvailable(false);
+    setGuidedIntakeRetryRequiresQuotaCheck(false);
     inputRef.current?.focus();
-  }, [ignoreProfileShaping, initialNeedId, seededAttributeFilters, sessionId, trustFilter]);
+  }, [ignoreProfileShaping, initialNeedId, seededAttributeFilters, sessionId, trustFilter, updateGuidedIntakeRetryBlock]);
 
   /** Called by QuotaCooldown when the countdown reaches zero — re-fetches to confirm reset */
   const handleQuotaExpired = useCallback(() => {
@@ -2151,9 +2398,33 @@ export function ChatWindow({
         if (!data) return;
         if (typeof data.limit === 'number' && data.limit > 0) setQuotaLimit(data.limit);
         applyQuotaState(data.remaining, data.resetAt, quotaVersion);
+        setGuidedIntakeRetryRequiresQuotaCheck(false);
+        const blockedUntil = guidedIntakeRetryBlockedUntilRef.current;
+        const retryStillBlocked = Boolean(blockedUntil && blockedUntil > Date.now());
+        if (blockedUntil && !retryStillBlocked) {
+          updateGuidedIntakeRetryBlock(null);
+        }
+        if (data.remaining > 0 && pendingGuidedIntakeRef.current && !retryStillBlocked) {
+          setGuidedIntakeRetryAvailable(true);
+        }
       })
       .catch(() => {/* non-fatal */});
-  }, [applyQuotaState]);
+  }, [applyQuotaState, updateGuidedIntakeRetryBlock]);
+
+  const pendingGuidedIntakeForCurrentInput = pendingGuidedIntakeRef.current?.prompt === input.trim()
+    ? pendingGuidedIntakeRef.current
+    : undefined;
+  const guidedIntakeRetryBlockActive = Boolean(
+    guidedIntakeRetryBlockedUntil && guidedIntakeRetryBlockedUntil > Date.now(),
+  );
+  const isGuidedIntakePromptBlocked = Boolean(
+    pendingGuidedIntakeForCurrentInput
+    && (
+      guidedIntakeRetryRequiresQuotaCheck
+      || guidedIntakeRetryBlockActive
+      || (guidedIntakeRetryAvailable && quotaRemaining === 0)
+    ),
+  );
 
   return (
     <div className="chat-window-grid grid h-full min-h-0 bg-white lg:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[300px_minmax(0,1fr)]">
@@ -2564,6 +2835,20 @@ export function ChatWindow({
         {messages.map((msg, idx) => (
           <div
             key={idx}
+            ref={
+              idx === messages.length - 1
+              && msg.role === 'assistant'
+              && (msg.services?.length ?? 0) > 0
+                ? latestResultMessageRef
+                : undefined
+            }
+            data-result-bearing={
+              idx === messages.length - 1
+              && msg.role === 'assistant'
+              && (msg.services?.length ?? 0) > 0
+                ? 'true'
+                : undefined
+            }
             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
@@ -2747,6 +3032,21 @@ export function ChatWindow({
       {/* Input */}
       <div className="shrink-0 border-t border-slate-200 bg-white px-3 py-2 sm:px-6 sm:py-3">
         <div className="mx-auto max-w-3xl">
+        {guidedIntakeRetryAvailable
+        && !guidedIntakeRetryRequiresQuotaCheck
+        && !guidedIntakeRetryBlockActive
+        && !isLoading
+        && quotaRemaining > 0 ? (
+          <div className="mb-3 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between" role="status">
+            <div>
+              <p className="font-semibold">Your search is ready to retry</p>
+              <p className="mt-1 text-xs leading-5 text-amber-900">We kept the intake on this device. You can retry it now or edit the message below.</p>
+            </div>
+            <Button ref={retryButtonRef} type="button" variant="outline" size="sm" onClick={retryGuidedIntake} className="min-h-11 shrink-0 border-amber-300 bg-white text-amber-950 hover:bg-amber-100">
+              Retry search
+            </Button>
+          </div>
+        ) : null}
         {!hasCrisis && quotaRemaining <= Math.ceil(quotaLimit / 4) && quotaRemaining > 0 && (
           <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-800 shadow-sm">
             <p className="font-medium">Low message budget</p>
@@ -2774,6 +3074,9 @@ export function ChatWindow({
                 ) {
                   pendingGuidedIntakeRef.current = undefined;
                   clearGuidedIntakeRetry(sessionId);
+                  updateGuidedIntakeRetryBlock(null);
+                  setGuidedIntakeRetryAvailable(false);
+                  setGuidedIntakeRetryRequiresQuotaCheck(false);
                 }
                 setInput(nextInput);
                 autoResize(e.target);
@@ -2787,7 +3090,7 @@ export function ChatWindow({
             />
             <Button
               onClick={() => void sendMessage()}
-              disabled={isLoading || !input.trim()}
+              disabled={isLoading || !input.trim() || isGuidedIntakePromptBlocked}
               size="icon"
               aria-label="Send message"
               className="min-h-[48px] min-w-[48px] self-end rounded-2xl bg-slate-900 shadow-sm hover:bg-slate-800"

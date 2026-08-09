@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   clearGuidedIntakeRetry,
   consumeGuidedIntakeHandoff,
   GUIDED_INTAKE_HANDOFF_KEY,
+  MAX_GUIDED_INTAKE_RETRY_BLOCK_MS,
   readGuidedIntakeRetry,
+  readGuidedIntakeRetryBlockedUntil,
   writeGuidedIntakeHandoff,
   writeGuidedIntakeRetry,
+  writeGuidedIntakeRetryBlockedUntil,
 } from '../guidedIntakeHandoff';
 
 beforeEach(() => {
@@ -76,5 +79,21 @@ describe('guided intake handoff', () => {
 
     clearGuidedIntakeRetry(sessionId);
     expect(readGuidedIntakeRetry(sessionId)).toBeNull();
+  });
+
+  it('enforces the shared maximum retry-block duration at the storage boundary', () => {
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    const now = Date.parse('2026-08-09T01:00:00.000Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+
+    try {
+      const maximumDeadline = now + MAX_GUIDED_INTAKE_RETRY_BLOCK_MS;
+      expect(writeGuidedIntakeRetryBlockedUntil(sessionId, maximumDeadline)).toBe(true);
+      expect(readGuidedIntakeRetryBlockedUntil(sessionId)).toBe(maximumDeadline);
+      expect(writeGuidedIntakeRetryBlockedUntil(sessionId, maximumDeadline + 1)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

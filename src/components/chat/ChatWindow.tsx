@@ -24,6 +24,7 @@ import type {
 import {
   clearGuidedIntakeRetry,
   clearGuidedIntakeRetryBlockedUntil,
+  MAX_GUIDED_INTAKE_RETRY_BLOCK_MS,
   readGuidedIntakeRetry,
   readGuidedIntakeRetryBlockedUntil,
   writeGuidedIntakeRetry,
@@ -93,18 +94,20 @@ const DIMENSION_LABELS: Record<string, string> = {
 };
 
 const DEFAULT_GUIDED_RETRY_BLOCK_MS = 30_000;
-const MAX_GUIDED_RETRY_BLOCK_MS = 26 * 60 * 60 * 1000;
 
 function parseRetryAfterDeadline(value: string | null | undefined, now = Date.now()): number {
   if (value) {
-    const seconds = Number(value);
-    if (Number.isFinite(seconds) && seconds > 0) {
-      return now + Math.min(seconds * 1000, MAX_GUIDED_RETRY_BLOCK_MS);
+    const normalizedValue = value.trim();
+    const seconds = Number(normalizedValue);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return now + Math.min(seconds * 1000, MAX_GUIDED_INTAKE_RETRY_BLOCK_MS);
     }
 
-    const dateDeadline = Date.parse(value);
-    if (Number.isFinite(dateDeadline) && dateDeadline > now) {
-      return Math.min(dateDeadline, now + MAX_GUIDED_RETRY_BLOCK_MS);
+    const dateDeadline = Date.parse(normalizedValue);
+    if (Number.isFinite(dateDeadline)) {
+      return dateDeadline > now
+        ? Math.min(dateDeadline, now + MAX_GUIDED_INTAKE_RETRY_BLOCK_MS)
+        : now;
     }
   }
 
@@ -2037,12 +2040,16 @@ export function ChatWindow({
       });
 
       if (!response.ok) {
-        shouldOfferGuidedRetryAfterFailure = response.status === 503;
+        const retryAfter = response.headers?.get?.('Retry-After');
+        shouldOfferGuidedRetryAfterFailure = response.status === 503 && !retryAfter;
         shouldPreserveGuidedIntakeAfterFailure = response.status !== 400 && response.status !== 422;
-        if (response.status === 429) {
-          guidedIntakeBlockedUntilAfterFailure = parseRetryAfterDeadline(
-            response.headers?.get?.('Retry-After'),
-          );
+        if (response.status === 429 || (response.status === 503 && retryAfter)) {
+          const retryAfterDeadline = parseRetryAfterDeadline(retryAfter);
+          if (retryAfterDeadline > Date.now()) {
+            guidedIntakeBlockedUntilAfterFailure = retryAfterDeadline;
+          } else if (response.status === 503) {
+            shouldOfferGuidedRetryAfterFailure = true;
+          }
         }
         let errorMsg = 'Something went wrong. Please try again.';
         try {
@@ -2058,9 +2065,13 @@ export function ChatWindow({
             if (errBody.quotaRemaining === 0 && errBody.quotaResetAt) {
               const resetDeadline = Date.parse(errBody.quotaResetAt);
               if (Number.isFinite(resetDeadline) && resetDeadline > Date.now()) {
-                guidedIntakeBlockedUntilAfterFailure = Math.min(
+                const quotaResetDeadline = Math.min(
                   resetDeadline,
-                  Date.now() + MAX_GUIDED_RETRY_BLOCK_MS,
+                  Date.now() + MAX_GUIDED_INTAKE_RETRY_BLOCK_MS,
+                );
+                guidedIntakeBlockedUntilAfterFailure = Math.max(
+                  guidedIntakeBlockedUntilAfterFailure ?? 0,
+                  quotaResetDeadline,
                 );
               }
             }

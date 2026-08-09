@@ -447,7 +447,7 @@ describe('ChatWindow', () => {
     });
   });
 
-  it('stops after an automatic handoff failure and offers an explicit structured retry', async () => {
+  it('offers an explicit structured retry after a headerless automatic handoff failure', async () => {
     const prompt = 'Food help. Near Tacoma, WA.';
     let chatAttempts = 0;
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
@@ -501,6 +501,87 @@ describe('ChatWindow', () => {
       searchText: 'Food help',
       location: 'Tacoma, WA',
     });
+  });
+
+  it('honors Retry-After before allowing a guided 503 retry', async () => {
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    const prompt = 'Food help. Near Tacoma, WA.';
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return { ok: true, json: async () => ({ remaining: 50, resetAt: null }) } as Response;
+      }
+      if (url === '/api/chat') {
+        return {
+          ok: false,
+          status: 503,
+          headers: new Headers({ 'Retry-After': '60' }),
+          json: async () => ({ error: 'Search is temporarily unavailable.' }),
+        } as Response;
+      }
+      return { ok: true, json: async () => ({ terms: [] }) } as Response;
+    });
+
+    render(
+      <ChatWindow
+        sessionId={sessionId}
+        initialPrompt={prompt}
+        initialGuidedIntake={{ prompt, searchText: 'Food help', location: 'Tacoma, WA' }}
+        autoSubmitInitialGuidedIntake
+      />,
+    );
+
+    await screen.findByText('Search is temporarily unavailable.');
+    const composer = screen.getByRole('textbox', { name: 'Chat message input' });
+    expect(getChatCalls()).toHaveLength(1);
+    expect(composer).toHaveValue(prompt);
+    expect(screen.queryByRole('button', { name: 'Retry search' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    fireEvent.keyDown(composer, { key: 'Enter', shiftKey: false });
+    expect(getChatCalls()).toHaveLength(1);
+    const blockedUntil = readGuidedIntakeRetryBlockedUntil(sessionId);
+    expect(blockedUntil).toBeGreaterThan(Date.now());
+    expect(blockedUntil).toBeLessThanOrEqual(Date.now() + 60_000);
+
+    fireEvent.change(composer, { target: { value: 'I am in immediate danger' } });
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
+    expect(readGuidedIntakeRetry(sessionId)).toBeNull();
+    expect(readGuidedIntakeRetryBlockedUntil(sessionId)).toBeNull();
+  });
+
+  it.each([
+    ['zero seconds', '0'],
+    ['a past HTTP date', new Date(Date.now() - 60_000).toUTCString()],
+  ])('allows an immediate guided 503 retry after Retry-After gives %s', async (_label, retryAfter) => {
+    const prompt = 'Food help. Near Tacoma, WA.';
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return { ok: true, json: async () => ({ remaining: 50, resetAt: null }) } as Response;
+      }
+      if (url === '/api/chat') {
+        return {
+          ok: false,
+          status: 503,
+          headers: new Headers({ 'Retry-After': retryAfter }),
+          json: async () => ({ error: 'Search is temporarily unavailable.' }),
+        } as Response;
+      }
+      return { ok: true, json: async () => ({ terms: [] }) } as Response;
+    });
+
+    render(
+      <ChatWindow
+        sessionId="11111111-1111-4111-8111-111111111111"
+        initialPrompt={prompt}
+        initialGuidedIntake={{ prompt, searchText: 'Food help', location: 'Tacoma, WA' }}
+        autoSubmitInitialGuidedIntake
+      />,
+    );
+
+    await screen.findByText('Search is temporarily unavailable.');
+    expect(screen.getByRole('button', { name: 'Retry search' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
   });
 
   it('keeps quota-blocked guided intake structured without offering an immediate retry', async () => {

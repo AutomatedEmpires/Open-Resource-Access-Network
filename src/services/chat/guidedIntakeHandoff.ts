@@ -9,7 +9,7 @@ import { parseGuidedIntakeRequest } from '@/services/chat/guidedIntakeValidation
 export const GUIDED_INTAKE_HANDOFF_KEY = 'oran:guided-intake-handoff';
 const GUIDED_INTAKE_RETRY_KEY_PREFIX = 'oran:guided-intake-retry:';
 const GUIDED_INTAKE_RETRY_BLOCK_KEY_PREFIX = 'oran:guided-intake-retry-blocked-until:';
-const MAX_RETRY_BLOCK_MS = 26 * 60 * 60 * 1000;
+export const MAX_GUIDED_INTAKE_RETRY_BLOCK_MS = 26 * 60 * 60 * 1000;
 
 const HANDOFF_KEYS = new Set(['prompt', 'searchText', 'location', 'urgency', 'audience', 'accessMode']);
 
@@ -121,7 +121,11 @@ export function readGuidedIntakeRetry(sessionId: string): GuidedIntakeSubmission
 export function writeGuidedIntakeRetryBlockedUntil(sessionId: string, blockedUntil: number): boolean {
   if (typeof window === 'undefined') return false;
   const now = Date.now();
-  if (!Number.isFinite(blockedUntil) || blockedUntil <= now || blockedUntil > now + MAX_RETRY_BLOCK_MS) {
+  if (
+    !Number.isFinite(blockedUntil)
+    || blockedUntil <= now
+    || blockedUntil > now + MAX_GUIDED_INTAKE_RETRY_BLOCK_MS
+  ) {
     return false;
   }
 
@@ -142,7 +146,11 @@ export function readGuidedIntakeRetryBlockedUntil(sessionId: string): number | n
     if (!raw) return null;
     const blockedUntil = Number(raw);
     const now = Date.now();
-    if (Number.isFinite(blockedUntil) && blockedUntil > now && blockedUntil <= now + MAX_RETRY_BLOCK_MS) {
+    if (
+      Number.isFinite(blockedUntil)
+      && blockedUntil > now
+      && blockedUntil <= now + MAX_GUIDED_INTAKE_RETRY_BLOCK_MS
+    ) {
       return blockedUntil;
     }
     sessionStorage.removeItem(key);

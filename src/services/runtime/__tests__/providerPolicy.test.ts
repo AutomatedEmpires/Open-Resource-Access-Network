@@ -49,6 +49,14 @@ describe('off-Azure runtime provider policy', () => {
     expect(isProhibitedMicrosoftEnvName('OPENAI_API_KEY')).toBe(false);
   });
 
+  it('ignores the GitHub runner Azure CLI directory without weakening provider checks', () => {
+    expect(isProhibitedMicrosoftEnvName('AZURE_EXTENSION_DIR')).toBe(false);
+    expect(findProhibitedMicrosoftRuntimeSettings({
+      AZURE_EXTENSION_DIR: '/opt/az/azcliextensions',
+      AZURE_OPENAI_KEY: 'must-not-leak',
+    })).toEqual(['AZURE_OPENAI_KEY']);
+  });
+
   it('recognizes Microsoft endpoints without rejecting the target stack', () => {
     expect(isProhibitedMicrosoftEndpoint('https://atlas.microsoft.com/geocode')).toBe(true);
     expect(isProhibitedMicrosoftEndpoint('https://oran.openai.azure.com')).toBe(true);

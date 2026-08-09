@@ -15,6 +15,13 @@ const PROHIBITED_ENV_NAMES = new Set([
   'llm_endpoint',
 ]);
 
+// GitHub-hosted Linux runners expose this Azure CLI installation directory as
+// ambient toolchain metadata. It is not an ORAN provider setting or network
+// endpoint, so treating it as one prevents CI from starting the application.
+const NON_PROVIDER_TOOLCHAIN_ENV_NAMES = new Set([
+  'azure_extension_dir',
+]);
+
 const ALLOWED_LLM_PROVIDER_VALUES = new Set(['anthropic', 'disabled']);
 
 const PROHIBITED_HOST_SUFFIXES = Object.freeze([
@@ -128,9 +135,12 @@ export function isProhibitedMicrosoftEnvName(name) {
   const normalized = normalize(name);
   if (!normalized) return false;
 
+  const lower = normalized.toLowerCase();
+  if (NON_PROVIDER_TOOLCHAIN_ENV_NAMES.has(lower)) return false;
+
   const upper = normalized.toUpperCase();
   return PROHIBITED_ENV_PREFIXES.some((prefix) => upper.startsWith(prefix))
-    || PROHIBITED_ENV_NAMES.has(normalized.toLowerCase());
+    || PROHIBITED_ENV_NAMES.has(lower);
 }
 
 function normalizeConnectionKey(value) {

@@ -50,7 +50,7 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^0.577.0",
     "next": "16.2.12",
-    "openai": "^6.29.0",
+    "openai": "^7.4.0",
     "pg": "^8.22.0",
     "react-leaflet": "^5.0.0",
     "resend": "^6.17.2",

@@ -30,12 +30,14 @@ const buildPlanSnapshotMock = vi.hoisted(() => vi.fn((card, href) => ({
 })));
 const PREFS_KEY = 'oran:preferences';
 
-vi.mock('@/components/ui/button', () => ({
-  Button: ({
-    children,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
-}));
+vi.mock('@/components/ui/button', async () => {
+  const react = await vi.importActual<typeof import('react')>('react');
+  return {
+    Button: react.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
+      ({ children, ...props }, ref) => <button ref={ref} {...props}>{children}</button>,
+    ),
+  };
+});
 
 vi.mock('@/components/chat/ChatServiceCard', () => ({
   ChatServiceCard: ({
@@ -161,7 +163,13 @@ vi.mock('@/components/ui/dialog', () => {
 });
 
 import { ChatWindow } from '../ChatWindow';
-import { readGuidedIntakeRetry } from '@/services/chat/guidedIntakeHandoff';
+import {
+  clearGuidedIntakeRetryBlockedUntil,
+  readGuidedIntakeRetry,
+  readGuidedIntakeRetryBlockedUntil,
+  writeGuidedIntakeRetry,
+  writeGuidedIntakeRetryBlockedUntil,
+} from '@/services/chat/guidedIntakeHandoff';
 
 function getChatCalls() {
   return fetchMock.mock.calls.filter((call) => String(call[0]) === '/api/chat');
@@ -400,6 +408,340 @@ describe('ChatWindow', () => {
     const secondBody = JSON.parse(String((getChatCalls()[1]?.[1] as { body: string }).body));
     expect(secondBody.message).toBe('Show me another option');
     expect(secondBody).not.toHaveProperty('guidedIntake');
+  });
+
+  it('automatically submits a fresh guided handoff exactly once in Strict Mode', async () => {
+    const prompt = 'Utility bill help. Near 48201. I need help today.';
+
+    render(
+      <React.StrictMode>
+        <ChatWindow
+          sessionId="11111111-1111-4111-8111-111111111111"
+          initialPrompt={prompt}
+          initialGuidedIntake={{
+            prompt,
+            searchText: 'Utility bill help',
+            location: '48201',
+            urgency: 'today',
+          }}
+          autoSubmitInitialGuidedIntake
+        />
+      </React.StrictMode>,
+    );
+
+    await screen.findByText('Here are options');
+    expect(getChatCalls()).toHaveLength(1);
+    expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveValue('');
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveFocus();
+    });
+
+    const body = JSON.parse(String((getChatCalls()[0]?.[1] as { body: string }).body));
+    expect(body).toMatchObject({
+      message: prompt,
+      guidedIntake: {
+        searchText: 'Utility bill help',
+        location: '48201',
+        urgency: 'today',
+      },
+    });
+  });
+
+  it('stops after an automatic handoff failure and offers an explicit structured retry', async () => {
+    const prompt = 'Food help. Near Tacoma, WA.';
+    let chatAttempts = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return { ok: true, json: async () => ({ remaining: 50, resetAt: null }) } as Response;
+      }
+      if (url === '/api/chat') {
+        chatAttempts += 1;
+        if (chatAttempts === 1) {
+          return {
+            ok: false,
+            status: 503,
+            json: async () => ({ error: 'Search is temporarily unavailable.' }),
+          } as Response;
+        }
+        return { ok: true, json: async () => makeChatResponse() } as Response;
+      }
+      return { ok: true, json: async () => ({ terms: [] }) } as Response;
+    });
+
+    render(
+      <React.StrictMode>
+        <ChatWindow
+          sessionId="11111111-1111-4111-8111-111111111111"
+          initialPrompt={prompt}
+          initialGuidedIntake={{
+            prompt,
+            searchText: 'Food help',
+            location: 'Tacoma, WA',
+          }}
+          autoSubmitInitialGuidedIntake
+        />
+      </React.StrictMode>,
+    );
+
+    await screen.findByText('Search is temporarily unavailable.');
+    expect(getChatCalls()).toHaveLength(1);
+    expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveValue(prompt);
+    expect(screen.getByRole('button', { name: 'Retry search' })).toBeVisible();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Retry search' })).toHaveFocus();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry search' }));
+    await screen.findByText('Here are options');
+    expect(getChatCalls()).toHaveLength(2);
+
+    const retryBody = JSON.parse(String((getChatCalls()[1]?.[1] as { body: string }).body));
+    expect(retryBody.guidedIntake).toEqual({
+      searchText: 'Food help',
+      location: 'Tacoma, WA',
+    });
+  });
+
+  it('keeps quota-blocked guided intake structured without offering an immediate retry', async () => {
+    const prompt = 'Housing help. Near Tacoma, WA. This is for someone else.';
+    const quotaResetAt = new Date(Date.now() + 60_000).toISOString();
+    let chatAttempts = 0;
+    let quotaAvailable = true;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => quotaAvailable
+            ? { remaining: 50, resetAt: quotaResetAt }
+            : { remaining: 0, resetAt: quotaResetAt },
+        } as Response;
+      }
+      if (url === '/api/chat') {
+        chatAttempts += 1;
+        if (chatAttempts > 1) {
+          return { ok: true, json: async () => makeChatResponse() } as Response;
+        }
+        return {
+          ok: false,
+          status: 429,
+          json: async () => ({
+            error: 'Daily message limit reached.',
+            quotaRemaining: 0,
+            quotaResetAt,
+          }),
+        } as Response;
+      }
+      return { ok: true, json: async () => ({ terms: [] }) } as Response;
+    });
+
+    render(
+      <ChatWindow
+        sessionId="11111111-1111-4111-8111-111111111111"
+        initialPrompt={prompt}
+        initialGuidedIntake={{
+          prompt,
+          searchText: 'Housing help',
+          location: 'Tacoma, WA',
+          audience: 'someone_else',
+        }}
+        autoSubmitInitialGuidedIntake
+      />,
+    );
+
+    await screen.findByText('Daily message limit reached.');
+    expect(getChatCalls()).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Retry search' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveValue(prompt);
+    expect(readGuidedIntakeRetry('11111111-1111-4111-8111-111111111111')).toMatchObject({
+      prompt,
+      searchText: 'Housing help',
+      location: 'Tacoma, WA',
+      audience: 'someone_else',
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveFocus();
+    });
+
+    cleanup();
+    quotaAvailable = false;
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
+    await screen.findByText(/Daily limit reached/);
+    expect(screen.queryByRole('button', { name: 'Retry search' })).not.toBeInTheDocument();
+    expect(readGuidedIntakeRetry('11111111-1111-4111-8111-111111111111')).toMatchObject({
+      audience: 'someone_else',
+    });
+
+    cleanup();
+    quotaAvailable = true;
+    localStorage.removeItem('oran:quota-reset-at');
+    clearGuidedIntakeRetryBlockedUntil('11111111-1111-4111-8111-111111111111');
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveValue(prompt);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry search' }));
+    await screen.findByText('Here are options');
+
+    const retryBody = JSON.parse(String((getChatCalls()[1]?.[1] as { body: string }).body));
+    expect(retryBody.guidedIntake).toEqual({
+      searchText: 'Housing help',
+      location: 'Tacoma, WA',
+      audience: 'someone_else',
+    });
+  });
+
+  it('does not let a delayed quota check revive a rate-limited prompt but allows edited crisis text', async () => {
+    const prompt = 'Food help. Near Tacoma, WA.';
+    let resolveQuota: (response: Response) => void = () => {};
+    const pendingQuotaResponse = new Promise<Response>((resolve) => {
+      resolveQuota = resolve;
+    });
+    let chatAttempts = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') return pendingQuotaResponse;
+      if (url === '/api/chat') {
+        chatAttempts += 1;
+        if (chatAttempts === 1) {
+          return {
+            ok: false,
+            status: 429,
+            headers: new Headers({ 'Retry-After': '60' }),
+            json: async () => ({ error: 'Please wait for your current chat request to finish.' }),
+          } as Response;
+        }
+        return { ok: true, json: async () => makeChatResponse({ isCrisis: true }) } as Response;
+      }
+      return { ok: true, json: async () => ({ terms: [] }) } as Response;
+    });
+
+    render(
+      <ChatWindow
+        sessionId="11111111-1111-4111-8111-111111111111"
+        initialPrompt={prompt}
+        initialGuidedIntake={{ prompt, searchText: 'Food help', location: 'Tacoma, WA' }}
+        autoSubmitInitialGuidedIntake
+      />,
+    );
+
+    await screen.findByText('Please wait for your current chat request to finish.');
+    const composer = screen.getByRole('textbox', { name: 'Chat message input' });
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    fireEvent.keyDown(composer, { key: 'Enter', shiftKey: false });
+    expect(getChatCalls()).toHaveLength(1);
+
+    resolveQuota({
+      ok: true,
+      json: async () => ({ remaining: 9, limit: 10, resetAt: new Date(Date.now() + 60_000).toISOString() }),
+    } as Response);
+    await waitFor(() => expect(screen.getByText('9 left today')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Retry search' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+
+    fireEvent.change(composer, { target: { value: 'I am in immediate danger' } });
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(getChatCalls()).toHaveLength(2));
+    const crisisBody = JSON.parse(String((getChatCalls()[1]?.[1] as { body: string }).body));
+    expect(crisisBody.message).toBe('I am in immediate danger');
+    expect(crisisBody).not.toHaveProperty('guidedIntake');
+  });
+
+  it('keeps a restored rate-limited prompt blocked until Retry-After expires', async () => {
+    const sessionId = '11111111-1111-4111-8111-111111111111';
+    const prompt = 'Food help. Near Tacoma, WA.';
+    expect(writeGuidedIntakeRetry(sessionId, {
+      prompt,
+      searchText: 'Food help',
+      location: 'Tacoma, WA',
+    })).toBe(true);
+    expect(writeGuidedIntakeRetryBlockedUntil(sessionId, Date.now() + 1_200)).toBe(true);
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input) === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({
+            remaining: 9,
+            limit: 10,
+            resetAt: new Date(Date.now() + 60_000).toISOString(),
+          }),
+        } as Response;
+      }
+      return { ok: true, json: async () => ({ terms: [] }) } as Response;
+    });
+
+    render(<ChatWindow sessionId={sessionId} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveValue(prompt);
+    });
+    expect(screen.queryByRole('button', { name: 'Retry search' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+
+    expect(await screen.findByRole('button', { name: 'Retry search' }, { timeout: 3_000 })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
+  });
+
+  it.each(['non-ok', 'network'] as const)(
+    'releases a restored retry when the quota check is %s',
+    async (failureMode) => {
+      const sessionId = '11111111-1111-4111-8111-111111111111';
+      const prompt = 'Food help. Near Tacoma, WA.';
+      expect(writeGuidedIntakeRetry(sessionId, {
+        prompt,
+        searchText: 'Food help',
+        location: 'Tacoma, WA',
+      })).toBe(true);
+      fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+        if (String(input) === '/api/chat/quota') {
+          if (failureMode === 'network') throw new Error('offline');
+          return { ok: false, status: 429 } as Response;
+        }
+        return { ok: true, json: async () => ({ terms: [] }) } as Response;
+      });
+
+      render(<ChatWindow sessionId={sessionId} />);
+
+      expect(await screen.findByRole('button', { name: 'Retry search' })).toBeVisible();
+      expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveValue(prompt);
+      expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
+    },
+  );
+
+  it('preserves an active retry deadline when an auto-trimmed chat is restored', async () => {
+    const removedSessionId = 'session-0';
+    const activeSessionId = 'session-10';
+    const prompt = 'Food help. Near Tacoma, WA.';
+    const sessions = Array.from({ length: 11 }, (_, index) => ({
+      sessionId: `session-${index}`,
+      title: `Chat ${index}`,
+      preview: index === 0 ? prompt : `Preview ${index}`,
+      updatedAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
+      messageCount: 0,
+      saved: false,
+      seeded: false,
+    }));
+    sessionStorage.setItem('oran:chat-session-index', JSON.stringify(sessions));
+    expect(writeGuidedIntakeRetry(removedSessionId, {
+      prompt,
+      searchText: 'Food help',
+      location: 'Tacoma, WA',
+    })).toBe(true);
+    expect(writeGuidedIntakeRetryBlockedUntil(removedSessionId, Date.now() + 60_000)).toBe(true);
+
+    render(<ChatWindow sessionId={activeSessionId} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+
+    expect(readGuidedIntakeRetry(removedSessionId)).toMatchObject({
+      prompt,
+      searchText: 'Food help',
+      location: 'Tacoma, WA',
+    });
+    expect(readGuidedIntakeRetryBlockedUntil(removedSessionId)).toBeGreaterThan(Date.now());
   });
 
   it('never places typed chat text in low-budget handoff URLs while a safety response is pending', async () => {
@@ -812,6 +1154,7 @@ describe('ChatWindow', () => {
         if (chatAttempts === 1) {
           return {
             ok: false,
+            status: 503,
             json: async () => ({ error: 'Search is temporarily unavailable.' }),
           } as Response;
         }
@@ -835,8 +1178,9 @@ describe('ChatWindow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     await screen.findByText('Search is temporarily unavailable.');
     expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveValue(prompt);
+    expect(screen.getByRole('button', { name: 'Retry search' })).toBeVisible();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry search' }));
     await waitFor(() => expect(getChatCalls()).toHaveLength(2));
     const retryBody = JSON.parse(String((getChatCalls()[1]?.[1] as { body: string }).body));
     expect(retryBody.guidedIntake).toEqual({
@@ -894,8 +1238,10 @@ describe('ChatWindow', () => {
     await waitFor(() => {
       expect(screen.getByRole('textbox', { name: 'Chat message input' })).toHaveValue(prompt);
     });
+    expect(getChatCalls()).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Retry search' })).toBeVisible();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry search' }));
     await waitFor(() => expect(getChatCalls()).toHaveLength(2));
     const retryBody = JSON.parse(String((getChatCalls()[1]?.[1] as { body: string }).body));
     expect(retryBody.guidedIntake).toEqual({

@@ -6,6 +6,8 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { GuidedIntakeSubmission } from '@/domain/resourceNavigator';
 
 const chatWindowMock = vi.hoisted(() => vi.fn());
+const chatWindowMountMock = vi.hoisted(() => vi.fn());
+const chatWindowUnmountMock = vi.hoisted(() => vi.fn());
 const navigationState = vi.hoisted(() => ({
   searchParams: new URLSearchParams(),
 }));
@@ -19,6 +21,7 @@ vi.mock('@/components/chat/ChatWindow', () => ({
     sessionId: string;
     initialPrompt?: string;
     initialGuidedIntake?: GuidedIntakeSubmission;
+    autoSubmitInitialGuidedIntake?: boolean;
     initialNeedId?: string | null;
     initialTrustFilter?: string;
     initialSortBy?: string;
@@ -26,6 +29,12 @@ vi.mock('@/components/chat/ChatWindow', () => ({
     initialAttributeFilters?: Record<string, string[]>;
   }) => {
     chatWindowMock(props);
+    React.useEffect(() => {
+      chatWindowMountMock(props.sessionId);
+      return () => chatWindowUnmountMock(props.sessionId);
+      // A session key must remount the workspace instead of reusing private state.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     return <div data-testid="chat-window">session:{props.sessionId}</div>;
   },
 }));
@@ -205,6 +214,7 @@ describe('ChatPageClient', () => {
         sessionId: 'fresh-guided-session-id',
         initialPrompt: guidedIntake.prompt,
         initialGuidedIntake: guidedIntake,
+        autoSubmitInitialGuidedIntake: true,
         initialNeedId: undefined,
       }));
     });
@@ -226,7 +236,35 @@ describe('ChatPageClient', () => {
         sessionId: 'existing-session-id',
       }));
     });
+    expect(chatWindowMock).not.toHaveBeenCalledWith(expect.objectContaining({
+      autoSubmitInitialGuidedIntake: true,
+    }));
     expect(randomSpy).not.toHaveBeenCalled();
+    randomSpy.mockRestore();
+  });
+
+  it('remounts the chat workspace when a fresh handoff replaces the active session', async () => {
+    sessionStorage.setItem('oran_chat_session_id', 'active-session-id');
+    const { rerender } = render(<ChatPage />);
+
+    await waitFor(() => expect(chatWindowMountMock).toHaveBeenCalledWith('active-session-id'));
+
+    const guidedIntake: GuidedIntakeSubmission = {
+      prompt: 'Food help. Near Tacoma, WA.',
+      searchText: 'Food help',
+      location: 'Tacoma, WA',
+    };
+    navigationState.searchParams = new URLSearchParams('from=guided');
+    sessionStorage.setItem(GUIDED_INTAKE_HANDOFF_KEY, JSON.stringify(guidedIntake));
+    const randomSpy = vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue('replacement-session-id');
+
+    rerender(<ChatPage />);
+
+    await waitFor(() => {
+      expect(chatWindowUnmountMock).toHaveBeenCalledWith('active-session-id');
+      expect(chatWindowMountMock).toHaveBeenCalledWith('replacement-session-id');
+    });
+    expect(screen.getByTestId('chat-window')).toHaveTextContent('session:replacement-session-id');
     randomSpy.mockRestore();
   });
 });

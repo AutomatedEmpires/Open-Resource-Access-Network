@@ -74,19 +74,24 @@ test.describe('Seeker flows (public)', () => {
     const db = await isDbConfigured(page.request);
     if (!db) return;
 
-    // Best-effort: find any service ID from search results.
-    const res = await page.request.get('/api/search?q=food&limit=1&page=1&status=active');
-    if (!res.ok()) return;
+    // A configured catalog must provide a usable record for the detail flow;
+    // do not silently turn an API failure into a green smoke test.
+    const res = await page.request.get('/api/search?limit=1&page=1&status=active');
+    expect(res.ok()).toBe(true);
 
-    const json = (await res.json()) as { results?: Array<{ service?: { id?: string } }> };
-    const serviceId = json.results?.[0]?.service?.id;
-    if (!serviceId) return;
+    const json = (await res.json()) as {
+      results?: Array<{ service?: { service?: { id?: string; name?: string } } }>;
+    };
+    const service = json.results?.[0]?.service?.service;
+    if (!service?.id || !service.name) {
+      throw new Error('Configured search returned no service record for detail acceptance.');
+    }
 
-    await page.goto(`/service/${serviceId}`);
+    await page.goto(`/service/${service.id}`);
 
-    await expect(page.locator('article[aria-label^="Service:"]')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1, name: service.name })).toBeVisible({ timeout: 30_000 });
     await expect(
-      page.getByText(/Service information comes from verified records\. Always confirm eligibility/i),
+      page.getByText(/Confirm current hours, intake rules, and availability with the provider/i),
     ).toBeVisible();
   });
 });

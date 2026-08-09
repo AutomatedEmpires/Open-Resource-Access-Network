@@ -90,10 +90,6 @@ test.describe('Guided intake acceptance', () => {
     expect(page.url()).not.toContain(NEED);
     expect(page.url()).not.toContain(APPROXIMATE_LOCATION);
 
-    const chatInput = page.getByRole('textbox', { name: 'Chat message input' });
-    await expect(chatInput).toHaveValue(EXPECTED_PROMPT);
-    await page.getByRole('button', { name: 'Send message' }).click();
-
     await expect(page.getByText('Status: No close match was found in the current catalog.')).toBeVisible();
     await expect(page.getByText(/contact 211 for local assistance/i)).toBeVisible();
     await expect(page.getByRole('note', { name: 'Eligibility disclaimer' })).toBeVisible();
@@ -142,12 +138,84 @@ test.describe('Guided intake acceptance', () => {
 
     await expect(page).toHaveURL(/\/chat\?from=guided$/);
     expect(Array.from(new URL(page.url()).searchParams.entries())).toEqual([['from', 'guided']]);
-    await page.getByRole('button', { name: 'Send message' }).click();
 
     await expect(page.getByText('Immediate Help Available')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole('link', { name: /Emergency: Call 911/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Crisis Line: Call or text 988/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Community Resources: Call 211/i })).toBeVisible();
     await expect(page.getByText('Status: No close match was found in the current catalog.')).toHaveCount(0);
+  });
+
+  test('keeps the first matches in view after an automatic mobile search', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.route('**/api/chat*', async (route) => {
+      const request = route.request();
+      const pathname = new URL(request.url()).pathname;
+
+      if (pathname === '/api/chat/quota') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          json: { remaining: 50, resetAt: null },
+        });
+        return;
+      }
+
+      if (pathname !== '/api/chat' || request.method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+
+      const body = request.postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          message: 'Here are the closest published options.',
+          resultSummary: 'Six stored service listings matched this request.',
+          services: Array.from({ length: 6 }, (_, index) => ({
+            serviceId: `service-${index + 1}`,
+            serviceName: `Utility support ${index + 1}`,
+            organizationName: `Community provider ${index + 1}`,
+            confidenceBand: 'HIGH',
+            confidenceScore: 90,
+            description: 'Helps households address utility bills and prevent service interruption.',
+            eligibilityHint: 'Households should confirm current income and service-area requirements.',
+            nextStep: 'Open ORAN details and contact the provider to confirm intake.',
+          })),
+          isCrisis: false,
+          intent: {
+            category: 'utility_assistance',
+            rawQuery: NEED,
+            urgencyQualifier: 'standard',
+          },
+          sessionId: body.sessionId,
+          quotaRemaining: 49,
+          eligibilityDisclaimer: 'Service information does not guarantee eligibility or availability. Confirm details with the provider.',
+          llmSummarized: false,
+          retrievalStatus: 'results',
+          effectiveSearchText: NEED,
+          locationBiasApplied: false,
+          activeContextUsed: false,
+        },
+      });
+    });
+
+    await page.goto('/');
+    const intake = page.getByRole('form', { name: 'Guided service intake' });
+    await intake.getByLabel('What do you need help with?').fill(NEED);
+    await intake.getByRole('button', { name: 'Find help' }).click();
+
+    const resultMessage = page.locator('[data-result-bearing="true"]');
+    await expect(resultMessage).toBeVisible();
+    await expect(page.getByText('Top matches')).toBeInViewport();
+    await expect(page.getByRole('link', { name: 'Utility support 1' })).toBeInViewport();
+    await expect.poll(async () => resultMessage.evaluate((element) => {
+      const log = element.closest('[role="log"]');
+      if (!log) return false;
+      const messageRect = element.getBoundingClientRect();
+      const logRect = log.getBoundingClientRect();
+      return messageRect.top >= logRect.top - 2 && messageRect.top < logRect.bottom - 80;
+    })).toBe(true);
   });
 });

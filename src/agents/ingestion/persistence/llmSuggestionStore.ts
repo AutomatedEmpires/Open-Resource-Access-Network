@@ -91,7 +91,7 @@ function rowToSuggestion(
     reviewNotes: row.reasoning ?? undefined,
     sourceEvidenceRefs: row.evidenceId ? [row.evidenceId] : [],
     llmModel: 'unknown',
-    llmProvider: 'azure',
+    llmProvider: 'unknown',
     createdAt: row.createdAt.toISOString(),
   };
 }

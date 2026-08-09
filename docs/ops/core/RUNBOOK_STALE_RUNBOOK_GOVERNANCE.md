@@ -24,10 +24,9 @@ Ensure runbooks remain current, accurate, and executable by enforcing review cad
 - A review date records a substantive content/code validation, not a metadata edit.
 - Trigger immediate review after major changes in:
   - `src/app/api/**`
+  - `src/agents/ingestion/**`
   - `src/services/**`
   - `db/migrations/**`
-  - `functions/**`
-  - `infra/**`
   - `.github/workflows/**`
   - `vercel.json`
 

@@ -4,14 +4,14 @@ This guide lists the fastest verified workflows for local development, validatio
 
 ## Environment Baseline
 
-- Node.js 20.x (matches CI workflow in `.github/workflows/ci.yml`)
-- npm
+- Node.js 24.x (matches CI and Vercel runtime)
+- npm (the committed `package-lock.json` is authoritative)
 - Optional: Docker (for local Postgres via `db/docker-compose.yml`)
 
 ## 1) Bootstrap And Run
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -21,23 +21,21 @@ Open `http://localhost:3000`.
 
 ```bash
 npm run lint
-npx tsc --noEmit
-npm run test:coverage
+npm run typecheck
+npm test
 npm run build
-npm run build:functions
+npm run check:off-azure-runtime
 ```
 
 These commands are defined in `package.json` and mirrored in `.github/workflows/ci.yml`.
 
-Before release validation against deployed Azure targets, also run:
+Before release validation, also run the production webapp environment contract:
 
 ```bash
 npm run validate:runtime
-npm run validate:runtime:functions
 ```
 
-These commands validate the runtime env contract from your current shell. The deploy workflows
-also validate Azure app settings directly before rollout.
+This validates the Vercel runtime contract from the current shell without printing secret values.
 
 ## 3) Focused Test Loops
 

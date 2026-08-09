@@ -19,6 +19,7 @@ import { SkeletonCard } from '@/components/ui/skeleton';
 import { ServiceCard } from '@/components/directory/ServiceCard';
 import { DistanceRadiusControl } from '@/components/seeker/DistanceRadiusControl';
 import { QuickNeedFilterGrid } from '@/components/seeker/QuickNeedFilterGrid';
+import { ResourceSearchRecovery } from '@/components/seeker/ResourceSearchRecovery';
 import { type SeekerAppliedFilterItem } from '@/components/seeker/SeekerAppliedFilters';
 import { readStoredDiscoveryPreference } from '@/services/profile/discoveryPreference';
 import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
@@ -1138,6 +1139,7 @@ export default function MapPage() {
                     <div className="flex flex-col items-center py-12 text-center">
                       <p className="text-sm font-semibold text-slate-700">No matches in this area</p>
                       <p className="mt-1 text-xs text-slate-400">Try different keywords or pan to a new area.</p>
+                      <ResourceSearchRecovery className="mt-5 w-full" />
                     </div>
                   )}
 
@@ -1673,6 +1675,7 @@ export default function MapPage() {
                                   <p className="mt-1 text-xs text-[var(--text-muted)]">
                                     Try different keywords, a broader category, or pan to a new area.
                                   </p>
+                                  <ResourceSearchRecovery className="mt-5" />
                                 </div>
                               ) : (
                                 <div className="space-y-3">

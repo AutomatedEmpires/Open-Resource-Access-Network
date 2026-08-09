@@ -2,7 +2,7 @@
  * GET|POST /api/internal/coverage-gaps
  *
  * Vercel Cron uses GET with the default threshold. POST remains available to
- * authenticated rollback workers and operational tooling with a custom threshold.
+ * authenticated internal workers and operational tooling with a custom threshold.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

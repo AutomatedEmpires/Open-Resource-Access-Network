@@ -153,6 +153,7 @@ describe('chat orchestration primitives', () => {
     ['need lawyers', 'legal_aid'],
     ['help paying for electricity', 'utility_assistance'],
     ['help with utilities', 'utility_assistance'],
+    ['I need help paying a utility bill', 'utility_assistance'],
     ['I am unemployed', 'employment'],
     ['I need work', 'employment'],
     ['I need healthcare', 'healthcare'],
@@ -246,16 +247,15 @@ describe('orchestrateChat', () => {
     expect(isFlagEnabled).not.toHaveBeenCalledWith(FEATURE_FLAGS.CONTENT_SAFETY_CRISIS);
   });
 
-  it('uses LLM summarization only when enabled and services exist', async () => {
-    const llmSpy = vi.fn().mockResolvedValue('Here are services that may help.');
+  it('uses deterministic response assembly even when optional flags report enabled', async () => {
+    const isFlagEnabled = vi.fn().mockResolvedValue(true);
     const retrieveServices: OrchestratorDeps['retrieveServices'] = async () => ({
       services: [makeMockService('svc-1')],
       retrievalStatus: 'results',
     });
     const deps: OrchestratorDeps = {
       retrieveServices,
-      isFlagEnabled: async () => true,
-      summarizeWithLLM: async (services, intent) => llmSpy(services, intent),
+      isFlagEnabled,
     };
 
     const response = await orchestrateChat(
@@ -267,33 +267,7 @@ describe('orchestrateChat', () => {
       deps,
     );
 
-    expect(llmSpy).toHaveBeenCalledOnce();
-    expect(response.llmSummarized).toBe(true);
-    expect(response.message).toBe('Here are services that may help.');
-  });
-
-  it('falls back to the assembled response if LLM summarization fails', async () => {
-    const llmSpy = vi.fn().mockRejectedValue(new Error('LLM unavailable'));
-    const retrieveServices: OrchestratorDeps['retrieveServices'] = async () => ({
-      services: [makeMockService('svc-2')],
-      retrievalStatus: 'results',
-    });
-    const deps: OrchestratorDeps = {
-      retrieveServices,
-      isFlagEnabled: async () => true,
-      summarizeWithLLM: async (services, intent) => llmSpy(services, intent),
-    };
-
-    const response = await orchestrateChat(
-      'I need food',
-      '00000000-0000-0000-0000-000000000096',
-      undefined,
-      'en',
-      'chat:test:llm-fallback',
-      deps,
-    );
-
-    expect(llmSpy).toHaveBeenCalledOnce();
+    expect(isFlagEnabled).not.toHaveBeenCalled();
     expect(response.llmSummarized).toBe(false);
     expect(response.services).toHaveLength(1);
   });
@@ -1158,7 +1132,7 @@ describe('orchestrateChat', () => {
     expect(response.message).not.toContain('message limit');
     expect(response.quotaRemaining).toBe(0);
     expect(retrieveServices).toHaveBeenCalledOnce();
-    expect(isFlagEnabled).toHaveBeenCalledWith(FEATURE_FLAGS.LLM_SUMMARIZE);
+    expect(isFlagEnabled).not.toHaveBeenCalled();
   });
 
   it('returns a deterministic out-of-scope response before retrieval', async () => {
@@ -1181,8 +1155,8 @@ describe('orchestrateChat', () => {
     expect(retrieveServices).not.toHaveBeenCalled();
   });
 
-  it('skips LLM summarization when retrieval is temporarily unavailable', async () => {
-    const llmSpy = vi.fn();
+  it('returns the deterministic recovery response when retrieval is temporarily unavailable', async () => {
+    const isFlagEnabled = vi.fn().mockResolvedValue(true);
 
     const response = await orchestrateChat(
       'I need food',
@@ -1195,14 +1169,13 @@ describe('orchestrateChat', () => {
           services: [],
           retrievalStatus: 'temporarily_unavailable',
         }),
-        isFlagEnabled: async () => true,
-        summarizeWithLLM: llmSpy,
+        isFlagEnabled,
       },
     );
 
     expect(response.retrievalStatus).toBe('temporarily_unavailable');
     expect(response.llmSummarized).toBe(false);
-    expect(llmSpy).not.toHaveBeenCalled();
+    expect(isFlagEnabled).not.toHaveBeenCalled();
   });
 });
 

@@ -143,9 +143,9 @@ Minimum required scrubbing behaviors:
   - Strip URL fragments.
   - Remove common tracking parameters when persisting canonical URLs (implementation detail; enforced in code/DB layer).
 
-## Copilot Studio / assistant agents (optional, admin-only)
+## Optional ingestion assistance
 
-It is acceptable to use Microsoft Copilot Studio (or similar) as an **internal reviewer assistant** to:
+The explicitly configured Anthropic adapter may assist the review-gated ingestion pipeline to:
 
 - summarize already-stored evidence snapshots
 - help a reviewer complete checklists
@@ -358,16 +358,16 @@ The SQL agent should implement schema + constraints to enforce:
   - schema validation
   - dedupe key determinism
   - scoring is stable and bounded (0–100)
-- Integration tests (student Azure):
-  - queue → worker → DB staging writes → audit log emission
-  - idempotency: replay same message does not re-extract
-- Smoke tests (prod):
-  - can enqueue a no-op candidate and observe audit events
+- Integration tests (isolated ORAN preview/Supabase target):
+  - authenticated job route → DB staging writes → audit log emission
+  - idempotency: replaying the same source event does not re-extract
+- Read-only production smoke tests:
+  - verify health and active feed state without creating candidates or audit events
 
-## Deployment separation (student → prod)
+## Deployment separation (preview → production)
 
-- Build/test in student subscription with cheap SKUs.
-- Promote by redeploying the same agent code + IaC to prod subscription.
+- Build and test the reviewed application SHA in an isolated Vercel preview against an approved non-production database target.
+- Promote only the reviewed SHA through the Vercel production release path.
 - Do not promote unverified candidate data automatically.
 
 ---

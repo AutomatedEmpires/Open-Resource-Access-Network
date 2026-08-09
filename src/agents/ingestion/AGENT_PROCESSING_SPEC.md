@@ -450,7 +450,7 @@ async function extractAndGeocodeLocation(rawText: string): Promise<ExtractedLoca
     country: 'US',
   };
 
-  // Geocode via Azure Maps
+  // Geocode through the endpoint-policy-guarded Nominatim adapter
   const geocodeResult = await geocodeAddress(address);
 
   if (geocodeResult.success && geocodeResult.confidence > 0.8) {

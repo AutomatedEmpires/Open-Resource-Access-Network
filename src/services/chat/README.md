@@ -10,7 +10,7 @@
 - The seeker chat client may intercept explicit local execution commands against the most recent result set using deterministic ordinals only (`first result`, `second result`, and equivalent forms). These commands must require explicit confirmation and may only write local plan/reminder state.
 - Request-time locale is authoritative for the active turn.
 - Eligibility disclaimer must be present on all service recommendations.
-- LLM is allowed only as **post-retrieval summarization**, gated behind `llm_summarize`, and must not add facts.
+- Seeker responses are assembled deterministically from stored records; the legacy `llm_summarize` key is retired and inert.
 - Optional contextual links may be included, but must be selected deterministically from stored URLs only (no invented links).
 - Weak queries must clarify before retrieval rather than pretending to search with insufficient scope.
 - Third-party or informational crisis language must return immediate safety guidance without falsely triggering the self-harm crisis hard gate.

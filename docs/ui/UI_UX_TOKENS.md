@@ -1,6 +1,6 @@
 # ORAN UI/UX Tokens (Sitewide Parameters)
 
-Status: **Accepted** (paired with docs/UI_UX_CONTRACT.md, per ADR-0002)
+Status: **Accepted** (paired with `docs/ui/UI_UX_CONTRACT.md`)
 
 This doc defines the concrete parameters we apply sitewide to achieve a coherent, modern, mobile-first UI.
 
@@ -8,9 +8,10 @@ Principle: **standardize the defaults** so individual pages don’t invent their
 
 ## 0) Brand foundation
 
-ORAN uses saturated sky, azure, cobalt, and navy for identity and action. Cool
-silver/chrome surfaces provide structure. Decorative pastel palettes are not
-part of the product language.
+ORAN uses calm forest and teal accents, warm white surfaces, and dark neutral
+text for identity and action. Color supports wayfinding and trust without
+overwhelming the task; decorative gradients and saturated blue fields are not
+the default product language.
 
 - Primary gradient: `--gradient-brand`
 - Deep hero gradient: `--gradient-brand-deep`

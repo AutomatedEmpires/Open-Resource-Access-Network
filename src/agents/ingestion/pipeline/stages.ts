@@ -14,7 +14,7 @@ import { buildDefaultChecklist } from '../checklist';
 import type { ChecklistItemKey } from '../checklist';
 
 import type { LLMClient } from '../llm';
-import { createLLMClient, getLLMConfigFromEnv } from '../llm';
+import { createLLMClient, getLLMConfigFromEnv, isLLMConfigReady } from '../llm';
 
 import '../llm/providers';
 
@@ -319,8 +319,8 @@ export class LlmExtractStage implements PipelineStageHandler {
     if (this.clientPromise) return this.clientPromise;
 
     const config = getLLMConfigFromEnv();
-    if (!config.endpoint || !config.apiKey) {
-      throw new Error('LLM not configured. Set LLM_ENDPOINT and LLM_API_KEY.');
+    if (!isLLMConfigReady(config)) {
+      throw new Error('LLM not configured. Set LLM_PROVIDER=anthropic and LLM_API_KEY.');
     }
 
     this.clientPromise = createLLMClient({
@@ -474,8 +474,8 @@ export class LlmCategorizeStage implements PipelineStageHandler {
     if (this.clientPromise) return this.clientPromise;
 
     const config = getLLMConfigFromEnv();
-    if (!config.endpoint || !config.apiKey) {
-      throw new Error('LLM not configured. Set LLM_ENDPOINT and LLM_API_KEY.');
+    if (!isLLMConfigReady(config)) {
+      throw new Error('LLM not configured. Set LLM_PROVIDER=anthropic and LLM_API_KEY.');
     }
 
     this.clientPromise = createLLMClient({

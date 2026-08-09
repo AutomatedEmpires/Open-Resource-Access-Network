@@ -5,8 +5,6 @@
  * Each provider self-registers via `registerLLMClientProvider()`.
  */
 
-// Providers self-register on import.
-// azure_openai is the legacy connector; anthropic is the registered
-// portfolio provider (activated via LLM_PROVIDER=anthropic + LLM_API_KEY).
-export { AzureOpenAIClient, createAzureOpenAIClient } from './azureOpenai';
+// Anthropic is the only bundled provider. Adding another provider requires an
+// explicit architecture and runtime-policy change.
 export { AnthropicClient, createAnthropicClient } from './anthropic';

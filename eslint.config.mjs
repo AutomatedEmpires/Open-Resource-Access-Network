@@ -19,7 +19,6 @@ const eslintConfig = [
       "test-results/**",
       // Non-app utility scripts and DB tooling (not part of Next.js app):
       "db/**",
-      "functions/**",
       "docs/_archive/**",
       "e2e/**",
       "scripts/**",

@@ -124,14 +124,11 @@ export async function PUT(
       return NextResponse.json({ error: 'Source feed not found.' }, { status: 404 });
     }
 
-    if (
-      parsed.data.feedHandler === 'azure_function'
-      && existing.feedHandler !== 'azure_function'
-    ) {
+    if (parsed.data.feedHandler === 'azure_function') {
       return NextResponse.json(
         {
-          error: 'Source feeds cannot be changed to the legacy Azure Function handler.',
-          code: 'legacy_feed_handler_read_only',
+          error: 'Retired feed handlers cannot be selected.',
+          code: 'retired_feed_handler',
         },
         { status: 400 },
       );

@@ -58,11 +58,11 @@ Do not include raw secrets or sensitive personal data in incident documents.
    - Supabase database credentials
    - `CRON_SECRET`
    - `RESEND_API_KEY`
-   - `INTERNAL_API_KEY` when the rollback credential is enabled
+   - `INTERNAL_API_KEY` when approved internal tooling is enabled
    - Any exposed integration credentials
 2. Revoke the prior value at its provider; changing only Vercel configuration is
    not revocation.
-3. Redeploy affected Vercel functions and restart any ORAN-only rollback workers
+3. Redeploy affected Vercel functions and restart any affected ORAN-only internal tools
    after rotation.
 4. Validate service health, auth, cron, and notification flows after rotation.
 

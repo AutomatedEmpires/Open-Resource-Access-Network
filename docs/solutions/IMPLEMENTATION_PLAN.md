@@ -1,5 +1,9 @@
 # ORAN Platform — Gap Resolution Implementation Plan
 
+> **Historical implementation record.** Provider-specific recommendations in
+> this 2026-03 plan are superseded by `docs/platform/STACK_MIGRATION.md`. Azure
+> and Foundry are prohibited and must not be restored.
+
 **Created**: 2026-03-05
 **Source**: [PLATFORM_CAPABILITIES_AUDIT.md](./PLATFORM_CAPABILITIES_AUDIT.md)
 **Status**: Phase 2 Complete

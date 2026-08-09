@@ -14,7 +14,7 @@ A seeker arriving on ORAN has three entry points into service discovery:
 - **Directory** — filterable browse list with trust/confidence scoring
 - **Map** — geographic proximity view of verified services
 
-All three surfaces read from the same verified service database and use the same confidence scoring model. No LLM participates in retrieval or ranking — AI may only summarize *already retrieved records* when the `llm_summarize` feature flag is enabled.
+All three surfaces read from the same verified service database and use the same confidence scoring model. No LLM participates in seeker intent, retrieval, ranking, or response assembly.
 
 ---
 
@@ -29,11 +29,8 @@ flowchart TD
     B -->|Near me| E[/map\nMapPageClient]
 
     C --> F[ChatWindow\nforms message → API /api/chat]
-    F --> G{AI feature flag\nllm_summarize?}
-    G -->|disabled| H[Retrieval-only results\nfrom DB]
-    G -->|enabled| I[Retrieved records\n+ LLM summary layer]
+    F --> H[Deterministic retrieval and response\nfrom stored records]
     H --> J[ServiceCard list\nin chat results]
-    I --> J
 
     D --> K[DirectoryPageClient\nloads /api/services with filters]
     K --> L[ServiceCard grid\nwith trust badges]

@@ -4,7 +4,7 @@
 // Uses the built-in fetch API (Node 20+). No external dependencies needed.
 //
 // Usage:
-//   ORAN_APP_URL=https://oran-prod-web.azurewebsites.net \
+//   ORAN_APP_URL=https://openresourceaccessnetwork.com \
 //   node scripts/load-test.mjs
 //
 // Optional environment variables:

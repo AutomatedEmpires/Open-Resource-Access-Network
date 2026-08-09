@@ -31,6 +31,8 @@ interface FlagData {
   name: string;
   enabled: boolean;
   rolloutPct: number;
+  description?: string | null;
+  retired?: boolean;
 }
 
 // ============================================================
@@ -120,7 +122,7 @@ function RulesPageInner() {
         subtitle="Configure feature flags and staged rollout percentages for platform features."
         badges={
           <>
-            <PageHeaderBadge tone="trust">Flag changes affect platform behavior immediately</PageHeaderBadge>
+            <PageHeaderBadge tone="trust">Editable flag changes affect platform behavior immediately</PageHeaderBadge>
             <PageHeaderBadge tone="accent">Rollouts stay explicit and reviewable</PageHeaderBadge>
             <PageHeaderBadge>{flags.length > 0 ? `${flags.length} flags` : 'No flags loaded yet'}</PageHeaderBadge>
           </>
@@ -205,11 +207,14 @@ function RulesPageInner() {
                           {flag.rolloutPct}% rollout
                         </span>
                       </div>
+                      {flag.description ? (
+                        <p className="mt-1 text-xs text-gray-600">{flag.description}</p>
+                      ) : null}
                     </div>
                   </div>
 
                   {/* Actions */}
-                  {!isEditing && (
+                  {!isEditing && !flag.retired && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -218,6 +223,11 @@ function RulesPageInner() {
                       Edit
                     </Button>
                   )}
+                  {flag.retired ? (
+                    <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-600">
+                      Retired · locked
+                    </span>
+                  ) : null}
                 </div>
 
                 {/* Edit panel */}

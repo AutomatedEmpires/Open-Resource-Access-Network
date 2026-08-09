@@ -1,5 +1,11 @@
 # ORAN Portfolio Convergence & Azure Exit
 
+> **Historical migration log — superseded 2026-08-09.** This file records the
+> former migration sequence and is not an executable plan. The current contract
+> is `docs/platform/STACK_MIGRATION.md`: Azure and Foundry are retired and
+> prohibited, with no adapters, settings, workflows, or rollback path. Do not
+> follow provider instructions below.
+
 Status: **Azure exit substantially complete in code. App-layer adapters migrated;
 Bicep infra + Azure deploy workflows + Azure Functions runtime removed; Supabase
 schema live but its baseline is not reconciled; Clerk auth code-complete; repo is

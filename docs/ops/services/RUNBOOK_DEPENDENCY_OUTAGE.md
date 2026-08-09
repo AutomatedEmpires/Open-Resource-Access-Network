@@ -59,9 +59,8 @@ provider-neutral integrations.
   storms, and restore delivery without treating email as the source of truth
 - Broad platform impact: `docs/ops/core/RUNBOOK_INCIDENT_TRIAGE.md`
 
-Azure Function, Storage Queue, and Azure OpenAI failures use the explicitly
-rollback-only runbooks only while the Azure rollback window remains open. They
-are not live-production routing for the target stack.
+Retired Azure and Foundry systems are not recovery targets. Do not restore a
+removed provider to mitigate an outage in the active stack.
 
 ## Validation
 

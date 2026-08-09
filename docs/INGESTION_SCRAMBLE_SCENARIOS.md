@@ -149,15 +149,15 @@ Known strategic follow-ons:
 
 ## Tooling Priorities
 
-Useful Azure, Microsoft, GitHub, and standards-aligned additions for the next hardening wave:
+Useful provider-approved, GitHub, and standards-aligned additions for the next hardening wave:
 
-1. Azure Maps:
+1. Nominatim plus deterministic PostGIS checks:
    canonicalize and score address confidence beyond exact address-string matching to reduce location drift and false splits.
-2. Azure AI Search or a pgvector-backed duplicate index:
+2. PostgreSQL full-text search or a pgvector-backed duplicate index:
    surface near-duplicate org/service candidates before publish when deterministic URL/name checks are insufficient.
-3. Azure Application Insights:
+3. Sentry plus privacy-safe aggregate dashboards:
    publish lane dashboards for `linked_existing`, `republished`, `published`, and overwrite-suppressed events by source kind.
-4. Azure Functions timer or queue replay harness:
+4. Vercel Cron or a provider-neutral replay harness:
    run scheduled scenario replays against staging to prove idempotence and authority protection under concurrency.
 5. GitHub Actions nightly ingestion matrix run:
    execute focused replay tests and open issues automatically when a scenario regresses.

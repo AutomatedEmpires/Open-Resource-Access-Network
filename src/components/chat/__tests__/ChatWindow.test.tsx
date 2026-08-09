@@ -1635,6 +1635,95 @@ describe('ChatWindow', () => {
     expect(secondBody.profileMode).toBe('ignore');
   });
 
+  it('offers truthful external and broad-catalog recovery actions after a no-match response', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
+      if (url === '/api/chat') {
+        return {
+          ok: true,
+          json: async () => makeChatResponse({
+            message: 'I could not find a close match in the current ORAN catalog.',
+            retrievalStatus: 'no_match',
+            intent: {
+              category: 'utility_assistance',
+              rawQuery: 'I need help paying a utility bill',
+              urgencyQualifier: 'standard',
+            },
+          }),
+        } as Response;
+      }
+      if (url.includes('/api/taxonomy/terms')) {
+        return {
+          ok: true,
+          json: async () => ({ terms: [] }),
+        } as Response;
+      }
+      return { ok: true, json: async () => ({}) } as Response;
+    });
+
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'I need help paying a utility bill' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    const recovery = await screen.findByRole('region', { name: 'Other ways to find help' });
+    expect(within(recovery).getByRole('link', { name: 'Browse all ORAN listings' })).toHaveAttribute('href', '/directory');
+    expect(within(recovery).getByRole('link', { name: /Search Washington 211/ })).toHaveAttribute(
+      'href',
+      'https://search.wa211.org/',
+    );
+    expect(within(recovery).getByRole('link', { name: 'Call 211' })).toHaveAttribute('href', 'tel:211');
+    expect(within(recovery).getByText(/Confirm current eligibility, hours, and availability/)).toBeInTheDocument();
+  });
+
+  it('describes a temporary search outage without presenting it as a completed no-match', async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/chat/quota') {
+        return {
+          ok: true,
+          json: async () => ({ remaining: 50, resetAt: null }),
+        } as Response;
+      }
+      if (url === '/api/chat') {
+        return {
+          ok: true,
+          json: async () => makeChatResponse({
+            message: 'Search is temporarily unavailable. Please try again.',
+            retrievalStatus: 'temporarily_unavailable',
+          }),
+        } as Response;
+      }
+      if (url.includes('/api/taxonomy/terms')) {
+        return {
+          ok: true,
+          json: async () => ({ terms: [] }),
+        } as Response;
+      }
+      return { ok: true, json: async () => ({}) } as Response;
+    });
+
+    render(<ChatWindow sessionId="11111111-1111-4111-8111-111111111111" />);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Chat message input' }), {
+      target: { value: 'I need food today' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    const recovery = await screen.findByRole('region', { name: 'Other ways to find help' });
+    expect(within(recovery).getByText(/could not complete this search right now/i)).toBeInTheDocument();
+    expect(within(recovery).queryByText(/will not substitute an unrelated listing/i)).not.toBeInTheDocument();
+    expect(within(recovery).queryByRole('link', { name: 'Browse all ORAN listings' })).not.toBeInTheDocument();
+  });
+
   it('renders clarification suggestions and active session context from the response', async () => {
     let chatRequestCount = 0;
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {

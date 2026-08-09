@@ -27,12 +27,18 @@ vi.mock('@/agents/ingestion/service', () => ({
   createIngestionService: createIngestionServiceMock,
 }));
 
-function makeRequest(apiKey?: string) {
+function makeRequest(internalKey?: string) {
   const headers = new Headers();
-  if (apiKey) {
-    headers.set('authorization', `Bearer ${apiKey}`);
+  if (internalKey) {
+    headers.set('x-oran-internal-key', internalKey);
   }
   return { headers } as never;
+}
+
+function makeCronRequest(cronSecret: string) {
+  return {
+    headers: new Headers({ authorization: `Bearer ${cronSecret}` }),
+  } as never;
 }
 
 async function loadRoute() {
@@ -78,7 +84,7 @@ describe('GET|POST /api/internal/ingestion/feed-poll', () => {
   it('accepts a Vercel Cron GET request', async () => {
     const { GET } = await loadRoute();
 
-    const response = await GET(makeRequest('cron-secret'));
+    const response = await GET(makeCronRequest('cron-secret'));
 
     expect(response.status).toBe(200);
     expect(createIngestionServiceMock).toHaveBeenCalledOnce();

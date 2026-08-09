@@ -263,9 +263,8 @@ describe('pipeline stages edge cases', () => {
 
   it('returns llm_not_configured when LLM env config is missing', async () => {
     vi.spyOn(llmModule, 'getLLMConfigFromEnv').mockReturnValue({
-      provider: 'azure_openai',
-      model: 'gpt-4o',
-      endpoint: undefined,
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-5',
       apiKey: undefined,
     });
 
@@ -444,11 +443,9 @@ describe('pipeline stages edge cases', () => {
     };
 
     vi.spyOn(llmModule, 'getLLMConfigFromEnv').mockReturnValue({
-      provider: 'azure_openai',
-      model: 'gpt-4o',
-      endpoint: 'https://example.openai.azure.com',
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-5',
       apiKey: 'test-key',
-      apiVersion: '2024-08-01-preview',
     });
     const createClientSpy = vi.spyOn(llmModule, 'createLLMClient').mockResolvedValue(client);
 
@@ -530,11 +527,9 @@ describe('pipeline stages edge cases', () => {
     };
 
     vi.spyOn(llmModule, 'getLLMConfigFromEnv').mockReturnValue({
-      provider: 'azure_openai',
-      model: 'gpt-4o',
-      endpoint: 'https://example.openai.azure.com',
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-5',
       apiKey: 'test-key',
-      apiVersion: '2024-08-01-preview',
     });
     const createClientSpy = vi.spyOn(llmModule, 'createLLMClient').mockResolvedValue(client);
 
@@ -602,9 +597,8 @@ describe('pipeline stages edge cases', () => {
 
   it('returns llm_not_configured from categorization when env config is missing', async () => {
     vi.spyOn(llmModule, 'getLLMConfigFromEnv').mockReturnValue({
-      provider: 'azure_openai',
-      model: 'gpt-4o',
-      endpoint: undefined,
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-5',
       apiKey: undefined,
     });
 

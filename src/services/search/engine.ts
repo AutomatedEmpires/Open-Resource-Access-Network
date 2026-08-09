@@ -737,7 +737,7 @@ export class ServiceSearchEngine {
    * It only re-orders records already returned by the SQL layer.
    * Services without embeddings keep their original SQL position (vectorSim=0).
    *
-   * When queryEmbedding is null (Foundry unconfigured, flag off, or embed failed),
+   * When queryEmbedding is null (semantic search disabled or unavailable),
    * falls back transparently to the standard SQL search order.
    *
    * @param query          Standard SearchQuery

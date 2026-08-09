@@ -10,6 +10,7 @@ const flagServiceMocks = vi.hoisted(() => ({
   getFlag: vi.fn(),
 }));
 const getFlagServiceImplementationMock = vi.hoisted(() => vi.fn());
+const isRetiredInertFlagMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/security/rateLimit', () => ({ checkRateLimit: rateLimitMock,
   checkRateLimitShared: rateLimitMock }));
@@ -19,6 +20,7 @@ vi.mock('@/services/auth/guards', () => ({ requireMinRole: requireMinRoleMock })
 vi.mock('@/services/flags/flags', () => ({
   flagService: flagServiceMocks,
   getFlagServiceImplementation: getFlagServiceImplementationMock,
+  isRetiredInertFlag: isRetiredInertFlagMock,
 }));
 
 function createRequest(options: { ip?: string; body?: unknown; jsonError?: boolean } = {}) {
@@ -43,6 +45,7 @@ beforeEach(() => {
   flagServiceMocks.setFlag.mockResolvedValue(undefined);
   flagServiceMocks.getFlag.mockResolvedValue({ name: 'x', enabled: true, rolloutPct: 100 });
   getFlagServiceImplementationMock.mockResolvedValue('in_memory');
+  isRetiredInertFlagMock.mockReturnValue(false);
 });
 
 describe('admin rules route', () => {
@@ -81,7 +84,7 @@ describe('admin rules route', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
     await expect(response.json()).resolves.toEqual({
-      flags: [{ name: 'chat-summary', enabled: true, rolloutPct: 50 }],
+      flags: [{ name: 'chat-summary', enabled: true, rolloutPct: 50, retired: false }],
       implementation: 'in_memory',
     });
   });
@@ -106,6 +109,16 @@ describe('admin rules route', () => {
 
     const invalid = await PUT(createRequest({ body: { name: '', enabled: true } }));
     expect(invalid.status).toBe(400);
+
+    isRetiredInertFlagMock.mockReturnValueOnce(true);
+    const retired = await PUT(createRequest({
+      body: { name: 'llm_summarize', enabled: true, rolloutPct: 100 },
+    }));
+    expect(retired.status).toBe(409);
+    await expect(retired.json()).resolves.toEqual({
+      error: 'This legacy flag is retired and cannot be changed.',
+    });
+    expect(flagServiceMocks.setFlag).not.toHaveBeenCalled();
 
     flagServiceMocks.getFlag.mockResolvedValueOnce({
       name: 'chat-summary',

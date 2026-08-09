@@ -13,7 +13,7 @@
 
 Rotate `CRON_SECRET`, which authenticates Vercel Cron GET requests to ORAN's
 internal routes. This runbook also covers the separate, optional
-`INTERNAL_API_KEY` used only by approved rollback workers through the
+`INTERNAL_API_KEY` used only by approved provider-neutral internal tooling through the
 `x-oran-internal-key` header.
 
 ## Triggers
@@ -26,7 +26,7 @@ internal routes. This runbook also covers the separate, optional
 
 If either credential may be exposed, treat it as a security incident. Disable
 Vercel Cron Jobs before rotating a compromised `CRON_SECRET`; disable any
-rollback worker before rotating `INTERNAL_API_KEY`. Do not print either value in
+affected internal tool before rotating `INTERNAL_API_KEY`. Do not print either value in
 logs, screenshots, tickets, shell history, or chat.
 
 ## `CRON_SECRET` Rotation Procedure
@@ -44,14 +44,13 @@ logs, screenshots, tickets, shell history, or chat.
 6. Revoke the prior value and record the rotation metadata without recording
    the secret.
 
-## Rollback Credential Rotation
+## Internal Tooling Credential Rotation
 
 1. Generate a separate random value for `INTERNAL_API_KEY` in the ORAN-only
    secret manager. Never reuse `CRON_SECRET`.
-2. Update the approved rollback worker and the target application as one
+2. Update the approved internal tool and the target application as one
    controlled change.
-3. Send the new value only in `x-oran-internal-key`; legacy Bearer support is a
-   temporary rollback bridge, not the operating contract.
+3. Send the new value only in `x-oran-internal-key`; Bearer authentication is reserved for Vercel Cron.
 4. Verify the old value is rejected, then revoke it and record rotation
    metadata without the secret.
 

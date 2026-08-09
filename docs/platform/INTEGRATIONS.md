@@ -15,7 +15,7 @@ No environment or account data may be shared with another portfolio business.
 | Configuration | Doppler | Dedicated ORAN project/config | Provisioned |
 | Interactive map | Leaflet + OpenStreetMap | Public tiles with attribution; no shared cloud key | Active target |
 | Transactional email | Resend | Dedicated ORAN key and verified sender | Active runtime adapter |
-| Optional language tasks | Direct OpenAI/provider-neutral adapter | ORAN-only API project and key | Optional; deterministic safety/retrieval remain authoritative |
+| Optional ingestion assistance | Anthropic | ORAN-only API project and key | Review-gated extraction only; deterministic safety, retrieval, review, and publication remain authoritative |
 
 ## Identity and authorization
 
@@ -70,8 +70,9 @@ either credential to the browser.
 
 Vercel is the sole target for new ORAN releases. A candidate must pass build,
 health, Clerk sign-in/sign-up, chat, map, scroll, profile, and authorization
-checks before the public domain is moved. Azure deployment assets are rollback
-history only and must not receive new ORAN secrets or releases.
+checks before the public domain is moved. Historical records may describe the
+retired Azure platform, but executable Azure/Foundry deployment assets have
+been removed and must not be recreated.
 
 ## Observability
 
@@ -108,11 +109,12 @@ content in telemetry. No marketing email or SMS is enabled by this adapter.
 
 ## AI boundary
 
-AI is optional and may assist with language or operator review, but it cannot
-publish a resource, decide eligibility, or replace crisis routing. Seekers only
-receive stored, provenance-backed resources. Retailer acceptance data (for
-example, stores that accept SNAP) is supporting reference data and cannot be
-published as a standalone service resource.
+AI is optional and limited to review-gated ingestion assistance through the
+explicitly configured Anthropic adapter. It cannot publish a resource, decide
+eligibility, power seeker chat, or replace crisis routing. Seekers only receive
+stored, provenance-backed resources. Retailer acceptance data (for example,
+stores that accept SNAP) is supporting reference data and cannot be published
+as a standalone service resource.
 
 ## Shared infrastructure and scheduled work
 
@@ -120,9 +122,9 @@ published as a standalone service resource.
   through `Authorization: Bearer <CRON_SECRET>`. Use a dedicated random value
   of at least 32 characters and never expose it through a `NEXT_PUBLIC_*`
   variable.
-- `INTERNAL_API_KEY` is an optional, separate rollback credential. Approved
-  rollback workers send it in `x-oran-internal-key`; legacy Bearer use remains
-  temporarily supported during the Azure rollback window.
+- `INTERNAL_API_KEY` is an optional, provider-neutral credential for approved
+  internal tooling. It is accepted only through `x-oran-internal-key`; Bearer
+  authentication is reserved for Vercel Cron.
 - `REDIS_URL` is an optional ORAN-dedicated cache accelerator. Production route
   limits use the private atomic Supabase/PostgreSQL limiter as their single
   authority, so an outage cannot reset callers onto an independent counter.
@@ -139,13 +141,11 @@ published as a standalone service resource.
 
 ## Retirement inventory
 
-Some source files and archived operational documents still describe earlier
-Microsoft/Azure experiments (AI, email, speech, translation, Functions, and
-deployment). They are not the active platform contract and must not be enabled
-in the Vercel production project. Remove each adapter only after its caller has
-an approved replacement or has been safely retired. Historical migrations,
+Azure/Foundry runtime adapters, Functions, infrastructure, workflows, and
+operational scripts are retired and removed. Runtime startup, readiness, and CI
+reject stale Microsoft-provider settings and endpoints. Historical migrations,
 engineering logs, and audits remain immutable evidence and should be labelled
-as historical rather than rewritten.
+as historical rather than rewritten; they do not authorize reactivation.
 
 See [STACK_MIGRATION.md](STACK_MIGRATION.md) for cutover gates and retirement
 order.

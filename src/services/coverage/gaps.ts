@@ -2,8 +2,8 @@
  * Coverage Gaps Service
  *
  * Identifies geographic areas with unrouted candidates and insufficient
- * admin coverage. Used by both the alertCoverageGaps Azure Function
- * and the ORAN admin coverage gap dashboard.
+ * admin coverage. Used by the scheduled coverage route and the ORAN admin
+ * coverage gap dashboard.
  *
  * @module services/coverage/gaps
  */

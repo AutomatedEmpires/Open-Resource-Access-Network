@@ -3,7 +3,7 @@
 This folder contains service-layer helpers used by ingestion-related routes and workflows.
 
 It is not the canonical home of the ingestion pipeline. The primary ingestion domain lives in
-`src/agents/ingestion/**`, and Azure Functions remain the execution layer for background jobs.
+`src/agents/ingestion/**`; background polling runs through the Vercel application runtime.
 
 ## Purpose
 
@@ -14,7 +14,6 @@ It is not the canonical home of the ingestion pipeline. The primary ingestion do
 ## Current Scope
 
 - `tagging-prompt.ts` — prompt/helper support for ingestion-related tagging flows
-- `docIntelligence.ts` — Azure Document Intelligence helpers
 - `hostPortalIntake.ts` — host/operator intake support helpers
 - `index.ts` — thin exports only
 

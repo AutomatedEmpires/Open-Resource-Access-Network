@@ -59,8 +59,8 @@ ORAN is not trying to be another generic directory. It is trying to become the t
 | Safety posture | Crisis routing happens before normal response flow | [docs/VISION.md](docs/VISION.md), [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md) |
 | Data trust | Import-first, verify-before-publish lifecycle | [docs/contracts/INGESTION_CONTRACT.md](docs/contracts/INGESTION_CONTRACT.md), [db/README.md](db/README.md) |
 | Match discipline | Deterministic trust and match scoring | [docs/SCORING_MODEL.md](docs/SCORING_MODEL.md), [docs/contracts/SCORING_CONTRACT.md](docs/contracts/SCORING_CONTRACT.md) |
-| AI boundaries | Optional AI adapters may assist ingestion or post-retrieval summarization; production launch behavior is deterministic | [docs/CHAT_ARCHITECTURE.md](docs/CHAT_ARCHITECTURE.md), [docs/agents/AGENTS_OVERVIEW.md](docs/agents/AGENTS_OVERVIEW.md), [docs/platform/OWNER_INFO.md](docs/platform/OWNER_INFO.md) |
-| Platform posture | Vercel + Supabase + Clerk + Sentry are the production stack; Azure is archived legacy code | [docs/platform/STACK_MIGRATION.md](docs/platform/STACK_MIGRATION.md) |
+| AI boundaries | Optional Anthropic assistance is isolated to review-gated ingestion; seeker and launch behavior is deterministic | [docs/CHAT_ARCHITECTURE.md](docs/CHAT_ARCHITECTURE.md), [docs/agents/AGENTS_OVERVIEW.md](docs/agents/AGENTS_OVERVIEW.md), [docs/platform/OWNER_INFO.md](docs/platform/OWNER_INFO.md) |
+| Platform posture | Vercel + Supabase + Clerk + Sentry are the production stack; Azure and Foundry are retired and prohibited | [docs/platform/STACK_MIGRATION.md](docs/platform/STACK_MIGRATION.md) |
 | External brief | Investor, partner, and collaborator brief with proof links | [docs/INVESTOR_PARTNER_BRIEF.md](docs/INVESTOR_PARTNER_BRIEF.md) |
 
 ## How ORAN Works
@@ -173,7 +173,6 @@ flowchart LR
     G[docs<br/>SSOT Governance Security] -.defines.-> V
     G -.defines.-> API
     G -.defines.-> S
-    L[Azure assets<br/>Archived rollback and optional phase-2 adapters] -.archived only.-> S
 ```
 
 ## Repo Guide
@@ -190,9 +189,6 @@ flowchart LR
 | Security and privacy controls | [docs/SECURITY_PRIVACY.md](docs/SECURITY_PRIVACY.md) |
 | Evidence and workflow health | [docs/EVIDENCE_DASHBOARD.md](docs/EVIDENCE_DASHBOARD.md) |
 | Current production platform | [docs/platform/STACK_MIGRATION.md](docs/platform/STACK_MIGRATION.md) |
-| Legacy Azure reference | [docs/platform/PLATFORM_AZURE.md](docs/platform/PLATFORM_AZURE.md) |
-| Enterprise evolution strategy | [docs/platform/ENTERPRISE_EVOLUTION_STRATEGY.md](docs/platform/ENTERPRISE_EVOLUTION_STRATEGY.md) |
-| Infrastructure as code | [infra/README.md](infra/README.md) |
 
 ## Quick Start
 

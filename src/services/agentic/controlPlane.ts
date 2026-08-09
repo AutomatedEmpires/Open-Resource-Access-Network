@@ -97,22 +97,20 @@ function compositeAiState(env: Record<string, string | undefined>): {
   requiredEnv: string[];
   missingEnv: string[];
 } {
-  const keyGroups = [
-    ['LLM_ENDPOINT', 'LLM_API_KEY'],
-  ] as const;
-
-  for (const group of keyGroups) {
-    if (group.every((key) => hasEnv(env, key))) {
-      return { state: 'configured', requiredEnv: [...group], missingEnv: [] };
-    }
+  const requiredEnv = ['LLM_PROVIDER', 'LLM_API_KEY'];
+  const provider = env.LLM_PROVIDER?.trim().toLowerCase();
+  if (provider === 'disabled') {
+    return { state: 'absent', requiredEnv: [], missingEnv: [] };
+  }
+  if (provider === 'anthropic' && hasEnv(env, 'LLM_API_KEY')) {
+    return { state: 'configured', requiredEnv, missingEnv: [] };
   }
 
-  const flattened = Array.from(new Set(keyGroups.flatMap((group) => group)));
-  const anyPresent = flattened.some((key) => hasEnv(env, key));
+  const anyPresent = requiredEnv.some((key) => hasEnv(env, key));
   return {
     state: anyPresent ? 'partial' : 'absent',
-    requiredEnv: flattened,
-    missingEnv: flattened.filter((key) => !hasEnv(env, key)),
+    requiredEnv,
+    missingEnv: requiredEnv.filter((key) => !hasEnv(env, key)),
   };
 }
 
@@ -229,7 +227,7 @@ export async function buildAgentControlPlaneSnapshot(
       state: aiCore.state,
       requiredEnv: aiCore.requiredEnv,
       missingEnv: aiCore.missingEnv,
-      powers: ['chat summarization', 'ingestion extraction', 'admin review assist'],
+      powers: ['review-gated ingestion extraction'],
     },
     {
       id: 'redis',
@@ -252,9 +250,6 @@ export async function buildAgentControlPlaneSnapshot(
   if (!authEnforced) {
     trustSafetyBlockers.push('Fail-closed auth enforcement is not active for this runtime.');
   }
-  if (!getFlagReady(flagMap, FEATURE_FLAGS.CONTENT_SAFETY_CRISIS)) {
-    trustSafetyAccelerators.push('Promote content_safety_crisis to 100% rollout.');
-  }
   if (integrationById.get('sentry')?.state !== 'configured') {
     trustSafetyAccelerators.push('Complete privacy-filtered Sentry wiring for safety telemetry.');
   }
@@ -265,18 +260,10 @@ export async function buildAgentControlPlaneSnapshot(
   if (!databaseConfigured) {
     resourceAlignmentBlockers.push('DATABASE_URL is not configured for verified resource storage.');
   }
-  if (aiCore.state === 'absent') {
-    resourceAlignmentBlockers.push('No LLM runtime is configured for ingestion extraction or admin assist.');
-  } else if (aiCore.state === 'partial') {
-    resourceAlignmentBlockers.push('LLM runtime credentials are partially configured.');
+  if (aiCore.state === 'partial') {
+    resourceAlignmentAccelerators.push('Complete or remove the partial Anthropic ingestion configuration.');
   }
-  if (!getFlagReady(flagMap, FEATURE_FLAGS.DOC_INTELLIGENCE_INTAKE)) {
-    resourceAlignmentAccelerators.push('Select and validate a provider-neutral PDF/form evidence intake path.');
-  }
-  if (!getFlagReady(flagMap, FEATURE_FLAGS.VECTOR_SEARCH)) {
-    resourceAlignmentAccelerators.push('Promote vector_search to move retrieval toward multilingual semantic matching.');
-  }
-  const resourceAlignmentBaseReady = databaseConfigured && aiCore.state === 'configured';
+  const resourceAlignmentBaseReady = databaseConfigured;
 
   const governanceBlockers: string[] = [];
   const governanceAccelerators: string[] = [];
@@ -301,12 +288,6 @@ export async function buildAgentControlPlaneSnapshot(
   const accessAccelerators: string[] = [];
   if (!getFlagReady(flagMap, FEATURE_FLAGS.MAP_ENABLED)) {
     accessBlockers.push('Map access is not fully enabled.');
-  }
-  if (!getFlagReady(flagMap, FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS)) {
-    accessAccelerators.push('Complete provider-neutral translation wiring and 100% rollout for multilingual descriptions.');
-  }
-  if (!getFlagReady(flagMap, FEATURE_FLAGS.TTS_SUMMARIES)) {
-    accessAccelerators.push('Enable provider-neutral speech summaries for voice-first accessibility.');
   }
   const accessBaseReady = getFlagReady(flagMap, FEATURE_FLAGS.MAP_ENABLED)
     && integrationById.get('open_map')?.state === 'configured';
@@ -423,24 +404,24 @@ export async function buildAgentControlPlaneSnapshot(
       mission: 'Help people discover relevant resources across geography, language, and interaction mode with grounded access pathways.',
       state: operatorStateFromChecks(accessBaseReady, accessBlockers, accessAccelerators),
       score: scoreOperator(accessBaseReady, accessBlockers, accessAccelerators),
-      trustModel: 'Map, translation, and voice features are additive experience layers on top of verified resource records.',
+      trustModel: 'Map and future provider-neutral accessibility features are additive layers on top of verified resource records.',
       capabilities: [
         'map-based resource discovery',
-        'multilingual service descriptions',
-        'voice summary delivery',
+        'locale-aware interface foundations',
+        'device-native read-aloud compatibility',
         'language-access expansion paths',
       ],
       guardrails: [
         'approximate location by default',
-        'translations are post-retrieval enhancements, not source-of-truth facts',
-        'voice and map layers never bypass verification',
+        'translated interface copy never changes source-of-truth provider facts',
+        'accessibility and map layers never bypass verification',
       ],
       blockers: accessBlockers,
       accelerators: accessAccelerators,
       evidencePaths: [
         'src/components/map/LeafletFallback.tsx',
-        'src/services/i18n/translator.ts',
-        'src/services/tts/azureSpeech.ts',
+        'src/services/i18n/i18n.ts',
+        'src/app/api/tts/summary/route.ts',
         'docs/DECISIONS/ADR-0006-opt-in-device-geolocation.md',
       ],
     },

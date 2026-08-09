@@ -154,6 +154,27 @@ describe('GET /api/health', () => {
     expect(body.missing).toBeUndefined();
   });
 
+  it('fails closed without querying the database when retired Microsoft settings are present', async () => {
+    stubProductionWebappEnv(
+      'postgres://oran_backend_runtime.tpatxospkuqvajusuryw@aws-0-us-west-1.pooler.supabase.com:6543/postgres',
+    );
+    vi.stubEnv('AZURE_OPENAI_KEY', 'must-not-leak');
+    vi.stubEnv('LLM_ENDPOINT', 'https://oran.openai.azure.com');
+    vi.stubEnv('LLM_PROVIDER', 'azure_openai');
+    const { GET } = await import('../route');
+
+    const res = await GET(createRequest());
+    const serialized = JSON.stringify(await res.json());
+
+    expect(res.status).toBe(503);
+    expect(serialized).toBe(JSON.stringify({ status: 'unhealthy', configuration: 'invalid' }));
+    expect(serialized).not.toContain('AZURE_OPENAI_KEY');
+    expect(serialized).not.toContain('must-not-leak');
+    expect(serialized).not.toContain('openai.azure.com');
+    expect(serialized).not.toContain('azure_openai');
+    expect(dbMocks.executeQuery).not.toHaveBeenCalled();
+  });
+
   it('returns 429 when rate limited', async () => {
     rateLimitMock.mockReturnValue({ exceeded: true, retryAfterSeconds: 30 });
     const { GET } = await import('../route');

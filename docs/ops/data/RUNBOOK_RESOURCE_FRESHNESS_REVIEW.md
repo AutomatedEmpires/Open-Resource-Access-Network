@@ -13,8 +13,8 @@
 
 ORAN runs a deterministic daily scan at
 `GET /api/internal/resource-freshness-scan`. The route requires the shared
-internal-request gate (`CRON_SECRET` for Vercel Cron or the separate internal
-rollback credential), uses no LLM/API key, and processes at most 100 services
+internal-request gate (`CRON_SECRET` for Vercel Cron or the separate approved
+internal-tooling credential), uses no LLM/API key, and processes at most 100 services
 per run.
 
 ## Signals

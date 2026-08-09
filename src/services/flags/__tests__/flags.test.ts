@@ -54,6 +54,21 @@ describe('InMemoryFlagService', () => {
     await expect(service.isEnabled(FEATURE_FLAGS.MAP_ENABLED)).resolves.toBe(true);
   });
 
+  it('keeps retired provider flags inert when a caller tries to enable them', async () => {
+    const service = new InMemoryFlagService([]);
+
+    await service.setFlag(FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS, true, 100);
+
+    await expect(service.isEnabled(FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS)).resolves.toBe(false);
+    await expect(service.getFlag(FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS)).resolves.toMatchObject({
+      enabled: false,
+      rolloutPct: 0,
+      description: 'Retired provider toggle retained as read-only data compatibility metadata.',
+    });
+    await service.setFlag(FEATURE_FLAGS.LLM_SUMMARIZE, true, 100);
+    await expect(service.isEnabled(FEATURE_FLAGS.LLM_SUMMARIZE)).resolves.toBe(false);
+  });
+
   it('supports deterministic partial rollout only when a subject key is provided', async () => {
     const service = new InMemoryFlagService([]);
 
@@ -148,6 +163,21 @@ describe('HybridFlagService', () => {
     expect(flags.find((flag) => flag.name === FEATURE_FLAGS.LLM_SUMMARIZE)?.enabled).toBe(false);
   });
 
+  it('normalizes an enabled retired provider flag from the database to inert', async () => {
+    dbMocks.isDatabaseConfigured.mockReturnValue(true);
+    dbMocks.executeQuery.mockResolvedValueOnce([
+      makeRow(FEATURE_FLAGS.LLM_FEEDBACK_TRIAGE, true, 100),
+    ]);
+
+    const service = new HybridFlagService(new InMemoryFlagService([]));
+    await expect(service.getFlag(FEATURE_FLAGS.LLM_FEEDBACK_TRIAGE)).resolves.toMatchObject({
+      enabled: false,
+      rolloutPct: 0,
+      description: 'Retired provider toggle retained as read-only data compatibility metadata.',
+    });
+    await expect(service.isEnabled(FEATURE_FLAGS.LLM_FEEDBACK_TRIAGE)).resolves.toBe(false);
+  });
+
   it('falls back to the local in-memory catalog when the database is not configured', async () => {
     const fallback = new InMemoryFlagService([]);
     await fallback.setFlag('local_only', true, 100, { actorUserId: 'dev-admin' });
@@ -180,10 +210,10 @@ describe('HybridFlagService', () => {
   it('writes DB-backed updates with audit metadata and syncs the fallback cache', async () => {
     dbMocks.isDatabaseConfigured.mockReturnValue(true);
     dbMocks.executeQuery
-      .mockResolvedValueOnce([makeRow(FEATURE_FLAGS.LLM_SUMMARIZE, false, 0)])
+      .mockResolvedValueOnce([makeRow(FEATURE_FLAGS.SEEKER_PLANS_ENABLED, false, 0)])
       .mockResolvedValueOnce([
         {
-          ...makeRow(FEATURE_FLAGS.LLM_SUMMARIZE, true, 25),
+          ...makeRow(FEATURE_FLAGS.SEEKER_PLANS_ENABLED, true, 25),
           updated_by_user_id: 'admin-1',
           updated_at: '2026-03-07T00:05:00.000Z',
         },
@@ -193,7 +223,7 @@ describe('HybridFlagService', () => {
     const fallback = new InMemoryFlagService([]);
     const service = new HybridFlagService(fallback);
 
-    await service.setFlag(FEATURE_FLAGS.LLM_SUMMARIZE, true, 25, {
+    await service.setFlag(FEATURE_FLAGS.SEEKER_PLANS_ENABLED, true, 25, {
       actorUserId: 'admin-1',
       actorRole: 'oran_admin',
       reason: 'Enable staged rollout',
@@ -203,7 +233,7 @@ describe('HybridFlagService', () => {
       2,
       expect.stringContaining('INSERT INTO feature_flags'),
       [
-        FEATURE_FLAGS.LLM_SUMMARIZE,
+        FEATURE_FLAGS.SEEKER_PLANS_ENABLED,
         true,
         25,
         expect.any(String),
@@ -222,7 +252,7 @@ describe('HybridFlagService', () => {
       ],
     );
 
-    const fallbackFlag = await fallback.getFlag(FEATURE_FLAGS.LLM_SUMMARIZE);
+    const fallbackFlag = await fallback.getFlag(FEATURE_FLAGS.SEEKER_PLANS_ENABLED);
     expect(fallbackFlag?.enabled).toBe(true);
     expect(fallbackFlag?.rolloutPct).toBe(25);
     expect(fallbackFlag?.updatedByUserId).toBe('admin-1');

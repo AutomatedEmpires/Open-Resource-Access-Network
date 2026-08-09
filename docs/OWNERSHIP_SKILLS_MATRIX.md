@@ -17,9 +17,9 @@ This page answers four questions for a new contributor:
 | Community admin operations | `src/app/(community-admin)/**`, `src/services/community/**` | moderation UX, evidence review, operational workflow design | [src/app/(community-admin)/README.md](../src/app/(community-admin)/README.md), [docs/ops/services/RUNBOOK_ADMIN_ROUTING.md](ops/services/RUNBOOK_ADMIN_ROUTING.md) | verification and coverage workflows must preserve human review |
 | Chat, search, scoring | `src/services/chat/**`, `src/services/search/**`, `src/services/scoring/**` | backend, retrieval systems, deterministic ranking, prompt restraint | [docs/CHAT_ARCHITECTURE.md](CHAT_ARCHITECTURE.md), [docs/contracts/README.md](contracts/README.md), [src/services/README.md](../src/services/README.md) | no LLM in retrieval/ranking; no hallucinated facts; crisis hard gate always wins |
 | Auth and security | `src/lib/auth.ts`, `src/services/auth/**`, `src/services/security/**`, `src/middleware.ts`, `src/proxy.ts` | identity, RBAC, session handling, security review | [src/services/auth/README.md](../src/services/auth/README.md), [docs/SECURITY_PRIVACY.md](SECURITY_PRIVACY.md) | least privilege, no PII leakage, enforce route gating |
-| Ingestion agents | `src/agents/ingestion/**`, `functions/**`, `src/services/ingestion/**`, `src/services/regression/**` | AI pipeline engineering, queues, extraction, verification systems | [docs/agents/AGENTS_OVERVIEW.md](agents/AGENTS_OVERVIEW.md), [docs/agents/AGENTS_INGESTION_PIPELINE.md](agents/AGENTS_INGESTION_PIPELINE.md) | agent outputs are unverified until human approval; publish path must stay gated |
+| Ingestion agents | `src/agents/ingestion/**`, `src/services/ingestion/**`, `src/app/api/internal/ingestion/**`, `src/services/regression/**` | governed source polling, extraction, verification systems | [docs/agents/AGENTS_OVERVIEW.md](agents/AGENTS_OVERVIEW.md), [docs/agents/AGENTS_INGESTION_PIPELINE.md](agents/AGENTS_INGESTION_PIPELINE.md) | agent outputs are unverified until human approval; publish path must stay gated |
 | Data model and storage | `db/**`, `src/db/**`, `src/domain/**`, `src/services/db/**` | Postgres, migrations, Drizzle, schema design, data quality | [docs/DATA_MODEL.md](DATA_MODEL.md), [docs/DECISIONS/](DECISIONS/README.md) | migration safety, timestamps, provenance, and auditability matter |
-| Platform and Azure | `.github/workflows/**`, `infra/**`, `docs/platform/**`, `docs/ops/**` | CI/CD, Azure App Service, Functions, Key Vault, observability | [docs/platform/DEPLOYMENT_AZURE.md](platform/DEPLOYMENT_AZURE.md), [docs/ops/README.md](ops/README.md) | protect deploy reliability, secrets flow, rollback readiness, and runbook accuracy |
+| Platform and reliability | `.github/workflows/**`, `scripts/**`, `vercel.json`, `docs/platform/**`, `docs/ops/**` | CI/CD, Vercel runtime, Supabase, secrets, observability | [docs/platform/STACK_MIGRATION.md](platform/STACK_MIGRATION.md), [docs/ops/README.md](ops/README.md) | protect deploy reliability, secrets flow, rollback readiness, and runbook accuracy |
 | Documentation and governance | `README.md`, `START_HERE.md`, `docs/**`, `.github/**` | technical writing, systems thinking, information architecture | [docs/README.md](README.md), [docs/governance/OPERATING_MODEL.md](governance/OPERATING_MODEL.md) | docs are part of the product; update-on-touch rules apply |
 
 ## Best Team Assignments For A Hackathon
@@ -28,9 +28,9 @@ This page answers four questions for a new contributor:
 | --- | --- | --- |
 | Trust and onboarding | technical writer + product engineer + design-minded frontend engineer | `README.md`, `START_HERE.md`, `docs/**`, `src/app/(public)/**` |
 | Search and service quality | backend engineer + applied AI engineer | `src/services/chat/**`, `src/services/search/**`, `src/services/scoring/**` |
-| Verification ops | workflow engineer + data engineer + admin UX engineer | `src/agents/ingestion/**`, `functions/**`, `src/app/(oran-admin)/**` |
+| Verification ops | workflow engineer + data engineer + admin UX engineer | `src/agents/ingestion/**`, `src/app/api/internal/ingestion/**`, `src/app/(oran-admin)/**` |
 | Host and seeker experience | frontend engineer + full-stack engineer + accessibility reviewer | `src/app/(seeker)/**`, `src/app/(host)/**`, `src/components/**` |
-| Platform and release | DevOps engineer + security reviewer | `.github/workflows/**`, `infra/**`, `docs/ops/**` |
+| Platform and release | DevOps engineer + security reviewer | `.github/workflows/**`, `vercel.json`, `scripts/**`, `docs/ops/**` |
 
 ## Skills That Travel Well Across The Repo
 
@@ -51,7 +51,6 @@ This page answers four questions for a new contributor:
 | `ORAN_actions_ci_maintainer` | GitHub Actions, CI/CD, workflow hygiene |
 | `ORAN_ssot_docs_editor` | SSOT docs, README, runbooks, ADRs, onboarding docs |
 | `ORAN_triage_boardkeeper` | triage workflows, moderation operations, SLA and routing support |
-| `Azure_function_codegen_and_deployment` | Azure Functions implementation and deploy workflow work |
 
 ## Hand-Off Expectations
 

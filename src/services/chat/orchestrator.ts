@@ -2,12 +2,10 @@
  * ORAN Chat Orchestrator
  *
  * Implements the retrieval-first chat pipeline:
- * Crisis Detection → Quota Check → Rate Limit → Intent → Profile → Retrieval → Assembly → [LLM gate]
+ * Crisis Detection → Quota Check → Rate Limit → Intent → Profile → Retrieval → Deterministic Assembly
  *
  * IMPORTANT:
- * - No LLM is used in retrieval or ranking
- * - LLM summarization is ONLY activated when feature flag 'llm_summarize' is enabled
- * - LLM may ONLY summarize already-retrieved records — never retrieve or rank
+ * - No LLM is used in seeker intent, retrieval, ranking, or response assembly
  * - Crisis routing always takes priority
  */
 
@@ -19,7 +17,6 @@ import {
   MAX_SERVICES_PER_RESPONSE,
   RATE_LIMIT_WINDOW_MS,
   RATE_LIMIT_MAX_REQUESTS,
-  FEATURE_FLAGS,
 } from '@/domain/constants';
 import { getDiscoveryNeedSearchText } from '@/domain/discoveryNeeds';
 import {
@@ -1185,10 +1182,6 @@ export interface OrchestratorDeps {
   isFlagEnabled: (flagName: string) => Promise<boolean>;
   /** Optional: server-side profile hydration for authenticated users. Must fail open. */
   hydrateContext?: (context: ChatContext) => Promise<ChatContext>;
-  /** Optional: LLM summarization — only called if flag enabled, only summarizes retrieved records */
-  summarizeWithLLM?: (services: EnrichedService[], intent: Intent) => Promise<string>;
-  /** Optional: LLM intent enrichment — only called for 'general' fallback queries, if flag enabled */
-  enrichIntent?: (message: string, intent: Intent) => Promise<Intent>;
 }
 
 /**
@@ -1249,22 +1242,6 @@ export async function orchestrateChat(
     ...detectIntent(classificationText),
     rawQuery: message,
   };
-
-  // Stage 4.5: LLM intent enrichment (Idea 10)
-  // Only fires when keyword classifier returns 'general' (ambiguous fallback).
-  // Never runs for crisis-detected messages (guarded by early returns above).
-  // FAIL-OPEN: any error keeps the original intent.
-  const intentEnrichEnabled = await deps.isFlagEnabled(FEATURE_FLAGS.LLM_INTENT_ENRICH);
-  if (intentEnrichEnabled && intent.category === 'general' && deps.enrichIntent) {
-    try {
-      intent = {
-        ...await deps.enrichIntent(classificationText, intent),
-        rawQuery: message,
-      };
-    } catch {
-      // LLM failure is non-fatal — keep original intent
-    }
-  }
 
   const appliedContext = applySessionContext(intent, context);
   intent = appliedContext.intent;
@@ -1346,18 +1323,6 @@ export async function orchestrateChat(
     activeContextUsed: appliedContext.activeContextUsed,
     sessionContext: buildSessionContext(intent, context),
   };
-
-  // Stage 8: LLM summarization gate
-  // ONLY activate if: (a) flag is enabled AND (b) there are services to summarize
-  const llmEnabled = await deps.isFlagEnabled(FEATURE_FLAGS.LLM_SUMMARIZE);
-  if (llmEnabled && retrieval.retrievalStatus === 'results' && services.length > 0 && deps.summarizeWithLLM) {
-    try {
-      const summary = await deps.summarizeWithLLM(services, intent);
-      response = { ...response, message: summary, llmSummarized: true };
-    } catch {
-      // LLM failure is non-fatal — fall back to assembled message
-    }
-  }
 
   // Increment quota after successful response (DB-backed when configured)
   if (retrieval.retrievalStatus !== 'temporarily_unavailable') {

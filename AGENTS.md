@@ -8,10 +8,10 @@
   end with `ae finish oran`. Work counts as done ONLY when pushed and remote-SHA-verified.
 - **Deploys:** merging `main` auto-deploys production via Vercel.
 - **Validate before merge:** `pnpm typecheck && pnpm lint` (CI must be green; squash merges).
-- **Providers (fixed — never swap or cross-wire):** db=supabase, auth=clerk, ai=azure-ai (LEGACY — phase-2 replacement pending).
+- **Providers (fixed — never swap or cross-wire):** db=supabase, auth=clerk, runtime=vercel; Azure is retired and prohibited. AI is disabled by default; ingestion may use the explicitly configured Anthropic adapter only.
 - **LOCKED:** Platform direction: Vercel + Supabase + Clerk, matching the rest of the portfolio (founder, 2026-07-15)
 - **Warn before:** running migrations
-- **Warn before:** re-enabling any Azure service
+- **LOCKED:** Never re-enable an Azure or Foundry service, credential, endpoint, workflow, or fallback.
 - Full policy: `github.com/AutomatedEmpires/ae-control` → `POLICY.md`. Briefing: `ae info oran`.
 
 ---

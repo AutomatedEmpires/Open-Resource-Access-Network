@@ -11,7 +11,7 @@ import { assertAllowedRuntimeEndpoint } from '@/services/runtime/providerPolicy'
 async function getBaseUrlFromHeaders(): Promise<string> {
   const defaultBaseUrl = 'https://openresourceaccessnetwork.com';
 
-  // Prefer proxy headers (Vercel/Azure/App Service) when available.
+  // Prefer trusted reverse-proxy headers when available.
   // In unit tests / build-time environments there may be no request context,
   // and `headers()` can throw — fall back to the canonical base URL.
   try {

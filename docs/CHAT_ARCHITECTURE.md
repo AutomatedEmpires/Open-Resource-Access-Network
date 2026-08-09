@@ -318,9 +318,9 @@ Safety rule:
 
 ### Stage 8: LLM Summarization Gate
 
-**Status: DORMANT IN PRODUCTION.** The default `llm_summarize` flag is off, and `/api/chat` does not inject a summarizer dependency into the orchestrator. Launch responses therefore use deterministic response assembly.
+**Status: RETIRED AND INERT.** The `llm_summarize` compatibility key is forced off and cannot be edited. Seeker responses use deterministic assembly from stored records.
 
-`src/services/chat/llm.ts` retains a legacy Azure OpenAI adapter for a separately reviewed phase-2 activation. Repository presence is not evidence of a live Azure resource, credential, rollout, or production dependency.
+The seeker chat route has no external LLM summarizer, translator, or intent enricher. Classification, crisis handling, retrieval, and response composition remain deterministic and stored-record-only.
 
 If a summarizer is deliberately wired in a future release, all of these gates remain mandatory:
 

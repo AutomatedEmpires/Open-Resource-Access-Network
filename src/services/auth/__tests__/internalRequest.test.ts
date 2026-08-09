@@ -8,7 +8,7 @@ function requestWith(headers: Record<string, string> = {}) {
 
 const configuredEnv = {
   CRON_SECRET: 'vercel-cron-secret',
-  INTERNAL_API_KEY: 'rollback-internal-key',
+  INTERNAL_API_KEY: 'internal-worker-key',
 };
 
 describe('authorizeInternalRequest', () => {
@@ -25,16 +25,16 @@ describe('authorizeInternalRequest', () => {
     }), configuredEnv)).toEqual({ ok: true, method: 'vercel_cron' });
   });
 
-  it('accepts the separate rollback header credential', () => {
+  it('accepts the separate internal-worker header credential', () => {
     expect(authorizeInternalRequest(requestWith({
-      'x-oran-internal-key': 'rollback-internal-key',
+      'x-oran-internal-key': 'internal-worker-key',
     }), configuredEnv)).toEqual({ ok: true, method: 'internal_header' });
   });
 
-  it('temporarily accepts the legacy rollback Bearer credential', () => {
+  it('rejects the internal-worker credential in the Bearer header', () => {
     expect(authorizeInternalRequest(requestWith({
-      authorization: 'Bearer rollback-internal-key',
-    }), configuredEnv)).toEqual({ ok: true, method: 'legacy_bearer' });
+      authorization: 'Bearer internal-worker-key',
+    }), configuredEnv)).toEqual({ ok: false, reason: 'unauthorized' });
   });
 
   it('rejects missing, malformed, and incorrect credentials', () => {
@@ -51,7 +51,7 @@ describe('authorizeInternalRequest', () => {
     }), configuredEnv)).toEqual({ ok: false, reason: 'unauthorized' });
   });
 
-  it('does not accept CRON_SECRET through the rollback-only header', () => {
+  it('does not accept CRON_SECRET through the internal-worker header', () => {
     expect(authorizeInternalRequest(requestWith({
       'x-oran-internal-key': 'vercel-cron-secret',
     }), configuredEnv)).toEqual({ ok: false, reason: 'unauthorized' });

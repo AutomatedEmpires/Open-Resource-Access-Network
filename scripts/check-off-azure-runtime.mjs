@@ -8,9 +8,7 @@ import {
 import {
   guardPrecedesEverySink,
   hasExecutableCall,
-  inspectArchivedWorkflowJobs,
   parseWorkflowRunCommands,
-  shellExecutableLines,
   stripJsCommentsAndStrings,
 } from './off-azure-static-policy-core.mjs';
 
@@ -58,25 +56,6 @@ if (
   violations.push('static policy engine: import/comment/string guard decoy probe failed');
 }
 
-const workflowProbe = inspectArchivedWorkflowJobs([
-  'if: ${{ false }}',
-  'jobs:',
-  '  disabled:',
-  '    if: ${{ false }}',
-  '    runs-on: ubuntu-latest',
-  '  bypassed:',
-  '    runs-on: ubuntu-latest',
-  '    steps:',
-  '      - if: ${{ false }}',
-  '        run: echo never',
-].join('\n'));
-if (
-  workflowProbe.jobNames.join(',') !== 'disabled,bypassed'
-  || workflowProbe.jobsWithoutHardDisable.join(',') !== 'bypassed'
-) {
-  violations.push('static policy engine: archived workflow job-level guard probe failed');
-}
-
 for (const name of findProhibitedMicrosoftRuntimeSettings(
   parseNames('.github/runtime/webapp-production-settings.txt'),
 )) {
@@ -104,6 +83,14 @@ function inspectJsonValue(value, path = 'vercel.json') {
 inspectJsonValue(JSON.parse(read('vercel.json')));
 
 const packageJson = JSON.parse(read('package.json'));
+const retiredDependencyPattern = /^(?:@azure\/|azure-maps-control$|applicationinsights$|@microsoft\/applicationinsights-)/iu;
+for (const dependencyGroup of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+  for (const dependencyName of Object.keys(packageJson[dependencyGroup] ?? {})) {
+    if (retiredDependencyPattern.test(dependencyName)) {
+      violations.push(`package.json ${dependencyGroup}.${dependencyName}: retired provider dependency`);
+    }
+  }
+}
 for (const [name, command] of Object.entries(packageJson.scripts ?? {})) {
   if (/build-functions|--target\s+functions/iu.test(String(command))) {
     violations.push(`package.json scripts.${name}: retired Functions runtime command`);
@@ -129,7 +116,11 @@ const guardedEndpointConsumers = [
   },
   { path: 'src/agents/ingestion/hsdsFeedConnector.ts', guardCall: 'fetchWithValidatedRedirects' },
   { path: 'src/agents/ingestion/ndp211Connector.ts', guardCall: 'fetchWithValidatedRedirects' },
-  { path: 'src/agents/ingestion/llm/client.ts', guardCall: guardProbeName },
+  {
+    path: 'src/services/geocoding/nominatim.ts',
+    guardCall: guardProbeName,
+    sinkPattern: /\bfetch\s*\(/u,
+  },
   { path: 'src/app/org/[id]/page.tsx', guardCall: guardProbeName },
   { path: 'src/app/(seeker)/service/[id]/page.tsx', guardCall: guardProbeName },
   { path: 'src/lib/hooks/useFormSubmit.ts', guardCall: guardProbeName },
@@ -188,68 +179,132 @@ for (const consumer of guardedEndpointConsumers) {
   }
 }
 
-const archivedBuilder = read('scripts/build-functions.mjs');
+if (!hasExecutableCall(
+  read('src/instrumentation.ts'),
+  'assertNoRetiredMicrosoftProviderSettings',
+)) {
+  violations.push('src/instrumentation.ts: retired Microsoft settings are not rejected at startup');
+}
+
+const retiredRuntimeAdapters = [
+  'src/agents/ingestion/llm/providers/azureOpenai.ts',
+  'src/services/admin/reviewAssist.ts',
+  'src/services/chat/intentEnrich.ts',
+  'src/services/chat/llm.ts',
+  'src/services/feedback/triage.ts',
+  'src/services/geocoding/azureMaps.ts',
+  'src/services/i18n/translator.ts',
+  'src/services/ingestion/docIntelligence.ts',
+  'src/services/search/embeddings.ts',
+  'src/services/tts/azureSpeech.ts',
+];
+for (const adapter of retiredRuntimeAdapters) {
+  if (existsSync(resolve(root, adapter))) {
+    violations.push(`${adapter}: retired provider adapter must be removed`);
+  }
+}
+
+const productionSourceExtensions = new Set([
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.ts',
+  '.tsx',
+  '.mts',
+  '.cts',
+  '.yml',
+  '.yaml',
+]);
+const retiredProviderModulePattern = /(?:from\s+['"][^'"]*(?:azure|foundry)[^'"]*['"]|import\s*\(\s*['"][^'"]*(?:azure|foundry)[^'"]*['"]\s*\)|require\s*\(\s*['"][^'"]*(?:azure|foundry)[^'"]*['"]\s*\))/iu;
+const retiredProviderEnvPattern = /(?:process\s*\.\s*env\s*\.\s*(?:AZURE_|FOUNDRY_)|process\s*\.\s*env\s*\[\s*['"](?:AZURE_|FOUNDRY_)|(?:const|let|var)\s*\{[^}]*\b(?:AZURE_|FOUNDRY_))/u;
+const retiredProviderWorkflowPattern = /(?:^|\s)uses\s*:\s*['"]?azure\//imu;
+const retiredProviderWorkflowCliPattern = /(?:\baz\s+(?:account|ad|bicep|deployment|functionapp|group|identity|keyvault|login|monitor|role|storage|webapp)\b|\bazurerm\b|\bARM_(?:ACCESS_KEY|CLIENT_ID|CLIENT_SECRET|SUBSCRIPTION_ID|TENANT_ID)\b)/iu;
+
 if (
-  !archivedBuilder.includes('ORAN_LEGACY_AZURE_FUNCTIONS_ARCHIVED')
-  || /from\s+['"]esbuild['"]|\bbuild\s*\(/u.test(archivedBuilder)
+  !retiredProviderModulePattern.test("const adapter = await import('./azureAdapter');")
+  || !retiredProviderModulePattern.test("const adapter = require('./foundryAdapter');")
+  || !retiredProviderEnvPattern.test("process.env['AZURE_OPENAI_KEY']")
+  || !retiredProviderEnvPattern.test('const { FOUNDRY_ENDPOINT } = process.env;')
+  || !retiredProviderWorkflowPattern.test('steps:\n  - uses: azure/login@v2')
+  || !retiredProviderWorkflowCliPattern.test('run: az webapp deploy --name retired')
+  || !isProhibitedMicrosoftEndpoint("const endpoint = 'https://retired.azurewebsites.net';")
 ) {
-  violations.push('scripts/build-functions.mjs: retired Functions builder is not a hard archive tripwire');
+  violations.push('static policy engine: retired provider bypass probe failed');
+}
+
+function collectProductionSources(relativeDirectory) {
+  if (!existsSync(resolve(root, relativeDirectory))) return [];
+  const files = [];
+  for (const entry of readdirSync(resolve(root, relativeDirectory), { withFileTypes: true })) {
+    const relativePath = `${relativeDirectory}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (entry.name !== '__tests__') files.push(...collectProductionSources(relativePath));
+      continue;
+    }
+    const extension = entry.name.slice(entry.name.lastIndexOf('.'));
+    if (productionSourceExtensions.has(extension)) files.push(relativePath);
+  }
+  return files;
+}
+
+const retiredProviderScanExclusions = new Set([
+  'src/services/runtime/providerPolicyCore.js',
+  'scripts/check-off-azure-runtime.mjs',
+]);
+
+const productionSourcePaths = [
+  ...collectProductionSources('src'),
+  ...collectProductionSources('scripts'),
+  ...collectProductionSources('.github/actions'),
+  ...collectProductionSources('.github/workflows'),
+];
+
+for (const path of productionSourcePaths) {
+  if (retiredProviderScanExclusions.has(path)) continue;
+  const rawSource = read(path);
+  const executableSource = stripJsCommentsAndStrings(rawSource);
+  if (retiredProviderEnvPattern.test(rawSource) || /\b(?:AZURE_|FOUNDRY_)[A-Z0-9_]*\b/u.test(executableSource)) {
+    violations.push(`${path}: executable retired provider environment access`);
+  }
+  if (retiredProviderModulePattern.test(rawSource)) {
+    violations.push(`${path}: imports a retired provider module`);
+  }
+  if (isProhibitedMicrosoftEndpoint(rawSource)) {
+    violations.push(`${path}: contains a hard-coded prohibited Microsoft endpoint`);
+  }
+  if (
+    path.startsWith('.github/workflows/')
+    && (retiredProviderWorkflowPattern.test(rawSource)
+      || retiredProviderWorkflowCliPattern.test(rawSource)
+      || /\b(?:AZURE_|FOUNDRY_)[A-Z0-9_]*\b/u.test(rawSource))
+  ) {
+    violations.push(`${path}: configures a retired provider workflow`);
+  }
+  if (/registerLLMClientProvider\(\s*['"]azure_openai['"]/u.test(rawSource)) {
+    violations.push(`${path}: registers the retired Azure OpenAI provider`);
+  }
 }
 
 if (existsSync(resolve(root, 'dist', 'host.json'))) {
   violations.push('dist/host.json: stale deployable Functions output must be removed');
 }
 
-for (const archivedScript of [
-  'scripts/azure/bootstrap.sh',
-  'scripts/azure/github-oidc.sh',
-  'scripts/azure/rotate-maps-sas.sh',
+for (const retiredPath of [
+  'functions',
+  'infra',
+  'scripts/azure',
+  'scripts/build-functions.mjs',
+  '.github/agents/Azure_function_codegen_and_deployment.agent.md',
+  '.github/agents/Azure_function_codegen_and_deployment.chatmode.md',
+  'docs/foundry_integrations.md',
+  'docs/platform/AZURE_DASHBOARD_MODERNIZATION.md',
+  'docs/platform/DEPLOYMENT_AZURE.md',
+  'docs/platform/INTEGRATION_CATALOG.md',
+  'docs/platform/PLATFORM_AZURE.md',
 ]) {
-  const source = read(archivedScript);
-  const executableLines = shellExecutableLines(source);
-  if (
-    executableLines[0] !== 'set -euo pipefail'
-    || !executableLines[1]?.startsWith('echo ')
-    || !executableLines[1]?.includes('ORAN_LEGACY_AZURE_PROVISIONING_ARCHIVED')
-    || executableLines[2] !== 'exit 1'
-  ) {
-    violations.push(`${archivedScript}: retired Azure provisioner is not a hard archive tripwire`);
-  }
-}
-
-const archivedHost = JSON.parse(read('functions/host.json'));
-if (
-  !Array.isArray(archivedHost.functions)
-  || archivedHost.functions.length !== 0
-  || 'extensionBundle' in archivedHost
-  || 'extensions' in archivedHost
-  || JSON.stringify(archivedHost).toLowerCase().includes('applicationinsights')
-) {
-  violations.push('functions/host.json: retired host must expose zero functions and no provider extensions');
-}
-
-for (const entry of readdirSync(resolve(root, 'functions'), { withFileTypes: true })) {
-  if (!entry.isDirectory()) continue;
-  const relativePath = `functions/${entry.name}/index.ts`;
-  let source;
-  try {
-    source = read(relativePath);
-  } catch {
-    continue;
-  }
-
-  const exportedHandlerCount = source.match(/export\s+async\s+function\s+[A-Za-z0-9_]+/gu)?.length ?? 0;
-  const guardedHandlerCount = source.match(
-    /export\s+async\s+function\s+[A-Za-z0-9_]+\s*\([\s\S]{0,400}?\)\s*:\s*Promise<[\s\S]{0,300}?>\s*\{\s*assertLegacyAzureFunctionsArchived\(\);/gu,
-  )?.length ?? 0;
-
-  if (exportedHandlerCount === 0) {
-    violations.push(`${relativePath}: archived handler export not found`);
-    continue;
-  }
-
-  if (guardedHandlerCount !== exportedHandlerCount) {
-    violations.push(`${relativePath}: exported handler bypasses the first-statement archive boundary`);
+  if (existsSync(resolve(root, retiredPath))) {
+    violations.push(`${retiredPath}: retired Azure execution artifact must be removed`);
   }
 }
 
@@ -280,12 +335,8 @@ const retiredWorkflows = [
 ];
 
 for (const workflow of retiredWorkflows) {
-  const inspection = inspectArchivedWorkflowJobs(read(workflow));
-  if (inspection.jobNames.length === 0) {
-    violations.push(`${workflow}: archived workflow defines no inspectable jobs`);
-  }
-  for (const jobName of inspection.jobsWithoutHardDisable) {
-    violations.push(`${workflow}: retired Microsoft job ${jobName} is not hard-disabled at job level`);
+  if (existsSync(resolve(root, workflow))) {
+    violations.push(`${workflow}: retired deployment workflow must be removed`);
   }
 }
 

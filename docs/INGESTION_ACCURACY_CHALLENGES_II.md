@@ -117,13 +117,13 @@ This second matrix focuses less on raw duplicate races and more on publication i
 
 ## Recommended Tool Stack
 
-1. Azure Maps geocoding + address confidence:
+1. Nominatim plus deterministic PostGIS address confidence:
    use for address canonicalization, postal/city mismatch detection, and location-confidence scoring.
-2. Azure AI Search or pgvector duplicate surfacing:
+2. PostgreSQL full-text search or pgvector duplicate surfacing:
    use embeddings and semantic similarity only for operator-facing duplicate suggestions, never as autonomous publish authority.
-3. Azure Application Insights + KQL dashboards:
+3. Sentry and privacy-safe aggregate operational dashboards:
    track overwrite-suppressed events, authority collisions, and drift-triggered review routing by lane.
-4. Azure Functions scheduled replay jobs:
+4. Vercel Cron plus deterministic replay jobs:
    replay the 200 scenario matrices against staging fixtures nightly to validate idempotence and authority behavior.
 5. GitHub Actions regression matrix:
    run focused publication suites plus deterministic scenario replay on PRs touching ingestion, submissions, or publication helpers.

@@ -96,8 +96,7 @@ This runbook defines the first-response operating model for production incidents
    - Dependency issues: `docs/ops/services/RUNBOOK_DEPENDENCY_OUTAGE.md`
    - Deployment regressions: `docs/ops/core/RUNBOOK_DEPLOYMENT_ROLLBACK.md`
 
-Use the Azure Function, queue, ingestion, and LLM runbooks only after an explicit
-decision to activate the rollback platform.
+Retired provider platforms are not an incident-recovery or rollback option.
 
 ## Mitigation Priorities
 

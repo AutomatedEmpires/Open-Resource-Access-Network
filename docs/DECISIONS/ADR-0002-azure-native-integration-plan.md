@@ -1,6 +1,8 @@
 # ADR-0002: Azure-Native Integration Maximization Plan
 
-Status: Accepted
+Status: Superseded
+
+> Historical decision only. Azure and Foundry are now retired and prohibited. Do not follow the implementation guidance below; the current platform contract is [`STACK_MIGRATION.md`](../platform/STACK_MIGRATION.md).
 
 Timestamp: 2026-03-02T00:00:00Z
 

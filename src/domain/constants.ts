@@ -532,51 +532,38 @@ export const FEATURE_FLAGS = {
    */
   CONTENT_SAFETY_CRISIS: 'content_safety_crisis',
   /**
-   * Enables pgvector-backed semantic search using Cohere-embed-v3-multilingual.
-   * When enabled, the chat retrieval pipeline re-ranks results by combining
-   * the existing trust/tsvector score with cosine similarity to the query embedding.
-   * Requires FOUNDRY_ENDPOINT + FOUNDRY_KEY + FOUNDRY_EMBED_DEPLOYMENT env vars.
-   * Requires migration 0026_pgvector_embeddings.sql to be applied first.
+   * Legacy catalog key retained for database compatibility. The provider-bound
+   * embedding transport is retired and this flag has no runtime consumer.
    */
   VECTOR_SEARCH: 'vector_search',
   /**
-   * Enables gpt-4o-mini intent enrichment for ambiguous 'general' fallback queries.
-   * Only fires when the keyword classifier cannot classify the query (category='general').
-   * Never runs for crisis-routed messages.
-   * Requires AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_KEY env vars (already wired for llm_summarize).
-   * Cost: ~$0.0002 per call (gpt-4o-mini at $0.15/1M input tokens, ~100 tokens/call).
+   * Legacy catalog key retained for database compatibility. Intent routing is
+   * deterministic and this flag is inert.
    */
   LLM_INTENT_ENRICH: 'llm_intent_enrich',
   /**
-   * Enables Azure AI Translator for multilingual service descriptions.
-   * Translates service card descriptions post-response-assembly when locale != 'en'.
-   * Requires AZURE_TRANSLATOR_KEY + AZURE_TRANSLATOR_ENDPOINT + AZURE_TRANSLATOR_REGION.
-   * Azure AI Translator F0: 2M characters/month free.
+   * Legacy catalog key retained for database compatibility. Provider-bound
+   * translation is retired and this flag is inert.
    */
   MULTILINGUAL_DESCRIPTIONS: 'multilingual_descriptions',
   /**
-   * Enables Azure Speech TTS generation of service summaries.
-   * Requires AZURE_SPEECH_KEY + AZURE_SPEECH_REGION env vars.
-   * Azure Speech F0: 5 hours/month free. Neural HD: $16/1M chars at S0.
+   * Legacy catalog key retained for database compatibility. Server-side speech
+   * synthesis is retired and this flag is inert.
    */
   TTS_SUMMARIES: 'tts_summaries',
   /**
-   * Phase 5 — Idea 7: gpt-4o-mini pre-checks candidate records during admin review.
-   * Returns completenessScore, warnings, and suggestions — advisory only, never auto-approves.
-   * Only service record metadata is sent — no PII.
-   * Requires AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_KEY (already wired for Idea 1).
+   * Legacy catalog key retained for database compatibility. Candidate review
+   * remains evidence-based and human-controlled; this flag is inert.
    */
   LLM_ADMIN_ASSIST: 'llm_admin_assist',
   /**
-   * Phase 5 — Idea 14: gpt-4o-mini classifies seeker feedback comments into actionable categories.
-   * Only the comment text is sent — no session/user identity. Fail-open.
-   * Requires AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_KEY (already wired).
+   * Legacy catalog key retained for database compatibility. Feedback comments
+   * are not forwarded to an AI provider; this flag is inert.
    */
   LLM_FEEDBACK_TRIAGE: 'llm_feedback_triage',
   /**
-   * Phase 5 — Idea 13: Azure Document Intelligence parses PDF/form submissions.
-   * Applied in the manualSubmit pipeline when a PDF content-type is detected.
-   * Requires AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT + AZURE_DOCUMENT_INTELLIGENCE_KEY env vars.
+   * Legacy catalog key retained for database compatibility. Provider-bound
+   * document parsing is retired and this flag is inert.
    */
   DOC_INTELLIGENCE_INTAKE: 'doc_intelligence_intake',
   /**

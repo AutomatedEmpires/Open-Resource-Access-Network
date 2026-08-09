@@ -16,7 +16,7 @@ This page defines what should live in the GitHub Wiki versus this repository.
 | Onboarding by role | `START_HERE.md` |
 | Contracts overview | `docs/contracts/README.md` |
 | Operational playbooks | `docs/ops/README.md` |
-| Deployment model | `docs/platform/DEPLOYMENT_AZURE.md` |
+| Deployment model | `docs/platform/STACK_MIGRATION.md` |
 
 ## Publishing Guidance
 

@@ -102,14 +102,24 @@ describe('AnthropicClient', () => {
   });
 
   it('does not retry auth errors and reports them as auth_error', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ error: { message: 'bad key' } }, { status: 401 }));
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      error: { message: 'private source content must not escape' },
+    }, { status: 401 }));
     const { AnthropicClient } = await loadProviderModule();
     const client = new AnthropicClient({ provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'k' });
 
     const result = await client.extract({ content: 'x', sourceUrl: 'https://e.org' } as never);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(result).toMatchObject({ success: false, error: { code: 'auth_error', retryable: false } });
+    expect(result).toMatchObject({
+      success: false,
+      error: {
+        code: 'auth_error',
+        message: 'Anthropic API request failed with status 401',
+        retryable: false,
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain('private source content');
   });
 
   it('reports non-JSON output as parse_error without retrying', async () => {
@@ -124,7 +134,7 @@ describe('AnthropicClient', () => {
     expect(result).toMatchObject({ success: false, error: { code: 'parse_error' } });
   });
 
-  it('factory requires an api key and swaps GPT-shaped defaults for the Claude default', async () => {
+  it('factory requires an api key and swaps unset or GPT-shaped defaults for the Claude default', async () => {
     const { createAnthropicClient } = await loadProviderModule();
 
     await expect(createAnthropicClient({ provider: 'anthropic', model: 'gpt-4o' }))
@@ -132,6 +142,9 @@ describe('AnthropicClient', () => {
 
     const swapped = await createAnthropicClient({ provider: 'anthropic', model: 'gpt-4o', apiKey: 'k' });
     expect(swapped.model).toBe('claude-opus-4-8');
+
+    const unset = await createAnthropicClient({ provider: 'anthropic', model: 'unconfigured', apiKey: 'k' });
+    expect(unset.model).toBe('claude-opus-4-8');
 
     const explicit = await createAnthropicClient({ provider: 'anthropic', model: 'claude-sonnet-5', apiKey: 'k' });
     expect(explicit.model).toBe('claude-sonnet-5');

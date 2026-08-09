@@ -42,14 +42,14 @@ ORAN is a public resource intelligence network: a verified resource data platfor
 - `src/agents/ingestion/**` contains the canonical ingestion/federation domain with source records, normalization, taxonomy crosswalks, resolution, and 211 NDP connectors.
 - `src/app/api/admin/ingestion/**` exposes operator controls for sources, jobs, candidates, feed polling, and publish readiness.
 - Authenticated Next.js internal routes scheduled by `vercel.json` run production feed polling, SLA, coverage, confidence-regression, freshness, and account-erasure maintenance.
-- `functions/**` and Azure deployment assets are archived legacy adapters with fail-closed tripwires. They are not production execution paths.
+- Retired Azure/Foundry execution and deployment assets are absent and prohibited by runtime and CI policy.
 
 Ingestion ownership rule:
 
 - `src/agents/ingestion/**` is the canonical ingestion domain
 - Next.js route handlers and authenticated Vercel Cron requests are the production execution boundary
 - `src/services/ingestion/**` is a thin helper layer only
-- `functions/**` must remain archived unless an explicitly approved rollback is required
+- authenticated Vercel job routes are the only scheduled ingestion execution path
 
 ### Discovery and search systems
 
@@ -86,7 +86,7 @@ Public distribution tiers:
 - Clerk provides identity and sessions while ORAN database roles and explicit Clerk user mappings remain authoritative for application authorization.
 - Sentry receives privacy-filtered client, server, and edge diagnostics when configured. Sensitive seeker text, precise location, form content, cookies, and authorization data must not enter telemetry.
 - Redis, Resend, and provider-neutral maps are adapter-backed capabilities. Their absence must preserve documented degraded or fail-closed behavior; an adapter's presence is not evidence that a provider is operationally activated.
-- `infra/**`, `functions/**`, and Azure deployment workflows are retained only as archived rollback/reference assets. Azure language, translation, speech, document, and generative-AI adapters are optional phase-2 code paths where still present, not production dependencies.
+- Azure/Foundry runtime adapters, infrastructure, Functions, and deployment workflows are removed and must not be recreated. Optional Anthropic assistance is limited to review-gated ingestion.
 
 ## Architectural Drift Register
 

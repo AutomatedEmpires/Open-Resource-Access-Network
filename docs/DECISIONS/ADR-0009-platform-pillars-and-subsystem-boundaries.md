@@ -5,7 +5,7 @@
 
 ## Context
 
-ORAN has evolved beyond a seeker app into a multi-surface platform that includes canonical resource data, ingestion/federation, governance workflows, host operations, forms, notifications, and Azure-backed delivery infrastructure. The repository already contains those subsystems, but the top-level architectural description has lagged behind the codebase. That gap creates architectural drift risk: teams can add features without understanding which platform pillar they strengthen, and parallel systems can emerge around ingestion, governance, or distribution.
+ORAN has evolved beyond a seeker app into a multi-surface platform that includes canonical resource data, ingestion/federation, governance workflows, host operations, forms, notifications, and Vercel/Supabase delivery infrastructure. The repository already contains those subsystems, but the top-level architectural description has lagged behind the codebase. That gap creates architectural drift risk: teams can add features without understanding which platform pillar they strengthen, and parallel systems can emerge around ingestion, governance, or distribution.
 
 ## Decision
 

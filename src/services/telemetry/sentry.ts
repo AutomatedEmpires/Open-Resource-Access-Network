@@ -2,7 +2,7 @@
  * ORAN Sentry Telemetry Wrapper
  *
  * Provides typed wrappers around Sentry for error tracking and monitoring.
- * Privacy rules: no user PII in events; sessionId (UUID) allowed as correlation ID.
+ * Privacy rules: minimize pseudonymous identifiers and never attach direct PII.
  */
 
 import * as SentrySdk from '@sentry/nextjs';
@@ -15,7 +15,7 @@ export type SeverityLevel = 'fatal' | 'error' | 'warning' | 'info' | 'debug';
 
 export interface ErrorContext {
   sessionId?: string;
-  userId?: string; // Entra object ID (pseudonymous — not PII)
+  userId?: string; // Provider-neutral pseudonymous personal data; include only when necessary.
   feature?: string;
   extra?: Record<string, unknown>;
 }

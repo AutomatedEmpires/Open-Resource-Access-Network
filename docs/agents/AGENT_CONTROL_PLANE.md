@@ -50,7 +50,7 @@ Mission:
 Backed by:
 
 - `src/agents/ingestion/**`
-- `functions/**`
+- `src/app/api/internal/ingestion/**`
 - `docs/DECISIONS/ADR-0007-hsds-211-federation-canonical-model.md`
 
 ### 3. Governance Workbench Operator
@@ -73,9 +73,9 @@ Mission:
 
 Backed by:
 
-- `src/services/geocoding/azureMaps.ts`
-- `src/services/i18n/translator.ts`
-- `src/services/tts/azureSpeech.ts`
+- `src/services/geocoding/nominatim.ts`
+- `src/components/map/**`
+- `src/services/i18n/**`
 
 ### 5. Release Observatory Operator
 
@@ -85,10 +85,10 @@ Mission:
 
 Backed by:
 
-- `.github/workflows/deploy-azure-appservice.yml`
-- `.github/workflows/deploy-azure-functions.yml`
+- `.github/workflows/ci.yml`
+- `vercel.json`
 - `src/services/runtime/envContract.ts`
-- `src/services/telemetry/appInsights.ts`
+- `src/services/telemetry/sentry.ts`
 
 ## Trust posture model
 
@@ -105,7 +105,7 @@ That distinction matters. It prevents the platform from claiming more autonomy t
 - feature flags still report as a gap whenever a deployed environment is running on the in-memory fallback instead of the DB-backed catalog
 - Redis-backed multi-instance rate limits are still not active
 - nonce-based CSP is still planned
-- some Azure AI accelerators remain configured in code but not fully activated in runtime
+- retired Azure/Foundry settings and endpoints are rejected at startup, readiness, and CI boundaries
 
 ## What this unlocks next
 
@@ -114,5 +114,5 @@ This endpoint is designed to become the substrate for:
 - an ORAN-admin agent operations dashboard
 - release evidence snapshots in CI
 - operator scorecards for governance reviews
-- future AI Gateway / policy-enforced model routing decisions
+- policy-enforced optional Anthropic ingestion-assist decisions
 - enterprise readiness reporting without hand-maintained spreadsheets

@@ -9,7 +9,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   MAX_SERVICES_PER_RESPONSE,
-  FEATURE_FLAGS,
   CHAT_DEVICE_COOKIE,
   CONFIDENCE_BANDS,
   CRISIS_KEYWORDS,
@@ -40,9 +39,6 @@ import type {
 } from '@/services/chat/types';
 import { executeCount, executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { flagService } from '@/services/flags/flags';
-import { SUPPORTED_LOCALES } from '@/services/i18n/i18n';
-import type { LocaleCode } from '@/services/i18n/i18n';
-import { translateBatch, isConfigured as isTranslatorConfigured } from '@/services/i18n/translator';
 import { hydrateChatContext } from '@/services/profile/chatHydration';
 import { cachedSearch } from '@/services/search/cache';
 import { ServiceSearchEngine } from '@/services/search/engine';
@@ -430,9 +426,7 @@ export async function POST(req: NextRequest) {
 
       let response = await cachedSearch(engine, query);
       let searchBroadened = false;
-      const categoryFallbackText = context.retrievalText
-        ? getDiscoveryNeedSearchText(intent.category)
-        : undefined;
+      const categoryFallbackText = getDiscoveryNeedSearchText(intent.category);
       if (
         response.results.length === 0
         && categoryFallbackText
@@ -501,7 +495,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    let response = await orchestrateChat(message, sessionId, effectiveUserId, locale, rateLimitKey, {
+    const response = await orchestrateChat(message, sessionId, effectiveUserId, locale, rateLimitKey, {
       retrieveServices,
       hydrateContext: async (context) => {
         const hydrated = await hydrateChatContext(context, { executeQuery });
@@ -562,29 +556,6 @@ export async function POST(req: NextRequest) {
       },
       isFlagEnabled: (flagName) => flagService.isEnabled(flagName),
     });
-
-    const multilingualEnabled = await flagService.isEnabled(FEATURE_FLAGS.MULTILINGUAL_DESCRIPTIONS);
-    if (multilingualEnabled && locale !== 'en' && response.services.length > 0 && isTranslatorConfigured()) {
-      const safeLocale: LocaleCode | null = SUPPORTED_LOCALES.includes(locale as LocaleCode)
-        ? (locale as LocaleCode)
-        : null;
-
-      if (safeLocale) {
-        const descriptions = response.services.map((service) => service.description ?? '');
-        try {
-          const translated = await translateBatch(descriptions, safeLocale);
-          response = {
-            ...response,
-            services: response.services.map((service, index) => ({
-              ...service,
-              description: (descriptions[index] && translated[index]?.translatedText) || service.description,
-            })),
-          };
-        } catch {
-          // Translator failure is non-fatal — keep original descriptions.
-        }
-      }
-    }
 
     // Only successful, non-crisis responses commit the pre-search reservation.
     // Distress-safe clarification and temporary search failure release it.

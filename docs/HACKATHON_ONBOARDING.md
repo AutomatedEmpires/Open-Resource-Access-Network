@@ -18,7 +18,7 @@ By the end of the first 30 minutes, every contributor should know:
 3. Read [docs/OWNERSHIP_SKILLS_MATRIX.md](OWNERSHIP_SKILLS_MATRIX.md) to choose a workstream.
 4. Read [docs/REPO_MAP.md](REPO_MAP.md) to understand where your changes belong.
 5. Read [docs/DEVELOPER_GOLDEN_PATH.md](DEVELOPER_GOLDEN_PATH.md) and get local dev running.
-6. Read the area README under `src/app/**`, `src/services/**`, `functions/**`, or `docs/**` before making changes.
+6. Read the area README under `src/app/**`, `src/services/**`, or `docs/**` before making changes.
 
 ## Team Formation Model
 
@@ -29,7 +29,7 @@ Use these lanes so contributors self-organize cleanly.
 | Product UI | seeker flows, host workflows, public trust pages, accessibility | frontend, product, design systems |
 | Retrieval + scoring | search, chat orchestration, ranking, deterministic behavior | backend, applied AI, search engineers |
 | Ingestion + verification | source intake, extraction, verification, routing, queues | workflow, data, AI pipeline engineers |
-| Platform + reliability | CI/CD, Azure infra, secrets, deploys, observability | DevOps, platform, security engineers |
+| Platform + reliability | CI/CD, Vercel runtime, Supabase, secrets, deploys, observability | DevOps, platform, security engineers |
 | Data + contracts | migrations, types, contracts, evidence models | backend, data model, systems engineers |
 | Docs + governance | SSOT, onboarding, ADRs, runbooks, contributor guidance | technical writers, staff engineers, leads |
 
@@ -51,7 +51,7 @@ Use these lanes so contributors self-organize cleanly.
 | APIs and auth | [src/app/api/README.md](../src/app/api/README.md), [docs/SECURITY_PRIVACY.md](SECURITY_PRIVACY.md), [docs/contracts/AUTHZ_CONTRACT.md](contracts/AUTHZ_CONTRACT.md) |
 | search, chat, scoring | [docs/CHAT_ARCHITECTURE.md](CHAT_ARCHITECTURE.md), [docs/SCORING_MODEL.md](SCORING_MODEL.md), [src/services/README.md](../src/services/README.md) |
 | ingestion agents | [docs/agents/AGENTS_OVERVIEW.md](agents/AGENTS_OVERVIEW.md), [docs/agents/AGENTS_INGESTION_PIPELINE.md](agents/AGENTS_INGESTION_PIPELINE.md) |
-| deploy, infra, incident readiness | [docs/platform/DEPLOYMENT_AZURE.md](platform/DEPLOYMENT_AZURE.md), [docs/ops/README.md](ops/README.md) |
+| deploy, runtime, incident readiness | [docs/platform/STACK_MIGRATION.md](platform/STACK_MIGRATION.md), [docs/ops/README.md](ops/README.md) |
 
 ## Daily Operating Rhythm For The Event
 

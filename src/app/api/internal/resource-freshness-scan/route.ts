@@ -2,7 +2,7 @@
  * GET/POST /api/internal/resource-freshness-scan
  *
  * Deterministic, no-LLM resource lifecycle maintenance. Vercel Cron uses GET;
- * POST remains available for an authenticated manual/rollback worker run.
+ * POST remains available for an authenticated manual operational run.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

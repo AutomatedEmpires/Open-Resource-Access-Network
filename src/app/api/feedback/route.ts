@@ -10,14 +10,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { checkRateLimitShared } from '@/services/security/rateLimit';
 import {
-  FEATURE_FLAGS,
   FEEDBACK_RATE_LIMIT_MAX_REQUESTS,
   RATE_LIMIT_WINDOW_MS,
 } from '@/domain/constants';
 import { executeQuery, isDatabaseConfigured } from '@/services/db/postgres';
 import { captureException } from '@/services/telemetry/sentry';
-import { flagService } from '@/services/flags/flags';
-import { triageFeedback } from '@/services/feedback/triage';
 import { getIp } from '@/services/security/ip';
 
 // ============================================================
@@ -79,7 +76,7 @@ export async function POST(req: NextRequest) {
   const feedback: FeedbackRequest = parsed.data;
 
   try {
-    const insertResult = await executeQuery<{ id: string }>(
+    await executeQuery<{ id: string }>(
       `INSERT INTO seeker_feedback (service_id, session_id, rating, comment, contact_success)
        VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [
@@ -90,22 +87,6 @@ export async function POST(req: NextRequest) {
         feedback.contactSuccess ?? null,
       ],
     );
-
-    // Idea 14: fire-and-forget triage — does not delay seeker response
-    const rowId = insertResult[0]?.id;
-    if (rowId && feedback.comment) {
-      flagService.isEnabled(FEATURE_FLAGS.LLM_FEEDBACK_TRIAGE).then((enabled) => {
-        if (!enabled) return;
-        return triageFeedback(feedback.comment!)
-          .then((result) => {
-            if (!result) return;
-            return executeQuery(
-              `UPDATE seeker_feedback SET triage_category = $1, triage_result = $2 WHERE id = $3`,
-              [result.category, JSON.stringify(result), rowId],
-            );
-          });
-      }).catch(() => void 0);
-    }
 
     return NextResponse.json({ success: true }, {
       headers: { 'Cache-Control': 'private, no-store' },

@@ -110,7 +110,7 @@ export const LlmSuggestionSchema = z.object({
 
   // Model info (for audit)
   llmModel: z.string().default('unknown'),
-  llmProvider: z.string().default('azure'),
+  llmProvider: z.string().default('unknown'),
 
   // Human decision
   suggestionStatus: SuggestionStatusSchema,
@@ -152,7 +152,7 @@ export function createLlmSuggestion(
     promptContext: options.promptContext,
     sourceEvidenceRefs: options.sourceEvidenceRefs ?? [],
     llmModel: options.llmModel ?? 'unknown',
-    llmProvider: options.llmProvider ?? 'azure',
+    llmProvider: options.llmProvider ?? 'unknown',
   };
 }
 

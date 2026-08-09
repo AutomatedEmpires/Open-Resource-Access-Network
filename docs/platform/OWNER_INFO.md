@@ -42,7 +42,7 @@ the ORAN assets above.
 - `SENTRY_PROJECT`
 - `SENTRY_AUTH_TOKEN`
 - `CRON_SECRET`
-- `INTERNAL_API_KEY` (optional rollback credential)
+- `INTERNAL_API_KEY` (optional provider-neutral internal tooling credential)
 
 Values must never be copied into this file.
 
@@ -56,11 +56,10 @@ Values must never be copied into this file.
   approval, each with an ORAN-only test/production mapping as appropriate.
 - Audit provider membership and remove unused access on a regular cadence.
 
-## Legacy inventory
+## Retired provider boundary
 
-Earlier Microsoft/Azure resources are retirement/rollback history only. They are
-not a source of configuration for the target stack and must not receive new
-deployments, identities, or secrets. Decommission them after DNS cutover,
-rollback-window closure, and backup verification under an approved change.
+Earlier Microsoft/Azure resources are historical only. They are not a source of
+configuration or recovery for ORAN and must not receive deployments, identities,
+secrets, or reactivation work. Azure and Foundry have no rollback path.
 
 See `docs/platform/STACK_MIGRATION.md` and `docs/platform/INTEGRATIONS.md`.

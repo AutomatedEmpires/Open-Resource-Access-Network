@@ -11,7 +11,7 @@ ORAN's production platform is:
 
 Resend, Redis, and provider-neutral mapping are optional adapter-backed capabilities. Their presence in the repository does not prove that a provider is activated or production-verified.
 
-Azure is not part of the production runtime. Azure infrastructure, Functions, and deployment workflows remain archived for an explicitly approved rollback only. Azure language, speech, document, content-classification, and generative-AI implementations may remain as dormant phase-2 adapters where the code still supports them; launch behavior must not require their credentials or availability.
+Azure and Foundry are retired and prohibited. Their runtime adapters, Functions application, infrastructure templates, deployment workflows, and operational scripts have been removed. ORAN has no Microsoft-provider rollback or reactivation path; stale Microsoft settings and endpoints fail the runtime contract closed.
 
 ORAN's data model is capable of supporting multiple regions, but that is not a claim of nationwide coverage. The current regional MVP supply is the reviewed Washington HRSA cohort. Additional regions must pass the same provenance, verification, publication, and freshness controls before they become trusted seeker-visible supply.
 
@@ -24,11 +24,11 @@ ORAN's data model is capable of supporting multiple regions, but that is not a c
 | Browser data access | Supabase Data API is denied by default | Do not add browser policies or publishable data access until each exposed table has a reviewed RLS contract |
 | Identity | Dedicated Clerk production instance with explicit Clerk-to-ORAN identity mapping | Clerk establishes identity; database-owned roles and memberships establish authorization; never infer account linkage by email |
 | Observability | Sentry instrumentation is present for client, server, and edge runtimes | Configuration requires a privacy review plus live event, source-map, release, and alert-ownership proof |
-| Maps | Leaflet/OpenStreetMap-compatible, provider-neutral surface | Select tiles/geocoding only after privacy, availability, and usage review; Azure Maps is legacy code |
+| Maps | Leaflet/OpenStreetMap-compatible surface with Nominatim geocoding | Select tiles/geocoding only after privacy, availability, usage, and endpoint-policy review |
 | Scheduled work | Six authenticated Vercel Cron routes are declared in `vercel.json` | `CRON_SECRET` is mandatory; each route needs production invocation and alert evidence |
 | Transactional email | Resend adapter and environment contract are present | Treat delivery as dormant until the ORAN sender domain, suppression handling, and production delivery are proved |
-| AI-assisted language tasks | Deterministic launch behavior; optional adapters remain in code | Crisis routing, retrieval, ranking, eligibility, and publication never depend on an external model; any future activation requires explicit provider-specific review |
-| Azure assets | Archived Bicep, Functions, and hard-disabled workflows | No Azure credential or endpoint belongs in the production runtime manifest; reactivation requires an approved rollback or phase-2 change |
+| AI-assisted language tasks | Deterministic launch behavior; Anthropic is the only bundled optional provider | Optional AI is limited to review-gated ingestion assistance; crisis routing, seeker chat, retrieval, ranking, eligibility, and publication never depend on an external model |
+| Retired Microsoft providers | Runtime and developer execution assets removed | Azure/Foundry settings and Microsoft-shaped runtime endpoints are prohibited and fail readiness closed |
 
 ## Regional data boundary
 
@@ -53,14 +53,13 @@ Unreviewed, quarantined, stale, or inferred data must not appear as verified see
 5. **Run live acceptance.** Verify `/api/health`, public discovery, crisis routing, authorization boundaries, and the changed end-to-end workflow without exposing secrets or sensitive seeker data.
 6. **Close with provider evidence.** Verify Sentry, cron, email, or other provider behavior only when the release actually depends on it; code or environment-variable presence alone is not activation evidence.
 
-## Azure archive boundary
+## Retired Microsoft-provider boundary
 
-- Azure deployment and credential-rotation workflows are hard-disabled at the job level.
-- `functions/**` exports are archive tripwires, not deployable production handlers.
-- Production runtime manifests reject Azure/Microsoft endpoints and settings.
+- Azure/Foundry runtime adapters, deployment workflows, Functions, infrastructure templates, and operational scripts are absent from the active repository.
+- Startup, environment validation, health readiness, and static CI checks reject retired provider settings, endpoints, imports, and registrations.
 - Provider-independent, synchronous crisis signals run before usage controls. Distress text is not sent to an external content-safety provider.
-- The production chat route does not wire an LLM summarizer or LLM intent enricher. Legacy Azure OpenAI and Translator adapters remain disabled unless a separately reviewed phase-2 path supplies the required wiring, feature gate, and provider configuration.
-- Do not re-enable an Azure service, restore Azure DNS, or add an Azure production secret without explicit approval and a documented rollback/retirement plan.
+- The production chat route has no LLM summarizer, translator, or LLM intent enricher. Optional Anthropic use is isolated to review-gated ingestion assistance.
+- Historical migrations, engineering logs, and audit records may retain provider names as immutable evidence; they are not executable configuration or a reactivation path.
 
 ## Environment contract
 

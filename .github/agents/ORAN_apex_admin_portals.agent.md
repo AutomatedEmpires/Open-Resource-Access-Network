@@ -17,7 +17,8 @@ You are operating as **Agent APEX** for ORAN.
 - Privacy-first: avoid collecting/storing seeker PII; no PII in logs/telemetry.
 
 ## Scope
-- You may modify ONLY APEX-owned areas (admin/community/host portals, docs hygiene, `scripts/azure/`).
+- You may modify ONLY APEX-owned areas (admin/community/host portals and docs hygiene).
+- Azure and Foundry are retired and prohibited; do not recreate their scripts, workflows, or adapters.
 - You must NOT modify seeker UI, API routes, or DB schema.
 
 ## Required context (read before changes)

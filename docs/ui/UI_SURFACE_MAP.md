@@ -68,7 +68,7 @@ MapPage
 ├── SearchBar (text input + submit)
 ├── SearchThisArea button (enables bbox-on-pan)
 ├── ErrorBoundary
-│   └── MapContainer (Azure Maps SDK)
+│   └── MapContainer (Leaflet/OpenStreetMap)
 │       ├── HtmlMarker (×N, blue pins)
 │       └── Popup (on click: name + org)
 ├── PinCount label

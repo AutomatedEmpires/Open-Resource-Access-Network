@@ -80,9 +80,6 @@ src/services/admin/                 # Admin service layer (approval, audit, rule
 src/services/community/             # Community service layer (queue, verification)
 src/services/profile/               # Profile service layer (seeker + org profiles)
 
-scripts/
-  azure/                            # Azure deployment and provisioning scripts
-
 docs/                               # Documentation hygiene (all *.md files)
   (You may UPDATE existing docs to match current code.
    You may NOT introduce new SSOT doc changes that conflict with the safety invariants.
@@ -113,11 +110,10 @@ Before starting any work, read these files in full:
 7. `docs/ui/UI_UX_TOKENS.md` — concrete design parameters (use `max-w-7xl` for dashboards)
 8. `docs/ui/UI_SURFACE_MAP.md` — confirm the admin surface map is accurate
 9. `docs/audit/AUDIT_REPORT.md` — existing audit findings including admin flows
-10. `docs/platform/DEPLOYMENT_AZURE.md` — Azure deployment documentation
-11. `docs/platform/PLATFORM_AZURE.md` — Azure platform architecture
-12. Read every file under `src/app/(oran-admin)/`,
+10. `docs/platform/STACK_MIGRATION.md` — active deployment and retired-provider boundary
+11. Read every file under `src/app/(oran-admin)/`,
     `src/app/(community-admin)/`, and `src/app/(host)/` before touching any
-13. Read `src/services/admin/`, `src/services/community/`, `src/services/profile/`
+12. Read `src/services/admin/`, `src/services/community/`, `src/services/profile/`
 
 ---
 
@@ -371,8 +367,7 @@ For each document you touch:
 - `docs/governance/GOVERNANCE.md` — verify approval workflow matches what you just built.
 - `docs/governance/ROLES_PERMISSIONS.md` — verify every role listed maps to implemented behavior.
 - `docs/ui/UI_SURFACE_MAP.md` — add all admin routes built or confirmed as existing.
-- `docs/platform/DEPLOYMENT_AZURE.md` — verify Azure deployment steps are current with `scripts/azure/`.
-- `docs/platform/PLATFORM_AZURE.md` — verify Azure service list is current.
+- `docs/platform/STACK_MIGRATION.md` — verify the active platform and prohibited-provider boundary remain accurate.
 - `docs/platform/INTEGRATIONS.md` — verify any API used by admin portals (not owned by SIGMA,
   but may document consumption of SIGMA's routes).
 - `docs/agents/ROADMAP.md` — update with current completion status.
@@ -382,28 +377,7 @@ For each document you touch:
 the codebase is brought under SSOT tracking that was not previously covered. Do not modify
 the non-negotiables section.
 
-### 5.2 Azure Deployment Scripts (`scripts/azure/`)
-
-- Read every script in `scripts/azure/`.
-- Verify each script:
-  - Has a top-of-file comment explaining: purpose, required environment variables,
-    required permissions (Azure RBAC roles), expected output.
-  - Handles errors explicitly — no silent failures.
-  - Does not hard-code any secrets, subscription IDs, or resource group names
-    (these must come from environment variables or parameter files).
-  - Is idempotent where possible (re-running should not create duplicate resources).
-- If any script is missing its header comment, add it.
-- If any script references a resource that no longer exists or has been renamed,
-  update the script and note the change.
-- Create or update `scripts/azure/README.md` with:
-  - List of all scripts and their purpose
-  - Required environment variables (names, not values)
-  - Required Azure RBAC roles for each script
-  - Order of execution for a full fresh deployment
-  - Order of execution for a rollback
-- Cross-reference `docs/platform/DEPLOYMENT_AZURE.md` to ensure it reflects the current scripts.
-
-### 5.3 Service Layer Completeness
+### 5.2 Service Layer Completeness
 
 #### `src/services/admin/`
 
@@ -453,12 +427,10 @@ APEX's work is complete when **every item below is verifiably true**:
 - [ ] Design system primitives from `src/components/ui/` are used throughout.
 - [ ] `src/services/admin/README.md`, `src/services/community/README.md`,
   `src/services/profile/README.md` are complete and accurate.
-- [ ] `scripts/azure/README.md` exists and documents all scripts.
-- [ ] All Azure scripts have header comments with purpose, env vars, and required RBAC roles.
 - [ ] `docs/governance/GOVERNANCE.md` accurately reflects the built approval workflow.
 - [ ] `docs/governance/ROLES_PERMISSIONS.md` matches the implemented role set.
 - [ ] `docs/ui/UI_SURFACE_MAP.md` includes all admin routes.
-- [ ] `docs/platform/DEPLOYMENT_AZURE.md` is reconciled with current scripts.
+- [ ] `docs/platform/STACK_MIGRATION.md` reflects the active Vercel/Supabase platform and retired-provider boundary.
 - [ ] Zero documents describe a "Planned" feature as "Implemented" without corresponding code.
 - [ ] `docs/ENGINEERING_LOG.md` updated for every contract-level change.
 - [ ] `docs/agents/status/STATUS_APEX.md` written with the full structured report.
@@ -508,12 +480,6 @@ Generated: <UTC timestamp>
 
 ## Documentation Updated
 - <filename>: <summary of change — only factual corrections>
-
-## Scripts
-- Scripts audited: <count>
-- Scripts with header comments: <count>/<total>
-- scripts/azure/README.md created: yes/no
-- Idempotency issues fixed: <list>
 
 ## ADRs Added
 - <filename>: <title>

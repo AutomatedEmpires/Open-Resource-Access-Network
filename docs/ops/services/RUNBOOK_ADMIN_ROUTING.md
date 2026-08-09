@@ -14,9 +14,7 @@
 
 Use this runbook when candidates are not reaching an appropriate human reviewer,
 reviewer capacity is exhausted, geographic coverage is missing, or review SLAs
-are breached. This is the active Vercel/Supabase operating path. The Azure
-`routeToAdmin` Function is retained only as an explicitly unvalidated rollback
-artifact.
+are breached. This is the active Vercel/Supabase operating path.
 
 ## Safety Constraints
 
@@ -53,9 +51,7 @@ artifact.
 The reviewed Vercel source-feed service normalizes and marks records
 `pending_review`, and the active system can detect unrouted records. However, no
 active Vercel orchestration was found that selects reviewers and creates initial
-`candidate_admin_assignments` for each newly normalized candidate. The retained
-Azure `functions/routeToAdmin` worker performs that orchestration only in the
-rollback path.
+`candidate_admin_assignments` for each newly normalized candidate.
 
 Therefore, unit-tested ranking/stores and coverage alerts are not evidence that
 new candidates are automatically routed in production.
@@ -152,9 +148,6 @@ npx vitest run src/agents/ingestion/__tests__/adminAssignments.test.ts src/agent
 npm run typecheck
 ```
 
-The Azure rollback worker has a separate focused test and is not proof of active
-target-stack routing.
-
 ## References
 
 - `vercel.json`
@@ -167,6 +160,5 @@ target-stack routing.
 - `src/agents/ingestion/routing.ts`
 - `src/agents/ingestion/adminAssignments.ts`
 - `src/agents/ingestion/persistence/adminAssignmentStore.ts`
-- `functions/routeToAdmin/index.ts`
 - `docs/ops/services/RUNBOOK_211_API_INGESTION.md`
 - `docs/ops/services/RUNBOOK_DATA_QUALITY_INCIDENT.md`

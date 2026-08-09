@@ -20,13 +20,6 @@ if ! command -v jq >/dev/null 2>&1; then
   $SUDO apt-get install -y --no-install-recommends jq
 fi
 
-# Ensure Azure Bicep support is available when needed.
-if command -v az >/dev/null 2>&1; then
-  if ! az bicep version >/dev/null 2>&1; then
-    az bicep install >/dev/null
-  fi
-fi
-
 # Install Node dependencies (use lockfile for reproducibility).
 if [ -f package-lock.json ]; then
   npm ci

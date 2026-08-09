@@ -13,8 +13,7 @@
 
 Rollback a failed or unsafe Vercel production release while preserving Supabase
 schema compatibility, Clerk authorization, resource integrity, and auditability.
-Azure deployment workflows are a separate rollback-only platform path and are
-not the default application rollback mechanism.
+Retired provider platforms are not an application rollback mechanism.
 
 ## Safety Constraints
 

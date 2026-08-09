@@ -36,9 +36,8 @@ publishable ORAN resource.
 4. Feed state, replay cursor, attempt status, audit events, provenance, and
    publication decision reasons are stored in Supabase/PostgreSQL.
 
-`POST /api/internal/ingestion/feed-poll` is for authenticated operational or
-rollback tooling. Azure Function timers and Storage Queues are not the active
-production scheduler.
+`POST /api/internal/ingestion/feed-poll` is for authenticated, provider-neutral
+operational tooling. Vercel Cron is the only scheduled production caller.
 
 ## Fail-Closed Enablement Gates
 

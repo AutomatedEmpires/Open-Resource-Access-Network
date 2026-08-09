@@ -43,16 +43,16 @@ Update-on-touch rule:
 ## Key integration contracts
 
 - Auth: Clerk owns identity and sessions; ORAN's database owns roles, account status, and memberships. Legacy providers are retired.
-- Platform target: Vercel + Supabase + Clerk + Sentry. Azure artifacts are rollback-only.
+- Platform target: Vercel + Supabase + Clerk + Sentry. Azure and Foundry are retired and prohibited; there is no rollback activation path.
 - DB: Supabase PostgreSQL + PostGIS + pgvector via `pg` and Drizzle ORM.
 - Telemetry: Sentry is the production backend and must not receive PII.
 - Feature flags gate risky/optional features (e.g., `llm_summarize`).
 
 ## Platform migration rules
 
-- Do not add new Azure dependencies or attach the production domain to Azure.
+- Do not add or re-enable Azure/Foundry dependencies, settings, endpoints, workflows, or fallbacks.
 - Prefer Vercel, Supabase, Clerk, and Sentry where the platform capability fits.
-- Treat `docs/platform/STACK_MIGRATION.md` as the active stack decision; Azure platform documents are rollback history.
+- Treat `docs/platform/STACK_MIGRATION.md` as the active stack decision; older platform documents are historical evidence only, never operating instructions.
 - Do not expose Supabase tables through the Data API until every exposed table has reviewed RLS.
 
 ## Chat behavior rules

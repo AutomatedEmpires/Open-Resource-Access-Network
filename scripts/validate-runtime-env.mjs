@@ -63,7 +63,7 @@ function printUsageAndExit() {
   console.error(
     [
       'Usage:',
-      '  node scripts/validate-runtime-env.mjs --target <webapp|functions> [--names-file path] [--node-env production] [--format plain|github] [--require-warning NAME]',
+      '  node scripts/validate-runtime-env.mjs --target <webapp> [--names-file path] [--node-env production] [--format plain|github] [--require-warning NAME]',
     ].join('\n'),
   );
   process.exit(1);
@@ -79,13 +79,7 @@ const envSource = options.namesFile ? readNamesFile(options.namesFile) : process
 const result = validateRuntimeEnv(options.target, envSource, {
   nodeEnv: options.nodeEnv || undefined,
 });
-// Older contract revisions returned a prohibitedSettings collection. The
-// dedicated off-Azure runtime gate now owns that check, but this CLI remains
-// compatible with either result shape so an invalid environment is reported
-// as a normal validation failure instead of throwing.
-const prohibitedSettings = Array.isArray(result.prohibitedSettings)
-  ? result.prohibitedSettings
-  : [];
+const prohibitedSettings = result.prohibitedSettings;
 const requiredWarnings = options.requireWarnings
   .map((value) => value.trim())
   .filter(Boolean);

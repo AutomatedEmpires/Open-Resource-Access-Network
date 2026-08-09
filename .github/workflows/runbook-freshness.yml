@@ -6,10 +6,9 @@ on:
     paths:
       - 'docs/ops/**'
       - 'src/app/api/**'
+      - 'src/agents/ingestion/**'
       - 'src/services/**'
       - 'db/migrations/**'
-      - 'functions/**'
-      - 'infra/**'
       - 'vercel.json'
       - '.env.example'
       - '.github/runtime/**'
@@ -21,10 +20,9 @@ on:
     paths:
       - 'docs/ops/**'
       - 'src/app/api/**'
+      - 'src/agents/ingestion/**'
       - 'src/services/**'
       - 'db/migrations/**'
-      - 'functions/**'
-      - 'infra/**'
       - 'vercel.json'
       - '.env.example'
       - '.github/runtime/**'

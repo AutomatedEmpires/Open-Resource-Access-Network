@@ -29,7 +29,7 @@ Clerk route settings use these non-secret names and may retain the defaults in
 | --- | --- | --- |
 | Resend | `RESEND_API_KEY`, `RESEND_FROM` | Install both together; a key without an approved sender is invalid |
 | Sentry | `NEXT_PUBLIC_SENTRY_DSN` | Venture-specific DSN only; source-map credentials are deployment-only if later added |
-| OpenAI summarization | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_CHAT_MODEL` | Optional post-retrieval summarization; never use another venture's key |
+| Anthropic-assisted ingestion | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TEMPERATURE`, `LLM_TIMEOUT_MS` | Optional, review-gated extraction only. `LLM_PROVIDER` must be `anthropic`; the key is required and the adapter uses Anthropic's fixed public API origin |
 | NDP 211 polling | `NDP_211_POLLING_ENABLED`, `NDP_211_SUBSCRIPTION_KEY`, `NDP_211_DATA_OWNERS` | The latter two become mandatory when polling is enabled |
 | Source-feed automation | `SOURCE_FEED_POLLING_ENABLED`, `SOURCE_FEED_AUTO_PUBLISH_ENABLED` | Keep disabled until cron and data-write gates pass |
 | Geocoding | `NOMINATIM_BASE_URL`, `GEOCODER_USER_AGENT` | Optional override/contact identity for Nominatim |
@@ -42,26 +42,16 @@ Clerk route settings use these non-secret names and may retain the defaults in
 consumed by production application code. Do not install them merely to make the
 config look complete.
 
-## Provider-neutral and legacy AI adapter names
+## Retired provider names
 
-The code still contains optional provider adapters using these names:
+Azure and Foundry settings, endpoints, SDKs, and adapters are prohibited. The
+application rejects their presence at startup and readiness, and CI scans active
+runtime code and package manifests for reintroduction. Do not install legacy
+settings as placeholders and do not create a rollback or fallback path.
 
-- `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_ENDPOINT`, `LLM_MODEL`,
-  `LLM_API_VERSION`, `LLM_TEMPERATURE`, `LLM_TIMEOUT_MS`;
-- `FOUNDRY_KEY`, `FOUNDRY_ENDPOINT`, `FOUNDRY_API_VERSION`,
-  `FOUNDRY_EMBED_DEPLOYMENT`;
-- `AZURE_OPENAI_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`,
-  `AZURE_OPENAI_API_VERSION`;
-- `AZURE_TRANSLATOR_KEY`, `AZURE_TRANSLATOR_ENDPOINT`,
-  `AZURE_TRANSLATOR_REGION`;
-- `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`;
-- `AZURE_CONTENT_SAFETY_KEY`, `AZURE_CONTENT_SAFETY_ENDPOINT`;
-- `AZURE_DOCUMENT_INTELLIGENCE_KEY`,
-  `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`.
-
-These names are intentionally absent from the required production manifest. Do
-not copy legacy Azure values into ORAN by default. Select and document a provider
-before activating one of these optional adapters.
+The only bundled optional model adapter is Anthropic for review-gated ingestion.
+Seeker retrieval, crisis routing, ranking, eligibility, translation, and speech
+must not depend on an external model.
 
 ## Database transport controls
 

@@ -13,7 +13,7 @@ import * as llmPromptsIndex from '../llm/prompts';
 import * as llmExtractionPromptModule from '../llm/prompts/extraction';
 import * as llmCategorizationPromptModule from '../llm/prompts/categorization';
 import * as llmProvidersIndex from '../llm/providers';
-import * as azureProviderModule from '../llm/providers/azureOpenai';
+import * as anthropicProviderModule from '../llm/providers/anthropic';
 
 import * as pipelineIndex from '../pipeline';
 import * as pipelineOrchestratorModule from '../pipeline/orchestrator';
@@ -35,7 +35,7 @@ describe('ingestion barrel indexes', () => {
     expect(llmIndex.buildCategorizationMessages).toBe(llmCategorizationPromptModule.buildCategorizationMessages);
     expect(llmPromptsIndex.buildExtractionMessages).toBe(llmExtractionPromptModule.buildExtractionMessages);
     expect(llmPromptsIndex.getValidCategories).toBe(llmCategorizationPromptModule.getValidCategories);
-    expect(llmProvidersIndex.createAzureOpenAIClient).toBe(azureProviderModule.createAzureOpenAIClient);
+    expect(llmProvidersIndex.createAnthropicClient).toBe(anthropicProviderModule.createAnthropicClient);
   });
 
   it('re-exports pipeline orchestrator and stage constructors', () => {

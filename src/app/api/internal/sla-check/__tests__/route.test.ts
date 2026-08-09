@@ -55,10 +55,10 @@ const candidateReviewerRoutingSuccess = {
   retryCount: 0,
 };
 
-function makeRequest(apiKey?: string): NextRequest {
+function makeCronRequest(cronSecret?: string): NextRequest {
   const headers = new Headers({ 'Content-Type': 'application/json' });
-  if (apiKey) {
-    headers.set('Authorization', `Bearer ${apiKey}`);
+  if (cronSecret) {
+    headers.set('Authorization', `Bearer ${cronSecret}`);
   }
   return new NextRequest('http://localhost/api/internal/sla-check', {
     method: 'POST',
@@ -66,10 +66,10 @@ function makeRequest(apiKey?: string): NextRequest {
   });
 }
 
-function makeRollbackRequest(apiKey: string): NextRequest {
+function makeInternalRequest(apiKey?: string): NextRequest {
   return new NextRequest('http://localhost/api/internal/sla-check', {
     method: 'POST',
-    headers: { 'x-oran-internal-key': apiKey },
+    headers: apiKey ? { 'x-oran-internal-key': apiKey } : undefined,
   });
 }
 
@@ -96,37 +96,37 @@ describe('GET|POST /api/internal/sla-check', () => {
   it('returns 503 when no internal credential is configured', async () => {
     vi.stubEnv('CRON_SECRET', '');
     vi.stubEnv('INTERNAL_API_KEY', '');
-    const res = await POST(makeRequest('test-secret-key'));
+    const res = await POST(makeInternalRequest('test-secret-key'));
     expect(res.status).toBe(503);
   });
 
   it('accepts a Vercel Cron GET request', async () => {
-    const res = await GET(makeRequest('test-cron-secret'));
+    const res = await GET(makeCronRequest('test-cron-secret'));
 
     expect(res.status).toBe(200);
     expect(mockCheckSlaWarnings).toHaveBeenCalledOnce();
   });
 
-  it('retains the dedicated rollback header for POST requests', async () => {
-    const res = await POST(makeRollbackRequest('test-secret-key'));
+  it('accepts the dedicated internal header for POST requests', async () => {
+    const res = await POST(makeInternalRequest('test-secret-key'));
 
     expect(res.status).toBe(200);
     expect(mockCheckSlaWarnings).toHaveBeenCalledOnce();
   });
 
   it('returns 401 when authorization header is missing', async () => {
-    const res = await POST(makeRequest());
+    const res = await POST(makeInternalRequest());
     expect(res.status).toBe(401);
   });
 
   it('returns 401 when authorization header has wrong key', async () => {
-    const res = await POST(makeRequest('wrong-key'));
+    const res = await POST(makeInternalRequest('wrong-key'));
     expect(res.status).toBe(401);
   });
 
   it('returns 503 when database is not configured', async () => {
     mockIsDatabaseConfigured.mockReturnValue(false);
-    const res = await POST(makeRequest('test-secret-key'));
+    const res = await POST(makeInternalRequest('test-secret-key'));
     expect(res.status).toBe(503);
   });
 
@@ -143,7 +143,7 @@ describe('GET|POST /api/internal/sla-check', () => {
       integrityHoldsApplied: 3,
     });
 
-    const res = await POST(makeRequest('test-secret-key'));
+    const res = await POST(makeInternalRequest('test-secret-key'));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -161,7 +161,7 @@ describe('GET|POST /api/internal/sla-check', () => {
   it('still repairs candidate reviewer coverage when the SLA workflow fails', async () => {
     mockCheckSlaBreaches.mockRejectedValueOnce(new Error('DB error'));
 
-    const res = await POST(makeRequest('test-secret-key'));
+    const res = await POST(makeInternalRequest('test-secret-key'));
     const body = await res.json();
 
     expect(res.status).toBe(500);
@@ -188,7 +188,7 @@ describe('GET|POST /api/internal/sla-check', () => {
       message: 'must not be returned: candidate-sensitive-id',
     });
 
-    const res = await POST(makeRequest('test-secret-key'));
+    const res = await POST(makeInternalRequest('test-secret-key'));
     const body = await res.json();
 
     expect(res.status).toBe(500);

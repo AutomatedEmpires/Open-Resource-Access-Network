@@ -34,6 +34,7 @@ import { ChatServiceCard } from '@/components/chat/ChatServiceCard';
 import { DiscoveryContextPanel } from '@/components/seeker/DiscoveryContextPanel';
 import { DistanceRadiusControl } from '@/components/seeker/DistanceRadiusControl';
 import { QuickNeedFilterGrid } from '@/components/seeker/QuickNeedFilterGrid';
+import { ResourceSearchRecovery } from '@/components/seeker/ResourceSearchRecovery';
 import { useToast } from '@/components/ui/toast';
 import { isServerSyncEnabledOnDevice } from '@/services/profile/syncPreference';
 import {
@@ -576,6 +577,19 @@ function RetrievalStatusNote({ status }: { status?: ChatResponse['retrievalStatu
     <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
       {copy}
     </div>
+  );
+}
+
+function RetrievalRecoveryActions({ status }: { status?: ChatResponse['retrievalStatus'] }) {
+  if (!status || !['no_match', 'catalog_empty_for_scope', 'temporarily_unavailable'].includes(status)) {
+    return null;
+  }
+
+  return (
+    <ResourceSearchRecovery
+      reason={status === 'temporarily_unavailable' ? 'temporarily_unavailable' : 'no_match'}
+      showOranBrowse={status !== 'temporarily_unavailable'}
+    />
   );
 }
 
@@ -2867,6 +2881,7 @@ export function ChatWindow({
                     </div>
                   )}
                   <RetrievalStatusNote status={(msg as AssistantMessage).retrievalStatus} />
+                  <RetrievalRecoveryActions status={(msg as AssistantMessage).retrievalStatus} />
                   <SearchInterpretationPanel
                     interpretation={(msg as AssistantMessage).searchInterpretation}
                     canToggleProfile={Boolean(userId)}
@@ -3083,7 +3098,7 @@ export function ChatWindow({
               }}
               onKeyDown={handleKeyDown}
               placeholder="Describe what you need help with..."
-              className="min-h-12 flex-1 resize-none rounded-[18px] border-0 bg-white px-4 py-2.5 text-[15px] leading-7 text-slate-800 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-azure)] sm:min-h-14 sm:py-3"
+              className="min-h-12 flex-1 resize-none rounded-[18px] border-0 bg-white px-4 py-2.5 text-[15px] leading-7 text-slate-800 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-primary)] sm:min-h-14 sm:py-3"
               rows={1}
               aria-label="Chat message input"
               disabled={isLoading}
